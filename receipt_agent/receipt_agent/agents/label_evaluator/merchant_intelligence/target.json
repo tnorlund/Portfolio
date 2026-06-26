@@ -1,0 +1,142 @@
+{
+  "catalog": [
+    {
+      "name": "G&G VIT D WHOLE MILK GAL",
+      "price": "2.99",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G 2% MILK GAL",
+      "price": "2.99",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G GRADE A LG EGGS 18CT",
+      "price": "2.19",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G CAGE FREE BROWN EGGS 12CT",
+      "price": "2.69",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G SHRED MOZZARELLA 8OZ",
+      "price": "1.99",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G SALTED BUTTER 1LB",
+      "price": "3.19",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G HALF AND HALF 32OZ",
+      "price": "2.79",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G SOUR CREAM 16OZ",
+      "price": "1.99",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "G&G STRING CHEESE 12CT",
+      "price": "3.29",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "MKT PANTRY WHITE BREAD 20OZ",
+      "price": "1.29",
+      "source": "online_catalog:target.json",
+      "taxable": false
+    },
+    {
+      "name": "UP AND UP PAPER TOWELS 6RL",
+      "price": "9.99",
+      "source": "online_catalog:target.json",
+      "taxable": true
+    },
+    {
+      "name": "UP AND UP TRASH BAGS 13GAL 80CT",
+      "price": "9.49",
+      "source": "online_catalog:target.json",
+      "taxable": true
+    },
+    {
+      "name": "UP AND UP DISINFECTING WIPES 75CT",
+      "price": "4.49",
+      "source": "online_catalog:target.json",
+      "taxable": true
+    },
+    {
+      "name": "UP AND UP DISH SOAP 24OZ",
+      "price": "2.49",
+      "source": "online_catalog:target.json",
+      "taxable": true
+    }
+  ],
+  "details": {
+    "address": null,
+    "category": "department_store",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Target",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "confidence is 'medium', not high",
+      "multi-jurisdiction merchant (per-run jurisdiction safety needed)",
+      "only 1 independent source(s) cross-check the tax facts (receipts)"
+    ],
+    "status": "needs_review"
+  },
+  "slug": "target",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 20,
+      "image_ids": [],
+      "taxed_count": 12
+    },
+    "web": {
+      "jurisdiction": "multi",
+      "published_rate": null,
+      "urls": []
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": true,
+    "confidence": "medium",
+    "jurisdiction": "multi",
+    "jurisdiction_rates": [
+      "0.08375",
+      "0.0950",
+      "0.0975"
+    ],
+    "nontaxable_flags": [
+      "NF"
+    ],
+    "provenance": [
+      "receipts: 20 receipt(s), 12 taxed, effective rate ~0.0843",
+      "web: NV Clark County 8.375%, CA LA County ~9.5%; per-state",
+      "1 blind positive-tax receipt(s) (no computable effective rate); per-run gate must exclude any run containing one",
+      "per-receipt reconciliation across 12 taxed receipts to jurisdiction rates [Decimal('0.08375'), Decimal('0.0950'), Decimal('0.0975')]"
+    ],
+    "taxable_flag": "T",
+    "validated_rate": null
+  }
+}

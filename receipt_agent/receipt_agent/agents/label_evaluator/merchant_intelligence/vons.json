@@ -1,0 +1,78 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "grocery",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Vons",
+  "review": {
+    "approved_at": "2026-06-26T00:00:00+00:00",
+    "approved_by": "auto",
+    "reasons": [
+      "high confidence; 2 independent sources (receipts, web); matches existing validated config"
+    ],
+    "status": "auto_approved"
+  },
+  "slug": "vons",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 30,
+      "image_ids": [],
+      "taxed_count": 10
+    },
+    "web": {
+      "jurisdiction": "CA-Ventura",
+      "published_rate": "0.0725",
+      "urls": [
+        "https://www.cdtfa.ca.gov/taxes-and-fees/sales-use-tax-rates.htm"
+      ]
+    }
+  },
+  "structure": {
+    "applicable_operations": [
+      "add_line_item",
+      "remove_line_item",
+      "replace_field",
+      "amount_mutation",
+      "compose_header",
+      "hard_negative"
+    ],
+    "archetype_mix": {
+      "line_item_retail": 24,
+      "restaurant_tip": 1,
+      "service": 2,
+      "unknown": 1
+    },
+    "cluster_id": "cluster:line_item_retail",
+    "cluster_size": 28,
+    "confidence": "high",
+    "primary_archetype": "line_item_retail",
+    "provenance": [
+      "primary archetype line_item_retail (24/28 receipts, share 0.86)",
+      "archetype mix {'line_item_retail': 24, 'restaurant_tip': 1, 'service': 2, 'unknown': 1}"
+    ],
+    "status": "auto_approved",
+    "structure_type": "line_item"
+  },
+  "tax": {
+    "can_support_taxable_edits": true,
+    "confidence": "high",
+    "jurisdiction": "CA-Ventura",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [
+      "S"
+    ],
+    "provenance": [
+      "receipts: 30 receipt(s), 10 taxed, effective rate ~0.0534",
+      "web: CA-Ventura published rate 0.0725 (CA statewide base 7.25%; Ventura County no district add-on)",
+      "web rate 0.0725 uncontradicted by 10 taxed receipts (highest effective 0.0730)"
+    ],
+    "taxable_flag": "T",
+    "validated_rate": "0.0725"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "home_improvement",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "The Home Depot",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "confidence is 'medium', not high",
+      "multi-jurisdiction merchant (per-run jurisdiction safety needed)",
+      "only 1 independent source(s) cross-check the tax facts (receipts)"
+    ],
+    "status": "needs_review"
+  },
+  "slug": "the_home_depot",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 17,
+      "image_ids": [],
+      "taxed_count": 8
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": false,
+    "confidence": "medium",
+    "jurisdiction": "multi",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [],
+    "provenance": [
+      "receipts: 17 receipt(s), 8 taxed, effective rate ~0.0838",
+      "blocked: only ~4 A line totals captured corpus-wide; per-item flag OCR too sparse to trust a per-item rate",
+      "multi-jurisdiction merchant without per-receipt rate reconciliation (per-item flag OCR too sparse to pin a jurisdiction per receipt)",
+      "multi-jurisdiction merchant needs >= 2 distinct reconciled rates; got []"
+    ],
+    "taxable_flag": "A",
+    "validated_rate": null
+  }
+}

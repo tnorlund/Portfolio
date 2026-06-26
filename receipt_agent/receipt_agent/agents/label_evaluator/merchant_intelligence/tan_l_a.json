@@ -1,0 +1,104 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "service",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Tan L.A.",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "no tax evidence: no taxed receipts and no validated rate"
+    ],
+    "status": "rejected"
+  },
+  "slug": "tan_l_a",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 3,
+      "image_ids": [],
+      "taxed_count": 0
+    }
+  },
+  "structure": {
+    "applicable_operations": [
+      "replace_field",
+      "amount_mutation",
+      "compose_header",
+      "hard_negative"
+    ],
+    "archetype_mix": {
+      "line_item_retail": 1,
+      "service": 2
+    },
+    "cluster_id": "cluster:service",
+    "cluster_size": 3,
+    "confidence": "medium",
+    "primary_archetype": "service",
+    "provenance": [
+      "primary archetype service (2/3 receipts, share 0.67)",
+      "archetype mix {'line_item_retail': 1, 'service': 2}"
+    ],
+    "status": "needs_review",
+    "structural_prior": {
+      "archetype": "service",
+      "borrowed_from_peers": [
+        "Nicole Skin Studio",
+        "The HandleBar Barbershop"
+      ],
+      "cluster_id": "cluster:service",
+      "grounding": "cluster membership: Tan L.A.'s own receipts place it in service; borrowing PEERS' aggregate STRUCTURE (layout/spacing/label arrangement), never content",
+      "prior": {
+        "label_arrangement": {
+          "ADDRESS_LINE": 1.0,
+          "COUPON": 0.5,
+          "DATE": 1.0,
+          "GRAND_TOTAL": 1.0,
+          "LINE_TOTAL": 1.0,
+          "MERCHANT_NAME": 1.0,
+          "PAYMENT_METHOD": 1.0,
+          "PHONE_NUMBER": 1.0,
+          "PRODUCT_NAME": 1.0,
+          "STORE_HOURS": 0.5,
+          "SUBTOTAL": 1.0,
+          "TAX": 0.5,
+          "TIME": 1.0,
+          "TIP": 0.5
+        },
+        "mean_line_item_count": 1.0,
+        "mean_price_column_x": null,
+        "mean_row_spacing": 0.003785,
+        "receipt_count": 2,
+        "typical_region_sequence": [
+          "header",
+          "items",
+          "totals",
+          "payment"
+        ]
+      }
+    },
+    "structure_type": "service"
+  },
+  "tax": {
+    "can_support_taxable_edits": false,
+    "confidence": "high",
+    "jurisdiction": "CA-Ventura",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [],
+    "provenance": [
+      "receipts: 3 receipt(s), 0 taxed",
+      "no taxable class flag observed on receipts",
+      "no receipt carries positive tax",
+      "no authoritative web rate to pin the single-jurisdiction rate",
+      "confidently off: no positive tax to derive a rate"
+    ],
+    "taxable_flag": "",
+    "validated_rate": null
+  }
+}

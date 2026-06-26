@@ -1,0 +1,47 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "grocery",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Whole Foods Market",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "confidence is 'medium', not high",
+      "only 1 independent source(s) cross-check the tax facts (receipts)",
+      "only 1 corroborating taxed receipt(s); need >= 3",
+      "new merchant or jurisdiction (no matching validated config)"
+    ],
+    "status": "needs_review"
+  },
+  "slug": "whole_foods_market",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 5,
+      "image_ids": [],
+      "taxed_count": 1
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": false,
+    "confidence": "medium",
+    "jurisdiction": "",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [],
+    "provenance": [
+      "receipts: 5 receipt(s), 1 taxed, effective rate ~0.0838",
+      "no taxable class flag observed on receipts",
+      "only 1 taxed receipt(s); need >= 2 for cross-receipt confirmation",
+      "no authoritative web rate to pin the single-jurisdiction rate"
+    ],
+    "taxable_flag": "",
+    "validated_rate": null
+  }
+}

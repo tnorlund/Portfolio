@@ -386,6 +386,7 @@ def generate_merchant_synthesis_candidates(
     *,
     max_candidates: int = 5,
     online_catalog: list[OnlineCatalogEntry] | None = None,
+    font_geometry: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate train-only candidates for any merchant with real receipts.
 
@@ -394,6 +395,14 @@ def generate_merchant_synthesis_candidates(
     the budget is spent on ``compose_online_catalog`` candidates: net-new
     receipts whose item rows are rendered from online products with labels we
     assign, giving clean item-region supervision a cloned real row cannot.
+
+    ``font_geometry`` is an optional merchant font profile in synthesis pixel
+    space — exactly ``MerchantFontProfile.to_geometry_params()`` from
+    ``rendering.font_profile`` (built on PR #994). When provided it is stamped on
+    every working receipt and used ONLY as a geometry fallback (char width, glyph
+    height, row pitch, price column) for scaffolds too sparse to measure their
+    own. Real receipt geometry always wins, so the structure-similarity gate is
+    unchanged for receipts that can measure themselves.
     """
     merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
     profile = build_merchant_synthesis_profile(
@@ -411,6 +420,9 @@ def generate_merchant_synthesis_candidates(
         )
         if receipt["words"]
     ]
+    if font_geometry:
+        for receipt in receipts:
+            receipt["font_geometry"] = font_geometry
     analyses = [_analyze_receipt(receipt) for receipt in receipts]
     catalog = _build_item_catalog(
         [analysis for analysis in analyses if analysis.line_items]
@@ -1373,7 +1385,11 @@ def _build_add_item_candidate_from_plan(
     if old_total is None:
         return None
     base_key = _receipt_key(analysis.receipt)
-    line_step = _line_step(analysis.line_items, analysis.receipt)
+    line_step = _line_step(
+        analysis.line_items,
+        analysis.receipt,
+        allow_font_geometry_fallback=True,
+    )
     insertion_context = _category_insertion_context(analysis, entry.category, y_center)
 
     # Row-order reflow (no free-floating placement): insert the new band right
@@ -1660,7 +1676,11 @@ def _build_remove_item_candidate_from_plan(
     new_total = _money(max(Decimal("0.00"), old_total - removed.amount))
 
     removed_center = removed.center_y
-    line_step = _line_step(refreshed.line_items, refreshed.receipt)
+    line_step = _line_step(
+        refreshed.line_items,
+        refreshed.receipt,
+        allow_font_geometry_fallback=True,
+    )
     # Row-order reflow: delete the item's FULL band by INDEX and pull every lower
     # row up to close the gap — no orphaned satellites, no displaced neighbors.
     shift_summary = _reflow_remove_lines(
@@ -2491,8 +2511,21 @@ def _template_fill_geometry(analysis: MerchantAnalysis) -> dict[str, Any]:
     """Char pitch, name/price columns and row height from the scaffold's ITEM
     region (the small print), not the larger header fonts. The local
     ``width / len(text)`` pitch is the same measurement PR #994's
-    ``width_per_char`` formalizes; swap it in here once that lands."""
+    ``width_per_char`` formalizes.
+
+    The scaffold's OWN item-region geometry is always preferred (it is the most
+    specific signal for the receipt being edited). PR #994's merchant font
+    profile — supplied via ``receipt["font_geometry"]`` (see
+    ``generate_merchant_synthesis_candidates``) — is used only as a FALLBACK for
+    rows the scaffold cannot measure, replacing flat constants with the
+    merchant's measured char width / glyph height / price column. This sharpens
+    sparse scaffolds without ever overriding real geometry, so the structure gate
+    is unaffected when the scaffold has its own measurements.
+    """
     receipt = analysis.receipt
+    fg = receipt.get("font_geometry") or {}
+    char_w_fallback = _font_geometry_px(fg, "char_width_px", default=16)
+    height_fallback = _font_geometry_px(fg, "font_height_px", default=18)
     band_idx = {
         index
         for item in analysis.line_items
@@ -2511,14 +2544,23 @@ def _template_fill_geometry(analysis: MerchantAnalysis) -> dict[str, Any]:
             if index in band_idx and len(text) >= 3:
                 char_ws.append((bbox[2] - bbox[0]) / len(text))
                 heights.append(bbox[3] - bbox[1])
-    char_w = max(6, int(statistics.median(char_ws)) if char_ws else 16)
+    char_w = max(
+        6, int(statistics.median(char_ws)) if char_ws else char_w_fallback
+    )
     # Right-align composed prices so their CENTER lands on the scaffold's real
     # LINE_TOTAL column (that center x is exactly what the price_column structure
-    # score compares); fall back to the receipt's right margin if unlabeled.
+    # score compares); fall back to the merchant profile's price column, then to
+    # the receipt's right margin, when this scaffold has no LINE_TOTAL label.
     typical_price_half_width = 3 * char_w  # half of "$dd.dd"
+    # _label_x_p50 returns 0.0 (not None) when the scaffold has no LINE_TOTAL
+    # label, so a non-positive center means "unmeasured" — fall back to the
+    # merchant profile's price column, then the receipt's right margin.
     real_price_center = _label_x_p50(receipt, "LINE_TOTAL")
-    if real_price_center is not None:
+    profile_price_center = _font_geometry_px(fg, "price_column_x_px", default=0)
+    if real_price_center and real_price_center > 0:
         price_x1 = int(real_price_center + typical_price_half_width)
+    elif profile_price_center:
+        price_x1 = int(profile_price_center + typical_price_half_width)
     else:
         price_x1 = int(right_margin) or 960
     price_x1 = min(price_x1, 996)
@@ -2527,8 +2569,27 @@ def _template_fill_geometry(analysis: MerchantAnalysis) -> dict[str, Any]:
         # name column starts just past a 12-digit UPC + one space
         "name_x0": 8 + 13 * char_w,
         "price_x1": price_x1,
-        "height": int(statistics.median(heights)) if heights else 18,
+        "height": int(statistics.median(heights)) if heights else height_fallback,
     }
+
+
+def _font_geometry_px(
+    font_geometry: dict[str, Any], key: str, *, default: int
+) -> int:
+    """A positive integer pixel value from a font-geometry dict, else ``default``.
+
+    ``font_geometry`` mirrors ``MerchantFontProfile.to_geometry_params()`` where
+    a field can be ``None`` (the profile could not observe it). Such fields fall
+    through to ``default`` so the synthesizer never trusts a missing measurement.
+    """
+    value = font_geometry.get(key)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number <= 0 or number != number:  # reject non-positive / NaN
+        return default
+    return int(round(number))
 
 
 def _build_template_filled_row(
@@ -2774,7 +2835,9 @@ def _compose_online_catalog_receipt(
     header, summary = lines[:first_i], lines[last_i + 1 :]
     geo = _template_fill_geometry(scaffold)
 
-    pitch = _line_step(items, scaffold.receipt)
+    pitch = _line_step(
+        items, scaffold.receipt, allow_font_geometry_fallback=True
+    )
     gap = max(6, pitch // 3)
     cursor = (
         min(
@@ -5154,7 +5217,15 @@ def _category_insert_y(
     lowest = min(
         items, key=lambda item: item.band_bottom_y or item.center_y
     )
-    gap = max(12, _line_step(analysis.line_items, analysis.receipt) // 2)
+    gap = max(
+        12,
+        _line_step(
+            analysis.line_items,
+            analysis.receipt,
+            allow_font_geometry_fallback=True,
+        )
+        // 2,
+    )
     bottom = lowest.band_bottom_y or lowest.center_y
     return max(24.0, bottom - gap)
 
@@ -6281,6 +6352,8 @@ def _label_row_centers(receipt: dict[str, Any], label: str) -> list[float]:
 def _line_step(
     items: list[MerchantLineItem],
     receipt: dict[str, Any] | None = None,
+    *,
+    allow_font_geometry_fallback: bool = False,
 ) -> int:
     """Estimate the merchant's single item-row pitch.
 
@@ -6292,6 +6365,14 @@ def _line_step(
     merchant's real row spacing instead of collapsing to a flat constant that no
     real or synthetic receipt actually matches. The constant fallback is reached
     only when no row geometry exists at all.
+
+    ``allow_font_geometry_fallback`` is opt-in and set ONLY by row-GENERATION
+    /layout call sites. When a receipt has no measurable row geometry, those
+    sites prefer PR #994's merchant row pitch (``font_geometry.line_step_px``)
+    over the flat constant. Structure SCORING / signature call sites leave it
+    off so the profile can never influence the structure-similarity gate or the
+    emitted structure evidence — they stay on measured geometry plus the
+    constant.
     """
     pitch = _row_pitch([item.center_y for item in items])
     if pitch is not None:
@@ -6301,6 +6382,12 @@ def _line_step(
             pitch = _row_pitch(_label_row_centers(receipt, label))
             if pitch is not None:
                 return pitch
+        if allow_font_geometry_fallback:
+            profile_step = _font_geometry_px(
+                receipt.get("font_geometry") or {}, "line_step_px", default=0
+            )
+            if profile_step:
+                return profile_step
     return _DEFAULT_LINE_STEP
 
 
