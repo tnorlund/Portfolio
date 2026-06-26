@@ -51,3 +51,19 @@ grep -aE 'CONTEXT\.md|CHARTER\.md|Read\(|Bash\(|Edit\(|TodoWrite' /tmp/claude-re
 ```
 
 Successful launch means all three remote-control processes are alive, all three screens exist, the logs show the sessions moved past warnings into work, and the user can see `merchant-intel`, `font-render`, and `orchestration` in the Claude mobile app.
+
+## Supervising the cadence
+
+The review-first commit/push cadence must be **supervised**, not just stated. Its
+presence in each worktree's `CONTEXT.md` makes an agent *intend* it; it does not
+enforce it. Run `portfolio_remote_control.sh status` periodically:
+
+- `cadence=DRIFT` for a session means it is hoarding uncommitted WIP (more than
+  `PORTFOLIO_RC_DIRTY_WARN`, default 8, changed files) or sitting on unpushed
+  commits. Re-nudge it to codex-review → commit → push before it accumulates more
+  (a session reached 20 uncommitted files this way).
+- The "Unexpected remote-control sessions" block lists any remote-control claude
+  sessions that are not the trio — close strays so they don't compete for
+  resources or confuse status.
+- `check_push_auth` runs at launch; if it warns, fix gh/remote on the mini before
+  the agents try to push, or their work strands locally on the box.

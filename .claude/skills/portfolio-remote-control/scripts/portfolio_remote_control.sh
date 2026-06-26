@@ -9,6 +9,7 @@ ATTACH_DIR="$BASE_DIR/attachers"
 CAFFEINATE_PID_FILE="$BASE_DIR/caffeinate.pid"
 PRIME_TIMEOUT="${PORTFOLIO_RC_PRIME_TIMEOUT:-180}"
 CAFFEINATE_SECONDS="${PORTFOLIO_RC_CAFFEINATE_SECONDS:-86400}"
+DIRTY_WARN="${PORTFOLIO_RC_DIRTY_WARN:-8}"
 
 MISSION_PROMPT="${PORTFOLIO_RC_MISSION:-Read CONTEXT.md then CHARTER.md in this worktree. They hold the full context from the session that set this branch up plus your specific mission. Follow the charter milestones in order and self-review with codex along the way exactly as CONTEXT.md mandates. Begin with milestone 1 now.}"
 
@@ -207,6 +208,30 @@ ensure_caffeinate() {
   echo "$!" >"$CAFFEINATE_PID_FILE"
 }
 
+# Agents are useless if they cannot push: the mini's gh token expires and origin
+# can be a dead SSH remote. Verify a real authenticated remote op works.
+check_push_auth() {
+  if git -C "$PORTFOLIO_ROOT" ls-remote origin HEAD >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "WARNING: cannot reach GitHub origin from $PORTFOLIO_ROOT -- agents will NOT be able to push." >&2
+  echo "  Fix on the mini, then relaunch:" >&2
+  echo "    gh auth status            # if invalid, re-auth (e.g. from a good machine:" >&2
+  echo "    #   gh auth token | ssh <mini> 'gh auth login --with-token')" >&2
+  echo "    gh auth setup-git" >&2
+  echo "    git -C $PORTFOLIO_ROOT remote set-url origin https://github.com/tnorlund/Portfolio.git  # if origin is a dead SSH remote" >&2
+  return 1
+}
+
+# Remote-control claude sessions whose name is not one of the expected trio.
+stray_sessions() {
+  ps axww -o command= \
+    | grep '[c]laude .*--remote-control' \
+    | sed -E 's/.*--remote-control[= ]+([A-Za-z0-9_-]+).*/\1/' \
+    | grep -vxE 'merchant-intel|font-render|orchestration' \
+    | sort -u || true
+}
+
 status() {
   local missing=0
   local screen_listing
@@ -245,9 +270,27 @@ status() {
       missing=1
     fi
 
-    printf "%-16s process=%s screen=%s log_evidence=%s log=%s\n" \
-      "$label" "$process_ok" "$screen_ok" "$log_ok" "$log_file"
+    local dirty unpushed cadence
+    dirty="$(git -C "$worktree" status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
+    unpushed="$(git -C "$worktree" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+    cadence=ok
+    if [[ "${dirty:-0}" -gt "$DIRTY_WARN" || "${unpushed:-0}" -gt 0 ]]; then
+      cadence=DRIFT
+    fi
+
+    printf "%-16s process=%s screen=%s log_evidence=%s dirty=%s unpushed=%s cadence=%s log=%s\n" \
+      "$label" "$process_ok" "$screen_ok" "$log_ok" "$dirty" "$unpushed" "$cadence" "$log_file"
   done < <(entries)
+
+  echo
+  echo "Unexpected remote-control sessions:"
+  local strays; strays="$(stray_sessions)"
+  if [[ -n "$strays" ]]; then
+    printf "  %s\n" "$strays"
+    echo "  (not part of the trio -- close with: screen -S <name> -X quit, or kill the claude pid)"
+  else
+    echo "  none"
+  fi
 
   echo
   echo "Caffeinate:"
@@ -262,6 +305,7 @@ command="${1:-launch}"
 case "$command" in
   launch)
     cleanup_targets
+    check_push_auth || echo "  (continuing launch; fix push auth before the agents try to push)" >&2
     start_screens
     sleep 2
     prime_failed=0
