@@ -225,11 +225,36 @@ check_push_auth() {
 
 # Remote-control claude sessions whose name is not one of the expected trio.
 stray_sessions() {
-  ps axww -o command= \
-    | grep '[c]laude .*--remote-control' \
-    | sed -E 's/.*--remote-control[= ]+([A-Za-z0-9_-]+).*/\1/' \
-    | grep -vxE 'merchant-intel|font-render|orchestration' \
-    | sort -u || true
+  ps axww -o command= | awk '
+    function strip_quotes(value) {
+      gsub(/^[\"\047]+|[\"\047]+$/, "", value)
+      return value
+    }
+    function print_if_stray(value) {
+      value = strip_quotes(value)
+      if (value != "merchant-intel" && value != "font-render" && value != "orchestration") {
+        print value
+      }
+    }
+    {
+      executable = strip_quotes($1)
+      sub(/^.*\//, "", executable)
+      if (executable != "claude") {
+        next
+      }
+      for (i = 2; i <= NF; i++) {
+        arg = strip_quotes($i)
+        if (arg == "--remote-control" && i < NF) {
+          print_if_stray($(i + 1))
+          next
+        }
+        if (arg ~ /^--remote-control=/) {
+          print_if_stray(substr(arg, 18))
+          next
+        }
+      }
+    }
+  ' | sort -u || true
 }
 
 status() {
