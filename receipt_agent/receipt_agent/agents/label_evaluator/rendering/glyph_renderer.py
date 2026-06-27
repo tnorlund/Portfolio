@@ -99,6 +99,7 @@ class GlyphRenderConfig:
     seed: int = 7
     use_logo: bool = True
     draw_barcodes: bool = True  # render bar fields above long-numeric lines
+    paper_realism: float = 0.6  # 0=flat; thermal fade + banding + vignette + grain
 
 
 def render_receipt_glyphs(
@@ -752,7 +753,44 @@ def _thermal_finish(image: Image.Image, config: GlyphRenderConfig) -> Image.Imag
     out = image.convert("RGB")
     if config.blur > 0:
         out = out.filter(ImageFilter.GaussianBlur(radius=config.blur))
+    if config.paper_realism > 0:
+        out = _apply_paper_effects(out, config)
     return out
+
+
+def _apply_paper_effects(
+    out: Image.Image, config: GlyphRenderConfig
+) -> Image.Image:
+    """Photographic thermal-paper degradation (vectorized).
+
+    A real receipt photo is never flat white: exposure rolls off toward the
+    ends, the scanner adds faint horizontal banding, the edges darken
+    (vignette), and there is fine grain. Applied after layout so it never
+    hides a layout bug; strength is bounded by ``paper_realism``.
+    """
+    try:
+        import numpy as np
+    except Exception:  # numpy absent -> skip (no crash)
+        return out
+    amt = max(0.0, min(1.0, float(config.paper_realism)))
+    arr = np.asarray(out).astype(np.float32)
+    h, w, _ = arr.shape
+    rng = np.random.default_rng(config.seed + 17)
+    yy = np.linspace(0.0, 1.0, h)[:, None]
+    xx = np.linspace(0.0, 1.0, w)[None, :]
+    # Exposure rolloff near the top and bottom paper ends.
+    fade = 1.0 - amt * 0.05 * (np.abs(yy - 0.5) * 2.0)
+    # faint horizontal scan banding
+    period = float(rng.integers(7, 14))
+    banding = 1.0 - amt * 0.025 * (0.5 + 0.5 * np.sin(np.arange(h) / period))[:, None]
+    # edge vignette (stronger at the left/right paper edges)
+    vignette = 1.0 - amt * 0.10 * ((np.abs(xx - 0.5) * 2.0) ** 3)
+    mask = (fade * banding * vignette)[..., None]
+    arr = arr * mask
+    # fine grain
+    grain = rng.normal(0.0, amt * 4.5, size=arr.shape).astype(np.float32)
+    arr = np.clip(arr + grain, 0.0, 255.0).astype(np.uint8)
+    return Image.fromarray(arr)
 
 
 # --------------------------------------------------------------------------- #
