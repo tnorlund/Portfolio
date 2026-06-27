@@ -7,6 +7,7 @@ stamped, the logo gate works, and missing-glyph fallback is invoked.
 
 from __future__ import annotations
 
+import pytest
 from PIL import Image, ImageDraw
 
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
@@ -22,6 +23,7 @@ from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     _pitch_norm,
     _snap_to_pitch,
     _stamp_barcode,
+    _thermal_finish,
     render_real_vs_glyph,
     render_receipt_glyphs,
     save_receipt_glyphs,
@@ -256,6 +258,28 @@ def test_stamp_barcode_draws_only_for_wide_barcode_lines():
         config, inner_w, inner_h, digits,
     )
     assert sum(1 for px in occupied.convert("L").getdata() if px < 80) == before
+
+
+def test_thermal_finish_paper_realism_is_deterministic_and_disableable():
+    pytest.importorskip("numpy")
+    base = Image.new("RGBA", (12, 12), (250, 249, 245, 255))
+    ImageDraw.Draw(base).rectangle([3, 4, 8, 7], fill=(30, 30, 30, 255))
+
+    flat_config = GlyphRenderConfig(
+        width=12, height=12, blur=0.0, paper_realism=0.0
+    )
+    flat = _thermal_finish(base, flat_config)
+    assert flat.mode == "RGB"
+    assert flat.getpixel((0, 0)) == (250, 249, 245)
+
+    realism_config = GlyphRenderConfig(
+        width=12, height=12, blur=0.0, seed=123, paper_realism=0.8
+    )
+    first = _thermal_finish(base, realism_config)
+    second = _thermal_finish(base, realism_config)
+    assert first.mode == "RGB"
+    assert first.tobytes() == second.tobytes()
+    assert first.tobytes() != flat.tobytes()
 
 
 def test_flat_receipt_with_degenerate_bboxes_does_not_crash():
