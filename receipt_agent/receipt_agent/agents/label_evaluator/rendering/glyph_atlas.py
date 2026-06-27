@@ -133,6 +133,19 @@ _MAX_GLYPH_ASPECT = 1.7
 # Drop near-transparent paper noise below this alpha when building a glyph.
 _MIN_INK_ALPHA = 24
 
+# Horizontal pad for body glyph crops. The OCR letter box is sometimes a pixel
+# tight on the round side of a capital (D / O / G), clipping the right bowl so it
+# reads open (D->C). A hair of pad recovers that edge; kept tiny (0.02) so it
+# pulls in at most a 1-2px neighbour sliver, which the area-aware edge-sliver
+# trim then removes. Larger pads (0.04+) drag in ink-heavy neighbour fragments
+# that survive the trim and stamp as raised specks, so this stays small.
+_BODY_GLYPH_EXPAND_X = 0.02
+
+# An edge column-run is trimmed as a neighbour sliver only if it carries at most
+# this share of the glyph's ink (in addition to being narrow). A detached letter
+# bowl exceeds this and is kept; a thin neighbour fragment falls under it.
+_SLIVER_MAX_INK_FRAC = 0.18
+
 
 @dataclass(frozen=True)
 class GlyphCrop:
@@ -399,19 +412,24 @@ def _trim_edge_slivers(alpha: Image.Image) -> Image.Image | None:
     OCR letter boxes can overlap a neighbour by a pixel or two, leaving a thin
     vertical sliver of the next glyph in the crop; stamped, those read as stray
     strokes between letters. The crop is split into runs of ink-bearing columns
-    separated by blank columns; a *leading or trailing* run that is much narrower
-    than the widest run is a sliver and is trimmed. Interior structure is left
-    alone, and characters whose parts split only *vertically* (``i``, ``:``,
-    ``%``, ``=``) are a single column-run, so they are never touched.
+    separated by blank columns; a *leading or trailing* run that is both much
+    narrower than the widest run AND carries only a sliver of the total ink is a
+    neighbour fragment and is trimmed. The ink-area guard is what keeps a round
+    letter's *detached* right bowl (D / O / G, whose top/bottom join faded on
+    thermal print): the bowl is a narrow column run but a substantial share of the
+    glyph's ink, so it survives where a 1-2px neighbour edge does not. Interior
+    structure is left alone, and characters whose parts split only *vertically*
+    (``i``, ``:``, ``%``, ``=``) are a single column-run, so they are untouched.
     """
     width, height = alpha.size
     if width < 3:
         return alpha
     px = alpha.load()
-    col_ink = [
-        any(px[x, y] >= _MIN_INK_ALPHA for y in range(height))
+    col_count = [
+        sum(1 for y in range(height) if px[x, y] >= _MIN_INK_ALPHA)
         for x in range(width)
     ]
+    col_ink = [c > 0 for c in col_count]
     runs: list[tuple[int, int]] = []
     start = None
     for x, has in enumerate(col_ink):
@@ -427,11 +445,15 @@ def _trim_edge_slivers(alpha: Image.Image) -> Image.Image | None:
 
     widest = max(run[1] - run[0] + 1 for run in runs)
     sliver_max = max(2, int(widest * 0.30))
+    total_ink = sum(col_count) or 1
 
     def is_sliver(run: tuple[int, int]) -> bool:
-        # A sliver is narrow AND separated from the main mass; require the gap to
-        # the neighbour run to be real (>=1 blank col, already guaranteed).
-        return (run[1] - run[0] + 1) <= sliver_max
+        # Narrow AND ink-light: a neighbour fragment is a few columns carrying a
+        # tiny share of the ink. A detached letter bowl is narrow too but ink-
+        # heavy, so the area guard spares it.
+        narrow = (run[1] - run[0] + 1) <= sliver_max
+        light = sum(col_count[run[0] : run[1] + 1]) <= total_ink * _SLIVER_MAX_INK_FRAC
+        return narrow and light
 
     keep = list(runs)
     while len(keep) > 1 and is_sliver(keep[0]):
@@ -591,7 +613,10 @@ def build_glyph_atlas(
             if height_cap is not None and box["height"] >= height_cap:
                 continue  # stray display-size glyph on a body line
             glyph_image = extract_glyph_image(
-                raw_image, box, y_origin=image_y_origin
+                raw_image,
+                box,
+                y_origin=image_y_origin,
+                expand_x_ratio=_BODY_GLYPH_EXPAND_X,
             )
             if glyph_image is None:
                 continue
