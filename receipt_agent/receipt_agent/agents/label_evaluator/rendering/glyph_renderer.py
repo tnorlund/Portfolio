@@ -104,6 +104,7 @@ class GlyphRenderConfig:
     use_logo: bool = True
     draw_barcodes: bool = True  # render bar fields above long-numeric lines
     paper_realism: float = 0.6  # 0=flat; thermal fade + banding + vignette + grain
+    body_glyph_source: str = "atlas"  # "numeric" or "font" opts into TTF body
 
 
 def render_receipt_glyphs(
@@ -383,6 +384,7 @@ def _stamp_line_fixed_pitch(
             )
         else:
             word_ink_jitter = 0
+        prefer_font = _prefer_font_for_word(config, word, text)
         for i, char in enumerate(text):
             cell_left = start_x + i * word_pitch
             if char.strip():
@@ -392,7 +394,8 @@ def _stamp_line_fixed_pitch(
                 glyph_img = _render_glyph(
                     char, atlas, style, bold=bold, target_h=glyph_h,
                     ref_h=ref_h, max_w=word_max_glyph_w, config=config, rng=rng,
-                    fallback=fallback, variant_index=variant_index,
+                    fallback=fallback, prefer_font=prefer_font,
+                    variant_index=variant_index,
                     ink_jitter=word_ink_jitter,
                 )
                 if glyph_img is not None:
@@ -426,6 +429,25 @@ def _glyph_variant_index(
     return 0
 
 
+def _prefer_font_for_word(
+    config: GlyphRenderConfig, word: Mapping[str, Any], text: str
+) -> bool:
+    mode = str(config.body_glyph_source).lower()
+    if mode in {"font", "ttf", "matched"}:
+        return True
+    if mode in {"atlas", "crops", "glyphs"}:
+        return False
+    return _is_amount(word) or _mostly_numeric_token(text)
+
+
+def _mostly_numeric_token(text: str) -> bool:
+    digits = sum(1 for char in text if char.isdigit())
+    letters = sum(1 for char in text if char.isalpha())
+    if digits < 2:
+        return False
+    return digits / max(1, digits + letters) >= 0.45
+
+
 def _render_glyph(
     char: str,
     atlas: GlyphAtlas,
@@ -438,10 +460,18 @@ def _render_glyph(
     config: GlyphRenderConfig,
     rng: random.Random,
     fallback: GlyphFallback | None,
+    prefer_font: bool = False,
     variant_index: int | None = None,
     ink_jitter: int | None = None,
 ) -> Image.Image | None:
     """Produce a sized, inked glyph for one character (atlas crop or fallback)."""
+    if prefer_font and fallback is not None:
+        glyph_img = fallback(char, style, int(max(2, target_h)))
+        if glyph_img is not None:
+            if ink_jitter is not None:
+                glyph_img = _retint_glyph(glyph_img, config, ink_jitter)
+            return _fit_glyph_width(glyph_img, max_w)
+
     # Rotate among the char's stored variants (seeded rng) so a repeated letter
     # is not the identical crop every time — natural variation, and no single
     # imperfect crop repeats across the whole receipt.
@@ -460,13 +490,50 @@ def _render_glyph(
         return None
     if glyph_img is None:
         return None
-    if glyph_img.width > max_w:  # cap fallback glyphs to the cell
-        s = max_w / glyph_img.width
-        glyph_img = glyph_img.resize(
-            (max(1, int(glyph_img.width * s)), max(1, int(glyph_img.height * s))),
-            Image.LANCZOS,
-        )
-    return glyph_img
+    return _fit_glyph_width(glyph_img, max_w)
+
+
+def _fit_glyph_width(glyph_img: Image.Image, max_w: float) -> Image.Image:
+    if glyph_img.width <= max_w:
+        return glyph_img
+    s = max_w / glyph_img.width
+    return glyph_img.resize(
+        (max(1, int(glyph_img.width * s)), max(1, int(glyph_img.height * s))),
+        Image.LANCZOS,
+    )
+
+
+def _retint_glyph(
+    glyph_img: Image.Image, config: GlyphRenderConfig, ink_jitter: int
+) -> Image.Image:
+    alpha = _thermalize_font_alpha(glyph_img.getchannel("A"))
+    ink = tuple(max(0, min(255, c + ink_jitter)) for c in config.ink)
+    out = Image.new("RGBA", glyph_img.size, ink + (0,))
+    out.putalpha(alpha)
+    return out
+
+
+def _thermalize_font_alpha(alpha: Image.Image) -> Image.Image:
+    """Soften matched-font glyphs so they do not stand apart from atlas crops."""
+    alpha = alpha.point(lambda value: int(value * 0.68))
+    if alpha.width <= 2 or alpha.height <= 2:
+        return alpha
+    px = alpha.load()
+    for y in range(alpha.height):
+        for x in range(alpha.width):
+            if px[x, y] == 0:
+                continue
+            edge = (
+                x == 0 or y == 0 or x == alpha.width - 1
+                or y == alpha.height - 1
+                or px[x - 1, y] == 0
+                or px[min(x + 1, alpha.width - 1), y] == 0
+                or px[x, y - 1] == 0
+                or px[x, min(y + 1, alpha.height - 1)] == 0
+            )
+            if edge and ((x * 19 + y * 23 + alpha.width * 5) % 17 == 0):
+                px[x, y] = 0
+    return alpha
 
 
 def _stamp_word(

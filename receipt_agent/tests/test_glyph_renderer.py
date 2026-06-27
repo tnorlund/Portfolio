@@ -151,6 +151,40 @@ def test_missing_glyph_invokes_fallback():
     assert "Z" in calls
 
 
+def test_numeric_body_source_uses_fallback_for_amount_tokens():
+    atlas = _atlas()
+    calls = []
+
+    def fallback(char, style, px_height):
+        calls.append(char)
+        return Image.new("RGBA", (px_height // 2, px_height), (0, 0, 0, 255))
+
+    receipt = {"words": [_word("12.30", 100, 800, 260, 830, ["LINE_TOTAL"])]}
+    config = GlyphRenderConfig(
+        width=300, height=700, noise=0.0, blur=0.0,
+        body_glyph_source="numeric",
+    )
+    render_receipt_glyphs(receipt, atlas, config=config, fallback=fallback)
+    assert calls == list("12.30")
+
+
+def test_numeric_body_source_keeps_plain_words_on_atlas():
+    atlas = _atlas()
+    calls = []
+
+    def fallback(char, style, px_height):
+        calls.append(char)
+        return Image.new("RGBA", (px_height // 2, px_height), (0, 0, 0, 255))
+
+    receipt = {"words": [_word("ABC", 100, 800, 260, 830)]}
+    config = GlyphRenderConfig(
+        width=300, height=700, noise=0.0, blur=0.0,
+        body_glyph_source="numeric",
+    )
+    render_receipt_glyphs(receipt, atlas, config=config, fallback=fallback)
+    assert calls == []
+
+
 def test_bold_line_renders_without_error():
     atlas = _atlas()
     receipt = {"lines": [
