@@ -18,8 +18,10 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
 from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
     _glyph_height_px,
+    _line_barcode_digits,
     _pitch_norm,
     _snap_to_pitch,
+    _stamp_barcode,
     render_real_vs_glyph,
     render_receipt_glyphs,
     save_receipt_glyphs,
@@ -205,6 +207,39 @@ def test_profile_height_is_clamped_to_row_geometry():
     assert _glyph_height_px(
         line_h=12.0, inner_h=1000, font_h_norm=0.03, row_pitch_px=16.0
     ) == 12.0
+
+
+def test_barcode_digits_accept_long_and_grouped_numbers_only():
+    assert _line_barcode_digits([
+        _word("3509", 100, 200, 180, 220),
+        _word("7155", 190, 200, 270, 220),
+        _word("1559", 280, 200, 360, 220),
+        _word("749120", 370, 200, 500, 220),
+    ]) == "350971551559749120"
+    assert _line_barcode_digits([_word("1234567890123", 100, 200, 300, 220)]) is None
+    assert _line_barcode_digits([_word("12345678901234A", 100, 200, 300, 220)]) is None
+
+
+def test_stamp_barcode_draws_only_for_wide_barcode_lines():
+    config = GlyphRenderConfig(width=300, height=300, margin=10, noise=0.0, blur=0.0)
+    inner_w = config.width - config.margin * 2
+    inner_h = config.height - config.margin * 2
+    digits = "123456789012345678"
+
+    wide = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    _stamp_barcode(
+        wide, [_word(digits, 100, 500, 900, 520)], 1000.0,
+        config, inner_w, inner_h, digits,
+    )
+    wide_dark = sum(1 for px in wide.convert("L").getdata() if px < 80)
+    assert wide_dark > 100
+
+    narrow = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    _stamp_barcode(
+        narrow, [_word(digits, 100, 500, 300, 520)], 1000.0,
+        config, inner_w, inner_h, digits,
+    )
+    assert sum(1 for px in narrow.convert("L").getdata() if px < 80) == 0
 
 
 def test_flat_receipt_with_degenerate_bboxes_does_not_crash():

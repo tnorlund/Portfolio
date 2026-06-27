@@ -71,6 +71,15 @@ _AMOUNT_LABELS = frozenset({
     "BALANCE", "TOTAL", "PRICE",
 })
 _AMOUNT_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}\$?[A-Z]?-?$")
+# A standalone long digit run is the human-readable barcode number; real receipts
+# print the bar field just above it (OCR never captures the bars themselves).
+# Require 14+ digits (UPC/product codes are 11-13) AND, at draw time, that the
+# number spans a wide central band — so left-aligned item product codes are not
+# mistaken for a scannable barcode.
+_BARCODE_RE = re.compile(r"^\d{14,}$")
+_BARCODE_MIN_WIDTH_FRAC = 0.35
+_BARCODE_MAX_CENTER_OFFSET_FRAC = 0.16
+_BARCODE_MAX_EXISTING_INK_FRAC = 0.01
 
 
 @dataclass(frozen=True)
@@ -89,6 +98,7 @@ class GlyphRenderConfig:
     blur: float = 0.4  # gaussian blur radius for thermal softness
     seed: int = 7
     use_logo: bool = True
+    draw_barcodes: bool = True  # render bar fields above long-numeric lines
 
 
 def render_receipt_glyphs(
@@ -138,6 +148,12 @@ def render_receipt_glyphs(
         if is_logo and config.use_logo and atlas.logo is not None:
             if _stamp_logo(image, line, atlas, scale, config, inner_w, inner_h):
                 continue  # logo stamped; skip per-char rendering for this line
+        if config.draw_barcodes:
+            digits = _line_barcode_digits(line)
+            if digits is not None:
+                _stamp_barcode(
+                    image, line, scale, config, inner_w, inner_h, digits
+                )  # then fall through to print the human-readable number below
         _stamp_line_fixed_pitch(
             image, line, atlas, scale, config, inner_w, inner_h,
             bold=bold, rng=rng, fallback=fallback,
@@ -475,6 +491,93 @@ def _scaled_inked(
     glyph = Image.new("RGBA", (target_w, target_h), ink + (0,))
     glyph.putalpha(alpha)
     return glyph
+
+
+def _line_barcode_digits(line: Sequence[Mapping[str, Any]]) -> str | None:
+    """Return the digit string if this line is a long all-numeric barcode number.
+
+    Accepts both a single long run and space-grouped digit groups (e.g. CVS prints
+    ``3509 7155 1559 7491 20``); every token must be pure digits so dates / mixed
+    lines are excluded. The wide-span gate in :func:`_stamp_barcode` then rejects
+    short left-aligned product codes.
+    """
+    tokens = [str(w.get("text") or "").strip() for w in line]
+    tokens = [t for t in tokens if t]
+    if not tokens or not all(t.isdigit() for t in tokens):
+        return None
+    digits = "".join(tokens)
+    return digits if _BARCODE_RE.match(digits) else None
+
+
+def _stamp_barcode(
+    image: Image.Image,
+    line: Sequence[Mapping[str, Any]],
+    scale: float,
+    config: GlyphRenderConfig,
+    inner_w: int,
+    inner_h: int,
+    digits: str,
+) -> None:
+    """Draw a deterministic bar field in the band just above the number.
+
+    Not real symbology (decode accuracy is irrelevant for review realism) — but a
+    believable alternating-width bar field reads as a barcode at a glance, where
+    the renderer previously left blank paper (a giveaway codex flagged on every
+    merchant).
+    """
+    box = _union_pixel_box(line, scale, config, inner_w, inner_h)
+    if box is None:
+        return
+    nleft, ntop, nright, _ = box
+    span = nright - nleft
+    if span < max(16.0, inner_w * _BARCODE_MIN_WIDTH_FRAC):
+        return  # narrow left-aligned number (e.g. an item product code), not a barcode
+    page_center = config.margin + inner_w / 2.0
+    if abs(((nleft + nright) / 2.0) - page_center) > (
+        inner_w * _BARCODE_MAX_CENTER_OFFSET_FRAC
+    ):
+        return  # wide but off-center reference/member/order number, not a barcode
+    band_h = max(16.0, min((box[3] - box[1]) * 2.4, 55.0))
+    band_bottom = ntop - 2.0
+    band_top = max(float(config.margin), band_bottom - band_h)
+    if band_bottom - band_top < 8:
+        return
+    quiet = span * 0.06
+    bx0, bx1 = nleft + quiet, nright - quiet
+    if bx1 - bx0 < 8:
+        return
+    if _band_has_existing_ink(image, (bx0, band_top, bx1, band_bottom)):
+        return
+    draw = ImageDraw.Draw(image)
+    ink = config.ink + (255,)
+    seed = int(digits[:12]) if digits[:12].isdigit() else abs(hash(digits))
+    rng = random.Random(seed)
+    unit = max(1.0, (bx1 - bx0) / 95.0)
+    x = bx0
+    is_bar = True
+    while x < bx1:
+        w = rng.choice((1, 1, 2, 3)) * unit
+        if is_bar:
+            draw.rectangle(
+                [x, band_top, min(x + w, bx1), band_bottom], fill=ink
+            )
+        x += w
+        is_bar = not is_bar
+
+
+def _band_has_existing_ink(
+    image: Image.Image, box: tuple[float, float, float, float]
+) -> bool:
+    left = max(0, int(box[0]))
+    top = max(0, int(box[1]))
+    right = min(image.width, int(math.ceil(box[2])))
+    bottom = min(image.height, int(math.ceil(box[3])))
+    if right <= left or bottom <= top:
+        return True
+    gray = image.crop((left, top, right, bottom)).convert("L")
+    dark = sum(1 for value in gray.getdata() if value < 170)
+    limit = max(3, int((right - left) * (bottom - top) * _BARCODE_MAX_EXISTING_INK_FRAC))
+    return dark > limit
 
 
 def _stamp_logo(

@@ -182,6 +182,9 @@ def test_tall_promo_line_does_not_replace_logo():
     assert _logo_match_score("SAVE MART", "Save Mart") == 1.0
     assert _logo_match_score("SAVE MART", "Save Mart Supermarkets") == 1.0
     assert _logo_match_score("HOT TOPIC", "Hot Topic Inc") == 1.0
+    assert _logo_match_score("MART", "Save Mart") < 0.75
+    assert _logo_match_score("SAVE", "Save Mart Supermarkets") < 0.75
+    assert _logo_match_score("TOPIC", "Hot Topic Inc") < 0.75
     assert _logo_match_score("SAVE BIG", "Save Mart Supermarkets") < 0.75
 
     atlas = build_glyph_atlas(inputs, "TestMart", min_samples=5)

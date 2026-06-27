@@ -1033,11 +1033,15 @@ def _logo_match_score(text: str, merchant_name: str) -> float:
     merchant_tokens = _merchant_tokens(merchant_name)
     if logo_tokens and merchant_tokens:
         if merchant_tokens[:len(logo_tokens)] == logo_tokens:
-            return 1.0
+            if len(logo_tokens) >= 2 or len(merchant_tokens) == 1:
+                return 1.0
 
         merchant_set = set(merchant_tokens)
         matches = [token for token in logo_tokens if token in merchant_set]
         if matches:
+            if len(logo_tokens) == 1 and len(merchant_tokens) > 1:
+                merchant_chars = sum(len(token) for token in merchant_tokens)
+                return len(matches[0]) / max(merchant_chars, 1)
             token_coverage = len(matches) / max(len(logo_tokens), 1)
             matched = sum(len(token) for token in matches)
             logo_chars = sum(len(token) for token in logo_tokens)
