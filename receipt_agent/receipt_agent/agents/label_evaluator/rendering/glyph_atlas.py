@@ -310,13 +310,16 @@ def extract_glyph_image(
     y_origin: str = "bottom_left",
     expand_x_ratio: float = 0.0,
     expand_y_ratio: float = 0.12,
+    trim_edge_slivers: bool = True,
 ) -> Image.Image | None:
     """Crop one letterform from the raw receipt as ink-on-transparent RGBA.
 
     Crops tight to the OCR letter box (no horizontal neighbor pad), then converts
     to alpha where alpha encodes ink darkness (paper -> transparent) and tightens
     to the ink bbox so the renderer can place it by content. The antialiased ink
-    edge is preserved. Returns ``None`` when the crop has no usable ink.
+    edge is preserved. ``trim_edge_slivers`` drops a thin detached neighbour-glyph
+    sliver at the left/right edge (see :func:`_trim_edge_slivers`). Returns
+    ``None`` when the crop has no usable ink.
     """
     bounds = _glyph_crop_bounds(
         box,
@@ -366,9 +369,66 @@ def extract_glyph_image(
     if alpha.width < 1 or alpha.height < 1:
         return None
 
+    if trim_edge_slivers:
+        alpha = _trim_edge_slivers(alpha)
+        if alpha is None:
+            return None
+
     glyph = Image.new("RGBA", alpha.size, (0, 0, 0, 0))
     glyph.putalpha(alpha)
     return glyph
+
+
+def _trim_edge_slivers(alpha: Image.Image) -> Image.Image | None:
+    """Drop thin detached ink columns at the left/right edge of a glyph crop.
+
+    OCR letter boxes can overlap a neighbour by a pixel or two, leaving a thin
+    vertical sliver of the next glyph in the crop; stamped, those read as stray
+    strokes between letters. The crop is split into runs of ink-bearing columns
+    separated by blank columns; a *leading or trailing* run that is much narrower
+    than the widest run is a sliver and is trimmed. Interior structure is left
+    alone, and characters whose parts split only *vertically* (``i``, ``:``,
+    ``%``, ``=``) are a single column-run, so they are never touched.
+    """
+    width, height = alpha.size
+    if width < 3:
+        return alpha
+    px = alpha.load()
+    col_ink = [
+        any(px[x, y] >= _MIN_INK_ALPHA for y in range(height))
+        for x in range(width)
+    ]
+    runs: list[tuple[int, int]] = []
+    start = None
+    for x, has in enumerate(col_ink):
+        if has and start is None:
+            start = x
+        elif not has and start is not None:
+            runs.append((start, x - 1))
+            start = None
+    if start is not None:
+        runs.append((start, width - 1))
+    if len(runs) <= 1:
+        return alpha
+
+    widest = max(run[1] - run[0] + 1 for run in runs)
+    sliver_max = max(2, int(widest * 0.30))
+
+    def is_sliver(run: tuple[int, int]) -> bool:
+        # A sliver is narrow AND separated from the main mass; require the gap to
+        # the neighbour run to be real (>=1 blank col, already guaranteed).
+        return (run[1] - run[0] + 1) <= sliver_max
+
+    keep = list(runs)
+    while len(keep) > 1 and is_sliver(keep[0]):
+        keep.pop(0)
+    while len(keep) > 1 and is_sliver(keep[-1]):
+        keep.pop()
+    left = keep[0][0]
+    right = keep[-1][1]
+    if left == 0 and right == width - 1:
+        return alpha
+    return alpha.crop((left, 0, right + 1, height))
 
 
 def _border_median(gray: Image.Image) -> float:

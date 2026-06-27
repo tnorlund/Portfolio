@@ -236,6 +236,40 @@ def test_real_thermal_dash_passes_aspect_guard():
     assert crop.aspect <= 1.7  # naturally passes; no exemption needed
 
 
+def test_edge_sliver_is_trimmed():
+    """A thin detached ink column at a glyph's edge (neighbour bleed) is removed,
+    while the main glyph body is kept."""
+    image = Image.new("RGB", (60, 40), (250, 250, 250))
+    d = ImageDraw.Draw(image)
+    d.rectangle([18, 10, 40, 34], fill=(8, 8, 8))   # main glyph body
+    d.rectangle([6, 12, 7, 32], fill=(8, 8, 8))      # 1px detached sliver, gap between
+    box = {"x": 0.05, "y": 0.05, "width": 0.9, "height": 0.85}
+    trimmed = extract_glyph_image(image, box, y_origin="top_left",
+                                  expand_x_ratio=0.0, expand_y_ratio=0.0,
+                                  trim_edge_slivers=True)
+    untrimmed = extract_glyph_image(image, box, y_origin="top_left",
+                                    expand_x_ratio=0.0, expand_y_ratio=0.0,
+                                    trim_edge_slivers=False)
+    assert trimmed is not None and untrimmed is not None
+    # Trimming drops the sliver + the gap, so the trimmed glyph is narrower.
+    assert trimmed.width < untrimmed.width
+
+
+def test_vertically_split_glyph_not_trimmed():
+    """A char split only vertically (like ':') is a single column-run, so the
+    sliver trim must leave it intact."""
+    image = Image.new("RGB", (40, 60), (250, 250, 250))
+    d = ImageDraw.Draw(image)
+    d.rectangle([16, 8, 24, 16], fill=(8, 8, 8))    # top dot
+    d.rectangle([16, 40, 24, 48], fill=(8, 8, 8))   # bottom dot
+    box = {"x": 0.05, "y": 0.05, "width": 0.9, "height": 0.9}
+    glyph = extract_glyph_image(image, box, y_origin="top_left",
+                                expand_x_ratio=0.0, expand_y_ratio=0.0)
+    assert glyph is not None
+    # Both dots retained: the glyph spans the full vertical extent of the marks.
+    assert glyph.height >= 30
+
+
 def test_build_returns_none_without_usable_receipts():
     assert build_glyph_atlas([], "Empty") is None
     assert build_glyph_atlas(
