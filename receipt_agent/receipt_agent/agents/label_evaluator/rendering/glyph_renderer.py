@@ -65,6 +65,13 @@ _CATEGORY_HINTS = (
     "HOUSEHOLD", "BEVERAGE",
 )
 _MERCHANT_LABELS = ("MERCHANT_NAME", "STORE_NAME")
+# A genuine wordmark line is short ("SPROUTS", "SPROUTS FARMERS MARKET",
+# "CVS pharmacy"). A promo sentence that merely *mentions* the merchant
+# ("to WIN a $250 Sprouts gift card. Go to:") tags one word MERCHANT_NAME and is
+# display-height, so the height gate alone lets the big logo image stamp over it
+# and bleed onto neighbouring text. Cap the word count so only true wordmarks
+# (not sentences) are replaced by the logo asset.
+_LOGO_MAX_WORDS = 4
 
 # Tokens that are right-aligned into the price/amount column.
 _AMOUNT_LABELS = frozenset({
@@ -148,8 +155,9 @@ def render_receipt_glyphs(
     row_pitch_px = _row_pitch_px(
         line_words, scale, config, inner_w, inner_h
     )
+    wordmark = atlas.logo_text or atlas.merchant_name
     for line in line_words:
-        is_logo = _line_is_logo(line, body_h_ref)
+        is_logo = _line_is_logo(line, body_h_ref, wordmark)
         bold = _line_is_bold(line)
         if is_logo and config.use_logo and atlas.logo is not None:
             if _stamp_logo(image, line, atlas, scale, config, inner_w, inner_h):
@@ -875,15 +883,46 @@ def _line_labels(line: Sequence[Mapping[str, Any]]) -> set[str]:
     return labels
 
 
+def _norm_wordmark(text: str) -> str:
+    """Uppercase letters+digits only — for matching a line against the wordmark."""
+    return "".join(ch for ch in text.upper() if ch.isalnum())
+
+
+def _line_matches_wordmark(line: Sequence[Mapping[str, Any]], wordmark: str) -> bool:
+    """The line's text actually reads as the merchant wordmark (not just shares a
+    stray MERCHANT_NAME label). Source OCR mislabels times, prices, phone numbers
+    and stray words as MERCHANT_NAME; without this, the big logo image is stamped
+    over "6:33", "17.49", a phone number, etc. Requires a >=3 char overlap so a
+    short accidental substring ("ON" in "VONS") does not match."""
+    mark = _norm_wordmark(wordmark)
+    if len(mark) < 3:
+        return True  # no usable wordmark text — fall back to label+height gates
+    lt = _norm_wordmark(_line_text(line))
+    if len(lt) < 3:
+        return False
+    return (lt in mark or mark in lt)
+
+
 def _line_is_logo(
-    line: Sequence[Mapping[str, Any]], body_h_ref: float
+    line: Sequence[Mapping[str, Any]],
+    body_h_ref: float,
+    wordmark: str | None = None,
 ) -> bool:
-    """A line is the logo only if it is a merchant/store name AND display-size.
+    """A line is the logo only if it is a merchant/store name AND display-size AND
+    its text actually matches the merchant wordmark.
 
     Real receipts label MERCHANT_NAME on the big top wordmark; the same label can
     also tag a small footer repeat, so the height gate keeps the logo image from
-    being stamped over ordinary lines."""
+    being stamped over ordinary lines. A promo *sentence* that merely mentions the
+    merchant is excluded by the word-count cap, and a mislabelled time/price/phone
+    line is excluded by the wordmark text match — so the logo asset never bleeds
+    over body text it happens to share a tall, MERCHANT_NAME-tagged line with."""
     if not (_line_labels(line) & set(_MERCHANT_LABELS)):
+        return False
+    words = [w for w in line if str(w.get("text") or "").strip()]
+    if len(words) > _LOGO_MAX_WORDS:
+        return False
+    if wordmark is not None and not _line_matches_wordmark(line, wordmark):
         return False
     if body_h_ref <= 0:
         return True

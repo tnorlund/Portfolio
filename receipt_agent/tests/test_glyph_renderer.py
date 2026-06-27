@@ -20,6 +20,7 @@ from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
     _glyph_variant_index,
     _glyph_height_px,
+    _line_is_logo,
     _line_is_rule,
     _line_barcode_digits,
     _pitch_norm,
@@ -133,6 +134,36 @@ def test_logo_gate_only_fires_on_tall_merchant_line():
     # Should render glyphs (not crash, not stamp logo); ink present.
     image = render_receipt_glyphs(receipt, atlas, config=config)
     assert image.convert("L").getextrema()[0] < 150
+
+
+def _tall(text, labels, x0=100):
+    # A display-height word (height 30) near the top of the receipt.
+    return _word(text, x0, 950, x0 + max(1, len(text)) * 12, 980, labels)
+
+
+def test_logo_gate_matches_wordmark_and_rejects_mislabelled_lines():
+    BODY = 10.0  # body_h_ref; tall words are 30 -> 3x, past the 1.6x gate
+    # genuine wordmark line is stamped as the logo
+    assert _line_is_logo([_tall("VONS", ["MERCHANT_NAME"])], BODY, "VONS")
+    # a partial wordmark token still matches the full mark ("CVS" in "CVS pharmacy")
+    assert _line_is_logo([_tall("CVS", ["MERCHANT_NAME"])], BODY, "•CVS pharmacy")
+    # a mislabelled time / price / phone that happens to be tall + MERCHANT_NAME
+    # tagged must NOT pull in the logo image (it does not match the wordmark)
+    assert not _line_is_logo([_tall("6:33", ["MERCHANT_NAME"])], BODY, "COSTCO")
+    assert not _line_is_logo([_tall("17.49", ["MERCHANT_NAME"])], BODY, "COSTCO")
+    assert not _line_is_logo([_tall("495-4938", ["MERCHANT_NAME"])], BODY, "•CVS pharmacy")
+
+
+def test_logo_gate_rejects_promo_sentence_mentioning_merchant():
+    BODY = 10.0
+    # "to WIN a $250 Sprouts gift card. Go to:" — tall, one word MERCHANT_NAME
+    # tagged, but a sentence, so the logo image must not stamp over it.
+    promo = [
+        _tall("to", [], 60), _tall("WIN", [], 90), _tall("a", [], 140),
+        _tall("$250", [], 170), _tall("Sprouts", ["MERCHANT_NAME"], 230),
+        _tall("gift", [], 320), _tall("card", [], 380), _tall("Go", [], 440),
+    ]
+    assert not _line_is_logo(promo, BODY, "SPROUTS")
 
 
 def test_missing_glyph_invokes_fallback():
