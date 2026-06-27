@@ -27,6 +27,7 @@ import {
   ReceiptBoundingBoxGrid,
   ReceiptStack,
   StreamBitsRoutingDiagram,
+  SyntheticReceiptImages,
   TrainingMetricsAnimation,
   UploadDiagram,
   WordSimilarity,
@@ -435,6 +436,21 @@ M1LK 2%           1    $4.4g`}</code>
           <TrainingMetricsAnimation />
         </ClientOnly>
       </FigureBoundary>
+
+      <p>
+        The next step was making the training examples visible. I generated
+        synthetic receipts from real receipt structure, then rendered the image
+        cache so I could review whether the examples looked like receipts
+        before letting them anywhere near training.
+      </p>
+
+      <div id="synthetic-receipt-images-section">
+        <FigureBoundary intrinsicSize="720px">
+          <ClientOnly>
+            <SyntheticReceiptImages />
+          </ClientOnly>
+        </FigureBoundary>
+      </div>
 
       <FigureBoundary intrinsicSize="720px">
         <ClientOnly>

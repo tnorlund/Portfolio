@@ -3670,7 +3670,10 @@ const TrainingMetricsAnimation: React.FC = () => {
         setIsLoading(false);
       })
       .catch((err) => {
-        console.error("Failed to fetch training metrics:", err);
+        console.warn(
+          "Failed to fetch training metrics:",
+          err instanceof Error ? err.message : err,
+        );
         setIsLoading(false);
       });
   }, [nearViewport]);

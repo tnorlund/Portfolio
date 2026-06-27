@@ -28,7 +28,7 @@ export function withPerformanceTracking<T extends any[], R>(
       monitor?.trackAPICall(endpoint, duration);
       
       if (process.env.NODE_ENV === 'development') {
-        console.error(`[API Performance] ${endpoint}: ${duration.toFixed(2)}ms (failed)`);
+        console.warn(`[API Performance] ${endpoint}: ${duration.toFixed(2)}ms (failed)`);
       }
       
       throw error;

@@ -98,6 +98,13 @@ export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }
 );
+export const SyntheticReceiptImages = dynamic(
+  () => import("./SyntheticReceiptImages"),
+  {
+    ssr: false,
+    loading: () => loadingShell("synthetic"),
+  }
+);
 export const EpochEvaluation = dynamic(
   () => import("./EpochEvaluation"),
   { ssr: false }

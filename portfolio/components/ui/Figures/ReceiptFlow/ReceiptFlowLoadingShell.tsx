@@ -9,6 +9,7 @@ export type ReceiptFlowLoadingVariant =
   | "financial"
   | "between"
   | "layoutlm"
+  | "synthetic"
   | "health"
   | "timeline"
   | "qa";
@@ -105,6 +106,7 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
         </div>
       );
     case "layoutlm":
+    case "synthetic":
       return (
         <div className={`${styles.legendSkeleton} ${styles.legendLayoutLM}`}>
           {/* Desktop: 8 vertical rows matching ENTITY_TYPES */}

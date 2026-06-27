@@ -1,0 +1,221 @@
+.container {
+  width: 100%;
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  background: var(--background-color);
+  border-radius: 12px;
+  contain: paint;
+}
+
+.receiptQueue {
+  width: var(--rf-queue-width, 120px);
+  height: var(--rf-queue-height, 400px);
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.queuedReceipt {
+  position: absolute;
+  width: 100px;
+  border: 1px solid #ccc;
+  background: var(--background-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  will-change: transform, opacity;
+}
+
+.queuedReceipt.flyingOut {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.receiptStage {
+  width: 100%;
+  height: 100%;
+}
+
+.receiptImageWrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receiptImageInner {
+  position: relative;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  max-height: 500px;
+  background: white;
+}
+
+.receiptImage {
+  display: block;
+  max-height: 500px;
+  width: auto;
+  height: auto;
+}
+
+.cacheCard {
+  box-sizing: border-box;
+  width: 260px;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--color-blue-rgb, 59, 130, 246), 0.05),
+      rgba(var(--text-color-rgb, 0, 0, 0), 0.02)
+    ),
+    var(--background-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--color-blue);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  color: var(--text-color);
+}
+
+.operation {
+  align-self: flex-start;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.07);
+  color: var(--text-color);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.metric {
+  min-width: 0;
+  padding: 0.6rem;
+  border-radius: 6px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.045);
+}
+
+.metricLabel {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text-color);
+  opacity: 0.58;
+}
+
+.metricValue {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-color);
+}
+
+.note {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-color);
+}
+
+.reason {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-color);
+  opacity: 0.72;
+}
+
+.reason strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .receiptStage {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageWrapper {
+    height: 100%;
+  }
+
+  .receiptImageInner,
+  .receiptImage {
+    max-height: 380px;
+  }
+
+  .cacheCard {
+    width: 100%;
+    min-height: 13rem;
+    margin-top: 3rem;
+  }
+
+  .metricGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .receiptImageInner,
+  .receiptImage {
+    max-height: 250px;
+  }
+
+  .cacheCard {
+    min-height: 15rem;
+    padding: 0.85rem;
+  }
+}
