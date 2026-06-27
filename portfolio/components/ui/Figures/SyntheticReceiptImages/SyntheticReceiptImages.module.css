@@ -193,8 +193,9 @@
 
   .cacheCard {
     width: 100%;
+    max-width: calc(100vw - 4rem);
     min-height: 13rem;
-    margin-top: 3rem;
+    margin: 5rem auto 0;
   }
 
   .metricGrid {
