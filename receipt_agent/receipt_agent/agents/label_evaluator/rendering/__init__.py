@@ -16,6 +16,27 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     build_merchant_font_profile_from_dynamo,
     extract_receipt_font_profile,
 )
+from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
+    AtlasStyle,
+    GlyphAtlas,
+    GlyphCrop,
+    build_glyph_atlas,
+    build_glyph_atlas_from_dynamo,
+    extract_glyph_image,
+    load_atlas,
+    save_atlas,
+)
+from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
+    GlyphRenderConfig,
+    render_real_vs_glyph,
+    render_receipt_glyphs,
+    save_receipt_glyphs,
+)
+from receipt_agent.agents.label_evaluator.rendering.glyph_ttf_fallback import (
+    FontMatch,
+    make_ttf_fallback,
+    match_fallback_font,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     RenderConfig,
     render_real_vs_synthetic,
@@ -33,4 +54,19 @@ __all__ = [
     "render_receipt",
     "render_real_vs_synthetic",
     "save_receipt_png",
+    "AtlasStyle",
+    "GlyphAtlas",
+    "GlyphCrop",
+    "build_glyph_atlas",
+    "build_glyph_atlas_from_dynamo",
+    "extract_glyph_image",
+    "save_atlas",
+    "load_atlas",
+    "GlyphRenderConfig",
+    "render_receipt_glyphs",
+    "render_real_vs_glyph",
+    "save_receipt_glyphs",
+    "FontMatch",
+    "make_ttf_fallback",
+    "match_fallback_font",
 ]
