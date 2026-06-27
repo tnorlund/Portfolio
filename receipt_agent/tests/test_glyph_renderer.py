@@ -17,6 +17,8 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
 )
 from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
+    _glyph_height_px,
+    _pitch_norm,
     _snap_to_pitch,
     render_real_vs_glyph,
     render_receipt_glyphs,
@@ -185,6 +187,24 @@ def test_snap_to_pitch_uses_render_margin_as_grid_origin():
     # margin % pitch and price columns no longer sit on the receipt grid.
     assert _snap_to_pitch(19.0, 6.0, origin=10.0) == 22.0
     assert _snap_to_pitch(19.0, 6.0, origin=0.0) == 18.0
+
+
+def test_profile_pitch_is_clamped_to_receipt_geometry():
+    # A merchant profile is an anchor, not permission to outgrow the row boxes.
+    # The synthetic receipt's own word boxes show 0.01 advance; a noisy/wide
+    # profile should be clipped near that measured pitch instead of causing
+    # right-edge overflow in dense price columns.
+    words = [
+        _word("ABCD", 100, 800, 140, 820),
+        _word("1234", 820, 800, 860, 820, ["LINE_TOTAL"]),
+    ]
+    assert _pitch_norm(words, 1000.0, _profile(char_width=0.03)) == 0.0105
+
+
+def test_profile_height_is_clamped_to_row_geometry():
+    assert _glyph_height_px(
+        line_h=12.0, inner_h=1000, font_h_norm=0.03, row_pitch_px=16.0
+    ) == 12.0
 
 
 def test_flat_receipt_with_degenerate_bboxes_does_not_crash():

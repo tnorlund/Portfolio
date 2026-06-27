@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -95,6 +96,19 @@ _BOLD_INK_FACTOR = 1.18
 # display / logo line, not body text; its glyphs are excluded from the per-char
 # styles and the line is captured as a logo image asset instead.
 _LOGO_HEIGHT_FACTOR = 1.9
+
+# A captured logo line must be the merchant wordmark, not a promo/coupon banner
+# (those are often the tallest text on the receipt). Reject lines whose text reads
+# as a promo, and prefer lines that match the merchant name.
+_PROMO_TERMS = frozenset({
+    "OFF", "SAVE", "SAVINGS", "SAVING", "COUPON", "REWARD", "REWARDS", "HOT",
+    "DEAL", "DEALS", "FREE", "BUY", "GET", "SCAN", "BONUS", "EARN", "SALE",
+    "EXTRABUCKS", "EXTRACARE", "POINTS", "MEMBER", "VALUE", "PROMO", "%",
+})
+_COMPACT_PROMO_PHRASES = frozenset({
+    "MEMBERSAVINGS", "MEMBERREWARDS", "HOTDEAL", "HOTDEALS", "BUYGET",
+    "BUYGETFREE", "SCANCOUPON", "SAVEBIG", "SAVEMORE", "YOUSAVED",
+})
 
 # Cap stored crops per (style, char) to bound atlas size; representatives are
 # chosen nearest the style's median glyph height.
@@ -489,9 +503,9 @@ def build_glyph_atlas(
     style_lines: dict[str, set[tuple[Any, int]]] = defaultdict(set)
     style_labels: dict[str, list[str]] = defaultdict(list)
     cluster_counts: list[int] = []
-    logo: Image.Image | None = None
-    logo_text: str | None = None
-    logo_height = 0.0
+    # (merchant_match_score, line_height, image, text) for each display line that
+    # is NOT a promo/coupon banner — the wordmark is chosen from these afterwards.
+    logo_candidates: list[tuple[float, float, "Image.Image", str]] = []
     receipts_used = 0
     notes: list[str] = []
 
@@ -536,20 +550,23 @@ def build_glyph_atlas(
             logo_height_factor=logo_height_factor,
         )
 
-        # Capture the tallest logo line as an image asset (best across receipts).
+        # Collect display lines as logo candidates, rejecting promo/coupon banners
+        # (often the tallest text on the receipt — e.g. Sprouts "$5 OFF $30").
         for line_key, tier in line_tier.items():
             if tier != "logo":
                 continue
             line_samples = line_groups[line_key]
             lh = _median([s.metrics.get("box_height", 0.0) for s in line_samples])
-            if lh <= logo_height:
+            captured = _capture_logo(line_samples, raw_image, image_y_origin)
+            if captured is None:
                 continue
-            captured = _capture_logo(
-                line_samples, raw_image, image_y_origin
+            image_crop, text = captured
+            score = _logo_match_score(text, merchant_name)
+            if _is_promo_text(text) and score < 0.75:
+                continue
+            logo_candidates.append(
+                (score, lh, image_crop, text)
             )
-            if captured is not None:
-                logo, logo_text = captured
-                logo_height = lh
 
         # Assign each sample to a weight-tier style and stamp its real glyph.
         # Style id is the line tier (body / bold) only — #994 letter clusters are
@@ -608,6 +625,18 @@ def build_glyph_atlas(
 
     if receipts_used == 0 or not style_glyphs:
         return None
+
+    # Choose the wordmark: highest merchant-name match, tie-broken by height. A
+    # promo-free tall line wins even if its OCR text is garbled (score 0).
+    logo, logo_text = (None, None)
+    if logo_candidates:
+        score, _, logo, logo_text = max(
+            logo_candidates, key=lambda c: (c[0], c[1])
+        )
+        if score == 0.0:
+            notes.append(
+                "logo wordmark chosen by height only (no merchant-name match)"
+            )
 
     styles = _finalize_styles(
         style_glyphs,
@@ -946,11 +975,95 @@ def _capture_logo(
     )
     if image is None:
         return None
+    text = _line_text_from_samples(line_samples)
+    return image, text
+
+
+def _line_text_from_samples(line_samples: Sequence[LetterImageSample]) -> str:
     ordered = sorted(
         line_samples, key=lambda s: s.metrics.get("box_center_x", 0.0)
     )
-    text = "".join(s.text for s in ordered)
-    return image, text
+    word_ids = {s.word_id for s in ordered if s.word_id >= 0}
+    if len(word_ids) <= 1:
+        return "".join(s.text for s in ordered)
+
+    grouped: dict[int, list[LetterImageSample]] = defaultdict(list)
+    for sample in ordered:
+        grouped[sample.word_id].append(sample)
+
+    words: list[str] = []
+    for _, samples in sorted(
+        grouped.items(),
+        key=lambda item: min(s.metrics.get("box_center_x", 0.0) for s in item[1]),
+    ):
+        letters = sorted(
+            samples,
+            key=lambda s: (
+                s.letter_id if s.letter_id >= 0 else 1_000_000,
+                s.metrics.get("box_center_x", 0.0),
+            ),
+        )
+        words.append("".join(s.text for s in letters))
+    return " ".join(word for word in words if word)
+
+
+def _is_promo_text(text: str) -> bool:
+    """Return True when a tall display line reads like an offer, not a logo."""
+    upper = str(text).upper()
+    tokens = set(re.findall(r"[A-Z]+", upper))
+    compact = _merchant_match_text(upper)
+    return (
+        "$" in upper
+        or "%" in upper
+        or bool(tokens & _PROMO_TERMS)
+        or any(phrase in compact for phrase in _COMPACT_PROMO_PHRASES)
+    )
+
+
+def _logo_match_score(text: str, merchant_name: str) -> float:
+    """Score how strongly a captured display line matches the merchant name."""
+    logo = _merchant_match_text(text)
+    merchant = _merchant_match_text(merchant_name)
+    if not logo or not merchant:
+        return 0.0
+    if logo == merchant:
+        return 1.0
+
+    logo_tokens = _merchant_tokens(text)
+    merchant_tokens = _merchant_tokens(merchant_name)
+    if logo_tokens and merchant_tokens:
+        if merchant_tokens[:len(logo_tokens)] == logo_tokens:
+            return 1.0
+
+        merchant_set = set(merchant_tokens)
+        matches = [token for token in logo_tokens if token in merchant_set]
+        if matches:
+            token_coverage = len(matches) / max(len(logo_tokens), 1)
+            matched = sum(len(token) for token in matches)
+            logo_chars = sum(len(token) for token in logo_tokens)
+            char_coverage = matched / max(logo_chars, 1)
+            return token_coverage * char_coverage
+
+    if logo in merchant or merchant in logo:
+        return min(len(logo), len(merchant)) / max(len(logo), len(merchant))
+
+    matches = [token for token in merchant_tokens if token and token in logo]
+    if not matches:
+        return 0.0
+    matched = sum(len(token) for token in matches)
+    return matched / max(len(merchant), 1)
+
+
+def _merchant_match_text(text: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", str(text).upper())
+
+
+def _merchant_tokens(text: str) -> list[str]:
+    return [
+        token
+        for token in re.findall(r"[A-Z0-9]+", str(text).upper())
+        if len(token) >= 3
+    ]
 
 
 def _finalize_styles(
@@ -1005,12 +1118,28 @@ def _select_representatives(
         median(c.box_height_norm for c in crops) if crops else 0.0
     )
 
+    median_ink = median(c.ink_ratio for c in crops) if crops else 0.0
+
+    def aspect_dev(crop: GlyphCrop) -> float:
+        return abs(crop.aspect - median_aspect) / max(median_aspect, 1e-6)
+
     def rank(crop: GlyphCrop) -> tuple[float, float]:
-        aspect_dev = abs(crop.aspect - median_aspect) / max(median_aspect, 1e-6)
         height_dev = abs(crop.box_height_norm - target_h) / max(target_h, 1e-6)
-        return (aspect_dev, height_dev)
+        return (aspect_dev(crop), height_dev)
 
     ordered = sorted(crops, key=rank)
+    # Drop strong outliers — a doubled-strike / broken / neighbour-bled crop has a
+    # markedly different aspect or much heavier ink than the char's norm, and if
+    # it became a stored variant it would surface via variant rotation. Keep the
+    # consistent crops (always at least the single best one).
+    if len(ordered) > 2:
+        kept = [
+            c
+            for c in ordered
+            if aspect_dev(c) <= 0.5
+            and (median_ink <= 0 or c.ink_ratio <= median_ink * 1.6)
+        ]
+        ordered = kept or ordered[:1]
     return ordered[:limit]
 
 

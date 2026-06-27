@@ -129,6 +129,9 @@ def render_receipt_glyphs(
     # word being squeezed into its own box (the collapsed-spacing failure).
     pitch_norm = _pitch_norm(words, scale, profile)
     font_h_norm = profile.font_height if (profile and profile.font_height) else None
+    row_pitch_px = _row_pitch_px(
+        line_words, scale, config, inner_w, inner_h
+    )
     for line in line_words:
         is_logo = _line_is_logo(line, body_h_ref)
         bold = _line_is_bold(line)
@@ -139,6 +142,7 @@ def render_receipt_glyphs(
             image, line, atlas, scale, config, inner_w, inner_h,
             bold=bold, rng=rng, fallback=fallback,
             pitch_norm=pitch_norm, font_h_norm=font_h_norm,
+            row_pitch_px=row_pitch_px,
         )
 
     return _thermal_finish(image, config)
@@ -197,11 +201,11 @@ def _pitch_norm(
 ) -> float:
     """Character advance as a fraction of the inner render width.
 
-    Prefer the merchant profile's measured ``char_width`` (a real printer pitch);
-    otherwise estimate the receipt's own median advance = word_width / char_count.
+    Estimate the receipt's own median advance = word_width / char_count, then
+    let the merchant profile refine that pitch only within a very small
+    band. The receipt boxes still own the geometry contract; an over-wide profile
+    must not blow text past the price column or right paper edge.
     """
-    if profile is not None and profile.char_width and profile.char_width > 0:
-        return float(profile.char_width)
     advances: list[float] = []
     for word in words:
         text = str(word.get("text") or "")
@@ -217,7 +221,20 @@ def _pitch_norm(
             continue
         if w_norm > 0 and math.isfinite(w_norm):
             advances.append(w_norm / n)
-    return median(advances) if advances else 0.012
+    measured = median(advances) if advances else None
+    profile_pitch = (
+        float(profile.char_width)
+        if profile is not None
+        and profile.char_width
+        and profile.char_width > 0
+        and math.isfinite(float(profile.char_width))
+        else None
+    )
+    if measured is not None and profile_pitch is not None:
+        return max(measured * 0.95, min(profile_pitch, measured * 1.05))
+    if profile_pitch is not None:
+        return profile_pitch
+    return measured if measured is not None else 0.012
 
 
 def _is_amount(word: Mapping[str, Any]) -> bool:
@@ -234,6 +251,23 @@ def _snap_to_pitch(value: float, pitch: float, *, origin: float) -> float:
     return origin + round((value - origin) / pitch) * pitch
 
 
+def _glyph_height_px(
+    line_h: float,
+    inner_h: int,
+    font_h_norm: float | None,
+    row_pitch_px: float | None,
+) -> float:
+    """Glyph cap height for a row, bounded by measured row geometry."""
+    target = max(1.0, line_h)
+    if font_h_norm is not None and font_h_norm > 0:
+        profile_h = font_h_norm * inner_h
+        if math.isfinite(profile_h) and profile_h > 0:
+            target = max(line_h * 0.95, min(profile_h, line_h * 1.05))
+    if row_pitch_px is not None and row_pitch_px > 0:
+        target = min(target, row_pitch_px * 0.75)
+    return max(1.0, target)
+
+
 def _stamp_line_fixed_pitch(
     image: Image.Image,
     line: Sequence[Mapping[str, Any]],
@@ -248,6 +282,7 @@ def _stamp_line_fixed_pitch(
     fallback: GlyphFallback | None,
     pitch_norm: float,
     font_h_norm: float | None,
+    row_pitch_px: float | None,
 ) -> None:
     """Render one line on a fixed character pitch.
 
@@ -275,11 +310,7 @@ def _stamp_line_fixed_pitch(
     pitch = max(2.0, pitch_norm * inner_w)
     box_heights = [b - t for _, _, (l, t, r, b) in placed]
     line_h = median(box_heights)
-    glyph_h = (
-        max(line_h * 0.7, min(line_h * 1.15, font_h_norm * inner_h))
-        if font_h_norm
-        else line_h
-    )
+    glyph_h = _glyph_height_px(line_h, inner_h, font_h_norm, row_pitch_px)
     baseline = median([b for _, _, (l, t, r, b) in placed]) - line_h * config.descender_frac
     ref_h = style.median_box_height or 1.0
     max_glyph_w = pitch * (1.0 - config.char_tracking)
@@ -324,7 +355,10 @@ def _render_glyph(
     fallback: GlyphFallback | None,
 ) -> Image.Image | None:
     """Produce a sized, inked glyph for one character (atlas crop or fallback)."""
-    crop = atlas.glyph(char, role="body", bold=bold)
+    # Rotate among the char's stored variants (seeded rng) so a repeated letter
+    # is not the identical crop every time — natural variation, and no single
+    # imperfect crop repeats across the whole receipt.
+    crop = atlas.glyph(char, role="body", bold=bold, index=rng.randrange(1 << 16))
     if crop is not None:
         rel = max(0.5, min(1.0, crop.box_height_norm / ref_h if ref_h else 1.0))
         h = max(2.0, target_h * rel)
@@ -520,6 +554,34 @@ def _group_words_by_line(
 
 def _line_text(line: Sequence[Mapping[str, Any]]) -> str:
     return " ".join(str(w.get("text") or "") for w in line).strip()
+
+
+def _row_pitch_px(
+    lines: Sequence[Sequence[Mapping[str, Any]]],
+    scale: float,
+    config: GlyphRenderConfig,
+    inner_w: int,
+    inner_h: int,
+) -> float | None:
+    centers: list[float] = []
+    for line in lines:
+        boxes = [
+            _to_pixel_box(
+                word.get("bbox"), scale, _PixelCfg(config), inner_w, inner_h
+            )
+            for word in line
+        ]
+        boxes = [box for box in boxes if box is not None]
+        if not boxes:
+            continue
+        centers.append(median([(top + bottom) / 2 for _, top, _, bottom in boxes]))
+    centers = sorted(centers)
+    gaps = [
+        centers[index + 1] - centers[index]
+        for index in range(len(centers) - 1)
+        if centers[index + 1] > centers[index]
+    ]
+    return median(gaps) if gaps else None
 
 
 def _line_labels(line: Sequence[Mapping[str, Any]]) -> set[str]:

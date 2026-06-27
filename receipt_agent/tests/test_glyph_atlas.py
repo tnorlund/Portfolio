@@ -12,6 +12,8 @@ from PIL import Image, ImageDraw
 
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     GlyphAtlas,
+    _is_promo_text,
+    _logo_match_score,
     build_glyph_atlas,
     extract_glyph_image,
     load_atlas,
@@ -152,6 +154,39 @@ def test_atlas_captures_logo_and_excludes_it_from_body():
     assert atlas.logo_text in ("VS", "SV")  # order by center-x
     # The tall logo glyphs (V, S) must not pollute the body char set.
     assert "V" not in atlas.styles["body"].chars()
+
+
+def test_tall_promo_line_does_not_replace_logo():
+    inputs = _build_inputs()
+    letters = inputs[0]["letters"]
+    image = inputs[0]["raw_image"]
+    draw = ImageDraw.Draw(image)
+    x = 0.05
+    for word_id, word in enumerate(("MEMBER", "SAVINGS"), start=1):
+        for i, ch in enumerate(word, start=1):
+            letter = _letter(
+                ch, x, 0.88, 0.030, 0.07,
+                line_id=77, word_id=word_id, letter_id=i,
+            )
+            _paint(draw, letter, ink_coverage=0.6)
+            letters.append(letter)
+            x += 0.038
+        x += 0.045
+
+    assert _is_promo_text("SAVE50%OFF")
+    assert _is_promo_text("MEMBER SAVINGS")
+    assert _is_promo_text("MEMBERSAVINGS")
+    assert not _is_promo_text("TARGET")
+    assert not _is_promo_text("OFFICE DEPOT")
+    assert _logo_match_score("VONS", "Vons") == 1.0
+    assert _logo_match_score("SAVE MART", "Save Mart") == 1.0
+    assert _logo_match_score("SAVE MART", "Save Mart Supermarkets") == 1.0
+    assert _logo_match_score("HOT TOPIC", "Hot Topic Inc") == 1.0
+    assert _logo_match_score("SAVE BIG", "Save Mart Supermarkets") < 0.75
+
+    atlas = build_glyph_atlas(inputs, "TestMart", min_samples=5)
+    assert atlas is not None
+    assert atlas.logo_text in ("VS", "SV")
 
 
 def test_atlas_covers_expected_body_chars_with_real_crops():
