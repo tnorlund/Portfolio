@@ -241,6 +241,22 @@ def test_stamp_barcode_draws_only_for_wide_barcode_lines():
     )
     assert sum(1 for px in narrow.convert("L").getdata() if px < 80) == 0
 
+    off_center = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    _stamp_barcode(
+        off_center, [_word(digits, 0, 500, 450, 520)], 1000.0,
+        config, inner_w, inner_h, digits,
+    )
+    assert sum(1 for px in off_center.convert("L").getdata() if px < 80) == 0
+
+    occupied = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    ImageDraw.Draw(occupied).rectangle([100, 130, 200, 138], fill=config.ink + (255,))
+    before = sum(1 for px in occupied.convert("L").getdata() if px < 80)
+    _stamp_barcode(
+        occupied, [_word(digits, 100, 500, 900, 520)], 1000.0,
+        config, inner_w, inner_h, digits,
+    )
+    assert sum(1 for px in occupied.convert("L").getdata() if px < 80) == before
+
 
 def test_flat_receipt_with_degenerate_bboxes_does_not_crash():
     # Non-numeric / short / NaN bboxes in a FLAT word list must be skipped during
