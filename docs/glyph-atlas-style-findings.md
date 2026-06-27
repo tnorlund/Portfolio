@@ -104,3 +104,41 @@ cleanest variant.
 Ink polarity is decided from the crop's **border ring** (the background), not a
 global minority-class count, so a dense or bold glyph that has more ink than
 paper is not wrongly inverted.
+
+## Rendering (M2) + TTF fallback (M3)
+
+`glyph_renderer.render_receipt_glyphs(receipt, atlas, fallback=…)` stamps a
+synthesized receipt with the atlas's real glyph crops:
+
+- It reuses `receipt_renderer`'s coordinate helpers (`_to_pixel_box`,
+  `_detect_coord_max`, `_iter_words`), so the **geometry contract is unchanged** —
+  only glyph drawing is swapped (generic TTF → real-crop stamping).
+- Per line it picks **body vs bold** (line ink / emphasis hints) and stamps the
+  real **logo wordmark** on the genuine display-height `MERCHANT_NAME` line.
+- Each glyph is rescaled by its own height-relative-to-style-median (clamped to
+  `[0.5, 1.0]`, which removes per-instance jitter), bottom-aligned to the word
+  baseline, and **width-fitted to its monospace cell** so glyphs never bleed into
+  neighbours. A thermal-paper background + light speckle/blur complete the look.
+
+What looking at the renders caught (and fixed): neighbour-glyph **slivers** that
+stamped as stray strokes between letters (now trimmed at extraction, see above);
+glyph **overlap** from missing cell width-fit; and the logo stamping over footer
+lines (now gated on display height). After those, re-stamping a real Vons
+receipt's own tokens is recognizable as the real receipt at a glance — same
+letterforms, with the logo / body / bold variation reproduced.
+
+`glyph_ttf_fallback.make_ttf_fallback(atlas)` covers characters the atlas lacks:
+it picks the monospace TTF whose glyphs best match the merchant's real glyphs
+(mean cosine over a small normalized ink vector) and renders missing chars from
+it at atlas scale. On the real Vons atlas it selects Andale Mono / PT Mono over
+serif Courier — a sensible thermal-ish match. This is a **pixel-embedding** match,
+not a learned DINOv2/DeepFont one (those need weights unavailable here); a learned
+embedder drops into the `score_font` hook without touching callers.
+
+### Honest residual limits
+
+- Letter *rhythm* is good at a glance but not pixel-perfect: the body font is
+  treated as monospace (it nearly is), so proportional nuance is approximated.
+- A few low-sample glyphs (e.g. a bold `a`) render faint; more receipts per
+  atlas would supply cleaner representatives.
+- The fallback is visual-similarity, not a learned font embedding (scoped above).
