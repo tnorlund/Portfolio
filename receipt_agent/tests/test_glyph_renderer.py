@@ -18,7 +18,9 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
 )
 from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
+    _glyph_variant_index,
     _glyph_height_px,
+    _line_is_rule,
     _line_barcode_digits,
     _pitch_norm,
     _snap_to_pitch,
@@ -209,6 +211,53 @@ def test_profile_height_is_clamped_to_row_geometry():
     assert _glyph_height_px(
         line_h=12.0, inner_h=1000, font_h_norm=0.03, row_pitch_px=16.0
     ) == 12.0
+
+
+def test_right_edge_overflow_is_clamped_inside_printable_margin():
+    atlas = _atlas()
+    config = GlyphRenderConfig(
+        width=160, height=220, margin=10, noise=0.0, blur=0.0,
+        ink_jitter=0, paper_realism=0.0,
+    )
+    receipt = {"lines": [
+        {"line_id": 1, "words": [_word("ABC123", 900, 800, 1080, 830)]},
+    ]}
+    image = render_receipt_glyphs(receipt, atlas, config=config, coord_max=1000.0)
+    gray = image.convert("L")
+    assert any(value < 120 for value in gray.getdata())
+    page_right = config.width - config.margin
+    right_margin = [
+        gray.getpixel((x, y))
+        for x in range(page_right, config.width)
+        for y in range(config.height)
+    ]
+    assert all(value >= 120 for value in right_margin)
+
+
+def test_glyph_variant_index_uses_cleanest_crop_for_text_legibility():
+    style = _atlas().style_for_role("body")
+    assert style is not None
+    config = GlyphRenderConfig(seed=77)
+    word_seed = 12345
+
+    first = _glyph_variant_index(
+        config, style, bold=False, word_seed=word_seed, char="s"
+    )
+    second = _glyph_variant_index(
+        config, style, bold=False, word_seed=word_seed, char="S"
+    )
+    assert first == second
+    assert first == 0
+
+
+def test_rule_lines_are_detected_as_structural_rules():
+    assert _line_is_rule([_word("********", 100, 500, 300, 520)])
+    assert _line_is_rule([
+        _word("----", 100, 500, 180, 520),
+        _word("----", 190, 500, 270, 520),
+    ])
+    assert not _line_is_rule([_word("TOTAL", 100, 500, 180, 520)])
+    assert not _line_is_rule([_word("***", 100, 500, 130, 520)])
 
 
 def test_barcode_digits_accept_long_and_grouped_numbers_only():

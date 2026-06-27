@@ -970,8 +970,13 @@ def _capture_logo(
         raw_image,
         union,
         y_origin=y_origin,
-        expand_x_ratio=0.02,
-        expand_y_ratio=0.08,
+        expand_x_ratio=0.06,
+        expand_y_ratio=0.12,
+        # A wordmark is a multi-letter graphic, NOT a single glyph: the
+        # edge-sliver trim (meant to drop a neighbour-bleed column) was
+        # clipping the leading/trailing letter (SPROUTS -> PROUT, the heart
+        # in CVS). Keep the full mark.
+        trim_edge_slivers=False,
     )
     if image is None:
         return None

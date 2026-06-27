@@ -29,6 +29,7 @@ import math
 import os
 import random
 import re
+import zlib
 from dataclasses import dataclass, field
 from statistics import median
 from typing import Any, Callable, Mapping, Sequence
@@ -78,6 +79,9 @@ _AMOUNT_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}\$?[A-Z]?-?$")
 # mistaken for a scannable barcode.
 _BARCODE_RE = re.compile(r"^\d{14,}$")
 _BARCODE_MIN_WIDTH_FRAC = 0.35
+# A line that is mostly dash/underscore/star chars is a separator rule;
+# real receipts print a continuous (often dashed) rule, not stamped glyphs.
+_RULE_CHARS = frozenset("-_=*.~")
 _BARCODE_MAX_CENTER_OFFSET_FRAC = 0.16
 _BARCODE_MAX_EXISTING_INK_FRAC = 0.01
 
@@ -149,6 +153,9 @@ def render_receipt_glyphs(
         if is_logo and config.use_logo and atlas.logo is not None:
             if _stamp_logo(image, line, atlas, scale, config, inner_w, inner_h):
                 continue  # logo stamped; skip per-char rendering for this line
+        if _line_is_rule(line):
+            _stamp_rule(image, line, scale, config, inner_w, inner_h, rng)
+            continue
         if config.draw_barcodes:
             digits = _line_barcode_digits(line)
             if digits is not None:
@@ -332,30 +339,91 @@ def _stamp_line_fixed_pitch(
     ref_h = style.median_box_height or 1.0
     max_glyph_w = pitch * (1.0 - config.char_tracking)
     grid_origin = float(config.margin)
+    page_right = config.margin + inner_w
 
     cursor = -1.0  # right edge (px) of the last glyph cell drawn on this line
     for word, text, (left, top, right, bottom) in placed:
         n = len(text)
+        word_pitch = pitch
+        word_max_glyph_w = max_glyph_w
+        span_w = n * word_pitch
         if _is_amount(word):
-            end_x = _snap_to_pitch(right, pitch, origin=grid_origin)
-            start_x = end_x - n * pitch
+            end_x = min(
+                _snap_to_pitch(right, word_pitch, origin=grid_origin),
+                page_right,
+            )
+            start_x = end_x - span_w
         else:
-            start_x = _snap_to_pitch(left, pitch, origin=grid_origin)
+            start_x = _snap_to_pitch(left, word_pitch, origin=grid_origin)
+            if start_x + span_w > page_right:
+                start_x = page_right - span_w
         if start_x < cursor:  # never overlap the previous word
             start_x = cursor
+        if start_x + span_w > page_right:
+            fitted_start = page_right - span_w
+            if fitted_start >= cursor:
+                start_x = fitted_start
+            else:
+                start_x = max(cursor, grid_origin)
+                available_w = page_right - start_x
+                if available_w <= 0:
+                    continue
+                word_pitch = max(1.0, available_w / n)
+                word_max_glyph_w = word_pitch * (1.0 - config.char_tracking)
+                span_w = n * word_pitch
+        word_seed = _stable_u32(
+            config.seed, style.style_id, "bold" if bold else "regular",
+            text, round(left, 2), round(top, 2), round(right, 2),
+            round(bottom, 2),
+        )
+        if config.ink_jitter > 0:
+            word_rng = random.Random(word_seed)
+            word_ink_jitter = word_rng.randint(
+                -config.ink_jitter, config.ink_jitter
+            )
+        else:
+            word_ink_jitter = 0
         for i, char in enumerate(text):
-            cell_left = start_x + i * pitch
+            cell_left = start_x + i * word_pitch
             if char.strip():
+                variant_index = _glyph_variant_index(
+                    config, style, bold=bold, word_seed=word_seed, char=char
+                )
                 glyph_img = _render_glyph(
                     char, atlas, style, bold=bold, target_h=glyph_h,
-                    ref_h=ref_h, max_w=max_glyph_w, config=config, rng=rng,
-                    fallback=fallback,
+                    ref_h=ref_h, max_w=word_max_glyph_w, config=config, rng=rng,
+                    fallback=fallback, variant_index=variant_index,
+                    ink_jitter=word_ink_jitter,
                 )
                 if glyph_img is not None:
-                    gx = int(cell_left + (pitch - glyph_img.width) / 2)
+                    gx = int(cell_left + (word_pitch - glyph_img.width) / 2)
                     gy = int(baseline - glyph_img.height)
                     image.alpha_composite(glyph_img, (max(0, gx), max(0, gy)))
-        cursor = start_x + n * pitch + pitch  # one blank cell before next word
+        cursor = start_x + span_w + word_pitch  # one blank cell before next word
+
+
+def _stable_u32(*parts: object) -> int:
+    payload = "\0".join(str(part) for part in parts).encode("utf-8", "ignore")
+    return zlib.crc32(payload) & 0xFFFFFFFF
+
+
+def _glyph_variant_index(
+    config: GlyphRenderConfig,
+    style: AtlasStyle,
+    *,
+    bold: bool,
+    word_seed: int,
+    char: str,
+) -> int:
+    """Stable crop choice for a char within a word.
+
+    Repeated letters in one word should not randomly alternate between clean and
+    degraded crops; that reads as mismatched type instead of thermal variation.
+    Word-level ink jitter and the paper finish provide thermal variation; crop
+    rotation itself is too risky because a lower-quality stored crop can read as
+    a different character in review images.
+    """
+    return 0
 
 
 def _render_glyph(
@@ -370,19 +438,22 @@ def _render_glyph(
     config: GlyphRenderConfig,
     rng: random.Random,
     fallback: GlyphFallback | None,
+    variant_index: int | None = None,
+    ink_jitter: int | None = None,
 ) -> Image.Image | None:
     """Produce a sized, inked glyph for one character (atlas crop or fallback)."""
     # Rotate among the char's stored variants (seeded rng) so a repeated letter
     # is not the identical crop every time — natural variation, and no single
     # imperfect crop repeats across the whole receipt.
-    crop = atlas.glyph(char, role="body", bold=bold, index=rng.randrange(1 << 16))
+    index = variant_index if variant_index is not None else rng.randrange(1 << 16)
+    crop = atlas.glyph(char, role="body", bold=bold, index=index)
     if crop is not None:
         rel = max(0.5, min(1.0, crop.box_height_norm / ref_h if ref_h else 1.0))
         h = max(2.0, target_h * rel)
         w = h * crop.aspect
         if w > max_w:
             h *= max_w / w
-        glyph_img = _scaled_inked(crop, h, config, rng)
+        glyph_img = _scaled_inked(crop, h, config, rng, ink_jitter=ink_jitter)
     elif fallback is not None:
         glyph_img = fallback(char, style, int(max(2, target_h)))
     else:
@@ -480,6 +551,8 @@ def _scaled_inked(
     target_h: float,
     config: GlyphRenderConfig,
     rng: random.Random,
+    *,
+    ink_jitter: int | None = None,
 ) -> Image.Image:
     """Scale a glyph crop to ``target_h`` and tint its alpha with thermal ink."""
     target_h = max(2, int(round(target_h)))
@@ -487,11 +560,50 @@ def _scaled_inked(
     alpha = crop.image.getchannel("A").resize(
         (target_w, target_h), Image.LANCZOS
     )
-    jitter = rng.randint(-config.ink_jitter, config.ink_jitter)
+    jitter = (
+        ink_jitter
+        if ink_jitter is not None
+        else rng.randint(-config.ink_jitter, config.ink_jitter)
+    )
     ink = tuple(max(0, min(255, c + jitter)) for c in config.ink)
     glyph = Image.new("RGBA", (target_w, target_h), ink + (0,))
     glyph.putalpha(alpha)
     return glyph
+
+
+def _line_is_rule(line: Sequence[Mapping[str, Any]]) -> bool:
+    """A separator line made of dashes/stars/underscores (a printed rule)."""
+    text = "".join(str(w.get("text") or "") for w in line).strip()
+    if len(text) < 6:
+        return False
+    ruleish = sum(1 for c in text if c in _RULE_CHARS)
+    return ruleish / len(text) >= 0.8
+
+
+def _stamp_rule(
+    image: Image.Image,
+    line: Sequence[Mapping[str, Any]],
+    scale: float,
+    config: GlyphRenderConfig,
+    inner_w: int,
+    inner_h: int,
+    rng: random.Random,
+) -> None:
+    """Draw a continuous (dashed) horizontal rule across the line's box."""
+    box = _union_pixel_box(line, scale, _PixelCfg(config), inner_w, inner_h)
+    if box is None:
+        return
+    left, top, right, bottom = box
+    y = int((top + bottom) / 2)
+    draw = ImageDraw.Draw(image)
+    ink = config.ink + (255,)
+    text = "".join(str(w.get("text") or "") for w in line)
+    star = text.count("*") > text.count("-")  # '****' rules stay dashed-dense
+    dash, gap = (6, 4) if not star else (3, 2)
+    x = int(left)
+    while x < right:
+        draw.line([(x, y), (min(x + dash, int(right)), y)], fill=ink, width=2)
+        x += dash + gap
 
 
 def _line_barcode_digits(line: Sequence[Mapping[str, Any]]) -> str | None:
