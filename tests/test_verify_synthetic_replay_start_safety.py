@@ -41,7 +41,6 @@ def _valid_args(**overrides):
         ("limit", None, "--limit"),
         ("limit", 4, "--limit"),
         ("instance_count", 2, "--instance-count"),
-        ("use_spot", False, "managed spot"),
         ("max_runtime_hours", 2, "--max-runtime-hours"),
         ("epochs", 2, "--epochs"),
     ],

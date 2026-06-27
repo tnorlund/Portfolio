@@ -218,8 +218,6 @@ def validate_start_args(args: argparse.Namespace) -> None:
         raise RuntimeError("--limit must be between 1 and 3 for this smoke test")
     if args.instance_count != 1:
         raise RuntimeError("--instance-count must be 1 for synthetic replay")
-    if not args.use_spot:
-        raise RuntimeError("synthetic replay requires managed spot: omit --no-spot")
     if args.max_runtime_hours > 1:
         raise RuntimeError("--max-runtime-hours must be 1 or less")
     if args.epochs is not None and args.epochs > 1:
@@ -5622,7 +5620,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--early-stopping-patience", type=int, default=1)
     start.add_argument("--instance-type", default="ml.g5.xlarge")
     start.add_argument("--instance-count", type=int, default=1)
-    start.add_argument("--use-spot", dest="use_spot", action="store_true", default=True)
+    start.add_argument("--use-spot", dest="use_spot", action="store_true", default=False)
     start.add_argument("--no-spot", dest="use_spot", action="store_false")
     start.add_argument("--max-runtime-hours", type=int, default=1)
     start.add_argument(

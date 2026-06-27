@@ -60,10 +60,11 @@ def test_definition_adds_synthetic_replay_launch_when_training_lambda_exists():
         "Variable": "$.config.merged.limit",
         "NumericLessThanEqualsPath": "$.defaults.synthetic_replay_max_limit",
     } in replay_conditions
+    # On-demand is allowed: the replay gate no longer requires managed spot.
     assert {
         "Variable": "$.config.merged.synthetic_replay_use_spot",
         "BooleanEquals": True,
-    } in replay_conditions
+    } not in replay_conditions
     assert {
         "Variable": "$.config.merged.synthetic_replay_max_runtime_hours",
         "NumericLessThanEqualsPath": ("$.defaults.synthetic_replay_max_runtime_hours"),

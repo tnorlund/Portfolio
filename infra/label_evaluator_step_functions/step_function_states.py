@@ -138,7 +138,7 @@ def build_input_normalization_states(
                 "synthetic_replay_max_instance_count": (
                     runtime.synthetic_replay_max_instance_count
                 ),
-                "synthetic_replay_use_spot": True,
+                "synthetic_replay_use_spot": False,
                 "synthetic_replay_max_runtime_hours": (
                     runtime.synthetic_replay_max_runtime_hours
                 ),
@@ -533,10 +533,6 @@ def build_synthetic_replay_states(
                             "NumericLessThanEqualsPath": (
                                 "$.defaults.synthetic_replay_max_instance_count"
                             ),
-                        },
-                        {
-                            "Variable": "$.config.merged.synthetic_replay_use_spot",
-                            "BooleanEquals": True,
                         },
                         {
                             "Variable": (

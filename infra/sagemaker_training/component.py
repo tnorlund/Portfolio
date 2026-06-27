@@ -721,10 +721,10 @@ def handler(event, context):
 
     instance_type = event.get("instance_type", "ml.g5.xlarge")
     instance_count = _int_value("instance_count", event.get("instance_count", 1))
-    use_spot = event.get(
-        "use_spot",
-        True if is_synthetic_replay else False,
-    )
+    # Default to on-demand; synthetic replay no longer *requires* spot.
+    # On-demand g5.xlarge provisions immediately (spot capacity is scarce and
+    # can queue for the full wait window). Callers may still pass use_spot=true.
+    use_spot = _truthy(event.get("use_spot", False))
     max_runtime_hours = _int_value(
         "max_runtime_hours",
         event.get("max_runtime_hours", 1 if is_synthetic_replay else 24),
@@ -747,8 +747,6 @@ def handler(event, context):
             raise ValueError("synthetic replay requires 1-3 source receipts")
         if instance_count != 1:
             raise ValueError("synthetic replay is capped at one SageMaker instance")
-        if not _truthy(use_spot):
-            raise ValueError("synthetic replay requires managed spot training")
         if max_runtime_hours > 1:
             raise ValueError("synthetic replay is capped at one runtime hour")
         _require_synthetic_replay_budget(event)
