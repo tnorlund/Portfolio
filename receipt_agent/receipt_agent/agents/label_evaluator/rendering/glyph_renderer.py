@@ -25,9 +25,12 @@ bottom-aligned to the word-box baseline (with a small descender allowance).
 
 from __future__ import annotations
 
+import math
 import os
 import random
+import re
 from dataclasses import dataclass, field
+from statistics import median
 from typing import Any, Callable, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -61,6 +64,13 @@ _CATEGORY_HINTS = (
     "HOUSEHOLD", "BEVERAGE",
 )
 _MERCHANT_LABELS = ("MERCHANT_NAME", "STORE_NAME")
+
+# Tokens that are right-aligned into the price/amount column.
+_AMOUNT_LABELS = frozenset({
+    "LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL", "UNIT_PRICE", "AMOUNT",
+    "BALANCE", "TOTAL", "PRICE",
+})
+_AMOUNT_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}\$?[A-Z]?-?$")
 
 
 @dataclass(frozen=True)
@@ -113,17 +123,23 @@ def render_receipt_glyphs(
 
     line_words = _group_words_by_line(receipt, words)
     body_h_ref = _median_word_height(words)
+    # Character pitch (advance) in normalized inner-width units: prefer the
+    # merchant profile (a real fixed pitch), else the receipt's own median
+    # advance. This is what makes lines render on a true grid instead of each
+    # word being squeezed into its own box (the collapsed-spacing failure).
+    pitch_norm = _pitch_norm(words, scale, profile)
+    font_h_norm = profile.font_height if (profile and profile.font_height) else None
     for line in line_words:
         is_logo = _line_is_logo(line, body_h_ref)
         bold = _line_is_bold(line)
         if is_logo and config.use_logo and atlas.logo is not None:
             if _stamp_logo(image, line, atlas, scale, config, inner_w, inner_h):
                 continue  # logo stamped; skip per-char rendering for this line
-        for word in line:
-            _stamp_word(
-                image, word, atlas, scale, config, inner_w, inner_h,
-                bold=bold, rng=rng, fallback=fallback,
-            )
+        _stamp_line_fixed_pitch(
+            image, line, atlas, scale, config, inner_w, inner_h,
+            bold=bold, rng=rng, fallback=fallback,
+            pitch_norm=pitch_norm, font_h_norm=font_h_norm,
+        )
 
     return _thermal_finish(image, config)
 
@@ -133,6 +149,7 @@ def render_real_vs_glyph(
     receipt: Mapping[str, Any],
     atlas: GlyphAtlas,
     *,
+    profile: MerchantFontProfile | None = None,
     config: GlyphRenderConfig | None = None,
     coord_max: float | None = None,
     fallback: GlyphFallback | None = None,
@@ -141,7 +158,8 @@ def render_real_vs_glyph(
     """A real receipt photo beside its glyph-stamped render, for visual diffing."""
     config = config or GlyphRenderConfig()
     rendered = render_receipt_glyphs(
-        receipt, atlas, config=config, coord_max=coord_max, fallback=fallback
+        receipt, atlas, profile=profile, config=config, coord_max=coord_max,
+        fallback=fallback
     )
     left = _fit_height(real_image.convert("RGB"), rendered.height)
     return _hstack_labeled(left, rendered, labels)
@@ -152,13 +170,15 @@ def save_receipt_glyphs(
     atlas: GlyphAtlas,
     path: str,
     *,
+    profile: MerchantFontProfile | None = None,
     config: GlyphRenderConfig | None = None,
     coord_max: float | None = None,
     fallback: GlyphFallback | None = None,
 ) -> str:
     """Render and write a glyph-stamped receipt PNG. Returns ``path``."""
     image = render_receipt_glyphs(
-        receipt, atlas, config=config, coord_max=coord_max, fallback=fallback
+        receipt, atlas, profile=profile, config=config, coord_max=coord_max,
+        fallback=fallback
     )
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.save(path, format="PNG")
@@ -168,6 +188,163 @@ def save_receipt_glyphs(
 # --------------------------------------------------------------------------- #
 # stamping
 # --------------------------------------------------------------------------- #
+
+
+def _pitch_norm(
+    words: Sequence[Mapping[str, Any]],
+    scale: float,
+    profile: MerchantFontProfile | None,
+) -> float:
+    """Character advance as a fraction of the inner render width.
+
+    Prefer the merchant profile's measured ``char_width`` (a real printer pitch);
+    otherwise estimate the receipt's own median advance = word_width / char_count.
+    """
+    if profile is not None and profile.char_width and profile.char_width > 0:
+        return float(profile.char_width)
+    advances: list[float] = []
+    for word in words:
+        text = str(word.get("text") or "")
+        n = len(text.strip())
+        if n < 2:
+            continue
+        bbox = word.get("bbox")
+        if not isinstance(bbox, Sequence) or len(bbox) < 4:
+            continue
+        try:
+            w_norm = abs(float(bbox[2]) - float(bbox[0])) / max(scale, 1e-9)
+        except (TypeError, ValueError):
+            continue
+        if w_norm > 0 and math.isfinite(w_norm):
+            advances.append(w_norm / n)
+    return median(advances) if advances else 0.012
+
+
+def _is_amount(word: Mapping[str, Any]) -> bool:
+    labels = {_strip_bio(label) for label in (word.get("labels") or [])}
+    if labels & _AMOUNT_LABELS:
+        return True
+    return bool(_AMOUNT_RE.match(str(word.get("text") or "").strip()))
+
+
+def _snap_to_pitch(value: float, pitch: float, *, origin: float) -> float:
+    """Snap a pixel coordinate to the fixed character grid."""
+    if pitch <= 0:
+        return value
+    return origin + round((value - origin) / pitch) * pitch
+
+
+def _stamp_line_fixed_pitch(
+    image: Image.Image,
+    line: Sequence[Mapping[str, Any]],
+    atlas: GlyphAtlas,
+    scale: float,
+    config: GlyphRenderConfig,
+    inner_w: int,
+    inner_h: int,
+    *,
+    bold: bool,
+    rng: random.Random,
+    fallback: GlyphFallback | None,
+    pitch_norm: float,
+    font_h_norm: float | None,
+) -> None:
+    """Render one line on a fixed character pitch.
+
+    Words keep their real grid positions (so columns and inter-word gaps survive),
+    but every glyph advances by the SAME pitch, and a running cursor guarantees at
+    least one blank cell between words — eliminating collapsed spacing and
+    cross-word overprinting. Amount tokens are right-aligned by their ending edge
+    so the price column stays straight.
+    """
+    style = atlas.style_for_role("body", bold=bold)
+    if style is None:
+        return
+    placed = []
+    for word in line:
+        text = str(word.get("text") or "")
+        if not text.strip():
+            continue
+        px = _to_pixel_box(word.get("bbox"), scale, _PixelCfg(config), inner_w, inner_h)
+        if px is not None:
+            placed.append((word, text, px))
+    if not placed:
+        return
+    placed.sort(key=lambda t: t[2][0])  # left-to-right
+
+    pitch = max(2.0, pitch_norm * inner_w)
+    box_heights = [b - t for _, _, (l, t, r, b) in placed]
+    line_h = median(box_heights)
+    glyph_h = (
+        max(line_h * 0.7, min(line_h * 1.15, font_h_norm * inner_h))
+        if font_h_norm
+        else line_h
+    )
+    baseline = median([b for _, _, (l, t, r, b) in placed]) - line_h * config.descender_frac
+    ref_h = style.median_box_height or 1.0
+    max_glyph_w = pitch * (1.0 - config.char_tracking)
+    grid_origin = float(config.margin)
+
+    cursor = -1.0  # right edge (px) of the last glyph cell drawn on this line
+    for word, text, (left, top, right, bottom) in placed:
+        n = len(text)
+        if _is_amount(word):
+            end_x = _snap_to_pitch(right, pitch, origin=grid_origin)
+            start_x = end_x - n * pitch
+        else:
+            start_x = _snap_to_pitch(left, pitch, origin=grid_origin)
+        if start_x < cursor:  # never overlap the previous word
+            start_x = cursor
+        for i, char in enumerate(text):
+            cell_left = start_x + i * pitch
+            if char.strip():
+                glyph_img = _render_glyph(
+                    char, atlas, style, bold=bold, target_h=glyph_h,
+                    ref_h=ref_h, max_w=max_glyph_w, config=config, rng=rng,
+                    fallback=fallback,
+                )
+                if glyph_img is not None:
+                    gx = int(cell_left + (pitch - glyph_img.width) / 2)
+                    gy = int(baseline - glyph_img.height)
+                    image.alpha_composite(glyph_img, (max(0, gx), max(0, gy)))
+        cursor = start_x + n * pitch + pitch  # one blank cell before next word
+
+
+def _render_glyph(
+    char: str,
+    atlas: GlyphAtlas,
+    style: AtlasStyle,
+    *,
+    bold: bool,
+    target_h: float,
+    ref_h: float,
+    max_w: float,
+    config: GlyphRenderConfig,
+    rng: random.Random,
+    fallback: GlyphFallback | None,
+) -> Image.Image | None:
+    """Produce a sized, inked glyph for one character (atlas crop or fallback)."""
+    crop = atlas.glyph(char, role="body", bold=bold)
+    if crop is not None:
+        rel = max(0.5, min(1.0, crop.box_height_norm / ref_h if ref_h else 1.0))
+        h = max(2.0, target_h * rel)
+        w = h * crop.aspect
+        if w > max_w:
+            h *= max_w / w
+        glyph_img = _scaled_inked(crop, h, config, rng)
+    elif fallback is not None:
+        glyph_img = fallback(char, style, int(max(2, target_h)))
+    else:
+        return None
+    if glyph_img is None:
+        return None
+    if glyph_img.width > max_w:  # cap fallback glyphs to the cell
+        s = max_w / glyph_img.width
+        glyph_img = glyph_img.resize(
+            (max(1, int(glyph_img.width * s)), max(1, int(glyph_img.height * s))),
+            Image.LANCZOS,
+        )
+    return glyph_img
 
 
 def _stamp_word(

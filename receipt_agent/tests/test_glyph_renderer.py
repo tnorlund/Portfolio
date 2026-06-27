@@ -12,8 +12,13 @@ from PIL import Image, ImageDraw
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     build_glyph_atlas,
 )
+from receipt_agent.agents.label_evaluator.rendering.font_profile import (
+    MerchantFontProfile,
+)
 from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
+    _snap_to_pitch,
+    render_real_vs_glyph,
     render_receipt_glyphs,
     save_receipt_glyphs,
 )
@@ -80,6 +85,19 @@ def _receipt():
     ]}
 
 
+def _profile(char_width=0.02, font_height=0.02):
+    return MerchantFontProfile(
+        merchant_name="TestMart",
+        receipt_count=1,
+        font_height=font_height,
+        char_width=char_width,
+        char_aspect=char_width / font_height,
+        line_pitch=None,
+        price_column_x=None,
+        dominant_style_label="test",
+    )
+
+
 def test_render_returns_image_of_config_size():
     config = GlyphRenderConfig(width=300, height=700, noise=0.0, blur=0.0)
     image = render_receipt_glyphs(_receipt(), _atlas(), config=config)
@@ -142,6 +160,31 @@ def test_save_receipt_glyphs(tmp_path):
                                config=GlyphRenderConfig(noise=0.0, blur=0.0))
     with Image.open(path) as img:
         assert img.format == "PNG"
+
+
+def test_save_and_comparison_helpers_accept_font_profile(tmp_path):
+    config = GlyphRenderConfig(width=300, height=700, noise=0.0, blur=0.0)
+    profile = _profile(char_width=0.018)
+
+    out = str(tmp_path / "profiled.png")
+    save_receipt_glyphs(_receipt(), _atlas(), out, profile=profile,
+                        config=config)
+    with Image.open(out) as img:
+        assert img.size == (300, 700)
+
+    real = Image.new("RGB", (80, 160), (255, 255, 255))
+    comparison = render_real_vs_glyph(
+        real, _receipt(), _atlas(), profile=profile, config=config
+    )
+    assert comparison.height == 722  # render height plus label banner
+
+
+def test_snap_to_pitch_uses_render_margin_as_grid_origin():
+    # The renderer's pixel boxes already include config.margin. Fixed-pitch
+    # snapping must preserve that origin, otherwise every line drifts by
+    # margin % pitch and price columns no longer sit on the receipt grid.
+    assert _snap_to_pitch(19.0, 6.0, origin=10.0) == 22.0
+    assert _snap_to_pitch(19.0, 6.0, origin=0.0) == 18.0
 
 
 def test_flat_receipt_with_degenerate_bboxes_does_not_crash():
