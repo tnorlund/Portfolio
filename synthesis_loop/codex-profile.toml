@@ -1,0 +1,21 @@
+# Codex profile for the autonomous synthesis loop.
+# Merge this block into ~/.codex/config.toml ON THE MAC MINI (bootstrap_mini.sh does it),
+# then the loop calls `codex exec --profile synthesis-loop ...` and never prompts for approval.
+#
+# Why workspace-write (not danger-full-access): the brain step only edits files and runs the
+# local render script — it needs NO network (Codex's own model calls reach OpenAI regardless of
+# sandbox). git push is done by run_loop.sh in the plain shell, outside the sandbox. Keeping the
+# sandbox on means a misbehaving round still cannot touch the network or escape the repo.
+
+[profiles.synthesis-loop]
+approval_policy = "never"          # fully autonomous — no approval prompts
+sandbox_mode = "workspace-write"   # edit files + run render scripts; no network from spawned cmds
+# model / effort inherit your global defaults; override here if you want a cheaper brain:
+# model = "gpt-5.5"
+# model_reasoning_effort = "high"
+
+# Restrict writable roots to the repo so an off-the-rails round can't wander.
+[profiles.synthesis-loop.sandbox_workspace_write]
+# network_access is intentionally omitted (and is ignored on macOS seatbelt anyway).
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false

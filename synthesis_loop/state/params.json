@@ -1,0 +1,11 @@
+{
+  "_comment": "Current renderer knobs the hill-climb tunes. Defaults mirror scripts/render_synthetic_receipts.py. The brain (codex) edits these each round to address Claude's top critique.",
+  "merchant": "Vons",
+  "limit": 4,
+  "seed": 37,
+  "noise": 0.42,
+  "blur": 0.35,
+  "paper_realism": 0.65,
+  "glyph_max_receipts": 8,
+  "profile_max_receipts": 12
+}

@@ -1,0 +1,5 @@
+# Raw per-round renders are bulky — keep them local to the mini.
+renders/
+reviews/*.raw
+# DO commit: STATUS.md, best.json, params.json, reviews/round-*.json, and curated
+# gallery/round-*.png thumbnails the brain copies in, so progress is visible on the PR.
