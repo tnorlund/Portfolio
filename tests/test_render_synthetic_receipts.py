@@ -548,6 +548,34 @@ def test_cached_thermal_scanline_banding_adds_horizontal_rows():
     assert sum(1 for count in row_dark_counts if count > 12) >= 2
 
 
+def test_cached_thermal_mottle_adds_low_frequency_paper_variation():
+    from PIL import Image, ImageDraw
+
+    module = _load_module()
+    image = Image.new("RGBA", (160, 160), (250, 249, 245, 255))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([64, 64, 96, 96], fill=(20, 20, 20, 255))
+
+    module._apply_cached_thermal_mottle(
+        image,
+        module.random.Random(5521),
+    )
+
+    assert image.getpixel((80, 80)) == (20, 20, 20, 255)
+    tile_means = []
+    for top in range(0, image.height, 40):
+        for left in range(0, image.width, 40):
+            values = [
+                image.getpixel((x, y))[0]
+                for y in range(top, min(top + 40, image.height))
+                for x in range(left, min(left + 40, image.width))
+                if not (64 <= x <= 96 and 64 <= y <= 96)
+            ]
+            tile_means.append(sum(values) / max(1, len(values)))
+
+    assert max(tile_means) - min(tile_means) > 2.0
+
+
 def test_cached_should_draw_qr_only_for_add_item_feedback_receipts():
     module = _load_module()
 

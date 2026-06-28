@@ -90,6 +90,7 @@ _CACHED_THERMAL_DARK_SPECKLE_RATE = 0.025
 _CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.055
 _CACHED_THERMAL_SCANLINE_MIN_GAP = 42
 _CACHED_THERMAL_SCANLINE_MAX_GAP = 74
+_CACHED_THERMAL_MOTTLE_COUNT_FACTOR = 90
 _CACHED_SPROUTS_FRAGMENT_TEXTS = {
     "TO",
     "TH",
@@ -1031,7 +1032,7 @@ def _render_cached_hybrid(
         background=(250, 249, 245),
         min_font_px=6,
         max_font_px=_CACHED_MAX_FONT_PX,
-        font_path="/System/Library/Fonts/Supplemental/PTMono.ttc",
+        font_path="/System/Library/Fonts/Supplemental/Andale Mono.ttf",
         right_align_amounts=True,
     )
     image = render_receipt(
@@ -1084,6 +1085,10 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
             elif bias:
                 gray = min(252, max(220, ((r + g + b) // 3) + bias))
                 pixels[x, y] = (gray, gray, min(253, gray + 2), a)
+    _apply_cached_thermal_mottle(
+        image,
+        random.Random(seed ^ 0x7B21_53D9),
+    )
     _apply_cached_thermal_scanline_banding(
         image,
         random.Random(seed ^ 0xA5C3_1F27),
@@ -1103,6 +1108,42 @@ def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:
         for y in range(start, min(height, start + band_height)):
             biases[y] += bias
     return biases
+
+
+def _apply_cached_thermal_mottle(image, rng: random.Random) -> None:
+    """Add broad scanner/thermal paper variation without touching ink."""
+    pixels = image.load()
+    patch_count = max(5, image.height // _CACHED_THERMAL_MOTTLE_COUNT_FACTOR)
+    for _ in range(patch_count):
+        center_x = rng.randint(0, max(0, image.width - 1))
+        center_y = rng.randint(0, max(0, image.height - 1))
+        radius_x = rng.randint(max(32, image.width // 7), max(44, image.width // 2))
+        radius_y = rng.randint(max(24, image.height // 20), max(42, image.height // 7))
+        bias = rng.choice((-1, 1)) * rng.randint(8, 20)
+        left = max(0, center_x - radius_x)
+        right = min(image.width, center_x + radius_x)
+        top = max(0, center_y - radius_y)
+        bottom = min(image.height, center_y + radius_y)
+        if right <= left or bottom <= top:
+            continue
+        inv_rx = 1.0 / max(1, radius_x)
+        inv_ry = 1.0 / max(1, radius_y)
+        for y in range(top, bottom):
+            dy = (y - center_y) * inv_ry
+            for x in range(left, right):
+                dx = (x - center_x) * inv_rx
+                distance = dx * dx + dy * dy
+                if distance >= 1.0:
+                    continue
+                r, g, b, a = pixels[x, y]
+                if a < 255 or not _is_cached_paper_pixel(r, g, b):
+                    continue
+                falloff = 1.0 - distance
+                delta = int(round(bias * falloff))
+                if not delta:
+                    continue
+                gray = min(252, max(218, ((r + g + b) // 3) + delta))
+                pixels[x, y] = (gray, gray, min(253, gray + 2), a)
 
 
 def _apply_cached_thermal_scanline_banding(image, rng: random.Random) -> None:
