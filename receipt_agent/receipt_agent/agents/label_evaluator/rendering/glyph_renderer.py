@@ -1043,10 +1043,44 @@ def _apply_paper_effects(
     vignette = 1.0 - amt * 0.10 * ((np.abs(xx - 0.5) * 2.0) ** 3)
     mask = (fade * banding * vignette)[..., None]
     arr = arr * mask
+    # Low-frequency paper mottling plus patchy thermal dropout.  This is the
+    # texture cue real receipts get from uneven heat/pressure and paper coating:
+    # the background is not uniformly white and dark ink fades toward the paper
+    # color in soft islands instead of staying laser-black everywhere.
+    coarse = _smooth_noise_field(rng, h, w, cell_px=58)
+    fine = _smooth_noise_field(rng, h, w, cell_px=18)
+    arr += (coarse * amt * 5.5 + fine * amt * 1.8)[..., None]
+    gray = arr.mean(axis=2)
+    ink_mask = np.clip((238.0 - gray) / 180.0, 0.0, 1.0)
+    fade_field = np.clip(0.40 + coarse * 0.18 + fine * 0.08, 0.0, 1.0)
+    thermal_fade = (amt * 0.20 * fade_field * ink_mask)[..., None]
+    paper = np.asarray(config.paper, dtype=np.float32)
+    arr = arr * (1.0 - thermal_fade) + paper * thermal_fade
     # fine grain
     grain = rng.normal(0.0, amt * 4.5, size=arr.shape).astype(np.float32)
     arr = np.clip(arr + grain, 0.0, 255.0).astype(np.uint8)
     return Image.fromarray(arr)
+
+
+def _smooth_noise_field(
+    rng: Any, height: int, width: int, *, cell_px: int
+) -> "Any":
+    import numpy as np
+
+    small_h = max(2, int(math.ceil(height / cell_px)) + 2)
+    small_w = max(2, int(math.ceil(width / cell_px)) + 2)
+    field = rng.normal(0.0, 1.0, size=(small_h, small_w)).astype(np.float32)
+    spread = float(np.ptp(field))
+    if spread <= 1e-6:
+        return np.zeros((height, width), dtype=np.float32)
+    field = (field - float(field.min())) / spread
+    texture = Image.fromarray((field * 255.0).astype(np.uint8), mode="L")
+    texture = texture.resize((width, height), Image.BICUBIC)
+    out = np.asarray(texture).astype(np.float32) / 255.0
+    std = float(out.std())
+    if std <= 1e-6:
+        return np.zeros((height, width), dtype=np.float32)
+    return (out - float(out.mean())) / std
 
 
 # --------------------------------------------------------------------------- #
