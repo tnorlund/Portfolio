@@ -7,9 +7,9 @@
   "cached_renderer": "glyph",
   "limit": 4,
   "seed": 37,
-  "noise": 0.42,
+  "noise": 0.52,
   "blur": 0.35,
-  "paper_realism": 0.65,
+  "paper_realism": 0.75,
   "glyph_max_receipts": 8,
   "profile_max_receipts": 12
 }
