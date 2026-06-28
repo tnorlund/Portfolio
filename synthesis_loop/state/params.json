@@ -4,7 +4,7 @@
     "Sprouts Farmers Market"
   ],
   "merchant": "Sprouts Farmers Market",
-  "cached_renderer": "glyph",
+  "cached_renderer": "hybrid",
   "body_glyph_source": "font",
   "limit": 4,
   "seed": 37,

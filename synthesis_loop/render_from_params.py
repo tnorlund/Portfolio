@@ -24,12 +24,15 @@ def main() -> int:
         "--merchant", a.merchant,
         "--out-dir", a.out_dir,
         # the glyph cached renderer is the one that honors these realism knobs (hybrid ignores them)
-        "--cached-renderer", str(p.get("cached_renderer", "glyph")),
+        "--cached-renderer", str(p.get("cached_renderer", "hybrid")),
         "--noise", str(p.get("noise", 0.42)),
         "--blur", str(p.get("blur", 0.35)),
         "--paper-realism", str(p.get("paper_realism", 0.65)),
         "--seed", str(p.get("seed", 37)),
-        "--body-glyph-source", str(p.get("body_glyph_source", "numeric")),
+        # Default to 'font' (matched fixed-pitch fallback) so a missing key cannot
+        # silently re-enable confusable atlas crops (g->9, p->P, s->S) that corrupt
+        # body text like "si9n uP" / "PaPer" and cap texture realism.
+        "--body-glyph-source", str(p.get("body_glyph_source", "font")),
         "--glyph-max-receipts", str(p.get("glyph_max_receipts", 8)),
         "--profile-max-receipts", str(p.get("profile_max_receipts", 12)),
     ]
