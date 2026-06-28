@@ -115,6 +115,34 @@ def test_cached_line_render_uses_tighter_sprouts_section_gaps():
     )
 
 
+def test_cached_line_render_spreads_sparse_sprouts_receipts_down_canvas():
+    module = _load_module()
+
+    lines = [
+        {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+        {"y": 943.2, "text": "1012 WESTLAKE BLVD.", "labels": []},
+        {"y": 927.1, "text": "Store Hours MON-SUN 7AM-10PM", "labels": []},
+        {"y": 900.0, "text": "PRODUCE", "labels": []},
+    ]
+    lines.extend(
+        {"y": 880.0 - index, "text": f"ITEM {index:02d} 1.00", "labels": []}
+        for index in range(38)
+    )
+    lines.extend(
+        [
+            {"y": 200.0, "text": "BALANCE DUE 38.00", "labels": []},
+            {"y": 180.0, "text": "CREDIT $38.00", "labels": []},
+            {"y": 160.0, "text": "Cashier:SSCO Store: 2806", "labels": []},
+        ]
+    )
+
+    receipt = module._cached_line_receipt_dict({"lines": lines})
+    centers = [_line_center_y(line) for line in receipt["lines"]]
+
+    assert len(centers) == 46
+    assert min(centers) < 155.0
+
+
 def test_cached_line_render_deduplicates_combined_sprouts_brand_line():
     module = _load_module()
 

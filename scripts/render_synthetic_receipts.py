@@ -77,6 +77,7 @@ _CACHED_BODY_HALF_HEIGHT = 8.0
 _CACHED_LOGO_SUBTITLE_GAP = 38.0
 _CACHED_SECTION_GAP = 10.0
 _CACHED_MAX_LINE_SPACING = 14.0
+_CACHED_SPARSE_MAX_LINE_SPACING = 19.0
 _CACHED_MAX_FONT_PX = 15
 _CACHED_QR_SIZE_FACTOR = 0.27
 _CACHED_QR_MIN_SIZE = 128.0
@@ -415,8 +416,9 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     real_count = sum(1 for line in ordered if str(line.get("text") or "").strip())
     break_count = len(ordered) - real_count
     section_gap = _CACHED_SECTION_GAP
+    max_spacing = _cached_sprouts_max_line_spacing(real_count)
     spacing = (930.0 - break_count * section_gap) / max(1, real_count - 1)
-    spacing = max(9.0, min(_CACHED_MAX_LINE_SPACING, spacing))
+    spacing = max(9.0, min(max_spacing, spacing))
 
     y = 978.0
     positioned = []
@@ -435,6 +437,12 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
         )
         y -= line_gap
     return positioned
+
+
+def _cached_sprouts_max_line_spacing(real_count: int) -> float:
+    if 35 <= real_count <= 52:
+        return _CACHED_SPARSE_MAX_LINE_SPACING
+    return _CACHED_MAX_LINE_SPACING
 
 
 def _drop_cached_sprouts_fragment_line(
