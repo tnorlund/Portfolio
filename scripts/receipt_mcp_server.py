@@ -22,7 +22,10 @@ import json
 import logging
 import os
 import sys
+import urllib.error
+import urllib.request
 from collections import defaultdict
+from io import BytesIO
 from typing import Any, Optional
 
 # Add paths for local packages
@@ -889,6 +892,15 @@ against their real base receipts.""",
                         ],
                         "description": "Optionally return only targets with this latest review status.",
                     },
+                    "include_image_metrics": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "If true, compute lightweight ink/whitespace "
+                            "metrics for the local synthetic PNG and the "
+                            "real base receipt image URL."
+                        ),
+                    },
                 },
             },
         ),
@@ -1127,6 +1139,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     dynamo_client,
                     job_id=arguments.get("job_id"),
                     status_filter=arguments.get("status_filter"),
+                    include_image_metrics=bool(
+                        arguments.get("include_image_metrics", False)
+                    ),
                 )
                 if review_state_error and not result.get("review_state_error"):
                     result["review_state_error"] = review_state_error
@@ -2971,6 +2986,7 @@ async def list_synthetic_receipt_visual_review_targets_impl(
     dynamo_client,
     job_id: Optional[str] = None,
     status_filter: Optional[str] = None,
+    include_image_metrics: bool = False,
 ) -> dict:
     """List synthetic receipt targets and latest persisted visual review state."""
     try:
@@ -3003,6 +3019,12 @@ async def list_synthetic_receipt_visual_review_targets_impl(
                 dynamo_client,
                 target.get("baseReceiptKey"),
             )
+            visual_metrics = None
+            if include_image_metrics:
+                visual_metrics = _target_visual_comparison_metrics(
+                    target,
+                    base_receipt_image,
+                )
             filtered.append(
                 {
                     "id": target.get("id"),
@@ -3016,6 +3038,7 @@ async def list_synthetic_receipt_visual_review_targets_impl(
                     "local_image_exists": target.get("local_image_exists"),
                     "base_receipt_key": target.get("baseReceiptKey"),
                     "base_receipt_image": base_receipt_image,
+                    "visual_comparison_metrics": visual_metrics,
                     "structure_score": target.get("structureScore"),
                     "train_only_reason": target.get("trainOnlyReason"),
                     "expected_effect": target.get("expectedEffect"),
@@ -3035,6 +3058,183 @@ async def list_synthetic_receipt_visual_review_targets_impl(
     except Exception as e:
         logger.exception("Error listing synthetic receipt visual review targets")
         return {"error": str(e)}
+
+
+def _target_visual_comparison_metrics(
+    target: dict[str, Any],
+    base_receipt_image: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Compute lightweight image metrics for visual-review triage."""
+    synthetic_path = target.get("local_image_path")
+    synthetic_metrics = _image_visual_metrics_from_path(synthetic_path)
+    base_url = _preferred_base_receipt_image_url(base_receipt_image)
+    base_metrics = (
+        _image_visual_metrics_from_url(base_url)
+        if base_url
+        else {"status": "unavailable", "reason": "no_base_receipt_image_url"}
+    )
+    return {
+        "synthetic": synthetic_metrics,
+        "base_receipt": base_metrics,
+        "comparison": _compare_image_visual_metrics(
+            synthetic_metrics,
+            base_metrics,
+        ),
+    }
+
+
+def _preferred_base_receipt_image_url(
+    base_receipt_image: dict[str, Any] | None,
+) -> str | None:
+    if not isinstance(base_receipt_image, dict):
+        return None
+    variants = base_receipt_image.get("variants")
+    if isinstance(variants, dict):
+        for name in ("medium", "small", "thumbnail", "webp", "avif"):
+            value = variants.get(name)
+            if value:
+                return str(value)
+    value = base_receipt_image.get("url")
+    return str(value) if value else None
+
+
+def _image_visual_metrics_from_path(path: Any) -> dict[str, Any]:
+    if not path:
+        return {"status": "unavailable", "reason": "no_path"}
+    text_path = str(path)
+    if not os.path.exists(text_path):
+        return {"status": "unavailable", "reason": "path_missing", "path": text_path}
+    try:
+        from PIL import Image
+
+        with Image.open(text_path) as image:
+            return {
+                **_image_visual_metrics(image),
+                "source": "path",
+                "path": text_path,
+            }
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        return {"status": "error", "path": text_path, "error": str(exc)}
+
+
+def _image_visual_metrics_from_url(url: str) -> dict[str, Any]:
+    try:
+        from PIL import Image
+
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "portfolio-receipt-visual-review/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=8) as response:  # nosec B310
+            payload = response.read(3_000_000)
+        with Image.open(BytesIO(payload)) as image:
+            return {
+                **_image_visual_metrics(image),
+                "source": "url",
+                "url": url,
+            }
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return {"status": "error", "url": url, "error": str(exc)}
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        return {"status": "error", "url": url, "error": str(exc)}
+
+
+def _image_visual_metrics(image: Any) -> dict[str, Any]:
+    gray = image.convert("L")
+    width, height = gray.size
+    pixels = gray.load()
+    dark_threshold = 170
+    dark_count = 0
+    x_min = width
+    y_min = height
+    x_max = -1
+    y_max = -1
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] >= dark_threshold:
+                continue
+            dark_count += 1
+            x_min = min(x_min, x)
+            y_min = min(y_min, y)
+            x_max = max(x_max, x)
+            y_max = max(y_max, y)
+
+    pixel_count = max(1, width * height)
+    if dark_count == 0:
+        return {
+            "status": "available",
+            "width": width,
+            "height": height,
+            "aspect_ratio": round(width / max(1, height), 4),
+            "dark_pixel_density": 0.0,
+            "ink_bbox": None,
+            "ink_bbox_area_share": 0.0,
+            "margin_shares": None,
+        }
+
+    bbox_width = x_max - x_min + 1
+    bbox_height = y_max - y_min + 1
+    return {
+        "status": "available",
+        "width": width,
+        "height": height,
+        "aspect_ratio": round(width / max(1, height), 4),
+        "dark_pixel_density": round(dark_count / pixel_count, 4),
+        "ink_bbox": {
+            "left": x_min,
+            "top": y_min,
+            "right": x_max,
+            "bottom": y_max,
+            "width": bbox_width,
+            "height": bbox_height,
+        },
+        "ink_bbox_area_share": round((bbox_width * bbox_height) / pixel_count, 4),
+        "margin_shares": {
+            "left": round(x_min / max(1, width), 4),
+            "right": round((width - x_max - 1) / max(1, width), 4),
+            "top": round(y_min / max(1, height), 4),
+            "bottom": round((height - y_max - 1) / max(1, height), 4),
+        },
+    }
+
+
+def _compare_image_visual_metrics(
+    synthetic_metrics: dict[str, Any],
+    base_metrics: dict[str, Any],
+) -> dict[str, Any] | None:
+    if (
+        synthetic_metrics.get("status") != "available"
+        or base_metrics.get("status") != "available"
+    ):
+        return None
+
+    def ratio(name: str) -> float | None:
+        synthetic = synthetic_metrics.get(name)
+        base = base_metrics.get(name)
+        if not isinstance(synthetic, (int, float)):
+            return None
+        if not isinstance(base, (int, float)) or base == 0:
+            return None
+        return round(float(synthetic) / float(base), 3)
+
+    synthetic_bbox = synthetic_metrics.get("ink_bbox") or {}
+    base_bbox = base_metrics.get("ink_bbox") or {}
+    bbox_height_ratio = None
+    if base_bbox.get("height"):
+        bbox_height_ratio = round(
+            float(synthetic_bbox.get("height", 0)) / float(base_bbox["height"]),
+            3,
+        )
+    return {
+        "dark_pixel_density_ratio": ratio("dark_pixel_density"),
+        "ink_bbox_area_share_ratio": ratio("ink_bbox_area_share"),
+        "ink_bbox_height_ratio": bbox_height_ratio,
+        "aspect_ratio_delta": round(
+            float(synthetic_metrics["aspect_ratio"])
+            - float(base_metrics["aspect_ratio"]),
+            4,
+        ),
+    }
 
 
 def _base_receipt_key_parts(base_receipt_key: Any) -> dict[str, Any] | None:

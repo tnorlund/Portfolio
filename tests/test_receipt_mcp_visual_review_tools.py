@@ -128,6 +128,98 @@ def test_visual_review_target_listing_includes_base_receipt_image(monkeypatch):
     }
 
 
+def test_visual_review_target_listing_can_include_image_metrics(
+    monkeypatch,
+    tmp_path,
+):
+    from PIL import Image, ImageDraw
+
+    module = _load_mcp_server_module(monkeypatch)
+    synthetic_path = tmp_path / "synthetic.png"
+    image = Image.new("RGB", (20, 30), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([5, 6, 14, 23], fill="black")
+    image.save(synthetic_path)
+
+    monkeypatch.setattr(
+        module,
+        "_load_synthetic_receipt_review_targets",
+        lambda: [
+            {
+                "id": "target-a",
+                "title": "Target A",
+                "merchantName": "Sprouts Farmers Market",
+                "operation": "add_line_item",
+                "candidateId": "candidate-a",
+                "source": "test",
+                "imageSrc": "/synthetic-receipts/test.png",
+                "local_image_path": str(synthetic_path),
+                "local_image_exists": True,
+                "baseReceiptKey": "37333eb8-0025-4711-98ae-7b72fd83abd5#00001",
+                "reviewFocus": ["compare scale"],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        module,
+        "_image_visual_metrics_from_url",
+        lambda url: {
+            "status": "available",
+            "source": "url",
+            "url": url,
+            "width": 10,
+            "height": 20,
+            "aspect_ratio": 0.5,
+            "dark_pixel_density": 0.2,
+            "ink_bbox": {
+                "left": 1,
+                "top": 2,
+                "right": 8,
+                "bottom": 17,
+                "width": 8,
+                "height": 16,
+            },
+            "ink_bbox_area_share": 0.64,
+            "margin_shares": {},
+        },
+    )
+
+    class FakeReceipt:
+        cdn_s3_key = "assets/base.jpg"
+        cdn_webp_s3_key = None
+        cdn_avif_s3_key = None
+        cdn_thumbnail_s3_key = None
+        cdn_small_s3_key = None
+        cdn_medium_s3_key = "assets/base_medium.jpg"
+
+    class FakeDetails:
+        receipt = FakeReceipt()
+
+    class FakeDynamoClient:
+        def list_synthetic_receipt_visual_reviews_for_job(self, *_args, **_kwargs):
+            return [], None
+
+        def get_receipt_details(self, *_args, **_kwargs):
+            return FakeDetails()
+
+    result = asyncio.run(
+        module.list_synthetic_receipt_visual_review_targets_impl(
+            FakeDynamoClient(),
+            job_id=module.DEFAULT_SYNTHETIC_REVIEW_JOB_ID,
+            include_image_metrics=True,
+        )
+    )
+
+    metrics = result["targets"][0]["visual_comparison_metrics"]
+    assert metrics["synthetic"]["status"] == "available"
+    assert metrics["synthetic"]["width"] == 20
+    assert metrics["synthetic"]["height"] == 30
+    assert metrics["synthetic"]["dark_pixel_density"] > 0
+    assert metrics["base_receipt"]["url"].endswith("base_medium.jpg")
+    assert metrics["comparison"]["dark_pixel_density_ratio"] is not None
+    assert metrics["comparison"]["ink_bbox_height_ratio"] is not None
+
+
 def test_base_receipt_image_reference_can_degrade_without_dynamo(monkeypatch):
     module = _load_mcp_server_module(monkeypatch)
 
