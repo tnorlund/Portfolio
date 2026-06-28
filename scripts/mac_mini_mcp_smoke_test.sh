@@ -4,8 +4,9 @@
 # the MCP isn't reachable non-interactively, the per-merchant cleanup step
 # silently can't apply label flips.
 #
-# It does ONE read and ONE no-op write (re-setting an already-INVALID Costco
-# warehouse-number label to INVALID), so it changes nothing.
+# It does visual-review reads, one legacy receipt read, and ONE no-op write
+# (re-setting an already-INVALID Costco warehouse-number label to INVALID), so
+# it changes no labels.
 #
 # Prereqs on the Mac Mini (one-time):
 #   - Auth for HEADLESS claude: plain SSH can't read the macOS login Keychain.
@@ -68,10 +69,10 @@ PROMPT_FILE="$(mktemp)"
 cat > "$PROMPT_FILE" <<'EOF'
 You have the receipt-tools MCP available. Do three steps and report each.
 Step 1: call get_receipts_by_merchant with merchant_name "Costco Wholesale". It passes if it returns a count.
-Step 2: call list_synthetic_receipt_visual_review_targets. It passes if target_count is greater than zero and at least one target has local_image_exists true.
+Step 2: call list_synthetic_receipt_visual_review_targets with include_image_metrics true. It passes if target_count is greater than zero, every returned target has local_image_exists true, every returned target has base_receipt_image.lookup_status "available", and at least one target has visual_comparison_metrics.synthetic.status "available", visual_comparison_metrics.base_receipt.status "available", and a non-null visual_comparison_metrics.comparison.dark_pixel_density_ratio.
 Step 3: first call list_words_by_label with label WEBSITE, status_filter INVALID, sample_size 1000. Verify the exact target image_id ed28a4ce-2258-4745-87ba-2fc662c94abf, receipt_id 2, line_id 32, word_id 3 appears with validation_status INVALID. If it does not, do NOT call update_word_label and mark write FAIL. Only when that exact record is already INVALID, call update_word_label with image_id ed28a4ce-2258-4745-87ba-2fc662c94abf, receipt_id 2, line_id 32, word_id 3, label WEBSITE, new_status INVALID, reasoning "headless MCP smoke test guarded no-op". It passes if the result has success true.
-Finally output exactly one line: SMOKE_TEST read=PASS_OR_FAIL write=PASS_OR_FAIL
-If the receipt-tools MCP tools are not available at all, output exactly: SMOKE_TEST read=NO_MCP write=NO_MCP
+Finally output exactly one line: SMOKE_TEST read=PASS_OR_FAIL metrics=PASS_OR_FAIL write=PASS_OR_FAIL
+If the receipt-tools MCP tools are not available at all, output exactly: SMOKE_TEST read=NO_MCP metrics=NO_MCP write=NO_MCP
 EOF
 LOCAL="${LOCAL:-0}"
 # Do NOT pass --bare (it disables MCP discovery). claude lives at ~/.local/bin.
@@ -162,7 +163,7 @@ EOF
 fi
 
 echo
-if grep -q "SMOKE_TEST read=PASS write=PASS" /tmp/mcp_smoke_test.out; then
+if grep -q "SMOKE_TEST read=PASS metrics=PASS write=PASS" /tmp/mcp_smoke_test.out; then
   echo "✅ MCP reachable and writable in headless mode — safe to launch the parallel batch."
 elif grep -qi "Not logged in\|/login\|Invalid API key\|authentication" /tmp/mcp_smoke_test.out; then
   echo "❌ headless claude is not authenticated. SSH can't read the macOS Keychain,"
@@ -175,7 +176,7 @@ elif grep -q "NO_MCP" /tmp/mcp_smoke_test.out; then
   echo "   Python interpreter, and scripts/receipt_mcp_server.py startup logs."
   exit 1
 else
-  echo "⚠️  Inconclusive — inspect /tmp/mcp_smoke_test.out (read PASS but write FAIL =>"
-  echo "    AWS creds / DynamoDB permissions issue on the Mac Mini)."
+  echo "⚠️  Inconclusive — inspect /tmp/mcp_smoke_test.out (metrics FAIL =>"
+  echo "    synthetic/real image access issue; write FAIL => AWS/DynamoDB issue)."
   exit 1
 fi

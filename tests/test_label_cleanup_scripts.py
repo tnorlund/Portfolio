@@ -196,6 +196,11 @@ def test_mac_mini_smoke_prompt_guards_noop_write():
         encoding="utf-8"
     )
 
+    assert "include_image_metrics true" in source
+    assert "base_receipt_image.lookup_status" in source
+    assert "dark_pixel_density_ratio" in source
+    assert "SMOKE_TEST read=PASS_OR_FAIL metrics=PASS_OR_FAIL write=PASS_OR_FAIL" in source
+    assert "SMOKE_TEST read=PASS metrics=PASS write=PASS" in source
     assert "status_filter INVALID" in source
     assert "If it does not, do NOT call update_word_label" in source
     assert "already INVALID" in source
