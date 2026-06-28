@@ -425,7 +425,28 @@ def test_cached_token_render_normalizes_sprouts_feedback_amount_fixture():
     texts = _line_texts(receipt)
 
     assert "to WIN a $250 Sprouts gift card. Go to:" in texts
+    assert "Please keep your original receipt, the" in texts
     assert not any("$2b0" in text for text in texts)
+    assert "Please keep your original receipt, th" not in texts
+
+
+def test_cached_line_render_normalizes_sprouts_footer_word_splits_fixture():
+    module = _load_module()
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "screenshots"
+        / "synthetic_receipts"
+        / "sprouts_synthetic_address_hard_negative.json"
+    )
+
+    receipt = module._cached_receipt_dict(json.loads(fixture_path.read_text()))
+    texts = _line_texts(receipt)
+
+    assert "Save money, save paper" in texts
+    assert "Save money, save paper -" not in texts
+    assert "Please keep your original receipt, the" in texts
+    assert not any("recei pt" in text for text in texts)
+    assert "Please keep your original receipt, th" not in texts
 
 
 def test_cached_hybrid_renderer_stamps_barcode_band():

@@ -792,7 +792,26 @@ def _line_text_from_cached_words(line: list[dict]) -> str:
 
 
 def _normalize_cached_sprouts_line_text(text: str) -> str:
-    return re.sub(r"\$2[Bb]0\b", "$250", text)
+    normalized = re.sub(r"\$2[Bb]0\b", "$250", text)
+    normalized = re.sub(
+        r"\boriginal\s+recei\s+pt,\s*th\b",
+        "original receipt, the",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"\boriginal\s+receipt,\s*th\b",
+        "original receipt, the",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"^(Save\s+money,\s+save\s+paper)\s*[-—]\s*$",
+        r"\1",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    return normalized
 
 
 def _group_cached_words_by_line(words: list[dict]) -> list[list[dict]]:
