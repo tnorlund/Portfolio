@@ -86,8 +86,10 @@ _CACHED_QR_MAX_SIZE = 160.0
 _CACHED_QR_TOP_FACTOR = 0.70
 _CACHED_QR_FOOTER_TAIL_START_Y = 92.0
 _CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
-_CACHED_THERMAL_DARK_SPECKLE_RATE = 0.046
-_CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.062
+_CACHED_ARITHMETIC_OUTPUT_SIZE = (416, 1176)
+_CACHED_ADDRESS_OUTPUT_SIZE = (416, 1280)
+_CACHED_THERMAL_DARK_SPECKLE_RATE = 0.064
+_CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.066
 _CACHED_THERMAL_SCANLINE_MIN_GAP = 42
 _CACHED_THERMAL_SCANLINE_MAX_GAP = 74
 _CACHED_THERMAL_MOTTLE_COUNT_FACTOR = 90
@@ -1048,8 +1050,8 @@ def _cached_receipt_dict(example: dict) -> dict:
 def _cached_output_size(example: dict) -> tuple[int, int]:
     candidate_id = str(example.get("candidate_id") or "")
     if "address-line" in candidate_id or "hard_negative" in candidate_id:
-        return (560, 1280)
-    return (576, 1176)
+        return _CACHED_ADDRESS_OUTPUT_SIZE
+    return _CACHED_ARITHMETIC_OUTPUT_SIZE
 
 
 def _cached_should_draw_qr(example: dict) -> bool:

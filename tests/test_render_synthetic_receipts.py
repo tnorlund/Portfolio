@@ -367,6 +367,29 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
     assert winners_y - barcode_y > module._CACHED_MAX_LINE_SPACING
 
 
+def test_cached_output_size_uses_narrower_sprouts_public_canvas():
+    module = _load_module()
+
+    assert module._cached_output_size(
+        {"candidate_id": "sprouts-arithmetic-1-add-line-item-abc"}
+    ) == module._CACHED_ARITHMETIC_OUTPUT_SIZE
+    assert module._cached_output_size(
+        {"candidate_id": "sprouts-1-address-line-abc"}
+    ) == module._CACHED_ADDRESS_OUTPUT_SIZE
+    assert module._CACHED_ARITHMETIC_OUTPUT_SIZE[0] < 576
+    assert module._CACHED_ADDRESS_OUTPUT_SIZE[0] < 560
+    assert (
+        module._CACHED_ARITHMETIC_OUTPUT_SIZE[0]
+        / module._CACHED_ARITHMETIC_OUTPUT_SIZE[1]
+        < 0.36
+    )
+    assert (
+        module._CACHED_ADDRESS_OUTPUT_SIZE[0]
+        / module._CACHED_ADDRESS_OUTPUT_SIZE[1]
+        < 0.33
+    )
+
+
 def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
     module = _load_module()
     fixture_path = (
