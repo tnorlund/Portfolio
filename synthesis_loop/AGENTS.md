@@ -29,7 +29,7 @@ wrong labels must never reach training. Realism never overrides the gates.
 |---|---|---|
 | **Heartbeat / orchestrator** | `run_loop.sh` (plain bash in `screen` on the mini) | sequences rounds, does `git push`, sleeps. Holds no model. |
 | **Brain** | `codex exec` (you) | read Claude's last critique, change renderer params **and/or code** to address it, re-render, commit. |
-| **Eyes** | headless `claude -p` (the judge, via `judge_round.sh`) | **full tools** (Read/Glob/Bash) + receipt-tools MCP. Reads the `*.real_vs_synthetic.png` composites to actually SEE them, reads the structured candidate to check arithmetic/labels, scores two axes, writes verdicts to Dynamo. Runs `sonnet` (vision). |
+| **Eyes** | headless `claude -p` (the judge, via `judge_round.sh`) | **full tools** (Read/Glob/Bash) + receipt-tools MCP. Reads the `*.real_vs_synthetic.png` composites to actually SEE them, reads the structured candidate to check arithmetic/labels, scores two axes, writes verdicts to Dynamo. Runs `opus` (all review steps use opus). |
 
 **Critical sandbox rule:** Codex must **never spawn `claude` itself.** On macOS, a `claude` process spawned
 inside Codex's seatbelt sandbox inherits `CODEX_SANDBOX_NETWORK_DISABLED=1` and its API call **hangs forever**.

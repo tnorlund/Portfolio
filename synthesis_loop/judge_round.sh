@@ -13,8 +13,8 @@ set -euo pipefail
 
 ROUND="${ROUND:?}"; RENDER_DIR="${RENDER_DIR:?}"; OUT_JSON="${OUT_JSON:?}"
 DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-ReceiptsTable-dc5be22}"
-CLAUDE_MODEL="${CLAUDE_MODEL:-sonnet}"       # vision judge: sonnet discriminates thermal-paper subtleties; haiku too weak
-CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"     # some reasoning helps the two-axis judgment
+CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"         # review steps use opus (best visual + structural discrimination)
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"       # opus + high effort for the two-axis realism/structure judgment
 MCP_TIMEOUT_MS="${MCP_TIMEOUT_MS:-180000}"
 PYTHON_BIN="${PYTHON_BIN:-$HOME/.coreml-venv/bin/python}"
 PROJECT_DIR="${PROJECT_DIR:-$PWD}"
