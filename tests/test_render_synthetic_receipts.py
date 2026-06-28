@@ -393,12 +393,18 @@ def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
     assert "ORG WHOLE MILK 10.99" in texts
     assert "PLAIN WHL GRK YOGURT 5.99" in texts
     assert "ORGANIC GREEN ONIONS 1.67" not in texts
+    assert "1 @ 3 FOR 5.00" not in texts
+    assert not any("*" in text and not any(ch.isalnum() for ch in text) for text in texts)
     assert "1.67" not in texts
     assert "Voided Item" not in texts
     assert "-3.00" not in texts
+    assert "SUBTOTAL 27.41" in texts
+    assert "TAX 0.00" in texts
+    assert "NO. OF ITEMS SOLD 5" in texts
     assert "Total: USD$ 27.41" in texts
     assert "BALANCE DUE 27.41" in texts
     assert "DEBIT $27.41" in texts
+    assert texts.index("NO. OF ITEMS SOLD 5") < texts.index("Total: USD$ 27.41")
     assert "DUE 27.41" not in texts
     assert "BALANCE" not in texts
     assert "CARD #: XXXXXXXXXXXX1454" in texts
@@ -418,7 +424,7 @@ def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
 
     logo_word = _line_for_text(receipt, "SPROUTS")["words"][0]
     assert logo_word["bbox"][2] - logo_word["bbox"][0] == module._CACHED_LOGO_WIDTH
-    assert min(_line_center_y(line) for line in receipt["lines"]) < 130.0
+    assert min(_line_center_y(line) for line in receipt["lines"]) < 145.0
 
     barcode_y = _line_center_y(_line_for_text(receipt, "09022003450923401235"))
     winners_y = _line_center_y(_line_for_text(receipt, "*5 Winners Monthly*"))
@@ -437,6 +443,16 @@ def test_cached_token_render_normalizes_sprouts_feedback_amount_fixture():
     receipt = module._cached_receipt_dict(json.loads(fixture_path.read_text()))
     texts = _line_texts(receipt)
 
+    assert "Saturday, December 6, 2025 12:35 PM" in texts
+    assert "12/06/2025 12:36:35" not in texts
+    assert "2/06/2025 12:36:35" not in texts
+    assert "LIMES 1.50" in texts
+    assert "1 @ 3 FOR 5.00" not in texts
+    assert not any("*" in text and not any(ch.isalnum() for ch in text) for text in texts)
+    assert "SUBTOTAL 30.58" in texts
+    assert "TAX 0.00" in texts
+    assert "NO. OF ITEMS SOLD 7" in texts
+    assert texts.index("NO. OF ITEMS SOLD 7") < texts.index("Total: USD$ 30.58")
     assert "to WIN a $250 Sprouts gift card. Go to:" in texts
     assert "Please keep your original receipt, the" in texts
     assert not any("$2b0" in text for text in texts)

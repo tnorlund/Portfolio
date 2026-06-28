@@ -91,6 +91,9 @@ _CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.055
 _CACHED_THERMAL_SCANLINE_MIN_GAP = 42
 _CACHED_THERMAL_SCANLINE_MAX_GAP = 74
 _CACHED_THERMAL_MOTTLE_COUNT_FACTOR = 90
+_CACHED_THERMAL_WARMTH_R = 2
+_CACHED_THERMAL_WARMTH_G = 1
+_CACHED_THERMAL_WARMTH_B = -3
 _CACHED_SPROUTS_FRAGMENT_TEXTS = {
     "TO",
     "TH",
@@ -193,6 +196,7 @@ def _cached_token_receipt_dict(example: dict) -> dict:
         return _line_receipt_from_cached_token_words(
             words,
             candidate_id=str(example.get("candidate_id") or ""),
+            example=example,
         )
     return {"words": words}
 
@@ -466,6 +470,8 @@ def _drop_cached_sprouts_fragment_line(
     """Drop OCR leftovers that should be part of larger Sprouts footer lines."""
     raw_text = str(line.get("text") or "").strip()
     compact = _compact_text(raw_text)
+    if not compact and "*" in raw_text:
+        return True
     if not compact:
         return False
     if has_feedback_url and compact == "FEEDBACK":
@@ -553,6 +559,7 @@ def _line_receipt_from_cached_token_words(
     words: list[dict],
     *,
     candidate_id: str = "",
+    example: dict | None = None,
 ) -> dict:
     """Convert cached token boxes into a legible public line-render receipt."""
     ordered = _ordered_sprouts_token_lines(words)
@@ -583,11 +590,104 @@ def _line_receipt_from_cached_token_words(
         if text:
             lines.append({"y": y, "text": text, "labels": labels})
             y -= spacing
+    lines = _normalize_cached_arithmetic_sprouts_lines(
+        lines,
+        candidate_id=candidate_id,
+        example=example or {},
+    )
     lines = _reconstruct_sparse_sprouts_remove_item_lines(
         lines,
         candidate_id=candidate_id,
     )
     return _cached_line_receipt_dict({"lines": lines})
+
+
+def _normalize_cached_arithmetic_sprouts_lines(
+    lines: list[dict],
+    *,
+    candidate_id: str,
+    example: dict,
+) -> list[dict]:
+    if "sprouts-arithmetic" not in candidate_id:
+        return lines
+
+    normalized = [
+        line
+        for line in lines
+        if not _drop_cached_arithmetic_sprouts_line(line)
+    ]
+    if not _should_insert_cached_sprouts_summary(normalized):
+        return normalized
+
+    metadata = example.get("metadata") or {}
+    arithmetic = metadata.get("arithmetic_reconciliation") or {}
+    total = (
+        arithmetic.get("new_grand_total")
+        or metadata.get("new_grand_total")
+        or example.get("new_grand_total")
+    )
+    if not total:
+        return normalized
+    subtotal = (
+        arithmetic.get("new_subtotal")
+        or metadata.get("new_subtotal")
+        or total
+    )
+    tax = (
+        arithmetic.get("new_tax")
+        or metadata.get("new_tax")
+        or arithmetic.get("tax_delta")
+        or metadata.get("tax_delta")
+        or "0.00"
+    )
+    item_count = _cached_sprouts_item_count(metadata)
+    summary_lines = [
+        {"text": f"SUBTOTAL {subtotal}", "y": None, "labels": ["SUBTOTAL"]},
+        {"text": f"TAX {tax}", "y": None, "labels": ["TAX"]},
+    ]
+    if item_count is not None:
+        summary_lines.append(
+            {
+                "text": f"NO. OF ITEMS SOLD {item_count}",
+                "y": None,
+                "labels": [],
+            }
+        )
+
+    insert_at = _cached_sprouts_summary_insert_index(normalized)
+    return [*normalized[:insert_at], *summary_lines, *normalized[insert_at:]]
+
+
+def _drop_cached_arithmetic_sprouts_line(line: dict) -> bool:
+    compact = _compact_text(line.get("text") or "")
+    return compact == "13FOR500"
+
+
+def _should_insert_cached_sprouts_summary(lines: list[dict]) -> bool:
+    texts = {_compact_text(line.get("text") or "") for line in lines}
+    return not any(text.startswith("SUBTOTAL") for text in texts)
+
+
+def _cached_sprouts_item_count(metadata: dict) -> int | None:
+    retained_count = metadata.get("retained_line_item_count")
+    if isinstance(retained_count, int) and retained_count > 0:
+        return retained_count
+    signature = (
+        (metadata.get("structure_similarity") or {})
+        .get("candidate_signature")
+        or {}
+    )
+    signature_count = signature.get("line_item_count")
+    if isinstance(signature_count, int) and signature_count > 0:
+        return signature_count
+    return None
+
+
+def _cached_sprouts_summary_insert_index(lines: list[dict]) -> int:
+    for index, line in enumerate(lines):
+        if _sprouts_text_section(_compact_text(line.get("text") or "")) == "payment":
+            return index
+    return len(lines)
 
 
 def _reconstruct_sparse_sprouts_remove_item_lines(
@@ -796,6 +896,7 @@ def _line_text_from_cached_words(line: list[dict]) -> str:
 
 def _normalize_cached_sprouts_line_text(text: str) -> str:
     normalized = re.sub(r"\$2[Bb]0\b", "$250", text)
+    normalized = re.sub(r"\b2/06/2025\b", "12/06/2025", normalized)
     normalized = re.sub(
         r"\boriginal\s+recei\s+pt,\s*th\b",
         "original receipt, the",
@@ -845,11 +946,11 @@ def _sprouts_text_section(text: str) -> str:
         return "header"
     if _CACHED_BARCODE_RE.match(text):
         return "footer"
-    if text.startswith(("CHANGE", "XXXXXXXXXXXX")):
+    if text.startswith(("CHANGE", "XXXXXXXXXXXX", "1XXXXXXXXXXXX")):
         return "payment"
     if text in {"00OFF"}:
         return "payment"
-    if text.startswith("TUESDAY") or re.fullmatch(r"\d{8}\d{6}", text):
+    if text.startswith(("TUESDAY", "SATURDAY")) or re.fullmatch(r"\d{8}\d{6}", text):
         return "footer"
     if any(token in text for token in (
         "FEEDBACK",
@@ -896,6 +997,9 @@ def _sprouts_text_section(text: str) -> str:
         "CARD",
         "TOTALUSD",
         "TOTAL",
+        "SUBTOTAL",
+        "TAX",
+        "NOOFITEMSSOLD",
         "USD",
         "BALANCEDUE",
         "BALANCE",
@@ -1070,10 +1174,11 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
             roll = rng.random()
             if roll < _CACHED_THERMAL_DARK_SPECKLE_RATE:
                 gray = rng.randint(138, 166)
+                r1, g1, b1 = _cached_thermal_warm_rgb(gray)
                 pixels[x, y] = (
-                    gray + rng.randint(-2, 2),
-                    gray + rng.randint(-2, 2),
-                    gray + rng.randint(-1, 3),
+                    _clamp_cached_channel(r1 + rng.randint(-2, 2)),
+                    _clamp_cached_channel(g1 + rng.randint(-2, 2)),
+                    _clamp_cached_channel(b1 + rng.randint(-1, 3)),
                     a,
                 )
             elif roll < (
@@ -1081,10 +1186,10 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
                 + _CACHED_THERMAL_LIGHT_SPECKLE_RATE
             ):
                 gray = min(245, max(184, ((r + g + b) // 3) + bias + rng.randint(-14, 2)))
-                pixels[x, y] = (gray, gray, min(250, gray + 2), a)
+                pixels[x, y] = (*_cached_thermal_warm_rgb(gray), a)
             elif bias:
                 gray = min(252, max(220, ((r + g + b) // 3) + bias))
-                pixels[x, y] = (gray, gray, min(253, gray + 2), a)
+                pixels[x, y] = (*_cached_thermal_warm_rgb(gray), a)
     _apply_cached_thermal_mottle(
         image,
         random.Random(seed ^ 0x7B21_53D9),
@@ -1142,8 +1247,8 @@ def _apply_cached_thermal_mottle(image, rng: random.Random) -> None:
                 delta = int(round(bias * falloff))
                 if not delta:
                     continue
-                gray = min(252, max(218, ((r + g + b) // 3) + delta))
-                pixels[x, y] = (gray, gray, min(253, gray + 2), a)
+                gray = min(250, max(210, ((r + g + b) // 3) + delta))
+                pixels[x, y] = (*_cached_thermal_warm_rgb(gray), a)
 
 
 def _apply_cached_thermal_scanline_banding(image, rng: random.Random) -> None:
@@ -1168,8 +1273,7 @@ def _apply_cached_thermal_scanline_banding(image, rng: random.Random) -> None:
                         value = rng.randint(160, 168)
                     else:
                         value = rng.randint(196, 226)
-                    blue = min(173, value + 2) if value < 170 else min(220, value + 2)
-                    pixels[x, yy] = (value, value, blue, a)
+                    pixels[x, yy] = (*_cached_thermal_warm_rgb(value), a)
         y += rng.randint(
             _CACHED_THERMAL_SCANLINE_MIN_GAP,
             _CACHED_THERMAL_SCANLINE_MAX_GAP,
@@ -1178,6 +1282,18 @@ def _apply_cached_thermal_scanline_banding(image, rng: random.Random) -> None:
 
 def _is_cached_paper_pixel(r: int, g: int, b: int) -> bool:
     return r >= 224 and g >= 224 and b >= 218
+
+
+def _cached_thermal_warm_rgb(gray: int) -> tuple[int, int, int]:
+    return (
+        _clamp_cached_channel(gray + _CACHED_THERMAL_WARMTH_R),
+        _clamp_cached_channel(gray + _CACHED_THERMAL_WARMTH_G),
+        _clamp_cached_channel(gray + _CACHED_THERMAL_WARMTH_B),
+    )
+
+
+def _clamp_cached_channel(value: int) -> int:
+    return max(0, min(255, int(value)))
 
 
 def _overlay_cached_logo(
