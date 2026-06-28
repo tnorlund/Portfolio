@@ -84,6 +84,7 @@ _CACHED_QR_MAX_SIZE = 160.0
 _CACHED_QR_TOP_FACTOR = 0.70
 _CACHED_QR_FOOTER_TAIL_START_Y = 92.0
 _CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
+_CACHED_SPROUTS_FRAGMENT_TEXTS = {"TO", "TH", "USED", "PM", "CARD"}
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -372,6 +373,10 @@ def _drop_duplicate_sprouts_header_lines(example: dict) -> list[dict]:
 def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     if not any("SPROUTS" in _compact_text(line.get("text") or "") for line in lines):
         return lines
+    lines = [
+        line for line in lines
+        if not _drop_cached_sprouts_fragment_line(line)
+    ]
 
     sections: dict[str, list[dict]] = {
         "header": [],
@@ -411,6 +416,21 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
         )
         y -= line_gap
     return positioned
+
+
+def _drop_cached_sprouts_fragment_line(line: dict) -> bool:
+    """Drop OCR leftovers that should be part of larger Sprouts footer lines."""
+    raw_text = str(line.get("text") or "").strip()
+    compact = _compact_text(raw_text)
+    if not compact:
+        return False
+    if compact in _CACHED_SPROUTS_FRAGMENT_TEXTS:
+        return True
+    if re.fullmatch(r"\d{1,3}\s+\d{3}", raw_text):
+        return True
+    if re.fullmatch(r"\d{5,6}[A-Z]?", compact) and raw_text.rstrip().endswith(("-", "—")):
+        return True
+    return False
 
 
 def _drop_duplicate_sprouts_header_words(words: list[dict]) -> list[dict]:

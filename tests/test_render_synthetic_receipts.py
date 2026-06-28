@@ -276,6 +276,43 @@ def test_cached_line_render_centers_long_barcode_numbers():
     assert barcode_word["bbox"][2] == 780.0
 
 
+def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
+    module = _load_module()
+
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 940.0, "text": "PRODUCE", "labels": []},
+                {"y": 920.0, "text": "GREEN BEANS 3.49", "labels": []},
+                {"y": 890.0, "text": "19022003126062", "labels": []},
+                {"y": 880.0, "text": "to:", "labels": []},
+                {"y": 870.0, "text": "31 220", "labels": []},
+                {"y": 860.0, "text": "PM", "labels": []},
+                {"y": 850.0, "text": "th", "labels": []},
+                {"y": 840.0, "text": "used.", "labels": []},
+                {"y": 830.0, "text": "62566Z —", "labels": []},
+                {"y": 820.0, "text": "Cashier:SSCO 31 Store: 220", "labels": []},
+                {"y": 810.0, "text": "POS:031 Transaction:2806", "labels": []},
+                {"y": 800.0, "text": "Tuesday, July 30, 2024 07:35 PM", "labels": []},
+            ]
+        }
+    )
+
+    texts = _line_texts(receipt)
+
+    assert "19022003126062" in texts
+    assert "Cashier:SSCO 31 Store: 220" in texts
+    assert "POS:031 Transaction:2806" in texts
+    assert "Tuesday, July 30, 2024 07:35 PM" in texts
+    assert "to:" not in texts
+    assert "31 220" not in texts
+    assert "PM" not in texts
+    assert "th" not in texts
+    assert "used." not in texts
+    assert "62566Z —" not in texts
+
+
 def test_cached_hybrid_renderer_stamps_barcode_band():
     from PIL import Image
 
