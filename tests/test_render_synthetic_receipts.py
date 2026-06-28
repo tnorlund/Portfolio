@@ -436,6 +436,39 @@ def test_cached_hybrid_renderer_stamps_barcode_band():
     assert dark_pixels > 100
 
 
+def test_cached_thermal_texture_is_deterministic_and_preserves_ink():
+    from PIL import Image, ImageDraw
+
+    module = _load_module()
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 900.0, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 500.0, "text": "SproutsFeedback.com", "labels": ["WEBSITE"]},
+            ]
+        }
+    )
+
+    images = []
+    for _ in range(2):
+        image = Image.new("RGBA", (96, 96), (250, 249, 245, 255))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle([16, 16, 32, 32], fill=(20, 20, 20, 255))
+        module._apply_cached_thermal_texture(image, receipt)
+        images.append(image)
+
+    assert list(images[0].getdata()) == list(images[1].getdata())
+    assert images[0].getpixel((20, 20)) == (20, 20, 20, 255)
+    textured_dark = sum(
+        1
+        for x in range(96)
+        for y in range(96)
+        if not (16 <= x <= 32 and 16 <= y <= 32)
+        and images[0].getpixel((x, y))[0] < 170
+    )
+    assert textured_dark > 150
+
+
 def test_cached_should_draw_qr_only_for_add_item_feedback_receipts():
     module = _load_module()
 

@@ -86,6 +86,8 @@ _CACHED_QR_MAX_SIZE = 160.0
 _CACHED_QR_TOP_FACTOR = 0.70
 _CACHED_QR_FOOTER_TAIL_START_Y = 92.0
 _CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
+_CACHED_THERMAL_DARK_SPECKLE_RATE = 0.025
+_CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.055
 _CACHED_SPROUTS_FRAGMENT_TEXTS = {
     "TO",
     "TH",
@@ -1012,9 +1014,65 @@ def _render_cached_hybrid(
     _overlay_cached_barcodes(image, receipt, config=config, coord_max=1000.0)
     if draw_qr_code:
         _overlay_cached_qr_code(image, receipt, config=config, coord_max=1000.0)
+    _apply_cached_thermal_texture(image, receipt)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.convert("RGB").save(path, format="PNG")
     return path
+
+
+def _apply_cached_thermal_texture(image, receipt: dict) -> None:
+    """Add deterministic scanner grain to paper pixels only."""
+    seed = (
+        _cached_qr_seed(receipt)
+        ^ ((int(image.width) & 0xFFFF) << 16)
+        ^ (int(image.height) & 0xFFFF)
+    )
+    rng = random.Random(seed)
+    pixels = image.load()
+    row_bias = _cached_thermal_row_biases(image.height, rng)
+    for y in range(image.height):
+        bias = row_bias[y]
+        for x in range(image.width):
+            r, g, b, a = pixels[x, y]
+            if a < 255 or not _is_cached_paper_pixel(r, g, b):
+                continue
+            roll = rng.random()
+            if roll < _CACHED_THERMAL_DARK_SPECKLE_RATE:
+                gray = rng.randint(138, 166)
+                pixels[x, y] = (
+                    gray + rng.randint(-2, 2),
+                    gray + rng.randint(-2, 2),
+                    gray + rng.randint(-1, 3),
+                    a,
+                )
+            elif roll < (
+                _CACHED_THERMAL_DARK_SPECKLE_RATE
+                + _CACHED_THERMAL_LIGHT_SPECKLE_RATE
+            ):
+                gray = min(245, max(184, ((r + g + b) // 3) + bias + rng.randint(-14, 2)))
+                pixels[x, y] = (gray, gray, min(250, gray + 2), a)
+            elif bias:
+                gray = min(252, max(220, ((r + g + b) // 3) + bias))
+                pixels[x, y] = (gray, gray, min(253, gray + 2), a)
+
+
+def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:
+    biases = [0] * max(0, height)
+    for start in range(0, height, 18):
+        bias = rng.randint(-3, 2)
+        for y in range(start, min(height, start + 18)):
+            biases[y] = bias
+    for _ in range(max(4, height // 140)):
+        start = rng.randrange(max(1, height))
+        band_height = rng.randint(1, 4)
+        bias = -rng.randint(7, 18)
+        for y in range(start, min(height, start + band_height)):
+            biases[y] += bias
+    return biases
+
+
+def _is_cached_paper_pixel(r: int, g: int, b: int) -> bool:
+    return r >= 224 and g >= 224 and b >= 218
 
 
 def _overlay_cached_logo(
