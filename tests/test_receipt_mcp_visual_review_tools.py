@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import sys
@@ -63,6 +64,97 @@ def test_visual_review_target_listing_loads_dynamo_state():
     assert "list_synthetic_receipt_visual_review_targets_impl(\n" in list_branch
     assert "dynamo_client,\n" in list_branch
     assert "review_state_error" in list_branch
+
+
+def test_dynamo_only_smoke_tools_do_not_initialize_chroma(monkeypatch):
+    module = _load_mcp_server_module(monkeypatch)
+
+    class FakeDynamoClient:
+        def __init__(self):
+            self.updated_label = None
+
+        def get_receipt_places_by_merchant(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    image_id="ed28a4ce-2258-4745-87ba-2fc662c94abf",
+                    receipt_id=2,
+                )
+            ], None
+
+        def get_receipt_word_labels_by_label(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    text="www.costco.com",
+                    validation_status="INVALID",
+                    image_id="ed28a4ce-2258-4745-87ba-2fc662c94abf",
+                    receipt_id=2,
+                    line_id=32,
+                    word_id=3,
+                    label_proposed_by="test",
+                )
+            ], None
+
+        def get_receipt_word_label(self, **_kwargs):
+            return SimpleNamespace(
+                image_id="ed28a4ce-2258-4745-87ba-2fc662c94abf",
+                receipt_id=2,
+                line_id=32,
+                word_id=3,
+                label="WEBSITE",
+                reasoning="already invalid",
+                timestamp_added="2026-06-28T00:00:00+00:00",
+                validation_status="INVALID",
+                label_consolidated_from=None,
+            )
+
+        def update_receipt_word_label(self, label):
+            self.updated_label = label
+
+    fake_dynamo = FakeDynamoClient()
+
+    def fail_get_clients():
+        raise AssertionError("Dynamo-only smoke tools must not initialize Chroma")
+
+    monkeypatch.setattr(module, "get_clients", fail_get_clients)
+    monkeypatch.setattr(module, "get_dynamo_client", lambda: fake_dynamo)
+
+    merchant_response = asyncio.run(
+        module.call_tool(
+            "get_receipts_by_merchant",
+            {"merchant_name": "Costco Wholesale"},
+        )
+    )
+    merchant_payload = json.loads(merchant_response[0].text)
+    assert merchant_payload["count"] == 1
+
+    words_response = asyncio.run(
+        module.call_tool(
+            "list_words_by_label",
+            {"label": "WEBSITE", "status_filter": "INVALID", "sample_size": 1000},
+        )
+    )
+    words_payload = json.loads(words_response[0].text)
+    assert words_payload["total"] == 1
+    assert words_payload["words"][0]["line_id"] == 32
+
+    update_response = asyncio.run(
+        module.call_tool(
+            "update_word_label",
+            {
+                "image_id": "ed28a4ce-2258-4745-87ba-2fc662c94abf",
+                "receipt_id": 2,
+                "line_id": 32,
+                "word_id": 3,
+                "label": "WEBSITE",
+                "new_status": "INVALID",
+                "reasoning": "headless MCP smoke test guarded no-op",
+            },
+        )
+    )
+    update_payload = json.loads(update_response[0].text)
+    assert update_payload["success"] is True
+    assert fake_dynamo.updated_label is not None
+    assert fake_dynamo.updated_label.validation_status == "INVALID"
 
 
 def test_visual_review_target_listing_includes_base_receipt_image(monkeypatch):

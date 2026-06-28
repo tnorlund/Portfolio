@@ -1172,9 +1172,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-        dynamo_client, chroma_client, embed_fn = get_clients()
+        dynamo_client = None
+        chroma_client = None
+        embed_fn = None
+
+        def dynamo():
+            nonlocal dynamo_client
+            if dynamo_client is None:
+                dynamo_client = get_dynamo_client()
+            return dynamo_client
+
+        def clients():
+            nonlocal dynamo_client, chroma_client, embed_fn
+            if dynamo_client is None or chroma_client is None or embed_fn is None:
+                dynamo_client, chroma_client, embed_fn = get_clients()
+            return dynamo_client, chroma_client, embed_fn
 
         if name == "search_receipts":
+            _, chroma_client, embed_fn = clients()
             result = await search_receipts_impl(
                 chroma_client,
                 embed_fn,
@@ -1184,23 +1199,25 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_receipt":
             result = await get_receipt_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
             )
         elif name == "list_all_receipts":
+            _, chroma_client, _ = clients()
             result = await list_all_receipts_impl(
                 chroma_client,
                 limit=arguments.get("limit", 50),
             )
         elif name == "list_merchants":
-            result = await list_merchants_impl(dynamo_client)
+            result = await list_merchants_impl(dynamo())
         elif name == "get_receipts_by_merchant":
             result = await get_receipts_by_merchant_impl(
-                dynamo_client,
+                dynamo(),
                 merchant_name=arguments["merchant_name"],
             )
         elif name == "search_product_lines":
+            _, chroma_client, embed_fn = clients()
             result = await search_product_lines_impl(
                 chroma_client,
                 embed_fn,
@@ -1210,7 +1227,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_receipt_summaries":
             result = await get_receipt_summaries_impl(
-                dynamo_client,
+                dynamo(),
                 merchant_filter=arguments.get("merchant_filter"),
                 category_filter=arguments.get("category_filter"),
                 start_date=arguments.get("start_date"),
@@ -1218,17 +1235,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 limit=arguments.get("limit", 1000),
             )
         elif name == "list_categories":
-            result = await list_categories_impl(dynamo_client)
+            result = await list_categories_impl(dynamo())
         elif name == "label_validation_summary":
-            result = await label_validation_summary_impl(dynamo_client)
+            result = await label_validation_summary_impl(dynamo())
         elif name == "list_words_by_label":
             result = await list_words_by_label_impl(
-                dynamo_client,
+                dynamo(),
                 label=arguments["label"],
                 status_filter=arguments.get("status_filter"),
                 sample_size=arguments.get("sample_size", 50),
             )
         elif name == "validate_word_similarity":
+            _, chroma_client, _ = clients()
             result = await validate_word_similarity_impl(
                 chroma_client,
                 image_id=arguments["image_id"],
@@ -1239,7 +1257,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "update_word_label":
             result = await update_word_label_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -1256,7 +1274,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_receipt_words":
             result = await get_receipt_words_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments.get("line_id"),
@@ -1269,7 +1287,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "create_word_label":
             result = await create_word_label_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -1280,7 +1298,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "compute_reocr_region":
             result = await compute_reocr_region_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_ids=arguments["line_ids"],
@@ -1295,41 +1313,41 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "list_recent_uploads":
             result = await list_recent_uploads_impl(
-                dynamo_client,
+                dynamo(),
                 limit=arguments.get("limit", 10),
             )
         elif name == "get_receipt_image_url":
             result = await get_receipt_image_url_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
             )
         elif name == "delete_image":
             result = await delete_image_impl(
-                dynamo_client,
+                dynamo(),
                 image_id=arguments["image_id"],
                 dry_run=arguments.get("dry_run", True),
             )
         elif name == "list_training_jobs":
             result = await list_training_jobs_impl(
-                dynamo_client,
+                dynamo(),
                 limit=arguments.get("limit", 20),
                 status_filter=arguments.get("status_filter"),
             )
         elif name == "get_training_metrics":
             result = await get_training_metrics_impl(
-                dynamo_client,
+                dynamo(),
                 job_name=arguments["job_name"],
             )
         elif name == "get_active_model":
-            result = await get_active_model_impl(dynamo_client)
+            result = await get_active_model_impl(dynamo())
         elif name == "set_active_model":
             result = await set_active_model_impl(
-                dynamo_client,
+                dynamo(),
                 job_name=arguments["job_name"],
             )
         elif name == "get_label_distribution":
-            result = await get_label_distribution_impl(dynamo_client)
+            result = await get_label_distribution_impl(dynamo())
         else:
             result = {"error": f"Unknown tool: {name}"}
 
