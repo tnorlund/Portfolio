@@ -13,7 +13,8 @@ set -euo pipefail
 
 ROUND="${ROUND:?}"; RENDER_DIR="${RENDER_DIR:?}"; OUT_JSON="${OUT_JSON:?}"
 DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-ReceiptsTable-dc5be22}"
-CLAUDE_MODEL="${CLAUDE_MODEL:-haiku}"        # cheap judge; bump to sonnet for harder calls
+CLAUDE_MODEL="${CLAUDE_MODEL:-sonnet}"       # vision judge: sonnet discriminates thermal-paper subtleties; haiku too weak
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"     # some reasoning helps the two-axis judgment
 MCP_TIMEOUT_MS="${MCP_TIMEOUT_MS:-180000}"
 PYTHON_BIN="${PYTHON_BIN:-$HOME/.coreml-venv/bin/python}"
 PROJECT_DIR="${PROJECT_DIR:-$PWD}"
@@ -48,20 +49,29 @@ EOF
 
 PROMPT_FILE="$(mktemp)"
 cat > "$PROMPT_FILE" <<EOF
-You are the visual-realism JUDGE for synthetic receipts. You have the receipt-tools MCP.
-Round under review: $ROUND. Newly rendered candidates are in: $RENDER_DIR
-(each synthetic render sits beside the REAL receipt it was derived from).
+You are the JUDGE for synthetic receipts. You have full tools (Read, Glob, Grep, Bash) AND the
+receipt-tools MCP. Round under review: $ROUND. Newly rendered candidates are in: $RENDER_DIR
+
+Each candidate has a side-by-side composite "<id>.real_vs_synthetic.png" (REAL on one side, SYNTHETIC
+on the other, labeled) plus "<id>.synthetic.png". You MUST actually look at the pixels.
 
 For each candidate:
-1. Call list_synthetic_receipt_visual_review_targets to get the targets for this round.
-2. Look at the synthetic render next to its real base. Judge how hard it is to tell apart.
-3. Call record_synthetic_receipt_visual_review with: a realism score in [0,1], a status
-   (accepted / needs_work / rejected), and SPECIFIC critiques that name the defect and the
-   renderer knob or code it points to (e.g. "body glyph weight too heavy", "paper noise too
-   uniform -> raise --noise variance", "row pitch 2px too tight"). Concrete, actionable notes —
-   the next Codex round acts on exactly these.
+1. Glob "$RENDER_DIR" for *.real_vs_synthetic.png and Read each one so you can SEE it.
+2. Call list_synthetic_receipt_visual_review_targets to map renders to review targets. If a structured
+   bundle / candidate JSON path is given, Read it so you can check the STRUCTURE (item lines, that
+   subtotal + tax = total, label sanity), not just the look.
+3. Score TWO axes in [0,1] and explain each:
+   - texture_realism: paper noise, blur, thermal look, glyph weight — would this pass as a photo of a
+     real receipt? (gates the gallery)
+   - structural_plausibility: row pitch, box/line geometry, plausible items for this merchant, arithmetic
+     that adds up — is the underlying receipt structure believable? (this is what flows into training)
+4. Call record_synthetic_receipt_visual_review with both scores, an overall status
+   (accepted / needs_work / rejected), and SPECIFIC, actionable critiques that name the defect AND the
+   knob or code it points to — e.g. "paper noise too uniform -> raise --noise variance", "body glyph
+   weight too heavy -> rendering/glyph_renderer.py stroke", "row pitch 2px too tight", "tax 0.0 but items
+   taxable". The next Codex round acts on exactly these words, so be precise.
 Finally call summarize_synthetic_receipt_visual_reviews and output its JSON as the LAST line.
-Do not run shell commands. Do not browse. Subscription auth only.
+You may read files and inspect freely. Do NOT modify code, commit, push, or deploy. Subscription auth only.
 EOF
 
 env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
@@ -70,10 +80,11 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
   MCP_CONNECT_TIMEOUT_MS="$MCP_TIMEOUT_MS" MCP_TIMEOUT="$MCP_TIMEOUT_MS" MCP_TOOL_TIMEOUT="$MCP_TIMEOUT_MS" \
   RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1 \
   claude -p "$(cat "$PROMPT_FILE")" \
-    --system-prompt "You are a noninteractive synthetic-receipt visual-realism judge. Use MCP tools. Return only the requested JSON on the final line." \
-    --model "$CLAUDE_MODEL" --effort low \
+    --system-prompt "You are a noninteractive synthetic-receipt judge. Look at the render PNGs with Read, use MCP tools to record verdicts. Return only the requested JSON on the final line." \
+    --model "$CLAUDE_MODEL" --effort "$CLAUDE_EFFORT" \
     --mcp-config "$MCP_CONFIG_FILE" --strict-mcp-config \
-    --permission-mode bypassPermissions --tools "" --max-turns 24 \
+    --add-dir "$RENDER_DIR" \
+    --permission-mode bypassPermissions --max-turns 40 \
     --disable-slash-commands --output-format text --no-session-persistence < /dev/null \
   | tee "$OUT_JSON.raw"
 

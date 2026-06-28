@@ -1,6 +1,7 @@
 {
-  "_comment": "Current renderer knobs the hill-climb tunes. Defaults mirror scripts/render_synthetic_receipts.py. The brain (codex) edits these each round to address Claude's top critique.",
-  "merchant": "Vons",
+  "_comment": "Current renderer knobs the hill-climb tunes. Defaults mirror scripts/render_synthetic_receipts.py. The brain (codex) edits these each round to address Claude's top critique. 'merchants' is the rotation; run_loop.sh sets the active 'merchant' = merchants[round % len] each round.",
+  "merchants": ["Sprouts", "Vons"],
+  "merchant": "Sprouts",
   "limit": 4,
   "seed": 37,
   "noise": 0.42,

@@ -21,6 +21,8 @@ BRANCH="${BRANCH:-feat/synthesis-hill-climb}"
 MAX_ROUNDS="${MAX_ROUNDS:-50}"
 SLEEP_SECS="${SLEEP_SECS:-90}"
 NO_IMPROVE_STOP="${NO_IMPROVE_STOP:-3}"
+REVIEW_EVERY="${REVIEW_EVERY:-5}"                  # post @codex review on the PR every N rounds
+PR_NUMBER="${PR_NUMBER:-1022}"
 PYTHON_BIN="${PYTHON_BIN:-$HOME/.coreml-venv/bin/python}"
 CODEX_PROFILE="${CODEX_PROFILE:-synthesis-loop}"   # defined in ~/.codex/config.toml (see codex-profile.toml)
 STATE="$REPO/synthesis_loop/state"
@@ -39,6 +41,16 @@ for ((round=1; round<=MAX_ROUNDS; round++)); do
   echo "================ ROUND $round ================"
   prev_review="$(ls -t "$STATE/reviews"/round-*.json 2>/dev/null | head -1 || true)"
 
+  # --- merchant rotation: active merchant = merchants[round % len] ---
+  MERCHANT="$("$PYTHON_BIN" - "$STATE/params.json" "$round" <<'PY'
+import json,sys
+p=json.load(open(sys.argv[1])); rnd=int(sys.argv[2])
+ms=p.get("merchants") or [p.get("merchant","Sprouts")]
+print(ms[(rnd-1)%len(ms)])
+PY
+)"
+  echo "merchant this round: $MERCHANT"
+
   # --- 1. BRAIN: codex reads the last critique, edits params/code, re-renders, commits ---
   #   --ask-for-approval never  : autonomous, no prompts
   #   --sandbox workspace-write : can edit files + run render scripts; no network needed
@@ -46,12 +58,14 @@ for ((round=1; round<=MAX_ROUNDS; round++)); do
   codex exec \
     --profile "$CODEX_PROFILE" \
     --cd "$REPO" \
-    "Round $round of the synthesis hill-climb. Read synthesis_loop/AGENTS.md for the contract. \
-Read the latest Claude review at ${prev_review:-'(none yet — this is the first round; just render a baseline)'}. \
-Address the single highest-impact realism critique by editing synthesis_loop/state/params.json and/or the \
-renderer code, then re-render candidates into synthesis_loop/state/renders/round-$round/ using \
-scripts/render_synthetic_receipts.py with the params in params.json. Commit with a message naming the critique \
-you targeted. Do NOT push, do NOT spawn claude, do NOT merge or deploy." \
+    "Round $round of the synthesis hill-climb, merchant=$MERCHANT. Read synthesis_loop/AGENTS.md for the \
+contract. Read the latest Claude review at ${prev_review:-'(none yet — first round; render a baseline)'}. \
+Address the single highest-impact critique (texture OR structural) for merchant $MERCHANT by editing \
+synthesis_loop/state/params.json and/or the renderer/synthesis code. After ANY code edit, run the render and \
+confirm PNGs appear; if rendering breaks, revert the code change and fall back to a param tweak. Re-render into \
+synthesis_loop/state/renders/round-$round/ via scripts/render_synthetic_receipts.py using params.json, copy the \
+best render to synthesis_loop/state/gallery/round-$round.png, and commit with a message naming the critique you \
+targeted. Do NOT push, do NOT spawn claude, do NOT merge or deploy." \
     || { echo "codex round $round failed; continuing"; }
 
   # --- 2. PUSH: in the shell (network), never inside codex ---
@@ -64,8 +78,14 @@ you targeted. Do NOT push, do NOT spawn claude, do NOT merge or deploy." \
 
   # --- 4. LOG + hill-climb bookkeeping (best.json / STATUS.md) ---
   "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" || true
-  git add -A "$STATE/STATUS.md" "$STATE/best.json" 2>/dev/null || true
-  git commit -m "loop: round $round status" 2>/dev/null && git push origin "$BRANCH" 2>&1 | tail -1 || true
+  git add -A "$STATE/STATUS.md" "$STATE/best.json" "$STATE/gallery" "$STATE/reviews/round-$round.json" 2>/dev/null || true
+  git commit -m "loop: round $round status (merchant=$MERCHANT)" 2>/dev/null && git push origin "$BRANCH" 2>&1 | tail -1 || true
+
+  # --- 4b. ask the Codex review bot to review a batch every REVIEW_EVERY rounds ---
+  if [ "$REVIEW_EVERY" -gt 0 ] && [ $((round % REVIEW_EVERY)) -eq 0 ]; then
+    gh pr comment "$PR_NUMBER" --body "@codex review — rounds up to $round pushed (merchant rotation: see STATUS.md)." \
+      2>&1 | tail -1 || echo "could not post @codex review (gh auth?)"
+  fi
 
   # --- 5. stop if we've plateaued ---
   if "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --check-improved >/dev/null 2>&1; then
