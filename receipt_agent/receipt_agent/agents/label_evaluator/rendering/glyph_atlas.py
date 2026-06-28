@@ -971,16 +971,64 @@ def _box_from_metrics(metrics: Mapping[str, float]) -> dict[str, float] | None:
         return None
 
 
+def _dominant_logo_band(
+    pairs: Sequence[tuple[LetterImageSample, dict[str, float]]],
+) -> list[tuple[LetterImageSample, dict[str, float]]]:
+    """Keep only the dominant (tallest) vertically-stacked band of a logo line.
+
+    OCR groups a stacked wordmark + subtitle (e.g. Sprouts "SPROUTS" over a much
+    smaller "FARMERS MARKET") into one ``line_id``. Cropping their union bakes the
+    faint subtitle into the logo bitmap, which scales down into an illegible grey
+    smudge when stamped. We split the letters into non-overlapping vertical bands
+    and keep only the tallest one (the real wordmark). A normal single-row
+    wordmark — including mixed-case marks whose caps and x-height letters share a
+    baseline and therefore overlap vertically — collapses to a single band and is
+    returned unchanged, so existing behaviour is preserved.
+    """
+    if len(pairs) <= 1:
+        return list(pairs)
+    ordered = sorted(pairs, key=lambda p: p[1]["y"])
+    bands: list[dict[str, Any]] = []
+    for sample, box in ordered:
+        y0 = box["y"]
+        y1 = box["y"] + box["height"]
+        for band in bands:
+            if min(y1, band["y1"]) - max(y0, band["y0"]) > 0:
+                band["items"].append((sample, box))
+                band["y0"] = min(band["y0"], y0)
+                band["y1"] = max(band["y1"], y1)
+                break
+        else:
+            bands.append({"y0": y0, "y1": y1, "items": [(sample, box)]})
+    if len(bands) <= 1:
+        return list(pairs)
+    best = max(
+        bands,
+        key=lambda b: (
+            _median([box["height"] for _, box in b["items"]]),
+            len(b["items"]),
+        ),
+    )
+    return list(best["items"])
+
+
 def _capture_logo(
     line_samples: Sequence[LetterImageSample],
     raw_image: Image.Image,
     y_origin: str,
 ) -> tuple[Image.Image, str] | None:
     """Crop the union box of a display line as the logo image + its text."""
-    boxes = [_box_from_metrics(s.metrics) for s in line_samples]
-    boxes = [b for b in boxes if b is not None]
-    if not boxes:
+    pairs = [
+        (s, _box_from_metrics(s.metrics)) for s in line_samples
+    ]
+    pairs = [(s, b) for (s, b) in pairs if b is not None]
+    if not pairs:
         return None
+    # Stacked wordmark+subtitle logos (Sprouts) get cropped to the dominant
+    # band only, dropping the faint subtitle that would otherwise smudge.
+    pairs = _dominant_logo_band(pairs)
+    band_samples = [s for (s, _) in pairs]
+    boxes = [b for (_, b) in pairs]
     min_x = min(b["x"] for b in boxes)
     min_y = min(b["y"] for b in boxes)
     max_x = max(b["x"] + b["width"] for b in boxes)
@@ -1005,7 +1053,7 @@ def _capture_logo(
     )
     if image is None:
         return None
-    text = _line_text_from_samples(line_samples)
+    text = _line_text_from_samples(band_samples)
     return image, text
 
 

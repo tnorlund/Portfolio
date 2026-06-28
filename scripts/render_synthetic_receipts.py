@@ -20,7 +20,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
+import zlib
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for path in (
@@ -136,6 +138,18 @@ def _cached_token_receipt_dict(example: dict) -> dict:
     return {"words": words}
 
 
+# Coordinate (of a 0..1000 space) that the right edge of a right-aligned price
+# token is anchored to, so the price column does not collapse into the item name.
+_PRICE_COLUMN_RIGHT = 905.0
+# Trailing price/amount tokens: optional leading currency / sign, a decimal
+# amount with two fractional digits, optional trailing sign (e.g. "1.99-").
+_PRICE_TOKEN_RE = re.compile(r"^[-+]?\$?\d{1,3}(?:,\d{3})*\.\d{2}[-+]?$")
+
+
+def _is_price_token(token: str) -> bool:
+    return bool(_PRICE_TOKEN_RE.match(str(token or "").strip()))
+
+
 def _cached_line_receipt_dict(example: dict) -> dict:
     lines = []
     source_lines = _order_cached_sprouts_lines(
@@ -165,16 +179,37 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         else:
             x = 70
         half_height = 24 if is_logo_line else 6
+        # Preserve a right-aligned price column: if a body item line ends with a
+        # currency/decimal token, anchor that trailing token's right edge to the
+        # fixed price column instead of letting it butt against the item name.
+        price_index = None
+        if (
+            not is_logo_line
+            and len(words) >= 2
+            and _is_price_token(words[-1])
+        ):
+            price_index = len(words) - 1
+            price_width = width_units[price_index]
+            price_x0 = max(x, _PRICE_COLUMN_RIGHT - price_width)
         rendered_words = []
-        for word, width in zip(words, width_units):
+        for word_index, (word, width) in enumerate(zip(words, width_units)):
+            if word_index == price_index:
+                bbox = [
+                    price_x0,
+                    y - half_height,
+                    price_x0 + price_width,
+                    y + half_height,
+                ]
+            else:
+                bbox = [x, y - half_height, x + width, y + half_height]
+                x += width + 8
             rendered_words.append(
                 {
                     "text": word,
-                    "bbox": [x, y - half_height, x + width, y + half_height],
+                    "bbox": bbox,
                     "labels": labels,
                 }
             )
-            x += width + 8
         lines.append({"line_id": index + 1, "words": rendered_words})
     return {"lines": lines}
 
@@ -476,6 +511,40 @@ def _cached_output_size(example: dict) -> tuple[int, int]:
     return (576, 1176)
 
 
+def _composite_paper_texture(image, *, seed: int | None = None):
+    """Composite subtle thermal-paper grain + edge vignette onto a render.
+
+    Adds low-amplitude per-pixel luminance Gaussian noise (a few grey levels)
+    plus a very faint radial vignette so the paper reads as fine-grained
+    off-white instead of a dead-flat single-color fill. Returns a new image in
+    the same mode as the input.
+    """
+    import numpy as np
+    from PIL import Image
+
+    source_mode = image.mode
+    rgb = np.asarray(image.convert("RGB")).astype(np.float32)
+    height, width, _ = rgb.shape
+    rng = np.random.default_rng(seed)
+
+    # Fine luminance grain (same delta on R/G/B so it stays neutral/grey).
+    grain = rng.normal(0.0, 3.0, size=(height, width, 1)).astype(np.float32)
+    rgb += grain
+
+    # Faint vignette: very slightly darker toward the edges/corners.
+    ys = np.linspace(-1.0, 1.0, height, dtype=np.float32)[:, None]
+    xs = np.linspace(-1.0, 1.0, width, dtype=np.float32)[None, :]
+    radial = np.sqrt(xs * xs + ys * ys) / np.sqrt(2.0)
+    vignette = (1.0 - 0.045 * (radial * radial))[:, :, None]
+    rgb *= vignette
+
+    rgb = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
+    textured = Image.fromarray(rgb, mode="RGB")
+    if source_mode == "RGB":
+        return textured
+    return textured.convert(source_mode)
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -502,6 +571,9 @@ def _render_cached_hybrid(
         coord_max=1000.0,
     ).convert("RGBA")
     _overlay_cached_logo(image, receipt, atlas, config=config, coord_max=1000.0)
+    # Deterministic per-output seed so re-rendering the same file is stable.
+    texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
+    image = _composite_paper_texture(image, seed=texture_seed)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.convert("RGB").save(path, format="PNG")
     return path
