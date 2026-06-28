@@ -20,18 +20,22 @@ if [ ! -f ~/.claude_batch_env ]; then
   echo "   (skipping — GUI-session runs can use the unlocked Keychain instead)"
 fi
 
-echo "== 3. Codex profile (autonomous, no approval prompts) =="
+echo "== 3. Codex profile (split-file format for codex >= 0.142; autonomous, no prompts) =="
 python3 - "$REPO" <<'PY'
 import sys, os, pathlib
 repo = sys.argv[1]
+# new format: profile lives in its OWN file, NOT as a [profiles.x] table in config.toml
+dst = pathlib.Path(os.path.expanduser("~/.codex/synthesis-loop.config.toml"))
+dst.write_text(pathlib.Path(repo, "synthesis_loop/codex-profile.toml").read_text())
+print("   wrote", dst)
+# strip any legacy [profiles.synthesis-loop] block we may have appended before
 cfg = pathlib.Path(os.path.expanduser("~/.codex/config.toml"))
-block = pathlib.Path(repo, "synthesis_loop/codex-profile.toml").read_text()
-cur = cfg.read_text() if cfg.exists() else ""
-if "[profiles.synthesis-loop]" not in cur:
-    cfg.write_text(cur.rstrip() + "\n\n" + block)
-    print("   appended synthesis-loop profile")
-else:
-    print("   profile already present")
+if cfg.exists():
+    t = cfg.read_text()
+    for marker in ("# Codex profile for the autonomous synthesis loop.", "[profiles.synthesis-loop]"):
+        i = t.find(marker)
+        if i != -1:
+            cfg.write_text(t[:i].rstrip() + "\n"); print("   removed legacy profile table from config.toml"); break
 PY
 
 echo "== 4. fetch the branch =="
