@@ -18,6 +18,7 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
 )
 from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
+    _apply_ink_density,
     _glyph_variant_index,
     _glyph_height_px,
     _line_is_logo,
@@ -394,6 +395,16 @@ def test_thermal_finish_paper_realism_is_deterministic_and_disableable():
     assert first.mode == "RGB"
     assert first.tobytes() == second.tobytes()
     assert first.tobytes() != flat.tobytes()
+
+
+def test_apply_ink_density_strengthens_alpha_and_clamps():
+    alpha = Image.new("L", (3, 1))
+    alpha.putdata([0, 100, 240])
+    config = GlyphRenderConfig(ink_density=1.25)
+
+    dense = _apply_ink_density(alpha, config)
+
+    assert list(dense.getdata()) == [0, 125, 255]
 
 
 def test_flat_receipt_with_degenerate_bboxes_does_not_crash():

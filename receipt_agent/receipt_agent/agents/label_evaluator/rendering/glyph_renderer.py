@@ -103,6 +103,7 @@ class GlyphRenderConfig:
     paper: tuple[int, int, int] = (250, 249, 245)
     ink: tuple[int, int, int] = (38, 36, 34)
     ink_jitter: int = 26  # per-glyph brightness variation (thermal unevenness)
+    ink_density: float = 1.16  # alpha multiplier for faint thermal glyph crops
     char_tracking: float = 0.04  # extra advance as a fraction of the cell width
     descender_frac: float = 0.12  # baseline raised this fraction above box bottom
     noise: float = 0.5  # 0 = clean, 1 = heavy paper/scan noise
@@ -514,7 +515,9 @@ def _fit_glyph_width(glyph_img: Image.Image, max_w: float) -> Image.Image:
 def _retint_glyph(
     glyph_img: Image.Image, config: GlyphRenderConfig, ink_jitter: int
 ) -> Image.Image:
-    alpha = _thermalize_font_alpha(glyph_img.getchannel("A"))
+    alpha = _apply_ink_density(
+        _thermalize_font_alpha(glyph_img.getchannel("A")), config
+    )
     ink = tuple(max(0, min(255, c + ink_jitter)) for c in config.ink)
     out = Image.new("RGBA", glyph_img.size, ink + (0,))
     out.putalpha(alpha)
@@ -542,6 +545,13 @@ def _thermalize_font_alpha(alpha: Image.Image) -> Image.Image:
             if edge and ((x * 19 + y * 23 + alpha.width * 5) % 17 == 0):
                 px[x, y] = 0
     return alpha
+
+
+def _apply_ink_density(alpha: Image.Image, config: GlyphRenderConfig) -> Image.Image:
+    density = max(0.1, min(2.0, float(config.ink_density)))
+    if density == 1.0:
+        return alpha
+    return alpha.point(lambda value: min(255, int(round(value * density))))
 
 
 def _stamp_word(
@@ -635,6 +645,7 @@ def _scaled_inked(
     alpha = crop.image.getchannel("A").resize(
         (target_w, target_h), Image.LANCZOS
     )
+    alpha = _apply_ink_density(alpha, config)
     jitter = (
         ink_jitter
         if ink_jitter is not None
