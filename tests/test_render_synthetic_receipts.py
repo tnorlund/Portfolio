@@ -235,6 +235,41 @@ def test_cached_hybrid_renderer_stamps_qr_like_footer_block():
     assert dark_pixels > 2000
 
 
+def test_cached_qr_footer_reflows_cashier_lines_below_reserved_band():
+    module = _load_module()
+
+    receipt = module._cached_receipt_dict(
+        {
+            "candidate_id": "sprouts-arithmetic-1-add-line-item-abc",
+            "lines": [
+                {"y": 900.0, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 880.0, "text": "We need your feedback!", "labels": []},
+                {"y": 860.0, "text": "SproutsFeedback.com", "labels": ["WEBSITE"]},
+                {"y": 840.0, "text": "*5 Winners Monthly*", "labels": []},
+                {
+                    "y": 820.0,
+                    "text": "in our rewards program please please do t",
+                    "labels": [],
+                },
+                {"y": 800.0, "text": "Cashier:SSCO 34 Store: 220", "labels": []},
+                {"y": 780.0, "text": "POS:034 Transaction: 5092", "labels": []},
+                {
+                    "y": 760.0,
+                    "text": "Please keep your original receipt, th",
+                    "labels": [],
+                },
+            ],
+        }
+    )
+    texts = _line_texts(receipt)
+
+    assert "in our rewards program please please do t" not in texts
+    cashier = _line_for_text(receipt, "Cashier:SSCO 34 Store: 220")["words"][0]
+    pos = _line_for_text(receipt, "POS:034 Transaction: 5092")["words"][0]
+    assert (cashier["bbox"][1] + cashier["bbox"][3]) / 2 == 126.0
+    assert (pos["bbox"][1] + pos["bbox"][3]) / 2 < 126.0
+
+
 def test_cached_token_render_does_not_classify_chips_as_payment():
     module = _load_module()
 

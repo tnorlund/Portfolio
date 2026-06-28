@@ -554,8 +554,12 @@ def _sprouts_text_section(text: str) -> str:
 
 def _cached_receipt_dict(example: dict) -> dict:
     if example.get("tokens") and example.get("bboxes"):
-        return _cached_token_receipt_dict(example)
-    return _cached_line_receipt_dict(example)
+        receipt = _cached_token_receipt_dict(example)
+    else:
+        receipt = _cached_line_receipt_dict(example)
+    if _cached_should_draw_qr(example):
+        return _reflow_cached_qr_footer(receipt)
+    return receipt
 
 
 def _cached_output_size(example: dict) -> tuple[int, int]:
@@ -573,6 +577,75 @@ def _cached_should_draw_qr(example: dict) -> bool:
     lines = " ".join(str(line.get("text") or "") for line in (example.get("lines") or []))
     text = _compact_text(f"{tokens} {lines}")
     return "SPROUTSFEEDBACKCOM" in text
+
+
+def _reflow_cached_qr_footer(receipt: dict) -> dict:
+    lines = receipt.get("lines") or []
+    if not lines:
+        return receipt
+
+    feedback_index = None
+    winners_index = None
+    for index, line in enumerate(lines):
+        text = _cached_render_line_text(line)
+        if text == "SPROUTSFEEDBACKCOM":
+            feedback_index = index
+        if feedback_index is not None and (
+            "WINNERS" in text or "WINNER" in text or "MONTHLY" in text
+        ):
+            winners_index = index
+            break
+    anchor_index = winners_index if winners_index is not None else feedback_index
+    if anchor_index is None or anchor_index >= len(lines) - 1:
+        return receipt
+
+    footer_tail = [
+        line for line in lines[anchor_index + 1 :]
+        if not _drop_cached_qr_footer_line(line)
+    ]
+    if not footer_tail:
+        return {**receipt, "lines": lines[: anchor_index + 1]}
+
+    start_y = 126.0
+    bottom_y = 18.0
+    spacing = (start_y - bottom_y) / max(1, len(footer_tail) - 1)
+    spacing = max(8.0, min(11.0, spacing))
+    reflowed_tail = [
+        _move_cached_line_y(line, start_y - index * spacing)
+        for index, line in enumerate(footer_tail)
+    ]
+    return {**receipt, "lines": [*lines[: anchor_index + 1], *reflowed_tail]}
+
+
+def _cached_render_line_text(line: dict) -> str:
+    return _compact_line_text(
+        [word for word in line.get("words", []) if word.get("bbox")]
+    )
+
+
+def _drop_cached_qr_footer_line(line: dict) -> bool:
+    text = _cached_render_line_text(line)
+    return "REWARDSPROGRAM" in text or "PLEASEPLEASE" in text
+
+
+def _move_cached_line_y(line: dict, center_y: float) -> dict:
+    moved_words = []
+    for word in line.get("words", []) or []:
+        bbox = word.get("bbox")
+        if not bbox:
+            moved_words.append(word)
+            continue
+        old_center = (float(bbox[1]) + float(bbox[3])) / 2
+        offset = center_y - old_center
+        moved = dict(word)
+        moved["bbox"] = [
+            float(bbox[0]),
+            float(bbox[1]) + offset,
+            float(bbox[2]),
+            float(bbox[3]) + offset,
+        ]
+        moved_words.append(moved)
+    return {**line, "words": moved_words}
 
 
 def _render_cached_hybrid(
