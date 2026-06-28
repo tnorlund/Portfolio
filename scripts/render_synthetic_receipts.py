@@ -1180,6 +1180,10 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
         ^ (int(image.height) & 0xFFFF)
     )
     rng = random.Random(seed)
+    _apply_cached_thermal_ink_spread(
+        image,
+        random.Random(seed ^ 0x4B8C_2F11),
+    )
     pixels = image.load()
     row_bias = _cached_thermal_row_biases(image.height, rng)
     for y in range(image.height):
@@ -1235,6 +1239,31 @@ def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:
         for y in range(start, min(height, start + band_height)):
             biases[y] += bias
     return biases
+
+
+def _apply_cached_thermal_ink_spread(image, rng: random.Random) -> None:
+    """Slightly fatten rendered ink before paper noise is added."""
+    pixels = image.load()
+    spread_coords: set[tuple[int, int]] = set()
+    for y in range(image.height):
+        for x in range(image.width):
+            r, g, b, a = pixels[x, y]
+            if a < 255 or min(r, g, b) >= 120:
+                continue
+            for dx, dy, probability in ((1, 0, 0.28), (-1, 0, 0.12), (0, 1, 0.08)):
+                if rng.random() >= probability:
+                    continue
+                nx = x + dx
+                ny = y + dy
+                if not (0 <= nx < image.width and 0 <= ny < image.height):
+                    continue
+                nr, ng, nb, na = pixels[nx, ny]
+                if na == 255 and _is_cached_paper_pixel(nr, ng, nb):
+                    spread_coords.add((nx, ny))
+
+    for x, y in spread_coords:
+        gray = rng.randint(42, 78)
+        pixels[x, y] = (*_cached_thermal_warm_rgb(gray), pixels[x, y][3])
 
 
 def _apply_cached_thermal_mottle(image, rng: random.Random) -> None:

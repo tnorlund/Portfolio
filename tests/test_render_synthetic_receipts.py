@@ -566,6 +566,33 @@ def test_cached_thermal_texture_is_deterministic_and_preserves_ink():
     assert textured_dark > 300
 
 
+def test_cached_thermal_ink_spread_fattens_ink_without_touching_distant_paper():
+    from PIL import Image, ImageDraw
+
+    module = _load_module()
+    images = []
+    for _ in range(2):
+        image = Image.new("RGBA", (32, 32), (250, 249, 245, 255))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle([12, 12, 14, 14], fill=(20, 20, 20, 255))
+        module._apply_cached_thermal_ink_spread(
+            image,
+            module.random.Random(8842),
+        )
+        images.append(image)
+
+    assert list(images[0].getdata()) == list(images[1].getdata())
+    assert images[0].getpixel((13, 13)) == (20, 20, 20, 255)
+    assert images[0].getpixel((0, 0)) == (250, 249, 245, 255)
+    adjacent_dark = sum(
+        1
+        for x in range(10, 17)
+        for y in range(10, 17)
+        if images[0].getpixel((x, y))[0] < 120
+    )
+    assert adjacent_dark > 9
+
+
 def test_cached_thermal_scanline_banding_adds_horizontal_rows():
     from PIL import Image, ImageDraw
 
