@@ -37,6 +37,10 @@ describe("SyntheticReceiptImages", () => {
     expect(screen.getByText("add_line_item")).toBeInTheDocument();
     expect(screen.getByText("0.948")).toBeInTheDocument();
     expect(screen.getByText("$29.08 -> $30.58")).toBeInTheDocument();
+    expect(screen.getByText("Review focus")).toBeInTheDocument();
+    expect(
+      screen.getByText(/inserted produce row should match Sprouts body text/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("Train-only guard")).toBeInTheDocument();
     expect(document.querySelector("[data-rf-queue]")).toBeInTheDocument();
     expect(document.querySelector("[data-rf-card-id='sprouts-remove-line-item']")).toBeInTheDocument();

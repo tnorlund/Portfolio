@@ -156,6 +156,13 @@ const CacheCard: React.FC<CacheCardProps> = ({ sample }) => (
       <p className={styles.note}>{sample.expectedEffect}</p>
     ) : null}
 
+    {sample.reviewFocus?.[0] ? (
+      <div className={styles.reviewFocus}>
+        <strong>Review focus</strong>
+        <span>{sample.reviewFocus[0]}</span>
+      </div>
+    ) : null}
+
     <div className={styles.reason}>
       <strong>Train-only guard</strong>
       {sample.trainOnlyReason}

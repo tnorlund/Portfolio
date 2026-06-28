@@ -46,37 +46,79 @@ _dynamo_client = None
 _chroma_client = None
 _embed_fn = None
 
+DEFAULT_SYNTHETIC_REVIEW_JOB_ID = os.environ.get(
+    "FEATURED_JOB_ID",
+    "9775a6f5-80f5-435b-b711-47b69ce174bc",
+)
+SYNTHETIC_RECEIPT_REVIEW_TARGETS_PATH = os.path.join(
+    parent_dir,
+    "portfolio",
+    "components",
+    "ui",
+    "Figures",
+    "SyntheticReceiptImages",
+    "syntheticReceiptReviewTargets.json",
+)
+SYNTHETIC_VISUAL_REVIEW_TOOLS = {
+    "list_synthetic_receipt_visual_review_targets",
+    "record_synthetic_receipt_visual_review",
+    "summarize_synthetic_receipt_visual_reviews",
+}
+
+
+def load_portfolio_config() -> dict[str, Any]:
+    """Load Pulumi-backed Portfolio config for MCP client construction."""
+    from receipt_dynamo.data._pulumi import load_env, load_secrets
+
+    env = os.environ.get("PORTFOLIO_ENV", "dev")
+    logger.info("Loading %s environment...", env)
+
+    config = load_env(env=env)
+    secrets = load_secrets(env=env)
+
+    for key, value in secrets.items():
+        normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+        config[normalized_key] = value
+
+    if config.get("openai_api_key"):
+        os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
+
+    return config
+
+
+def get_dynamo_client():
+    """Get or initialize only the DynamoDB client."""
+    global _dynamo_client
+
+    if _dynamo_client is None:
+        from receipt_dynamo.data.dynamo_client import DynamoClient
+
+        table_name = (
+            os.environ.get("DYNAMODB_TABLE_NAME")
+            or os.environ.get("RECEIPT_DYNAMODB_TABLE_NAME")
+        )
+        if not table_name:
+            config = load_portfolio_config()
+            table_name = config["dynamodb_table_name"]
+        _dynamo_client = DynamoClient(table_name=table_name)
+
+    return _dynamo_client
+
 
 def get_clients():
     """Get or initialize database clients."""
     global _dynamo_client, _chroma_client, _embed_fn
 
-    if _dynamo_client is None:
-        from receipt_agent.clients.factory import (
-            create_chroma_client,
-            create_dynamo_client,
-            create_embed_fn,
-        )
+    if _dynamo_client is None or _chroma_client is None or _embed_fn is None:
+        from receipt_agent.clients.factory import create_dynamo_client, create_embed_fn
         from receipt_chroma.data.chroma_client import ChromaClient
-        from receipt_dynamo.data._pulumi import load_env, load_secrets
 
-        env = os.environ.get("PORTFOLIO_ENV", "dev")
-        logger.info("Loading %s environment...", env)
+        config = load_portfolio_config()
 
-        config = load_env(env=env)
-        secrets = load_secrets(env=env)
-
-        # Merge secrets
-        for key, value in secrets.items():
-            normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
-            config[normalized_key] = value
-
-        # Set up API keys
-        if config.get("openai_api_key"):
-            os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
-
-        # Create DynamoDB client
-        _dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
+        if _dynamo_client is None:
+            _dynamo_client = create_dynamo_client(
+                table_name=config["dynamodb_table_name"]
+            )
 
         # Create ChromaDB client
         chroma_cloud_api_key = config.get("chroma_cloud_api_key")
@@ -90,14 +132,16 @@ def get_clients():
                 "chroma_cloud_api_key in Pulumi config."
             )
 
-        _chroma_client = ChromaClient(
-            cloud_api_key=chroma_cloud_api_key,
-            cloud_tenant=config.get("chroma_cloud_tenant"),
-            cloud_database=config.get("chroma_cloud_database"),
-            mode="read",
-        )
+        if _chroma_client is None:
+            _chroma_client = ChromaClient(
+                cloud_api_key=chroma_cloud_api_key,
+                cloud_tenant=config.get("chroma_cloud_tenant"),
+                cloud_database=config.get("chroma_cloud_database"),
+                mode="read",
+            )
 
-        _embed_fn = create_embed_fn()
+        if _embed_fn is None:
+            _embed_fn = create_embed_fn()
         logger.info("Clients initialized successfully")
 
     return _dynamo_client, _chroma_client, _embed_fn
@@ -820,6 +864,131 @@ Use this to visually inspect a receipt when reviewing OCR quality or labels.""",
             },
         ),
         Tool(
+            name="list_synthetic_receipt_visual_review_targets",
+            description="""List synthetic receipt render targets for Claude visual review.
+
+Returns the PNG path, candidate ID, review focus, train-only guard, and latest
+stored DynamoDB review state for each target. Use this before visually
+inspecting rendered synthetic receipts.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "description": "Training job UUID. Defaults to the featured LayoutLM job.",
+                    },
+                    "status_filter": {
+                        "type": "string",
+                        "enum": [
+                            "accepted",
+                            "needs_iteration",
+                            "rejected",
+                            "blocked",
+                            "unreviewed",
+                        ],
+                        "description": "Optionally return only targets with this latest review status.",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="record_synthetic_receipt_visual_review",
+            description="""Persist Claude's visual review of one synthetic receipt render in DynamoDB.
+
+Call after inspecting the target PNG. Status is append-only audit state:
+accepted, needs_iteration, rejected, or blocked. Use findings for concrete
+visual issues and recommendations for renderer/UI improvements.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "description": "Training job UUID. Defaults to the featured LayoutLM job.",
+                    },
+                    "candidate_id": {
+                        "type": "string",
+                        "description": "Candidate ID from list_synthetic_receipt_visual_review_targets.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["accepted", "needs_iteration", "rejected", "blocked"],
+                        "description": "Visual review verdict.",
+                    },
+                    "reviewer": {
+                        "type": "string",
+                        "default": "claude-mcp",
+                        "description": "Reviewer identifier for audit.",
+                    },
+                    "reviewer_model": {
+                        "type": "string",
+                        "description": "Claude model/session name if known.",
+                    },
+                    "realism_score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Overall visual realism score from 0 to 1.",
+                    },
+                    "fidelity_score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "How well the render preserves the intended receipt mutation.",
+                    },
+                    "alignment_score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "How naturally text, totals, and spacing align.",
+                    },
+                    "findings": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Concrete visual findings, preferably with severity and evidence.",
+                    },
+                    "recommendations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Renderer or visualization improvements to try next.",
+                    },
+                    "rubric": {
+                        "type": "object",
+                        "description": "Optional structured rubric scores/details.",
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "Optional extra audit metadata.",
+                    },
+                },
+                "required": ["candidate_id", "status"],
+            },
+        ),
+        Tool(
+            name="summarize_synthetic_receipt_visual_reviews",
+            description="""Summarize persisted visual reviews for a synthetic receipt job.
+
+Returns status counts, latest reviews by candidate, average scores, and open
+recommendations so the render loop can improve over time.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "description": "Training job UUID. Defaults to the featured LayoutLM job.",
+                    },
+                    "candidate_id": {
+                        "type": "string",
+                        "description": "Optional candidate ID to summarize one render.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum review rows to inspect.",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="delete_image",
             description="""Delete an image and ALL its child records from DynamoDB.
 
@@ -941,6 +1110,40 @@ Use this to understand training data balance and identify under-represented labe
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Handle tool calls."""
     try:
+        if name in SYNTHETIC_VISUAL_REVIEW_TOOLS:
+            if name == "list_synthetic_receipt_visual_review_targets":
+                result = await list_synthetic_receipt_visual_review_targets_impl(
+                    None,
+                    job_id=arguments.get("job_id"),
+                    status_filter=arguments.get("status_filter"),
+                )
+            else:
+                dynamo_client = get_dynamo_client()
+                if name == "record_synthetic_receipt_visual_review":
+                    result = await record_synthetic_receipt_visual_review_impl(
+                        dynamo_client,
+                        job_id=arguments.get("job_id"),
+                        candidate_id=arguments["candidate_id"],
+                        status=arguments["status"],
+                        reviewer=arguments.get("reviewer", "claude-mcp"),
+                        reviewer_model=arguments.get("reviewer_model"),
+                        realism_score=arguments.get("realism_score"),
+                        fidelity_score=arguments.get("fidelity_score"),
+                        alignment_score=arguments.get("alignment_score"),
+                        findings=arguments.get("findings"),
+                        recommendations=arguments.get("recommendations"),
+                        rubric=arguments.get("rubric"),
+                        metadata=arguments.get("metadata"),
+                    )
+                else:
+                    result = await summarize_synthetic_receipt_visual_reviews_impl(
+                        dynamo_client,
+                        job_id=arguments.get("job_id"),
+                        candidate_id=arguments.get("candidate_id"),
+                        limit=arguments.get("limit", 100),
+                    )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
         dynamo_client, chroma_client, embed_fn = get_clients()
 
         if name == "search_receipts":
@@ -2628,6 +2831,276 @@ async def trigger_reocr_impl(
         return {"error": str(e)}
 
 
+def _review_job_id(job_id: Optional[str]) -> str:
+    return job_id or DEFAULT_SYNTHETIC_REVIEW_JOB_ID
+
+
+def _load_synthetic_receipt_review_targets() -> list[dict[str, Any]]:
+    with open(
+        SYNTHETIC_RECEIPT_REVIEW_TARGETS_PATH,
+        "r",
+        encoding="utf-8",
+    ) as file_obj:
+        targets = json.load(file_obj)
+
+    enriched = []
+    for target in targets:
+        image_src = str(target.get("imageSrc") or "")
+        local_image_path = None
+        if image_src.startswith("/"):
+            local_image_path = os.path.join(
+                parent_dir,
+                "portfolio",
+                "public",
+                image_src.lstrip("/"),
+            )
+        enriched.append(
+            {
+                **target,
+                "local_image_path": local_image_path,
+                "local_image_exists": (
+                    os.path.exists(local_image_path) if local_image_path else False
+                ),
+            }
+        )
+    return enriched
+
+
+def _review_to_dict(review) -> dict[str, Any]:
+    return {
+        "review_id": review.review_id,
+        "job_id": review.job_id,
+        "candidate_id": review.candidate_id,
+        "synthetic_image_id": review.synthetic_image_id,
+        "status": review.status,
+        "reviewer": review.reviewer,
+        "reviewer_model": review.reviewer_model,
+        "created_at": review.created_at,
+        "merchant_name": review.merchant_name,
+        "operation": review.operation,
+        "realism_score": review.realism_score,
+        "fidelity_score": review.fidelity_score,
+        "alignment_score": review.alignment_score,
+        "issue_count": review.issue_count,
+        "findings": review.findings,
+        "recommendations": review.recommendations,
+        "rubric": review.rubric,
+        "metadata": review.metadata,
+    }
+
+
+def _summarize_visual_review_rows(reviews: list[Any]) -> dict[str, Any]:
+    status_counts: dict[str, int] = defaultdict(int)
+    latest_by_candidate: dict[str, Any] = {}
+    score_totals: dict[str, float] = defaultdict(float)
+    score_counts: dict[str, int] = defaultdict(int)
+    recommendations: list[str] = []
+
+    for review in sorted(reviews, key=lambda item: item.created_at or ""):
+        status_counts[review.status] += 1
+        latest_by_candidate[review.candidate_id] = review
+        for name in ("realism_score", "fidelity_score", "alignment_score"):
+            value = getattr(review, name)
+            if value is None:
+                continue
+            score_totals[name] += float(value)
+            score_counts[name] += 1
+        for recommendation in review.recommendations or []:
+            if recommendation and recommendation not in recommendations:
+                recommendations.append(recommendation)
+
+    avg_scores = {
+        name: round(score_totals[name] / score_counts[name], 3)
+        for name in sorted(score_totals)
+        if score_counts[name]
+    }
+    latest = [
+        _review_to_dict(review)
+        for review in sorted(
+            latest_by_candidate.values(),
+            key=lambda item: item.created_at or "",
+            reverse=True,
+        )
+    ]
+    return {
+        "review_count": len(reviews),
+        "reviewed_candidate_count": len(latest_by_candidate),
+        "status_counts": dict(status_counts),
+        "avg_scores": avg_scores,
+        "latest_reviews": latest[:12],
+        "open_recommendations": recommendations[:12],
+    }
+
+
+async def list_synthetic_receipt_visual_review_targets_impl(
+    dynamo_client,
+    job_id: Optional[str] = None,
+    status_filter: Optional[str] = None,
+) -> dict:
+    """List synthetic receipt targets and latest persisted visual review state."""
+    try:
+        resolved_job_id = _review_job_id(job_id)
+        targets = _load_synthetic_receipt_review_targets()
+        reviews = []
+        review_state_error = None
+        if dynamo_client is not None:
+            try:
+                reviews, _ = dynamo_client.list_synthetic_receipt_visual_reviews_for_job(
+                    resolved_job_id,
+                    limit=200,
+                )
+            except Exception as exc:
+                review_state_error = str(exc)
+                logger.exception("Error loading synthetic receipt visual reviews")
+        latest_by_candidate = {
+            review.candidate_id: review
+            for review in sorted(reviews, key=lambda item: item.created_at or "")
+        }
+
+        filtered = []
+        normalized_status = str(status_filter or "").strip().lower()
+        for target in targets:
+            latest = latest_by_candidate.get(target.get("candidateId"))
+            latest_status = latest.status if latest else "unreviewed"
+            if normalized_status and latest_status != normalized_status:
+                continue
+            filtered.append(
+                {
+                    "id": target.get("id"),
+                    "title": target.get("title"),
+                    "merchant_name": target.get("merchantName"),
+                    "operation": target.get("operation"),
+                    "candidate_id": target.get("candidateId"),
+                    "source": target.get("source"),
+                    "image_src": target.get("imageSrc"),
+                    "local_image_path": target.get("local_image_path"),
+                    "local_image_exists": target.get("local_image_exists"),
+                    "base_receipt_key": target.get("baseReceiptKey"),
+                    "structure_score": target.get("structureScore"),
+                    "train_only_reason": target.get("trainOnlyReason"),
+                    "expected_effect": target.get("expectedEffect"),
+                    "review_focus": target.get("reviewFocus") or [],
+                    "latest_review": _review_to_dict(latest) if latest else None,
+                    "latest_status": latest_status,
+                }
+            )
+
+        return {
+            "job_id": resolved_job_id,
+            "target_count": len(filtered),
+            "targets": filtered,
+            "summary": _summarize_visual_review_rows(reviews),
+            "review_state_error": review_state_error,
+        }
+    except Exception as e:
+        logger.exception("Error listing synthetic receipt visual review targets")
+        return {"error": str(e)}
+
+
+async def record_synthetic_receipt_visual_review_impl(
+    dynamo_client,
+    *,
+    job_id: Optional[str],
+    candidate_id: str,
+    status: str,
+    reviewer: str,
+    reviewer_model: Optional[str] = None,
+    realism_score: Optional[float] = None,
+    fidelity_score: Optional[float] = None,
+    alignment_score: Optional[float] = None,
+    findings: Optional[list[dict[str, Any]]] = None,
+    recommendations: Optional[list[str]] = None,
+    rubric: Optional[dict[str, Any]] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> dict:
+    """Append a visual review row to DynamoDB."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from receipt_dynamo.entities.synthetic_receipt_visual_review import (
+        SyntheticReceiptVisualReview,
+    )
+
+    try:
+        resolved_job_id = _review_job_id(job_id)
+        targets = _load_synthetic_receipt_review_targets()
+        target_by_candidate = {
+            str(target.get("candidateId")): target for target in targets
+        }
+        target = target_by_candidate.get(candidate_id)
+        if not target:
+            return {
+                "error": (
+                    "Unknown candidate_id. Call "
+                    "list_synthetic_receipt_visual_review_targets first."
+                ),
+                "candidate_id": candidate_id,
+            }
+
+        review_metadata = {
+            "target_id": target.get("id"),
+            "source": target.get("source"),
+            "review_focus": target.get("reviewFocus") or [],
+            **(metadata or {}),
+        }
+        normalized_findings = [
+            item if isinstance(item, dict) else {"finding": str(item)}
+            for item in (findings or [])
+        ]
+        review = SyntheticReceiptVisualReview(
+            review_id=str(uuid4()),
+            job_id=resolved_job_id,
+            candidate_id=candidate_id,
+            status=status,
+            reviewer=reviewer or "claude-mcp",
+            created_at=datetime.now(timezone.utc).isoformat(),
+            synthetic_image_id=target.get("id"),
+            image_uri=target.get("imageSrc"),
+            local_image_path=target.get("local_image_path"),
+            base_receipt_key=target.get("baseReceiptKey"),
+            merchant_name=target.get("merchantName"),
+            operation=target.get("operation"),
+            reviewer_model=reviewer_model,
+            realism_score=realism_score,
+            fidelity_score=fidelity_score,
+            alignment_score=alignment_score,
+            issue_count=len(normalized_findings),
+            findings=normalized_findings,
+            recommendations=recommendations or [],
+            rubric=rubric or {},
+            metadata=review_metadata,
+        )
+        dynamo_client.add_synthetic_receipt_visual_review(review)
+        return {"success": True, "review": _review_to_dict(review)}
+    except Exception as e:
+        logger.exception("Error recording synthetic receipt visual review")
+        return {"error": str(e)}
+
+
+async def summarize_synthetic_receipt_visual_reviews_impl(
+    dynamo_client,
+    job_id: Optional[str] = None,
+    candidate_id: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    """Summarize persisted visual review rows for a job or candidate."""
+    try:
+        resolved_job_id = _review_job_id(job_id)
+        reviews, _ = dynamo_client.list_synthetic_receipt_visual_reviews_for_job(
+            resolved_job_id,
+            candidate_id=candidate_id,
+            limit=limit,
+        )
+        return {
+            "job_id": resolved_job_id,
+            "candidate_id": candidate_id,
+            **_summarize_visual_review_rows(reviews),
+        }
+    except Exception as e:
+        logger.exception("Error summarizing synthetic receipt visual reviews")
+        return {"error": str(e)}
+
+
 async def get_receipt_image_url_impl(
     dynamo_client, image_id: str, receipt_id: int
 ) -> dict:
@@ -2948,13 +3421,6 @@ async def get_label_distribution_impl(dynamo_client) -> dict:
 async def main():
     """Run the MCP server."""
     logger.info("Starting Receipt MCP Server...")
-
-    # Pre-initialize clients
-    try:
-        get_clients()
-    except Exception as e:
-        logger.error("Failed to initialize clients: %s", e)
-        # Continue anyway - will retry on first tool call
 
     async with stdio_server() as (read_stream, write_stream):
         await server.run(

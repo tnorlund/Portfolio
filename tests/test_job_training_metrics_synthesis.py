@@ -80,6 +80,56 @@ def test_load_pattern_artifacts_accepts_s3_prefix(monkeypatch):
     ]
 
 
+def test_compact_synthetic_visual_reviews_surfaces_latest_state(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    reviews = [
+        SimpleNamespace(
+            review_id="r1",
+            candidate_id="candidate-a",
+            synthetic_image_id="sprouts-add-line-item",
+            status="needs_iteration",
+            reviewer="claude-mcp",
+            reviewer_model="claude-sonnet",
+            created_at="2026-06-27T12:00:00+00:00",
+            merchant_name="Sprouts Farmers Market",
+            operation="add_line_item",
+            realism_score=0.62,
+            fidelity_score=0.8,
+            alignment_score=0.6,
+            issue_count=1,
+            findings=[{"severity": "medium"}],
+            recommendations=["lighten restamped totals"],
+        ),
+        SimpleNamespace(
+            review_id="r2",
+            candidate_id="candidate-a",
+            synthetic_image_id="sprouts-add-line-item",
+            status="accepted",
+            reviewer="claude-mcp",
+            reviewer_model="claude-sonnet",
+            created_at="2026-06-27T13:00:00+00:00",
+            merchant_name="Sprouts Farmers Market",
+            operation="add_line_item",
+            realism_score=0.9,
+            fidelity_score=0.92,
+            alignment_score=0.88,
+            issue_count=0,
+            findings=[],
+            recommendations=[],
+        ),
+    ]
+
+    summary = module._compact_synthetic_visual_reviews(reviews)
+
+    assert summary["review_count"] == 2
+    assert summary["reviewed_candidate_count"] == 1
+    assert summary["status_counts"] == {"needs_iteration": 1, "accepted": 1}
+    assert summary["avg_scores"]["realism_score"] == 0.76
+    assert summary["latest_reviews"][0]["review_id"] == "r2"
+    assert summary["open_recommendations"] == ["lighten restamped totals"]
+
+
 def test_compact_source_receipt_quality_preserves_unlabeled_text_structure(
     monkeypatch,
 ):

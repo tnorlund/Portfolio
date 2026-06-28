@@ -57,6 +57,9 @@ from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_word_label_spatial_analysis import (
     _ReceiptWordLabelSpatialAnalysis,
 )
+from receipt_dynamo.data._synthetic_receipt_visual_review import (
+    _SyntheticReceiptVisualReview,
+)
 from receipt_dynamo.data._word import _Word
 
 if TYPE_CHECKING:
@@ -117,6 +120,7 @@ class DynamoClient(
     _CompactionRun,
     _CoreMLExportJob,
     _ReceiptSummary,
+    _SyntheticReceiptVisualReview,
 ):
     """A class used to represent a DynamoDB client."""
 

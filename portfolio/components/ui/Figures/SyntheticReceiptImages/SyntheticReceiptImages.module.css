@@ -154,6 +154,25 @@
   color: var(--text-color);
 }
 
+.reviewFocus {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: 6px;
+  background: rgba(var(--color-green-rgb, 34, 197, 94), 0.08);
+  color: var(--text-color);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.reviewFocus strong {
+  font-size: 0.62rem;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--color-green);
+}
+
 .reason {
   margin-top: auto;
   padding-top: 0.75rem;

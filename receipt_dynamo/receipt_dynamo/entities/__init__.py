@@ -175,6 +175,10 @@ from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
 )
 from receipt_dynamo.entities.rwl_queue import Queue  # noqa: F401
 from receipt_dynamo.entities.rwl_queue import item_to_queue
+from receipt_dynamo.entities.synthetic_receipt_visual_review import (  # noqa: F401
+    SyntheticReceiptVisualReview,
+    item_to_synthetic_receipt_visual_review,
+)
 
 # =============================================================================
 # Base classes and mixins for entity consolidation
@@ -271,6 +275,7 @@ __all__ = [
     "ReceiptWordLabel",
     "ReceiptWordLabelSpatialAnalysis",
     "SpatialRelationship",
+    "SyntheticReceiptVisualReview",
     "Word",
     # Item conversion functions
     "item_to_ai_usage_metric",
@@ -318,6 +323,7 @@ __all__ = [
     "item_to_receipt_word",
     "item_to_receipt_word_label",
     "item_to_receipt_word_label_spatial_analysis",
+    "item_to_synthetic_receipt_visual_review",
     "item_to_word",
     # Utility functions
     "assert_valid_uuid",

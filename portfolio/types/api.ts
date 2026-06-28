@@ -1066,6 +1066,37 @@ export interface TrainingSynthesisQualityReport {
   merchants?: TrainingSynthesisQualityMerchant[];
 }
 
+export interface TrainingSynthesisVisualReview {
+  review_id?: string | null;
+  candidate_id?: string | null;
+  synthetic_image_id?: string | null;
+  status?: "accepted" | "needs_iteration" | "rejected" | "blocked" | string;
+  reviewer?: string | null;
+  reviewer_model?: string | null;
+  created_at?: string | null;
+  merchant_name?: string | null;
+  operation?: string | null;
+  realism_score?: number | null;
+  fidelity_score?: number | null;
+  alignment_score?: number | null;
+  issue_count?: number | null;
+  findings?: Record<string, unknown>[];
+  recommendations?: string[];
+}
+
+export interface TrainingSynthesisVisualReviewSummary {
+  review_count?: number;
+  reviewed_candidate_count?: number;
+  status_counts?: Record<string, number>;
+  avg_scores?: {
+    realism_score?: number;
+    fidelity_score?: number;
+    alignment_score?: number;
+  };
+  latest_reviews?: TrainingSynthesisVisualReview[];
+  open_recommendations?: string[];
+}
+
 export interface TrainingSynthesisSummary {
   status: "available" | "metrics_only" | "artifact_unavailable";
   artifact_s3_uri?: string;
@@ -1132,6 +1163,7 @@ export interface TrainingSynthesisSummary {
   candidate_mix_merchants?: TrainingSynthesisCandidateMixMerchant[];
   source_receipt_quality?: TrainingSynthesisSourceQualitySummary;
   quality_report?: TrainingSynthesisQualityReport;
+  visual_review_summary?: TrainingSynthesisVisualReviewSummary;
   llm_execution?: TrainingSynthesisLlmExecutionSummary;
   top_catalog_items?: TrainingSynthesisCatalogItem[];
   candidate_examples?: TrainingSynthesisCandidateExample[];

@@ -136,6 +136,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Get dataset-level metrics (already extracted in _fetch_all_metrics)
         dataset_metrics = metrics_data.get("dataset_metrics", {})
         synthesis_summary = _build_synthesis_summary(job, dataset_metrics)
+        visual_review_summary = _build_synthetic_visual_review_summary(
+            client, job_id
+        )
+        if visual_review_summary:
+            if synthesis_summary is None:
+                synthesis_summary = {
+                    "status": "metrics_only",
+                    "validation_policy": "real_receipts_only",
+                }
+            synthesis_summary["visual_review_summary"] = visual_review_summary
 
         # Aggregate metrics by epoch
         epochs = _aggregate_by_epoch(
@@ -346,6 +356,100 @@ def _build_synthesis_summary(
             **loader_summary,
         }
     return None
+
+
+def _visual_review_to_dict(review: Any) -> Dict[str, Any]:
+    return {
+        "review_id": getattr(review, "review_id", None),
+        "candidate_id": getattr(review, "candidate_id", None),
+        "synthetic_image_id": getattr(review, "synthetic_image_id", None),
+        "status": getattr(review, "status", None),
+        "reviewer": getattr(review, "reviewer", None),
+        "reviewer_model": getattr(review, "reviewer_model", None),
+        "created_at": getattr(review, "created_at", None),
+        "merchant_name": getattr(review, "merchant_name", None),
+        "operation": getattr(review, "operation", None),
+        "realism_score": _safe_float(getattr(review, "realism_score", None)),
+        "fidelity_score": _safe_float(getattr(review, "fidelity_score", None)),
+        "alignment_score": _safe_float(getattr(review, "alignment_score", None)),
+        "issue_count": _safe_int(getattr(review, "issue_count", None)),
+        "findings": list(getattr(review, "findings", None) or [])[:8],
+        "recommendations": [
+            str(item)
+            for item in (getattr(review, "recommendations", None) or [])[:8]
+            if item
+        ],
+    }
+
+
+def _compact_synthetic_visual_reviews(reviews: List[Any]) -> Dict[str, Any]:
+    status_counts: Counter[str] = Counter()
+    latest_by_candidate: dict[str, Any] = {}
+    score_totals: Counter[str] = Counter()
+    score_counts: Counter[str] = Counter()
+    recommendations: list[str] = []
+
+    for review in sorted(
+        reviews,
+        key=lambda item: str(getattr(item, "created_at", "") or ""),
+    ):
+        status = str(getattr(review, "status", "") or "unknown")
+        status_counts[status] += 1
+        candidate_id = str(getattr(review, "candidate_id", "") or "")
+        if candidate_id:
+            latest_by_candidate[candidate_id] = review
+        for field in ("realism_score", "fidelity_score", "alignment_score"):
+            score = _safe_float(getattr(review, field, None))
+            if score is None:
+                continue
+            score_totals[field] += score
+            score_counts[field] += 1
+        for recommendation in getattr(review, "recommendations", None) or []:
+            if recommendation and recommendation not in recommendations:
+                recommendations.append(str(recommendation))
+
+    latest_reviews = sorted(
+        latest_by_candidate.values(),
+        key=lambda item: str(getattr(item, "created_at", "") or ""),
+        reverse=True,
+    )
+    avg_scores = {
+        field: round(score_totals[field] / score_counts[field], 3)
+        for field in sorted(score_totals)
+        if score_counts[field]
+    }
+    return {
+        "review_count": len(reviews),
+        "reviewed_candidate_count": len(latest_by_candidate),
+        "status_counts": dict(status_counts),
+        "avg_scores": avg_scores,
+        "latest_reviews": [
+            _visual_review_to_dict(review) for review in latest_reviews[:8]
+        ],
+        "open_recommendations": recommendations[:8],
+    }
+
+
+def _build_synthetic_visual_review_summary(
+    client: DynamoClient,
+    job_id: str,
+) -> Dict[str, Any]:
+    try:
+        reviews, _ = client.list_synthetic_receipt_visual_reviews_for_job(
+            job_id,
+            limit=100,
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "Could not load synthetic visual reviews for job %s",
+            job_id,
+            exc_info=True,
+        )
+        return {}
+
+    if not reviews:
+        return {}
+    return _compact_synthetic_visual_reviews(reviews)
 
 
 def _synthetic_loader_summary(

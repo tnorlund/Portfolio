@@ -78,6 +78,7 @@ from receipt_dynamo.entities import (
     S3Location,
     SpatialPattern,
     SpatialRelationship,
+    SyntheticReceiptVisualReview,
     TextGeometryEntity,
     Word,
     WordIdentifierMixin,
@@ -126,6 +127,7 @@ from receipt_dynamo.entities import (
     item_to_receipt_word,
     item_to_receipt_word_label,
     item_to_receipt_word_label_spatial_analysis,
+    item_to_synthetic_receipt_visual_review,
     item_to_word,
 )
 
@@ -287,6 +289,7 @@ __all__ = [
     "ReceiptWordLabelSpatialAnalysis",
     "SpatialPattern",
     "SpatialRelationship",
+    "SyntheticReceiptVisualReview",
     "Word",
     # Item conversion functions
     "assert_valid_uuid",
@@ -334,6 +337,7 @@ __all__ = [
     "item_to_receipt_word",
     "item_to_receipt_word_label",
     "item_to_receipt_word_label_spatial_analysis",
+    "item_to_synthetic_receipt_visual_review",
     "item_to_word",
     # Services
     "InstanceService",

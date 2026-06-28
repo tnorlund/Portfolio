@@ -1008,6 +1008,52 @@ const summarizeLlmExecution = (
   };
 };
 
+const summarizeVisualReview = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string; warning: boolean } => {
+  const summary = synthesis.visual_review_summary;
+  const reviewCount = summary?.review_count ?? 0;
+  if (!summary || reviewCount <= 0) {
+    return {
+      label: "pending",
+      title: "No Claude visual reviews recorded in DynamoDB yet",
+      warning: true,
+    };
+  }
+
+  const statuses = summary.status_counts || {};
+  const accepted = statuses.accepted ?? 0;
+  const needsIteration = statuses.needs_iteration ?? 0;
+  const rejected = statuses.rejected ?? 0;
+  const blocked = statuses.blocked ?? 0;
+  const score = summary.avg_scores?.realism_score;
+  const latest = summary.latest_reviews?.[0];
+  const recommendation = summary.open_recommendations?.[0];
+  const statusBits = [
+    accepted ? `${formatCount(accepted)} accepted` : null,
+    needsIteration ? `${formatCount(needsIteration)} iterate` : null,
+    rejected ? `${formatCount(rejected)} rejected` : null,
+    blocked ? `${formatCount(blocked)} blocked` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    label:
+      score != null
+        ? `${formatSimilarity(score)} realism`
+        : `${formatCount(reviewCount)} reviewed`,
+    title:
+      [
+        `${formatCount(reviewCount)} visual review${reviewCount === 1 ? "" : "s"}`,
+        statusBits.length ? statusBits.join(", ") : null,
+        latest?.candidate_id ? `Latest: ${latest.candidate_id}` : null,
+        recommendation ? `Next: ${recommendation}` : null,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" | ") || undefined,
+    warning: needsIteration > 0 || rejected > 0 || blocked > 0,
+  };
+};
+
 const summarizeCountRecord = (
   counts: Record<string, number> | undefined,
   formatter: (value: string) => string,
@@ -2635,6 +2681,7 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
   const sourceReceiptQualitySummary = summarizeSourceReceiptQuality(synthesis);
   const contractSummary = summarizeContractCoverage(synthesis);
   const llmExecutionSummary = summarizeLlmExecution(synthesis);
+  const visualReviewSummary = summarizeVisualReview(synthesis);
   const receiptPreviewSummary = summarizeReceiptPreview(
     synthesis.candidate_examples
   );
@@ -2758,6 +2805,18 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
           <span title={llmExecutionSummary?.title}>LLM mode</span>
           <strong title={llmExecutionSummary?.title}>
             {llmExecutionSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div
+          className={`${styles.synthesisEvidenceMetric}${
+            visualReviewSummary.warning
+              ? ` ${styles.synthesisEvidenceMetricWarning}`
+              : ""
+          }`}
+        >
+          <span title={visualReviewSummary.title}>Visual review</span>
+          <strong title={visualReviewSummary.title}>
+            {visualReviewSummary.label}
           </strong>
         </div>
         <div className={styles.synthesisEvidenceMetric}>
