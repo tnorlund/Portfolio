@@ -13,6 +13,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from difflib import SequenceMatcher
+import hashlib
+import re
 import statistics
 from typing import Any
 
@@ -636,6 +638,8 @@ def _candidate_from_base(
         insert_at = len(mutated_lines)
     mutated_lines.insert(insert_at, inserted)
     _refresh_receipt_words(mutated_receipt)
+    footer_sanitization = _sanitize_sprouts_footer_blocks(mutated_receipt)
+    mutated_lines = mutated_receipt["lines"]
 
     tokens, bboxes, ner_tags = _flatten_receipt_lines(mutated_lines)
 
@@ -666,6 +670,8 @@ def _candidate_from_base(
             "Synthetic examples target known model confusions and must not enter validation."
         ),
     }
+    if footer_sanitization:
+        candidate_metadata["footer_sanitization"] = footer_sanitization
     candidate_metadata["layout_integrity"] = build_layout_integrity_evidence(
         mutated_receipt
     )
@@ -1017,6 +1023,7 @@ def _candidate_from_receipt(
     metadata: dict[str, Any],
     base_layout_counts: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
+    footer_sanitization = _sanitize_sprouts_footer_blocks(receipt)
     tokens, bboxes, ner_tags = _flatten_receipt_lines(receipt.get("lines", []))
 
     slug = _slug(
@@ -1032,6 +1039,8 @@ def _candidate_from_receipt(
         ),
         **metadata,
     }
+    if footer_sanitization:
+        candidate_metadata["footer_sanitization"] = footer_sanitization
     layout_kwargs: dict[str, Any] = {}
     if base_layout_counts is not None:
         layout_kwargs = {
@@ -1757,6 +1766,314 @@ def _flatten_receipt_lines(
             line_labels.append(_first_label(word.get("labels", [])))
         ner_tags.extend(_bio_tags(line_labels))
     return tokens, bboxes, ner_tags
+
+
+def _sanitize_sprouts_footer_blocks(
+    receipt: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Replace copied Sprouts footer/EMV OCR with a canonical clean block."""
+    lines = list(receipt.get("lines", []) or [])
+    if not lines:
+        return None
+
+    kept_lines: list[dict[str, Any]] = []
+    removed_kinds: Counter[str] = Counter()
+    for line in lines:
+        kind = _sprouts_leaked_footer_kind(line)
+        if kind is None:
+            kept_lines.append(line)
+        else:
+            removed_kinds[kind] += 1
+
+    removed_count = sum(removed_kinds.values())
+    if not removed_count:
+        return None
+
+    receipt["lines"] = kept_lines
+    amount = _last_labeled_money(receipt, "GRAND_TOTAL") or Decimal("0.00")
+    anchor_y = _footer_anchor_y(kept_lines)
+    canonical_lines = _build_canonical_sprouts_footer(
+        receipt,
+        amount,
+        anchor_y=anchor_y,
+    )
+    receipt["lines"].extend(canonical_lines)
+    receipt["lines"].sort(key=lambda line: -_line_y(line))
+    _refresh_receipt_words(receipt)
+    return {
+        "schema_version": "sprouts-footer-sanitization-v1",
+        "removed_line_count": removed_count,
+        "inserted_line_count": len(canonical_lines),
+        "removed_kinds": dict(sorted(removed_kinds.items())),
+        "canonical_blocks": ["tender", "survey", "return_policy"],
+    }
+
+
+def _sprouts_leaked_footer_kind(line: dict[str, Any]) -> str | None:
+    text = _normalize_footer_text(_line_text(line))
+    if not text:
+        return None
+    if _is_footer_barcode_text(text):
+        return "barcode"
+    if _is_sprouts_emv_text(text):
+        return "emv"
+    if _is_sprouts_survey_text(text):
+        return "survey"
+    if _is_sprouts_return_policy_text(text):
+        return "return_policy"
+    if _is_sprouts_transaction_footer_text(text):
+        return "transaction_footer"
+    return None
+
+
+def _normalize_footer_text(value: str) -> str:
+    return " ".join(value.upper().split())
+
+
+def _line_text(line: dict[str, Any]) -> str:
+    return " ".join(
+        str(word.get("text") or "").strip()
+        for word in line.get("words", []) or []
+        if str(word.get("text") or "").strip()
+    )
+
+
+def _is_footer_barcode_text(text: str) -> bool:
+    digits = "".join(char for char in text if char.isdigit())
+    non_digits = "".join(char for char in text if not char.isdigit()).strip()
+    return len(digits) >= 14 and not non_digits
+
+
+def _is_sprouts_emv_text(text: str) -> bool:
+    emv_markers = (
+        "ENTRY METHOD",
+        "CARD #:",
+        "PURCHASE APPROVED",
+        "APPROVED PURCHASE",
+        "AUTH CODE",
+        "AUTH#",
+        "REF#",
+        "ISSUER MODE",
+        "MODE: ISSUER",
+        "PIN VERIFIED",
+        "AID:",
+        "TVR:",
+        "IAD:",
+        "TSI:",
+        "ARC:",
+        "TC:",
+        "MID:",
+        "TID:",
+        "SEQ:",
+        "MASTERCARD",
+        "VISA",
+        "XXXXXXXX",
+    )
+    if any(marker in text for marker in emv_markers):
+        return True
+    if re.match(r"^(DEBIT|CREDIT)\s+\$?\d", text):
+        return True
+    return text.startswith("TOTAL: USD$")
+
+
+def _is_sprouts_survey_text(text: str) -> bool:
+    survey_markers = (
+        "SPROUTSFEEDBACK",
+        "WE NEED YOUR FEEDBACK",
+        "QUICK SURVEY",
+        "GIFT CARD",
+        "WIN A $250",
+        "WINNERS MONTHLY",
+        "SAVE MONEY, SAVE PAPER",
+        "REWARDS PROGRAM",
+        "WEEKLY AD",
+        "BY EMAIL AT SPROUTS.COM",
+    )
+    return any(marker in text for marker in survey_markers)
+
+
+def _is_sprouts_return_policy_text(text: str) -> bool:
+    return any(
+        marker in text
+        for marker in (
+            "PLEASE KEEP YOUR ORIGINAL RECEIPT",
+            "TYPE OF CREDIT",
+            "METHOD OF PAYMENT",
+            "ID IS REQUIRED",
+            "RETURNS WITHOUT",
+            "LIMITS APPLY",
+            "WITHOUT A RECEIPT",
+        )
+    )
+
+
+def _is_sprouts_transaction_footer_text(text: str) -> bool:
+    if (
+        "CASHIER:" in text
+        or "TRANSACTION:" in text
+        or "STORE:" in text
+        or "POS:" in text
+    ):
+        return True
+    if set(text) <= {"*", " ", ":", "-"} and "*" in text:
+        return True
+    return bool(
+        re.search(
+            r"\b(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY),",
+            text,
+        )
+    )
+
+
+def _build_canonical_sprouts_footer(
+    receipt: dict[str, Any],
+    amount: Decimal,
+    *,
+    anchor_y: float,
+) -> list[dict[str, Any]]:
+    seed = _sprouts_footer_seed(receipt)
+    card_suffix = f"{seed % 10000:04d}"
+    auth_code = f"{(seed // 7) % 1000000:06d}"
+    barcode_tail = f"{(seed // 13) % 10000000000000:013d}"
+    amount_text = f"${_format_money(amount)}"
+    specs = [
+        (["DEBIT", amount_text], {0: ["PAYMENT_METHOD"]}, "left"),
+        (
+            ["CARD", "#:", f"XXXXXXXXXXXX{card_suffix}"],
+            {0: ["PAYMENT_METHOD"], 1: ["PAYMENT_METHOD"], 2: ["PAYMENT_METHOD"]},
+            "left",
+        ),
+        (["PURCHASE", "APPROVED", "AUTH", "CODE:", auth_code], {}, "left"),
+        ([f"9902200{barcode_tail}"], {}, "center"),
+        (["We", "need", "your", "feedback!"], {}, "center"),
+        (
+            ["Take", "a", "quick", "survey", "for", "a", "chance", "to", "WIN"],
+            {},
+            "center",
+        ),
+        (
+            ["a", "$250", "Sprouts", "gift", "card.", "Go", "to:"],
+            {},
+            "center",
+        ),
+        (
+            ["Go", "to:", "SproutsFeedback.com"],
+            {2: ["WEBSITE"]},
+            "center",
+        ),
+        (["Save", "money,", "save", "paper", "-"], {}, "center"),
+        (
+            ["sign", "up", "for", "weekly", "ads", "at", "Sprouts.com"],
+            {6: ["WEBSITE"]},
+            "center",
+        ),
+        (
+            ["Please", "keep", "your", "original", "receipt;"],
+            {},
+            "center",
+        ),
+        (
+            ["returns", "credited", "to", "original", "payment."],
+            {},
+            "center",
+        ),
+        (
+            ["ID", "required", "for", "returns", "without", "receipt."],
+            {},
+            "center",
+        ),
+    ]
+
+    first_y = min(anchor_y - 18.0, 380.0)
+    line_step = min(22.0, max(12.0, (first_y - 12.0) / (len(specs) - 1)))
+    line_height = max(8, min(18, int(line_step - 4)))
+    return [
+        _build_sprouts_footer_line(
+            line_id=30_000 + index,
+            y_center=max(12.0, first_y - (line_step * index)),
+            tokens=tokens,
+            labels_by_index=labels_by_index,
+            align=align,
+            line_height=line_height,
+        )
+        for index, (tokens, labels_by_index, align) in enumerate(specs)
+    ]
+
+
+def _build_sprouts_footer_line(
+    *,
+    line_id: int,
+    y_center: float,
+    tokens: list[str],
+    labels_by_index: dict[int, list[str]],
+    align: str,
+    line_height: int,
+) -> dict[str, Any]:
+    widths = [_token_width(token) for token in tokens]
+    total_width = sum(widths) + max(0, len(tokens) - 1) * 10
+    cursor = 90 if align == "left" else max(20, 500 - total_width // 2)
+    y0 = max(
+        0,
+        min(1000 - line_height, int(round(y_center - line_height / 2))),
+    )
+    words: list[dict[str, Any]] = []
+    for index, (token, width) in enumerate(zip(tokens, widths, strict=True)):
+        words.append(
+            {
+                "text": token,
+                "bbox": [
+                    max(0, cursor),
+                    y0,
+                    min(1000, cursor + width),
+                    min(1000, y0 + line_height),
+                ],
+                "labels": labels_by_index.get(index, []),
+                "line_id": line_id,
+                "word_id": index + 1,
+            }
+        )
+        cursor = min(1000, cursor + width + 10)
+    return {"line_id": line_id, "y": y_center / 1000, "words": words}
+
+
+def _footer_anchor_y(lines: list[dict[str, Any]]) -> float:
+    grand_total_ys = [
+        _line_y(line) * 1000
+        for line in lines
+        if any(
+            "GRAND_TOTAL" in (word.get("labels") or [])
+            for word in line.get("words", []) or []
+        )
+    ]
+    if grand_total_ys:
+        return min(grand_total_ys)
+    if not lines:
+        return 400.0
+    return min(_line_y(line) * 1000 for line in lines)
+
+
+def _last_labeled_money(
+    receipt: dict[str, Any],
+    label: str,
+) -> Decimal | None:
+    amount: Decimal | None = None
+    for line in receipt.get("lines", []) or []:
+        if not any(
+            label in (word.get("labels") or [])
+            for word in line.get("words", []) or []
+        ):
+            continue
+        for word in line.get("words", []) or []:
+            parsed = _parse_money(word.get("text"))
+            if parsed is not None:
+                amount = parsed
+    return amount
+
+
+def _sprouts_footer_seed(receipt: dict[str, Any]) -> int:
+    key = _receipt_key(receipt)
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
+    return int(digest[:12], 16)
 
 
 def _insert_line_sorted(

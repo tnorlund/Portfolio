@@ -1,5 +1,7 @@
 """Tests for Sprouts-specific receipt parameterization."""
 
+import copy
+
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
     generate_synthetic_receipt_candidates,
 )
@@ -198,6 +200,81 @@ def _sprouts_receipts():
 
 def _word(text, bbox, labels=None):
     return {"text": text, "bbox": bbox, "labels": labels}
+
+
+def _sprouts_receipts_with_footer_leak():
+    receipts = copy.deepcopy(_sprouts_receipts())
+    receipts[0]["lines"].extend(
+        [
+            {
+                "line_id": 10,
+                "y": 0.55,
+                "words": [
+                    _word("CARD", [90, 540, 145, 565], ["PAYMENT_METHOD"]),
+                    _word("#:", [155, 540, 190, 565], ["PAYMENT_METHOD"]),
+                    _word(
+                        "XXXXXXXXXXXX3931",
+                        [200, 540, 360, 565],
+                        ["PAYMENT_METHOD"],
+                    ),
+                ],
+            },
+            {
+                "line_id": 11,
+                "y": 0.525,
+                "words": [
+                    _word("AID:", [90, 515, 140, 540]),
+                    _word("A0000000980840", [150, 515, 310, 540]),
+                ],
+            },
+            {
+                "line_id": 12,
+                "y": 0.50,
+                "words": [
+                    _word("99022003402972471754", [270, 490, 610, 515])
+                ],
+            },
+            {
+                "line_id": 13,
+                "y": 0.475,
+                "words": [
+                    _word("SproutsFeedback.com", [360, 465, 560, 490])
+                ],
+            },
+            {
+                "line_id": 14,
+                "y": 0.45,
+                "words": [
+                    _word("Please", [110, 440, 170, 465], ["ADDRESS_LINE"]),
+                    _word("keep", [180, 440, 230, 465], ["ADDRESS_LINE"]),
+                    _word("your", [240, 440, 290, 465], ["ADDRESS_LINE"]),
+                    _word("original", [300, 440, 380, 465], ["ADDRESS_LINE"]),
+                    _word("receipt,", [390, 440, 470, 465], ["ADDRESS_LINE"]),
+                    _word("th", [480, 440, 505, 465], ["ADDRESS_LINE"]),
+                ],
+            },
+            {
+                "line_id": 15,
+                "y": 0.425,
+                "words": [
+                    _word("please", [110, 415, 170, 440]),
+                    _word("in", [180, 415, 205, 440]),
+                    _word("our", [215, 415, 255, 440]),
+                    _word("rewards", [265, 415, 345, 440]),
+                    _word("program", [355, 415, 435, 440]),
+                ],
+            },
+            {
+                "line_id": 16,
+                "y": 0.40,
+                "words": [
+                    _word("DEBIT", [90, 390, 150, 415], ["PAYMENT_METHOD"]),
+                    _word("$10.78", [835, 390, 900, 415]),
+                ],
+            },
+        ]
+    )
+    return receipts
 
 
 def _category_sprouts_receipts():
@@ -472,6 +549,42 @@ def test_generate_parameterized_sprouts_candidates_clones_receipt_geometry():
         len(box) == 4 and all(0 <= coord <= 1000 for coord in box)
         for box in first["bboxes"]
     )
+
+
+def test_sprouts_candidates_sanitize_footer_emv_barcode_leaks():
+    parameterized = generate_parameterized_sprouts_candidates(
+        _plan(),
+        _sprouts_receipts_with_footer_leak(),
+        max_candidates=1,
+    )[0]
+    arithmetic = generate_arithmetic_sprouts_candidates(
+        _sprouts_receipts_with_footer_leak(),
+        max_candidates=1,
+    )[0]
+
+    for candidate in (parameterized, arithmetic):
+        text = " ".join(candidate["tokens"])
+        assert "AID:" not in candidate["tokens"]
+        assert "99022003402972471754" not in candidate["tokens"]
+        assert "rewards" not in candidate["tokens"]
+        assert "receipt, th" not in text
+        assert "SproutsFeedback.com" in candidate["tokens"]
+        assert "Please keep your original receipt;" in text
+        assert "CARD" in candidate["tokens"]
+        assert "PURCHASE" in candidate["tokens"]
+        assert candidate["metadata"]["footer_sanitization"][
+            "schema_version"
+        ] == "sprouts-footer-sanitization-v1"
+        assert (
+            candidate["metadata"]["footer_sanitization"][
+                "removed_line_count"
+            ]
+            >= 5
+        )
+        assert len(candidate["tokens"]) == len(candidate["bboxes"])
+        assert len(candidate["tokens"]) == len(candidate["ner_tags"])
+
+    assert "$7.99" in arithmetic["tokens"]
 
 
 def test_generic_candidate_generator_uses_sprouts_parameterization():
