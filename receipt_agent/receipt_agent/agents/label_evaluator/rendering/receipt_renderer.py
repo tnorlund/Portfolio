@@ -112,6 +112,12 @@ def render_receipt(
             width=1,
         )
 
+    # Pass 1: fit each word to its own box, but bucket by line and remember the
+    # SMALLEST fitted size on each line. A lone char ("a", "@", "t") otherwise
+    # renders at full line-height while words get width-shrunk, so single-char
+    # tokens looked oversized/serif-ish. Unifying to the line's body size fixes it.
+    prepared = []
+    line_size: dict[int, int] = {}
     for word in words:
         bbox = word.get("bbox")
         text = str(word.get("text") or "")
@@ -123,14 +129,17 @@ def render_receipt(
         left, top, right, bottom = px
         box_h = max(1, bottom - top)
         box_w = max(1, right - left)
-        font = _fit_font(
-            draw, text, box_w, box_h, config, condense=condense
-        )
-        ink = _ink_for(word, config)
+        font = _fit_font(draw, text, box_w, box_h, config, condense=condense)
+        size = int(getattr(font, "size", box_h) or box_h)
+        line_key = int(round((top + box_h / 2) / 6))
+        line_size[line_key] = min(line_size.get(line_key, size), size)
+        prepared.append((left, top, box_h, text, _ink_for(word, config), line_key))
+
+    # Pass 2: draw every token at its line's body size (consistent within a line).
+    for left, top, box_h, text, ink, line_key in prepared:
+        font = _load_font(line_size[line_key], config)
         # Vertically center the glyph in its box; left-align horizontally.
-        _draw_text(
-            image, draw, (left, top + box_h / 2), text, font, ink, condense
-        )
+        _draw_text(image, draw, (left, top + box_h / 2), text, font, ink, condense)
 
     return image
 
