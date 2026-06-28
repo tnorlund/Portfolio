@@ -165,7 +165,9 @@ def _cached_token_receipt_dict(example: dict) -> dict:
 def _cached_line_receipt_dict(example: dict) -> dict:
     lines = []
     source_lines = _order_cached_sprouts_lines(
-        _drop_duplicate_sprouts_header_lines(example)
+        _ensure_sprouts_farmers_market_header_line(
+            _drop_duplicate_sprouts_header_lines(example)
+        )
     )
     for index, line in enumerate(source_lines):
         text = str(line.get("text") or "").strip()
@@ -175,6 +177,7 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         y = float(line.get("y") or (940 - index * 16))
         labels = list(line.get("labels") or [])
         is_logo_line = any(_label_name(label) == "MERCHANT_NAME" for label in labels)
+        is_centered_header = _is_centered_sprouts_header_text(text)
         amount_start = None if is_logo_line else _cached_amount_cluster_start(words)
         is_barcode_line = _is_cached_barcode_text(text)
         # Cached line-only examples do not carry OCR word widths, so give the
@@ -191,6 +194,8 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             width_units = [width * factor for width in width_units]
             total_width = 900
         if is_logo_line:
+            x = 500 - total_width / 2
+        elif is_centered_header:
             x = 500 - total_width / 2
         elif is_barcode_line:
             x = 500 - total_width / 2
@@ -229,6 +234,37 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             x += width + 8
         lines.append({"line_id": index + 1, "words": rendered_words})
     return {"lines": lines}
+
+
+def _ensure_sprouts_farmers_market_header_line(lines: list[dict]) -> list[dict]:
+    if not any(
+        _compact_text(line.get("text") or "").startswith("SPROUTS")
+        for line in lines
+    ):
+        return lines
+    if any(_compact_text(line.get("text") or "") == "FARMERSMARKET" for line in lines):
+        return lines
+
+    inserted = []
+    for line in lines:
+        inserted.append(line)
+        text = _compact_text(line.get("text") or "")
+        if text == "SPROUTS":
+            inserted.append(
+                {
+                    "text": "FARMERS MARKET",
+                    "y": None,
+                    "labels": ["MERCHANT_NAME"],
+                }
+            )
+    return inserted
+
+
+def _is_centered_sprouts_header_text(text: str) -> bool:
+    compact = _compact_text(text)
+    if not compact:
+        return False
+    return _is_sprouts_header_line(compact)
 
 
 def _cached_amount_cluster_start(words: list[str]) -> int | None:

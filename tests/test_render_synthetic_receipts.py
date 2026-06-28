@@ -36,6 +36,12 @@ def _line_for_text(receipt: dict, text: str) -> dict:
     raise AssertionError(f"line not found: {text}")
 
 
+def _line_bounds(line: dict) -> tuple[float, float]:
+    xs = [word["bbox"][0] for word in line["words"]]
+    xs.extend(word["bbox"][2] for word in line["words"])
+    return min(xs), max(xs)
+
+
 def test_cached_line_render_keeps_one_sprouts_header_and_orders_sections():
     module = _load_module()
 
@@ -87,6 +93,35 @@ def test_cached_line_render_deduplicates_combined_sprouts_brand_line():
 
     assert texts.count("SPROUTS FARMERS MARKET") == 1
     assert texts.count("1012 WESTLAKE BLVD.") == 1
+
+
+def test_cached_line_render_centers_sprouts_store_header_block():
+    module = _load_module()
+
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 943.2, "text": "1012 WESTLAKE BLVD.", "labels": []},
+                {"y": 927.1, "text": "WESTLAKE, CA 91361", "labels": []},
+                {"y": 915.5, "text": "(805)917-4200", "labels": []},
+                {"y": 881.0, "text": "Store Hours MON-SUN 7AM-10PM", "labels": []},
+            ]
+        }
+    )
+
+    texts = _line_texts(receipt)
+    assert texts[:2] == ["SPROUTS", "FARMERS MARKET"]
+
+    for text in (
+        "FARMERS MARKET",
+        "1012 WESTLAKE BLVD.",
+        "WESTLAKE, CA 91361",
+        "(805)917-4200",
+        "Store Hours MON-SUN 7AM-10PM",
+    ):
+        left, right = _line_bounds(_line_for_text(receipt, text))
+        assert abs(((left + right) / 2) - 500.0) < 0.001
 
 
 def test_cached_line_render_keeps_split_totals_with_payment_section():
