@@ -850,6 +850,49 @@ using list_recent_uploads or get_receipt.""",
             },
         ),
         Tool(
+            name="delete_receipt",
+            description="""Delete a single receipt (and its child records) from an image, keeping the rest of the image.
+
+Use this to remove a spurious or over-segmented receipt fragment — e.g. a
+detector false-positive on bag/packaging text or signage — while leaving the
+other receipts on the same image intact.
+
+Choosing the right tool:
+- delete_receipt: remove ONE bogus receipt, keep the image and its other receipts.
+- merge_receipts: combine TWO fragments that are halves of the SAME receipt.
+- delete_image: remove the whole image and every receipt on it.
+
+How it works: deletes the Receipt entity from DynamoDB. The enhanced compactor
+then automatically removes the ChromaDB embeddings and all child records
+(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) via
+DynamoDB streams.
+
+Returns the receipt's merchant and a breakdown of child-record counts. By
+default runs in dry-run mode — set dry_run=false to actually delete.
+
+WARNING: This is IRREVERSIBLE. Verify the receipt is truly unwanted first
+using get_receipt or get_receipt_image_url.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID) containing the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID to delete",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), preview what would be deleted without making changes",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
+        Tool(
             name="list_training_jobs",
             description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
 
@@ -1077,6 +1120,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await delete_image_impl(
                 dynamo_client,
                 image_id=arguments["image_id"],
+                dry_run=arguments.get("dry_run", True),
+            )
+        elif name == "delete_receipt":
+            result = await delete_receipt_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
                 dry_run=arguments.get("dry_run", True),
             )
         elif name == "list_training_jobs":
@@ -2736,6 +2786,88 @@ async def delete_image_impl(
 
     except Exception as e:
         logger.exception("Error deleting image")
+        return {"error": str(e)}
+
+
+async def delete_receipt_impl(
+    dynamo_client, image_id: str, receipt_id: int, dry_run: bool = True
+) -> dict:
+    """Delete a single receipt and its children, keeping the rest of the image.
+
+    Only the Receipt entity is deleted here; the enhanced compactor removes the
+    ChromaDB embeddings and child records (lines, words, letters, labels, place)
+    asynchronously via DynamoDB streams.
+    """
+    try:
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} not found for image {image_id}"
+                )
+            }
+
+        place = getattr(details, "place", None)
+        merchant_name = (
+            getattr(place, "merchant_name", None) if place else None
+        )
+
+        # Note: ReceiptLetters are excluded from the GSI4 query that backs
+        # get_receipt_details, so they are not counted here. The compactor
+        # still deletes them via DynamoDB streams.
+        breakdown = {
+            "RECEIPT": 1,
+            "RECEIPT_LINES": len(details.lines or []),
+            "RECEIPT_WORDS": len(details.words or []),
+            "RECEIPT_WORD_LABELS": len(details.labels or []),
+            "RECEIPT_PLACES": 1 if place else 0,
+        }
+
+        if dry_run:
+            return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
+                "dry_run": True,
+                "breakdown": breakdown,
+                "message": (
+                    "Deletes the Receipt entity; the compactor then removes "
+                    "ChromaDB embeddings and all child records via DynamoDB "
+                    "streams. Re-run with dry_run=false to delete."
+                ),
+            }
+
+        from receipt_agent.lifecycle.receipt_manager import (
+            delete_receipt as delete_receipt_fn,
+        )
+
+        deletion = delete_receipt_fn(dynamo_client, image_id, receipt_id)
+        if not deletion.success:
+            return {
+                "error": deletion.error or "Failed to delete receipt",
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "merchant_name": merchant_name,
+            "dry_run": False,
+            "deleted": True,
+            "breakdown": breakdown,
+            "message": (
+                "Receipt entity deleted. The enhanced compactor will remove "
+                "ChromaDB embeddings and child records (lines, words, letters, "
+                "labels, place) asynchronously via DynamoDB streams."
+            ),
+        }
+
+    except Exception as e:
+        logger.exception("Error deleting receipt")
         return {"error": str(e)}
 
 
