@@ -63,7 +63,7 @@ sequence. Each lens reviewer must Read the composite PNG and the structured side
   L2 geometry — row pitch, column alignment, box placement vs the real receipt beside it.
   L3 arithmetic/content integrity — item lines, that subtotal+tax=total, label sanity, price columns.
   L4 merchant authenticity — header/footer/format conventions a real receipt for THIS merchant would have.
-  L5 OCR contamination — base-receipt OCR garbage leaked into the synthetic ("$2b0", truncated words, stray
+  L5 OCR contamination — base-receipt OCR garbage leaked into the synthetic ("\$2b0", truncated words, stray
      serif glyphs).
 Then ADVERSARIALLY cross-check: would a skeptic instantly tell this is synthetic? Note where lenses disagree.
 
