@@ -867,9 +867,10 @@ Use this to visually inspect a receipt when reviewing OCR quality or labels.""",
             name="list_synthetic_receipt_visual_review_targets",
             description="""List synthetic receipt render targets for Claude visual review.
 
-Returns the PNG path, candidate ID, review focus, train-only guard, and latest
-stored DynamoDB review state for each target. Use this before visually
-inspecting rendered synthetic receipts.""",
+Returns the synthetic PNG path, real base receipt image URLs, candidate ID,
+review focus, train-only guard, and latest stored DynamoDB review state for
+each target. Use this before visually comparing rendered synthetic receipts
+against their real base receipts.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -2976,6 +2977,10 @@ async def list_synthetic_receipt_visual_review_targets_impl(
             latest_status = latest.status if latest else "unreviewed"
             if normalized_status and latest_status != normalized_status:
                 continue
+            base_receipt_image = await _base_receipt_image_reference(
+                dynamo_client,
+                target.get("baseReceiptKey"),
+            )
             filtered.append(
                 {
                     "id": target.get("id"),
@@ -2988,6 +2993,7 @@ async def list_synthetic_receipt_visual_review_targets_impl(
                     "local_image_path": target.get("local_image_path"),
                     "local_image_exists": target.get("local_image_exists"),
                     "base_receipt_key": target.get("baseReceiptKey"),
+                    "base_receipt_image": base_receipt_image,
                     "structure_score": target.get("structureScore"),
                     "train_only_reason": target.get("trainOnlyReason"),
                     "expected_effect": target.get("expectedEffect"),
@@ -3007,6 +3013,55 @@ async def list_synthetic_receipt_visual_review_targets_impl(
     except Exception as e:
         logger.exception("Error listing synthetic receipt visual review targets")
         return {"error": str(e)}
+
+
+def _base_receipt_key_parts(base_receipt_key: Any) -> dict[str, Any] | None:
+    """Parse a target manifest base receipt key into image/receipt IDs."""
+    text = str(base_receipt_key or "").strip()
+    if not text or "#" not in text:
+        return None
+    image_id, receipt_id_text = text.split("#", 1)
+    image_id = image_id.strip()
+    receipt_id_text = receipt_id_text.strip()
+    if not image_id or not receipt_id_text:
+        return None
+    try:
+        receipt_id = int(receipt_id_text)
+    except ValueError:
+        return None
+    return {"image_id": image_id, "receipt_id": receipt_id}
+
+
+async def _base_receipt_image_reference(
+    dynamo_client,
+    base_receipt_key: Any,
+) -> dict[str, Any] | None:
+    """Return real base receipt image references for visual comparison."""
+    parts = _base_receipt_key_parts(base_receipt_key)
+    if parts is None:
+        return None
+    if dynamo_client is None:
+        return {
+            **parts,
+            "lookup_status": "not_loaded",
+        }
+    result = await get_receipt_image_url_impl(
+        dynamo_client,
+        parts["image_id"],
+        parts["receipt_id"],
+    )
+    if result.get("error"):
+        return {
+            **parts,
+            "lookup_status": "error",
+            "error": result["error"],
+        }
+    return {
+        **parts,
+        "lookup_status": "available",
+        "url": result.get("url"),
+        "variants": result.get("variants") or {},
+    }
 
 
 async def record_synthetic_receipt_visual_review_impl(
