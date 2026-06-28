@@ -173,8 +173,9 @@ claude, merge, or deploy." \
     OUT_JSON="$STATE/reviews/round-$round.json" \
     bash "$HERE/judge_round.sh" || echo "judge round $round failed; continuing"
 
-  # --- 4. SCORE (this run only, honest) + commit/push the scoreboard ---
-  "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --run-id "$RUN_ID" || true
+  # --- 4. SCORE (this run only, honest; ONE call → a single IMPROVED/NOIMP/FAILED verdict) ---
+  score_out="$("$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --run-id "$RUN_ID" 2>&1 || true)"
+  echo "$score_out"
   git add -A "$STATE/STATUS.md" "$STATE/best.json" "$STATE/gallery" "$STATE/reviews/round-$round.json" 2>/dev/null || true
   git commit -m "loop: round $round status (run=$RUN_ID, judge=$JM, merchant=$MERCHANT)" 2>/dev/null \
     && git push origin "$BRANCH" 2>&1 | tail -1 || true
@@ -184,8 +185,8 @@ claude, merge, or deploy." \
     review_cycle "$round"
   fi
 
-  # --- 5. hill-climb ratchet: improved -> reset counter; regressed -> restore best params + count ---
-  if "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --run-id "$RUN_ID" --check-improved >/dev/null 2>&1; then
+  # --- 5. hill-climb ratchet: improved -> reset; else restore best params + count toward plateau ---
+  if printf '%s' "$score_out" | grep -q 'RESULT=IMPROVED'; then
     no_improve=0
   else
     no_improve=$((no_improve+1)); echo "no improvement ($no_improve/$NO_IMPROVE_STOP)"

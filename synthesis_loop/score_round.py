@@ -45,42 +45,39 @@ def main() -> int:
     ap.add_argument("--round", type=int, required=True)
     ap.add_argument("--state", required=True)
     ap.add_argument("--run-id", default="")
-    ap.add_argument("--check-improved", action="store_true",
-                    help="exit 0 iff this round strictly improved the run's best texture score")
     a = ap.parse_args()
     state = pathlib.Path(a.state)
     review = _load(state / "reviews" / f"round-{a.round}.json")
     score = _round_score(review)
 
+    # compare against the best BEFORE this round (single call → no double-call false plateau)
     best = _load(state / "best.json")
-    # a best from a different run does not count
     best_score = best.get("score") if best.get("run_id") == a.run_id else None
 
-    if a.check_improved:
-        # a failed round (no scored candidates) never counts as improvement
-        if score is None:
-            return 1
-        return 0 if (best_score is None or score > best_score) else 1
-
-    improved = score is not None and (best_score is None or score > best_score)
-    if improved:
+    if score is None:
+        result = "FAILED"            # no scored candidates → never an improvement
+    elif best_score is None or score > best_score:
+        result = "IMPROVED"
         (state / "best.json").write_text(json.dumps({
             "run_id": a.run_id, "round": a.round, "score": score,
             "structural": _struct_score(review),
             "params": _load(state / "params.json"),
         }, indent=2))
+    else:
+        result = "NOIMP"
 
     s = "FAILED (no candidates)" if score is None else f"{score:.3f}"
     line = (f"- round {a.round}: texture={s}"
             f"  struct={_struct_score(review) if review.get('candidates') else 'n/a'}"
             f"  best={best_score if best_score is not None else 'n/a'}"
-            f"  {'NEW BEST' if improved else ''}\n")
+            f"  {'NEW BEST' if result == 'IMPROVED' else ''}\n")
     status = state / "STATUS.md"
     if not status.exists():
         status.write_text(f"# Synthesis hill-climb status (run {a.run_id})\n\n")
     with status.open("a") as f:
         f.write(line)
     print(line.strip())
+    print(f"RESULT={result}")       # run_loop parses this; one call, one verdict
     return 0
 
 
