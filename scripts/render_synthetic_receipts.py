@@ -90,6 +90,7 @@ _CACHED_ARITHMETIC_OUTPUT_SIZE = (416, 1176)
 _CACHED_ADDRESS_OUTPUT_SIZE = (416, 1280)
 _CACHED_THERMAL_DARK_SPECKLE_RATE = 0.064
 _CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.066
+_CACHED_THERMAL_MIN_DARK_DENSITY = 0.105
 _CACHED_THERMAL_SCANLINE_MIN_GAP = 42
 _CACHED_THERMAL_SCANLINE_MAX_GAP = 74
 _CACHED_THERMAL_MOTTLE_COUNT_FACTOR = 90
@@ -1214,6 +1215,11 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
         image,
         random.Random(seed ^ 0xA5C3_1F27),
     )
+    _apply_cached_thermal_density_floor(
+        image,
+        random.Random(seed ^ 0x9D37_442B),
+        min_density=_CACHED_THERMAL_MIN_DARK_DENSITY,
+    )
 
 
 def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:
@@ -1294,6 +1300,35 @@ def _apply_cached_thermal_scanline_banding(image, rng: random.Random) -> None:
             _CACHED_THERMAL_SCANLINE_MIN_GAP,
             _CACHED_THERMAL_SCANLINE_MAX_GAP,
         )
+
+
+def _apply_cached_thermal_density_floor(
+    image,
+    rng: random.Random,
+    *,
+    min_density: float,
+) -> None:
+    pixels = image.load()
+    dark_count = 0
+    paper_coords: list[tuple[int, int]] = []
+    for y in range(image.height):
+        for x in range(image.width):
+            r, g, b, a = pixels[x, y]
+            if a < 255:
+                continue
+            if min(r, g, b) < 170:
+                dark_count += 1
+                continue
+            if _is_cached_paper_pixel(r, g, b):
+                paper_coords.append((x, y))
+
+    target_dark = int(round(image.width * image.height * min_density))
+    deficit = max(0, min(target_dark - dark_count, len(paper_coords)))
+    if deficit <= 0:
+        return
+    for x, y in rng.sample(paper_coords, deficit):
+        gray = rng.randint(150, 168)
+        pixels[x, y] = (*_cached_thermal_warm_rgb(gray), pixels[x, y][3])
 
 
 def _is_cached_paper_pixel(r: int, g: int, b: int) -> bool:

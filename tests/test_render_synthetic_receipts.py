@@ -595,6 +595,29 @@ def test_cached_thermal_scanline_banding_adds_horizontal_rows():
     assert sum(1 for count in row_dark_counts if count > 12) >= 2
 
 
+def test_cached_thermal_density_floor_adds_paper_speckles_only():
+    from PIL import Image, ImageDraw
+
+    module = _load_module()
+    image = Image.new("RGBA", (100, 100), (250, 249, 245, 255))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([10, 10, 20, 20], fill=(20, 20, 20, 255))
+
+    module._apply_cached_thermal_density_floor(
+        image,
+        module.random.Random(431),
+        min_density=0.12,
+    )
+
+    assert image.getpixel((15, 15)) == (20, 20, 20, 255)
+    dark_count = sum(
+        1
+        for value in image.convert("L").getdata()
+        if value < 170
+    )
+    assert dark_count >= 1200
+
+
 def test_cached_thermal_mottle_adds_low_frequency_paper_variation():
     from PIL import Image, ImageDraw
 
