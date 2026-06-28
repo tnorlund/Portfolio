@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Callable, Mapping, Sequence
 
-from PIL import Image, ImageFont
+from PIL import Image, ImageFilter, ImageFont
 
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     AtlasStyle,
@@ -53,6 +53,9 @@ THERMAL_TTF_CANDIDATES: tuple[str, ...] = (
 _SIM_GLYPH_SIZE = 16  # side of the normalized ink vector used for matching
 _FIXED_PITCH_PROBE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZilWm.:$"
 _FIXED_PITCH_TOLERANCE_PX = 1.25
+_ADVANCE_PROBE_CHARS = "0MW"
+_FALLBACK_ALPHA_GAIN = 1.18
+_FALLBACK_ADVANCE_PAD_PX = 2
 
 
 @dataclass(frozen=True)
@@ -128,7 +131,9 @@ def make_ttf_fallback(
 
     Picks the best-matching font once (unless ``font_path`` is given) and returns
     ``fallback(char, style, px_height)`` rendering a missing character from that
-    font, ink-on-transparent, sized so a capital lands at ~``px_height``.
+    font, ink-on-transparent, sized so a capital lands at ~``px_height``. The
+    returned image reserves a full monospace advance, not just the tight ink
+    bounds, so fallback characters stay on the renderer's fixed receipt grid.
     """
     if font_path is None:
         font_path = match_fallback_font(atlas, candidates=candidates).font_path
@@ -239,10 +244,47 @@ def _render_ttf_glyph(
     bbox = scratch.getbbox()
     if bbox is None:
         return None
-    alpha = scratch.crop(bbox)
+    alpha = _thermal_stroke_alpha(scratch.crop(bbox))
+    advance_w = _fallback_advance_width(font, char, alpha.width)
+    alpha = _pad_to_advance(alpha, advance_w)
     glyph = Image.new("RGBA", alpha.size, ink + (0,))
     glyph.putalpha(alpha)
     return glyph
+
+
+def _thermal_stroke_alpha(alpha: Image.Image) -> Image.Image:
+    """Make matched-TTF fallback strokes read like dark thermal receipt ink."""
+    if alpha.width <= 1 or alpha.height <= 1:
+        return alpha.point(
+            lambda value: min(255, int(value * _FALLBACK_ALPHA_GAIN))
+        )
+    padded = Image.new("L", (alpha.width + 2, alpha.height + 2), 0)
+    padded.paste(alpha, (1, 1))
+    stroked = padded.filter(ImageFilter.MaxFilter(3))
+    return stroked.point(
+        lambda value: min(255, int(value * _FALLBACK_ALPHA_GAIN))
+    )
+
+
+def _fallback_advance_width(
+    font: ImageFont.FreeTypeFont, char: str, ink_width: int
+) -> int:
+    widths = [
+        int(round(_advance_width(font, probe)))
+        for probe in (*_ADVANCE_PROBE_CHARS, char)
+    ]
+    widths = [width for width in widths if width > 0]
+    fixed_advance = max(widths, default=1) + _FALLBACK_ADVANCE_PAD_PX
+    return max(ink_width, fixed_advance)
+
+
+def _pad_to_advance(alpha: Image.Image, advance_w: int) -> Image.Image:
+    advance_w = max(alpha.width, int(advance_w))
+    if advance_w == alpha.width:
+        return alpha
+    out = Image.new("L", (advance_w, alpha.height), 0)
+    out.paste(alpha, ((advance_w - alpha.width) // 2, 0))
+    return out
 
 
 def _mean_similarity(

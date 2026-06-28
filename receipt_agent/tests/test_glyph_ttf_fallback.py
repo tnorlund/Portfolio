@@ -101,6 +101,21 @@ def test_fallback_renders_missing_char_glyph():
 
 
 @_skip_no_ttf
+def test_fallback_reserves_fixed_monospace_advance():
+    atlas = _atlas()
+    fallback = make_ttf_fallback(atlas)
+    style = atlas.styles["body"]
+    narrow = fallback("I", style, 30)
+    wide = fallback("W", style, 30)
+
+    assert narrow is not None
+    assert wide is not None
+    assert narrow.width == wide.width
+    narrow_bbox = narrow.getchannel("A").getbbox() or (0, 0, 0, 0)
+    assert narrow_bbox[2] < narrow.width
+
+
+@_skip_no_ttf
 def test_fallback_skips_blank_and_degenerate():
     atlas = _atlas()
     fallback = make_ttf_fallback(atlas)
