@@ -1,6 +1,7 @@
 """Tests for cached synthetic receipt public rendering helpers."""
 
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -363,6 +364,51 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
     assert "07/30/2024 19:35:35" not in texts
     barcode_y = _line_center_y(_line_for_text(receipt, "19022003126062"))
     winners_y = _line_center_y(_line_for_text(receipt, "x5 Winners"))
+    assert winners_y - barcode_y > module._CACHED_MAX_LINE_SPACING
+
+
+def test_cached_token_render_reconstructs_sparse_sprouts_remove_item_fixture():
+    module = _load_module()
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "screenshots"
+        / "synthetic_receipts"
+        / "sprouts_arithmetic_remove_item.json"
+    )
+
+    receipt = module._cached_receipt_dict(json.loads(fixture_path.read_text()))
+    texts = _line_texts(receipt)
+
+    assert "GREEN BEANS 3.49" in texts
+    assert "LIMES 1.00" not in texts
+    assert "1.00" not in texts
+    assert "2 @ 2 FOR" not in texts
+    assert "BALANCE DUE 3.49" in texts
+    assert "DUE 3.49" not in texts
+    assert "BALANCE" not in texts
+    assert "CREDIT $3.49" in texts
+    assert "CARD #: XXXXXXXXXXXX5061" in texts
+    assert "AUTH CODE: 62566Z" in texts
+    assert "ARC: 00" in texts
+    assert "TC:" not in texts
+    assert "MID:" not in texts
+    assert "We need your feedback!" in texts
+    assert "Take a quick survey & enter for the chance" in texts
+    assert "to WIN a $250 Sprouts gift card. Go to:" in texts
+    assert "SproutsFeedback.com" in texts
+    assert "19022003126062" in texts
+    assert "Cashier:SSCO 31 Store: 220" in texts
+    assert "POS:031 Transaction:2806" in texts
+    assert "Tuesday, July 30, 2024 07:35 PM" in texts
+    assert "the method of payment used." in texts
+    assert "receipt. Limits apply to returns" in texts
+
+    logo_word = _line_for_text(receipt, "SPROUTS")["words"][0]
+    assert logo_word["bbox"][2] - logo_word["bbox"][0] == module._CACHED_LOGO_WIDTH
+    assert min(_line_center_y(line) for line in receipt["lines"]) < 90.0
+
+    barcode_y = _line_center_y(_line_for_text(receipt, "19022003126062"))
+    winners_y = _line_center_y(_line_for_text(receipt, "*5 Winners Monthly*"))
     assert winners_y - barcode_y > module._CACHED_MAX_LINE_SPACING
 
 

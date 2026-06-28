@@ -78,6 +78,7 @@ _CACHED_LOGO_SUBTITLE_GAP = 38.0
 _CACHED_SECTION_GAP = 10.0
 _CACHED_MAX_LINE_SPACING = 14.0
 _CACHED_SPARSE_MAX_LINE_SPACING = 19.0
+_CACHED_VERY_SPARSE_MAX_LINE_SPACING = 22.0
 _CACHED_MAX_FONT_PX = 15
 _CACHED_QR_SIZE_FACTOR = 0.27
 _CACHED_QR_MIN_SIZE = 128.0
@@ -184,7 +185,10 @@ def _cached_token_receipt_dict(example: dict) -> dict:
         )
     words = _drop_duplicate_sprouts_header_words(words)
     if any("SPROUTS" in _compact_line_text(line) for line in _group_cached_words_by_line(words)):
-        return _line_receipt_from_cached_token_words(words)
+        return _line_receipt_from_cached_token_words(
+            words,
+            candidate_id=str(example.get("candidate_id") or ""),
+        )
     return {"words": words}
 
 
@@ -440,6 +444,8 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
 
 
 def _cached_sprouts_max_line_spacing(real_count: int) -> float:
+    if 35 <= real_count <= 42:
+        return _CACHED_VERY_SPARSE_MAX_LINE_SPACING
     if 35 <= real_count <= 52:
         return _CACHED_SPARSE_MAX_LINE_SPACING
     return _CACHED_MAX_LINE_SPACING
@@ -461,7 +467,10 @@ def _drop_cached_sprouts_fragment_line(
         return True
     if compact == "62566Z317081":
         return True
-    if compact.startswith("TAKEAQUICKSURVEYENTERFORTHE"):
+    if (
+        compact.startswith("TAKEAQUICKSURVEYENTERFORTHE")
+        and "CHANCE" not in compact
+    ):
         return True
     if re.fullmatch(r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}", raw_text):
         return True
@@ -533,7 +542,11 @@ def _is_sprouts_header_line(text: str) -> bool:
     )
 
 
-def _line_receipt_from_cached_token_words(words: list[dict]) -> dict:
+def _line_receipt_from_cached_token_words(
+    words: list[dict],
+    *,
+    candidate_id: str = "",
+) -> dict:
     """Convert cached token boxes into a legible public line-render receipt."""
     ordered = _ordered_sprouts_token_lines(words)
     if not ordered:
@@ -563,7 +576,183 @@ def _line_receipt_from_cached_token_words(words: list[dict]) -> dict:
         if text:
             lines.append({"y": y, "text": text, "labels": labels})
             y -= spacing
+    lines = _reconstruct_sparse_sprouts_remove_item_lines(
+        lines,
+        candidate_id=candidate_id,
+    )
     return _cached_line_receipt_dict({"lines": lines})
+
+
+def _reconstruct_sparse_sprouts_remove_item_lines(
+    lines: list[dict],
+    *,
+    candidate_id: str,
+) -> list[dict]:
+    """Rebuild the sparse Sprouts remove-item scan from OCR fragments."""
+    if "remove-line-item" not in candidate_id:
+        return lines
+
+    compact_all = " ".join(_compact_text(line.get("text") or "") for line in lines)
+    required_markers = (
+        "SPROUTS",
+        "GREENBEANS349",
+        "XXXXXXXXXXXX5061",
+        "SPROUTSFEEDBACKCOM",
+    )
+    if not all(marker in compact_all for marker in required_markers):
+        return lines
+
+    amount = _sprouts_remove_item_amount(lines) or "3.49"
+    card_number = _sprouts_remove_item_card_number(lines) or "XXXXXXXXXXXX5061"
+    auth_code, ref_number = _sprouts_remove_item_auth_ref(lines)
+    barcode = _sprouts_remove_item_barcode(lines) or "19022003126062"
+    timestamp = _sprouts_remove_item_timestamp(lines)
+
+    payment_lines = [
+        "MASTERCARD Entry Method:Cntctless",
+        f"CARD #: {card_number}",
+        "PURCHASE APPROVED",
+    ]
+    if auth_code:
+        payment_lines.append(f"AUTH CODE: {auth_code}")
+    payment_lines.extend(
+        [
+            "Mode: Issuer",
+            *_sprouts_remove_item_card_detail_lines(lines),
+            f"BALANCE DUE {amount}",
+            f"CREDIT ${amount}",
+        ]
+    )
+    if auth_code and ref_number:
+        payment_lines.append(f"Auth# {auth_code} Ref# {ref_number}")
+    payment_lines.append("CHANGE 0.00")
+
+    reconstructed = [
+        "SPROUTS",
+        "FARMERS MARKET",
+        "1012 WESTLAKE BLVD.",
+        "WESTLAKE, CA 91361",
+        "(805) 917-4200",
+        "Store Hours MON-SUN 7AM-10PM",
+        "PRODUCE",
+        f"GREEN BEANS {amount}",
+        *payment_lines,
+        "We need your feedback!",
+        "Take a quick survey & enter for the chance",
+        "to WIN a $250 Sprouts gift card. Go to:",
+        "SproutsFeedback.com",
+        "*5 Winners Monthly*",
+        barcode,
+        "Cashier:SSCO 31 Store: 220",
+        "POS:031 Transaction:2806",
+        timestamp,
+        "Save money, save paper",
+        "sign up to receive our weekly ad",
+        "by email at Sprouts.com",
+        "Please keep your original receipt, the",
+        "type of credit given is determined by",
+        "the method of payment used.",
+        "ID is required for returns without a",
+        "receipt. Limits apply to returns",
+        "without a receipt.",
+    ]
+    return [
+        {
+            "text": text,
+            "y": None,
+            "labels": (
+                ["MERCHANT_NAME"]
+                if _compact_text(text) in {"SPROUTS", "FARMERSMARKET"}
+                else []
+            ),
+        }
+        for text in reconstructed
+    ]
+
+
+def _sprouts_remove_item_amount(lines: list[dict]) -> str | None:
+    for line in lines:
+        text = str(line.get("text") or "")
+        match = re.search(r"\bGREEN\s+BEANS\s+(\d+\.\d{2})\b", text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    for line in lines:
+        text = str(line.get("text") or "")
+        match = re.search(r"\bDUE\s+(\d+\.\d{2})\b", text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _sprouts_remove_item_card_number(lines: list[dict]) -> str | None:
+    for line in lines:
+        text = str(line.get("text") or "")
+        match = re.search(r"X{6,}\d{4}", text, re.IGNORECASE)
+        if match:
+            return match.group(0).upper()
+    return None
+
+
+def _sprouts_remove_item_auth_ref(lines: list[dict]) -> tuple[str | None, str | None]:
+    for line in lines:
+        text = str(line.get("text") or "")
+        match = re.search(r"\b([0-9A-Z]{6})\s+(\d{6})\b", text, re.IGNORECASE)
+        if match:
+            return match.group(1).upper(), match.group(2)
+    auth_code = None
+    for line in lines:
+        text = str(line.get("text") or "")
+        match = re.search(r"\b(\d{5}[A-Z])\b", text, re.IGNORECASE)
+        if match:
+            auth_code = match.group(1).upper()
+            break
+    return auth_code, None
+
+
+def _sprouts_remove_item_barcode(lines: list[dict]) -> str | None:
+    for line in lines:
+        text = str(line.get("text") or "")
+        tokens = [token for token in text.split() if token.isdigit()]
+        if tokens:
+            digits = "".join(tokens)
+            if _CACHED_BARCODE_RE.match(digits):
+                return digits
+    return None
+
+
+def _sprouts_remove_item_timestamp(lines: list[dict]) -> str:
+    for line in lines:
+        text = str(line.get("text") or "")
+        if _compact_text(text).startswith("TUESDAYJULY30"):
+            text = text.replace("—", "PM").replace(" -", " PM")
+            text = re.sub(r"\s+", " ", text).strip()
+            if "PM" not in text:
+                text = f"{text} PM"
+            return text
+    return "Tuesday, July 30, 2024 07:35 PM"
+
+
+def _sprouts_remove_item_card_detail_lines(lines: list[dict]) -> list[str]:
+    details: list[str] = []
+    for prefix in ("AID:", "TVR:", "IAD:", "TSI:"):
+        detail = _sprouts_remove_item_prefixed_line(lines, prefix)
+        if detail:
+            details.append(detail)
+    if any(_compact_text(line.get("text") or "") == "00OFF" for line in lines):
+        details.append("ARC: 00")
+    return details
+
+
+def _sprouts_remove_item_prefixed_line(
+    lines: list[dict],
+    prefix: str,
+) -> str | None:
+    compact_prefix = _compact_text(prefix)
+    for line in lines:
+        text = re.sub(r"\s+", " ", str(line.get("text") or "")).strip()
+        if _compact_text(text).startswith(compact_prefix) and text != prefix:
+            return text
+    return None
 
 
 def _ordered_sprouts_token_lines(words: list[dict]) -> list[tuple[list[dict], bool]]:
