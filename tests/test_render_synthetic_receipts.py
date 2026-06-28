@@ -42,6 +42,12 @@ def _line_bounds(line: dict) -> tuple[float, float]:
     return min(xs), max(xs)
 
 
+def _line_center_y(line: dict) -> float:
+    return sum(
+        (word["bbox"][1] + word["bbox"][3]) / 2 for word in line["words"]
+    ) / len(line["words"])
+
+
 def test_cached_line_render_keeps_one_sprouts_header_and_orders_sections():
     module = _load_module()
 
@@ -71,6 +77,42 @@ def test_cached_line_render_keeps_one_sprouts_header_and_orders_sections():
     assert texts.index("Store Hours MON-SUN 7AM-10PM") < texts.index("DAIRY")
     assert texts.index("DAIRY") < texts.index("US DEBIT Entry Method: Contactless")
     assert texts.index("US DEBIT Entry Method: Contactless") < texts.index("feedback!")
+
+
+def test_cached_line_render_uses_tighter_sprouts_section_gaps():
+    module = _load_module()
+
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 943.2, "text": "1012 WESTLAKE BLVD.", "labels": []},
+                {"y": 927.1, "text": "Store Hours MON-SUN 7AM-10PM", "labels": []},
+                {"y": 900.0, "text": "PRODUCE", "labels": []},
+                {"y": 880.0, "text": "ORGANIC GREEN ONIONS 1.67", "labels": []},
+                {"y": 850.0, "text": "BALANCE DUE 1.67", "labels": []},
+                {"y": 820.0, "text": "We need your feedback!", "labels": []},
+            ]
+        }
+    )
+
+    produce_y = _line_center_y(_line_for_text(receipt, "PRODUCE"))
+    header_y = _line_center_y(_line_for_text(receipt, "Store Hours MON-SUN 7AM-10PM"))
+    balance_y = _line_center_y(_line_for_text(receipt, "BALANCE DUE 1.67"))
+    feedback_y = _line_center_y(_line_for_text(receipt, "We need your feedback!"))
+
+    assert (
+        header_y - produce_y
+        == module._CACHED_MAX_LINE_SPACING + module._CACHED_SECTION_GAP
+    )
+    assert (
+        produce_y - balance_y
+        == module._CACHED_MAX_LINE_SPACING * 2 + module._CACHED_SECTION_GAP
+    )
+    assert (
+        balance_y - feedback_y
+        == module._CACHED_MAX_LINE_SPACING + module._CACHED_SECTION_GAP
+    )
 
 
 def test_cached_line_render_deduplicates_combined_sprouts_brand_line():

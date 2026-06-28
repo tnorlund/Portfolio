@@ -69,6 +69,9 @@ _CACHED_LINE_LEFT_X = 70.0
 _CACHED_PRICE_RIGHT_X = 835.0
 _CACHED_PRICE_GAP_X = 24.0
 _CACHED_QR_MODULES = 29
+_CACHED_BODY_HALF_HEIGHT = 7
+_CACHED_SECTION_GAP = 10.0
+_CACHED_MAX_LINE_SPACING = 14.0
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -201,7 +204,7 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             x = 500 - total_width / 2
         else:
             x = _CACHED_LINE_LEFT_X
-        half_height = 24 if is_logo_line else 6
+        half_height = 24 if is_logo_line else _CACHED_BODY_HALF_HEIGHT
         rendered_words = []
         amount_x = None
         if amount_start is not None:
@@ -353,9 +356,9 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
 
     real_count = sum(1 for line in ordered if str(line.get("text") or "").strip())
     break_count = len(ordered) - real_count
-    section_gap = 18.0 if real_count < 70 else 10.0
+    section_gap = _CACHED_SECTION_GAP
     spacing = (930.0 - break_count * section_gap) / max(1, real_count - 1)
-    spacing = max(9.0, min(15.0, spacing))
+    spacing = max(9.0, min(_CACHED_MAX_LINE_SPACING, spacing))
 
     y = 978.0
     positioned = []
@@ -702,7 +705,7 @@ def _render_cached_hybrid(
         draw_price_column=False,
         background=(250, 249, 245),
         min_font_px=6,
-        max_font_px=12,
+        max_font_px=13,
     )
     image = render_receipt(
         receipt,
