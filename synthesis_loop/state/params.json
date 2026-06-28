@@ -1,7 +1,8 @@
 {
-  "_comment": "Current renderer knobs the hill-climb tunes. Defaults mirror scripts/render_synthetic_receipts.py. The brain (codex) edits these each round to address Claude's top critique. 'merchants' is the rotation; run_loop.sh sets the active 'merchant' = merchants[round % len] each round.",
-  "merchants": ["Sprouts", "Vons"],
+  "_comment": "Renderer knobs the hill-climb tunes. The brain (codex) edits these each round to address the top critique. merchants = rotation; run_loop sets active 'merchant' = merchants[round % len]. NOTE: cached render mode only has Sprouts example JSONs in screenshots/synthetic_receipts, so we start Sprouts-only; adding Vons needs the bundle pipeline (verify_synthetic_replay local-pipeline) — a follow-up.",
+  "merchants": ["Sprouts"],
   "merchant": "Sprouts",
+  "cached_renderer": "glyph",
   "limit": 4,
   "seed": 37,
   "noise": 0.42,

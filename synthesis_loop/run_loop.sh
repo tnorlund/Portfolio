@@ -97,28 +97,42 @@ PY
 )"
   echo "merchant this round: $MERCHANT"
 
-  # --- 1. BRAIN: codex reads the last critique, edits params/code, re-renders, commits ---
-  #   --ask-for-approval never  : autonomous, no prompts
-  #   --sandbox workspace-write : can edit files + run render scripts; no network needed
-  #   (codex's OWN model calls go to OpenAI outside the sandbox and work fine)
+  # --- 1. BRAIN: codex edits params/code to address the last critique, then COMMITS (no render, no network) ---
+  #   The render needs DynamoDB (network) which codex's sandbox blocks, so codex does NOT render — the shell
+  #   does (step 1b). Codex only reasons + edits + commits; its own model calls reach OpenAI regardless.
+  prev_head="$(git rev-parse HEAD)"
   "$CODEX_BIN" exec \
     --profile "$CODEX_PROFILE" \
     --cd "$REPO" \
     "Round $round of the synthesis hill-climb, merchant=$MERCHANT. Read synthesis_loop/AGENTS.md for the \
-contract. Read the latest Claude review at ${prev_review:-'(none yet — first round; render a baseline)'}. \
+contract. Read the latest Claude review at ${prev_review:-'(none yet — first round; keep the baseline params)'}. \
 Address the single highest-impact critique (texture OR structural) for merchant $MERCHANT by editing \
-synthesis_loop/state/params.json and/or the renderer/synthesis code. After ANY code edit, run the render and \
-confirm PNGs appear; if rendering breaks, revert the code change and fall back to a param tweak. Re-render into \
-synthesis_loop/state/renders/round-$round/ via scripts/render_synthetic_receipts.py using params.json, copy the \
-best render to synthesis_loop/state/gallery/round-$round.png, and commit with a message naming the critique you \
-targeted. Do NOT push, do NOT spawn claude, do NOT merge or deploy." \
+synthesis_loop/state/params.json and/or the renderer/synthesis code under \
+receipt_agent/.../label_evaluator/rendering/. Then commit with a message naming the critique you targeted. \
+Do NOT render (the loop renders for you), do NOT push, do NOT call DynamoDB/AWS, do NOT spawn claude, do NOT \
+merge or deploy." \
     || { echo "codex round $round failed; continuing"; }
+
+  # --- 1b. RENDER in the shell (has network for the Dynamo glyph atlas) + render-verify guard ---
+  RENDER_DIR="$STATE/renders/round-$round"; rm -rf "$RENDER_DIR"; mkdir -p "$RENDER_DIR" "$STATE/gallery"
+  render_round() {
+    "$PYTHON_BIN" "$HERE/render_from_params.py" --params "$STATE/params.json" --merchant "$MERCHANT" \
+      --out-dir "$RENDER_DIR" --repo "$REPO"
+  }
+  if ! render_round || ! ls "$RENDER_DIR"/*.png >/dev/null 2>&1; then
+    echo "render produced no PNGs — reverting codex's round commit and retrying with prior code"
+    git reset --hard "$prev_head"
+    render_round || echo "baseline render still failing — judge will see an empty round"
+  fi
+  cp "$(ls -1 "$RENDER_DIR"/*real_vs_synthetic.png "$RENDER_DIR"/*.png 2>/dev/null | head -1)" \
+     "$STATE/gallery/round-$round.png" 2>/dev/null || true
+  git add -A "$STATE/gallery" "$STATE/params.json" 2>/dev/null
+  git commit -m "loop: round $round renders (merchant=$MERCHANT)" 2>/dev/null || true
 
   # --- 2. PUSH: in the shell (network), never inside codex ---
   git push origin "$BRANCH" 2>&1 | tail -2 || echo "push failed (will retry next round)"
 
   # --- 3. EYES: headless claude judges the new renders (sibling process) ---
-  RENDER_DIR="$STATE/renders/round-$round"
   ROUND="$round" RENDER_DIR="$RENDER_DIR" OUT_JSON="$STATE/reviews/round-$round.json" \
     bash "$HERE/judge_round.sh" || echo "judge round $round failed; continuing"
 
