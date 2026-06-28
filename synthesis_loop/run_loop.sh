@@ -16,7 +16,10 @@
 set -euo pipefail
 
 # ---- config (override via env) ------------------------------------------------
-REPO="${REPO:-$HOME/Portfolio}"
+# default REPO = the repo this script lives in (the worktree), not a hardcoded ~/Portfolio,
+# so it works from whichever checkout you launch it in.
+_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO="${REPO:-$(cd "$_self_dir/.." && pwd)}"
 BRANCH="${BRANCH:-feat/synthesis-hill-climb}"
 MAX_ROUNDS="${MAX_ROUNDS:-50}"
 SLEEP_SECS="${SLEEP_SECS:-90}"
