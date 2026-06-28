@@ -20,7 +20,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
+import re
 import sys
+import zlib
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for path in (
@@ -43,6 +46,28 @@ from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
     render_real_vs_synthetic,
     save_receipt_png,
 )
+
+
+_CACHED_AMOUNT_RE = re.compile(
+    r"^(?:USD)?\$?\d{1,4}(?:,\d{3})*\.\d{2}[A-Z]?-?$",
+    re.IGNORECASE,
+)
+_CACHED_BARCODE_RE = re.compile(r"^\d{14,}$")
+_CACHED_CURRENCY_MARKERS = {"USD$", "$", "USD"}
+_CACHED_AMOUNT_LABELS = {
+    "LINE_TOTAL",
+    "SUBTOTAL",
+    "TAX",
+    "GRAND_TOTAL",
+    "UNIT_PRICE",
+    "AMOUNT",
+    "BALANCE",
+    "TOTAL",
+    "PRICE",
+}
+_CACHED_LINE_LEFT_X = 70.0
+_CACHED_PRICE_RIGHT_X = 835.0
+_CACHED_PRICE_GAP_X = 24.0
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -149,12 +174,16 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         y = float(line.get("y") or (940 - index * 16))
         labels = list(line.get("labels") or [])
         is_logo_line = any(_label_name(label) == "MERCHANT_NAME" for label in labels)
+        amount_start = None if is_logo_line else _cached_amount_cluster_start(words)
+        is_barcode_line = _is_cached_barcode_text(text)
         # Cached line-only examples do not carry OCR word widths, so give the
         # renderer enough horizontal room to avoid shrinking every line to the
         # minimum font size.
         width_units = [max(18.0, len(word) * 12.0) for word in words]
         if is_logo_line and len(words) == 1:
             width_units = [max(width_units[0], 220.0)]
+        if is_barcode_line and len(width_units) == 1:
+            width_units = [max(width_units[0], 560.0)]
         total_width = sum(width_units) + max(0, len(words) - 1) * 8.0
         if total_width > 900:
             factor = 900 / total_width
@@ -162,21 +191,80 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             total_width = 900
         if is_logo_line:
             x = 500 - total_width / 2
+        elif is_barcode_line:
+            x = 500 - total_width / 2
         else:
-            x = 70
+            x = _CACHED_LINE_LEFT_X
         half_height = 24 if is_logo_line else 6
         rendered_words = []
-        for word, width in zip(words, width_units):
+        amount_x = None
+        if amount_start is not None:
+            amount_width = (
+                sum(width_units[amount_start:])
+                + max(0, len(width_units) - amount_start - 1) * 8.0
+            )
+            amount_x = _CACHED_PRICE_RIGHT_X - amount_width
+            body_width = (
+                sum(width_units[:amount_start])
+                + max(0, amount_start - 1) * 8.0
+            )
+            available_body = amount_x - _CACHED_PRICE_GAP_X - _CACHED_LINE_LEFT_X
+            if amount_start and body_width > available_body > 0:
+                factor = available_body / body_width
+                width_units[:amount_start] = [
+                    max(18.0, width * factor) for width in width_units[:amount_start]
+                ]
+        for word_index, (word, width) in enumerate(zip(words, width_units)):
+            if amount_x is not None and word_index == amount_start:
+                x = amount_x
+            is_amount_word = amount_start is not None and word_index >= amount_start
             rendered_words.append(
                 {
                     "text": word,
                     "bbox": [x, y - half_height, x + width, y + half_height],
-                    "labels": labels,
+                    "labels": _cached_word_labels(labels, is_amount_word),
                 }
             )
             x += width + 8
         lines.append({"line_id": index + 1, "words": rendered_words})
     return {"lines": lines}
+
+
+def _cached_amount_cluster_start(words: list[str]) -> int | None:
+    if not words:
+        return None
+    last_index = len(words) - 1
+    if not _is_cached_amount_token(words[last_index]):
+        return None
+    start = last_index
+    if start > 0 and _is_cached_currency_marker(words[start - 1]):
+        start -= 1
+    return start
+
+
+def _is_cached_amount_token(token: str) -> bool:
+    return bool(_CACHED_AMOUNT_RE.match(token.strip()))
+
+
+def _is_cached_currency_marker(token: str) -> bool:
+    return token.strip().upper() in _CACHED_CURRENCY_MARKERS
+
+
+def _is_cached_barcode_text(text: str) -> bool:
+    tokens = [token.strip() for token in str(text or "").split() if token.strip()]
+    if not tokens or not all(token.isdigit() for token in tokens):
+        return False
+    return bool(_CACHED_BARCODE_RE.match("".join(tokens)))
+
+
+def _cached_word_labels(labels: list[str], is_amount_word: bool) -> list[str]:
+    if is_amount_word:
+        return labels
+    return [
+        label
+        for label in labels
+        if _label_name(label) not in _CACHED_AMOUNT_LABELS
+    ]
 
 
 def _normalize_bbox(bbox: list[float] | tuple[float, ...]) -> list[float] | None:
@@ -492,8 +580,8 @@ def _render_cached_hybrid(
         color_by_label=False,
         draw_price_column=False,
         background=(250, 249, 245),
-        min_font_px=5,
-        max_font_px=10,
+        min_font_px=6,
+        max_font_px=12,
     )
     image = render_receipt(
         receipt,
@@ -502,6 +590,7 @@ def _render_cached_hybrid(
         coord_max=1000.0,
     ).convert("RGBA")
     _overlay_cached_logo(image, receipt, atlas, config=config, coord_max=1000.0)
+    _overlay_cached_barcodes(image, receipt, config=config, coord_max=1000.0)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.convert("RGB").save(path, format="PNG")
     return path
@@ -551,6 +640,83 @@ def _overlay_cached_logo(
         fill=config.background + (255,),
     )
     image.alpha_composite(scaled, (max(0, x), max(0, y)))
+
+
+def _overlay_cached_barcodes(
+    image,
+    receipt: dict,
+    *,
+    config: RenderConfig,
+    coord_max: float,
+) -> None:
+    from PIL import ImageDraw
+
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    draw = ImageDraw.Draw(image)
+    for line in receipt.get("lines") or []:
+        words = [word for word in line.get("words", []) if word.get("bbox")]
+        digits = _cached_barcode_digits(words)
+        if not digits:
+            continue
+        bbox = _union_bbox([word["bbox"] for word in words])
+        if bbox is None:
+            continue
+        left, top, right, bottom = _to_pixel_box(
+            bbox,
+            coord_max=coord_max,
+            margin=config.margin,
+            inner_w=inner_w,
+            inner_h=inner_h,
+        )
+        span = max(1.0, right - left)
+        quiet = span * 0.08
+        bx0 = left + quiet
+        bx1 = right - quiet
+        band_h = max(10.0, min((bottom - top) * 1.7, 18.0))
+        band_bottom = top - 3.0
+        band_top = max(float(config.margin), band_bottom - band_h)
+        if bx1 - bx0 < 24.0 or band_bottom - band_top < 8.0:
+            continue
+        if _cached_band_has_ink(image, (bx0, band_top, bx1, band_bottom)):
+            continue
+        rng = random.Random(zlib.crc32(digits.encode("ascii")) & 0xFFFFFFFF)
+        unit = max(1.0, (bx1 - bx0) / 95.0)
+        x = bx0
+        is_bar = True
+        while x < bx1:
+            width = rng.choice((1, 1, 2, 3)) * unit
+            if is_bar:
+                draw.rectangle(
+                    [x, band_top, min(x + width, bx1), band_bottom],
+                    fill=(34, 32, 30, 255),
+                )
+            x += width
+            is_bar = not is_bar
+
+
+def _cached_barcode_digits(words: list[dict]) -> str | None:
+    tokens = [
+        str(word.get("text") or "").strip()
+        for word in sorted(words, key=lambda item: float(item["bbox"][0]))
+    ]
+    tokens = [token for token in tokens if token]
+    if not tokens or not all(token.isdigit() for token in tokens):
+        return None
+    digits = "".join(tokens)
+    return digits if _CACHED_BARCODE_RE.match(digits) else None
+
+
+def _cached_band_has_ink(image, box: tuple[float, float, float, float]) -> bool:
+    left = max(0, int(box[0]))
+    top = max(0, int(box[1]))
+    right = min(image.width, int(box[2] + 0.999))
+    bottom = min(image.height, int(box[3] + 0.999))
+    if right <= left or bottom <= top:
+        return True
+    gray = image.crop((left, top, right, bottom)).convert("L")
+    dark = sum(1 for value in gray.getdata() if value < 170)
+    return dark > max(3, int((right - left) * (bottom - top) * 0.012))
 
 
 def _cached_logo_line(receipt: dict) -> list[dict] | None:
