@@ -86,8 +86,8 @@ _CACHED_QR_MAX_SIZE = 160.0
 _CACHED_QR_TOP_FACTOR = 0.70
 _CACHED_QR_FOOTER_TAIL_START_Y = 92.0
 _CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
-_CACHED_THERMAL_DARK_SPECKLE_RATE = 0.025
-_CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.055
+_CACHED_THERMAL_DARK_SPECKLE_RATE = 0.046
+_CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.062
 _CACHED_THERMAL_SCANLINE_MIN_GAP = 42
 _CACHED_THERMAL_SCANLINE_MAX_GAP = 74
 _CACHED_THERMAL_MOTTLE_COUNT_FACTOR = 90
@@ -474,6 +474,8 @@ def _drop_cached_sprouts_fragment_line(
         return True
     if not compact:
         return False
+    if "REWARDSPROGRAM" in compact or "PLEASEPLEASE" in compact:
+        return True
     if has_feedback_url and compact == "FEEDBACK":
         return True
     if compact in _CACHED_SPROUTS_FRAGMENT_TEXTS:
@@ -898,6 +900,18 @@ def _normalize_cached_sprouts_line_text(text: str) -> str:
     normalized = re.sub(r"\$2[Bb]0\b", "$250", text)
     normalized = re.sub(r"\b2/06/2025\b", "12/06/2025", normalized)
     normalized = re.sub(
+        r"\bEntry\s+Method:\s*(?:Ontctless|Ontotless|Contactless|Cntctless)\b",
+        "Entry Method:Cntctless",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"\bMode:\s*Issuer\s*-\s*PIN\s+Verified\b",
+        "Mode: Issuer-PIN Verified",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
         r"\boriginal\s+recei\s+pt,\s*th\b",
         "original receipt, the",
         normalized,
@@ -1224,7 +1238,7 @@ def _apply_cached_thermal_mottle(image, rng: random.Random) -> None:
         center_y = rng.randint(0, max(0, image.height - 1))
         radius_x = rng.randint(max(32, image.width // 7), max(44, image.width // 2))
         radius_y = rng.randint(max(24, image.height // 20), max(42, image.height // 7))
-        bias = rng.choice((-1, 1)) * rng.randint(8, 20)
+        bias = rng.choice((-1, 1)) * rng.randint(10, 26)
         left = max(0, center_x - radius_x)
         right = min(image.width, center_x + radius_x)
         top = max(0, center_y - radius_y)

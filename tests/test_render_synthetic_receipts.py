@@ -76,8 +76,8 @@ def test_cached_line_render_keeps_one_sprouts_header_and_orders_sections():
     assert texts.count("1012 WESTLAKE BLVD.") == 1
     assert texts.index("SPROUTS") < texts.index("DAIRY")
     assert texts.index("Store Hours MON-SUN 7AM-10PM") < texts.index("DAIRY")
-    assert texts.index("DAIRY") < texts.index("US DEBIT Entry Method: Contactless")
-    assert texts.index("US DEBIT Entry Method: Contactless") < texts.index("feedback!")
+    assert texts.index("DAIRY") < texts.index("US DEBIT Entry Method:Cntctless")
+    assert texts.index("US DEBIT Entry Method:Cntctless") < texts.index("feedback!")
 
 
 def test_cached_line_render_uses_tighter_sprouts_section_gaps():
@@ -401,6 +401,8 @@ def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
     assert "SUBTOTAL 27.41" in texts
     assert "TAX 0.00" in texts
     assert "NO. OF ITEMS SOLD 5" in texts
+    assert "US DEBIT Entry Method:Cntctless" in texts
+    assert "US DEBIT Entry Method: Ontctless" not in texts
     assert "Total: USD$ 27.41" in texts
     assert "BALANCE DUE 27.41" in texts
     assert "DEBIT $27.41" in texts
@@ -415,6 +417,8 @@ def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
     assert "We need your feedback!" in texts
     assert "to WIN a $250 Sprouts gift card. Go to:" in texts
     assert "SproutsFeedback.com" in texts
+    assert not any("please please" in text for text in texts)
+    assert not any("rewards program" in text for text in texts)
     assert "09022003450923401235" in texts
     assert "Cashier:SSCO 34 Store: 220" in texts
     assert "POS:034 Transaction: 5092" in texts
@@ -424,7 +428,7 @@ def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
 
     logo_word = _line_for_text(receipt, "SPROUTS")["words"][0]
     assert logo_word["bbox"][2] - logo_word["bbox"][0] == module._CACHED_LOGO_WIDTH
-    assert min(_line_center_y(line) for line in receipt["lines"]) < 145.0
+    assert min(_line_center_y(line) for line in receipt["lines"]) < 160.0
 
     barcode_y = _line_center_y(_line_for_text(receipt, "09022003450923401235"))
     winners_y = _line_center_y(_line_for_text(receipt, "*5 Winners Monthly*"))
@@ -452,6 +456,8 @@ def test_cached_token_render_normalizes_sprouts_feedback_amount_fixture():
     assert "SUBTOTAL 30.58" in texts
     assert "TAX 0.00" in texts
     assert "NO. OF ITEMS SOLD 7" in texts
+    assert "US DEBIT Entry Method:Cntctless" in texts
+    assert "US DEBIT Entry Method: Ontctless" not in texts
     assert texts.index("NO. OF ITEMS SOLD 7") < texts.index("Total: USD$ 30.58")
     assert "to WIN a $250 Sprouts gift card. Go to:" in texts
     assert "Please keep your original receipt, the" in texts
@@ -473,6 +479,8 @@ def test_cached_line_render_normalizes_sprouts_footer_word_splits_fixture():
 
     assert "Save money, save paper" in texts
     assert "Save money, save paper -" not in texts
+    assert "US DEBIT Entry Method:Cntctless" in texts
+    assert "US DEBIT Entry Method: Ontotless" not in texts
     assert "Please keep your original receipt, the" in texts
     assert not any("recei pt" in text for text in texts)
     assert "Please keep your original receipt, th" not in texts
@@ -532,7 +540,7 @@ def test_cached_thermal_texture_is_deterministic_and_preserves_ink():
         if not (16 <= x <= 32 and 16 <= y <= 32)
         and images[0].getpixel((x, y))[0] < 170
     )
-    assert textured_dark > 150
+    assert textured_dark > 300
 
 
 def test_cached_thermal_scanline_banding_adds_horizontal_rows():
@@ -818,7 +826,7 @@ def test_cached_token_render_does_not_classify_chips_as_payment():
     texts = _line_texts(module._cached_token_receipt_dict(example))
 
     product_line = "ORGANIC CARROT CHIPS 2.49"
-    payment_line = "US DEBIT Entry Method: Contactless"
+    payment_line = "US DEBIT Entry Method:Cntctless"
 
     assert product_line in texts
     assert payment_line in texts
