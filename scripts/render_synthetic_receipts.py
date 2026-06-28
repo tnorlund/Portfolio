@@ -69,9 +69,21 @@ _CACHED_LINE_LEFT_X = 70.0
 _CACHED_PRICE_RIGHT_X = 835.0
 _CACHED_PRICE_GAP_X = 24.0
 _CACHED_QR_MODULES = 29
-_CACHED_BODY_HALF_HEIGHT = 7
+_CACHED_LOGO_WIDTH = 280.0
+_CACHED_LOGO_HALF_HEIGHT = 30.0
+_CACHED_WORD_MIN_WIDTH = 22.0
+_CACHED_CHAR_WIDTH = 16.0
+_CACHED_BODY_HALF_HEIGHT = 8.0
+_CACHED_LOGO_SUBTITLE_GAP = 38.0
 _CACHED_SECTION_GAP = 10.0
 _CACHED_MAX_LINE_SPACING = 14.0
+_CACHED_MAX_FONT_PX = 15
+_CACHED_QR_SIZE_FACTOR = 0.27
+_CACHED_QR_MIN_SIZE = 128.0
+_CACHED_QR_MAX_SIZE = 160.0
+_CACHED_QR_TOP_FACTOR = 0.70
+_CACHED_QR_FOOTER_TAIL_START_Y = 92.0
+_CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -179,16 +191,23 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         words = text.split()
         y = float(line.get("y") or (940 - index * 16))
         labels = list(line.get("labels") or [])
-        is_logo_line = any(_label_name(label) == "MERCHANT_NAME" for label in labels)
+        compact_text = _compact_text(text)
+        is_logo_line = (
+            any(_label_name(label) == "MERCHANT_NAME" for label in labels)
+            and compact_text.startswith("SPROUTS")
+        )
         is_centered_header = _is_centered_sprouts_header_text(text)
         amount_start = None if is_logo_line else _cached_amount_cluster_start(words)
         is_barcode_line = _is_cached_barcode_text(text)
         # Cached line-only examples do not carry OCR word widths, so give the
         # renderer enough horizontal room to avoid shrinking every line to the
         # minimum font size.
-        width_units = [max(18.0, len(word) * 12.0) for word in words]
+        width_units = [
+            max(_CACHED_WORD_MIN_WIDTH, len(word) * _CACHED_CHAR_WIDTH)
+            for word in words
+        ]
         if is_logo_line and len(words) == 1:
-            width_units = [max(width_units[0], 220.0)]
+            width_units = [max(width_units[0], _CACHED_LOGO_WIDTH)]
         if is_barcode_line and len(width_units) == 1:
             width_units = [max(width_units[0], 560.0)]
         total_width = sum(width_units) + max(0, len(words) - 1) * 8.0
@@ -204,7 +223,9 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             x = 500 - total_width / 2
         else:
             x = _CACHED_LINE_LEFT_X
-        half_height = 24 if is_logo_line else _CACHED_BODY_HALF_HEIGHT
+        half_height = (
+            _CACHED_LOGO_HALF_HEIGHT if is_logo_line else _CACHED_BODY_HALF_HEIGHT
+        )
         rendered_words = []
         amount_x = None
         if amount_start is not None:
@@ -221,7 +242,8 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             if amount_start and body_width > available_body > 0:
                 factor = available_body / body_width
                 width_units[:amount_start] = [
-                    max(18.0, width * factor) for width in width_units[:amount_start]
+                    max(_CACHED_WORD_MIN_WIDTH, width * factor)
+                    for width in width_units[:amount_start]
                 ]
         for word_index, (word, width) in enumerate(zip(words, width_units)):
             if amount_x is not None and word_index == amount_start:
@@ -250,8 +272,20 @@ def _ensure_sprouts_farmers_market_header_line(lines: list[dict]) -> list[dict]:
 
     inserted = []
     for line in lines:
-        inserted.append(line)
         text = _compact_text(line.get("text") or "")
+        if text.startswith("SPROUTS") and "FARMERSMARKET" in text:
+            brand_line = dict(line)
+            brand_line["text"] = "SPROUTS"
+            inserted.append(brand_line)
+            inserted.append(
+                {
+                    "text": "FARMERS MARKET",
+                    "y": None,
+                    "labels": ["MERCHANT_NAME"],
+                }
+            )
+            continue
+        inserted.append(line)
         if text == "SPROUTS":
             inserted.append(
                 {
@@ -370,7 +404,12 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
         item = dict(line)
         item["y"] = y
         positioned.append(item)
-        y -= spacing
+        line_gap = (
+            _CACHED_LOGO_SUBTITLE_GAP
+            if _compact_text(text).startswith("SPROUTS")
+            else spacing
+        )
+        y -= line_gap
     return positioned
 
 
@@ -645,8 +684,8 @@ def _reflow_cached_qr_footer(receipt: dict) -> dict:
     if not footer_tail:
         return {**receipt, "lines": lines[: anchor_index + 1]}
 
-    start_y = 126.0
-    bottom_y = 18.0
+    start_y = _CACHED_QR_FOOTER_TAIL_START_Y
+    bottom_y = _CACHED_QR_FOOTER_TAIL_BOTTOM_Y
     spacing = (start_y - bottom_y) / max(1, len(footer_tail) - 1)
     spacing = max(8.0, min(11.0, spacing))
     reflowed_tail = [
@@ -705,7 +744,7 @@ def _render_cached_hybrid(
         draw_price_column=False,
         background=(250, 249, 245),
         min_font_px=6,
-        max_font_px=13,
+        max_font_px=_CACHED_MAX_FONT_PX,
     )
     image = render_receipt(
         receipt,
@@ -903,9 +942,10 @@ def _cached_qr_pixel_box(
     feedback_line = _cached_line_with_text(receipt, "SPROUTSFEEDBACKCOM")
     if feedback_line is None:
         return None
+    anchor_line = _cached_line_with_text(receipt, "5WINNERSMONTHLY") or feedback_line
     inner_w = config.width - 2 * config.margin
     inner_h = config.height - 2 * config.margin
-    bbox = _union_bbox([word["bbox"] for word in feedback_line if word.get("bbox")])
+    bbox = _union_bbox([word["bbox"] for word in anchor_line if word.get("bbox")])
     if bbox is None:
         return None
     _, _, _, feedback_bottom = _to_pixel_box(
@@ -915,8 +955,11 @@ def _cached_qr_pixel_box(
         inner_w=inner_w,
         inner_h=inner_h,
     )
-    size = min(132.0, max(104.0, image.width * 0.23))
-    top = max(feedback_bottom + 12.0, image.height * 0.74)
+    size = min(
+        _CACHED_QR_MAX_SIZE,
+        max(_CACHED_QR_MIN_SIZE, image.width * _CACHED_QR_SIZE_FACTOR),
+    )
+    top = max(feedback_bottom + 12.0, image.height * _CACHED_QR_TOP_FACTOR)
     bottom_limit = image.height - config.margin - 72.0
     if top + size > bottom_limit:
         top = max(config.margin + 10.0, bottom_limit - size)

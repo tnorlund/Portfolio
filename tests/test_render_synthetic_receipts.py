@@ -133,7 +133,7 @@ def test_cached_line_render_deduplicates_combined_sprouts_brand_line():
 
     texts = _line_texts(receipt)
 
-    assert texts.count("SPROUTS FARMERS MARKET") == 1
+    assert texts[:2] == ["SPROUTS", "FARMERS MARKET"]
     assert texts.count("1012 WESTLAKE BLVD.") == 1
 
 
@@ -164,6 +164,43 @@ def test_cached_line_render_centers_sprouts_store_header_block():
     ):
         left, right = _line_bounds(_line_for_text(receipt, text))
         assert abs(((left + right) / 2) - 500.0) < 0.001
+
+
+def test_cached_line_render_uses_larger_sprouts_glyph_boxes():
+    module = _load_module()
+
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 940.0, "text": "PRODUCE", "labels": []},
+            ]
+        }
+    )
+
+    logo_word = _line_for_text(receipt, "SPROUTS")["words"][0]
+    logo_y = _line_center_y(_line_for_text(receipt, "SPROUTS"))
+    subtitle_y = _line_center_y(_line_for_text(receipt, "FARMERS MARKET"))
+    subtitle_word = _line_for_text(receipt, "FARMERS MARKET")["words"][0]
+    body_word = _line_for_text(receipt, "PRODUCE")["words"][0]
+
+    assert logo_word["bbox"][2] - logo_word["bbox"][0] == module._CACHED_LOGO_WIDTH
+    assert (
+        logo_word["bbox"][3] - logo_word["bbox"][1]
+        == module._CACHED_LOGO_HALF_HEIGHT * 2
+    )
+    assert (
+        body_word["bbox"][3] - body_word["bbox"][1]
+        == module._CACHED_BODY_HALF_HEIGHT * 2
+    )
+    assert (
+        subtitle_word["bbox"][3] - subtitle_word["bbox"][1]
+        == module._CACHED_BODY_HALF_HEIGHT * 2
+    )
+    assert logo_y - subtitle_y == module._CACHED_LOGO_SUBTITLE_GAP
+    assert body_word["bbox"][2] - body_word["bbox"][0] == (
+        len("PRODUCE") * module._CACHED_CHAR_WIDTH
+    )
 
 
 def test_cached_line_render_keeps_split_totals_with_payment_section():
@@ -218,7 +255,7 @@ def test_cached_line_render_right_aligns_trailing_amount_cluster():
 
     total_words = _line_for_text(receipt, "Total: USD$ 1.67")["words"]
     assert total_words[0]["bbox"][0] == 70.0
-    assert total_words[-2]["bbox"][0] > 700.0
+    assert total_words[-2]["bbox"][0] > 675.0
     assert total_words[-1]["bbox"][2] == module._CACHED_PRICE_RIGHT_X
 
 
@@ -312,6 +349,74 @@ def test_cached_hybrid_renderer_stamps_qr_like_footer_block():
     assert dark_pixels > 2000
 
 
+def test_cached_qr_block_uses_receipt_scaled_size_and_position():
+    from PIL import Image
+
+    module = _load_module()
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 900.0, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 500.0, "text": "SproutsFeedback.com", "labels": ["WEBSITE"]},
+            ]
+        }
+    )
+    image = Image.new("RGBA", (576, 1176), (250, 249, 245, 255))
+
+    left, top, right, bottom = module._cached_qr_pixel_box(
+        image,
+        receipt,
+        config=module.RenderConfig(width=576, height=1176, margin=10),
+        coord_max=1000.0,
+    )
+
+    expected_size = min(
+        module._CACHED_QR_MAX_SIZE,
+        max(module._CACHED_QR_MIN_SIZE, image.width * module._CACHED_QR_SIZE_FACTOR),
+    )
+    assert abs((right - left) - expected_size) < 0.001
+    assert abs((bottom - top) - expected_size) < 0.001
+    assert abs(top - image.height * module._CACHED_QR_TOP_FACTOR) < 0.001
+
+
+def test_cached_qr_block_sits_below_winners_line_when_present():
+    from PIL import Image
+
+    module = _load_module()
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 900.0, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 500.0, "text": "SproutsFeedback.com", "labels": ["WEBSITE"]},
+                {"y": 480.0, "text": "*5 Winners Monthly*", "labels": []},
+            ]
+        }
+    )
+    image = Image.new("RGBA", (576, 1176), (250, 249, 245, 255))
+    config = module.RenderConfig(width=576, height=1176, margin=10)
+
+    _, top, _, _ = module._cached_qr_pixel_box(
+        image,
+        receipt,
+        config=config,
+        coord_max=1000.0,
+    )
+    _, _, _, winners_bottom = module._to_pixel_box(
+        module._union_bbox(
+            [
+                word["bbox"]
+                for word in _line_for_text(receipt, "*5 Winners Monthly*")["words"]
+            ]
+        ),
+        coord_max=1000.0,
+        margin=config.margin,
+        inner_w=config.width - 2 * config.margin,
+        inner_h=config.height - 2 * config.margin,
+    )
+
+    assert top >= winners_bottom + 12.0
+
+
 def test_cached_qr_footer_reflows_cashier_lines_below_reserved_band():
     module = _load_module()
 
@@ -343,8 +448,13 @@ def test_cached_qr_footer_reflows_cashier_lines_below_reserved_band():
     assert "in our rewards program please please do t" not in texts
     cashier = _line_for_text(receipt, "Cashier:SSCO 34 Store: 220")["words"][0]
     pos = _line_for_text(receipt, "POS:034 Transaction: 5092")["words"][0]
-    assert (cashier["bbox"][1] + cashier["bbox"][3]) / 2 == 126.0
-    assert (pos["bbox"][1] + pos["bbox"][3]) / 2 < 126.0
+    assert (
+        (cashier["bbox"][1] + cashier["bbox"][3]) / 2
+        == module._CACHED_QR_FOOTER_TAIL_START_Y
+    )
+    assert (pos["bbox"][1] + pos["bbox"][3]) / 2 < (
+        module._CACHED_QR_FOOTER_TAIL_START_Y
+    )
 
 
 def test_cached_token_render_does_not_classify_chips_as_payment():
