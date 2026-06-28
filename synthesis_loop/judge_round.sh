@@ -16,7 +16,7 @@ DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-ReceiptsTable-dc5be22}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"         # review steps use opus (best visual + structural discrimination)
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"       # opus + high effort for the two-axis realism/structure judgment
 MCP_TIMEOUT_MS="${MCP_TIMEOUT_MS:-180000}"
-PYTHON_BIN="${PYTHON_BIN:-$HOME/.coreml-venv/bin/python}"
+PYTHON_BIN="${PYTHON_BIN:-$([ -x "$HOME/.synth-venv/bin/python" ] && echo "$HOME/.synth-venv/bin/python" || echo "$HOME/.coreml-venv/bin/python")}"
 PROJECT_DIR="${PROJECT_DIR:-$PWD}"
 
 export PATH="$HOME/.local/bin:$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1

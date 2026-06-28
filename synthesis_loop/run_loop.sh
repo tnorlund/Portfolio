@@ -23,7 +23,8 @@ SLEEP_SECS="${SLEEP_SECS:-90}"
 NO_IMPROVE_STOP="${NO_IMPROVE_STOP:-3}"
 REVIEW_EVERY="${REVIEW_EVERY:-5}"                  # post @codex review on the PR every N rounds
 PR_NUMBER="${PR_NUMBER:-1022}"
-PYTHON_BIN="${PYTHON_BIN:-$HOME/.coreml-venv/bin/python}"
+# .synth-venv has the receipt_agent langchain deps that rendering needs; coreml-venv does not.
+PYTHON_BIN="${PYTHON_BIN:-$([ -x "$HOME/.synth-venv/bin/python" ] && echo "$HOME/.synth-venv/bin/python" || echo "$HOME/.coreml-venv/bin/python")}"
 CODEX_PROFILE="${CODEX_PROFILE:-synthesis-loop}"   # defined in ~/.codex/config.toml (see codex-profile.toml)
 # On the mini, /opt/homebrew/bin/codex is a broken node shim; the app binary is self-contained.
 CODEX_BIN="${CODEX_BIN:-$([ -x /Applications/Codex.app/Contents/Resources/codex ] && echo /Applications/Codex.app/Contents/Resources/codex || echo codex)}"
