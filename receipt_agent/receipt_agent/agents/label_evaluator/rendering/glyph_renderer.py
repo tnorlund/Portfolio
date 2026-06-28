@@ -91,11 +91,12 @@ _BARCODE_MIN_WIDTH_FRAC = 0.35
 _RULE_CHARS = frozenset("-_=*.~")
 _BARCODE_MAX_CENTER_OFFSET_FRAC = 0.16
 _BARCODE_MAX_EXISTING_INK_FRAC = 0.01
-# Atlas crops for these single-cell glyphs have repeatedly been contaminated by
-# neighboring OCR boxes in Sprouts renders (e.g. w->h, o->b, i->t, 5->b). In the
-# default cached-render policy, route them through the matched monospace fallback
-# so text stays readable while the rest of the line can still use real crops.
-_ATLAS_CONFUSABLE_CHARS = frozenset("wWoOiI5")
+# Atlas/fallback crops for these single-cell glyphs have repeatedly read as
+# neighboring OCR boxes or capitals in Sprouts renders (e.g. w->h, o->b, i->t,
+# 5->b, g->9, y->Y/7, p->P, s->S, l->I). Route them through the matched
+# monospace fallback in numeric mode, and preserve their fallback contours in
+# font mode so the retint pass does not erase the small lowercase distinctions.
+_ATLAS_CONFUSABLE_CHARS = frozenset("wWoOiI5gypsl")
 
 
 @dataclass(frozen=True)
@@ -496,7 +497,10 @@ def _render_glyph(
         glyph_img = fallback(char, style, int(max(2, target_h)))
         if glyph_img is not None:
             if ink_jitter is not None:
-                glyph_img = _retint_glyph(glyph_img, config, ink_jitter)
+                glyph_img = _retint_glyph(
+                    glyph_img, config, ink_jitter,
+                    preserve_shape=char in _ATLAS_CONFUSABLE_CHARS,
+                )
             return _fit_glyph_width(glyph_img, max_w)
 
     # Rotate among the char's stored variants (seeded rng) so a repeated letter
@@ -531,11 +535,16 @@ def _fit_glyph_width(glyph_img: Image.Image, max_w: float) -> Image.Image:
 
 
 def _retint_glyph(
-    glyph_img: Image.Image, config: GlyphRenderConfig, ink_jitter: int
+    glyph_img: Image.Image,
+    config: GlyphRenderConfig,
+    ink_jitter: int,
+    *,
+    preserve_shape: bool = False,
 ) -> Image.Image:
-    alpha = _apply_ink_density(
-        _thermalize_font_alpha(glyph_img.getchannel("A")), config
-    )
+    alpha = glyph_img.getchannel("A")
+    if not preserve_shape:
+        alpha = _thermalize_font_alpha(alpha)
+    alpha = _apply_ink_density(alpha, config)
     ink = tuple(max(0, min(255, c + ink_jitter)) for c in config.ink)
     out = Image.new("RGBA", glyph_img.size, ink + (0,))
     out.putalpha(alpha)
