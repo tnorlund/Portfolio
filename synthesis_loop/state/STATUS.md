@@ -1,11 +1,3 @@
-# Synthesis hill-climb status
+# Synthesis hill-climb status (run 99339ac8bbe6)
 
-- round 1: score=n/a  best=n/a  
-- round 1: score=n/a  best=n/a  
-- round 1: score=0.3933333333333333  best=n/a  NEW BEST
-- round 1: score=0.37666666666666665  best=0.3933333333333333  
-- round 2: score=0.33  best=0.3933333333333333  
-- round 3: score=0.559  best=0.3933333333333333  NEW BEST
-- round 4: score=0.555  best=0.559  
-- round 5: score=0.549  best=0.559  
-- round 6: score=0.534  best=0.559  
+- round 1: texture=0.433  struct=0.49333333333333335  best=n/a  NEW BEST
