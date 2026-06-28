@@ -58,12 +58,26 @@ need to call the judge, instead **write your candidates to the round's out-dir a
 **Hill-climb acceptance:** keep a change only if the round's aggregate Claude score is ≥ the previous best
 (recorded in `state/best.json`). If it regresses, the next round you revert and try a different direction.
 
+## Two DISTINCT reviewers — do not conflate them
+
+1. **Local image/code judge** = headless Claude (`judge_round.sh`, opus). Looks at the *rendered images* +
+   structure each round and writes realism verdicts to Dynamo. This is the hill-climb's score signal.
+2. **GitHub Codex code-review bot** = `chatgpt-codex-connector[bot]` in the cloud. Reviews the *PR code diff*
+   and leaves inline `path:line` findings with P1/P2/P3 badges. This is about code quality, not renders.
+
+`run_loop.sh` drives reviewer #2 on a cycle every `REVIEW_EVERY` rounds via `review_cycle()`:
+- **Respond first:** the shell fetches the bot's inline findings to `state/codex_review_comments.json`;
+  **you (codex) read that file and apply the P1/P2 fixes** (edit + commit only — the shell pushes and replies).
+- **Then request:** the shell posts `@codex review` for the latest batch and flags it pending.
+
+When you are the review-responder, your contract: apply minimal fixes for in-scope P1/P2 findings, note any
+you skip and why, run the render-verify guard if you touch renderer code, commit referencing the findings, and
+**do NOT push, call gh, reply on the PR, spawn claude, or merge/deploy** — the shell owns all network/PR actions.
+
 ## Commit / push / review cadence
 
 - **Commit every round.** Small, legible commits — one critique addressed per commit.
 - The loop pushes to `feat/synthesis-hill-climb` (draft PR **#1022**).
-- `run_loop.sh` posts `@codex review` on PR #1022 **every 5 rounds** (`REVIEW_EVERY`) so the Codex review bot
-  reviews a meaningful batch, not every commit. Don't request reviews yourself.
 - Commit `STATUS.md`, the Claude verdict JSON, and `state/gallery/round-N.png` so progress is visible on the
   **phone (GitHub app)** and laptop without a terminal.
 
@@ -86,7 +100,8 @@ need to call the judge, instead **write your candidates to the round's out-dir a
 - [x] **Cadence** — defaults: 4 candidates/round, 90s sleep, stop after 3 no-improve rounds or 50 rounds total.
 - [x] **Promotion** — realism gates the gallery; the existing #1001/#1003 quality gates are the hard floor for
       what enters the LayoutLM training bundle. Realism never overrides the gates.
-- [x] **PR review** — `run_loop.sh` posts `@codex review` on #1022 every 5 rounds.
+- [x] **PR review** — every 5 rounds `run_loop.sh` responds to the prior Codex-bot review (codex applies the
+      P1/P2 fixes → shell pushes + replies) then requests a fresh `@codex review`. See "Two DISTINCT reviewers".
 
 ## Wiring note (verify on first live run — mini was offline at build time)
 

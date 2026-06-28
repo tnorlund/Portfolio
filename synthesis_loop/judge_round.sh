@@ -50,29 +50,33 @@ EOF
 
 PROMPT_FILE="$(mktemp)"
 cat > "$PROMPT_FILE" <<EOF
-You are the JUDGE for synthetic receipts. You have full tools (Read, Glob, Grep, Bash) AND the
-receipt-tools MCP. Round under review: $ROUND. Newly rendered candidates are in: $RENDER_DIR
+You are the LEAD JUDGE for synthetic receipts. You have full tools (Read, Glob, Grep, Bash, and the
+Agent/Workflow tools) AND the receipt-tools MCP. Round under review: $ROUND. Candidates are in: $RENDER_DIR
+Each candidate has a side-by-side composite "<id>.real_vs_synthetic.png" (REAL vs SYNTHETIC, labeled) plus
+"<id>.synthetic.png". You MUST look at the actual pixels.
 
-Each candidate has a side-by-side composite "<id>.real_vs_synthetic.png" (REAL on one side, SYNTHETIC
-on the other, labeled) plus "<id>.synthetic.png". You MUST actually look at the pixels.
+RUN A REVIEW PANEL — don't judge in a single pass. For richer, more reliable verdicts, evaluate each
+candidate through these independent LENSES, and **if the Workflow/Agent tools are available, fan out one
+subagent per lens (in parallel) and synthesize their findings**; otherwise work the lenses yourself in
+sequence. Each lens reviewer must Read the composite PNG and the structured sidecar JSON for itself:
+  L1 texture/photographic realism — paper grain, thermal print, blur, ink feathering, glyph weight.
+  L2 geometry — row pitch, column alignment, box placement vs the real receipt beside it.
+  L3 arithmetic/content integrity — item lines, that subtotal+tax=total, label sanity, price columns.
+  L4 merchant authenticity — header/footer/format conventions a real receipt for THIS merchant would have.
+  L5 OCR contamination — base-receipt OCR garbage leaked into the synthetic ("$2b0", truncated words, stray
+     serif glyphs).
+Then ADVERSARIALLY cross-check: would a skeptic instantly tell this is synthetic? Note where lenses disagree.
 
-For each candidate:
-1. Glob "$RENDER_DIR" for *.real_vs_synthetic.png and Read each one so you can SEE it.
-2. Call list_synthetic_receipt_visual_review_targets to map renders to review targets. If a structured
-   bundle / candidate JSON path is given, Read it so you can check the STRUCTURE (item lines, that
-   subtotal + tax = total, label sanity), not just the look.
-3. Score TWO axes in [0,1] and explain each:
-   - texture_realism: paper noise, blur, thermal look, glyph weight — would this pass as a photo of a
-     real receipt? (gates the gallery)
-   - structural_plausibility: row pitch, box/line geometry, plausible items for this merchant, arithmetic
-     that adds up — is the underlying receipt structure believable? (this is what flows into training)
-4. Call record_synthetic_receipt_visual_review with both scores, an overall status
-   (accepted / needs_work / rejected), and SPECIFIC, actionable critiques that name the defect AND the
-   knob or code it points to — e.g. "paper noise too uniform -> raise --noise variance", "body glyph
-   weight too heavy -> rendering/glyph_renderer.py stroke", "row pitch 2px too tight", "tax 0.0 but items
-   taxable". The next Codex round acts on exactly these words, so be precise.
-Finally call summarize_synthetic_receipt_visual_reviews and output its JSON as the LAST line.
-You may read files and inspect freely. Do NOT modify code, commit, push, or deploy. Subscription auth only.
+For each candidate, synthesize the panel into:
+  - texture_realism in [0,1]  (gates the gallery)
+  - structural_plausibility in [0,1]  (this flows into training)
+  - status: accepted / needs_work / rejected
+  - 3-6 SPECIFIC critiques, each naming the defect AND the knob or code it points to — e.g.
+    "paper noise too uniform -> raise --noise variance", "glyph weight too heavy -> rendering/glyph_renderer.py
+    stroke", "row pitch 2px tight", "subtotal 27.58 + tax 1.50 != total 30.58". The next Codex round acts on
+    these exact words.
+Record each via record_synthetic_receipt_visual_review. Finally call summarize_synthetic_receipt_visual_reviews
+and output its JSON as the LAST line. Read/inspect freely. Do NOT modify code, commit, push, or deploy.
 EOF
 
 env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
@@ -81,11 +85,11 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
   MCP_CONNECT_TIMEOUT_MS="$MCP_TIMEOUT_MS" MCP_TIMEOUT="$MCP_TIMEOUT_MS" MCP_TOOL_TIMEOUT="$MCP_TIMEOUT_MS" \
   RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1 \
   claude -p "$(cat "$PROMPT_FILE")" \
-    --system-prompt "You are a noninteractive synthetic-receipt judge. Look at the render PNGs with Read, use MCP tools to record verdicts. Return only the requested JSON on the final line." \
+    --system-prompt "You are the lead of a noninteractive synthetic-receipt review panel. Look at the render PNGs with Read; use the Workflow/Agent tools to run per-lens reviewers in parallel when available; record verdicts via MCP. Return only the requested JSON on the final line." \
     --model "$CLAUDE_MODEL" --effort "$CLAUDE_EFFORT" \
     --mcp-config "$MCP_CONFIG_FILE" --strict-mcp-config \
     --add-dir "$RENDER_DIR" \
-    --permission-mode bypassPermissions --max-turns 40 \
+    --permission-mode bypassPermissions --max-turns 80 \
     --disable-slash-commands --output-format json --no-session-persistence < /dev/null \
   > "$OUT_JSON.raw"
 

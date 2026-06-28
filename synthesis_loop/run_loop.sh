@@ -21,8 +21,11 @@ BRANCH="${BRANCH:-feat/synthesis-hill-climb}"
 MAX_ROUNDS="${MAX_ROUNDS:-50}"
 SLEEP_SECS="${SLEEP_SECS:-90}"
 NO_IMPROVE_STOP="${NO_IMPROVE_STOP:-3}"
-REVIEW_EVERY="${REVIEW_EVERY:-5}"                  # post @codex review on the PR every N rounds
+REVIEW_EVERY="${REVIEW_EVERY:-5}"                  # request + respond-to a Codex bot review every N rounds
 PR_NUMBER="${PR_NUMBER:-1022}"
+REPO_SLUG="${REPO_SLUG:-tnorlund/Portfolio}"
+GH_BIN="${GH_BIN:-$(command -v gh || echo /opt/homebrew/bin/gh)}"
+CODEX_REVIEW_BOT="${CODEX_REVIEW_BOT:-chatgpt-codex-connector[bot]}"  # the GitHub cloud Codex code-review bot (NOT the local judge)
 # .synth-venv has the receipt_agent langchain deps that rendering needs; coreml-venv does not.
 PYTHON_BIN="${PYTHON_BIN:-$([ -x "$HOME/.synth-venv/bin/python" ] && echo "$HOME/.synth-venv/bin/python" || echo "$HOME/.coreml-venv/bin/python")}"
 CODEX_PROFILE="${CODEX_PROFILE:-synthesis-loop}"   # defined in ~/.codex/config.toml (see codex-profile.toml)
@@ -43,6 +46,41 @@ mkdir -p "$STATE/reviews" "$STATE/renders"
 git rev-parse --abbrev-ref HEAD | grep -qx "$BRANCH" || {
   echo "Refusing to run: not on $BRANCH (on $(git rev-parse --abbrev-ref HEAD))"; exit 1; }
 case "$BRANCH" in main|integration/*) echo "Refusing: $BRANCH is protected"; exit 1;; esac
+
+# ---- GitHub Codex code-review bot cycle (DISTINCT from the local Claude image judge) ----
+# Every REVIEW_EVERY rounds: (i) respond to the PREVIOUS bot review by having codex apply its
+# inline P1/P2 findings, then push + reply on the PR; (ii) request a fresh review.
+# Network (gh fetch/reply, git push) is done HERE in the shell; codex only edits+commits (its
+# sandbox has no network), so it never hangs and never touches gh.
+review_cycle() {
+  local round="$1"
+  if [ -f "$STATE/pending_review.flag" ]; then
+    echo ">> responding to the Codex bot review on PR #$PR_NUMBER"
+    "$GH_BIN" api "repos/$REPO_SLUG/pulls/$PR_NUMBER/comments" --paginate \
+      --jq "[.[]|select(.user.login==\"$CODEX_REVIEW_BOT\")|{id,path,line:(.line//.original_line),body}]" \
+      > "$STATE/codex_review_comments.json" 2>/dev/null || echo "[]" > "$STATE/codex_review_comments.json"
+    local n; n=$("$PYTHON_BIN" -c "import json;print(len(json.load(open('$STATE/codex_review_comments.json'))))" 2>/dev/null || echo 0)
+    if [ "${n:-0}" -gt 0 ]; then
+      "$CODEX_BIN" exec --profile "$CODEX_PROFILE" --cd "$REPO" \
+        "Read synthesis_loop/state/codex_review_comments.json — inline findings from the GitHub Codex review bot \
+($CODEX_REVIEW_BOT) on PR #$PR_NUMBER, each with path/line/body and a P1/P2/P3 badge. Apply minimal fixes for \
+the P1/P2 findings that touch this branch's synthesis_loop/ or renderer/synthesis changes; for anything out of \
+scope or already handled, note that instead of editing. Run the render-verify guard if you touch renderer code. \
+Commit referencing the findings addressed. Do NOT push, do NOT call gh, do NOT spawn claude, do NOT merge/deploy." \
+        || echo "codex review-response failed; continuing"
+      git push origin "$BRANCH" 2>&1 | tail -1 || true
+      "$GH_BIN" pr comment "$PR_NUMBER" \
+        --body "🤖 Synthesis loop addressed the Codex review ($n inline findings) in \`$(git rev-parse --short HEAD)\` — see the commit for per-finding handling. (automated; distinct from the local image judge)" \
+        2>&1 | tail -1 || echo "gh reply failed"
+    else
+      echo "no actionable Codex bot findings this cycle"
+    fi
+    rm -f "$STATE/pending_review.flag"
+  fi
+  echo ">> requesting a fresh Codex bot review"
+  "$GH_BIN" pr comment "$PR_NUMBER" --body "@codex review — synthesis hill-climb rounds up to $round pushed." 2>&1 | tail -1 || true
+  touch "$STATE/pending_review.flag"
+}
 
 no_improve=0
 for ((round=1; round<=MAX_ROUNDS; round++)); do
@@ -89,10 +127,9 @@ targeted. Do NOT push, do NOT spawn claude, do NOT merge or deploy." \
   git add -A "$STATE/STATUS.md" "$STATE/best.json" "$STATE/gallery" "$STATE/reviews/round-$round.json" 2>/dev/null || true
   git commit -m "loop: round $round status (merchant=$MERCHANT)" 2>/dev/null && git push origin "$BRANCH" 2>&1 | tail -1 || true
 
-  # --- 4b. ask the Codex review bot to review a batch every REVIEW_EVERY rounds ---
+  # --- 4b. GitHub Codex bot review cycle every REVIEW_EVERY rounds (respond-to-prev, then request) ---
   if [ "$REVIEW_EVERY" -gt 0 ] && [ $((round % REVIEW_EVERY)) -eq 0 ]; then
-    gh pr comment "$PR_NUMBER" --body "@codex review — rounds up to $round pushed (merchant rotation: see STATUS.md)." \
-      2>&1 | tail -1 || echo "could not post @codex review (gh auth?)"
+    review_cycle "$round"
   fi
 
   # --- 5. stop if we've plateaued ---
