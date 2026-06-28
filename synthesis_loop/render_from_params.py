@@ -29,6 +29,7 @@ def main() -> int:
         "--blur", str(p.get("blur", 0.35)),
         "--paper-realism", str(p.get("paper_realism", 0.65)),
         "--seed", str(p.get("seed", 37)),
+        "--body-glyph-source", str(p.get("body_glyph_source", "numeric")),
         "--glyph-max-receipts", str(p.get("glyph_max_receipts", 8)),
         "--profile-max-receipts", str(p.get("profile_max_receipts", 12)),
     ]

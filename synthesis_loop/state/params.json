@@ -5,6 +5,7 @@
   ],
   "merchant": "Sprouts Farmers Market",
   "cached_renderer": "glyph",
+  "body_glyph_source": "font",
   "limit": 4,
   "seed": 37,
   "noise": 0.52,
