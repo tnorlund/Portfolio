@@ -60,6 +60,50 @@ def test_cached_line_render_keeps_one_sprouts_header_and_orders_sections():
     assert texts.index("US DEBIT Entry Method: Contactless") < texts.index("feedback!")
 
 
+def test_cached_line_render_deduplicates_combined_sprouts_brand_line():
+    module = _load_module()
+
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 983.5, "text": "SPROUTS FARMERS MARKET", "labels": ["MERCHANT_NAME"]},
+                {"y": 943.2, "text": "1012 WESTLAKE BLVD.", "labels": []},
+                {"y": 930.0, "text": "SPROUTS FARMERS MARKET", "labels": ["MERCHANT_NAME"]},
+                {"y": 918.0, "text": "1012 WESTLAKE BLVD.", "labels": []},
+                {"y": 800.0, "text": "PRODUCE", "labels": []},
+                {"y": 780.0, "text": "ORGANIC GREEN ONIONS 1.67", "labels": []},
+            ]
+        }
+    )
+
+    texts = _line_texts(receipt)
+
+    assert texts.count("SPROUTS FARMERS MARKET") == 1
+    assert texts.count("1012 WESTLAKE BLVD.") == 1
+
+
+def test_cached_line_render_keeps_split_totals_with_payment_section():
+    module = _load_module()
+
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
+                {"y": 940.0, "text": "PRODUCE", "labels": []},
+                {"y": 920.0, "text": "ORGANIC GREEN ONIONS 1.67", "labels": []},
+                {"y": 890.0, "text": "Total:", "labels": []},
+                {"y": 880.0, "text": "USD$ 1.67", "labels": []},
+                {"y": 850.0, "text": "feedback!", "labels": []},
+            ]
+        }
+    )
+
+    texts = _line_texts(receipt)
+
+    assert texts.index("ORGANIC GREEN ONIONS 1.67") < texts.index("Total:")
+    assert texts.index("USD$ 1.67") < texts.index("feedback!")
+
+
 def test_cached_token_render_does_not_classify_chips_as_payment():
     module = _load_module()
 

@@ -296,8 +296,12 @@ def _label_name(label: str) -> str:
 
 
 def _is_sprouts_header_line(text: str) -> bool:
+    is_brand_line = text.startswith("SPROUTS") and not any(
+        marker in text for marker in ("FEEDBACK", "COM", "GIFT")
+    )
     return (
-        text in {"SPROUTS", "FARMERSMARKET"}
+        is_brand_line
+        or text in {"FARMERSMARKET"}
         or "WESTLAKE" in text
         or text in {"8059174200", "STOREHOURSMONSUN7AM10PM"}
     )
@@ -437,7 +441,11 @@ def _sprouts_text_section(text: str) -> str:
         "METHOD",
         "CARD",
         "TOTALUSD",
+        "TOTAL",
+        "USD",
         "BALANCEDUE",
+        "BALANCE",
+        "DUE",
         "CHANGE",
         "REF",
         "AUTH",
