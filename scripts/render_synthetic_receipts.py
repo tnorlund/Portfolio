@@ -1031,6 +1031,8 @@ def _render_cached_hybrid(
         background=(250, 249, 245),
         min_font_px=6,
         max_font_px=_CACHED_MAX_FONT_PX,
+        font_path="/System/Library/Fonts/Supplemental/PTMono.ttc",
+        right_align_amounts=True,
     )
     image = render_receipt(
         receipt,

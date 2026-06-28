@@ -134,6 +134,37 @@ def test_render_with_profile_and_label_colors():
     assert any(r > 150 and g < 90 and b < 90 for (r, g, b) in colors)
 
 
+def test_render_can_right_align_amount_tokens():
+    receipt = {"words": [_word("27.41", 700, 900, 900, 930, ["LINE_TOTAL"])]}
+    config = RenderConfig(
+        width=300,
+        height=700,
+        background=(255, 255, 255),
+        right_align_amounts=True,
+    )
+
+    image = render_receipt(receipt, config=config, coord_max=1000.0)
+    box = _to_pixel_box(
+        receipt["words"][0]["bbox"],
+        1000.0,
+        config,
+        config.width - 2 * config.margin,
+        config.height - 2 * config.margin,
+    )
+    assert box is not None
+    _, _, right, _ = box
+    gray = image.convert("L")
+    dark_x = [
+        x
+        for y in range(gray.height)
+        for x in range(gray.width)
+        if gray.getpixel((x, y)) < 128
+    ]
+
+    assert dark_x
+    assert max(dark_x) > right - 16
+
+
 def test_render_real_vs_synthetic_is_wider_than_single():
     config = RenderConfig(width=200, height=500)
     single = render_receipt(_synthetic_receipt(), config=config)

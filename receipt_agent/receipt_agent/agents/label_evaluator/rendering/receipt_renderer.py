@@ -57,6 +57,19 @@ _LABEL_COLORS = {
     "TIME": (90, 90, 90),
 }
 _DEFAULT_INK = (15, 15, 15)
+_AMOUNT_LABELS = frozenset(
+    {
+        "LINE_TOTAL",
+        "SUBTOTAL",
+        "TAX",
+        "GRAND_TOTAL",
+        "UNIT_PRICE",
+        "AMOUNT",
+        "BALANCE",
+        "TOTAL",
+        "PRICE",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +85,7 @@ class RenderConfig:
     min_font_px: int = 6
     max_font_px: int = 72
     font_path: str | None = None
+    right_align_amounts: bool = False
 
 
 def render_receipt(
@@ -127,9 +141,18 @@ def render_receipt(
             draw, text, box_w, box_h, config, condense=condense
         )
         ink = _ink_for(word, config)
-        # Vertically center the glyph in its box; left-align horizontally.
+        right_align = config.right_align_amounts and _word_is_amount(word)
+        # Vertically center text; amount tokens can anchor to the price edge.
         _draw_text(
-            image, draw, (left, top + box_h / 2), text, font, ink, condense
+            image,
+            draw,
+            ((right if right_align else left), top + box_h / 2),
+            text,
+            font,
+            ink,
+            condense,
+            config=config,
+            right_align=right_align,
         )
 
     return image
@@ -275,22 +298,38 @@ def _draw_text(
     font: ImageFont.FreeTypeFont,
     ink: tuple[int, int, int],
     condense: float,
+    *,
+    config: RenderConfig,
+    right_align: bool = False,
 ) -> None:
-    left, center_y = anchor_left_center
+    anchor_x, center_y = anchor_left_center
     if abs(condense - 1.0) < 1e-3:
-        draw.text((left, center_y), text, font=font, fill=ink, anchor="lm")
+        draw.text(
+            (anchor_x, center_y),
+            text,
+            font=font,
+            fill=ink,
+            anchor="rm" if right_align else "lm",
+        )
         return
     # Condensing means rendering to a scratch layer and squashing horizontally.
     ascent, descent = font.getmetrics()
-    text_w = max(1, int(_text_width(draw, text, font)))
-    text_h = max(1, ascent + descent)
+    pad = 2
+    text_w = max(1, int(_text_width(draw, text, font))) + 2 * pad
+    text_h = max(1, ascent + descent) + 2 * pad
     layer = Image.new("RGBA", (text_w, text_h), (0, 0, 0, 0))
     layer_draw = ImageDraw.Draw(layer)
-    layer_draw.text((0, 0), text, font=font, fill=ink + (255,))
+    layer_draw.text(
+        (pad, pad),
+        text,
+        font=font,
+        fill=ink + (255,),
+    )
     new_w = max(1, int(text_w * condense))
     layer = layer.resize((new_w, text_h), Image.LANCZOS)
+    paste_x = int(anchor_x - new_w) if right_align else int(anchor_x)
     paste_y = int(center_y - text_h / 2)
-    image.paste(layer, (int(left), paste_y), layer)
+    image.paste(layer, (paste_x, paste_y), layer)
 
 
 def _ink_for(
@@ -311,6 +350,13 @@ def _strip_bio(label: Any) -> str:
     if len(text) > 2 and text[:2] in ("B-", "I-"):
         return text[2:]
     return text
+
+
+def _word_is_amount(word: Mapping[str, Any]) -> bool:
+    return any(
+        _strip_bio(label) in _AMOUNT_LABELS
+        for label in word.get("labels") or []
+    )
 
 
 def _text_width(
