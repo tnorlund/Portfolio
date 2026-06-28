@@ -202,7 +202,9 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         )
     )
     for index, line in enumerate(source_lines):
-        text = str(line.get("text") or "").strip()
+        text = _normalize_cached_sprouts_line_text(
+            str(line.get("text") or "").strip()
+        )
         if not text:
             continue
         words = text.split()
@@ -781,11 +783,16 @@ def _ordered_sprouts_token_lines(words: list[dict]) -> list[tuple[list[dict], bo
 
 
 def _line_text_from_cached_words(line: list[dict]) -> str:
-    return " ".join(
+    text = " ".join(
         str(word.get("text") or "").strip()
         for word in sorted(line, key=lambda item: float(item["bbox"][0]))
         if str(word.get("text") or "").strip()
     )
+    return _normalize_cached_sprouts_line_text(text)
+
+
+def _normalize_cached_sprouts_line_text(text: str) -> str:
+    return re.sub(r"\$2[Bb]0\b", "$250", text)
 
 
 def _group_cached_words_by_line(words: list[dict]) -> list[list[dict]]:
