@@ -40,20 +40,21 @@ need to call the judge, instead **write your candidates to the round's out-dir a
 
 1. `run_loop.sh` reads `params.json` and sets the round's active `merchant` = `merchants[round % len]` (rotation).
 2. **You (`codex exec`)** are invoked with the round's merchant and the latest `state/reviews/round-*.json`:
-   - Read Claude's specific critiques (texture *and* structural — e.g. "paper noise too uniform", "row pitch
-     2px too tight", "subtotal+tax ≠ total").
-   - Decide the highest-impact change. **Code-evolution is enabled from day one** — you may edit either:
-     - **Params:** `--noise / --blur / --paper-realism / --seed` in `params.json`, or
-     - **Renderer/synthesis code:** `receipt_agent/receipt_agent/agents/label_evaluator/rendering/`
-       (glyph weight, row pitch, texture) or the synthesis logic, or the frontend figure.
-   - Re-render with `scripts/render_synthetic_receipts.py` into `state/renders/round-N/`.
-   - **Render-verify guard (mandatory after ANY code edit):** confirm the render step produced PNGs. If a code
-     change breaks rendering, **revert that code change** (`git checkout -- <file>`) and fall back to a param
-     tweak for the round. Never commit a code edit that breaks rendering.
-   - **Commit** with a message naming the critique you targeted and the param/code delta. Copy the round's best
-     render to `state/gallery/round-N.png` so it shows on the PR.
-3. `run_loop.sh` pushes, then runs `judge_round.sh` → Claude scores the new renders → Dynamo + `reviews/round-N.json`.
-4. `run_loop.sh` appends to `synthesis_loop/state/STATUS.md` (round, best score, current params) and loops.
+   - Read the judge's specific critiques and `top_fixes`.
+   - Make the highest-impact change to **texture realism** that will ACTUALLY alter the rendered pixels.
+   - **EDIT-LAYER CONSTRAINT (critical — this is cached render mode):** you may edit ONLY
+     - `synthesis_loop/state/params.json` (`noise / blur / paper_realism / seed / glyph knobs`), and
+     - the glyph renderer: `receipt_agent/receipt_agent/agents/label_evaluator/rendering/`
+       (`glyph_atlas.py`, `glyph_renderer.py`, `glyph_ttf_fallback.py`).
+     **Do NOT edit `sprouts_parameterization.py` or any `synthesis/*.py`** — cached render never executes them,
+     so those edits are invisible no-ops on the image. (Structural fixes wait for bundle mode.)
+   - **Do NOT render, push, call AWS, or spawn claude** — the shell renders (it has the Dynamo glyph atlas).
+   - **Commit** naming the change. If your edit doesn't change the pixels, the loop's no-op guard perturbs a
+     knob for you — but aim to make a real change.
+3. `run_loop.sh` renders (shell), runs the no-op/hash guard, pushes, then `judge_round.sh` (opus; lean each
+   round, deep 5-lens panel every `PANEL_EVERY`) writes its OWN per-round contract to `reviews/round-N.json`.
+4. `score_round.py` = mean of THIS run/round's `texture_realism` (no cumulative fallback) → `best.json` /
+   `STATUS.md`, scoped to `run_id`. On regression, `params.json` is rolled back to the best so far.
 
 **Hill-climb acceptance:** keep a change only if the round's aggregate Claude score is ≥ the previous best
 (recorded in `state/best.json`). If it regresses, the next round you revert and try a different direction.
@@ -94,8 +95,9 @@ you skip and why, run the render-verify guard if you touch renderer code, commit
 
 ## Decisions (resolved with Tyler 2026-06-28)
 
-- [x] **Code-evolution from day one** — Codex may edit renderer/synthesis code immediately. Render-verify guard
-      is mandatory: revert any code change that breaks rendering, fall back to a param tweak.
+- [x] **Code-evolution, but only in the render layer** — Codex may edit `params.json` + the glyph renderer
+      (`…/rendering/`). NOT `sprouts_parameterization`/synthesis (cached render never runs it → invisible no-op).
+      The shell renders, guards against no-op/broken renders, and perturbs a knob if pixels didn't change.
 - [x] **Rotate merchants** — `params.json.merchants` = ["Sprouts","Vons"]; `run_loop.sh` rotates per round.
 - [x] **Cadence** — defaults: 4 candidates/round, 90s sleep, stop after 3 no-improve rounds or 50 rounds total.
 - [x] **Promotion** — realism gates the gallery; the existing #1001/#1003 quality gates are the hard floor for

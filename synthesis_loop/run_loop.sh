@@ -45,6 +45,12 @@ export PYTHONPATH="$REPO/receipt_dynamo:$REPO/receipt_agent:$REPO/receipt_upload
 export DYNAMODB_TABLE_NAME PORTFOLIO_ENV="${PORTFOLIO_ENV:-dev}" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
 mkdir -p "$STATE/reviews" "$STATE/renders"
 
+# fresh run identity → scoring is scoped to THIS run (no pollution from old/manual reviews)
+RUN_ID="${RUN_ID:-$("$PYTHON_BIN" -c 'import uuid;print(uuid.uuid4().hex[:12])')}"
+PANEL_EVERY="${PANEL_EVERY:-5}"          # deep opus 5-lens panel every N rounds; lean opus pass otherwise
+rm -f "$STATE/STATUS.md" "$STATE/best.json" "$STATE/last_render.hash"
+echo "RUN_ID=$RUN_ID  python=$PYTHON_BIN  codex=$CODEX_BIN  panel_every=$PANEL_EVERY"
+
 # ---- safety: never run on a protected branch ----------------------------------
 git rev-parse --abbrev-ref HEAD | grep -qx "$BRANCH" || {
   echo "Refusing to run: not on $BRANCH (on $(git rev-parse --abbrev-ref HEAD))"; exit 1; }
@@ -85,6 +91,22 @@ Commit referencing the findings addressed. Do NOT push, do NOT call gh, do NOT s
   touch "$STATE/pending_review.flag"
 }
 
+# hash of a round's PNGs — used to detect no-op rounds (renders byte-identical to last round)
+render_hash() { ls -1 "$1"/*.png 2>/dev/null | sort | xargs cat 2>/dev/null | shasum | awk '{print $1}'; }
+
+# deterministically nudge ONE realism knob so a render is guaranteed to differ when codex no-ops
+perturb_params() {
+  "$PYTHON_BIN" - "$STATE/params.json" "$1" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1])); r = int(sys.argv[2])
+knob = ["noise", "blur", "paper_realism"][(r - 1) % 3]
+step = 0.06 if (r // 3) % 2 == 0 else -0.06
+v = round(min(1.0, max(0.0, float(p.get(knob, 0.4)) + step)), 3)
+p[knob] = v; json.dump(p, open(sys.argv[1], "w"), indent=2)
+print(f"perturbed {knob} -> {v}")
+PY
+}
+
 no_improve=0
 for ((round=1; round<=MAX_ROUNDS; round++)); do
   echo "================ ROUND $round ================"
@@ -100,23 +122,25 @@ PY
 )"
   echo "merchant this round: $MERCHANT"
 
-  # --- 1. BRAIN: codex edits params/code to address the last critique, then COMMITS (no render, no network) ---
-  #   The render needs DynamoDB (network) which codex's sandbox blocks, so codex does NOT render — the shell
-  #   does (step 1b). Codex only reasons + edits + commits; its own model calls reach OpenAI regardless.
+  # --- 1. BRAIN: codex edits ONLY the layers the (cached) render actually uses, then COMMITS ---
+  #   CRITICAL: cached render runs params.json + receipt_agent/.../rendering/ (glyph_atlas/glyph_renderer/
+  #   glyph_ttf_fallback). It does NOT execute sprouts_parameterization/synthesis code, so editing that is a
+  #   no-op on the pixels. The change MUST affect the render. Render+network is the shell's job (step 1b).
   prev_head="$(git rev-parse HEAD)"
   "$CODEX_BIN" exec \
     --profile "$CODEX_PROFILE" \
     --cd "$REPO" \
-    "Round $round of the synthesis hill-climb, merchant=$MERCHANT. Read synthesis_loop/AGENTS.md for the \
-contract. Read the latest Claude review at ${prev_review:-'(none yet — first round; keep the baseline params)'}. \
-Address the single highest-impact critique (texture OR structural) for merchant $MERCHANT by editing \
-synthesis_loop/state/params.json and/or the renderer/synthesis code under \
-receipt_agent/.../label_evaluator/rendering/. Then commit with a message naming the critique you targeted. \
-Do NOT render (the loop renders for you), do NOT push, do NOT call DynamoDB/AWS, do NOT spawn claude, do NOT \
-merge or deploy." \
+    "Round $round of the synthesis hill-climb, merchant=$MERCHANT. Read synthesis_loop/AGENTS.md (your contract) \
+and the latest judge review at ${prev_review:-'(none yet — make one concrete texture improvement to the baseline)'}. \
+Make the single highest-impact change to TEXTURE REALISM that will actually alter the rendered pixels. You may \
+ONLY edit: synthesis_loop/state/params.json (noise/blur/paper_realism/seed/glyph knobs) and the glyph renderer \
+code in receipt_agent/receipt_agent/agents/label_evaluator/rendering/ (glyph_atlas.py, glyph_renderer.py, \
+glyph_ttf_fallback.py). Do NOT edit sprouts_parameterization.py or any synthesis/*.py — cached render never \
+runs it, so it cannot change the image. Then commit naming the change. Do NOT render, push, call AWS, spawn \
+claude, merge, or deploy." \
     || { echo "codex round $round failed; continuing"; }
 
-  # --- 1b. RENDER in the shell (has network for the Dynamo glyph atlas) + render-verify guard ---
+  # --- 1b. RENDER in the shell (Dynamo glyph atlas needs network) + verify + NO-OP guard ---
   RENDER_DIR="$STATE/renders/round-$round"; rm -rf "$RENDER_DIR"; mkdir -p "$RENDER_DIR" "$STATE/gallery"
   render_round() {
     "$PYTHON_BIN" "$HERE/render_from_params.py" --params "$STATE/params.json" --merchant "$MERCHANT" \
@@ -124,9 +148,17 @@ merge or deploy." \
   }
   if ! render_round || ! ls "$RENDER_DIR"/*.png >/dev/null 2>&1; then
     echo "render produced no PNGs — reverting codex's round commit and retrying with prior code"
-    git reset --hard "$prev_head"
-    render_round || echo "baseline render still failing — judge will see an empty round"
+    git reset --hard "$prev_head"; rm -rf "$RENDER_DIR"; mkdir -p "$RENDER_DIR"; render_round || true
   fi
+  # NO-OP guard: if this round's renders are byte-identical to last round, codex's edit didn't reach the
+  # pixels — perturb a knob to guarantee a real change, then re-render. (No wasted rounds.)
+  cur_hash="$(render_hash "$RENDER_DIR")"; prev_hash="$(cat "$STATE/last_render.hash" 2>/dev/null || true)"
+  if [ -n "$cur_hash" ] && [ "$cur_hash" = "$prev_hash" ]; then
+    echo "no-op round (renders identical to last) — perturbing a param knob"
+    perturb_params "$round"; rm -rf "$RENDER_DIR"; mkdir -p "$RENDER_DIR"; render_round || true
+    cur_hash="$(render_hash "$RENDER_DIR")"
+  fi
+  echo "${cur_hash:-none}" > "$STATE/last_render.hash"
   cp "$(ls -1 "$RENDER_DIR"/*real_vs_synthetic.png "$RENDER_DIR"/*.png 2>/dev/null | head -1)" \
      "$STATE/gallery/round-$round.png" 2>/dev/null || true
   git add -A "$STATE/gallery" "$STATE/params.json" 2>/dev/null
@@ -135,29 +167,39 @@ merge or deploy." \
   # --- 2. PUSH: in the shell (network), never inside codex ---
   git push origin "$BRANCH" 2>&1 | tail -2 || echo "push failed (will retry next round)"
 
-  # --- 3. EYES: headless claude judges the new renders (sibling process) ---
-  ROUND="$round" RENDER_DIR="$RENDER_DIR" OUT_JSON="$STATE/reviews/round-$round.json" \
+  # --- 3. EYES: headless opus judge — lean pass each round, deep 5-lens panel every PANEL_EVERY ---
+  JM=lean; [ "$PANEL_EVERY" -gt 0 ] && [ $((round % PANEL_EVERY)) -eq 0 ] && JM=panel
+  RUN_ID="$RUN_ID" JUDGE_MODE="$JM" ROUND="$round" RENDER_DIR="$RENDER_DIR" \
+    OUT_JSON="$STATE/reviews/round-$round.json" \
     bash "$HERE/judge_round.sh" || echo "judge round $round failed; continuing"
 
-  # --- 4. LOG + hill-climb bookkeeping (best.json / STATUS.md) ---
-  "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" || true
+  # --- 4. SCORE (this run only, honest) + commit/push the scoreboard ---
+  "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --run-id "$RUN_ID" || true
   git add -A "$STATE/STATUS.md" "$STATE/best.json" "$STATE/gallery" "$STATE/reviews/round-$round.json" 2>/dev/null || true
-  git commit -m "loop: round $round status (merchant=$MERCHANT)" 2>/dev/null && git push origin "$BRANCH" 2>&1 | tail -1 || true
+  git commit -m "loop: round $round status (run=$RUN_ID, judge=$JM, merchant=$MERCHANT)" 2>/dev/null \
+    && git push origin "$BRANCH" 2>&1 | tail -1 || true
 
   # --- 4b. GitHub Codex bot review cycle every REVIEW_EVERY rounds (respond-to-prev, then request) ---
   if [ "$REVIEW_EVERY" -gt 0 ] && [ $((round % REVIEW_EVERY)) -eq 0 ]; then
     review_cycle "$round"
   fi
 
-  # --- 5. stop if we've plateaued ---
-  if "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --check-improved >/dev/null 2>&1; then
+  # --- 5. hill-climb ratchet: improved -> reset counter; regressed -> restore best params + count ---
+  if "$PYTHON_BIN" "$HERE/score_round.py" --round "$round" --state "$STATE" --run-id "$RUN_ID" --check-improved >/dev/null 2>&1; then
     no_improve=0
   else
-    no_improve=$((no_improve+1))
-    echo "no improvement ($no_improve/$NO_IMPROVE_STOP)"
+    no_improve=$((no_improve+1)); echo "no improvement ($no_improve/$NO_IMPROVE_STOP)"
+    # roll params.json back to the best-so-far so the next round climbs from the peak, not the drift
+    "$PYTHON_BIN" - "$STATE/best.json" "$STATE/params.json" <<'PY' 2>/dev/null || true
+import json, sys
+b = json.load(open(sys.argv[1]))
+if b.get("params"):
+    json.dump(b["params"], open(sys.argv[2], "w"), indent=2)
+    print("restored params.json from best (round %s, score %.3f)" % (b.get("round"), b.get("score", 0)))
+PY
     [ "$no_improve" -ge "$NO_IMPROVE_STOP" ] && { echo "plateaued — stopping"; break; }
   fi
 
   sleep "$SLEEP_SECS"
 done
-echo "loop done after round $round"
+echo "loop done after round $round (run $RUN_ID)"

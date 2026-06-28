@@ -12,6 +12,8 @@
 set -euo pipefail
 
 ROUND="${ROUND:?}"; RENDER_DIR="${RENDER_DIR:?}"; OUT_JSON="${OUT_JSON:?}"
+RUN_ID="${RUN_ID:-adhoc}"
+JUDGE_MODE="${JUDGE_MODE:-lean}"             # lean = one fast opus pass per candidate; panel = full 5-lens fan-out
 DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-ReceiptsTable-dc5be22}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"         # review steps use opus (best visual + structural discrimination)
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"       # opus + high effort for the two-axis realism/structure judgment
@@ -48,35 +50,33 @@ cat > "$MCP_CONFIG_FILE" <<EOF
 }
 EOF
 
+# Panel (deep) vs lean (fast) review instructions
+if [ "$JUDGE_MODE" = "panel" ]; then
+  METHOD="RUN A 5-LENS PANEL: if the Workflow/Agent tools are available, fan out one subagent per lens IN PARALLEL and synthesize; else work the lenses in sequence. Lenses: L1 texture/photographic realism (paper grain, thermal print, blur, ink feathering, glyph weight); L2 geometry (row pitch, column alignment, box placement vs the real receipt); L3 arithmetic/content (item lines, subtotal+tax=total, label sanity, price columns); L4 merchant authenticity (header/footer/format a real receipt for THIS merchant has); L5 OCR contamination (base-OCR garbage leaked in: \"\$2b0\", truncated words, stray serif glyphs). Then adversarially cross-check: would a skeptic instantly tell it's synthetic?"
+else
+  METHOD="Do ONE focused pass per candidate (no subagents, be fast): Read the composite PNG and the sidecar JSON, then judge texture realism (paper/thermal/ink/glyph) and structural plausibility (geometry, arithmetic, merchant authenticity, OCR cleanliness)."
+fi
+
 PROMPT_FILE="$(mktemp)"
 cat > "$PROMPT_FILE" <<EOF
-You are the LEAD JUDGE for synthetic receipts. You have full tools (Read, Glob, Grep, Bash, and the
-Agent/Workflow tools) AND the receipt-tools MCP. Round under review: $ROUND. Candidates are in: $RENDER_DIR
-Each candidate has a side-by-side composite "<id>.real_vs_synthetic.png" (REAL vs SYNTHETIC, labeled) plus
-"<id>.synthetic.png". You MUST look at the actual pixels.
+You are the JUDGE for synthetic receipts (run_id=$RUN_ID, round=$ROUND). You have full tools (Read, Glob,
+Grep, Bash) AND the receipt-tools MCP. Candidates are in: $RENDER_DIR — each has "<id>.synthetic.png" and,
+when available, a side-by-side "<id>.real_vs_synthetic.png" (REAL vs SYNTHETIC). You MUST look at the pixels:
+Glob the dir, Read each PNG, and Read the matching sidecar JSON.
 
-RUN A REVIEW PANEL — don't judge in a single pass. For richer, more reliable verdicts, evaluate each
-candidate through these independent LENSES, and **if the Workflow/Agent tools are available, fan out one
-subagent per lens (in parallel) and synthesize their findings**; otherwise work the lenses yourself in
-sequence. Each lens reviewer must Read the composite PNG and the structured sidecar JSON for itself:
-  L1 texture/photographic realism — paper grain, thermal print, blur, ink feathering, glyph weight.
-  L2 geometry — row pitch, column alignment, box placement vs the real receipt beside it.
-  L3 arithmetic/content integrity — item lines, that subtotal+tax=total, label sanity, price columns.
-  L4 merchant authenticity — header/footer/format conventions a real receipt for THIS merchant would have.
-  L5 OCR contamination — base-receipt OCR garbage leaked into the synthetic ("\$2b0", truncated words, stray
-     serif glyphs).
-Then ADVERSARIALLY cross-check: would a skeptic instantly tell this is synthetic? Note where lenses disagree.
+METHOD: $METHOD
 
-For each candidate, synthesize the panel into:
-  - texture_realism in [0,1]  (gates the gallery)
-  - structural_plausibility in [0,1]  (this flows into training)
-  - status: accepted / needs_work / rejected
-  - 3-6 SPECIFIC critiques, each naming the defect AND the knob or code it points to — e.g.
-    "paper noise too uniform -> raise --noise variance", "glyph weight too heavy -> rendering/glyph_renderer.py
-    stroke", "row pitch 2px tight", "subtotal 27.58 + tax 1.50 != total 30.58". The next Codex round acts on
-    these exact words.
-Record each via record_synthetic_receipt_visual_review. Finally call summarize_synthetic_receipt_visual_reviews
-and output its JSON as the LAST line. Read/inspect freely. Do NOT modify code, commit, push, or deploy.
+Score EACH candidate on two axes in [0,1]: texture_realism (would it pass as a photo of a real thermal
+receipt?) and structural_plausibility (believable geometry/arithmetic/merchant content?). Give 2-5 SPECIFIC
+critiques per candidate, each naming the defect AND the knob/code it points to (e.g. "paper noise too uniform
+-> raise noise", "glyph weight too heavy -> rendering/glyph_renderer.py", "row pitch tight"). Record each via
+record_synthetic_receipt_visual_review (reasoning should start "run=$RUN_ID round=$ROUND").
+
+Then output ONLY this JSON object as the FINAL line, built from YOUR OWN per-candidate scores (do NOT call or
+use summarize — that aggregate is polluted by old reviews):
+{"run_id":"$RUN_ID","round":$ROUND,"candidates":[{"candidate_id":"<id>","operation":"<op>","texture_realism":<0..1>,"structural_plausibility":<0..1>,"status":"accepted|needs_work|rejected"}],"top_fixes":["<most impactful fix>","<next>"]}
+
+Read/inspect freely. Do NOT modify code, commit, push, or deploy.
 EOF
 
 env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
@@ -85,7 +85,7 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
   MCP_CONNECT_TIMEOUT_MS="$MCP_TIMEOUT_MS" MCP_TIMEOUT="$MCP_TIMEOUT_MS" MCP_TOOL_TIMEOUT="$MCP_TIMEOUT_MS" \
   RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1 \
   claude -p "$(cat "$PROMPT_FILE")" \
-    --system-prompt "You are the lead of a noninteractive synthetic-receipt review panel. Look at the render PNGs with Read; use the Workflow/Agent tools to run per-lens reviewers in parallel when available; record verdicts via MCP. Return only the requested JSON on the final line." \
+    --system-prompt "You are a noninteractive synthetic-receipt judge. Read the render PNGs to see them; score each candidate's texture_realism + structural_plausibility from YOUR OWN inspection (never from the polluted summarize aggregate); record via MCP. Output only the contract JSON object on the final line." \
     --model "$CLAUDE_MODEL" --effort "$CLAUDE_EFFORT" \
     --mcp-config "$MCP_CONFIG_FILE" --strict-mcp-config \
     --add-dir "$RENDER_DIR" \
@@ -93,19 +93,28 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
     --disable-slash-commands --output-format json --no-session-persistence < /dev/null \
   > "$OUT_JSON.raw"
 
-# --output-format json always emits a final envelope; .result holds the judge's text.
-# Pull the last {...} JSON block out of it (the judge ends with a JSON summary). The
-# AUTHORITATIVE per-candidate scores live in Dynamo via record_synthetic_receipt_visual_review;
-# this stdout summary is a convenience/fallback. (Dry-run on this MacBook confirmed text format
-# could come back empty, while json+.result is reliable.)
-"$PYTHON_BIN" - "$OUT_JSON.raw" "$OUT_JSON" <<'PY' || true
+# --output-format json emits a final envelope; .result holds the judge's text. Extract the
+# contract object (the one with "candidates") — this is the loop's HONEST signal, not summarize.
+"$PYTHON_BIN" - "$OUT_JSON.raw" "$OUT_JSON" "$RUN_ID" "$ROUND" <<'PY' || true
 import json, re, sys
 raw = open(sys.argv[1]).read()
 try:
     result = json.loads(raw).get("result", "")
 except Exception:
     result = raw
-blocks = re.findall(r"\{.*\}|\[.*\]", result, re.S)
-open(sys.argv[2], "w").write(blocks[-1] if blocks else result)
+chosen = None
+for m in re.findall(r"\{.*?\"candidates\".*?\}(?=\s*$|\s*\n)", result, re.S):
+    chosen = m  # last object that has a candidates key
+if chosen is None:
+    # fall back: any last balanced-ish object containing "candidates", else empty contract
+    objs = [o for o in re.findall(r"\{.*\}", result, re.S) if '"candidates"' in o]
+    chosen = objs[-1] if objs else json.dumps(
+        {"run_id": sys.argv[3], "round": int(sys.argv[4]), "candidates": [], "top_fixes": []})
+# validate it parses; if not, write an empty (failed-round) contract so scoring treats it honestly
+try:
+    json.loads(chosen)
+except Exception:
+    chosen = json.dumps({"run_id": sys.argv[3], "round": int(sys.argv[4]), "candidates": [], "top_fixes": []})
+open(sys.argv[2], "w").write(chosen)
 PY
-echo "judge round $ROUND -> $OUT_JSON"
+echo "judge round $ROUND ($JUDGE_MODE) -> $OUT_JSON"
