@@ -285,7 +285,6 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
                 {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
                 {"y": 940.0, "text": "PRODUCE", "labels": []},
                 {"y": 920.0, "text": "GREEN BEANS 3.49", "labels": []},
-                {"y": 890.0, "text": "19022003126062", "labels": []},
                 {"y": 885.0, "text": "XXXXXXXXXXXX5061", "labels": []},
                 {"y": 883.0, "text": "[ ] 62566Z 317081", "labels": []},
                 {"y": 881.0, "text": "Auth# Ref#", "labels": []},
@@ -299,6 +298,11 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
                 {"y": 830.0, "text": "62566Z —", "labels": []},
                 {"y": 825.0, "text": "We need your chan", "labels": []},
                 {"y": 823.0, "text": "Take a quick survey & enter for the", "labels": []},
+                {"y": 822.0, "text": "feedback!", "labels": []},
+                {"y": 821.0, "text": "SproutsFeedback.com", "labels": []},
+                {"y": 819.0, "text": "07/30/2024 19:35:35", "labels": []},
+                {"y": 818.0, "text": "x5 Winners", "labels": []},
+                {"y": 817.0, "text": "19022003126062", "labels": []},
                 {"y": 820.0, "text": "Cashier:SSCO 31 Store: 220", "labels": []},
                 {"y": 810.0, "text": "POS:031 Transaction:2806", "labels": []},
                 {"y": 800.0, "text": "Tuesday, July 30, 2024 07:35 PM", "labels": []},
@@ -311,6 +315,8 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
     assert "19022003126062" in texts
     assert "XXXXXXXXXXXX5061" in texts
     assert "CHANGE 0.00" in texts
+    assert "SproutsFeedback.com" in texts
+    assert "x5 Winners" in texts
     assert "Cashier:SSCO 31 Store: 220" in texts
     assert "POS:031 Transaction:2806" in texts
     assert "Tuesday, July 30, 2024 07:35 PM" in texts
@@ -325,6 +331,11 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
     assert "62566Z —" not in texts
     assert "We need your chan" not in texts
     assert "Take a quick survey & enter for the" not in texts
+    assert "feedback!" not in texts
+    assert "07/30/2024 19:35:35" not in texts
+    barcode_y = _line_center_y(_line_for_text(receipt, "19022003126062"))
+    winners_y = _line_center_y(_line_for_text(receipt, "x5 Winners"))
+    assert winners_y - barcode_y > module._CACHED_MAX_LINE_SPACING
 
 
 def test_cached_hybrid_renderer_stamps_barcode_band():

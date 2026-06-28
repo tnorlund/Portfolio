@@ -382,9 +382,16 @@ def _drop_duplicate_sprouts_header_lines(example: dict) -> list[dict]:
 def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     if not any("SPROUTS" in _compact_text(line.get("text") or "") for line in lines):
         return lines
+    has_feedback_url = any(
+        "SPROUTSFEEDBACK" in _compact_text(line.get("text") or "")
+        for line in lines
+    )
     lines = [
         line for line in lines
-        if not _drop_cached_sprouts_fragment_line(line)
+        if not _drop_cached_sprouts_fragment_line(
+            line,
+            has_feedback_url=has_feedback_url,
+        )
     ]
 
     sections: dict[str, list[dict]] = {
@@ -400,7 +407,10 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     for name in ("header", "body", "payment", "footer"):
         if ordered and sections[name]:
             ordered.append({"text": "", "y": None, "labels": []})
-        ordered.extend(sections[name])
+        for line in sections[name]:
+            if name == "footer" and _is_cached_barcode_text(line.get("text") or ""):
+                ordered.append({"text": "", "y": None, "labels": []})
+            ordered.append(line)
 
     real_count = sum(1 for line in ordered if str(line.get("text") or "").strip())
     break_count = len(ordered) - real_count
@@ -427,17 +437,25 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     return positioned
 
 
-def _drop_cached_sprouts_fragment_line(line: dict) -> bool:
+def _drop_cached_sprouts_fragment_line(
+    line: dict,
+    *,
+    has_feedback_url: bool = False,
+) -> bool:
     """Drop OCR leftovers that should be part of larger Sprouts footer lines."""
     raw_text = str(line.get("text") or "").strip()
     compact = _compact_text(raw_text)
     if not compact:
         return False
+    if has_feedback_url and compact == "FEEDBACK":
+        return True
     if compact in _CACHED_SPROUTS_FRAGMENT_TEXTS:
         return True
     if compact == "62566Z317081":
         return True
     if compact.startswith("TAKEAQUICKSURVEYENTERFORTHE"):
+        return True
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}", raw_text):
         return True
     if re.fullmatch(r"\d{1,3}\s+\d{3}", raw_text):
         return True
