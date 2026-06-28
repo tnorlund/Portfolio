@@ -88,6 +88,8 @@ _CACHED_QR_FOOTER_TAIL_START_Y = 92.0
 _CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
 _CACHED_THERMAL_DARK_SPECKLE_RATE = 0.025
 _CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.055
+_CACHED_THERMAL_SCANLINE_MIN_GAP = 42
+_CACHED_THERMAL_SCANLINE_MAX_GAP = 74
 _CACHED_SPROUTS_FRAGMENT_TEXTS = {
     "TO",
     "TH",
@@ -1080,6 +1082,10 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
             elif bias:
                 gray = min(252, max(220, ((r + g + b) // 3) + bias))
                 pixels[x, y] = (gray, gray, min(253, gray + 2), a)
+    _apply_cached_thermal_scanline_banding(
+        image,
+        random.Random(seed ^ 0xA5C3_1F27),
+    )
 
 
 def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:
@@ -1095,6 +1101,36 @@ def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:
         for y in range(start, min(height, start + band_height)):
             biases[y] += bias
     return biases
+
+
+def _apply_cached_thermal_scanline_banding(image, rng: random.Random) -> None:
+    pixels = image.load()
+    y = rng.randint(12, 28)
+    while y < image.height:
+        band_height = 1 if rng.random() < 0.94 else 2
+        segment_count = 1 if rng.random() < 0.90 else 2
+        for _ in range(segment_count):
+            segment_width = int(image.width * rng.uniform(0.16, 0.42))
+            left = rng.randint(-image.width // 8, image.width - 1)
+            right = min(image.width, max(0, left) + max(12, segment_width))
+            left = max(0, left)
+            if right <= left:
+                continue
+            for yy in range(y, min(image.height, y + band_height)):
+                for x in range(left, right):
+                    r, g, b, a = pixels[x, yy]
+                    if a < 255 or not _is_cached_paper_pixel(r, g, b):
+                        continue
+                    if rng.random() < 0.35:
+                        value = rng.randint(160, 168)
+                    else:
+                        value = rng.randint(196, 226)
+                    blue = min(173, value + 2) if value < 170 else min(220, value + 2)
+                    pixels[x, yy] = (value, value, blue, a)
+        y += rng.randint(
+            _CACHED_THERMAL_SCANLINE_MIN_GAP,
+            _CACHED_THERMAL_SCANLINE_MAX_GAP,
+        )
 
 
 def _is_cached_paper_pixel(r: int, g: int, b: int) -> bool:

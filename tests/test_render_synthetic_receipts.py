@@ -506,6 +506,35 @@ def test_cached_thermal_texture_is_deterministic_and_preserves_ink():
     assert textured_dark > 150
 
 
+def test_cached_thermal_scanline_banding_adds_horizontal_rows():
+    from PIL import Image, ImageDraw
+
+    module = _load_module()
+    image = Image.new("RGBA", (180, 180), (250, 249, 245, 255))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([40, 40, 70, 70], fill=(20, 20, 20, 255))
+
+    module._apply_cached_thermal_scanline_banding(
+        image,
+        module.random.Random(8721),
+    )
+
+    assert image.getpixel((50, 50)) == (20, 20, 20, 255)
+    row_dark_counts = []
+    for y in range(image.height):
+        row_dark_counts.append(
+            sum(
+                1
+                for x in range(image.width)
+                if not (40 <= x <= 70 and 40 <= y <= 70)
+                and image.getpixel((x, y))[0] < 170
+            )
+        )
+
+    assert max(row_dark_counts) > 20
+    assert sum(1 for count in row_dark_counts if count > 12) >= 2
+
+
 def test_cached_should_draw_qr_only_for_add_item_feedback_receipts():
     module = _load_module()
 
