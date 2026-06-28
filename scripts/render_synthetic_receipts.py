@@ -68,6 +68,7 @@ _CACHED_AMOUNT_LABELS = {
 _CACHED_LINE_LEFT_X = 70.0
 _CACHED_PRICE_RIGHT_X = 835.0
 _CACHED_PRICE_GAP_X = 24.0
+_CACHED_QR_MODULES = 29
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -564,6 +565,16 @@ def _cached_output_size(example: dict) -> tuple[int, int]:
     return (576, 1176)
 
 
+def _cached_should_draw_qr(example: dict) -> bool:
+    candidate_id = str(example.get("candidate_id") or "").lower()
+    if "add-line-item" not in candidate_id:
+        return False
+    tokens = " ".join(str(token) for token in (example.get("tokens") or []))
+    lines = " ".join(str(line.get("text") or "") for line in (example.get("lines") or []))
+    text = _compact_text(f"{tokens} {lines}")
+    return "SPROUTSFEEDBACKCOM" in text
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -572,6 +583,7 @@ def _render_cached_hybrid(
     width: int,
     height: int,
     path: str,
+    draw_qr_code: bool = False,
 ) -> str:
     config = RenderConfig(
         width=width,
@@ -591,6 +603,8 @@ def _render_cached_hybrid(
     ).convert("RGBA")
     _overlay_cached_logo(image, receipt, atlas, config=config, coord_max=1000.0)
     _overlay_cached_barcodes(image, receipt, config=config, coord_max=1000.0)
+    if draw_qr_code:
+        _overlay_cached_qr_code(image, receipt, config=config, coord_max=1000.0)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.convert("RGB").save(path, format="PNG")
     return path
@@ -719,6 +733,124 @@ def _cached_band_has_ink(image, box: tuple[float, float, float, float]) -> bool:
     return dark > max(3, int((right - left) * (bottom - top) * 0.012))
 
 
+def _overlay_cached_qr_code(
+    image,
+    receipt: dict,
+    *,
+    config: RenderConfig,
+    coord_max: float,
+) -> None:
+    """Draw a deterministic QR-like survey block for Sprouts public review."""
+    from PIL import ImageDraw
+
+    qr_box = _cached_qr_pixel_box(image, receipt, config=config, coord_max=coord_max)
+    if qr_box is None:
+        return
+    left, top, right, bottom = qr_box
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(
+        [left - 8, top - 8, right + 8, bottom + 8],
+        fill=config.background + (255,),
+    )
+
+    modules = _CACHED_QR_MODULES
+    size = right - left
+    cell = size / modules
+    seed = _cached_qr_seed(receipt)
+    rng = random.Random(seed)
+    for row in range(modules):
+        for col in range(modules):
+            if (
+                _qr_finder_cell(row, col, 0, 0)
+                or _qr_finder_cell(row, col, modules - 7, 0)
+                or _qr_finder_cell(row, col, 0, modules - 7)
+            ):
+                fill = (28, 27, 25, 255)
+            elif _qr_finder_clearance(row, col, modules):
+                continue
+            else:
+                value = rng.randrange(100)
+                checker = ((row * 7 + col * 11 + seed) % 19) < 8
+                if value > 47 and not checker:
+                    continue
+                fill = (36, 34, 32, 255)
+            x0 = left + col * cell
+            y0 = top + row * cell
+            x1 = left + (col + 1) * cell
+            y1 = top + (row + 1) * cell
+            draw.rectangle([x0, y0, x1, y1], fill=fill)
+
+
+def _cached_qr_pixel_box(
+    image,
+    receipt: dict,
+    *,
+    config: RenderConfig,
+    coord_max: float,
+) -> tuple[float, float, float, float] | None:
+    feedback_line = _cached_line_with_text(receipt, "SPROUTSFEEDBACKCOM")
+    if feedback_line is None:
+        return None
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    bbox = _union_bbox([word["bbox"] for word in feedback_line if word.get("bbox")])
+    if bbox is None:
+        return None
+    _, _, _, feedback_bottom = _to_pixel_box(
+        bbox,
+        coord_max=coord_max,
+        margin=config.margin,
+        inner_w=inner_w,
+        inner_h=inner_h,
+    )
+    size = min(132.0, max(104.0, image.width * 0.23))
+    top = max(feedback_bottom + 12.0, image.height * 0.74)
+    bottom_limit = image.height - config.margin - 72.0
+    if top + size > bottom_limit:
+        top = max(config.margin + 10.0, bottom_limit - size)
+    left = (image.width - size) / 2.0
+    return (left, top, left + size, top + size)
+
+
+def _cached_line_with_text(receipt: dict, compact_text: str) -> list[dict] | None:
+    target = _compact_text(compact_text)
+    for line in receipt.get("lines") or []:
+        words = [word for word in line.get("words", []) if word.get("bbox")]
+        if _compact_line_text(words) == target:
+            return words
+    return None
+
+
+def _cached_qr_seed(receipt: dict) -> int:
+    texts = []
+    for line in receipt.get("lines") or []:
+        text = " ".join(str(word.get("text") or "") for word in line.get("words", []))
+        if text:
+            texts.append(text)
+    payload = "\n".join(texts).encode("utf-8", "ignore")
+    return zlib.crc32(payload) & 0xFFFFFFFF
+
+
+def _qr_finder_cell(row: int, col: int, start_col: int, start_row: int) -> bool:
+    local_row = row - start_row
+    local_col = col - start_col
+    if not (0 <= local_row < 7 and 0 <= local_col < 7):
+        return False
+    return (
+        local_row in {0, 6}
+        or local_col in {0, 6}
+        or (2 <= local_row <= 4 and 2 <= local_col <= 4)
+    )
+
+
+def _qr_finder_clearance(row: int, col: int, modules: int) -> bool:
+    return (
+        (row < 8 and col < 8)
+        or (row < 8 and col >= modules - 8)
+        or (row >= modules - 8 and col < 8)
+    )
+
+
 def _cached_logo_line(receipt: dict) -> list[dict] | None:
     lines = receipt.get("lines")
     if not lines:
@@ -836,6 +968,7 @@ def _render_cached_synthetic_examples(args: argparse.Namespace) -> int:
                 width=width,
                 height=height,
                 path=out_path,
+                draw_qr_code=_cached_should_draw_qr(example),
             )
         else:
             config = GlyphRenderConfig(
@@ -866,6 +999,7 @@ def _render_cached_synthetic_examples(args: argparse.Namespace) -> int:
                     width=width,
                     height=height,
                     path=public_path,
+                    draw_qr_code=_cached_should_draw_qr(example),
                 )
             else:
                 save_receipt_glyphs(

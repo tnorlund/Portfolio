@@ -186,6 +186,55 @@ def test_cached_hybrid_renderer_stamps_barcode_band():
     assert dark_pixels > 100
 
 
+def test_cached_should_draw_qr_only_for_add_item_feedback_receipts():
+    module = _load_module()
+
+    assert module._cached_should_draw_qr(
+        {
+            "candidate_id": "sprouts-arithmetic-1-add-line-item-abc",
+            "tokens": ["SproutsFeedback.com"],
+        }
+    )
+    assert not module._cached_should_draw_qr(
+        {
+            "candidate_id": "sprouts-arithmetic-2-remove-line-item-abc",
+            "tokens": ["SproutsFeedback.com"],
+        }
+    )
+    assert not module._cached_should_draw_qr(
+        {
+            "candidate_id": "sprouts-arithmetic-1-add-line-item-abc",
+            "tokens": ["feedback!"],
+        }
+    )
+
+
+def test_cached_hybrid_renderer_stamps_qr_like_footer_block():
+    from PIL import Image
+
+    module = _load_module()
+    receipt = module._cached_line_receipt_dict(
+        {
+            "lines": [
+                {"y": 900.0, "text": "We need your feedback!", "labels": []},
+                {"y": 880.0, "text": "SproutsFeedback.com", "labels": ["WEBSITE"]},
+                {"y": 860.0, "text": "*5 Winners Monthly*", "labels": []},
+            ]
+        }
+    )
+    image = Image.new("RGBA", (576, 1176), (250, 249, 245, 255))
+
+    module._overlay_cached_qr_code(
+        image,
+        receipt,
+        config=module.RenderConfig(width=576, height=1176, margin=10),
+        coord_max=1000.0,
+    )
+
+    dark_pixels = sum(1 for value in image.convert("L").getdata() if value < 100)
+    assert dark_pixels > 2000
+
+
 def test_cached_token_render_does_not_classify_chips_as_payment():
     module = _load_module()
 
