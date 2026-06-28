@@ -8,3 +8,4 @@
 - round 3: score=0.559  best=0.3933333333333333  NEW BEST
 - round 4: score=0.555  best=0.559  
 - round 5: score=0.549  best=0.559  
+- round 6: score=0.534  best=0.559  
