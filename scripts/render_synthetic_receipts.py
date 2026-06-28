@@ -84,7 +84,16 @@ _CACHED_QR_MAX_SIZE = 160.0
 _CACHED_QR_TOP_FACTOR = 0.70
 _CACHED_QR_FOOTER_TAIL_START_Y = 92.0
 _CACHED_QR_FOOTER_TAIL_BOTTOM_Y = 18.0
-_CACHED_SPROUTS_FRAGMENT_TEXTS = {"TO", "TH", "USED", "PM", "CARD"}
+_CACHED_SPROUTS_FRAGMENT_TEXTS = {
+    "TO",
+    "TH",
+    "USED",
+    "PM",
+    "CARD",
+    "K",
+    "AUTHREF",
+    "WENEEDYOURCHAN",
+}
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -426,6 +435,10 @@ def _drop_cached_sprouts_fragment_line(line: dict) -> bool:
         return False
     if compact in _CACHED_SPROUTS_FRAGMENT_TEXTS:
         return True
+    if compact == "62566Z317081":
+        return True
+    if compact.startswith("TAKEAQUICKSURVEYENTERFORTHE"):
+        return True
     if re.fullmatch(r"\d{1,3}\s+\d{3}", raw_text):
         return True
     if re.fullmatch(r"\d{5,6}[A-Z]?", compact) and raw_text.rstrip().endswith(("-", "—")):
@@ -584,6 +597,14 @@ def _sprouts_token_section(line: list[dict]) -> str:
 def _sprouts_text_section(text: str) -> str:
     if _is_sprouts_header_line(text):
         return "header"
+    if _CACHED_BARCODE_RE.match(text):
+        return "footer"
+    if text.startswith(("CHANGE", "XXXXXXXXXXXX")):
+        return "payment"
+    if text in {"00OFF"}:
+        return "payment"
+    if text.startswith("TUESDAY") or re.fullmatch(r"\d{8}\d{6}", text):
+        return "footer"
     if any(token in text for token in (
         "FEEDBACK",
         "SURVEY",
@@ -601,7 +622,7 @@ def _sprouts_text_section(text: str) -> str:
         "RETURNS",
         "RECEIPT",
         "REWARDS",
-        "CHAN",
+        "YOURCHAN",
         "MONTHLY",
         "SPROUTSCOM",
         "SAVE",

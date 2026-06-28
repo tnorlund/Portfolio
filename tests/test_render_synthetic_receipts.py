@@ -286,12 +286,19 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
                 {"y": 940.0, "text": "PRODUCE", "labels": []},
                 {"y": 920.0, "text": "GREEN BEANS 3.49", "labels": []},
                 {"y": 890.0, "text": "19022003126062", "labels": []},
+                {"y": 885.0, "text": "XXXXXXXXXXXX5061", "labels": []},
+                {"y": 883.0, "text": "[ ] 62566Z 317081", "labels": []},
+                {"y": 881.0, "text": "Auth# Ref#", "labels": []},
+                {"y": 879.0, "text": "CHANGE 0.00", "labels": []},
+                {"y": 878.0, "text": "******************** K***********", "labels": []},
                 {"y": 880.0, "text": "to:", "labels": []},
                 {"y": 870.0, "text": "31 220", "labels": []},
                 {"y": 860.0, "text": "PM", "labels": []},
                 {"y": 850.0, "text": "th", "labels": []},
                 {"y": 840.0, "text": "used.", "labels": []},
                 {"y": 830.0, "text": "62566Z —", "labels": []},
+                {"y": 825.0, "text": "We need your chan", "labels": []},
+                {"y": 823.0, "text": "Take a quick survey & enter for the", "labels": []},
                 {"y": 820.0, "text": "Cashier:SSCO 31 Store: 220", "labels": []},
                 {"y": 810.0, "text": "POS:031 Transaction:2806", "labels": []},
                 {"y": 800.0, "text": "Tuesday, July 30, 2024 07:35 PM", "labels": []},
@@ -302,15 +309,22 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
     texts = _line_texts(receipt)
 
     assert "19022003126062" in texts
+    assert "XXXXXXXXXXXX5061" in texts
+    assert "CHANGE 0.00" in texts
     assert "Cashier:SSCO 31 Store: 220" in texts
     assert "POS:031 Transaction:2806" in texts
     assert "Tuesday, July 30, 2024 07:35 PM" in texts
+    assert "[ ] 62566Z 317081" not in texts
+    assert "Auth# Ref#" not in texts
+    assert "******************** K***********" not in texts
     assert "to:" not in texts
     assert "31 220" not in texts
     assert "PM" not in texts
     assert "th" not in texts
     assert "used." not in texts
     assert "62566Z —" not in texts
+    assert "We need your chan" not in texts
+    assert "Take a quick survey & enter for the" not in texts
 
 
 def test_cached_hybrid_renderer_stamps_barcode_band():
