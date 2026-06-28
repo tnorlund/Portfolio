@@ -25,10 +25,17 @@ REVIEW_EVERY="${REVIEW_EVERY:-5}"                  # post @codex review on the P
 PR_NUMBER="${PR_NUMBER:-1022}"
 PYTHON_BIN="${PYTHON_BIN:-$HOME/.coreml-venv/bin/python}"
 CODEX_PROFILE="${CODEX_PROFILE:-synthesis-loop}"   # defined in ~/.codex/config.toml (see codex-profile.toml)
+# On the mini, /opt/homebrew/bin/codex is a broken node shim; the app binary is self-contained.
+CODEX_BIN="${CODEX_BIN:-$([ -x /Applications/Codex.app/Contents/Resources/codex ] && echo /Applications/Codex.app/Contents/Resources/codex || echo codex)}"
+DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-ReceiptsTable-dc5be22}"
 STATE="$REPO/synthesis_loop/state"
 HERE="$REPO/synthesis_loop"
 
 cd "$REPO"
+# render imports need the worktree packages ahead of any stale pip-installed receipt_dynamo;
+# codex inherits this env, so the render commands it runs resolve correctly.
+export PYTHONPATH="$REPO/receipt_dynamo:$REPO/receipt_agent:$REPO/receipt_upload${PYTHONPATH:+:$PYTHONPATH}"
+export DYNAMODB_TABLE_NAME PORTFOLIO_ENV="${PORTFOLIO_ENV:-dev}" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
 mkdir -p "$STATE/reviews" "$STATE/renders"
 
 # ---- safety: never run on a protected branch ----------------------------------
@@ -55,7 +62,7 @@ PY
   #   --ask-for-approval never  : autonomous, no prompts
   #   --sandbox workspace-write : can edit files + run render scripts; no network needed
   #   (codex's OWN model calls go to OpenAI outside the sandbox and work fine)
-  codex exec \
+  "$CODEX_BIN" exec \
     --profile "$CODEX_PROFILE" \
     --cd "$REPO" \
     "Round $round of the synthesis hill-climb, merchant=$MERCHANT. Read synthesis_loop/AGENTS.md for the \

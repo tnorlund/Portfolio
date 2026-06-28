@@ -39,6 +39,7 @@ cat > "$MCP_CONFIG_FILE" <<EOF
       "env": {
         "PORTFOLIO_ENV": "dev",
         "DYNAMODB_TABLE_NAME": "$DYNAMODB_TABLE_NAME",
+        "PYTHONPATH": "$PROJECT_DIR/receipt_dynamo:$PROJECT_DIR/receipt_agent:$PROJECT_DIR/receipt_upload",
         "RECEIPT_AGENT_DISABLE_PAID_LLM": "1",
         "DISABLE_PAID_LLM": "1"
       }
