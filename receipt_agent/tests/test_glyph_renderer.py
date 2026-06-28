@@ -25,6 +25,7 @@ from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     _line_is_rule,
     _line_barcode_digits,
     _pitch_norm,
+    _prefer_font_for_char,
     _snap_to_pitch,
     _stamp_barcode,
     _thermal_finish,
@@ -215,6 +216,19 @@ def test_numeric_body_source_keeps_plain_words_on_atlas():
     )
     render_receipt_glyphs(receipt, atlas, config=config, fallback=fallback)
     assert calls == []
+
+
+def test_numeric_body_source_prefers_font_for_atlas_confusables():
+    numeric = GlyphRenderConfig(body_glyph_source="numeric")
+    atlas = GlyphRenderConfig(body_glyph_source="atlas")
+
+    assert _prefer_font_for_char(numeric, "o", word_prefers_font=False)
+    assert _prefer_font_for_char(numeric, "W", word_prefers_font=False)
+    assert _prefer_font_for_char(numeric, "i", word_prefers_font=False)
+    assert _prefer_font_for_char(numeric, "5", word_prefers_font=False)
+    assert not _prefer_font_for_char(numeric, "A", word_prefers_font=False)
+    assert not _prefer_font_for_char(atlas, "o", word_prefers_font=False)
+    assert _prefer_font_for_char(atlas, "A", word_prefers_font=True)
 
 
 def test_bold_line_renders_without_error():

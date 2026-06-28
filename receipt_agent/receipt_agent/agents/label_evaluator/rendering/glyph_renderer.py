@@ -91,6 +91,11 @@ _BARCODE_MIN_WIDTH_FRAC = 0.35
 _RULE_CHARS = frozenset("-_=*.~")
 _BARCODE_MAX_CENTER_OFFSET_FRAC = 0.16
 _BARCODE_MAX_EXISTING_INK_FRAC = 0.01
+# Atlas crops for these single-cell glyphs have repeatedly been contaminated by
+# neighboring OCR boxes in Sprouts renders (e.g. w->h, o->b, i->t, 5->b). In the
+# default cached-render policy, route them through the matched monospace fallback
+# so text stays readable while the rest of the line can still use real crops.
+_ATLAS_CONFUSABLE_CHARS = frozenset("wWoOiI5")
 
 
 @dataclass(frozen=True)
@@ -393,7 +398,7 @@ def _stamp_line_fixed_pitch(
             )
         else:
             word_ink_jitter = 0
-        prefer_font = _prefer_font_for_word(config, word, text)
+        prefer_font_for_word = _prefer_font_for_word(config, word, text)
         for i, char in enumerate(text):
             cell_left = start_x + i * word_pitch
             if char.strip():
@@ -403,7 +408,11 @@ def _stamp_line_fixed_pitch(
                 glyph_img = _render_glyph(
                     char, atlas, style, bold=bold, target_h=glyph_h,
                     ref_h=ref_h, max_w=word_max_glyph_w, config=config, rng=rng,
-                    fallback=fallback, prefer_font=prefer_font,
+                    fallback=fallback,
+                    prefer_font=_prefer_font_for_char(
+                        config, char,
+                        word_prefers_font=prefer_font_for_word,
+                    ),
                     variant_index=variant_index,
                     ink_jitter=word_ink_jitter,
                 )
@@ -447,6 +456,15 @@ def _prefer_font_for_word(
     if mode in {"atlas", "crops", "glyphs"}:
         return False
     return _is_amount(word) or _mostly_numeric_token(text)
+
+
+def _prefer_font_for_char(
+    config: GlyphRenderConfig, char: str, *, word_prefers_font: bool
+) -> bool:
+    if word_prefers_font:
+        return True
+    mode = str(config.body_glyph_source).lower()
+    return mode == "numeric" and char in _ATLAS_CONFUSABLE_CHARS
 
 
 def _mostly_numeric_token(text: str) -> bool:
