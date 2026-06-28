@@ -1047,13 +1047,37 @@ def _apply_paper_effects(
     # texture cue real receipts get from uneven heat/pressure and paper coating:
     # the background is not uniformly white and dark ink fades toward the paper
     # color in soft islands instead of staying laser-black everywhere.
+    noise_amt = max(0.0, min(1.0, float(config.noise)))
+    texture_amt = amt * (0.45 + 0.55 * noise_amt)
+    coating = _smooth_noise_field(rng, h, w, cell_px=150)
     coarse = _smooth_noise_field(rng, h, w, cell_px=58)
     fine = _smooth_noise_field(rng, h, w, cell_px=18)
-    arr += (coarse * amt * 5.5 + fine * amt * 1.8)[..., None]
+    wave_period = float(rng.uniform(0.38, 0.72))
+    wave_phase = float(rng.uniform(0.0, math.tau))
+    coating_wave = np.sin((yy[:, 0] * math.tau / wave_period) + wave_phase)
+    paper_field = (
+        coating * 7.0
+        + coarse * 3.8
+        + fine * 1.3
+        + coating_wave[:, None] * 1.8
+        - 1.6
+    )
+    # Per-seed channel drift prevents every synthetic from sharing the same
+    # printer-white background while staying subtle enough to preserve OCR text.
+    tint = rng.normal(0.0, 1.0, size=3).astype(np.float32)
+    tint *= np.asarray([2.6, 2.1, 1.7], dtype=np.float32) * texture_amt
+    tint += np.asarray([1.4, 0.8, -0.5], dtype=np.float32) * texture_amt
+    arr += (paper_field * texture_amt)[..., None] + tint
     gray = arr.mean(axis=2)
     ink_mask = np.clip((238.0 - gray) / 180.0, 0.0, 1.0)
-    fade_field = np.clip(0.40 + coarse * 0.18 + fine * 0.08, 0.0, 1.0)
-    thermal_fade = (amt * 0.20 * fade_field * ink_mask)[..., None]
+    fade_field = np.clip(
+        0.38 + coating * 0.14 + coarse * 0.13
+        + fine * 0.06 + coating_wave[:, None] * 0.07,
+        0.0, 1.0,
+    )
+    thermal_fade = (
+        amt * (0.18 + noise_amt * 0.05) * fade_field * ink_mask
+    )[..., None]
     paper = np.asarray(config.paper, dtype=np.float32)
     arr = arr * (1.0 - thermal_fade) + paper * thermal_fade
     # fine grain
