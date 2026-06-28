@@ -1,8 +1,8 @@
 {
   "run_id": "4889350b5bef",
-  "round": 1,
-  "score": 0.4466666666666667,
-  "structural": 0.5833333333333334,
+  "round": 2,
+  "score": 0.5766666666666667,
+  "structural": 0.5233333333333333,
   "params": {
     "_comment": "Renderer knobs the hill-climb tunes. The brain (codex) edits these each round to address the top critique. merchants = rotation; run_loop sets active 'merchant' = merchants[round % len]. NOTE: cached render mode only has Sprouts example JSONs in screenshots/synthetic_receipts, so we start Sprouts-only; adding Vons needs the bundle pipeline (verify_synthetic_replay local-pipeline) \u2014 a follow-up.",
     "merchants": [
