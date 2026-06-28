@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Callable, Mapping, Sequence
 
 from PIL import Image, ImageFont
@@ -50,6 +51,8 @@ THERMAL_TTF_CANDIDATES: tuple[str, ...] = (
 )
 
 _SIM_GLYPH_SIZE = 16  # side of the normalized ink vector used for matching
+_FIXED_PITCH_PROBE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZilWm.:$"
+_FIXED_PITCH_TOLERANCE_PX = 1.25
 
 
 @dataclass(frozen=True)
@@ -65,7 +68,11 @@ class FontMatch:
 def available_candidates(
     candidates: Sequence[str] = THERMAL_TTF_CANDIDATES,
 ) -> list[str]:
-    return [path for path in candidates if os.path.exists(path)]
+    return [
+        path
+        for path in candidates
+        if os.path.exists(path) and _is_fixed_pitch_font(path)
+    ]
 
 
 def match_fallback_font(
@@ -181,6 +188,30 @@ def _load_ttf(path: str, size: int) -> ImageFont.FreeTypeFont | None:
         return None
     _TTF_CACHE[key] = font
     return font
+
+
+@lru_cache(maxsize=64)
+def _is_fixed_pitch_font(path: str) -> bool:
+    """Reject proportional/script faces before visual matching can select them."""
+    font = _load_ttf(path, 32)
+    if font is None:
+        return False
+    widths = [
+        _advance_width(font, char)
+        for char in _FIXED_PITCH_PROBE_CHARS
+    ]
+    widths = [width for width in widths if width > 0]
+    if not widths:
+        return False
+    return max(widths) - min(widths) <= _FIXED_PITCH_TOLERANCE_PX
+
+
+def _advance_width(font: ImageFont.FreeTypeFont, char: str) -> float:
+    try:
+        return float(font.getlength(char))
+    except AttributeError:
+        bbox = font.getbbox(char)
+        return float(bbox[2] - bbox[0])
 
 
 def _render_ttf_glyph(

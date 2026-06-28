@@ -19,6 +19,7 @@ from receipt_agent.agents.label_evaluator.rendering.glyph_ttf_fallback import (
     make_ttf_fallback,
     match_fallback_font,
 )
+from receipt_agent.agents.label_evaluator.rendering import glyph_ttf_fallback
 
 _W, _H = 320, 1600
 _HAS_TTF = bool(available_candidates())
@@ -72,6 +73,18 @@ def test_match_picks_an_available_font_with_scores():
     assert 0.0 <= match.score <= 1.0
     # The chosen font is the argmax of the per-font scores.
     assert match.score == max(match.scores.values())
+
+
+def test_available_candidates_requires_fixed_pitch(monkeypatch):
+    candidates = ("/fonts/thermal-mono.ttf", "/fonts/script.ttf")
+    monkeypatch.setattr(glyph_ttf_fallback.os.path, "exists", lambda path: True)
+    monkeypatch.setattr(
+        glyph_ttf_fallback,
+        "_is_fixed_pitch_font",
+        lambda path: path.endswith("thermal-mono.ttf"),
+    )
+
+    assert available_candidates(candidates) == ["/fonts/thermal-mono.ttf"]
 
 
 @_skip_no_ttf
