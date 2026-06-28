@@ -118,16 +118,34 @@ def test_compact_synthetic_visual_reviews_surfaces_latest_state(monkeypatch):
             findings=[],
             recommendations=[],
         ),
+        SimpleNamespace(
+            review_id="r3",
+            candidate_id="candidate-b",
+            synthetic_image_id="sprouts-remove-line-item",
+            status="needs_iteration",
+            reviewer="claude-mcp",
+            reviewer_model="claude-sonnet",
+            created_at="2026-06-27T14:00:00+00:00",
+            merchant_name="Sprouts Farmers Market",
+            operation="remove_line_item",
+            realism_score=0.72,
+            fidelity_score=0.81,
+            alignment_score=0.7,
+            issue_count=1,
+            findings=[{"severity": "low"}],
+            recommendations=["spread footer policy lines"],
+        ),
     ]
 
     summary = module._compact_synthetic_visual_reviews(reviews)
 
-    assert summary["review_count"] == 2
-    assert summary["reviewed_candidate_count"] == 1
-    assert summary["status_counts"] == {"needs_iteration": 1, "accepted": 1}
-    assert summary["avg_scores"]["realism_score"] == 0.76
-    assert summary["latest_reviews"][0]["review_id"] == "r2"
-    assert summary["open_recommendations"] == ["lighten restamped totals"]
+    assert summary["review_count"] == 3
+    assert summary["reviewed_candidate_count"] == 2
+    assert summary["status_counts"] == {"needs_iteration": 2, "accepted": 1}
+    assert summary["avg_scores"]["realism_score"] == 0.747
+    assert summary["latest_reviews"][0]["review_id"] == "r3"
+    assert summary["latest_reviews"][1]["review_id"] == "r2"
+    assert summary["open_recommendations"] == ["spread footer policy lines"]
 
 
 def test_compact_source_receipt_quality_preserves_unlabeled_text_structure(

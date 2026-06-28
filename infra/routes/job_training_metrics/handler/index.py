@@ -387,7 +387,6 @@ def _compact_synthetic_visual_reviews(reviews: List[Any]) -> Dict[str, Any]:
     latest_by_candidate: dict[str, Any] = {}
     score_totals: Counter[str] = Counter()
     score_counts: Counter[str] = Counter()
-    recommendations: list[str] = []
 
     for review in sorted(
         reviews,
@@ -404,9 +403,6 @@ def _compact_synthetic_visual_reviews(reviews: List[Any]) -> Dict[str, Any]:
                 continue
             score_totals[field] += score
             score_counts[field] += 1
-        for recommendation in getattr(review, "recommendations", None) or []:
-            if recommendation and recommendation not in recommendations:
-                recommendations.append(str(recommendation))
 
     latest_reviews = sorted(
         latest_by_candidate.values(),
@@ -426,8 +422,30 @@ def _compact_synthetic_visual_reviews(reviews: List[Any]) -> Dict[str, Any]:
         "latest_reviews": [
             _visual_review_to_dict(review) for review in latest_reviews[:8]
         ],
-        "open_recommendations": recommendations[:8],
+        "open_recommendations": _open_synthetic_visual_review_recommendations(
+            latest_reviews,
+            limit=8,
+        ),
     }
+
+
+def _open_synthetic_visual_review_recommendations(
+    latest_reviews: List[Any],
+    *,
+    limit: int,
+) -> list[str]:
+    recommendations: list[str] = []
+    for review in latest_reviews:
+        status = str(getattr(review, "status", "") or "").lower()
+        if status == "accepted":
+            continue
+        for recommendation in getattr(review, "recommendations", None) or []:
+            text = str(recommendation)
+            if text and text not in recommendations:
+                recommendations.append(text)
+            if len(recommendations) >= limit:
+                return recommendations
+    return recommendations
 
 
 def _build_synthetic_visual_review_summary(

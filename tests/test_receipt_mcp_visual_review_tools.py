@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 import sys
 import types
 
@@ -142,3 +143,59 @@ def test_base_receipt_image_reference_can_degrade_without_dynamo(monkeypatch):
         "receipt_id": 2,
         "lookup_status": "not_loaded",
     }
+
+
+def test_visual_review_summary_uses_latest_open_recommendations(monkeypatch):
+    module = _load_mcp_server_module(monkeypatch)
+    common = {
+        "job_id": module.DEFAULT_SYNTHETIC_REVIEW_JOB_ID,
+        "synthetic_image_id": "sprouts-add-line-item",
+        "reviewer": "claude-mcp",
+        "reviewer_model": "claude-sonnet",
+        "merchant_name": "Sprouts Farmers Market",
+        "operation": "add_line_item",
+        "fidelity_score": None,
+        "alignment_score": None,
+        "issue_count": 0,
+        "findings": [],
+        "rubric": {},
+        "metadata": {},
+    }
+    reviews = [
+        SimpleNamespace(
+            **common,
+            review_id="r1",
+            candidate_id="candidate-a",
+            status="needs_iteration",
+            created_at="2026-06-27T12:00:00+00:00",
+            realism_score=0.5,
+            recommendations=["old fixed recommendation"],
+        ),
+        SimpleNamespace(
+            **common,
+            review_id="r2",
+            candidate_id="candidate-a",
+            status="accepted",
+            created_at="2026-06-27T13:00:00+00:00",
+            realism_score=0.9,
+            recommendations=[],
+        ),
+        SimpleNamespace(
+            **common,
+            review_id="r3",
+            candidate_id="candidate-b",
+            status="needs_iteration",
+            created_at="2026-06-27T14:00:00+00:00",
+            realism_score=0.7,
+            recommendations=["current footer action"],
+        ),
+    ]
+
+    summary = module._summarize_visual_review_rows(reviews)
+
+    assert summary["review_count"] == 3
+    assert summary["reviewed_candidate_count"] == 2
+    assert summary["status_counts"] == {"needs_iteration": 2, "accepted": 1}
+    assert summary["avg_scores"]["realism_score"] == 0.7
+    assert summary["latest_reviews"][0]["review_id"] == "r3"
+    assert summary["open_recommendations"] == ["current footer action"]

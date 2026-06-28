@@ -2907,7 +2907,6 @@ def _summarize_visual_review_rows(reviews: list[Any]) -> dict[str, Any]:
     latest_by_candidate: dict[str, Any] = {}
     score_totals: dict[str, float] = defaultdict(float)
     score_counts: dict[str, int] = defaultdict(int)
-    recommendations: list[str] = []
 
     for review in sorted(reviews, key=lambda item: item.created_at or ""):
         status_counts[review.status] += 1
@@ -2918,9 +2917,6 @@ def _summarize_visual_review_rows(reviews: list[Any]) -> dict[str, Any]:
                 continue
             score_totals[name] += float(value)
             score_counts[name] += 1
-        for recommendation in review.recommendations or []:
-            if recommendation and recommendation not in recommendations:
-                recommendations.append(recommendation)
 
     avg_scores = {
         name: round(score_totals[name] / score_counts[name], 3)
@@ -2941,8 +2937,34 @@ def _summarize_visual_review_rows(reviews: list[Any]) -> dict[str, Any]:
         "status_counts": dict(status_counts),
         "avg_scores": avg_scores,
         "latest_reviews": latest[:12],
-        "open_recommendations": recommendations[:12],
+        "open_recommendations": _open_visual_review_recommendations(
+            latest_by_candidate.values(),
+            limit=12,
+        ),
     }
+
+
+def _open_visual_review_recommendations(
+    latest_reviews: Any,
+    *,
+    limit: int,
+) -> list[str]:
+    """Return next-action recommendations from currently open reviews only."""
+    recommendations: list[str] = []
+    for review in sorted(
+        latest_reviews,
+        key=lambda item: item.created_at or "",
+        reverse=True,
+    ):
+        if str(review.status or "").lower() == "accepted":
+            continue
+        for recommendation in review.recommendations or []:
+            text = str(recommendation)
+            if text and text not in recommendations:
+                recommendations.append(text)
+            if len(recommendations) >= limit:
+                return recommendations
+    return recommendations
 
 
 async def list_synthetic_receipt_visual_review_targets_impl(
