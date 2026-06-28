@@ -367,7 +367,7 @@ def test_cached_line_render_drops_sprouts_barcode_footer_fragments():
     assert winners_y - barcode_y > module._CACHED_MAX_LINE_SPACING
 
 
-def test_cached_token_render_reconstructs_sparse_sprouts_remove_item_fixture():
+def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
     module = _load_module()
     fixture_path = (
         Path(__file__).resolve().parents[1]
@@ -376,40 +376,53 @@ def test_cached_token_render_reconstructs_sparse_sprouts_remove_item_fixture():
         / "sprouts_arithmetic_remove_item.json"
     )
 
-    receipt = module._cached_receipt_dict(json.loads(fixture_path.read_text()))
+    fixture = json.loads(fixture_path.read_text())
+    receipt = module._cached_receipt_dict(fixture)
     texts = _line_texts(receipt)
 
-    assert "GREEN BEANS 3.49" in texts
-    assert "LIMES 1.00" not in texts
-    assert "1.00" not in texts
-    assert "2 @ 2 FOR" not in texts
-    assert "BALANCE DUE 3.49" in texts
-    assert "DUE 3.49" not in texts
+    assert fixture["metadata"]["retained_line_item_count"] == 5
+    assert (
+        fixture["metadata"]["structure_similarity"]["candidate_signature"][
+            "line_item_count"
+        ]
+        == 5
+    )
+    assert "BROCCOLI FLORETS 5.49" in texts
+    assert "ORGANIC BANANAS 2.45" in texts
+    assert "ORGANIC CARROT CHIPS 2.49" in texts
+    assert "ORG WHOLE MILK 10.99" in texts
+    assert "PLAIN WHL GRK YOGURT 5.99" in texts
+    assert "ORGANIC GREEN ONIONS 1.67" not in texts
+    assert "1.67" not in texts
+    assert "Voided Item" not in texts
+    assert "-3.00" not in texts
+    assert "Total: USD$ 27.41" in texts
+    assert "BALANCE DUE 27.41" in texts
+    assert "DEBIT $27.41" in texts
+    assert "DUE 27.41" not in texts
     assert "BALANCE" not in texts
-    assert "CREDIT $3.49" in texts
-    assert "CARD #: XXXXXXXXXXXX5061" in texts
-    assert "AUTH CODE: 62566Z" in texts
+    assert "CARD #: XXXXXXXXXXXX1454" in texts
+    assert "AUTH CODE: 381723" in texts
     assert "ARC: 00" in texts
-    assert "TC:" not in texts
-    assert "MID:" not in texts
+    assert "TC: 7E067478389F4545" in texts
+    assert "MID: 910664" in texts
     assert "We need your feedback!" in texts
-    assert "Take a quick survey & enter for the chance" in texts
     assert "to WIN a $250 Sprouts gift card. Go to:" in texts
     assert "SproutsFeedback.com" in texts
-    assert "19022003126062" in texts
-    assert "Cashier:SSCO 31 Store: 220" in texts
-    assert "POS:031 Transaction:2806" in texts
-    assert "Tuesday, July 30, 2024 07:35 PM" in texts
+    assert "09022003450923401235" in texts
+    assert "Cashier:SSCO 34 Store: 220" in texts
+    assert "POS:034 Transaction: 5092" in texts
+    assert "Saturday, December 6, 2025 12:35 PM" in texts
     assert "the method of payment used." in texts
     assert "receipt. Limits apply to returns" in texts
 
     logo_word = _line_for_text(receipt, "SPROUTS")["words"][0]
     assert logo_word["bbox"][2] - logo_word["bbox"][0] == module._CACHED_LOGO_WIDTH
-    assert min(_line_center_y(line) for line in receipt["lines"]) < 90.0
+    assert min(_line_center_y(line) for line in receipt["lines"]) < 130.0
 
-    barcode_y = _line_center_y(_line_for_text(receipt, "19022003126062"))
+    barcode_y = _line_center_y(_line_for_text(receipt, "09022003450923401235"))
     winners_y = _line_center_y(_line_for_text(receipt, "*5 Winners Monthly*"))
-    assert winners_y - barcode_y > module._CACHED_MAX_LINE_SPACING
+    assert barcode_y - winners_y > module._CACHED_MAX_LINE_SPACING
 
 
 def test_cached_token_render_normalizes_sprouts_feedback_amount_fixture():

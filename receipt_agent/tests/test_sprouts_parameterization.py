@@ -1,5 +1,7 @@
 """Tests for Sprouts-specific receipt parameterization."""
 
+import copy
+
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
     generate_synthetic_receipt_candidates,
 )
@@ -166,6 +168,27 @@ def _sprouts_receipts():
                 },
                 {
                     "line_id": 8,
+                    "y": 0.65,
+                    "words": [
+                        {
+                            "text": "BRIOCHE",
+                            "bbox": [90, 640, 180, 665],
+                            "labels": ["PRODUCT_NAME"],
+                        },
+                        {
+                            "text": "BUNS",
+                            "bbox": [190, 640, 250, 665],
+                            "labels": ["PRODUCT_NAME"],
+                        },
+                        {
+                            "text": "4.99",
+                            "bbox": [835, 640, 890, 665],
+                            "labels": ["LINE_TOTAL"],
+                        },
+                    ],
+                },
+                {
+                    "line_id": 9,
                     "y": 0.615,
                     "words": [
                         {
@@ -181,11 +204,11 @@ def _sprouts_receipts():
                     ],
                 },
                 {
-                    "line_id": 9,
+                    "line_id": 10,
                     "y": 0.59,
                     "words": [
                         {
-                            "text": "10.78",
+                            "text": "15.77",
                             "bbox": [835, 585, 900, 610],
                             "labels": ["GRAND_TOTAL"],
                         }
@@ -507,10 +530,10 @@ def test_generate_arithmetic_sprouts_candidates_requires_observed_add_items():
     ] == ["remove_line_item"]
 
     removed = candidates[0]
-    assert removed["metadata"]["old_grand_total"] == "10.78"
-    assert removed["metadata"]["new_grand_total"] == "7.99"
-    assert removed["metadata"]["old_subtotal"] == "10.78"
-    assert removed["metadata"]["new_subtotal"] == "7.99"
+    assert removed["metadata"]["old_grand_total"] == "15.77"
+    assert removed["metadata"]["new_grand_total"] == "12.98"
+    assert removed["metadata"]["old_subtotal"] == "15.77"
+    assert removed["metadata"]["new_subtotal"] == "12.98"
     assert (
         removed["metadata"]["arithmetic_reconciliation"]["grand_total_delta"]
         == "-2.79"
@@ -519,6 +542,13 @@ def test_generate_arithmetic_sprouts_candidates_requires_observed_add_items():
         removed["metadata"]["arithmetic_reconciliation"]["tax_delta"] == "0.00"
     )
     assert removed["metadata"]["removed_item"]["product_text"] == "SOUR CREAM"
+    assert removed["metadata"]["retained_line_item_count"] == 2
+    assert (
+        removed["metadata"]["structure_similarity"]["candidate_signature"][
+            "line_item_count"
+        ]
+        == 2
+    )
     assert removed["metadata"]["candidate_quality"]["high_fidelity"] is True
     assert (
         removed["metadata"]["candidate_quality"]["components"][
@@ -534,6 +564,8 @@ def test_generate_arithmetic_sprouts_candidates_requires_observed_add_items():
     )
     assert "SOUR" not in removed["tokens"]
     assert "7.99" in removed["tokens"]
+    assert "4.99" in removed["tokens"]
+    assert "12.98" in removed["tokens"]
 
     for candidate in candidates:
         assert candidate["train_only"] is True
@@ -543,6 +575,36 @@ def test_generate_arithmetic_sprouts_candidates_requires_observed_add_items():
             len(box) == 4 and all(0 <= coord <= 1000 for coord in box)
             for box in candidate["bboxes"]
         )
+
+
+def test_generate_arithmetic_sprouts_candidates_skips_voided_remove_bases():
+    receipts = copy.deepcopy(_sprouts_receipts())
+    receipts[0]["lines"].insert(
+        8,
+        {
+            "line_id": 99,
+            "y": 0.64,
+            "words": [
+                {
+                    "text": "Voided",
+                    "bbox": [90, 630, 165, 655],
+                    "labels": [],
+                },
+                {
+                    "text": "Item",
+                    "bbox": [175, 630, 225, 655],
+                    "labels": [],
+                },
+                {
+                    "text": "-3.00",
+                    "bbox": [835, 630, 900, 655],
+                    "labels": ["LINE_TOTAL"],
+                },
+            ],
+        },
+    )
+
+    assert generate_arithmetic_sprouts_candidates(receipts) == []
 
 
 def test_generate_arithmetic_sprouts_candidates_uses_category_catalog():

@@ -800,15 +800,16 @@ def _generate_remove_item_candidate(
         removable = [
             candidate
             for candidate in analyses
-            if len(candidate.line_items) >= 2
+            if len(candidate.line_items) >= 3
             and candidate.grand_total_line_indices
+            and not _analysis_has_remove_base_blocker(candidate)
         ]
         if not removable:
             return None
-        analysis = min(removable, key=lambda item: item.subtotal)
+        analysis = min(removable, key=_remove_analysis_rank_key)
     receipt = copy.deepcopy(analysis.receipt)
     refreshed = _analyze_arithmetic_receipt(receipt)
-    if refreshed is None or len(refreshed.line_items) < 2:
+    if refreshed is None or len(refreshed.line_items) < 3:
         return None
     base_layout_counts = _base_layout_counts(refreshed.receipt)
 
@@ -844,6 +845,7 @@ def _generate_remove_item_candidate(
                 "category": removed.category or UNKNOWN_CATEGORY,
                 "taxable": removed.taxable,
             },
+            "retained_line_item_count": len(refreshed.line_items) - 1,
             "old_grand_total": _format_money(old_total),
             "new_grand_total": _format_money(new_total),
             "old_subtotal": _format_money(refreshed.subtotal),
@@ -869,21 +871,52 @@ def _generate_remove_item_candidate(
 def _rank_remove_item_analyses(
     analyses: list[SproutsArithmeticAnalysis],
 ) -> list[SproutsArithmeticAnalysis]:
-    """Removable receipts (>=2 items, a grand total, a non-taxable item).
+    """Removable receipts (>=3 items, a grand total, a non-taxable item).
 
     Same gate the single-candidate path used, but returns every qualifying
-    base receipt — one removal each — ordered by subtotal so smaller, simpler
-    receipts (which the loader scores most cleanly) come first.
+    base receipt — one removal each — ordered by cohesive product sections
+    first, then subtotal, so the visual result stays receipt-like while still
+    leaving at least two visible product rows after removal.
     """
     removable = [
         analysis
         for analysis in analyses
-        if len(analysis.line_items) >= 2
+        if len(analysis.line_items) >= 3
         and analysis.grand_total_line_indices
         and any(not item.taxable for item in analysis.line_items)
+        and not _analysis_has_remove_base_blocker(analysis)
     ]
-    removable.sort(key=lambda analysis: analysis.subtotal)
+    removable.sort(key=_remove_analysis_rank_key)
     return removable
+
+
+def _remove_analysis_rank_key(
+    analysis: SproutsArithmeticAnalysis,
+) -> tuple[int, Decimal]:
+    categories = {
+        item.category or UNKNOWN_CATEGORY for item in analysis.line_items
+    }
+    return (len(categories), analysis.subtotal)
+
+
+def _analysis_has_remove_base_blocker(
+    analysis: SproutsArithmeticAnalysis,
+) -> bool:
+    """Skip visually confusing receipts as remove-item bases."""
+    for line in analysis.receipt.get("lines", []):
+        words = line.get("words", []) or []
+        compact_line = "".join(
+            " ".join(str(word.get("text") or "") for word in words)
+            .upper()
+            .split()
+        )
+        if "VOID" in compact_line or "REFUND" in compact_line:
+            return True
+        for word in words:
+            token = str(word.get("text") or "").strip()
+            if token.startswith("-") and _parse_money(token[1:]) is not None:
+                return True
+    return False
 
 
 def _analyze_arithmetic_receipt(
