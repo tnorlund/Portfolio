@@ -21,14 +21,21 @@ def _load(p: pathlib.Path):
 
 
 def _score(review: dict):
+    # Objective = THIS round's mean realism ("looks real to Claude"). The summarize JSON shape is
+    # {"this_round":[{realism_score,...}], "avg_scores":{realism_score,...}, ...}.
+    rows = review.get("this_round") or review.get("reviews") or review.get("items") or []
+    vals = [r.get("realism_score", r.get("texture_realism", r.get("score"))) for r in rows]
+    vals = [float(v) for v in vals if isinstance(v, (int, float))]
+    if vals:
+        return sum(vals) / len(vals)
+    agg = review.get("avg_scores") or {}
+    if isinstance(agg.get("realism_score"), (int, float)):
+        return float(agg["realism_score"])
     for k in SCORE_KEYS:
         v = review.get(k)
         if isinstance(v, (int, float)):
             return float(v)
-    # fall back: mean of per-candidate scores if present
-    rows = review.get("reviews") or review.get("items") or []
-    vals = [r.get("score") for r in rows if isinstance(r.get("score"), (int, float))]
-    return sum(vals) / len(vals) if vals else None
+    return None
 
 
 def main() -> int:
