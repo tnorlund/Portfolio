@@ -1112,11 +1112,23 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
         if name in SYNTHETIC_VISUAL_REVIEW_TOOLS:
             if name == "list_synthetic_receipt_visual_review_targets":
+                dynamo_client = None
+                review_state_error = None
+                try:
+                    dynamo_client = get_dynamo_client()
+                except Exception as exc:
+                    review_state_error = str(exc)
+                    logger.exception(
+                        "Error initializing DynamoDB client for synthetic "
+                        "receipt visual review state"
+                    )
                 result = await list_synthetic_receipt_visual_review_targets_impl(
-                    None,
+                    dynamo_client,
                     job_id=arguments.get("job_id"),
                     status_filter=arguments.get("status_filter"),
                 )
+                if review_state_error and not result.get("review_state_error"):
+                    result["review_state_error"] = review_state_error
             else:
                 dynamo_client = get_dynamo_client()
                 if name == "record_synthetic_receipt_visual_review":
