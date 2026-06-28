@@ -85,9 +85,22 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN \
     --mcp-config "$MCP_CONFIG_FILE" --strict-mcp-config \
     --add-dir "$RENDER_DIR" \
     --permission-mode bypassPermissions --max-turns 40 \
-    --disable-slash-commands --output-format text --no-session-persistence < /dev/null \
-  | tee "$OUT_JSON.raw"
+    --disable-slash-commands --output-format json --no-session-persistence < /dev/null \
+  > "$OUT_JSON.raw"
 
-# keep only the final JSON line as the round's machine-readable review
-tail -1 "$OUT_JSON.raw" > "$OUT_JSON" || true
+# --output-format json always emits a final envelope; .result holds the judge's text.
+# Pull the last {...} JSON block out of it (the judge ends with a JSON summary). The
+# AUTHORITATIVE per-candidate scores live in Dynamo via record_synthetic_receipt_visual_review;
+# this stdout summary is a convenience/fallback. (Dry-run on this MacBook confirmed text format
+# could come back empty, while json+.result is reliable.)
+"$PYTHON_BIN" - "$OUT_JSON.raw" "$OUT_JSON" <<'PY' || true
+import json, re, sys
+raw = open(sys.argv[1]).read()
+try:
+    result = json.loads(raw).get("result", "")
+except Exception:
+    result = raw
+blocks = re.findall(r"\{.*\}|\[.*\]", result, re.S)
+open(sys.argv[2], "w").write(blocks[-1] if blocks else result)
+PY
 echo "judge round $ROUND -> $OUT_JSON"
