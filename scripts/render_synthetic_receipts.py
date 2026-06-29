@@ -77,6 +77,7 @@ _CACHED_LOGO_HALF_HEIGHT = 30.0
 _CACHED_WORD_MIN_WIDTH = 22.0
 _CACHED_CHAR_WIDTH = 16.0
 _CACHED_FOOTER_WORD_WIDTH_FACTOR = 1.16
+_CACHED_MONOSPACE_FONT_PATH = "/System/Library/Fonts/Menlo.ttc"
 _CACHED_BODY_HALF_HEIGHT = 8.0
 _CACHED_LOGO_SUBTITLE_GAP = 38.0
 _CACHED_SECTION_GAP = 10.0
@@ -1271,7 +1272,7 @@ def _render_cached_hybrid(
         background=(250, 249, 245),
         min_font_px=6,
         max_font_px=_CACHED_MAX_FONT_PX,
-        font_path="/System/Library/Fonts/Supplemental/Andale Mono.ttf",
+        font_path=_CACHED_MONOSPACE_FONT_PATH,
         right_align_amounts=True,
     )
     image = render_receipt(

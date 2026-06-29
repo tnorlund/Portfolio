@@ -529,6 +529,47 @@ def test_cached_line_render_normalizes_sprouts_footer_word_splits_fixture():
     assert 470 <= (loyalty_left + loyalty_right) / 2 <= 530
 
 
+def test_cached_hybrid_renderer_uses_menlo_for_receipt_glyph_legibility(
+    monkeypatch,
+    tmp_path,
+):
+    from PIL import Image
+
+    module = _load_module()
+    captured = {}
+
+    def fake_render_receipt(receipt, *, profile, config, coord_max):
+        captured["font_path"] = config.font_path
+        captured["width"] = config.width
+        captured["height"] = config.height
+        return Image.new("RGB", (config.width, config.height), config.background)
+
+    monkeypatch.setattr(module, "render_receipt", fake_render_receipt)
+    monkeypatch.setattr(module, "_overlay_cached_logo", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "_overlay_cached_barcodes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "_overlay_cached_qr_code", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "_apply_cached_thermal_texture", lambda *args, **kwargs: None)
+
+    output_path = tmp_path / "receipt.png"
+
+    module._render_cached_hybrid(
+        {"lines": []},
+        atlas=None,
+        profile=None,
+        width=320,
+        height=1176,
+        path=str(output_path),
+    )
+
+    assert captured == {
+        "font_path": module._CACHED_MONOSPACE_FONT_PATH,
+        "width": 320,
+        "height": 1176,
+    }
+    assert captured["font_path"].endswith("/Menlo.ttc")
+    assert output_path.exists()
+
+
 def test_cached_hybrid_renderer_stamps_barcode_band():
     from PIL import Image
 
