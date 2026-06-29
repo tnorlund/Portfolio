@@ -405,9 +405,10 @@ def reconcile_and_validate(
     """
     tokens, bboxes, ner_tags = reconcile_item_count(tokens, bboxes, ner_tags)
     report = validate_receipt_totals(tokens, bboxes, ner_tags)
-    # The reconcile pass guarantees the item count agrees with the line rows.
-    assert "item_count" not in report.violations, (
-        "item-count still inconsistent after reconcile: "
-        f"{report.item_counts_printed} vs {report.line_item_count}"
-    )
+    # The reconcile pass repairs the count when it CAN (a rewritable count token
+    # exists and there are line rows). When it can't (no rewritable count token,
+    # zero line rows, an ambiguous count), the residual `item_count` violation is
+    # left IN THE REPORT for the caller to drop the candidate -- never asserted,
+    # because a hard assert here crashes the whole synthesis pipeline on a single
+    # un-reconcilable receipt instead of just rejecting that one candidate.
     return tokens, bboxes, ner_tags, report
