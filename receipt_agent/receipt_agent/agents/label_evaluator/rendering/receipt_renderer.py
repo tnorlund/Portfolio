@@ -31,6 +31,21 @@ from PIL import Image, ImageDraw, ImageFont
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
+from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+    GridWord,
+    build_grid_spec,
+    draw_grid_line,
+    glyph_advance,
+    group_words_into_grid_lines,
+    line_baseline,
+)
+
+# Vendored fixed-pitch thermal face for the grid path (Px437 IBM VGA 8x16,
+# CC BY-SA 4.0 -- see fonts/NOTICE). Preferred over system monospace in grid
+# mode because it renders as a hard pixel grid with anti-aliasing off.
+_GRID_FONT_PATH = os.path.join(
+    os.path.dirname(__file__), "fonts", "Px437_IBM_VGA_8x16.ttf"
+)
 
 # Monospace candidates, most receipt-like first. Falls back to Pillow's bundled
 # scalable default when none are present (e.g. CI without system fonts).
@@ -72,6 +87,10 @@ class RenderConfig:
     min_font_px: int = 6
     max_font_px: int = 72
     font_path: str | None = None
+    # Grid typography: one fixed-pitch cell grid + one body size per receipt,
+    # hard (non-anti-aliased) glyphs on a shared baseline. When False the legacy
+    # per-token box-fitting path is used (see ``render_receipt``).
+    grid_mode: bool = False
 
 
 def render_receipt(
@@ -112,6 +131,12 @@ def render_receipt(
             width=1,
         )
 
+    if config.grid_mode:
+        _render_grid(
+            image, draw, words, scale, config, profile, inner_w, inner_h
+        )
+        return image
+
     # Pass 1: fit each word to its own box, but bucket by line and remember the
     # SMALLEST fitted size on each line. A lone char ("a", "@", "t") otherwise
     # renders at full line-height while words get width-shrunk, so single-char
@@ -150,6 +175,86 @@ def render_receipt(
         )
 
     return image
+
+
+def _render_grid(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    words: Sequence[Mapping[str, Any]],
+    scale: float,
+    config: RenderConfig,
+    profile: MerchantFontProfile | None,
+    inner_w: int,
+    inner_h: int,
+) -> None:
+    """Grid-typography path: one fixed cell grid + one body size per receipt.
+
+    Groups words into visual rows, picks a single font size from the merchant
+    profile, kills anti-aliasing (hard thermal dots), and snaps every glyph to
+    its grid column on a shared per-row baseline.
+    """
+    # Pick the body size from the profile first, then measure the loaded font's
+    # real monospace advance so the grid pitch matches the glyph we actually draw
+    # (avoids the wide letter-spacing a spacing-inflated profile char_width gives).
+    sizing = build_grid_spec(profile, inner_w, inner_h, config)
+    font = _load_grid_font(sizing.font_px, config)
+    advance = glyph_advance(draw, font)
+    spec = build_grid_spec(
+        profile, inner_w, inner_h, config, char_advance_px=advance
+    )
+    # "1" => 1-bit (no anti-aliasing): glyphs render as hard on/off dots, which
+    # is what a thermal/dot-matrix head actually lays down.
+    draw.fontmode = "1"
+    ascent, _descent = font.getmetrics()
+
+    grid_words: list[GridWord] = []
+    for word in words:
+        bbox = word.get("bbox")
+        text = str(word.get("text") or "")
+        if not bbox or not text.strip():
+            continue
+        px = _to_pixel_box(bbox, scale, config, inner_w, inner_h)
+        if px is None:
+            continue
+        left, top, right, bottom = px
+        grid_words.append(
+            GridWord(
+                left=left,
+                top=top,
+                right=right,
+                bottom=bottom,
+                text=text,
+                ink=_ink_for(word, config),
+            )
+        )
+
+    for line in group_words_into_grid_lines(grid_words, spec.cell_h):
+        baseline = line_baseline(line, ascent)
+        draw_grid_line(draw, line, baseline, spec, font)
+
+
+def _load_grid_font(
+    size: int, config: RenderConfig
+) -> ImageFont.FreeTypeFont:
+    """Load the body font for the grid path.
+
+    Prefers an explicit ``config.font_path``, else the vendored Px437 IBM VGA
+    face, else the legacy monospace candidates / Pillow default.
+    """
+    if config.font_path:
+        return _load_font(size, config)
+    if os.path.exists(_GRID_FONT_PATH):
+        key = (_GRID_FONT_PATH, int(max(1, size)))
+        cached = _FONT_CACHE.get(key)
+        if cached is not None:
+            return cached
+        try:
+            font = ImageFont.truetype(_GRID_FONT_PATH, int(max(1, size)))
+            _FONT_CACHE[key] = font
+            return font
+        except OSError:
+            pass
+    return _load_font(size, config)
 
 
 def render_real_vs_synthetic(

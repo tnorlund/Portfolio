@@ -561,11 +561,14 @@ def _render_cached_hybrid(
         color_by_label=False,
         draw_price_column=False,
         background=(250, 249, 245),
-        # Legibility floor (review action #4): thin synthesized bboxes shrank totals/payment tokens
-        # to ~5px -> faint gray micro-font Apple Vision dropped/misread (SUBTOTAL gone, decimals as
-        # dashes). Floor at 9px so every field is OCR-readable; mild box overflow is acceptable.
+        # Grid typography (fixed character grid, one body size per receipt, hard
+        # non-anti-aliased glyphs on a shared baseline). The merchant profile
+        # geometry is the realism control; min/max_font_px are only sanity clamps
+        # (9px readability floor / 28px ceiling), not the per-token shrink that
+        # used to make totals tiny and misaligned.
         min_font_px=9,
-        max_font_px=14,
+        max_font_px=28,
+        grid_mode=True,
     )
     image = render_receipt(
         receipt,

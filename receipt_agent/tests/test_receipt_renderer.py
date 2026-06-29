@@ -182,3 +182,32 @@ def test_color_by_label_handles_bio_prefixes():
     colors = {c for _, c in (image.getcolors(maxcolors=200000) or [])}
     # The B-LINE_TOTAL token should render in red despite the BIO prefix.
     assert any(r > 150 and g < 90 and b < 90 for (r, g, b) in colors)
+
+
+def test_grid_mode_renders_and_is_deterministic():
+    receipt = _synthetic_receipt()
+    cfg = RenderConfig(width=300, height=600, grid_mode=True,
+                       min_font_px=9, max_font_px=28)
+    a = render_receipt(receipt, config=cfg, coord_max=1000.0)
+    b = render_receipt(receipt, config=cfg, coord_max=1000.0)
+    assert a.size == (300, 600)
+    assert a.tobytes() == b.tobytes()  # deterministic
+
+
+def test_grid_mode_aligns_line_total_column():
+    # Two LINE_TOTAL tokens of different lengths sharing a right edge should
+    # land on the same grid column (right-anchored prices).
+    from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+        GridSpec, token_start_col,
+    )
+    spec = GridSpec(cell_w=7.0, cell_h=15.0, font_px=14, grid_left=10.0)
+    # right edge identical, lengths differ
+    sc_a = token_start_col("1.99", left=860.0, right=900.0, spec=spec)
+    sc_b = token_start_col("12.99", left=853.0, right=900.0, spec=spec)
+    right_a = spec.grid_left + (sc_a + len("1.99")) * spec.cell_w
+    right_b = spec.grid_left + (sc_b + len("12.99")) * spec.cell_w
+    assert abs(right_a - right_b) < spec.cell_w  # within one cell
+
+
+def test_grid_mode_disabled_by_default():
+    assert RenderConfig().grid_mode is False
