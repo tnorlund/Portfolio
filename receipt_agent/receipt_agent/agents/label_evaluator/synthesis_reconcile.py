@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .synthesis_text_clean import clean_token_text
+
 
 # --- BIO tag helpers ------------------------------------------------------------
 def _tag_label(tag: str) -> str:
@@ -666,6 +668,9 @@ def reconcile_candidate(
 
     Returns the cleaned ``(tokens, bboxes, ner_tags)``.
     """
+    tokens, bboxes, ner_tags = clean_token_text(
+        tokens, bboxes, ner_tags, merchant_name
+    )
     tokens, bboxes, ner_tags = _dedupe_header_blocks(
         tokens, bboxes, ner_tags, merchant_name
     )
