@@ -561,8 +561,11 @@ def _render_cached_hybrid(
         color_by_label=False,
         draw_price_column=False,
         background=(250, 249, 245),
-        min_font_px=5,
-        max_font_px=10,
+        # Legibility floor (review action #4): thin synthesized bboxes shrank totals/payment tokens
+        # to ~5px -> faint gray micro-font Apple Vision dropped/misread (SUBTOTAL gone, decimals as
+        # dashes). Floor at 9px so every field is OCR-readable; mild box overflow is acceptable.
+        min_font_px=9,
+        max_font_px=14,
     )
     image = render_receipt(
         receipt,
