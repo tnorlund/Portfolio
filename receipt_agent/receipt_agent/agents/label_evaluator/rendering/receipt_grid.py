@@ -35,7 +35,12 @@ from PIL import ImageDraw, ImageFont
 # A right-aligned amount token (optional currency/sign, 2-decimal tail, optional
 # trailing sign/tax flag). These share a right edge in a price column, so we snap
 # their RIGHT edge to the grid; everything else snaps its left edge.
-_PRICE_TOKEN = re.compile(r"^[-+]?\$?\d{1,3}(?:,\d{3})*\.\d{2}[-+]?[A-Z]?$")
+# The integer part accepts EITHER comma-grouped digits (``1,234``) OR a plain run
+# of digits (``1000``, ``1234``); without the bare-``\d+`` alternative an
+# uncommaed large amount falls through to left-snap and breaks the column.
+_PRICE_TOKEN = re.compile(
+    r"^[-+]?\$?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}[-+]?[A-Z]?$"
+)
 
 # Hard floor/ceiling on the body font, independent of any per-merchant noise.
 # The realism control is the profile geometry; these only stop a degenerate
@@ -133,6 +138,17 @@ def is_price_token(text: str) -> bool:
     return bool(_PRICE_TOKEN.match(str(text or "").strip().replace(" ", "")))
 
 
+def drawn_cell_count(text: str) -> int:
+    """Number of grid cells a token actually occupies = its non-space glyphs.
+
+    Spaces are never drawn and never advance a column (see
+    :func:`draw_token_chars`), so they must NOT be counted when right-anchoring a
+    price or advancing the inter-word cursor. Counting them (``len(text)``) shifts
+    a token like ``"1.99 T"`` one cell too far left of its visible glyphs.
+    """
+    return len(text.replace(" ", ""))
+
+
 @dataclass
 class GridWord:
     """A word already positioned in pixel space, ready for grid placement."""
@@ -187,14 +203,14 @@ def token_start_col(
 
     Left-aligned tokens snap their left edge to the nearest column. Price tokens
     are right-aligned in real receipts (the column shares a right edge), so they
-    snap their *right* edge and back off ``len(text)`` cells -- this is what
-    keeps the price column (and its decimal points) on one column even though
+    snap their *right* edge and back off the number of cells the glyphs actually
+    occupy (``drawn_cell_count`` -- non-space glyphs, since spaces are not drawn).
+    This keeps the price column (and its decimal points) on one column even though
     different amounts have different widths.
     """
-    n = len(text)
     if is_price_token(text):
         end_col = round((right - spec.grid_left) / spec.cell_w)
-        return end_col - n
+        return end_col - drawn_cell_count(text)
     return round((left - spec.grid_left) / spec.cell_w)
 
 
@@ -209,18 +225,22 @@ def draw_token_chars(
 ) -> None:
     """Draw each glyph of ``text`` at consecutive grid columns on a baseline.
 
-    Character ``i`` lands at ``grid_left + (start_col + i) * cell_w``. Because
-    ``cell_w`` is the font's own advance, glyphs sit flush (dense, no stray
-    letter-spacing). Drawn with ``anchor="ls"`` (left / baseline) so every line
-    shares one baseline.
+    Each drawn glyph lands at the next consecutive column starting at
+    ``start_col``. Because ``cell_w`` is the font's own advance, glyphs sit flush
+    (dense, no stray letter-spacing). Spaces are skipped and do NOT consume a
+    column, so the rendered span equals ``drawn_cell_count(text)`` -- matching the
+    cell count :func:`token_start_col` backs off for a right-anchored price. Drawn
+    with ``anchor="ls"`` (left / baseline) so every line shares one baseline.
     """
     if not text:
         return
-    for index, char in enumerate(text):
+    col = start_col
+    for char in text:
         if char == " ":
             continue
-        x = spec.grid_left + (start_col + index) * spec.cell_w
+        x = spec.grid_left + col * spec.cell_w
         draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls")
+        col += 1
 
 
 def draw_grid_line(
@@ -245,7 +265,7 @@ def draw_grid_line(
             draw, word.text, start, baseline_y, spec, font, word.ink
         )
         if not is_price_token(word.text):
-            cursor_col = start + len(word.text)
+            cursor_col = start + drawn_cell_count(word.text)
 
 
 def line_baseline(line: Sequence[GridWord], ascent: int) -> float:

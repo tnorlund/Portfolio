@@ -132,9 +132,7 @@ def render_receipt(
         )
 
     if config.grid_mode:
-        _render_grid(
-            image, draw, words, scale, config, profile, inner_w, inner_h
-        )
+        _render_grid(draw, words, scale, config, profile, inner_w, inner_h)
         return image
 
     # Pass 1: fit each word to its own box, but bucket by line and remember the
@@ -178,7 +176,6 @@ def render_receipt(
 
 
 def _render_grid(
-    image: Image.Image,
     draw: ImageDraw.ImageDraw,
     words: Sequence[Mapping[str, Any]],
     scale: float,
@@ -191,7 +188,8 @@ def _render_grid(
 
     Groups words into visual rows, picks a single font size from the merchant
     profile, kills anti-aliasing (hard thermal dots), and snaps every glyph to
-    its grid column on a shared per-row baseline.
+    its grid column on a shared per-row baseline. Draws onto ``draw`` (the caller
+    owns the backing ``Image`` and returns it).
     """
     # Pick the body size from the profile first, then measure the loaded font's
     # real monospace advance so the grid pitch matches the glyph we actually draw
