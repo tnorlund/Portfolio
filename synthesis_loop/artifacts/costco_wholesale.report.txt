@@ -1,27 +1,29 @@
 candidate: costco-wholesale-merchant-arithmetic-geometry-remove-line-item-23
-GT tokens: 95  GT lines: 31  OCR words: 93  labeled: 29 (align=29, spatial-fallback=0)
+GT tokens: 95  GT lines: 31  OCR words: 97  labeled: 31 (align=31, spatial-fallback=0)
 GT entity types (12): ['ADDRESS_LINE', 'DATE', 'GRAND_TOTAL', 'LINE_TOTAL', 'LOYALTY_ID', 'MERCHANT_NAME', 'PAYMENT_METHOD', 'PHONE_NUMBER', 'PRODUCT_NAME', 'SUBTOTAL', 'TAX', 'TIME']
 re-OCR entity types (12): ['ADDRESS_LINE', 'DATE', 'GRAND_TOTAL', 'LINE_TOTAL', 'LOYALTY_ID', 'MERCHANT_NAME', 'PAYMENT_METHOD', 'PHONE_NUMBER', 'PRODUCT_NAME', 'SUBTOTAL', 'TAX', 'TIME']
 MISSING entity types: NONE  <-- all recovered
 
 --- propagation score (re-OCR scorer) ---
-{"region_label_recall": 0.967, "label_precision": 0.966, "false_positive_rate": 0.034, "mislabel_rate": 0.0, "degenerate_labels": 0, "value_cer": 0.0, "propagation_f1": 0.966, "type_recall": 1.0, "missing_types": []}
+{"region_label_recall": 1.0, "label_precision": 0.968, "false_positive_rate": 0.032, "mislabel_rate": 0.0, "degenerate_labels": 0, "value_cer": 0.0, "propagation_f1": 0.984, "type_recall": 1.0, "missing_types": []}
 
 --- labeled tokens (text [label] via) ---
   'COSTCO'             [MERCHANT_NAME] (align)
   'EWHOLESALE'         [MERCHANT_NAME] (align)
-  'WestlakeVillage'    [ADDRESS_LINE] (align)
+  'Westlake'           [ADDRESS_LINE] (align)
+  'Village'            [ADDRESS_LINE] (align)
   '#117'               [ADDRESS_LINE] (align)
   '5700'               [ADDRESS_LINE] (align)
   'Lindero'            [ADDRESS_LINE] (align)
   'Canyon'             [ADDRESS_LINE] (align)
   'Ro'                 [ADDRESS_LINE] (align)
-  'WestlakeVillage,'   [ADDRESS_LINE] (align)
+  'Westlake'           [ADDRESS_LINE] (align)
+  'Village,'           [ADDRESS_LINE] (align)
   'CA'                 [ADDRESS_LINE] (align)
   '91362'              [ADDRESS_LINE] (align)
   '597-3901'           [PHONE_NUMBER] (align)
   '112012911712'       [LOYALTY_ID] (align)
-  '1484855CHEESE'      [PRODUCT_NAME] (align)
+  'CHEESE'             [PRODUCT_NAME] (align)
   'TRAY'               [PRODUCT_NAME] (align)
   '12.99'              [LINE_TOTAL] (align)
   '12.99'              [SUBTOTAL] (align)
@@ -29,11 +31,11 @@ MISSING entity types: NONE  <-- all recovered
   '12.99'              [GRAND_TOTAL] (align)
   'XXXXXXXXXXXX3931'   [PAYMENT_METHOD] (align)
   'EFT/Debit'          [PAYMENT_METHOD] (align)
-  '09/08/202518:45'    [DATE] (align)
+  '09/08/2025'         [DATE] (align)
+  '18:45'              [TIME] (align)
   'EFT/Debit'          [PAYMENT_METHOD] (align)
   '12.99'              [GRAND_TOTAL] (align)
-  '18:'                [TIME] (align)
-  '45'                 [TIME] (align)
+  '18:45'              [TIME] (align)
   '18:45'              [TIME] (align)
   'B1'                 [TIME] (align)
   '09/08/2025'         [DATE] (align)

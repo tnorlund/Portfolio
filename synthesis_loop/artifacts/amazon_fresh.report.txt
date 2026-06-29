@@ -1,5 +1,5 @@
 candidate: amazon-fresh-merchant-online-catalog-compose-online-catalog-7
-GT tokens: 119  GT lines: 31  OCR words: 88  labeled: 29 (align=29, spatial-fallback=0)
+GT tokens: 119  GT lines: 31  OCR words: 118  labeled: 34 (align=34, spatial-fallback=0)
 GT entity types (11): ['ADDRESS_LINE', 'DATE', 'GRAND_TOTAL', 'LINE_TOTAL', 'MERCHANT_NAME', 'PAYMENT_METHOD', 'PRODUCT_NAME', 'STORE_HOURS', 'SUBTOTAL', 'TAX', 'TIME']
 re-OCR entity types (11): ['ADDRESS_LINE', 'DATE', 'GRAND_TOTAL', 'LINE_TOTAL', 'MERCHANT_NAME', 'PAYMENT_METHOD', 'PRODUCT_NAME', 'STORE_HOURS', 'SUBTOTAL', 'TAX', 'TIME']
 MISSING entity types: NONE  <-- all recovered
@@ -8,17 +8,21 @@ MISSING entity types: NONE  <-- all recovered
 {"region_label_recall": 1.0, "label_precision": 1.0, "false_positive_rate": 0.0, "mislabel_rate": 0.0, "degenerate_labels": 0, "value_cer": 0.0, "propagation_f1": 1.0, "type_recall": 1.0, "missing_types": []}
 
 --- labeled tokens (text [label] via) ---
-  'amazon'             [MERCHANT_NAME] (align)
-  'fresh'              [MERCHANT_NAME] (align)
-  'WestlakeillageStore' [ADDRESS_LINE] (align)
+  'amazonfresh'        [MERCHANT_NAME] (align)
+  'Westlake'           [ADDRESS_LINE] (align)
+  'Village'            [ADDRESS_LINE] (align)
+  'Store'              [ADDRESS_LINE] (align)
   '140'                [ADDRESS_LINE] (align)
-  'PROMENADEAY'        [ADDRESS_LINE] (align)
+  'PROMENADE'          [ADDRESS_LINE] (align)
+  'WAY'                [ADDRESS_LINE] (align)
   'STE'                [ADDRESS_LINE] (align)
   'A'                  [ADDRESS_LINE] (align)
-  'THOUSANDDAKS,CA'    [ADDRESS_LINE] (align)
+  'THOUSAND'           [ADDRESS_LINE] (align)
+  'DAKS,'              [ADDRESS_LINE] (align)
+  'CA'                 [ADDRESS_LINE] (align)
   '91362-3828'         [ADDRESS_LINE] (align)
-  '4/4/20254:'         [DATE] (align)
-  '24'                 [TIME] (align)
+  '4/4/2025:'          [DATE] (align)
+  '4:24'               [TIME] (align)
   'ORGANIC'            [PRODUCT_NAME] (align)
   'WHITE'              [PRODUCT_NAME] (align)
   'ONION'              [PRODUCT_NAME] (align)
@@ -31,11 +35,12 @@ MISSING entity types: NONE  <-- all recovered
   '$18.13'             [GRAND_TOTAL] (align)
   'MasterCard'         [PAYMENT_METHOD] (align)
   'Card'               [PAYMENT_METHOD] (align)
-  'Operb'              [STORE_HOURS] (align)
+  'Open'               [STORE_HOURS] (align)
+  '9'                  [STORE_HOURS] (align)
   'AM'                 [STORE_HOURS] (align)
   'to'                 [STORE_HOURS] (align)
   '8'                  [STORE_HOURS] (align)
   'PM'                 [STORE_HOURS] (align)
   'daily'              [STORE_HOURS] (align)
 
-(legacy clean-data verifier for contrast: 0.75 — penalizes OCR noise, expected low)
+(legacy clean-data verifier for contrast: 0.875 — penalizes OCR noise, expected low)

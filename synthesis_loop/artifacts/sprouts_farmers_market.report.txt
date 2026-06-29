@@ -1,24 +1,25 @@
 candidate: sprouts-arithmetic-2-remove-line-item-00ded398-af6f-4a49-86f7-c79ccb554e48-00002
-GT tokens: 105  GT lines: 36  OCR words: 69  labeled: 31 (align=31, spatial-fallback=0)
+GT tokens: 105  GT lines: 36  OCR words: 106  labeled: 33 (align=33, spatial-fallback=0)
 GT entity types (11): ['ADDRESS_LINE', 'DATE', 'GRAND_TOTAL', 'LINE_TOTAL', 'MERCHANT_NAME', 'PAYMENT_METHOD', 'PHONE_NUMBER', 'PRODUCT_NAME', 'STORE_HOURS', 'TIME', 'WEBSITE']
 re-OCR entity types (11): ['ADDRESS_LINE', 'DATE', 'GRAND_TOTAL', 'LINE_TOTAL', 'MERCHANT_NAME', 'PAYMENT_METHOD', 'PHONE_NUMBER', 'PRODUCT_NAME', 'STORE_HOURS', 'TIME', 'WEBSITE']
 MISSING entity types: NONE  <-- all recovered
 
 --- propagation score (re-OCR scorer) ---
-{"region_label_recall": 1.0, "label_precision": 0.935, "false_positive_rate": 0.065, "mislabel_rate": 0.0, "degenerate_labels": 0, "value_cer": 0.0, "propagation_f1": 0.967, "type_recall": 1.0, "missing_types": []}
+{"region_label_recall": 0.969, "label_precision": 0.939, "false_positive_rate": 0.061, "mislabel_rate": 0.0, "degenerate_labels": 1, "value_cer": 0.0, "propagation_f1": 0.954, "type_recall": 1.0, "missing_types": []}
 
 --- labeled tokens (text [label] via) ---
   'SPROUTS'            [MERCHANT_NAME] (align)
-  '1012WESTLAKEBLVD.'  [ADDRESS_LINE] (align)
+  '1012'               [ADDRESS_LINE] (align)
+  'WESTLAKE'           [ADDRESS_LINE] (align)
+  'BLVD.'              [ADDRESS_LINE] (align)
   'WESTLAKE,'          [ADDRESS_LINE] (align)
   'CA'                 [ADDRESS_LINE] (align)
   '91361'              [ADDRESS_LINE] (align)
   '(805)'              [PHONE_NUMBER] (align)
   '917-4200'           [PHONE_NUMBER] (align)
-  '09/04/2025'         [DATE] (align)
   '17:55:27'           [TIME] (align)
+  '09/04/2025'         [DATE] (align)
   'DEBIT'              [PAYMENT_METHOD] (align)
-  'USDS'               [GRAND_TOTAL] (align)
   '7.99'               [GRAND_TOTAL] (align)
   '(805)'              [PHONE_NUMBER] (align)
   '917-4200'           [PHONE_NUMBER] (align)
@@ -34,10 +35,11 @@ MISSING entity types: NONE  <-- all recovered
   '7.99'               [LINE_TOTAL] (align)
   '7.99'               [GRAND_TOTAL] (align)
   'DEBIT'              [PAYMENT_METHOD] (align)
-  'DEB197.99'          [PAYMENT_METHOD] (align)
-  'CARB:'              [PAYMENT_METHOD] (align)
-  'XXXXXXXXXXXx8134'   [PAYMENT_METHOD] (align)
-  ':SproutsFeedback.com' [WEBSITE] (align)
+  'DEBIT'              [PAYMENT_METHOD] (align)
+  'CARD'               [PAYMENT_METHOD] (align)
+  '#:'                 [PAYMENT_METHOD] (align)
+  '20000000000048134'  [PAYMENT_METHOD] (align)
+  'SproutsFeedback.com' [WEBSITE] (align)
   'Sprouts.com'        [WEBSITE] (align)
 
-(legacy clean-data verifier for contrast: 0.625 — penalizes OCR noise, expected low)
+(legacy clean-data verifier for contrast: 0.875 — penalizes OCR noise, expected low)
