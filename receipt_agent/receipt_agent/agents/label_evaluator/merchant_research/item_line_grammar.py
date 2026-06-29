@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import os
 import re
 import statistics
@@ -60,12 +61,55 @@ PRICE_LABELS = {"LINE_TOTAL", "ITEM_TOTAL"}
 # (slightly lower) WAS/SALE sub-line.
 ROW_Y_TOLERANCE = 0.010
 
-# A trailing tax flag is a 1-2 char alphabetic token right of the price
-# (Amazon F/T, Costco A, occasional NF). A *leading* margin flag (Costco's
-# tax-exempt 'E' in the far-left column) is restricted to a single letter to
-# avoid mistaking stray 2-char OCR fragments in the margin for a flag.
-_FLAG_RE = re.compile(r"^[A-Za-z]{1,2}$")
-_LEADING_FLAG_RE = re.compile(r"^[A-Za-z]$")
+# Tax-flag detection -------------------------------------------------------
+#
+# A per-line tax flag is a short alphabetic code printed next to an item's
+# price. It can sit on either side of the price: *trailing* (right of the
+# price -- Amazon F/T, Costco A) or *leading* (left of the price -- Costco's
+# tax-exempt 'E' in the far-left margin, Target's NF/T column just left of the
+# price). The previous heuristic admitted any 1-2 char alpha token in the
+# price-flag column, which let SKU/OCR fragments through (Home Depot 'WD'/'AB',
+# Sprouts 'TT'/'I', Target 'NE'). We now gate candidates on three things:
+#
+#   (a) the token sits in a *consistent* flag column (x-clustered across rows),
+#   (b) the token is a known tax-flag code (small curated alphabet below), and
+#   (c) the column -- and each char within it -- recurs above a frequency floor.
+#
+# FLAG_ALPHABET is the small, generic set of US grocery/retail tax codes (NOT
+# per-merchant): single-letter taxable/exempt/food markers plus the well-known
+# two-letter "non-food" codes. Anything outside it (WD, AB, TT, I, NE, <A>) is
+# treated as SKU text or OCR noise and rejected.
+FLAG_ALPHABET = {
+    "A",  # taxable (Costco) / category A
+    "B",  # bottle deposit / category B
+    "E",  # tax-exempt (Costco)
+    "F",  # food / SNAP-eligible (non-taxable)
+    "N",  # non-taxable
+    "P",  # taxable category P
+    "S",  # taxable / sale
+    "T",  # taxable
+    "X",  # taxable
+    "NF",  # non-food (taxable) -- Target et al.
+    "NT",  # non-taxable
+}
+# Within an accepted flag column, a code must appear on at least this fraction
+# of the column's occurrences to be kept. Scaling by the column (not the row
+# count) is deliberate: flags are sparse on some merchants (Sprouts prints a
+# code on ~28 of 838 item rows), so a row-relative floor would erase a real but
+# sparse column. A column-relative floor instead drops in-column one-offs while
+# a dominant flag's lone minority partner survives -- Amazon's single 'T' among
+# 12 'F' clears ceil(0.05 * 13) = 1, but a stray code in a 28-deep column needs
+# ceil(0.05 * 28) = 2 and is dropped.
+FLAG_FREQ_FLOOR = 0.05
+# A flag column must recur on at least this many rows to be trusted as a real
+# column rather than a one-/two-off coincidence. Kept small so a merchant that
+# only ever taxes a couple of items still registers its column.
+FLAG_MIN_COLUMN_ROWS = 2
+# Two flag occurrences belong to the same column when their left-x are within
+# this normalized distance. Flag columns across our merchants are >> this apart
+# from the name column, and a column's own jitter is well under it.
+FLAG_COLUMN_TOL = 0.04
+_EPS = 1e-6
 # Markdown / "sale now" marker tokens (OCR is noisy: NOW / now / nOW ...).
 _MARKER_RE = re.compile(r"^n[o0]w$", re.IGNORECASE)
 # Truncation markers OCR emits for clipped names ("..." or a clipped "..").
@@ -86,10 +130,14 @@ _INT_TOKEN_RE = re.compile(r"\b\d+\b")
 class TaxFlag:
     """Tax flag specification for an item row.
 
-    Some merchants print one trailing flag (Amazon: F/T right of the price);
-    others use a dual scheme (Costco: 'A' trailing taxable rows, 'E' at the
-    far-left margin for tax-exempt rows), in which case ``position`` is
-    ``"mixed"``.
+    The flag can sit on either side of the price. ``position`` is:
+
+    * ``"trailing"`` -- right of the price (Amazon: F/T).
+    * ``"leading"``  -- left of the price, whether in the far-left margin
+      (Costco's tax-exempt 'E') or a dedicated pre-price column (Target's
+      NF/T column just left of the price).
+    * ``"mixed"``    -- both occur (Costco: 'A' trailing taxable rows + 'E'
+      leading exempt rows).
     """
 
     present: bool = False
@@ -274,12 +322,13 @@ def extract_item_line_template(
 
     # Accumulators.
     name_start_xs: list[float] = []
+    name_word_xs: list[float] = []  # left-x of every name word (column-density guard)
     price_right_xs: list[float] = []
-    flag_xs: list[float] = []
-    trailing_counter: Counter = Counter()
-    leading_counter: Counter = Counter()
-    flag_same_line = 0
-    flag_trailing_rows = 0  # rows with a flag right of the price
+    # Flag candidates: every alphabet-matching token sitting on one side of the
+    # price, tagged with its row, x, and whether it shares the price's OCR line.
+    # Column clustering + the frequency floor are applied afterwards.
+    left_flag_cands: list[_FlagCand] = []  # left of the price
+    right_flag_cands: list[_FlagCand] = []  # right of the price
     marker_counter: Counter = Counter()
     marker_rows = 0
     truncated_names = 0
@@ -309,6 +358,9 @@ def extract_item_line_template(
         )
         if nstart is not None:
             name_start_xs.append(nstart)
+        name_word_xs.extend(
+            x for x in (_left_x(w) for w in name_words) if x is not None
+        )
 
         # Reconstruct the visible product name (sorted by x) for truncation.
         name_words_sorted = sorted(
@@ -346,43 +398,36 @@ def extract_item_line_template(
         if found_marker:
             marker_rows += 1
 
-        # Tax flag(s): a 1-2 char alpha token. Two placements are possible and
-        # may co-exist on the same receipt (Costco): a TRAILING flag just right
-        # of the price, and a LEADING flag in the far-left margin (left of the
-        # product name -- the numeric item number sits between and is ignored
-        # since it is not alphabetic). At most one of each per row (nearest).
+        # Tax flag(s): collect every known tax-code token (FLAG_ALPHABET) in
+        # the row and bucket it by side of the price. A token is TRAILING when
+        # it sits right of the price's right edge and LEADING when it sits fully
+        # left of the price's left edge. We do NOT pick a single token per row
+        # here -- the real flag column is recovered later by x-clustering, which
+        # is robust to a stray name word that happens to match the alphabet (it
+        # lands in the name column, not the flag column).
         if price_word is not None:
             pr_edge = _right_edge_x(price_word) or 0.0
-            name_left = nstart if nstart is not None else 0.0
-            trailing = None  # nearest alpha token right of the price
-            leading = None  # nearest alpha token left of the product name
+            pr_left = _left_x(price_word)
+            pr_left = pr_left if pr_left is not None else pr_edge
+            same_line_id = price_word.get("line_id")
             for w in row_words:
                 if w is price_word:
                     continue
                 txt = str(w.get("text") or "").strip()
-                if not _FLAG_RE.match(txt) or _MARKER_RE.match(txt):
+                if _MARKER_RE.match(txt) or txt.upper() not in FLAG_ALPHABET:
                     continue
                 lx = _left_x(w)
                 if lx is None:
                     continue
-                if lx >= pr_edge - 1e-6:  # right of the price -> trailing
-                    if trailing is None or lx < (_left_x(trailing) or 1.0):
-                        trailing = w
-                elif lx < name_left and _LEADING_FLAG_RE.match(txt):
-                    # far-left margin, single letter only
-                    if leading is None or lx > (_left_x(leading) or -1.0):
-                        leading = w
-
-            if trailing is not None:
-                flag_trailing_rows += 1
-                trailing_counter[str(trailing.get("text") or "").upper()] += 1
-                fx = _left_x(trailing)
-                if fx is not None:
-                    flag_xs.append(fx)
-                if trailing.get("line_id") == price_word.get("line_id"):
-                    flag_same_line += 1
-            if leading is not None:
-                leading_counter[str(leading.get("text") or "").upper()] += 1
+                same_line = w.get("line_id") == same_line_id
+                if lx >= pr_edge - _EPS:  # right of the price -> trailing
+                    right_flag_cands.append(
+                        _FlagCand(lk, txt.upper(), lx, same_line)
+                    )
+                elif (_right_edge_x(w) or lx) <= pr_left + _EPS:  # left -> leading
+                    left_flag_cands.append(
+                        _FlagCand(lk, txt.upper(), lx, same_line)
+                    )
 
     # ------------------------------------------------------------------
     # Sub-line: scan all line texts for the SALE ... WAS ... signature.
@@ -415,26 +460,26 @@ def extract_item_line_template(
     tmpl.sample_count = item_rows
     tmpl.receipt_count = len(receipt_ids)
 
-    # tax flag. Trailing flags are trusted even when rare (they sit in the
-    # established price-flag column). Leading margin flags are only accepted if
-    # they recur on a meaningful share of rows -- a lone far-left letter is OCR
-    # noise, not a tax code -- and one-off leading chars are pruned.
-    leading_min = max(3, int(round(0.08 * item_rows))) if item_rows else 3
-    leading_rows = sum(leading_counter.values())
-    if leading_rows >= leading_min:
-        accepted_leading = Counter(
-            {c: n for c, n in leading_counter.items() if n > 1}
-        )
-    else:
-        accepted_leading = Counter()
-    flag_leading_rows = sum(accepted_leading.values())
+    # tax flag. Recover the consistent flag column on each side of the price by
+    # x-clustering the candidates, then keep only columns/chars that clear the
+    # frequency floor. This rejects SKU-like multi-char tokens and OCR noise
+    # (they are not in FLAG_ALPHABET) and rare one-offs (they fall below the
+    # floor), while preserving a dominant flag's lone minority partner.
+    trailing = _choose_flag_column(right_flag_cands, name_word_xs)
+    leading = _choose_flag_column(left_flag_cands, name_word_xs)
 
-    combined = trailing_counter + accepted_leading
-    if combined:
+    if trailing is not None or leading is not None:
+        combined: Counter = Counter()
+        if trailing is not None:
+            combined += trailing.char_counts
+        if leading is not None:
+            combined += leading.char_counts
         chars = [c for c, _ in combined.most_common()]
-        if flag_trailing_rows and flag_leading_rows:
+        trailing_count = trailing.row_count if trailing is not None else 0
+        leading_count = leading.row_count if leading is not None else 0
+        if trailing is not None and leading is not None:
             position = "mixed"
-        elif flag_trailing_rows:
+        elif trailing is not None:
             position = "trailing"
         else:
             position = "leading"
@@ -444,13 +489,17 @@ def extract_item_line_template(
             char_counts=dict(combined),
             position=position,
             trailing_same_line=(
-                flag_trailing_rows > 0
-                and flag_same_line >= (flag_trailing_rows / 2.0)
+                trailing is not None
+                and trailing.same_line_count >= (trailing.occurrences / 2.0)
             ),
-            count=flag_trailing_rows + flag_leading_rows,
-            trailing_count=flag_trailing_rows,
-            leading_count=flag_leading_rows,
+            count=trailing_count + leading_count,
+            trailing_count=trailing_count,
+            leading_count=leading_count,
         )
+        # flag_x: the trailing column if present, else the leading column.
+        flag_col_x = trailing.col_x if trailing is not None else leading.col_x
+    else:
+        flag_col_x = -1.0
 
     # markdown marker
     if marker_rows:
@@ -484,11 +533,100 @@ def extract_item_line_template(
     tmpl.columns = Columns(
         name_start_x=round(_median(name_start_xs), 4),
         price_right_x=round(_median(price_right_xs), 4),
-        flag_x=round(_median(flag_xs), 4) if flag_xs else -1.0,
+        flag_x=round(flag_col_x, 4) if flag_col_x > 0 else -1.0,
     )
 
     tmpl.confidence = _confidence(tmpl)
     return tmpl
+
+
+@dataclass
+class _FlagCand:
+    """A single alphabet-matching token sitting on one side of a row's price."""
+
+    row: tuple  # name-line key, used to count distinct rows
+    char: str  # uppercased token
+    x: float  # left-x, used for column clustering
+    same_line: bool  # shares the price word's OCR line
+
+
+@dataclass
+class _FlagColumn:
+    """The accepted flag column on one side of the price (post floor/filter)."""
+
+    char_counts: Counter
+    row_count: int  # distinct rows carrying a kept flag
+    occurrences: int  # total kept flag occurrences
+    same_line_count: int
+    col_x: float  # median left-x of the column
+
+
+def _choose_flag_column(
+    cands: list[_FlagCand], name_word_xs: Sequence[float]
+) -> _FlagColumn | None:
+    """Recover a consistent tax-flag column from one side's candidates.
+
+    Clusters candidates by x, picks the column that recurs on the most rows
+    (tie-break: closest to the price), and enforces the floor at both the column
+    level (a real column must recur on >= FLAG_MIN_COLUMN_ROWS rows) and the
+    char level (a code must clear FLAG_FREQ_FLOOR of the column's occurrences).
+    A final density guard rejects a "column" that is really product-name text:
+    if name words within the column's x-band outnumber the flag occurrences, the
+    band belongs to the name (Home Depot, whose broken labels scatter stray
+    alphabet tokens through the description column). Returns ``None`` when
+    nothing survives -- i.e. the side carries only stray/noise tokens.
+    """
+    if not cands:
+        return None
+
+    # Single-linkage cluster by x (columns are >> FLAG_COLUMN_TOL apart).
+    cands_sorted = sorted(cands, key=lambda c: c.x)
+    clusters: list[list[_FlagCand]] = [[cands_sorted[0]]]
+    for c in cands_sorted[1:]:
+        if c.x - clusters[-1][-1].x <= FLAG_COLUMN_TOL:
+            clusters[-1].append(c)
+        else:
+            clusters.append([c])
+
+    # A real flag column recurs on at least FLAG_MIN_COLUMN_ROWS rows.
+    row_floor = FLAG_MIN_COLUMN_ROWS
+    best: list[_FlagCand] | None = None
+    best_key: tuple | None = None
+    for cl in clusters:
+        rows = {c.row for c in cl}
+        if len(rows) < row_floor:
+            continue
+        # Prefer the column on the most rows; break ties toward the price.
+        key = (len(rows), statistics.median([c.x for c in cl]))
+        if best_key is None or key > best_key:
+            best, best_key = cl, key
+    if best is None:
+        return None
+
+    # Within the column, each code must clear the floor (drops rare one-offs).
+    char_floor = max(1, math.ceil(FLAG_FREQ_FLOOR * len(best)))
+    raw = Counter(c.char for c in best)
+    kept_chars = {ch for ch, n in raw.items() if n >= char_floor}
+    kept = [c for c in best if c.char in kept_chars]
+    if not kept:
+        return None
+
+    # Density guard: if name words crowd this x-band more than the flags do, the
+    # band is product-name text, not a flag column.
+    col_x = statistics.median([c.x for c in kept])
+    name_in_band = sum(
+        1 for x in name_word_xs if abs(x - col_x) <= FLAG_COLUMN_TOL
+    )
+    if name_in_band >= len(kept):
+        return None
+
+    return _FlagColumn(
+        char_counts=Counter(c.char for c in kept),
+        row_count=len({c.row for c in kept}),
+        occurrences=len(kept),
+        same_line_count=sum(1 for c in kept if c.same_line),
+        col_x=col_x,
+    )
 
 
 def _collect_row(

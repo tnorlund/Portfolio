@@ -215,6 +215,123 @@ def test_lone_leading_letter_is_not_a_flag():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Noise rejection: multi-char SKU tokens, out-of-alphabet letters, and stray
+# one-offs must NOT be reported as tax flags.
+# ---------------------------------------------------------------------------
+
+
+def _trailing_export(flag_by_row):
+    """Build rows: NAME at 0.10, price right-edge 0.90, optional trailing flag
+    at x=0.92. ``flag_by_row`` is a list of flag strings ("" => no flag)."""
+    words, labels = [], []
+    for i, flag in enumerate(flag_by_row):
+        lid = 10 + i
+        y = 0.80 - i * 0.03
+        words.append(_w(1, lid, 1, f"ITEM{i}", 0.10, 0.20, y))
+        words.append(_w(1, lid, 2, "4.99", 0.78, 0.12, y))  # right edge 0.90
+        labels.append(_lab(1, lid, 1, "PRODUCT_NAME"))
+        labels.append(_lab(1, lid, 2, "LINE_TOTAL"))
+        if flag:
+            words.append(_w(1, lid, 3, flag, 0.92, 0.03, y))
+    return {
+        "merchant_name": "X",
+        "receipt_words": words,
+        "receipt_word_labels": labels,
+    }
+
+
+def test_multichar_sku_tokens_rejected():
+    # Home-Depot-shaped noise: 2-char SKU-ish tokens in the price-flag column.
+    t = extract_item_line_template(
+        _trailing_export(["WD", "AB", "WD", "WD", "AB"])
+    )
+    assert not t.tax_flag.present
+    assert t.tax_flag.chars == []
+
+
+def test_out_of_alphabet_letters_rejected():
+    # Single letters that are not plausible tax codes (I, Q, Z) are dropped.
+    t = extract_item_line_template(_trailing_export(["I", "Q", "Z", "I", "Q"]))
+    assert not t.tax_flag.present
+
+
+def test_noise_filtered_real_flags_survive():
+    # Sprouts-shaped: real F/T plus OCR noise (multi-char TT, out-of-alphabet I).
+    rows = ["F"] * 8 + ["T"] * 3 + ["TT", "TT", "I"]
+    t = extract_item_line_template(_trailing_export(rows))
+    assert t.tax_flag.present
+    assert set(t.tax_flag.chars) == {"F", "T"}
+    assert "TT" not in t.tax_flag.char_counts
+    assert "I" not in t.tax_flag.char_counts
+
+
+def test_frequency_floor_drops_in_alphabet_oneoff_in_deep_column():
+    # A deep, dominant column drops an in-alphabet one-off below the floor: with
+    # 24 'F' + a single stray 'S', the floor ceil(0.05*25)=2 prunes 'S'.
+    rows = ["F"] * 24 + ["S"]
+    t = extract_item_line_template(_trailing_export(rows))
+    assert t.tax_flag.present
+    assert t.tax_flag.chars == ["F"]
+    assert "S" not in t.tax_flag.char_counts
+
+
+def test_minority_partner_survives_in_shallow_column():
+    # A shallow column keeps a lone minority partner (Amazon's single 'T' among
+    # many 'F'): floor ceil(0.05*9)=1, so the single 'T' is retained.
+    rows = ["F"] * 8 + ["T"]
+    t = extract_item_line_template(_trailing_export(rows))
+    assert t.tax_flag.present
+    assert set(t.tax_flag.chars) == {"F", "T"}
+    assert t.tax_flag.char_counts["T"] == 1
+
+
+def test_name_density_guard_rejects_description_column():
+    # Target/Home-Depot failure mode: a stray in-alphabet token sitting amid the
+    # product-name band must be rejected -- name words outnumber the "flags".
+    words, labels = [], []
+    for i in range(8):
+        lid = 10 + i
+        y = 0.80 - i * 0.03
+        # A wide product name spanning x 0.10..0.55 (many words near 0.30).
+        for j, nx in enumerate((0.10, 0.22, 0.30, 0.38, 0.46)):
+            words.append(_w(1, lid, 10 + j, "WORD", nx, 0.06, y))
+            labels.append(_lab(1, lid, 10 + j, "PRODUCT_NAME"))
+        words.append(_w(1, lid, 1, "9.99", 0.78, 0.12, y))  # right edge 0.90
+        labels.append(_lab(1, lid, 1, "LINE_TOTAL"))
+        # Two rows carry a stray "F" inside the name band (x~0.30), not a column.
+        if i < 2:
+            words.append(_w(1, lid, 2, "F", 0.30, 0.03, y))
+    t = extract_item_line_template(
+        {"merchant_name": "HD", "receipt_words": words, "receipt_word_labels": labels}
+    )
+    assert not t.tax_flag.present
+
+
+def test_leading_preprice_flag_column_detected():
+    # Target-shaped: a flag column (NF / T) printed left of the price, distinct
+    # from the name band, is detected as a 'leading' flag.
+    words, labels = [], []
+    flags = ["NF", "T", "NF", "T", "NF", "NF"]
+    for i, flag in enumerate(flags):
+        lid = 10 + i
+        y = 0.80 - i * 0.03
+        words.append(_w(1, lid, 1, "BERRIES", 0.24, 0.18, y))
+        words.append(_w(1, lid, 2, flag, 0.67, 0.05, y))  # pre-price column
+        words.append(_w(1, lid, 3, "3.69", 0.80, 0.10, y))  # right edge 0.90
+        labels.append(_lab(1, lid, 1, "PRODUCT_NAME"))
+        labels.append(_lab(1, lid, 3, "LINE_TOTAL"))
+    t = extract_item_line_template(
+        {"merchant_name": "Target", "receipt_words": words, "receipt_word_labels": labels}
+    )
+    assert t.tax_flag.present
+    assert t.tax_flag.position == "leading"
+    assert set(t.tax_flag.chars) == {"NF", "T"}
+    assert t.tax_flag.leading_count == 6
+    assert t.tax_flag.trailing_count == 0
+    assert abs(t.columns.flag_x - 0.67) < 1e-6
+
+
 def test_empty_export():
     t = extract_item_line_template({})
     assert t.sample_count == 0
