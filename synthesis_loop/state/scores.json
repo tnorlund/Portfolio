@@ -1,6 +1,6 @@
 {
-  "overall_mean": 0.98,
-  "worst_merchant_mean": 0.912,
+  "overall_mean": 0.991,
+  "worst_merchant_mean": 0.953,
   "merchants": {
     "amazon_fresh": {
       "mean": 1.0,
@@ -15,11 +15,9 @@
       }
     },
     "gelsons_westlake_village": {
-      "mean": 0.912,
+      "mean": 1.0,
       "n": 10,
-      "failing_checks": {
-        "no_garble": "3/10"
-      }
+      "failing_checks": {}
     },
     "smiths": {
       "mean": 0.984,

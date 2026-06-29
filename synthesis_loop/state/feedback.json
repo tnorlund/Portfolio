@@ -1,6 +1,6 @@
 {
-  "round": 2,
-  "overall_mean": 0.98,
+  "round": 3,
+  "overall_mean": 0.991,
   "per_merchant": {
     "amazon_fresh": {
       "mean": 1.0,
@@ -15,11 +15,9 @@
       }
     },
     "gelsons_westlake_village": {
-      "mean": 0.912,
+      "mean": 1.0,
       "n": 10,
-      "failing_checks": {
-        "no_garble": "3/10"
-      }
+      "failing_checks": {}
     },
     "smiths": {
       "mean": 0.984,
@@ -54,86 +52,86 @@
     }
   },
   "line_review": {
-    "merchant": "the_home_depot",
+    "merchant": "target",
     "worst_lines": [
-      "line 24: 'target.com' is the wrong merchant domain on a Home Depot receipt",
-      "line 34: 'target.com' wrong domain repeated in footer",
-      "line 8: stray '4024.97' token and price not aligned to column",
-      "line 18: 'THISRECEIPT(PO)NUMBER' words fused with no spaces",
-      "line 37: 'Entriesmust'/'completedwithin' words touching"
+      "line 1: header dropped the street-address and city/state/zip lines present in the original",
+      "line 11: TOTAL amount $14.56 missing from the right column",
+      "line 7: stray '...' leader dots garbling the CarltonCards price gap",
+      "line 9: SUBTOTAL row washed out / nearly invisible",
+      "line 8: added item '049063338Barbasol' code and name glued together"
     ],
     "bad_lines": [
       {
-        "n": 2,
-        "text": "get more done..",
+        "n": 1,
+        "text": "Westlake village - 818-661-2631",
         "ok": false,
-        "issue": "slogan has a stray trailing '..' instead of a single period"
+        "issue": "lowercase 'village' and the original's street-address line (30740 Russell Ranch Rd) and city/state/zip line (Westlake Village, CA 91362-4063) are missing entirely"
       },
       {
-        "n": 4,
-        "text": "(805)    486-9114",
+        "n": 7,
+        "text": "053526114 CarltonCards T ... $5.99",
         "ok": false,
-        "issue": "oversized gap between area code and number, not a tight phone format"
+        "issue": "stray '...' leader dots sit between the T flag and the price; the price column gap is garbled vs the clean original"
       },
       {
         "n": 8,
-        "text": "4PK - 586IN RECESSED LED TRIM SW T20  99.88",
+        "text": "049063338Barbasol T   $2.49",
         "ok": false,
-        "issue": "price 99.88 not right-aligned to the price column; stray '4024.97' token leaked above it"
+        "issue": "added-item product code '049063338' and 'Barbasol' touch with no space, unlike the code/name gap on other item rows"
       },
       {
-        "n": 18,
-        "text": "THISRECEIPT(PO)NUMBER 02/29:",
+        "n": 9,
+        "text": "SUBTOTAL  $13.98",
         "ok": false,
-        "issue": "label words touching with no spaces ('THISRECEIPT(PO)NUMBER')"
+        "issue": "whole SUBTOTAL row is washed out / far too faint compared to the body text"
       },
       {
-        "n": 19,
-        "text": "2024PRO XTRA SPEND 02/29  $5,224.35",
+        "n": 10,
+        "text": "T = TAX 9.75000 on $5.99  $0.58",
         "ok": false,
-        "issue": "'2024PRO' run together with no space"
+        "issue": "dropped the 'CA' from the original's 'CA TAX' label"
+      },
+      {
+        "n": 11,
+        "text": "TOTAL",
+        "ok": false,
+        "issue": "TOTAL amount ($14.56) is missing from the right column; row has no value"
+      },
+      {
+        "n": 12,
+        "text": "+3931 DEBIT TOTAL PAYMENT",
+        "ok": false,
+        "issue": "payment amount ($14.56) is missing from the right column"
+      },
+      {
+        "n": 17,
+        "text": "RETURNCREDITWILL NOT INCLUDE ANY",
+        "ok": false,
+        "issue": "'RETURNCREDITWILL' three words glued with no spaces at line start"
+      },
+      {
+        "n": 20,
+        "text": "NOTICE:Some furnitureproducts can expose",
+        "ok": false,
+        "issue": "'NOTICE:Some' and 'furnitureproducts' words touching with no separation"
       },
       {
         "n": 23,
-        "text": "CreditCard. ApplyHomeDEPOT SAVE UP TO $100.",
+        "text": "otherreproductiveharm. Please check on-",
         "ok": false,
-        "issue": "'ApplyHomeDEPOT' words touching and mixed-case weight too heavy"
-      },
-      {
-        "n": 24,
-        "text": "target.com",
-        "ok": false,
-        "issue": "wrong merchant domain on a Home Depot receipt \u2014 should be homedepot.com"
+        "issue": "'otherreproductiveharm' words glued together at line start"
       },
       {
         "n": 27,
-        "text": "RETURNPOLICYDEFINITIONS",
+        "text": "Take a 2 minute survey about today'strip",
         "ok": false,
-        "issue": "heading words touching with no spaces"
+        "issue": "\"today'strip\" should be \"today's trip\" - words touching across the apostrophe"
       },
       {
-        "n": 29,
-        "text": "05/30/2024",
+        "n": 28,
+        "text": "informtarget.com",
         "ok": false,
-        "issue": "orphan expiry date with empty POLICYID/DAYS columns above it"
-      },
-      {
-        "n": 33,
-        "text": "opinion espa\u00f1ol",
-        "ok": false,
-        "issue": "truncated/garbled Spanish prompt ('opini\u00f3n en espa\u00f1ol' expected)"
-      },
-      {
-        "n": 34,
-        "text": "target.com",
-        "ok": false,
-        "issue": "wrong merchant domain again \u2014 should be homedepot.com"
-      },
-      {
-        "n": 36,
-        "text": "PASSWORD:24151 179367",
-        "ok": false,
-        "issue": "no space after 'PASSWORD:' label"
+        "issue": "missing the dot/space: reads 'informtarget.com' instead of 'inform target.com'"
       }
     ]
   }
