@@ -164,6 +164,16 @@ _STRAY_COMMA_RE = re.compile(r",\s*,+")
 _MERCHANT_NAME_STOPWORDS = {"THE", "AND"}
 
 
+def _merchant_name_words(merchant_name: str | None) -> set[str]:
+    if not merchant_name:
+        return set()
+    return {
+        raw.upper()
+        for raw in re.split(r"[^A-Za-z0-9]+", str(merchant_name))
+        if raw
+    }
+
+
 def _merchant_name_tokens(merchant_name: str | None) -> set[str]:
     """Significant uppercase tokens from a merchant name (for canonical-run match).
 
@@ -178,6 +188,54 @@ def _merchant_name_tokens(merchant_name: str | None) -> set[str]:
         if len(word) >= 3 and word not in _MERCHANT_NAME_STOPWORDS:
             out.add(word)
     return out
+
+
+def _token_name_word(token: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "", str(token or "")).upper()
+
+
+def _promote_missing_merchant_header(
+    tokens: list[str],
+    bboxes: list[list[int]],
+    tags: list[str],
+    merchant_name: str | None,
+) -> None:
+    """Recover a missing MERCHANT_NAME span from the top matching header line.
+
+    Some generic merchant candidates arrive with the visible wordmark/header
+    tokens unlabeled (or as the non-core STORE_NAME alias). The verifier requires
+    exactly one ``B-MERCHANT_NAME`` tag, so when no merchant span exists we use the
+    caller-provided merchant name to tag the top visual line that actually names
+    the merchant. Existing candidates that already have a merchant span are left
+    to the normal duplicate-header pruning path.
+    """
+    name_tokens = _merchant_name_tokens(merchant_name)
+    if not name_tokens:
+        return
+
+    all_name_words = _merchant_name_words(merchant_name)
+    for line in _visual_lines(bboxes):
+        ordered = sorted(line, key=lambda i: bboxes[i][0])
+        line_text = " ".join(str(tokens[i]) for i in ordered).upper()
+        if not any(token in line_text for token in name_tokens):
+            continue
+
+        selected = []
+        for i in ordered:
+            word = _token_name_word(str(tokens[i]))
+            if not word:
+                continue
+            if (
+                word in all_name_words
+                or any(token in word or word in token for token in name_tokens)
+            ):
+                selected.append(i)
+        if not selected:
+            selected = ordered
+
+        for offset, i in enumerate(selected):
+            tags[i] = "B-MERCHANT_NAME" if offset == 0 else "I-MERCHANT_NAME"
+        return
 
 
 def _dedupe_header_blocks(
@@ -199,6 +257,20 @@ def _dedupe_header_blocks(
     bboxes = list(bboxes)
     tags = list(ner_tags)
     drop: set[int] = set()
+
+    if not _label_runs(tags, "MERCHANT_NAME"):
+        # STORE_NAME is a renderer-level alias, but the objective verifier only
+        # counts MERCHANT_NAME. Normalize it only for otherwise-missing headers
+        # so already-passing candidates are not disturbed.
+        for k, tag in enumerate(tags):
+            if _tag_label(tag) == "STORE_NAME":
+                tags[k] = (
+                    "B-MERCHANT_NAME"
+                    if str(tag).startswith("B-")
+                    else "I-MERCHANT_NAME"
+                )
+        if not _label_runs(tags, "MERCHANT_NAME"):
+            _promote_missing_merchant_header(tokens, bboxes, tags, merchant_name)
 
     # MERCHANT_NAME: when multiple non-contiguous blocks exist, keep the one that
     # actually names the merchant (else the longest) and drop the rest.
