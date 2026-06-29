@@ -133,13 +133,21 @@ def render_receipt(
         size = int(getattr(font, "size", box_h) or box_h)
         line_key = int(round((top + box_h / 2) / 6))
         line_size[line_key] = min(line_size.get(line_key, size), size)
-        prepared.append((left, top, box_h, text, _ink_for(word, config), line_key))
+        prepared.append(
+            (left, top, box_w, box_h, text, _ink_for(word, config), line_key)
+        )
 
     # Pass 2: draw every token at its line's body size (consistent within a line).
-    for left, top, box_h, text, ink, line_key in prepared:
+    for left, top, box_w, box_h, text, ink, line_key in prepared:
         font = _load_font(line_size[line_key], config)
+        # Per-token horizontal squeeze so the glyphs never overrun the word box
+        # (the 9px font floor can otherwise push text past the box right edge,
+        # fusing it into the neighbour or clipping it off the paper margin).
+        eff_condense = _fit_condense(draw, text, font, box_w, condense)
         # Vertically center the glyph in its box; left-align horizontally.
-        _draw_text(image, draw, (left, top + box_h / 2), text, font, ink, condense)
+        _draw_text(
+            image, draw, (left, top + box_h / 2), text, font, ink, eff_condense
+        )
 
     return image
 
@@ -274,6 +282,34 @@ def _fit_font(
     if shrunk >= size:
         return font
     return _load_font(shrunk, config)
+
+
+def _fit_condense(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    box_w: float,
+    condense: float,
+) -> float:
+    """Squeeze factor that keeps ``text`` inside its box with a small gap.
+
+    Reserves a thin inter-word gap inside each box so adjacent same-line tokens
+    keep visible whitespace, then narrows the glyph horizontally (height — and
+    thus OCR legibility — is preserved) only as much as needed to fit. Floored
+    so text is never crushed into an unreadable sliver.
+    """
+    raw = _text_width(draw, text, font)
+    if raw <= 0:
+        return condense
+    gap = max(1.5, box_w * 0.05)
+    avail = max(1.0, box_w - gap)
+    eff = condense
+    if raw * eff > avail:
+        eff = avail / raw
+    # Floor the squeeze so a long token (e.g. a 9px-floored value crammed into a
+    # thin box) stays legible. A little overflow past the box is preferable to an
+    # unreadable sliver; the gap reservation still keeps neighbours separated.
+    return max(0.62, min(condense, eff))
 
 
 def _draw_text(

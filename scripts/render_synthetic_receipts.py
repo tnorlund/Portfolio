@@ -561,8 +561,11 @@ def _render_cached_hybrid(
         color_by_label=False,
         draw_price_column=False,
         background=(250, 249, 245),
-        min_font_px=5,
-        max_font_px=10,
+        # Legibility floor (review action #4): thin synthesized bboxes shrank totals/payment tokens
+        # to ~5px -> faint gray micro-font Apple Vision dropped/misread (SUBTOTAL gone, decimals as
+        # dashes). Floor at 9px so every field is OCR-readable; mild box overflow is acceptable.
+        min_font_px=9,
+        max_font_px=14,
     )
     image = render_receipt(
         receipt,
@@ -571,6 +574,7 @@ def _render_cached_hybrid(
         coord_max=1000.0,
     ).convert("RGBA")
     _overlay_cached_logo(image, receipt, atlas, config=config, coord_max=1000.0)
+    _overlay_qr_and_barcode(image, receipt, config=config, coord_max=1000.0)
     # Deterministic per-output seed so re-rendering the same file is stable.
     texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
     image = _composite_paper_texture(image, seed=texture_seed)
@@ -611,7 +615,9 @@ def _overlay_cached_logo(
     if scale <= 0:
         return
     size = (max(1, int(logo.width * scale)), max(1, int(logo.height * scale)))
-    scaled = logo.resize(size)
+    # Raise contrast so the wordmark reads as near-black thermal ink instead of
+    # the faint light-gray crop straight off the aged paper photo.
+    scaled = _darken_logo(logo).resize(size)
     x = int(left + (box_w - size[0]) / 2)
     y = int(top + (box_h - size[1]) / 2)
     from PIL import ImageDraw
@@ -623,6 +629,191 @@ def _overlay_cached_logo(
         fill=config.background + (255,),
     )
     image.alpha_composite(scaled, (max(0, x), max(0, y)))
+
+
+def _darken_logo(logo):
+    """Return a higher-contrast copy of the captured wordmark.
+
+    The captured logo already carries near-black ink (RGB ~0) but a *faint*
+    alpha channel (mean opacity ~30/255), so composited over paper it reads as
+    light-gray. We lift the existing alpha with a gamma curve so the strokes go
+    opaque near-black, and force the ink RGB to a thermal near-black. The alpha
+    mask (not luminance) is what segments ink from background, so we keep it.
+    """
+    import numpy as np
+    from PIL import Image
+
+    arr = np.asarray(logo.convert("RGBA")).astype(np.float32)
+    alpha = arr[..., 3] / 255.0
+    # Gamma < 1 lifts faint strokes toward opaque; the modest gain finishes it.
+    boosted = np.clip(np.power(alpha, 0.45) * 1.35, 0.0, 1.0)
+    out = np.zeros_like(arr, dtype=np.uint8)
+    out[..., 0] = 20
+    out[..., 1] = 20
+    out[..., 2] = 20
+    out[..., 3] = (boosted * 255.0).astype(np.uint8)
+    return Image.fromarray(out, mode="RGBA")
+
+
+def _iter_receipt_bboxes(receipt: dict) -> list[list[float]]:
+    boxes: list[list[float]] = []
+    words = receipt.get("words")
+    if not words:
+        words = [
+            word
+            for line in (receipt.get("lines") or [])
+            for word in (line.get("words") or [])
+        ]
+    for word in words or []:
+        bbox = word.get("bbox")
+        if bbox and len(bbox) >= 4:
+            boxes.append([float(v) for v in bbox[:4]])
+    return boxes
+
+
+def _draw_qr(draw, x: int, y: int, size: int, seed: int) -> None:
+    """Draw a synthetic-but-plausible QR block (finder patterns + modules)."""
+    modules = 25
+    cell = max(2, size // modules)
+    span = cell * modules
+    rng = __import__("random").Random(seed)
+    dark = (20, 20, 20)
+    light = (250, 249, 245)
+    # Quiet-zone background.
+    draw.rectangle([x - cell, y - cell, x + span + cell, y + span + cell], fill=light)
+
+    def in_finder(r: int, c: int) -> bool:
+        for fr, fc in ((0, 0), (0, modules - 7), (modules - 7, 0)):
+            if fr <= r < fr + 7 and fc <= c < fc + 7:
+                return True
+        return False
+
+    def draw_finder(fr: int, fc: int) -> None:
+        ox, oy = x + fc * cell, y + fr * cell
+        draw.rectangle([ox, oy, ox + 7 * cell, oy + 7 * cell], fill=dark)
+        draw.rectangle(
+            [ox + cell, oy + cell, ox + 6 * cell, oy + 6 * cell], fill=light
+        )
+        draw.rectangle(
+            [ox + 2 * cell, oy + 2 * cell, ox + 5 * cell, oy + 5 * cell], fill=dark
+        )
+
+    for r in range(modules):
+        for c in range(modules):
+            if in_finder(r, c):
+                continue
+            if rng.random() < 0.5:
+                cx, cy = x + c * cell, y + r * cell
+                draw.rectangle([cx, cy, cx + cell, cy + cell], fill=dark)
+    for fr, fc in ((0, 0), (0, modules - 7), (modules - 7, 0)):
+        draw_finder(fr, fc)
+
+
+def _draw_barcode(draw, x: int, y: int, w: int, h: int, seed: int) -> None:
+    """Draw a synthetic 1D (Code128-style) barcode with a numeric caption."""
+    rng = __import__("random").Random(seed)
+    dark = (20, 20, 20)
+    cx = x
+    end = x + w
+    # Quiet zone left/right is implicit (white paper).
+    while cx < end:
+        bar_w = rng.choice((1, 1, 2, 2, 3))
+        if cx + bar_w > end:
+            break
+        if rng.random() < 0.5:
+            draw.rectangle([cx, y, cx + bar_w, y + h], fill=dark)
+        cx += bar_w
+    digits = "".join(str(rng.randint(0, 9)) for _ in range(12))
+    try:
+        from PIL import ImageFont
+
+        font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 13)
+    except OSError:
+        from PIL import ImageFont
+
+        font = ImageFont.load_default(size=13)
+    tw = draw.textlength(digits, font=font)
+    draw.text((x + (w - tw) / 2, y + h + 3), digits, font=font, fill=dark)
+
+
+def _overlay_qr_and_barcode(
+    image, receipt: dict, *, config: RenderConfig, coord_max: float
+) -> None:
+    """Stamp a QR block and a 1D barcode in the blank footer region.
+
+    The renderer's footer narration ("Scan the QR code") promised anchors that
+    were never drawn. These are synthetic placeholder graphics (they do not
+    encode real data) keyed off the receipt so re-renders are stable; their job
+    is to be present as believable visual anchors below the printed body.
+    """
+    from PIL import ImageDraw
+
+    boxes = _iter_receipt_bboxes(receipt)
+    if not boxes:
+        return
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    paper_top = float(config.margin)
+    paper_bottom = float(config.height - config.margin)
+
+    # Occupied vertical intervals in pixel space (boxes are y-high-is-top).
+    intervals: list[tuple[float, float]] = []
+    for bbox in boxes:
+        _, t, _, b = _to_pixel_box(
+            bbox,
+            coord_max=coord_max,
+            margin=config.margin,
+            inner_w=inner_w,
+            inner_h=inner_h,
+        )
+        intervals.append((min(t, b), max(t, b)))
+    intervals.sort()
+    merged: list[list[float]] = []
+    for s, e in intervals:
+        if merged and s <= merged[-1][1] + 2:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    # Blank vertical bands between printed content.
+    gaps: list[tuple[float, float]] = []
+    prev = paper_top
+    for s, e in merged:
+        if s - prev > 0:
+            gaps.append((prev, s))
+        prev = max(prev, e)
+    if paper_bottom - prev > 0:
+        gaps.append((prev, paper_bottom))
+    if not gaps:
+        return
+    # Stamp anchors only in genuine whitespace so we never occlude real tokens
+    # (costco/sprouts fill to the bottom edge — a blind footer stamp clobbers the
+    # DATE/TIME line). Use the tallest blank band.
+    pad = 8.0
+    gtop, gbot = max(gaps, key=lambda g: g[1] - g[0])
+    gtop += pad
+    gbot -= pad
+    avail_h = gbot - gtop
+    if avail_h < 60:
+        return
+
+    draw = ImageDraw.Draw(image)
+    seed = zlib.crc32(("".join(str(b) for b in boxes[:8])).encode("utf-8"))
+    cx = config.margin + inner_w / 2.0
+    bar_w = int(inner_w * 0.6)
+    bar_h = 46
+    cap = 22
+    qr_size = min(120, int(inner_w * 0.32))
+    block_full = qr_size + 24 + bar_h + cap
+
+    if avail_h >= block_full:
+        y0 = int(gtop + (avail_h - block_full) / 2)
+        _draw_qr(draw, int(cx - qr_size / 2), y0, qr_size, seed)
+        _draw_barcode(
+            draw, int(cx - bar_w / 2), y0 + qr_size + 24, bar_w, bar_h, seed ^ 0x5A5A
+        )
+    elif avail_h >= bar_h + cap + 6:
+        y0 = int(gtop + (avail_h - (bar_h + cap)) / 2)
+        _draw_barcode(draw, int(cx - bar_w / 2), y0, bar_w, bar_h, seed ^ 0x5A5A)
 
 
 def _cached_logo_line(receipt: dict) -> list[dict] | None:
