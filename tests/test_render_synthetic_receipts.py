@@ -513,6 +513,10 @@ def test_cached_line_render_normalizes_sprouts_footer_word_splits_fixture():
     assert "Please keep your original receipt, the" in texts
     assert not any("recei pt" in text for text in texts)
     assert "Please keep your original receipt, th" not in texts
+    footer_left, footer_right = _line_bounds(
+        _line_for_text(receipt, "Please keep your original receipt, the")
+    )
+    assert footer_right - footer_left > 620
     assert texts.index("POS: 034 Transaction: 0297") < texts.index(
         "Thursday, September 4, 2025 05:54 PM"
     )

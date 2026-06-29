@@ -76,6 +76,7 @@ _CACHED_LOGO_WIDTH = 280.0
 _CACHED_LOGO_HALF_HEIGHT = 30.0
 _CACHED_WORD_MIN_WIDTH = 22.0
 _CACHED_CHAR_WIDTH = 16.0
+_CACHED_FOOTER_WORD_WIDTH_FACTOR = 1.16
 _CACHED_BODY_HALF_HEIGHT = 8.0
 _CACHED_LOGO_SUBTITLE_GAP = 38.0
 _CACHED_SECTION_GAP = 10.0
@@ -244,6 +245,11 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             max(_CACHED_WORD_MIN_WIDTH, len(word) * _CACHED_CHAR_WIDTH)
             for word in words
         ]
+        if _is_cached_footer_prose_text(compact_text):
+            width_units = [
+                width * _CACHED_FOOTER_WORD_WIDTH_FACTOR
+                for width in width_units
+            ]
         if is_logo_line and len(words) == 1:
             width_units = [max(width_units[0], _CACHED_LOGO_WIDTH)]
         if is_barcode_line and len(width_units) == 1:
@@ -439,6 +445,12 @@ def _is_cached_barcode_text(text: str) -> bool:
     if not tokens or not all(token.isdigit() for token in tokens):
         return False
     return bool(_CACHED_BARCODE_RE.match("".join(tokens)))
+
+
+def _is_cached_footer_prose_text(compact_text: str) -> bool:
+    if not compact_text or _CACHED_BARCODE_RE.match(compact_text):
+        return False
+    return _sprouts_text_section(compact_text) == "footer"
 
 
 def _cached_word_labels(labels: list[str], is_amount_word: bool) -> list[str]:
