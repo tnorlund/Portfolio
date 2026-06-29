@@ -225,7 +225,8 @@ def main():
         print(f"    {ent}: {why}")
     # propagation score (Move 2: measures label transfer, not text cleanliness)
     import reocr_score as RS
-    m = RS.score_propagation(ex["bboxes"], ex["ner_tags"], reocr_ex["bboxes"], reocr_ex["ner_tags"])
+    m = RS.score_propagation(ex["tokens"], ex["bboxes"], ex["ner_tags"],
+                             reocr_ex["tokens"], reocr_ex["bboxes"], reocr_ex["ner_tags"])
     print(f"\n--- propagation score (re-OCR scorer) ---\n{json.dumps(m)}")
     print("\n--- labeled tokens (text [label] via) ---")
     for o in ocr:
