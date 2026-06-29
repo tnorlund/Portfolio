@@ -210,11 +210,16 @@ def _cached_token_receipt_dict(example: dict) -> dict:
 
 def _cached_line_receipt_dict(example: dict) -> dict:
     lines = []
-    source_lines = _order_cached_sprouts_lines(
-        _ensure_sprouts_farmers_market_header_line(
-            _drop_duplicate_sprouts_header_lines(example)
+    if _is_cached_address_hard_negative_example(example):
+        source_lines = _order_cached_address_hard_negative_lines(
+            example.get("lines") or []
         )
-    )
+    else:
+        source_lines = _order_cached_sprouts_lines(
+            _ensure_sprouts_farmers_market_header_line(
+                _drop_duplicate_sprouts_header_lines(example)
+            )
+        )
     for index, line in enumerate(source_lines):
         text = _normalize_cached_sprouts_line_text(
             str(line.get("text") or "").strip()
@@ -292,6 +297,78 @@ def _cached_line_receipt_dict(example: dict) -> dict:
             x += width + 8
         lines.append({"line_id": index + 1, "words": rendered_words})
     return {"lines": lines}
+
+
+def _is_cached_address_hard_negative_example(example: dict) -> bool:
+    candidate_id = str(example.get("candidate_id") or "").lower()
+    return "address-line" in candidate_id or "hard_negative" in candidate_id
+
+
+def _order_cached_address_hard_negative_lines(lines: list[dict]) -> list[dict]:
+    """Preserve the real two-item address-hard-negative receipt flow."""
+    cleaned = [
+        line
+        for line in lines
+        if not _drop_cached_address_hard_negative_line(line)
+    ]
+    if not cleaned:
+        return cleaned
+
+    store_hours = next(
+        (
+            line
+            for line in cleaned
+            if _compact_text(line.get("text") or "")
+            == "STOREHOURSMONSUN7AM10PM"
+        ),
+        None,
+    )
+    has_top_store_hours = False
+    ordered = []
+    for index, line in enumerate(cleaned):
+        compact = _compact_text(line.get("text") or "")
+        ordered.append(line)
+        if compact == "SPROUTS":
+            ordered.append(
+                {
+                    "text": "FARMERS MARKET",
+                    "y": _offset_cached_line_y(line, -20.0),
+                    "labels": ["MERCHANT_NAME"],
+                }
+            )
+            continue
+        if compact == "8059174200":
+            following_compacts = [
+                _compact_text(item.get("text") or "")
+                for item in cleaned[index + 1 : index + 4]
+            ]
+            has_top_store_hours = "STOREHOURSMONSUN7AM10PM" in following_compacts
+            if not has_top_store_hours and store_hours is not None:
+                top_store = dict(store_hours)
+                top_store["y"] = _offset_cached_line_y(line, -16.0)
+                ordered.append(top_store)
+    return ordered
+
+
+def _drop_cached_address_hard_negative_line(line: dict) -> bool:
+    raw_text = str(line.get("text") or "").strip()
+    compact = _compact_text(raw_text)
+    if not compact and "*" in raw_text:
+        return True
+    if "REWARDSPROGRAM" in compact or "PLEASEPLEASE" in compact:
+        return True
+    if compact == "FEEDBACK":
+        return True
+    if compact in _CACHED_SPROUTS_FRAGMENT_TEXTS:
+        return True
+    return False
+
+
+def _offset_cached_line_y(line: dict, offset: float) -> float | None:
+    try:
+        return float(line.get("y")) + offset
+    except (TypeError, ValueError):
+        return None
 
 
 def _ensure_sprouts_farmers_market_header_line(lines: list[dict]) -> list[dict]:
@@ -425,6 +502,7 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     }
     for line in lines:
         sections[_sprouts_text_section(_compact_text(line.get("text") or ""))].append(line)
+    sections["header"] = _order_cached_sprouts_header_lines(sections["header"])
 
     ordered = []
     for name in ("header", "body", "payment", "footer"):
@@ -459,6 +537,28 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
         )
         y -= line_gap
     return positioned
+
+
+def _order_cached_sprouts_header_lines(lines: list[dict]) -> list[dict]:
+    loyalty_lines = [
+        line
+        for line in lines
+        if _compact_text(line.get("text") or "") == "LOCALFAVORITES"
+    ]
+    if not loyalty_lines:
+        return lines
+
+    ordered = [
+        line
+        for line in lines
+        if _compact_text(line.get("text") or "") != "LOCALFAVORITES"
+    ]
+    insert_at = len(ordered)
+    for index, line in enumerate(ordered):
+        if _compact_text(line.get("text") or "") == "STOREHOURSMONSUN7AM10PM":
+            insert_at = index + 1
+            break
+    return [*ordered[:insert_at], *loyalty_lines, *ordered[insert_at:]]
 
 
 def _cached_sprouts_max_line_spacing(real_count: int) -> float:
@@ -559,6 +659,7 @@ def _is_sprouts_header_line(text: str) -> bool:
     return (
         is_brand_line
         or text in {"FARMERSMARKET"}
+        or text == "LOCALFAVORITES"
         or "WESTLAKE" in text
         or text in {"8059174200", "STOREHOURSMONSUN7AM10PM"}
     )

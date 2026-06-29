@@ -509,6 +509,7 @@ def test_cached_line_render_normalizes_sprouts_footer_word_splits_fixture():
         "LOCAL FAVORITES"
     )
     assert texts.index("LOCAL FAVORITES") < texts.index("DAIRY")
+    assert module._sprouts_text_section("LOCALFAVORITES") == "header"
     assert "Please keep your original receipt, the" in texts
     assert not any("recei pt" in text for text in texts)
     assert "Please keep your original receipt, th" not in texts
