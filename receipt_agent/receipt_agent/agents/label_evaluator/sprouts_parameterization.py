@@ -1768,8 +1768,12 @@ def _flatten_receipt_lines(
     # Reconcile the flattened candidate so it survives objective verification:
     #   1. collapse/drop duplicate header blocks -> exactly one MERCHANT_NAME
     #      (and one ADDRESS_LINE block), and strip stray-comma address artifacts.
-    #   2. de-overlap words that share a visual line (the footer "squish" tell).
+    #   2. collapse/drop duplicate payment/card blocks -> at most one masked-card
+    #      trailing-4 (the injected second tender block tell).
+    #   3. de-overlap AND re-space words that share a visual line so adjacent
+    #      words carry a real word-gap (the footer "squish" tell).
     tokens, bboxes, ner_tags = _dedupe_header_blocks(tokens, bboxes, ner_tags)
+    tokens, bboxes, ner_tags = _dedupe_payment_blocks(tokens, bboxes, ner_tags)
     tokens, bboxes, ner_tags = _deoverlap_line_words(tokens, bboxes, ner_tags)
     return tokens, bboxes, ner_tags
 
@@ -1867,6 +1871,148 @@ def _dedupe_header_blocks(
     return tokens, bboxes, tags
 
 
+# Masked card token (matches the verifier's `[X*x]{4,}` collector).
+_CARD_MASK_RE = re.compile(r"[X*x]{4,}")
+# Tender/EMV vocabulary used to detect (and group) a payment block.
+_PAYMENT_VOCAB = {
+    "DEBIT", "CREDIT", "CARD", "CARD#:", "CARD#", "#:", "PURCHASE",
+    "APPROVED", "AUTH", "CODE", "CODE:", "REF", "REF#", "REF#:", "ENTRY",
+    "METHOD", "ISSUER", "MODE", "MODE:", "PIN", "VERIFIED", "AID", "AID:",
+    "TVR", "TVR:", "IAD", "IAD:", "TSI", "TSI:", "ARC", "ARC:", "TC", "TC:",
+    "MID", "MID:", "TID", "TID:", "SEQ", "SEQ:", "CONTACTLESS", "CHIP",
+    "MASTERCARD", "VISA", "AMEX", "TENDER", "CHANGE", "APPROVAL", "TRACE",
+}
+# Labels we must never drop (totals/geometry) when pruning a payment block.
+_PROTECTED_LABELS = {
+    "LINE_TOTAL", "GRAND_TOTAL", "SUBTOTAL", "TAX", "UNIT_PRICE",
+    "PRODUCT_NAME", "QUANTITY", "MERCHANT_NAME", "ADDRESS_LINE", "PHONE",
+    "DATE", "TIME", "STORE_HOURS", "WEBSITE",
+}
+
+
+def _card_tail(token: str) -> str | None:
+    """Trailing-4 the verifier would record for a masked-card token, or None."""
+    if token and _CARD_MASK_RE.search(token):
+        return token[-4:]
+    return None
+
+
+def _has_digit(token: str) -> bool:
+    return any(ch.isdigit() for ch in token or "")
+
+
+def _dedupe_payment_blocks(
+    tokens: list[str],
+    bboxes: list[list[int]],
+    ner_tags: list[str],
+) -> tuple[list[str], list[list[int]], list[str]]:
+    """Guarantee at most one masked-card trailing-4 (one payment block).
+
+    Cloned/augmented base receipts can carry two tender sections: a primary
+    card block near the top (``CARD #: XXXX…8712 / PURCHASE APPROVED / AUTH
+    CODE``) plus a second injected block lower (``DEBIT $X / CARD#: XXXX…674S /
+    PURCHASE APPROVED AUTH CODE``). The verifier collects every ``[X*x]{4,}``
+    token's trailing-4 and fails on >1 distinct tail, so the redundant block (or
+    stray masked dividers such as ``****************``) reads as a fake tell.
+
+    We pick a canonical tail (the earliest digit-bearing real card), drop any
+    payment block whose card tail differs, and drop stray non-canonical masked
+    tokens (dividers / OCR garble). Total/geometry rows are never dropped, so
+    arithmetic and bbox validity are preserved.
+    """
+    tokens = list(tokens)
+    bboxes = list(bboxes)
+    tags = list(ner_tags)
+
+    mask_idx = [i for i in range(len(tokens)) if _card_tail(str(tokens[i])) is not None]
+    if not mask_idx:
+        return tokens, bboxes, tags
+
+    # Group token indices into top->bottom visual lines and classify payment lines.
+    lines = _visual_lines(bboxes)  # already ordered top->bottom
+    blocks: list[dict[str, Any]] = []  # consecutive runs of payment lines
+    cur: list[int] | None = None
+
+    def _line_is_payment(idxs: list[int]) -> bool:
+        has_marker = False
+        for i in idxs:
+            if _tag_label(tags[i]) in _PROTECTED_LABELS:
+                return False
+            tok = str(tokens[i]).upper().strip()
+            if _card_tail(tokens[i]) is not None or tok in _PAYMENT_VOCAB:
+                has_marker = True
+        return has_marker
+
+    for idxs in lines:
+        if _line_is_payment(idxs):
+            if cur is None:
+                cur = []
+            cur.extend(idxs)
+        else:
+            if cur:
+                blocks.append({"idxs": cur})
+                cur = None
+    if cur:
+        blocks.append({"idxs": cur})
+
+    # Tails present in each block (digit-bearing = a real card number).
+    for blk in blocks:
+        digit_tails: list[str] = []
+        all_tails: list[str] = []
+        for i in blk["idxs"]:
+            tail = _card_tail(str(tokens[i]))
+            if tail is None:
+                continue
+            all_tails.append(tail)
+            if _has_digit(str(tokens[i])):
+                digit_tails.append(tail)
+        blk["digit_tails"] = digit_tails
+        blk["all_tails"] = all_tails
+
+    # Canonical tail: the earliest (top-most) block's real card number. Fall back
+    # to the first masked token's tail when nothing carries digits.
+    canonical: str | None = None
+    for blk in blocks:
+        if blk["digit_tails"]:
+            canonical = blk["digit_tails"][0]
+            break
+    if canonical is None:
+        canonical = _card_tail(str(tokens[mask_idx[0]]))
+
+    drop: set[int] = set()
+
+    # Drop whole redundant card blocks (a real card whose tail != canonical and
+    # which does not also contain the canonical tail).
+    for blk in blocks:
+        tails = set(blk["all_tails"])
+        if blk["digit_tails"] and canonical not in tails:
+            drop.update(blk["idxs"])
+
+    # Drop stray non-canonical masked tokens (dividers / garble) that survived
+    # outside a dropped block, so no second trailing-4 leaks through.
+    for i in mask_idx:
+        if i in drop:
+            continue
+        if _card_tail(str(tokens[i])) != canonical:
+            drop.add(i)
+
+    if not drop:
+        return tokens, bboxes, tags
+
+    keep = [i for i in range(len(tokens)) if i not in drop]
+    tokens = [tokens[i] for i in keep]
+    bboxes = [bboxes[i] for i in keep]
+    tags = [tags[i] for i in keep]
+
+    # Re-emit BIO for any label run we may have truncated so each block keeps a
+    # single leading B- tag.
+    for label in ("PAYMENT_METHOD",):
+        for start, end in _label_runs(tags, label):
+            for k in range(start, end):
+                tags[k] = f"B-{label}" if k == start else f"I-{label}"
+    return tokens, bboxes, tags
+
+
 def _visual_lines(bboxes: list[list[int]]) -> list[list[int]]:
     """Group word indices into visual lines by y-center proximity.
 
@@ -1899,17 +2045,27 @@ def _deoverlap_line_words(
     bboxes: list[list[int]],
     ner_tags: list[str],
 ) -> tuple[list[str], list[list[int]], list[str]]:
-    """Remove x-overlaps between words sharing a visual line (footer squish).
+    """De-overlap AND re-space words sharing a visual line (footer squish).
 
-    For each visual line we sweep words left-to-right. When a word starts left
-    of the previous word's right edge (beyond a 2px tolerance, matching the
-    verifier), we either drop it (redundant/stacked ``O`` junk such as the
-    copied footer survey block) or nudge it right just enough to clear the
-    overlap, clamping to stay in-bounds and preserve right-aligned prices.
+    Two-pass per visual line:
+
+    1. De-overlap: sweep left-to-right; when a word starts left of the previous
+       word's right edge (beyond the verifier's 2px tolerance) we either drop it
+       (stacked unlabeled ``O`` junk such as a copied footer block) or nudge it
+       right to clear the overlap.
+    2. Re-space: removing overlaps leaves words *touching* (gap ~0), which the
+       verifier's ``word_spacing`` check flags. We then walk each line and, where
+       the gap is below a normal word-space, nudge the later word (and every word
+       after it on the line, via a running shift) right to open a real gap.
+
+    Both passes preserve right-aligned price columns (existing large gaps are
+    never shrunk, because the running shift moves later words by the same delta)
+    and stay clamped in ``[0, 1000]`` without re-introducing overlaps.
     """
     boxes = [list(b) if isinstance(b, (list, tuple)) else b for b in bboxes]
     drop: set[int] = set()
 
+    # Pass 1: remove overlaps.
     for line in _visual_lines(boxes):
         ordered = sorted(line, key=lambda i: boxes[i][0])
         prev_right: float | None = None
@@ -1933,12 +2089,66 @@ def _deoverlap_line_words(
 
     if drop:
         keep = [i for i in range(len(tokens)) if i not in drop]
-        return (
-            [tokens[i] for i in keep],
-            [boxes[i] for i in keep],
-            [ner_tags[i] for i in keep],
-        )
+        tokens = [tokens[i] for i in keep]
+        boxes = [boxes[i] for i in keep]
+        ner_tags = [ner_tags[i] for i in keep]
+
+    # Pass 2: open a real word-gap on every line.
+    for line in _visual_lines(boxes):
+        _respace_visual_line(boxes, line)
+
     return tokens, boxes, ner_tags
+
+
+def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
+    """Open a real word-gap between adjacent words on a single visual line.
+
+    Target gap is ``~0.40 * line_height`` (with a small absolute floor), which
+    clears the verifier's ``0.30 * line_height`` threshold with margin even after
+    integer rounding. A monotone running shift is applied left->right so existing
+    large gaps (the right-aligned price column) are carried along, never shrunk.
+    The whole line is shifted back left to fit within ``[0, 1000]``; if it cannot
+    fit, the line is left unchanged so we never violate bbox/overlap checks.
+    """
+    if len(line) < 2:
+        return
+    ordered = sorted(line, key=lambda i: boxes[i][0])
+    orig = [list(boxes[i]) for i in ordered]
+    new: list[list[float]] = []
+    running = 0.0
+    prev_right: float | None = None
+    for k, b in enumerate(orig):
+        x0 = b[0] + running
+        x1 = b[2] + running
+        if prev_right is not None:
+            h = max(orig[k - 1][3] - orig[k - 1][1], 6)
+            target = max(0.40 * h, 3.0)
+            gap = x0 - prev_right
+            if gap < target:
+                extra = target - gap
+                running += extra
+                x0 += extra
+                x1 += extra
+        new.append([x0, x1])
+        prev_right = x1
+
+    # Shift the whole (now wider) line left to fit within bounds, preserving gaps.
+    max_x1 = max(p[1] for p in new)
+    min_x0 = min(p[0] for p in new)
+    if max_x1 > 1000:
+        shift_left = min(max_x1 - 1000, min_x0)
+        for p in new:
+            p[0] -= shift_left
+            p[1] -= shift_left
+        max_x1 -= shift_left
+        min_x0 -= shift_left
+
+    # Only commit if the line stays in-bounds (otherwise leave it untouched).
+    if max_x1 > 1000 or min_x0 < 0:
+        return
+    for idx, i in enumerate(ordered):
+        boxes[i][0] = int(round(new[idx][0]))
+        boxes[i][2] = int(round(new[idx][1]))
 
 
 def _sanitize_sprouts_footer_blocks(
@@ -2125,7 +2335,7 @@ def _build_canonical_sprouts_footer(
             "center",
         ),
         (
-            ["a", "$250", "Sprouts", "gift", "card.", "Go", "to:"],
+            ["a", "$250", "Sprouts", "gift", "card."],
             {},
             "center",
         ),

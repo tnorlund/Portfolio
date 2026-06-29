@@ -35,6 +35,55 @@ def _val(tok: str):
     return float(m.group(0).replace("$", "").replace(",", "")) if m else None
 
 
+# --- label-correctness vocab/patterns (find #4: mislabeled entities poison LayoutLM) ---
+_TENDER = {"DEBIT", "CREDIT", "VISA", "MASTERCARD", "MC", "AMEX", "DISCOVER", "CASH",
+           "US", "CHECK", "EBT", "CONTACTLESS", "CHIP", "SWIPE", "CARD", "TENDER", "PIN", "ATM"}
+_PHONE = re.compile(r"\(\d{3}\)\s?\d{3}[- ]?\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b|\b\d{3}[-.]\d{4}\b")
+_DOMAIN = re.compile(r"[A-Za-z0-9-]+\.(?:com|net|org|co|us|gov)\b", re.I)
+_CURRENCYISH = re.compile(r"-?\$?\d+\.\d{2}-?$")
+
+
+_MONEY = {"LINE_TOTAL", "GRAND_TOTAL", "SUBTOTAL", "TAX", "UNIT_PRICE", "BALANCE_DUE"}
+
+
+def _entity_runs(tags, n):
+    """Contiguous BIO spans -> (label, start, end). Validate entities, not tokens."""
+    runs, i = [], 0
+    while i < n:
+        lab = _label(tags[i])
+        if lab == "O":
+            i += 1; continue
+        j = i
+        while j + 1 < n and _label(tags[j + 1]) == lab and not str(tags[j + 1]).startswith("B-"):
+            j += 1
+        runs.append((lab, i, j)); i = j + 1
+    return runs
+
+
+def _label_violations(toks, tags, n):
+    """ENTITY runs whose joined content can't match their label (clear mislabels only)."""
+    viol = []
+    for lab, i, j in _entity_runs(tags, n):
+        text = " ".join((toks[k] or "") for k in range(i, j + 1)).strip()
+        joined = text.replace(" ", "")
+        if not text:
+            continue
+        if lab in _MONEY:
+            if not _CURRENCYISH.match(joined.replace(",", "")):       # money field that isn't currency
+                viol.append((lab, text))
+        elif lab == "PAYMENT_METHOD":
+            up = text.upper()
+            if not (any(w in up for w in _TENDER) or re.search(r"[X*]{3,}\w", joined)):  # tender word or masked card
+                viol.append((lab, text))
+        elif lab == "PHONE_NUMBER":
+            if not _PHONE.search(text) and not _PHONE.search(joined):  # e.g. EMV "0000000000"
+                viol.append((lab, text))
+        elif lab == "WEBSITE":
+            if not _DOMAIN.search(joined) and not re.search(r"[A-Za-z]{3,}", text):  # e.g. "******"
+                viol.append((lab, text))
+    return viol
+
+
 def _lines(boxes):
     """Group word indices into visual lines by y-center proximity."""
     centers = [((b[1] + b[3]) / 2, i) for i, b in enumerate(boxes) if _box_ok(b)]
@@ -121,6 +170,11 @@ def check(cand: dict) -> dict:
     else:
         res["arithmetic"] = {"pass": None, "note": "no labeled totals"}
 
+    # labels_valid: entity labels whose token content can't be that entity (training poison)
+    viol = _label_violations(toks, tags, n)
+    res["labels_valid"] = {"pass": not viol, "violations": len(viol),
+                           "examples": [f"{l}:{t}" for l, t in viol[:6]]}
+
     checks = [v["pass"] for v in res.values() if v["pass"] is not None]
     res["_score"] = round(sum(checks) / len(checks), 3) if checks else None
     return res
@@ -157,7 +211,7 @@ def main() -> int:
             agg["_score"].append(r["_score"])
 
     print(f"== verified {len(rows)} candidates ==")
-    for k in ["bbox_valid", "no_overlap", "word_spacing", "single_header", "single_payment_block", "no_garble", "arithmetic"]:
+    for k in ["bbox_valid", "no_overlap", "word_spacing", "single_header", "single_payment_block", "no_garble", "arithmetic", "labels_valid"]:
         if agg[k]:
             print(f"  {k:20} {sum(agg[k])}/{len(agg[k])} pass")
     if agg["_score"]:
@@ -172,15 +226,16 @@ def main() -> int:
     if a.md:
         lines = ["# Synthetic candidate verification (objective, reproducible)\n",
                  f"Verified **{len(rows)}** candidates. Mean check pass-rate: **{out['mean_score']}**\n",
-                 "| candidate | score | bbox | overlap | spacing | header | 1pay | garble | arith |",
-                 "|---|---|---|---|---|---|---|---|---|"]
+                 "| candidate | score | bbox | overlap | spacing | header | 1pay | garble | arith | labels |",
+                 "|---|---|---|---|---|---|---|---|---|---|"]
         def cell(v):
             if v.get("pass") is None: return "—"
             return "✅" if v["pass"] else "❌"
         for cid, r in rows:
             lines.append(f"| `{cid[:40]}` | {r['_score']} | {cell(r['bbox_valid'])} | "
                          f"{cell(r['no_overlap'])} | {cell(r['word_spacing'])} | {cell(r['single_header'])} | "
-                         f"{cell(r['single_payment_block'])} | {cell(r['no_garble'])} | {cell(r['arithmetic'])} |")
+                         f"{cell(r['single_payment_block'])} | {cell(r['no_garble'])} | {cell(r['arithmetic'])} | "
+                         f"{cell(r['labels_valid'])} |")
         lines += ["", "## Aggregate", "```", json.dumps(out["aggregate"], indent=2), "```"]
         open(a.md, "w").write("\n".join(lines) + "\n")
         print("wrote", a.md)
