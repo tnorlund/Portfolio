@@ -1,0 +1,389 @@
+[
+ {
+  "key": "typography",
+  "area": "Thermal monospace fonts + fixed-grid text rendering in PIL",
+  "key_findings": [
+   {
+    "name": "Epson TM-T88 Font A (12x24) / Font B (9x17) spec",
+    "what": "The canonical built-in thermal ROM fonts. Font A glyph cell = 12x24 dots (incl. spacing) -> 1.5mm x 3.0mm at 203dpi (8 dots/mm); 42 columns on 80mm paper, ~16.9 CPI. Font B = 9x17 dots (incl 2-dot horizontal spacing), denser, ~22.6 CPI. These are clean condensed sans bitmaps, NOT heavy dot-matrix. Most US retail receipts (the kind we synthesize) are Font A.",
+    "url": "https://files.support.epson.com/pdf/pos/bulk/tm-t88v_trg_en_revf.pdf",
+    "borrow": "Use these as the ground-truth grid: cell aspect Font A = 12:24 = 0.5, Font B = 9:17 = 0.53. Drive our per-merchant cell width/height and CPI off the real column count (42 cols @80mm, ~32 @58mm). Pick Font A as default body, Font B for dense sections."
+   },
+   {
+    "name": "mike42/thermal-sans-mono",
+    "what": "Free bitmap fonts (BDF + PCF) purpose-built to match thermal printers at exactly 12x24 and 9x17, derived from GNU Unifont, redrawn with thick strokes / minimal whitespace, targeted at ~180dpi. The closest free, pixel-accurate Epson Font A/B recreation.",
+    "url": "https://github.com/mike42/thermal-sans-mono",
+    "borrow": "Best free drop-in for the authentic ROM look. Load the BDF directly (FreeType reads BDF/PCF) at native pixel size and integer-upscale. Note license is GPL-2.0 (see pitfalls) and it targets 180dpi not 203 so recompute pitch."
+   },
+   {
+    "name": "Ultimate Oldschool PC Font Pack (VileR / int10h.org)",
+    "what": "World's largest pack of pixel-perfect IBM PC/BIOS bitmap fonts as TTF, CC BY-SA 4.0 (commercial OK with attribution). 'Px437'/'Ac437' cover full CP437; 'Bm' variants are plain bitmap (no rasterization/AA artifacts). Outlines follow the original pixel grid exactly (each dot = a square).",
+    "url": "https://int10h.org/oldschool-pc-fonts/readme/",
+    "borrow": "Legally-clean TTF source of crisp square-pixel monospace glyphs. The condensed 8x16/9x16 VGA faces give a Font-A-like clean look; narrower ones approximate Font B. Integer-scale with NEAREST for hard thermal dots. Better license posture than thermal-sans-mono for shipping a font."
+   },
+   {
+    "name": "Merchant Copy (dafont, Cumberland Games)",
+    "what": "The most-recognized 'modern receipt' fixed-width dot-matrix TTF family (Regular/Wide/Doublesize). Looks great but is FREE FOR PERSONAL USE ONLY, not commercial.",
+    "url": "https://www.dafont.com/merchant-copy.font",
+    "borrow": "Use only as a visual reference target for the dotty look. Do NOT ship it in an ML/commercial pipeline without licensing fontworks@cumberlandgames.com. Reproduce its aesthetic with a CC/OFL font instead."
+   },
+   {
+    "name": "VT323 (Google Fonts, OFL 1.1)",
+    "what": "OFL, commercial-OK monospace pixel TTF from the DEC VT320 terminal. Truly free and easy via Google Fonts.",
+    "url": "https://fonts.google.com/specimen/VT323",
+    "borrow": "Safe fallback for a retro mono look, but it's a CRT terminal face (rounded, taller) and reads as a screen font, not thermal. Use sparingly; prefer thermal-sans-mono or VileR for accuracy."
+   },
+   {
+    "name": "receiptfont.com thermal catalog (bitMatrix-A2, Epson1)",
+    "what": "Commercial recreations sold as the actual fonts on Food Lion/Subway/Walgreens/Best Buy/Publix/H-E-B receipts. Identifies which retailers use which face.",
+    "url": "https://www.receiptfont.com/cat/thermal/",
+    "borrow": "Use as a per-merchant identification reference (which real chains use which pitch/weight) to label our merchant profiles. Paid; don't buy unless a specific merchant demands exact match."
+   },
+   {
+    "name": "Pillow text anchors + ImageDraw.fontmode",
+    "what": "Pillow supports anchor codes (la/ls/ms/...) where 's' = baseline anchor for consistent baselines across a line; anchors only work for TrueType/OpenType, bitmap .pil fonts ignore them. ImageDraw.fontmode='1' disables anti-aliasing (1-bit crisp), 'L' enables it. FreeType (ImageFont.truetype) can open BDF/PCF bitmap fonts; newer Pillow also converts via to_imagefont().",
+    "url": "https://pillow.readthedocs.io/en/stable/handbook/text-anchors.html",
+    "borrow": "The two load-bearing PIL tricks: (1) anchor='ls' (left + baseline) to lock a single baseline per line; (2) draw.fontmode='1' to kill AA so dots stay hard before we apply our own thermal blur. Use font.getmetrics() -> (ascent, descent) to place the baseline."
+   }
+  ],
+  "recommended_approach": "Switch from per-token bbox-fitting to a fixed character grid, one font size per LINE (ideally per receipt). Concretely: (1) Choose font: default to thermal-sans-mono BDF (authentic) or a VileR condensed VGA TTF (cleaner license) for body; reserve a denser face for Font B sections. (2) Establish the grid from the merchant profile: cell_w from the real column count (printable_width_px / columns; 42 cols for 80mm, ~32 for 58mm), cell_h = cell_w / cell_aspect (Font A aspect 0.5, Font B 0.53), pick the TTF pixel size so the glyph fills the cell. (3) Render on a 1-dot-per-pixel logical canvas at 203dpi: set draw.fontmode='1' (no AA), compute baseline y = line_top + ascent via font.getmetrics(), and place EACH character individually at x = col*cell_w using anchor='ls' (do NOT rely on the font's own advance, even 'monospace' TTFs drift). This guarantees column alignment and a single consistent baseline. (4) Up-scale the crisp 1-bit text to target resolution with NEAREST at an INTEGER factor only (e.g. render at 1x then 3x), so every dot stays the same width. (5) THEN apply thermal degradation on top of the hard pixels: slight Gaussian blur (0.5-0.8px), a brightness threshold, random dot dropout/ink-starve, and faint horizontal banding. This ordering (crisp grid -> integer scale -> degrade) is what makes it read as a real heat-printed character rather than an anti-aliased TTF. (6) Keep the captured logo bitmap composite and paper texture as-is. For bold/weight, dilate the 1-bit glyph by 1px rather than using a separate bold font. Expected to move realism well past 2.6/10 because the dominant tell (proportional, anti-aliased, per-token-scaled text) is removed.",
+  "libraries": [
+   "Pillow>=10 (ImageFont.truetype for BDF/PCF + TTF, ImageDraw.fontmode='1', font.getmetrics(), anchor='ls')",
+   "thermal-sans-mono BDF/PCF (github.com/mike42/thermal-sans-mono) - authentic 12x24 / 9x17, GPL-2.0",
+   "Ultimate Oldschool PC Font Pack TTFs - int10h.org/oldschool-pc-fonts, CC BY-SA 4.0 (use Px437/Ac437 condensed + 'Bm' no-AA variants)",
+   "VT323 TTF - Google Fonts, OFL 1.1 (optional retro fallback)",
+   "DejaVu Sans Mono - permissive (Bitstream Vera/Arev), only as a generic-clean fallback",
+   "numpy + scipy/Pillow filters for post-render thermal degradation (blur, threshold, dropout, banding)"
+  ],
+  "pitfalls": [
+   "LICENSING: Merchant Copy is personal-use-only (not commercial) - do not ship it in a training/demo pipeline. thermal-sans-mono is GPL-2.0: the generated PNGs are output (not a derivative) so using it to render is fine, but redistributing the font binary triggers GPL - prefer the CC BY-SA VileR pack or OFL VT323 if you need to bundle a font.",
+   "Anti-aliasing is the biggest realism tell: Pillow defaults to AA ('L'), producing gray, blurry, fake-looking edges. Must set draw.fontmode='1' for hard 1-bit dots, then add your OWN controlled thermal blur. There is a known Pillow bug history with fontmode (issue #4602) - verify it actually disabled AA on your version.",
+   "Anchors only work for TrueType/OpenType in Pillow; bitmap .pil fonts ignore the anchor and fall back to top-left. With bitmap fonts you must compute baseline positions manually.",
+   "Even 'monospace' TTFs can have tiny advance/kerning variation - relying on draw.text(full_string) lets columns drift. Place each glyph at col*cell_w explicitly for a true grid.",
+   "Non-integer NEAREST upscaling makes dot widths uneven (moire/aliasing). Pick target pixel dimensions as an integer multiple of the native cell, or dots look irregular.",
+   "DPI mismatch: thermal-sans-mono is tuned for ~180dpi but most Epson/Star printers are 203dpi (8 dots/mm) - that's ~12% off; recompute pitch from the real column count, don't assume the font's native size.",
+   "Don't use VT323 as 'thermal' - it's a CRT terminal face (rounded, tall) and reads as a screen font; wrong glyph shapes for paper receipts.",
+   "Mixing font sizes per token destroys the shared baseline. Lock ONE size per line; vary size only between sections (header/body/total), not within a line.",
+   "Real receipts are predominantly clean condensed sans (Epson Font A), NOT heavy dotty dot-matrix - over-applying a dot-matrix face (Merchant Copy look) on a chain that actually used Font A reduces realism rather than improving it. Match per-merchant from sample images."
+  ]
+ },
+ {
+  "key": "layout",
+  "area": "Receipt column layout / ESC-POS grid model for the PIL thermal-receipt renderer",
+  "key_findings": [
+   {
+    "name": "ESC/POS justification model (ESC a n) \u2014 Epson TM reference",
+    "what": "Authoritative ESC/POS receipt spec. Line justification is per-line only: ESC a 0/1/2 = left/center/right for the WHOLE line. There is no command to mix left text + right price on one physical line. Real printers achieve item-name-left / price-right by emitting a single left-justified string where the gap is filled with literal space characters on a fixed character grid (Font A and Font B are both MONOSPACE / fixed-pitch).",
+    "url": "https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/receipt.html",
+    "borrow": "The core mental model: a receipt is a fixed-width monospace CHARACTER GRID. A line is one string; alignment of a token is just where its characters land in that grid. Stop fitting each token to its own independent bbox \u2014 that is what kills column alignment and realism."
+   },
+   {
+    "name": "python-escpos software_columns + _rearrange_into_cols / _padding / _truncate",
+    "what": "MIT-licensed Python library with the exact algorithm we want. software_columns(text_list, widths, align) lays a row of cells into fixed character columns. Internals: per-cell textwrap.wrap(text, width, break_long_words=False) to wrap; _truncate() does text[:width-len(ph)]+placeholder when overflow; _padding() uses Python format specs f'{t:<{w}}' (left), f'{t:>{w}}' (right), f'{t:^{w}}' (center), plus a _justify() that inserts spaces between words.",
+    "url": "https://python-escpos.readthedocs.io/en/latest/user/methods.html",
+    "borrow": "Port this directly to Python: build each receipt line as a list of (text, col_width, align) cells, wrap with textwrap (break_long_words=False), pad with f-string format specs, truncate with an ellipsis placeholder. Right-align the money cell so decimal points line up. This is a ~40-line, dependency-light function."
+   },
+   {
+    "name": "ReceiptLine (receiptline/receiptline)",
+    "what": "OFSC-backed 'Markdown for receipts' spec + renderer. Table model: pipes | delimit columns; a cell is 'attracted to the pipe like a magnet' \u2014 no leading space = left, no trailing space = right, spaces both sides = center. One column can be flexible (* / auto / width:) and absorbs leftover width; default paper is 48 cpl (42 for narrow). text:wrap (default) vs nowrap controls overflow. Supports dot/space leaders filling the gap between label and price.",
+    "url": "https://github.com/receiptline/receiptline",
+    "borrow": "The 'magnet-to-pipe' alignment rule and the single FLEXIBLE column (item name stretches, price column is fixed-width and right-pinned) is the cleanest layout abstraction. Adopt: fixed right-hand money column(s), one elastic left description column, optional dot-leader fill for realism. Use 42/48 cpl defaults."
+   },
+   {
+    "name": "Character-per-line counts by paper width / font (HPRT, Selflane, mike42)",
+    "what": "Standard fixed grids: 58mm paper Font A ~32 cols, 80mm Font A ~42-48 cols. Font B is a smaller cell so it fits MORE chars per line (~42-64). Double-width/double-height mode (used for store name and TOTAL) doubles the cell, halving cpl. Font A is used for emphasis (name, totals); Font B packs long itemized lists.",
+    "url": "https://www.selflane.com/blog/receipt-printing-width-explain-2024-08-28",
+    "borrow": "Pick cpl per merchant profile: 32 (58mm) or 42/48 (80mm). Treat emphasized lines (header, TOTAL) as half-cpl double-width. Derive the per-merchant cell pitch from the measured char aspect ratio you already have, then cpl = usable_paper_px / cell_px."
+   },
+   {
+    "name": "Grocery/POS line-item format with tax-flag column (F/T)",
+    "what": "Real US grocery receipts (Kroger etc.) use columns: optional qty, abbreviated description (left), line amount (right, decimal-aligned), and a trailing 1-char tax flag (T=taxable, F/N=non-taxable, sometimes B). The flag sits in a reserved 1-2 char column to the RIGHT of the price. A tax summary block later reconciles taxable vs non-taxable subtotals.",
+    "url": "https://peoplekeephelp.zendesk.com/hc/en-us/articles/10392939603223-How-to-read-your-receipt",
+    "borrow": "Reserve a fixed 1-2 char trailing column for the F/T/N flag, right of the money column. Layout per item line = [desc (elastic) | price (fixed, right) | flag (fixed 1)]. Randomly assign flags + emit a matching tax-summary block for label realism."
+   }
+  ],
+  "recommended_approach": "Replace per-token bbox-fitting with a fixed-width MONOSPACE CHARACTER GRID that all tokens snap to \u2014 this is the single biggest realism lever (proportional per-token fitting is why columns drift). Concrete pipeline for our PIL renderer:\n\n1) Per merchant, choose columns-per-line cpl (32 for 58mm, 42/48 for 80mm) and a fixed cell pitch. Cell width px = font_size * measured_char_aspect (we already store this); cell height = line pitch. cpl = floor(usable_width_px / cell_px). Render with a MONOSPACE TTF but DRAW EACH GLYPH AT A FIXED ADVANCE (pitch) \u2014 do not trust the font's own advances; place char i of a line at x = left_margin + i*cell_px. This guarantees vertical column alignment even with a slightly proportional font.\n\n2) Model each receipt line as a list of cells: (text, width, align) where align in {left,right,center}. Port python-escpos's algorithm: for a normal item line use [ (desc, cpl-9, 'left'), (price_str, 7, 'right'), (flag, 1, 'right') ] (widths sum to cpl). Build the line string by: textwrap.wrap(desc, desc_width, break_long_words=False) -> if it wraps, emit continuation rows (price/flag only on the LAST or FIRST row depending on merchant style; most put price on row 1, wrapped name on row 2 indented). Pad each cell with f'{t:<{w}}' / f'{t:>{w}}' / f'{t:^{w}}'. Concatenate cells into one cpl-wide string.\n\n3) Money column = right-justify the formatted amount in its fixed cell so decimal points align down the receipt; size the money cell to the widest amount on the receipt (e.g. width = len('1,234.56')). Optionally fill the gap between desc and price with a dot/space leader for older-style receipts.\n\n4) Emphasis lines (store name, TOTAL, sometimes SUBTOTAL/TAX): render double-width \u2014 cell pitch *2, so effective cpl halves; center the header, and for TOTAL keep label left + amount right within the halved grid.\n\n5) TOKEN EXPORT: because every char has a deterministic x = left_margin + col_index*cell_px and the line has a known y, compute each token's bbox from its character span [start_col, end_col): x0 = left_margin+start_col*cell_px, x1 = left_margin+end_col*cell_px, y0/y1 from line pitch. This makes the emitted ML token bboxes EXACTLY consistent with the pixels (current mismatch hurts realism + training). Apply small per-line jitter/skew/baseline wander AFTER computing grid positions so bboxes still track the drawn glyphs.\n\n6) Build a line-type grammar to drive the grid: header(center,double) / address(center) / item(desc|price|flag) / wrapped-item-continuation / subtotal / tax(with rate) / total(double) / tender / change / footer. This also gives you correct token LABELS for free.",
+  "libraries": [
+   "python-escpos (MIT) \u2014 port software_columns / _rearrange_into_cols / _padding / _truncate; don't need it at runtime, just adopt the algorithm",
+   "textwrap (Python stdlib) \u2014 wrap long item names with break_long_words=False, then char-level fallback for single over-long tokens",
+   "receiptline (reference only, MIT) \u2014 borrow the flexible-column + magnet-to-pipe layout abstraction and 42/48 cpl defaults",
+   "Pillow (already in use) \u2014 draw glyphs at fixed advance; use font.getlength only to sanity-check, not to position",
+   "Fonts: render the grid with a MONOSPACE face. Free/libre options that read as thermal: 'Space Mono', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono' (all OFL/permissive, offline). For stronger dot-matrix/thermal authenticity, dafont thermal/receipt faces exist (e.g. 'Merchant Copy', 'Receipt') but verify license \u2014 prefer OFL libre fonts for the training set; key point is FIXED PITCH, not the exact face."
+  ],
+  "pitfalls": [
+   "ESC a (right-align) is a WHOLE-LINE command \u2014 you cannot mix left+right on one line via justification. Real receipts space-pad into one string. So our renderer must lay tokens on ONE shared grid per line, not bbox-fit each token independently (this is the current realism killer).",
+   "Thermal Font A/B are MONOSPACE. Using a proportional TTF and fitting each token to its own bbox guarantees misaligned price columns and looks fake. Force fixed pitch.",
+   "Decimal alignment: if you right-justify raw strings of different lengths ('9.99' vs '12.99') without a fixed-width money cell, decimals won't line up. Size the money column to the widest amount on the whole receipt.",
+   "textwrap with break_long_words=False can still OVERFLOW a cell for one very long unbroken token (e.g. a SKU). Add a char-level truncate-with-ellipsis or hard-break fallback, mirroring python-escpos _truncate.",
+   "Wrapped item names: merchants differ on whether price sits on the first row (name wraps below, indented) or the last row. Pick per-merchant; getting this wrong looks unnatural.",
+   "Double-width emphasis lines (name/TOTAL) halve the cpl \u2014 if you forget, headers overflow the paper or look too small relative to real receipts.",
+   "Tax-flag column (F/T/N) is a reserved trailing char to the RIGHT of the price; don't let the description or price bleed into it. Emit a matching tax-summary block or the flags look meaningless to a labeler.",
+   "After grid layout, any realism jitter (skew, baseline wander, thermal fade, paper texture) must be applied so the EXPORTED token bboxes still match drawn pixels \u2014 compute bboxes from grid coords, then transform glyphs+bboxes together, or bboxes desync from pixels.",
+   "cpl must come from the merchant profile (32 vs 42 vs 48). A fixed cpl across all merchants will mismatch the real paper width and char density you measured."
+  ]
+ },
+ {
+  "key": "content",
+  "area": "Plausible receipt CONTENT generation: merchant grammars, totals reconciliation, and address/phone/ZIP validation for a Python/PIL synthetic-receipt renderer",
+  "key_findings": [
+   {
+    "name": "Faker (joke2k/Faker)",
+    "what": "De-facto Python fake-data lib. Core providers for address(), phone_number(), company(), date_time_between(), and a pricing primitive via pydecimal/random. Provider-based + trivially extensible with a custom ReceiptProvider subclass.",
+    "url": "https://pypi.org/project/Faker/",
+    "borrow": "Use as the spine. Write a custom `ReceiptProvider(BaseProvider)` exposing item_line(), tax_flag(), weighted_line(), crv_line(). Seed it per-merchant. Do NOT use raw faker.address()/faker.company() for the merchant block (see pitfalls) \u2014 only for low-stakes filler like cashier names, transaction IDs, dates within store hours."
+   },
+   {
+    "name": "python-faker-commerce (nicobritos)",
+    "what": "Faker community provider adding ecommerce_name(), ecommerce_price(), ecommerce_category(), product descriptions.",
+    "url": "https://github.com/nicobritos/python-faker-commerce",
+    "borrow": "Fallback item-name/price source when you don't have a real catalog for a merchant. Wrap its price output through your own rounding so the cents look POS-real (e.g. avoid all-round prices). Prefer sampling REAL product strings from your own receipt corpus first (you already have receipt-tools `search_product_lines`)."
+   },
+   {
+    "name": "CORD: Consolidated Receipt Dataset (clovaai/cord)",
+    "what": "11k+ receipt image/JSON pairs. Ground-truth schema is exactly the grammar you need: 8 superclasses (store_info, payment_info, menu, void_menu, subtotal, total, void_total, etc.) / 54 subclasses incl. menu.nm (name), menu.cnt (qty), menu.price, menu.unitprice, sub_total.tax_price, sub_total.service_price, sub_total.subtotal_price, total.total_price, total.cashprice, total.changeprice.",
+    "url": "https://github.com/clovaai/cord",
+    "borrow": "Adopt CORD's field taxonomy as your internal receipt content schema (item->{nm,cnt,unitprice,price}, subtotal->{subtotal_price,tax_price,service_price,discount_price}, total->{total_price,cash,change}). It maps 1:1 to your token model and gives a principled list of line types to render. Use real CORD samples to calibrate how many lines / column widths look plausible."
+   },
+   {
+    "name": "SynthDoG / Donut (clovaai/donut, ECCV 2022)",
+    "what": "Synthetic Document Generator: rule-based layout that randomly stacks grids; text sampled from Wikipedia; paper texture from photos; background from ImageNet. Produces gt_parse JSON like {\"menu\":[{\"nm\":\"ICE BLACKCOFFEE\",\"cnt\":\"2\"}...]}.",
+    "url": "https://github.com/clovaai/donut",
+    "borrow": "Borrow the architecture pattern (rule-based grid layout + JSON ground-truth that mirrors content), NOT its content engine \u2014 Wikipedia-word sampling is too random to look like a real receipt. Confirms the field-level JSON-first approach you should generate before rendering pixels."
+   },
+   {
+    "name": "Fake-receipt detection rules (invoicedataextraction.com)",
+    "what": "Operational fraud-detection checklist that doubles as a realism spec. Three non-negotiable arithmetic identities: (1) sum(line items)=subtotal; (2) taxable_subtotal*rate=tax within rounding; (3) subtotal+tax+fees=total. Plus red flags: tax computed as flat 10% on non-round subtotals, round-number clustering ($25/$50/$100), jurisdiction-impossible tax rates, proportional/designer fonts on thermal, misaligned price columns, loyalty barcodes that don't decode, transaction IDs with wrong prefix format.",
+    "url": "https://invoicedataextraction.com/blog/detect-fake-receipts",
+    "borrow": "Invert every detector into a generation INVARIANT. Make these three identities hard assertions in the totals engine (fail-closed). Add a 'don't be too clean' pass: scatter cents so totals aren't round; vary tax rate per merchant locality; keep one consistent monospace digit column; make transaction-ID prefixes match the merchant family."
+   },
+   {
+    "name": "Walmart receipt tax codes (BookZero) + Quora/Ponderworthy threads",
+    "what": "Concrete per-merchant line grammar: single-letter tax flag printed to the RIGHT of each item price. US: N=non-taxable (groceries/Rx), X=taxable standard, O=taxable reduced/other rate, F=food/grocery rate (also SNAP-eligible), P=pharmacy/Rx exempt, T=taxable general (\u2248X). Bottom of receipt has layered TAX 1=state (4-7.25%), TAX 2=county/city (0.5-3%), TAX 3=special district, TAX 4=local. Only X/T/O/F-coded lines feed the tax lines.",
+    "url": "https://www.bookzero.ai/blog/walmart-receipt-tax-codes-explained",
+    "borrow": "Per-merchant flag alphabet + layered tax lines. Pick ONE consistent taxable letter per merchant (Walmart=X/N/O, others=T/F) \u2014 never mix X and T on the same receipt. Implement TAX1/TAX2 as separate jurisdiction rates whose sum equals the real combined local rate; only sum taxable-flagged lines into the taxable base."
+   },
+   {
+    "name": "California Redemption Value (CDTFA + Wikipedia)",
+    "what": "CA-specific deposit: CRV printed as a separate line/charge on beverages (e.g. '5 cents CRV'). Rule: CRV is taxable IFF the underlying beverage is taxable; not taxable if the beverage is exempt. Retailers must separately state CRV.",
+    "url": "https://en.wikipedia.org/wiki/California_Redemption_Value",
+    "borrow": "Add a CRV line generator gated to CA merchants + beverage SKUs only. Tie CRV taxability flag to the parent item's flag. This is a high-signal regional detail for Vegas-area vs CA receipts \u2014 do NOT emit CRV for NV/non-CA stores."
+   },
+   {
+    "name": "CDTFA Grocery Tax Guide / Pub 31",
+    "what": "Authoritative rules on what grocery items are taxable vs exempt (cold food to-go exempt, hot/prepared taxable, carbonated/alcoholic taxable, etc.) and how CRV interacts with tax.",
+    "url": "https://cdtfa.ca.gov/formspubs/pub31.pdf",
+    "borrow": "Use as the rule source to assign tax flags by item CATEGORY rather than randomly: food/grocery->N or F, prepared/soda/alcohol/general merch->X or T. Drives a category->flag lookup table so the taxable base is plausible for the merchant type."
+   },
+   {
+    "name": "phonenumbers (Python port of Google libphonenumber)",
+    "what": "parse(), is_valid_number(), is_possible_number(), format_number() with NATIONAL/E164 formats. Knows US numbering plan incl. toll-free area codes (800/888/877/866/855/844/833).",
+    "url": "https://pypi.org/project/phonenumbers/",
+    "borrow": "Generate a candidate local number for the merchant's actual area code, then validate with is_valid_number() and format NATIONAL as '(702) 555-0123'. Use the 555-01xx fictional exchange (reserved, never real) to stay legal. Use toll-free prefixes only for customer-service footer lines, local for the store header."
+   },
+   {
+    "name": "uszipcode (SearchEngine, offline SQLite, 42,724 ZIPs)",
+    "what": "Offline ZIP DB. by_zipcode(), by_city_and_state(), by_coordinates(); fields major_city, state, lat, lng, county. SimpleZipcode DB ~10MB, no network.",
+    "url": "https://pypi.org/project/uszipcode/",
+    "borrow": "Ground the merchant address block in reality: pick a real ZIP for the store's city/state so ZIP<->city<->state are mutually consistent (a top fraud tell when they aren't). Fully offline \u2014 fits your no-network constraint. For Vegas/Henderson use real 891xx ZIPs."
+   },
+   {
+    "name": "usaddress (datamade, CRF parser) + usaddress-scourgify",
+    "what": "Probabilistic (python-crfsuite) parser that tags an address string into AddressNumber, StreetName, StreetNamePostType, PlaceName, StateName, ZipCode, OccupancyType/Identifier. scourgify normalizes to USPS standard.",
+    "url": "https://github.com/datamade/usaddress",
+    "borrow": "Use as a VALIDATOR/normalizer, not a generator: after composing an address, parse it and assert all required components tag correctly and the suffix is a valid USPS abbreviation (St/Ave/Blvd/Rd/Dr/Ln/Pkwy). Catches malformed addresses before render. Note the python-crfsuite dependency weight."
+   },
+   {
+    "name": "USPS Street Suffix & State Abbreviations (Pub 28 / zip-codes.com)",
+    "what": "Canonical list of standardized suffix abbreviations (AVENUE->AVE, BOULEVARD->BLVD, PARKWAY->PKWY, STREET->ST) and 2-letter state codes; secondary unit designators (STE, APT, UNIT, #).",
+    "url": "https://www.zip-codes.com/zip-code-database-faq-abbreviations.asp",
+    "borrow": "Bake the suffix + state abbreviation maps into a tiny static table so generated/validated addresses match USPS standardized form that real POS headers print (usually uppercase, abbreviated)."
+   },
+   {
+    "name": "mimesis (Schema API)",
+    "what": "Faster (~12x) alternative to Faker with a declarative Schema for nested objects; finance/price/address providers; 46 locales.",
+    "url": "https://mimesis.name/",
+    "borrow": "Optional: if you batch-generate millions of training receipts, mimesis Schema cleanly expresses the whole receipt object graph and is far faster. Otherwise Faker+custom provider is simpler. Pick one to avoid two fake-data deps."
+   }
+  ],
+  "recommended_approach": "Generate a structured receipt OBJECT first (CORD-style JSON), reconcile all math, validate it, and only then hand tokens to the PIL renderer. Concretely:\n\n1) MERCHANT GRAMMAR REGISTRY. Extend your per-merchant font profiles with a `content_profile`: {tax_letters: {taxable:'X'|'T', nontaxable:'N', food:'F', rx:'P'}, tax_lines:[{name:'TAX 1',rate:0.0685},{name:'TAX 2',rate:0.0125}], uses_crv:bool, rounding:'aggregate_half_up'|'per_line', price_col_width, flag_col_pos, item_count_line:bool, has_savings:bool, id_prefix}. Seed from real receipts you already have via receipt-tools (`get_receipts_by_merchant`, `search_product_lines`).\n\n2) ITEM CONTENT. Sample item descriptions from your OWN labeled receipt corpus per merchant (most plausible) and fall back to faker-commerce for unseen merchants. Assign each item a category->tax_flag via a CDTFA-style lookup (food/grocery->N|F, prepared/soda/alcohol/general->X|T, Rx->P). Support weighted lines with the standard grammar: a sub-line `NET WT 1.34 lb @ $2.99/lb` then extended `4.01`. Keep one consistent taxable letter per merchant.\n\n3) TOTALS ENGINE (the core deliverable) \u2014 a pure function that NEVER ships failing math. Pseudocode:\n   subtotal = sum(item.extended for item in items)            # identity 1\n   savings  = sum(d.amount for d in discounts)                # printed as 'SAVINGS'/coupon lines\n   taxable_base = sum(it.extended for it in items if it.flag in TAXABLE) - taxable_allocated_discounts\n   if uses_crv: add crv lines (beverages only); crv taxable iff parent taxable; add crv into taxable_base when taxable\n   tax = round_half_up(taxable_base * sum(tax_line.rate), cents)  # split across TAX1/TAX2 so parts sum to tax  # identity 2\n   grand_total = subtotal - savings + tax + fees                  # identity 3\n   item_count = printed per merchant semantics (sum(qty) vs distinct lines)\n   Then ASSERT all three identities within $0.01 or raise (fail-closed). Add a 'realism jitter' guard: reject receipts whose grand_total is a round dollar amount > some probability, and reject uniform/impossible tax rates.\n\n4) ADDRESS/PHONE/ZIP. Header block: choose merchant city/state, then uszipcode.by_city_and_state() to pull a REAL consistent ZIP (and county for tax plausibility). Format street with USPS suffix/state abbreviation tables (uppercase). Phone: build a number in the store's real area code using the reserved 555-01xx exchange, validate+format NATIONAL via phonenumbers; toll-free (800/888...) only for a customer-service footer. Validate the assembled address by round-tripping through usaddress and asserting required components + valid suffix.\n\n5) VALIDATION HARNESS. Ship a `validate_receipt(obj)` that re-runs the three arithmetic identities, ZIP<->city<->state consistency, phone validity, tax-rate-in-plausible-range, and 'not-too-clean' checks \u2014 wire it as a unit-test gate so no synthetic receipt with broken math/geography is ever rendered. This directly inverts the published fraud-detection checklist.\n\n6) RENDER. Feed reconciled tokens to PIL. Enforce a monospace digit column for prices and a fixed flag column so decimals/flags align (proportional fonts + misaligned columns are explicit fraud tells you must avoid).",
+  "libraries": [
+   "Faker (joke2k/Faker) \u2014 spine + custom ReceiptProvider",
+   "python-faker-commerce (nicobritos) \u2014 fallback product names/prices",
+   "uszipcode \u2014 offline ZIP<->city<->state grounding (SimpleZipcode ~10MB, no network)",
+   "phonenumbers \u2014 US local/toll-free validation + NATIONAL formatting",
+   "usaddress (+ usaddress-scourgify) \u2014 address validation/normalization to USPS form (pulls in python-crfsuite)",
+   "mimesis \u2014 OPTIONAL faster Schema-based generator for large batches (pick instead of, not alongside, Faker)",
+   "Static data tables to vendor locally: USPS suffix + state-abbreviation maps, CDTFA-style category->tax-flag map, per-merchant tax_letters/tax_lines config",
+   "CORD dataset (clovaai/cord) \u2014 reference schema + calibration samples (data, not a runtime dep)"
+  ],
+  "pitfalls": [
+   "faker.address()/faker.company() emit non-existent ZIP<->city<->state combos and generic merchant names \u2014 a top fraud tell. Always ground addresses through uszipcode and use real/own-corpus merchant identities.",
+   "Tax rounding is POS-specific: most US registers round the AGGREGATE tax half-up to the cent, but some round per-line \u2014 mismatch creates the exact 1-2 cent discrepancies fraud detectors flag. Make rounding mode a per-merchant setting and keep it consistent.",
+   "Don't apply a flat/uniform rate (e.g. 10%) across receipts or a rate impossible for the locality \u2014 split into TAX1/TAX2 that sum to the real combined local rate; only taxable-flagged lines feed the taxable base.",
+   "Tax-flag letters are not universal: F means food/grocery-rate in some chains and SNAP-eligibility in others; X and T both mean taxable. Never mix taxable letters within one receipt \u2014 pick one per merchant.",
+   "CRV is California-only and beverage-only, and its taxability follows the parent beverage. Emitting CRV on NV/non-CA receipts (your Vegas use case) is a tell.",
+   "'Too clean' is itself a fraud signal: round-dollar totals, perfectly even cents, mechanically perfect spacing. Add deliberate cent-scatter and keep totals non-round most of the time.",
+   "usaddress is a PARSER/validator, not a generator, and uses a CRF model (python-crfsuite) \u2014 heavier dep; use it to validate, generate addresses yourself from templates.",
+   "SynthDoG/Donut content engine samples words from Wikipedia \u2014 useless for plausible merchant text; only borrow its layout/JSON-first pattern.",
+   "item_count line semantics differ (sum of quantities vs count of distinct lines) \u2014 set per merchant or it won't reconcile with the visible lines.",
+   "Faker/faker-commerce prices can be branded or all-round; route them through your own cents-jitter and category logic, and prefer real product strings from your receipt corpus.",
+   "555-01xx is the only reserved 'safe' fake exchange; other 555 numbers or random exchanges can collide with real lines \u2014 use 555-0100..555-0199 for invented local numbers.",
+   "Two fake-data libs (Faker + mimesis) doubles dependency surface and seeding logic \u2014 choose one."
+  ]
+ },
+ {
+  "key": "graphics",
+  "area": "Barcodes + QR + receipt structural graphics (Python/PIL thermal-receipt renderer)",
+  "key_findings": [
+   {
+    "name": "treepoem (BWIPP wrapper)",
+    "what": "Python barcode renderer wrapping BWIPP (Barcode Writer In Pure PostScript) via Ghostscript. ~100 symbologies including upca, ean13, code128, interleaved2of5/i2of5, code39, qrcode, datamatrix, pdf417, azteccode. generate_barcode(barcode_type, data, options=dict, *, scale=2) returns a PIL.Image directly.",
+    "url": "https://github.com/adamchainz/treepoem",
+    "borrow": "Use as the single source of truth for ALL 1D symbologies because BWIPP renders the standards-correct human-readable text (HRT) the way real receipts do: UPC-A shows the leading/trailing digits dropped below the bars at reduced size, EAN guard bars extend, I2of5 has the bearer bars. Options to borrow: includetext (toggle HRT), textsize, textyoffset, textfont, height (in mm), and for QR: eclevel=L/M/Q/H, version. scale controls px size. Convert result to 'L'/'1' and paste."
+   },
+   {
+    "name": "python-barcode (pyBarcode fork)",
+    "what": "Pure-Python barcode generator (no Ghostscript). Supports EAN-8/13/14, UPC-A, Code39, Code128, ISBN, etc. With ImageWriter it renders straight to a PIL Image. Does NOT include Interleaved 2of5.",
+    "url": "https://python-barcode.readthedocs.io/en/stable/",
+    "borrow": "Zero-binary-dependency fallback for the common receipt cases (UPC-A product codes, Code128 transaction strings) when Ghostscript isn't available offline. ImageWriter options to borrow: module_width, module_height, quiet_zone, font_size (set 0 to suppress HRT), text_distance, font_path, write_text, foreground, background, dpi. barcode.get('code128', data, writer=ImageWriter()).render(options) returns the PIL image in-memory (no disk round-trip)."
+   },
+   {
+    "name": "segno",
+    "what": "Pure-Python QR + Micro QR encoder, zero dependencies, ISO/IEC 18004:2015 compliant. Outputs PNG/SVG/PIL. Lets you control version, error correction, module scale, border (quiet zone), and finder/module colors.",
+    "url": "https://segno.readthedocs.io/en/stable/",
+    "borrow": "Preferred QR generator: no native deps, works fully offline, supports Micro QR (some receipts/loyalty use it). qr = segno.make(data, error='m'); render at integer module scale then nearest-neighbor only. Use scale + border (quiet zone, default 4 modules) to match real receipt QR proportions."
+   },
+   {
+    "name": "qrcode (lincolnloop)",
+    "what": "The most popular Python QR lib; depends on Pillow; mask pattern 4; returns PIL image via make_image(). Company-maintained, very active.",
+    "url": "https://github.com/lincolnloop/python-qrcode",
+    "borrow": "Drop-in alternative to segno if you want direct PIL StyledPilImage with rounded modules/eyes. Use box_size + border for exact module pixel sizing. Either segno or qrcode is fine; pick segno to avoid a second dependency stack."
+   },
+   {
+    "name": "Epson ESC/POS GS k (1D) and GS ( k (QR) command reference",
+    "what": "The actual printer commands real POS systems emit: GS k for 1D barcodes (with HRI position byte via GS H, HRI font via GS f, height GS h, width GS w), and GS ( k functions 165/167/169/180/181/182 for QR (model, module size in dots, error-correction level, store, print).",
+    "url": "https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/commands.html",
+    "borrow": "Use as a spec for REALISM DEFAULTS, not for printing. QR module size is set in dots (n=3..8 typical), EC level usually M; barcode height ~50-162 dots, HRI text printed BELOW bars in Font B. These map to our render params: module_size_px, ecc='M', barcode_height, hrt_below. Mirrors what genuine receipts look like."
+   },
+   {
+    "name": "PIL ImageDraw.rounded_rectangle / reverse-video pattern",
+    "what": "Pillow 8.2+ ImageDraw.rounded_rectangle(xy, radius, fill, outline, width) plus draw.text() with contrasting fill \u2014 the primitive for Costco's reverse-video TOTAL bar, Amazon's boxed savings callouts, and framed subtotals.",
+    "url": "https://pillow.readthedocs.io/en/stable/reference/ImageDraw.html",
+    "borrow": "Reverse-video bar = draw filled black (rounded_)rectangle slightly larger than the token bbox, then redraw that token's text in white (paper color) on top. For dashed/asterisk separators: draw.text of repeated '-', '=', '*', or short line segments via draw.line with a gap pattern spanning the receipt width."
+   },
+   {
+    "name": "BWIPP options documentation",
+    "what": "The canonical option list behind treepoem (height, includetext, textxalign, textyoffset, textsize, textfont, guardwhitespace, addontextxoffset, barcolor, textcolor, eclevel, version, format(QR)).",
+    "url": "https://github.com/bwipp/postscriptbarcode/wiki",
+    "borrow": "Reference for getting standards-correct HRT and guard bars. For UPC-A use includetext + guardwhitespace; for I2of5 the bearer/bearer-bar option (includecheck, includetext). Lets us match per-merchant quirks precisely."
+   }
+  ],
+  "recommended_approach": "Add a graphics module (e.g. renderer/graphics.py) that produces grayscale PIL tiles which are pasted into the receipt canvas, then run through the SAME paper-texture/threshold/blur pass as text so they don't look pasted-on.\n\n1) BARCODES: Primary = treepoem.generate_barcode(symbology, data, options={'includetext': True, 'height': mm, 'textsize': N}, scale=S). Symbology by merchant: UPC-A ('upca', 11-12 digit product/coupon codes), Code128 ('code128', alphanumeric transaction/loyalty strings \u2014 most common on modern receipts), Interleaved 2of5 ('interleaved2of5', even-length numeric, e.g. some grocery/Walmart). Crucially KEEP the human-readable text: BWIPP draws UPC-A's split digits and EAN guard extensions correctly, which is the #1 realism tell. Fallback when Ghostscript is unavailable: python-barcode with ImageWriter (no I2of5) \u2014 render() returns a PIL image in-memory; set font_size=0 only if a merchant truly omits HRI, else supply font_path to match our thermal font.\n\n2) QR: Use segno.make(data, error='m'); render at an INTEGER module-pixel scale (e.g. module_px = round(target_w/(modules+2*quiet))) and upscale with NEAREST only \u2014 never bilinear \u2014 so modules stay crisp like thermal dots. Quiet zone = 4 modules (segno border default). Encode realistic payloads: a survey/feedback URL, a transaction-lookup URL with an opaque txn id, or a loyalty/e-receipt link (e.g. 'https://www.surveymonkey.com/r/XXXX' style or 'https://r.merchant.com/t/<base36id>'). Keep version low (data short) so module grid looks like a real receipt QR (~21-37 modules/v1-v5).\n\n3) STRUCTURAL GRAPHICS in PIL: (a) Costco reverse-video TOTAL bar \u2014 ImageDraw.rectangle/rounded_rectangle filled near-black across the line, then redraw the TOTAL token text in paper-white on top; jitter the bar darkness slightly for thermal look. (b) Amazon/coupon savings box \u2014 rounded_rectangle outline (width 1-2) around the savings token cluster, optionally light-gray fill. (c) Separators \u2014 full-width rows of '-', '=', '*', or '. . .' drawn with draw.text using the merchant font, OR draw.line dashed (loop segments with gaps). Asterisk masking for card numbers = literal '*' chars. (d) Subtotal/double-line rules via two thin draw.line calls.\n\n4) REALISM PASS: Generate every graphic at 2-4x then downscale; composite onto paper BEFORE the global texture/threshold so barcodes pick up the same speckle, slight horizontal smear, and contrast falloff as the text. Add tiny random x-offset and ink-density variation. Right-size from per-merchant profile (barcode width ~ receipt width minus margins; QR ~ 20-35% of width centered or left).\n\n5) CONFIG: Drive symbology + payload template + HRT on/off + module size from the existing per-merchant font/profile JSON so each merchant's barcode/QR matches its real receipts.",
+  "libraries": [
+   "treepoem (pip install treepoem) + system Ghostscript (brew install ghostscript / apt-get install ghostscript) \u2014 primary 1D + optional QR/DataMatrix/PDF417",
+   "segno (pip install segno) \u2014 pure-Python QR + Micro QR, no deps, offline",
+   "python-barcode (pip install python-barcode) \u2014 pure-Python UPC-A/Code128 fallback, no Ghostscript",
+   "Pillow >= 8.2 (already in stack) \u2014 ImageDraw.rounded_rectangle for reverse-video bars/boxes",
+   "Optional: qrcode[pil] only if you want StyledPilImage rounded QR modules instead of segno",
+   "Fonts: a monospaced OCR-B / Font-B-like TTF for HRI text under barcodes (e.g. OCR-B, or reuse the merchant thermal font) to match Epson HRI Font B"
+  ],
+  "pitfalls": [
+   "treepoem REQUIRES Ghostscript on PATH; it shells out + needs a temp dir. If the offline/CI box lacks gs it throws \u2014 gate it and fall back to python-barcode/segno. Verify with `gs --version` at startup.",
+   "treepoem returns a 1-bit/'1' image by default \u2014 convert('L') before compositing so it blends with grayscale paper instead of hard black/white aliasing.",
+   "NEVER resize barcodes/QR with bilinear/bicubic \u2014 it blurs bar edges and can make them un-scannable AND look obviously fake. Render at integer module scale and downscale with NEAREST or render at final size directly.",
+   "UPC-A needs exactly 11 digits (lib auto-adds the 12th check digit) \u2014 passing 12 with a wrong checksum errors or yields an invalid code. I2of5 requires EVEN digit count (it pairs digits); odd-length data silently breaks or auto-pads.",
+   "Don't drop the human-readable text to 'simplify' \u2014 missing HRI/guard digits is the biggest realism tell on UPC-A/EAN; BWIPP draws the split small digits correctly, python-barcode is less faithful.",
+   "Quiet zone matters: stripping the QR border or barcode quiet_zone makes it both unscannable and visually wrong; keep >=4 modules (QR) / standard quiet zone (1D).",
+   "segno mask pattern differs from qrcode (mask 5 vs 4) \u2014 visually different module layout; fine for realism but don't hardcode-compare pixels across libs in tests.",
+   "Reverse-video bars: pure #000 fill looks like laser print; real thermal 'black' is ~#1a1a1a with speckle \u2014 add noise/jitter and let it go through the thermal pass.",
+   "QR payloads: encoding obviously fake/empty data (e.g. 'TEST') is a tell if anyone scans the demo; use plausible URL/txn-id templates per merchant but keep them non-resolving placeholders.",
+   "Ghostscript/treepoem temp-file IO is slow per call \u2014 cache rendered barcodes/QRs by (symbology,data,scale) if generating large synthetic datasets."
+  ]
+ },
+ {
+  "key": "paper-texture",
+  "area": "Thermal-print + scan/photo degradation for synthetic receipt rendering (PIL/Augraphy)",
+  "key_findings": [
+   {
+    "name": "Augraphy",
+    "what": "Free, offline (numpy+opencv) Python library purpose-built for synthetic paper printing/faxing/scanning/photocopy degradation. Models a 3-phase pipeline (ink -> paper -> post) and ships 30+ named augmentations. pip install augraphy. This is the single most relevant prior art and should be the backbone.",
+    "url": "https://github.com/sparkfish/augraphy",
+    "borrow": "Adopt the whole pipeline pattern. API is AugraphyPipeline(ink_phase=[...], paper_phase=[...], post_phase=[...]); call pipeline(np_bgr_image). Use OneOf([...], p=) and AugmentationSequence([...]) for stochastic composition. Convert our PIL render to a numpy BGR array, run it through, convert back."
+   },
+   {
+    "name": "Augraphy LowInkPeriodicLines / LowInkRandomLines",
+    "what": "Ink-phase augmentations that produce horizontal streaks/dropout from a printer running low on ink. Visually identical to thermal head dead-pixel rows and banding.",
+    "url": "https://augraphy.readthedocs.io/en/latest/doc/source/list_of_augmentations.html",
+    "borrow": "Use at LOW count/intensity to simulate thermal head banding and dead-element horizontal voids. Keep count small so text stays legible."
+   },
+   {
+    "name": "Augraphy Letterpress + InkBleed + Dithering",
+    "what": "Ink-phase. Letterpress applies a speckled, uneven ink-deposit texture; InkBleed spreads dark pixels into neighbors (diffusion); Dithering converts to dot/halftone. Together they reproduce thermal dot-gain (heat spreads into adjacent dots making strokes fuzzy/bloomed).",
+    "url": "https://augraphy.readthedocs.io/en/latest/doc/source/list_of_augmentations.html",
+    "borrow": "InkBleed (small intensity 0.1-0.4) for thermal bloom/dot-gain; Letterpress at low strength for the granular thermal-coating look. Skip heavy Dithering \u2014 real thermal text is clean/continuous, not visibly dotted (per thermal-paper sources)."
+   },
+   {
+    "name": "Augraphy Faxify / BadPhotoCopy",
+    "what": "Post-phase. Faxify = binarization + scanline/halftone fax look. BadPhotoCopy = blotchy over/under-exposure noise mimicking a bad copier/scan.",
+    "url": "https://augraphy.readthedocs.io/en/latest/doc/source/list_of_augmentations.html",
+    "borrow": "Use BadPhotoCopy SPARINGLY (low severity) for uneven scan exposure/blotches. Mostly AVOID Faxify for thermal \u2014 it over-binarizes and reads as fax, not thermal. Reserve for a small fraction of samples."
+   },
+   {
+    "name": "Augraphy Brightness / Gamma / LightingGradient / ShadowCast",
+    "what": "Brightness+Gamma adjust luminance globally; LightingGradient lays a smooth illumination ramp; ShadowCast drops a soft cast shadow. Directly model thermal fade-gradient (top-to-bottom darkening as head heats) AND phone-capture lighting.",
+    "url": "https://augraphy.readthedocs.io/en/latest/doc/source/list_of_augmentations.html",
+    "borrow": "LightingGradient = both the thermal print fade gradient and the phone uneven-lighting in one primitive. ShadowCast for a hand/phone shadow. Gamma<1 + slight desaturation toward warm gray for paper yellowing/fogging."
+   },
+   {
+    "name": "Augraphy Folding / Geometric / InkShifter / NoiseTexturize / SubtleNoise / Jpeg",
+    "what": "Post/spatial. Folding adds crease lines+local warping; Geometric does rotation/perspective/scale; InkShifter locally displaces ink; NoiseTexturize/SubtleNoise add film-grain; Jpeg adds block/ringing compression artifacts.",
+    "url": "https://augraphy.readthedocs.io/en/latest/doc/source/list_of_augmentations.html",
+    "borrow": "Folding for receipt creases/curl seams; Geometric(perspective) for phone skew; SubtleNoise+NoiseTexturize for sensor grain; Jpeg LAST (quality ~50-85) as the final phone-capture step. Order matters \u2014 Jpeg must be last."
+   },
+   {
+    "name": "DocCreator (LaBRI)",
+    "what": "Open-source DIAR tool with a 3D paper-deformation model: a real degraded receipt is 3D-scanned to a mesh, and any 2D doc is texture-mapped onto it to simulate mobile capture (curl, perspective, page-warp). Also has bleed-through, ink degradation, adaptive blur, holes.",
+    "url": "https://github.com/DocCreator/DocCreator",
+    "borrow": "Concept to borrow: mesh/grid-warp displacement for realistic receipt CURL rather than flat perspective. In PIL we can approximate with a per-column vertical-shift displacement map (sinusoidal) before perspective, giving the curled-thermal look without the full 3D toolchain."
+   },
+   {
+    "name": "Augraphy: A Data Augmentation Library for Document Images (Groleau et al., 2022)",
+    "what": "The paper behind Augraphy. Documents the ink/paper/post model and shows OCR/denoising training gains from these synthetic degradations.",
+    "url": "https://arxiv.org/abs/2208.14558",
+    "borrow": "Citable justification for the 3-phase ordering and for why these specific passes improve downstream ML robustness \u2014 supports our train-on-degraded strategy."
+   },
+   {
+    "name": "Thermal paper degradation references (Jota/Aiyin/Sailing)",
+    "what": "Industry write-ups on how thermal receipts actually degrade: UV/heat turn the WHOLE sheet gray/yellow (background fogging) rather than just fading ink; moisture causes localized blur/smudge; text is continuous (not dotted); heat causes background graying that lowers contrast.",
+    "url": "https://www.jotamachinery.com/academy/thermal-paper-print-degradation/",
+    "borrow": "Model aging as a global background-graying + warm (yellow) tint that REDUCES contrast (lift blacks toward gray, drop white toward cream), plus optional localized blur blobs for moisture. This is the most thermal-distinctive cue and is missing from generic doc augmenters."
+   },
+   {
+    "name": "OpenCV perspective transform (getPerspectiveTransform/warpPerspective)",
+    "what": "Standard 4-point homography for simulating off-axis phone capture; document_warp repo demonstrates corner-based warping.",
+    "url": "https://github.com/fbieberly/document_warp",
+    "borrow": "If we don't want Augraphy's Geometric, do our own: jitter the 4 corners by a few percent, warpPerspective with a constant warm-paper border fill, so the receipt sits at a slight angle like a phone photo."
+   }
+  ],
+  "recommended_approach": "Keep our PIL renderer as the CLEAN layer generator, then bolt on a post-render degradation stage. Render token text+logo+paper-texture to a PIL RGB image as today, convert to numpy BGR (np.array(img)[:,:,::-1]), run an Augraphy pipeline, convert back. Augraphy is free, offline, numpy/opencv-only \u2014 no thermal printer needed.\\n\\nApply passes in this ORDER (Augraphy's ink->paper->post is the right spine; thermal-specific cues are the differentiator):\\n\\nINK PHASE (operate on the dark text before paper blends in) \u2014 thermal head dot-gain & banding:\\n 1. InkBleed(intensity_range=(0.1,0.4), kernel_size=(3,3)) \u2014 thermal bloom; strokes thicken/fuzz slightly.\\n 2. OneOf([LowInkPeriodicLines(count_range=(1,3)), LowInkRandomLines(count_range=(1,4))], p=0.4) \u2014 head banding / dead-element rows. Keep count LOW.\\n 3. Letterpress(value_range=(...low...), p=0.3) \u2014 granular thermal-coating texture. Skip heavy Dithering (real thermal text is continuous, not dotted).\\n\\nPAPER PHASE \u2014 thermal fade gradient + yellowing/fogging:\\n 4. LightingGradient(...) OR a custom vertical multiplicative ramp (top darker -> bottom lighter, or random direction) = thermal head fade gradient. This is the highest-value thermal cue.\\n 5. Paper aging: lift blacks toward gray + tint toward warm cream (reduce contrast, slight yellow). Do as Gamma(0.85-1.0) + a warm color matrix / ColorPaper, NOT pure brightness. Models background fogging from heat/UV.\\n 6. NoiseTexturize + SubtleNoise (gentle) \u2014 paper grain.\\n\\nPOST PHASE \u2014 physical receipt + phone capture (apply AFTER ink+paper merged):\\n 7. Folding(fold_count=(1,2), fold_noise=low) \u2014 crease lines; optional sinusoidal per-column vertical displacement map for CURL (DocCreator-inspired, cheap in numpy via cv2.remap).\\n 8. OneOf([BadPhotoCopy(low severity), nothing], p=0.25) \u2014 occasional uneven scan blotch.\\n 9. ShadowCast(low) + a soft radial/edge lighting falloff \u2014 phone shadow + vignette.\\n 10. Geometric(perspective/rotate small) OR our own jittered-4-corner warpPerspective with warm border fill \u2014 off-axis phone skew (keep angle < ~6 deg so OCR boxes stay valid).\\n 11. SubtleNoise \u2014 sensor grain.\\n 12. Jpeg(quality_range=(60,90)) \u2014 ALWAYS LAST; the compression artifacts must sit on top of everything, as in a real phone photo.\\n\\nSUBTLETY/LEGIBILITY RULES: randomize a global 'degradation strength' in [0.2,0.8] and scale all intensities by it; bias most samples low. Wrap each non-essential pass in OneOf/probability so any single image gets only a subset (real receipts vary). Because we keep token bboxes, run the SAME geometric transform (Folding/Geometric/perspective/curl) on the bbox coordinates so labels stay aligned \u2014 Augraphy's AugraphyPipeline accepts bounding_boxes/keypoints and transforms them for you; pass our token boxes in so ground truth tracks the warp. Validate by re-OCRing a sample and confirming text is still readable; back off intensity if not.\\n\\nStart with Augraphy's default_augraphy_pipeline() as a sanity baseline, then replace it with the tuned thermal pipeline above. Per-merchant: store a small degradation profile (fade direction, yellowing amount, typical creasing) alongside the existing font profile so degradation matches that merchant's real-world receipts.",
+  "libraries": [
+   "augraphy (pip install augraphy) \u2014 primary degradation engine, offline numpy+opencv",
+   "opencv-python (cv2) \u2014 perspective warp, remap-based curl, color matrices",
+   "numpy \u2014 array ops / displacement maps",
+   "Pillow (existing) \u2014 clean render + final encode",
+   "scipy (optional) \u2014 gaussian/displacement for smoother curl maps",
+   "DocCreator (optional, external Qt app) \u2014 only if you want true 3D-mesh capture warps; otherwise emulate in numpy"
+  ],
+  "pitfalls": [
+   "Augraphy custom-pipeline signature: it is AugraphyPipeline(ink_phase=[...], paper_phase=[...], post_phase=[...]) \u2014 NOT a single positional list of augmentations (some blog/README snippets show a wrong flat-list form). Verify against the installed version's docstring.",
+   "Faxify and heavy Dithering make output look like a FAX or dot-matrix, not thermal. Real thermal text is clean/continuous \u2014 use these rarely if at all; they will tank realism if overused.",
+   "Stacking too many passes at full strength destroys legibility and OCR labels. Gate everything behind probabilities + a global strength multiplier biased low.",
+   "Geometric warps (perspective, Folding, curl) move the text \u2014 if you don't apply the identical transform to token bboxes, your ML labels desync. Pass bounding_boxes through Augraphy or replicate the homography on the boxes yourself.",
+   "JPEG must be the FINAL pass. Applying noise/grain after JPEG looks fake because real artifacts are baked under compression.",
+   "Thermal aging is a CONTRAST-REDUCING background gray/yellow fog, not just 'fade the ink lighter.' Lift blacks + warm-tint paper; pure brightness/gamma alone misses the distinctive look.",
+   "Augraphy works in BGR uint8 numpy. Convert correctly from PIL RGB (channel order + dtype) or colors invert/shift.",
+   "Augraphy adds heavy per-image CPU cost; precompute/cache degraded variants offline rather than augmenting in the training loop hot path. Seed RNG for reproducible datasets.",
+   "Don't over-rotate/over-skew: keep phone perspective small (<~6 deg, corner jitter <~4%) or fine text becomes unreadable and bbox IoU collapses."
+  ]
+ }
+]
