@@ -94,6 +94,7 @@ _CACHED_ADDRESS_OUTPUT_SIZE = (416, 1280)
 _CACHED_THERMAL_DARK_SPECKLE_RATE = 0.064
 _CACHED_THERMAL_LIGHT_SPECKLE_RATE = 0.066
 _CACHED_THERMAL_MIN_DARK_DENSITY = 0.105
+_CACHED_REMOVE_THERMAL_MIN_DARK_DENSITY = 0.118
 _CACHED_THERMAL_SCANLINE_MIN_GAP = 42
 _CACHED_THERMAL_SCANLINE_MAX_GAP = 74
 _CACHED_THERMAL_MOTTLE_COUNT_FACTOR = 90
@@ -1046,6 +1047,7 @@ def _cached_receipt_dict(example: dict) -> dict:
         receipt = _cached_token_receipt_dict(example)
     else:
         receipt = _cached_line_receipt_dict(example)
+    receipt = {**receipt, "candidate_id": str(example.get("candidate_id") or "")}
     if _cached_should_draw_qr(example):
         return _reflow_cached_qr_footer(receipt)
     return receipt
@@ -1226,8 +1228,15 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
     _apply_cached_thermal_density_floor(
         image,
         random.Random(seed ^ 0x9D37_442B),
-        min_density=_CACHED_THERMAL_MIN_DARK_DENSITY,
+        min_density=_cached_thermal_min_dark_density(receipt),
     )
+
+
+def _cached_thermal_min_dark_density(receipt: dict) -> float:
+    candidate_id = str(receipt.get("candidate_id") or "")
+    if "remove-line-item" in candidate_id:
+        return _CACHED_REMOVE_THERMAL_MIN_DARK_DENSITY
+    return _CACHED_THERMAL_MIN_DARK_DENSITY
 
 
 def _cached_thermal_row_biases(height: int, rng: random.Random) -> list[int]:

@@ -403,6 +403,7 @@ def test_cached_token_render_keeps_rich_sprouts_remove_item_fixture():
     receipt = module._cached_receipt_dict(fixture)
     texts = _line_texts(receipt)
 
+    assert receipt["candidate_id"] == fixture["candidate_id"]
     assert fixture["metadata"]["retained_line_item_count"] == 5
     assert (
         fixture["metadata"]["structure_similarity"]["candidate_signature"][
@@ -672,6 +673,26 @@ def test_cached_thermal_density_floor_adds_paper_speckles_only():
         if value < 170
     )
     assert dark_count >= 1200
+
+
+def test_cached_thermal_density_floor_uses_higher_remove_item_floor():
+    module = _load_module()
+
+    remove_receipt = {
+        "candidate_id": "sprouts-arithmetic-2-remove-line-item-abc"
+    }
+    add_receipt = {
+        "candidate_id": "sprouts-arithmetic-1-add-line-item-abc"
+    }
+
+    assert (
+        module._cached_thermal_min_dark_density(remove_receipt)
+        == module._CACHED_REMOVE_THERMAL_MIN_DARK_DENSITY
+    )
+    assert (
+        module._cached_thermal_min_dark_density(add_receipt)
+        == module._CACHED_THERMAL_MIN_DARK_DENSITY
+    )
 
 
 def test_cached_thermal_mottle_adds_low_frequency_paper_variation():
