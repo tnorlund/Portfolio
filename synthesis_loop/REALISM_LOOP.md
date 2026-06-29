@@ -39,3 +39,4 @@ next item (codex-review the plan first). Merge all landed lanes, then re-render 
 
 ## Round log
 - R1: tax-flag+truncation — building.
+- R1 tax-flag MERGED (661d8bf): real F/T flags, <A> gone, 54 tests pass. Lane A -> #2 reflow next.
