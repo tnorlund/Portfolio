@@ -5,13 +5,17 @@ from decimal import Decimal
 
 from receipt_agent.agents.label_evaluator.merchant_synthesis import (
     MerchantAnalysis,
+    MerchantCatalogEntry,
     OnlineCatalogEntry,
     _SYNTHETIC_LINE_ID_BASE,
     _analyze_receipt,
     _apply_taxable_delta,
+    _build_line_item_line,
     _build_template_filled_row,
     _build_remove_item_candidate_from_plan,
+    _merchant_item_tax_flag,
     _merchant_online_catalog,
+    _truncate_tokens_to_width,
     _normalize_receipt,
     _shift_lines_below_for_insert,
     _stable_tax_rate,
@@ -2232,6 +2236,156 @@ def test_template_fill_requires_at_least_one_rendered_product_name():
     )
 
     assert row is None
+
+
+def _item_anchor_receipt(product_x=90, total_x=860):
+    """Minimal receipt carrying PRODUCT_NAME / LINE_TOTAL column anchors so
+    ``_build_line_item_line`` can resolve its lane geometry."""
+    return {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [
+                    _word("MILK", [product_x, 500, product_x + 60, 524], ["PRODUCT_NAME"]),
+                    _word("3.99", [total_x, 500, total_x + 60, 524], ["LINE_TOTAL"]),
+                ],
+            }
+        ]
+    }
+
+
+def _line_item_entry(text, taxable):
+    return MerchantCatalogEntry(
+        product_text=text,
+        amount=Decimal("12.99"),
+        category="x",
+        taxable=taxable,
+        count=1,
+        source_receipt_keys=["k"],
+    )
+
+
+def test_merchant_item_tax_flag_picks_validated_flag():
+    # Known merchants resolve to their validated taxable / non-taxable flag.
+    assert _merchant_item_tax_flag("Amazon Fresh", True) == "T"
+    assert _merchant_item_tax_flag("Amazon Fresh", False) == "F"
+    assert _merchant_item_tax_flag("Vons", True) == "T"
+    assert _merchant_item_tax_flag("Vons", False) == "S"
+    assert _merchant_item_tax_flag("Costco Wholesale", True) == "A"
+    # Costco has no validated non-taxable flag, and unknown merchants none at all.
+    assert _merchant_item_tax_flag("Costco Wholesale", False) is None
+    assert _merchant_item_tax_flag("Totally Unknown Mart", True) is None
+    assert _merchant_item_tax_flag(None, True) is None
+
+
+def test_build_line_item_line_appends_flag_after_price():
+    receipt = _item_anchor_receipt()
+    for merchant, taxable, expected in [
+        ("Amazon Fresh", True, "T"),
+        ("Amazon Fresh", False, "F"),
+        ("Costco Wholesale", True, "A"),
+    ]:
+        line = _build_line_item_line(
+            receipt,
+            _line_item_entry("ORGANIC MILK", taxable),
+            y_center=400,
+            merchant_name=merchant,
+        )
+        words = line["words"]
+        texts = [w["text"] for w in words]
+        # Flag is the FINAL token and sits to the right of the price.
+        assert texts[-1] == expected
+        assert words[-1]["labels"] == []  # tax flag is supervision-neutral (O)
+        price_word = words[-2]
+        assert price_word["labels"] == ["LINE_TOTAL"]
+        assert words[-1]["bbox"][0] > price_word["bbox"][0]
+        # Product name precedes the price column.
+        assert words[0]["labels"] == ["PRODUCT_NAME"]
+
+
+def test_build_line_item_line_no_flag_for_unknown_or_unflagged():
+    receipt = _item_anchor_receipt()
+    # Unknown merchant: no flag token, last token is the price (backwards-compat).
+    line = _build_line_item_line(
+        receipt, _line_item_entry("ORGANIC MILK", True), y_center=400,
+        merchant_name="Totally Unknown Mart",
+    )
+    assert line["words"][-1]["labels"] == ["LINE_TOTAL"]
+    # No merchant_name at all also stays flagless.
+    line2 = _build_line_item_line(
+        receipt, _line_item_entry("ORGANIC MILK", True), y_center=400,
+    )
+    assert line2["words"][-1]["labels"] == ["LINE_TOTAL"]
+    # Known merchant, non-taxable item with no validated flag (Costco F): no flag.
+    line3 = _build_line_item_line(
+        receipt, _line_item_entry("ROTISSERIE", False), y_center=400,
+        merchant_name="Costco Wholesale",
+    )
+    assert line3["words"][-1]["labels"] == ["LINE_TOTAL"]
+
+
+def test_build_line_item_line_truncates_name_before_price():
+    # Narrow lane: product anchor far left, price column close behind it.
+    receipt = _item_anchor_receipt(product_x=90, total_x=320)
+    line = _build_line_item_line(
+        receipt,
+        _line_item_entry("SUPER LONG ORGANIC PRODUCT NAME HERE EXTRA", True),
+        y_center=400,
+        merchant_name="Amazon Fresh",
+    )
+    words = line["words"]
+    price_idx = next(i for i, w in enumerate(words) if w["labels"] == ["LINE_TOTAL"])
+    name_words = words[:price_idx]
+    # Name was truncated (not all six source tokens survive) and every name word
+    # ends before the price column.
+    assert 0 < len(name_words) < 6
+    price_left = words[price_idx]["bbox"][0]
+    assert all(w["bbox"][2] <= price_left for w in name_words)
+    assert words[-1]["text"] == "T"  # flag still appended after the price
+
+
+def test_truncate_tokens_to_width_behaviour():
+    # Whole tokens that fit are kept; overflowing tokens are dropped.
+    assert _truncate_tokens_to_width(["SUPER", "LONG", "ORGANIC", "NAME"], 100) == [
+        "SUPER"
+    ]
+    # A single overflowing word is shortened with a trailing ellipsis.
+    out = _truncate_tokens_to_width(["VERYLONGSINGLEWORD"], 60)
+    assert len(out) == 1 and out[0].endswith("...")
+    # Always returns at least one token, even on a tiny budget.
+    assert _truncate_tokens_to_width(["AB"], 5) == ["AB"]
+    assert _truncate_tokens_to_width([], 100) == []
+
+
+def test_template_filled_row_uses_real_flag_for_known_merchant():
+    geo = {"char_w": 10, "name_x0": 140, "price_x1": 420, "height": 20}
+    # Known merchant -> real flag token, still labeled O and verified clean.
+    row = _build_template_filled_row(
+        OnlineCatalogEntry("ACME BOLT KIT", Decimal("12.50"), "012345678905"),
+        y0=100,
+        geo=geo,
+        line_id=_SYNTHETIC_LINE_ID_BASE,
+        merchant_name="Vons",
+    )
+    assert row is not None
+    texts = [w["text"] for w in row["words"]]
+    assert "<A>" not in texts
+    assert "T" in texts  # Vons taxable flag
+    flag_word = next(w for w in row["words"] if w["text"] == "T")
+    assert flag_word["labels"] == []
+    assert _verify_template_row_labels({"lines": [row]})["all_correct"] is True
+
+    # Unknown merchant keeps the conservative neutral placeholder.
+    row_unknown = _build_template_filled_row(
+        OnlineCatalogEntry("ACME BOLT KIT", Decimal("12.50"), "012345678905"),
+        y0=100,
+        geo=geo,
+        line_id=_SYNTHETIC_LINE_ID_BASE,
+        merchant_name="Totally Unknown Mart",
+    )
+    assert row_unknown is not None
+    assert "<A>" in [w["text"] for w in row_unknown["words"]]
+    assert _verify_template_row_labels({"lines": [row_unknown]})["all_correct"] is True
 
 
 def test_composed_totals_update_unlabeled_amounts_on_labeled_lines():
