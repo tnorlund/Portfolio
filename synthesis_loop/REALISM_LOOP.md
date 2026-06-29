@@ -7,6 +7,13 @@ next backlog item and proceed. Deterministic ratchet + the two codex gates are t
 only if it goes sideways. Report at each round's end (merge + score + next-item) without waiting for an OK.
 **Isolation:** one fix per git worktree, file-disjoint, off `feat/synthesis-content-clean`; merge when verified.
 
+## Parallelism: 3 LANES (keep all 3 busy; items within a lane run sequentially)
+- **Lane A — synthesis/content** (`merchant_synthesis.py`): tax-flag → #2 reflow → item-line wiring → addr-guards.
+- **Lane B — rendering** (`render_synthetic_receipts.py`, `receipt_renderer.py`, new render modules): #4 graphics → #5 texture.
+- **Lane C — new modules** (NEW files only — no shared-file edits): item-line-grammar learner, scorecard tooling.
+Cross-lane files never overlap → all merge clean. When a lane's agent merges, immediately start that lane's
+next item (codex-review the plan first). Merge all landed lanes, then re-render + deterministic-score once.
+
 ## Ratchet metrics (cheap, deterministic — checked every round; opus is noisy so don't ratchet on it)
 - reocr_gate pass-rate · propagation_f1 · glyph-height CV · price-decimal-x stddev · garbled-token count.
 - Opus 24-agent realism re-score: run every ~3 rounds (expensive) — it sets DIRECTION, not the per-change gate.
