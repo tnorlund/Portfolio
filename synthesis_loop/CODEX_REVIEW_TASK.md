@@ -74,3 +74,24 @@ B. Is the hardened scorer now measuring the right thing, or is it still gameable
 C. Is the deterministic gate's "required fields + coverage" definition correct and complete?
 D. With these fixes in, what is the SINGLE highest-value next step before a real LayoutLM A/B? Restate the
    VERDICT (right direction / course-correct / wrong) given the new state.
+
+## ROUND 3 UPDATE — we fixed everything you flagged AND committed the evidence this time
+Your last review proved: (a) committed artifacts were STALE (=->B-TAX), (b) the scorer skipped degenerate
+labels so garbage left f1=1.0, (c) the font floor was a band-aid causing word-fusion/clipping. We addressed
+all three and COMMITTED the evidence (read these on feat/synthesis-reocr-spike):
+- **`synthesis_loop/artifacts/*.gate.json` + `*.report.txt` + `*.reocr-align.json`** — FRESH, committed
+  artifacts regenerated from the current renderer. Verify they match the numbers below (no more /tmp-only claims).
+- **`synthesis_loop/reocr_score.py`** — degenerate/punctuation labels now COUNT AS FAILURES (fp), and value_cer
+  is over ALL value tokens, not just covered ones.
+- **`synthesis_loop/reocr_gate.py`** — mandatory fields (MERCHANT_NAME/GRAND_TOTAL/DATE) must EXIST in GT.
+- **`receipt_agent/.../rendering/receipt_renderer.py` + `scripts/render_synthetic_receipts.py`** (commit
+  a55aaa6d1) — per-token width squeeze (kills word-fusion + margin clipping), QR/barcode drawn in blank bands,
+  darkened logo.
+Committed results: amazon f1 1.0; costco 0.984 (up from 0.966); sprouts 0.954 (DOWN from 0.967 — honest: the
+de-fusion exposed a punctuation-only '#:' PAYMENT_METHOD token in the GT that the hardened scorer now correctly
+flags as degenerate; the old fused render masked it). OCR-word vs GT-token counts now near-1:1 (sprouts 106/105,
+was 69/105). Gate passes all 3.
+Re-verify SKEPTICALLY: E. Do the committed artifacts actually match these numbers? F. Is the '#:' degenerate
+token a SYNTHESIS bug we should fix (drop punctuation-only supervised tokens) rather than a scorer artifact?
+G. Is anything still gameable / still a band-aid? H. Are we now ready for the batch harness + real-F1 A/B, or
+what is the ONE remaining blocker? Restate the VERDICT.
