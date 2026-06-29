@@ -376,12 +376,12 @@ def test_cached_output_size_uses_narrower_sprouts_public_canvas():
     assert module._cached_output_size(
         {"candidate_id": "sprouts-1-address-line-abc"}
     ) == module._CACHED_ADDRESS_OUTPUT_SIZE
-    assert module._CACHED_ARITHMETIC_OUTPUT_SIZE[0] < 576
+    assert module._CACHED_ARITHMETIC_OUTPUT_SIZE[0] == 352
     assert module._CACHED_ADDRESS_OUTPUT_SIZE[0] < 560
     assert (
         module._CACHED_ARITHMETIC_OUTPUT_SIZE[0]
         / module._CACHED_ARITHMETIC_OUTPUT_SIZE[1]
-        < 0.36
+        < 0.31
     )
     assert (
         module._CACHED_ADDRESS_OUTPUT_SIZE[0]
