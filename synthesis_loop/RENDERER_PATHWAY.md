@@ -24,11 +24,19 @@ A renderer that garbles the tokens it's meant to let you verify is worse than us
 ```
 synthesize structure        (tokens + bboxes + GROUND-TRUTH labels)   [exists: the bundle]
   -> render hybrid (+ light, spatially-coherent thermal degradation)  [exists: thermal_variants hybrid]
+  -> IMAGE-REVIEW GATE: believable receipt AND is every labeled field  [opus, BEFORE labels]
+     legible enough that OCR will read it? Fields that fail here are
+     unrecoverable downstream -- so gate before investing in labels.
   -> re-OCR the rendered PNG with Apple Vision                         [proven on the mini]
-  -> propagate GT labels onto the re-OCR'd tokens (the hard part)      [TO BUILD]
+  -> propagate GT labels via per-line char-alignment + spatial fallback [BUILT: re_ocr_align.py]
   -> emit {re-OCR tokens, re-OCR bboxes, propagated BIO labels}        [training example]
-  -> verify (verify_candidates.py)                                     [exists]
+  -> score by PROPAGATION success (reocr_score.py), not text cleanliness [BUILT]
+  -> propagation audit (opus: did each field land right?)              [opus, AFTER labels]
 ```
+**Why the image gate comes first (proven 2026-06-29):** the only label losses in the spike were
+`SUBTOTAL`/`GRAND_TOTAL`, and the diagnostic showed they were **OCR-recall misses — Apple Vision never
+detected those tokens in the render** (not a propagation bug). A render that OCR can't read silently
+corrupts labels no matter how good propagation is. Propagation itself: 0.94/0.84 score, **0 mislabels**.
 Three payoffs: (1) pixels now actually train the model; (2) displayed pixels and training tokens can never
 diverge again; (3) training data carries **realistic OCR-error patterns** instead of clean synthetic tokens.
 

@@ -162,21 +162,37 @@ def main():
                 ents[id(o)] = Counter(per_tok[j]).most_common(1)[0][0]
                 src[id(o)] = "align"
 
-    # ---- IoU fallback ONLY for tokens still unlabeled ----
+    # ---- spatial fallback for tokens still unlabeled (totals-block fix) ----
+    # Use intersection-over-OCR-area (not IoU): an OCR word that sits INSIDE a larger GT token (the
+    # dense totals block, where line-matching mismatches) scores high here even when IoU is low.
+    def inter_area(a, b):
+        ix0, iy0, ix1, iy1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
+        return max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
     for o in ocr:
         if ents[id(o)] is not None:
             continue
+        oa = max(1.0, (o["px"][2] - o["px"][0]) * (o["px"][3] - o["px"][1]))
         best_d, best = None, 0.0
         for d in all_gt:
-            v = iou(o["px"], d["px"])
-            if v > best:
-                best, best_d = v, d
-        if best_d is not None and best >= 0.10 and best_d["ent"]:
+            frac = inter_area(o["px"], d["px"]) / oa
+            if frac > best:
+                best, best_d = frac, d
+        if best_d is not None and best >= 0.30 and best_d["ent"]:
             ents[id(o)] = best_d["ent"]
-            src[id(o)] = "iou"
+            src[id(o)] = "spatial"
 
     # flatten OCR back to reading order for output
     ocr = [o for ln in olines for o in ln]
+
+    # ---- diagnose missing entity types: OCR-recall miss vs mislabel ----
+    re_ent_set = {ents[id(o)] for o in ocr if ents[id(o)]}
+    miss_diag = {}
+    for d in all_gt:
+        if d["ent"] and d["ent"] not in re_ent_set:
+            # did ANY ocr word overlap this GT labeled token's box?
+            ga = max(1.0, (d["px"][2] - d["px"][0]) * (d["px"][3] - d["px"][1]))
+            covered = any(inter_area(o["px"], d["px"]) / ga >= 0.20 for o in ocr)
+            miss_diag.setdefault(d["ent"], "mislabeled (OCR saw it)" if covered else "OCR-recall miss (not detected)")
 
     # ---- BIO over reading order ----
     out_tokens, out_bboxes, out_tags = [], [], []
@@ -197,22 +213,26 @@ def main():
     re_ents = {ents[id(o)] for o in ocr if ents[id(o)]}
     labeled = sum(1 for o in ocr if ents[id(o)])
     n_align = sum(1 for o in ocr if src[id(o)] == "align")
-    n_iou = sum(1 for o in ocr if src[id(o)] == "iou")
+    n_spatial = sum(1 for o in ocr if src[id(o)] == "spatial")
     print(f"candidate: {cid}")
     print(f"GT tokens: {len(all_gt)}  GT lines: {len(glines)}  OCR words: {len(ocr)}  labeled: {labeled} "
-          f"(align={n_align}, iou-fallback={n_iou})")
+          f"(align={n_align}, spatial-fallback={n_spatial})")
     print(f"GT entity types ({len(gt_ents)}): {sorted(gt_ents)}")
     print(f"re-OCR entity types ({len(re_ents)}): {sorted(re_ents)}")
     missing = sorted(gt_ents - re_ents)
     print(f"MISSING entity types: {missing if missing else 'NONE  <-- all recovered'}")
+    for ent, why in miss_diag.items():
+        print(f"    {ent}: {why}")
+    # propagation score (Move 2: measures label transfer, not text cleanliness)
+    import reocr_score as RS
+    m = RS.score_propagation(ex["bboxes"], ex["ner_tags"], reocr_ex["bboxes"], reocr_ex["ner_tags"])
+    print(f"\n--- propagation score (re-OCR scorer) ---\n{json.dumps(m)}")
     print("\n--- labeled tokens (text [label] via) ---")
     for o in ocr:
         if ents[id(o)]:
             print(f"  {o['text']!r:<20} [{ents[id(o)]}] ({src[id(o)]})")
-    print("\n--- verifier ---")
     r = V.check(reocr_ex)
-    print(f"score: {r.get('_score')}  fails: "
-          f"{[k for k,v in r.items() if k!='_score' and isinstance(v,dict) and v.get('pass') is False]}")
+    print(f"\n(legacy clean-data verifier for contrast: {r.get('_score')} — penalizes OCR noise, expected low)")
     return 0
 
 
