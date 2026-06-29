@@ -40,3 +40,4 @@ next item (codex-review the plan first). Merge all landed lanes, then re-render 
 ## Round log
 - R1: tax-flag+truncation — building.
 - R1 tax-flag MERGED (661d8bf): real F/T flags, <A> gone, 54 tests pass. Lane A -> #2 reflow next.
+- R2 learner MERGED (46443aa): per-merchant item_line_template extractor (new files). Lane C -> scorecard tooling. Gap: target/home_depot flags need frequency review before wiring.
