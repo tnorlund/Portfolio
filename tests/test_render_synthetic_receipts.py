@@ -504,9 +504,23 @@ def test_cached_line_render_normalizes_sprouts_footer_word_splits_fixture():
     assert "Save money, save paper -" not in texts
     assert "US DEBIT Entry Method:Cntctless" in texts
     assert "US DEBIT Entry Method: Ontotless" not in texts
+    assert texts.index("Store Hours MON-SUN 7AM-10PM") < texts.index(
+        "LOCAL FAVORITES"
+    )
+    assert texts.index("LOCAL FAVORITES") < texts.index("DAIRY")
     assert "Please keep your original receipt, the" in texts
     assert not any("recei pt" in text for text in texts)
     assert "Please keep your original receipt, th" not in texts
+    assert texts.index("POS: 034 Transaction: 0297") < texts.index(
+        "Thursday, September 4, 2025 05:54 PM"
+    )
+    assert texts.index("Thursday, September 4, 2025 05:54 PM") < texts.index(
+        "Save money, save paper"
+    )
+    loyalty_left, loyalty_right = _line_bounds(
+        _line_for_text(receipt, "LOCAL FAVORITES")
+    )
+    assert 470 <= (loyalty_left + loyalty_right) / 2 <= 530
 
 
 def test_cached_hybrid_renderer_stamps_barcode_band():
@@ -591,6 +605,21 @@ def test_cached_thermal_ink_spread_fattens_ink_without_touching_distant_paper():
         if images[0].getpixel((x, y))[0] < 120
     )
     assert adjacent_dark > 9
+
+
+def test_cached_thermal_ink_contrast_darkens_medium_ink_only():
+    from PIL import Image
+
+    module = _load_module()
+    image = Image.new("RGBA", (4, 1), (250, 249, 245, 255))
+    image.putpixel((1, 0), (172, 170, 168, 255))
+    image.putpixel((2, 0), (28, 28, 28, 255))
+
+    module._apply_cached_thermal_ink_contrast(image)
+
+    assert image.getpixel((0, 0)) == (250, 249, 245, 255)
+    assert image.getpixel((1, 0))[0] < 120
+    assert image.getpixel((2, 0))[0] <= 32
 
 
 def test_cached_thermal_scanline_banding_adds_horizontal_rows():

@@ -53,6 +53,9 @@ _CACHED_AMOUNT_RE = re.compile(
     re.IGNORECASE,
 )
 _CACHED_BARCODE_RE = re.compile(r"^\d{14,}$")
+_CACHED_WEEKDAY_TIMESTAMP_RE = re.compile(
+    r"^(?:MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)"
+)
 _CACHED_CURRENCY_MARKERS = {"USD$", "$", "USD"}
 _CACHED_AMOUNT_LABELS = {
     "LINE_TOTAL",
@@ -330,7 +333,7 @@ def _is_centered_sprouts_header_text(text: str) -> bool:
     compact = _compact_text(text)
     if not compact:
         return False
-    return _is_sprouts_header_line(compact)
+    return _is_sprouts_header_line(compact) or compact == "LOCALFAVORITES"
 
 
 def _cached_amount_cluster_start(words: list[str]) -> int | None:
@@ -967,7 +970,7 @@ def _sprouts_text_section(text: str) -> str:
         return "payment"
     if text in {"00OFF"}:
         return "payment"
-    if text.startswith(("TUESDAY", "SATURDAY")) or re.fullmatch(r"\d{8}\d{6}", text):
+    if _CACHED_WEEKDAY_TIMESTAMP_RE.match(text) or re.fullmatch(r"\d{8}\d{6}", text):
         return "footer"
     if any(token in text for token in (
         "FEEDBACK",
@@ -1180,6 +1183,7 @@ def _apply_cached_thermal_texture(image, receipt: dict) -> None:
         ^ (int(image.height) & 0xFFFF)
     )
     rng = random.Random(seed)
+    _apply_cached_thermal_ink_contrast(image)
     _apply_cached_thermal_ink_spread(
         image,
         random.Random(seed ^ 0x4B8C_2F11),
@@ -1248,7 +1252,7 @@ def _apply_cached_thermal_ink_spread(image, rng: random.Random) -> None:
     for y in range(image.height):
         for x in range(image.width):
             r, g, b, a = pixels[x, y]
-            if a < 255 or min(r, g, b) >= 120:
+            if a < 255 or min(r, g, b) >= 170:
                 continue
             for dx, dy, probability in ((1, 0, 0.28), (-1, 0, 0.12), (0, 1, 0.08)):
                 if rng.random() >= probability:
@@ -1264,6 +1268,21 @@ def _apply_cached_thermal_ink_spread(image, rng: random.Random) -> None:
     for x, y in spread_coords:
         gray = rng.randint(42, 78)
         pixels[x, y] = (*_cached_thermal_warm_rgb(gray), pixels[x, y][3])
+
+
+def _apply_cached_thermal_ink_contrast(image) -> None:
+    """Darken rendered glyph pixels so density comes from ink, not just paper grain."""
+    pixels = image.load()
+    for y in range(image.height):
+        for x in range(image.width):
+            r, g, b, a = pixels[x, y]
+            if a < 255 or _is_cached_paper_pixel(r, g, b):
+                continue
+            value = min(r, g, b)
+            if value < 80 or value >= 210:
+                continue
+            gray = max(28, min(118, int(round(value * 0.58))))
+            pixels[x, y] = (*_cached_thermal_warm_rgb(gray), a)
 
 
 def _apply_cached_thermal_mottle(image, rng: random.Random) -> None:
