@@ -1,13 +1,11 @@
 {
   "round": 1,
-  "overall_mean": 0.951,
+  "overall_mean": 0.962,
   "per_merchant": {
     "amazon_fresh": {
-      "mean": 0.988,
+      "mean": 1.0,
       "n": 20,
-      "failing_checks": {
-        "word_spacing": "18/20"
-      }
+      "failing_checks": {}
     },
     "costco_wholesale": {
       "mean": 0.971,
@@ -37,18 +35,17 @@
       "failing_checks": {}
     },
     "target": {
-      "mean": 0.902,
+      "mean": 0.973,
       "n": 14,
       "failing_checks": {
-        "word_spacing": "6/14",
         "arithmetic": "11/14"
       }
     },
     "the_home_depot": {
-      "mean": 0.94,
+      "mean": 0.946,
       "n": 20,
       "failing_checks": {
-        "word_spacing": "15/20",
+        "word_spacing": "16/20",
         "single_header": "18/20",
         "arithmetic": "10/12"
       }
@@ -62,84 +59,41 @@
   "line_review": {
     "merchant": "costco_wholesale",
     "worst_lines": [
-      "line 2: logo subtitle reads 'EWHOLESALE' with stray leading E",
-      "line 8: stray 'CHANG0.00' fragment floats over the Member line",
-      "line 25: garbled merged number '09708722025' in footer",
-      "line 3: 'WestlakeVillage' words touching with no space",
-      "line 23: 'CHANGE 0.00.' has an extra trailing period"
+      "line 2: logo subtitle malformed 'EWHOLESALE'",
+      "line 11: TAX 0.00 implausible for taxable items",
+      "line 19: AMOUNT $26.82 \u2260 TOTAL 28.84 arithmetic mismatch",
+      "line 9: price not flush with column above"
     ],
     "bad_lines": [
       {
         "n": 2,
         "text": "EWHOLESALE",
         "ok": false,
-        "issue": "logo subtitle has stray leading 'E' \u2014 should read 'WHOLESALE'"
+        "issue": "logo subtitle malformed: leading glyphs read 'EW' instead of 'W' in WHOLESALE"
       },
       {
-        "n": 3,
-        "text": "WestlakeVillage #117",
+        "n": 9,
+        "text": "1404655 CHEESE TRAY 12.99",
         "ok": false,
-        "issue": "'Westlake' and 'Village' touch with no space between words"
+        "issue": "price 12.99 sits slightly left of the price column set by line 8's 15.85; right edges not flush"
       },
       {
-        "n": 4,
-        "text": "5700 Lindero Canyon Ro",
+        "n": 11,
+        "text": "TAX 0.00",
         "ok": false,
-        "issue": "street suffix truncated to 'Ro' (should be 'Rd') at end of line"
+        "issue": "TAX 0.00 implausible for taxable Costco items (CHEESE TRAY); tax column value rendered in red but zero"
       },
       {
-        "n": 6,
-        "text": "(818) 597\u20143901",
+        "n": 14,
+        "text": "AID: A0000000031010 VERIFIED BY PIN",
         "ok": false,
-        "issue": "phone uses an em-dash instead of a hyphen between 597 and 3901"
-      },
-      {
-        "n": 7,
-        "text": "SELF\u2014CHECKOUT",
-        "ok": false,
-        "issue": "em-dash too long/heavy vs a real hyphen in 'SELF-CHECKOUT'"
-      },
-      {
-        "n": 8,
-        "text": "B1 Member 112012911712",
-        "ok": false,
-        "issue": "stray fragment 'CHANG0.00' floats in tiny font above-right of this line (misplaced CHANGE field)"
-      },
-      {
-        "n": 10,
-        "text": "1484855 CHEESE  TRAY 12.99",
-        "ok": false,
-        "issue": "double space between 'CHEESE' and 'TRAY' in description"
+        "issue": "AID/VERIFIED BY PIN run together with tight spacing; reads cramped vs original"
       },
       {
         "n": 19,
-        "text": "APPROVED\u2014 Purchase",
+        "text": "AMOUNT: $26.82",
         "ok": false,
-        "issue": "em-dash after APPROVED instead of hyphen/space"
-      },
-      {
-        "n": 23,
-        "text": "CHANGE 0.00.",
-        "ok": false,
-        "issue": "trailing extra period after the amount ('0.00.')"
-      },
-      {
-        "n": 25,
-        "text": "09708722025 18:45 117 205 178 705",
-        "ok": false,
-        "issue": "garbled leading number '09708722025' (date/seq collapsed into one token)"
-      },
-      {
-        "n": 28,
-        "text": "Thank   You!",
-        "ok": false,
-        "issue": "wide gap between 'Thank' and 'You!' from forced centering"
-      },
-      {
-        "n": 29,
-        "text": "Please   Come",
-        "ok": false,
-        "issue": "wide gap between 'Please' and 'Come'; line looks split/incomplete"
+        "issue": "AMOUNT $26.82 disagrees with TOTAL 28.84 above \u2014 arithmetic mismatch after item removal"
       }
     ]
   }

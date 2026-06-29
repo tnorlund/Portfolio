@@ -1,13 +1,11 @@
 {
-  "overall_mean": 0.951,
+  "overall_mean": 0.962,
   "worst_merchant_mean": 0.825,
   "merchants": {
     "amazon_fresh": {
-      "mean": 0.988,
+      "mean": 1.0,
       "n": 20,
-      "failing_checks": {
-        "word_spacing": "18/20"
-      }
+      "failing_checks": {}
     },
     "costco_wholesale": {
       "mean": 0.971,
@@ -37,18 +35,17 @@
       "failing_checks": {}
     },
     "target": {
-      "mean": 0.902,
+      "mean": 0.973,
       "n": 14,
       "failing_checks": {
-        "word_spacing": "6/14",
         "arithmetic": "11/14"
       }
     },
     "the_home_depot": {
-      "mean": 0.94,
+      "mean": 0.946,
       "n": 20,
       "failing_checks": {
-        "word_spacing": "15/20",
+        "word_spacing": "16/20",
         "single_header": "18/20",
         "arithmetic": "10/12"
       }
