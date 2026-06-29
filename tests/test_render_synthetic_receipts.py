@@ -721,11 +721,14 @@ def test_cached_thermal_density_floor_adds_paper_speckles_only():
     assert dark_count >= 1200
 
 
-def test_cached_thermal_density_floor_uses_higher_remove_item_floor():
+def test_cached_thermal_density_floor_uses_candidate_specific_floors():
     module = _load_module()
 
     remove_receipt = {
         "candidate_id": "sprouts-arithmetic-2-remove-line-item-abc"
+    }
+    address_receipt = {
+        "candidate_id": "sprouts-1-address-line-abc"
     }
     add_receipt = {
         "candidate_id": "sprouts-arithmetic-1-add-line-item-abc"
@@ -734,6 +737,10 @@ def test_cached_thermal_density_floor_uses_higher_remove_item_floor():
     assert (
         module._cached_thermal_min_dark_density(remove_receipt)
         == module._CACHED_REMOVE_THERMAL_MIN_DARK_DENSITY
+    )
+    assert (
+        module._cached_thermal_min_dark_density(address_receipt)
+        == module._CACHED_ADDRESS_THERMAL_MIN_DARK_DENSITY
     )
     assert (
         module._cached_thermal_min_dark_density(add_receipt)
