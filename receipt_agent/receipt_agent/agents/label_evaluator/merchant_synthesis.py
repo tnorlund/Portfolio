@@ -36,6 +36,7 @@ from .store_profile import (
     reflow_line_boxes,
 )
 from .synthesis_reconcile import reconcile_candidate
+from .synthesis_receipt_model import reconcile_and_validate
 
 
 CORE_LABEL_SET = set(CORE_LABELS.keys())
@@ -581,7 +582,38 @@ def generate_merchant_synthesis_candidates(
         if candidate:
             candidates.append(candidate)
 
+    # Reject totals-owning candidates whose printed cascade still contradicts
+    # itself (a stray un-summed LINE_TOTAL from a noisy base, or a subtotal/tax/
+    # grand-total that does not reconcile). The item count is always repaired in
+    # _candidate_from_receipt, so only the arithmetic operations that recompute
+    # the money cascade can fail here; field-replacement / hard-negative / header
+    # operations inherit the base totals untouched and are left as-is.
+    candidates = [
+        candidate
+        for candidate in candidates
+        if _candidate_totals_reconcile(candidate)
+    ]
+
     return candidates[:max_candidates]
+
+
+# Operations that recompute the SUBTOTAL/TAX/GRAND_TOTAL cascade and so must emit
+# a self-consistent one; others inherit the base receipt's totals unchanged.
+_TOTALS_OWNING_OPERATIONS = {
+    "add_line_item",
+    "remove_line_item",
+    "compose_online_catalog",
+}
+
+
+def _candidate_totals_reconcile(candidate: dict[str, Any]) -> bool:
+    """True unless a totals-owning candidate's content cascade fails to reconcile."""
+    metadata = candidate.get("metadata") or {}
+    if metadata.get("operation") not in _TOTALS_OWNING_OPERATIONS:
+        return True
+    report = metadata.get("content_reconciliation") or {}
+    # Absent report (older path) is treated as reconciling so we never over-drop.
+    return bool(report.get("reconciles", True))
 
 
 def _false_positive_recipes(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3238,6 +3270,13 @@ def _candidate_from_receipt(
     tokens, bboxes, tags = _flatten_lines(
         receipt.get("lines", []), merchant_name
     )
+    # Single CONTENT-reconciliation model (synthesis_receipt_model): rewrite any
+    # printed item-count line to the visible product-line count and audit the
+    # subtotal/tax/grand-total cascade. The report rides on the candidate so the
+    # generator can drop a totals-owning operation whose math still contradicts.
+    tokens, bboxes, tags, content_report = reconcile_and_validate(
+        tokens, bboxes, tags
+    )
     slug = _slug(f"{merchant_name}-{source}-{operation}-{index}")
     candidate_metadata = {
         "source": source,
@@ -3268,6 +3307,7 @@ def _candidate_from_receipt(
         "synthesis_accuracy_evidence",
         build_synthesis_accuracy_evidence(operation, candidate_metadata),
     )
+    candidate_metadata["content_reconciliation"] = content_report.to_dict()
     return {
         "candidate_id": slug,
         "recipe_id": f"{source}-{operation}",
