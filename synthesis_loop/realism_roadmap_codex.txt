@@ -1,0 +1,1593 @@
+Reading additional input from stdin...
+OpenAI Codex v0.142.2
+--------
+workdir: /Users/tnorlund/Portfolio_content
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019f14f7-1143-75e0-8b67-7ba3fe4874cf
+--------
+user
+Read synthesis_loop/REALISM_ROADMAP_TASK.md and /tmp/realism_findings.json, then produce the prioritized realism roadmap exactly as the task specifies.
+codex
+I’ll read the task instructions and findings first, then format the roadmap to match the task’s requested structure rather than guessing at the output shape.
+exec
+/bin/zsh -lc "sed -n '1,240p' synthesis_loop/REALISM_ROADMAP_TASK.md" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+# Codex: synthesize a prioritized receipt-realism roadmap
+
+You have 25 per-receipt realism analyses (one per merchant x synthesis-operation) in
+`/tmp/realism_findings.json`: each has realism_0_10 (mean 2.6, range 1-4), the most damaging tell, and a
+ranked list of concrete fixes. Read it fully.
+
+Goal: ONE prioritized roadmap to make our synthetic receipts photorealistic for a frontend demo.
+
+Produce:
+1. The 5 HIGHEST-LEVERAGE changes (the ones that, fixed, move the mean realism the most), each with: the
+   concrete change, the LAYER (typography/layout/content/paper-texture/graphics), how many of the 25 it
+   recurs in, and WHERE in the code it lives. Code map: render path = `scripts/render_synthetic_receipts.py`
+   (`_render_cached_hybrid`) + `receipt_agent/.../rendering/receipt_renderer.py` (`render_receipt`, `_fit_font`,
+   `_draw_text`); content/synthesis = `receipt_agent/.../merchant_synthesis.py` + `synthesis_reconcile.py`
+   (+ the new `synthesis_text_clean.py`); the font profile = `rendering/font_profile.py`.
+2. A grouped backlog (by layer) of the remaining fixes, deduped, each one line.
+3. The single thing to do FIRST and why.
+4. Any disagreement with the analysts (over/under-stated issues; things that won't matter for a demo).
+
+Output a one-line headline verdict, then sections 1-4. Be concrete and ruthless about priority.
+
+exec
+/bin/zsh -lc "sed -n '1,260p' /tmp/realism_findings.json" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+[
+ {
+  "merchant": "Amazon Fresh",
+  "op": "add_line_item",
+  "realism": 2.5,
+  "tell": "A stray order number (\"Order # 111-8730966-9276221\") is rendered in the MIDDLE of the product list, sandwiched between added line items \u2014 real Amazon Fresh receipts never interleave an order number among products, so the added block immediately reads as machine-generated garbage.",
+  "fixes": [
+   "Replace the proportional font with the original's uniform monospace thermal typeface at the same character pitch and weight; render added lines with the exact same glyphs so the new items are indistinguishable from existing ones.",
+   "Right-align every price ($2.79, $3.98, $4.39) to a single fixed decimal column matching the original's price gutter; align the trailing 'F'/'T' flag to its own column beyond the price.",
+   "Remove the stray 'Order # 111-8730966-9276221' from inside the product list; an order number must only appear in the header block, never between line items.",
+   "Give each added item the canonical two-line structure: line 1 = 'Name truncated...  now  $X.XX F', line 2 (indented) = 'SALE 1@ $X.XX, WAS: $Y.YY each' with a real WAS value; complete the 'Amazon Fresh Brand... WAS:' fragment instead of leaving it dangling.",
+   "Normalize intra-line spacing to single monospace cells \u2014 kill double spaces like 'Whole  Foods Market' and 'SAVE 20  $1.99' so kerning matches the original's even grid.",
+   "Tighten vertical rhythm: use the original's consistent one-blank-line gap between items and place the indented SALE line directly under its product, eliminating the large floating gaps in the added block.",
+   "Reconcile the arithmetic: make visible line prices sum to pre-savings $8.37, apply the -$1.60 promo to reach subtotal, set the item count to the true number of product lines, and delete the duplicated subscript '$11.16' fragments overlapping the totals/payment rows.",
+   "Match paper/ink character: add the original's slightly grainy thermal texture, faint ink-spread on glyph edges, and consistent baseline jitter so the crisp clean added text blends with the scanned look rather than appearing as sharp digital overlay."
+  ]
+ },
+ {
+  "merchant": "Amazon Fresh",
+  "op": "compose_online_catalog",
+  "realism": 2.5,
+  "tell": "The composed items don't follow the receipt's line grammar. Real Amazon Fresh rows are a left-aligned (wrapped/truncated) product name, an optional \"now\" column, and a right-margin price with a trailing F/T tax flag, plus a \"SALE 1@ ... WAS: ... each\" sub-line. The synthetic items are centered free-floating strings (\"ORGANIC  WHITE  ONION  <A>  $1.49\") with a raw UPC (\"061994700002\") dumped inline, no tax flag, no price column, and no sub-line. It reads as catalog tokens pasted in, not a printed register line.",
+  "fixes": [
+   "Render the entire body in the same dot-matrix/thermal monospace face used by the logo's receipt, at one fixed pitch, so every glyph lands on a fixed character grid.",
+   "Lay items out on a true monospace grid: left-aligned product name, optional 'now' column, and price right-aligned to a fixed money column with a trailing 'F' or 'T' tax flag (food vs taxable).",
+   "Reuse one right-aligned money column for the totals block so $17.48 / $0.65 / $18.13 sit at the same x and the same font size as the labels, not a shrunken floating font.",
+   "Fix the totals semantics: give 'Pre-savings total:' its value, make Subtotal = items - savings, Sales tax a plausible CA rate on taxable lines only, and Purchase total = Subtotal + tax; ensure the chain reconciles.",
+   "Compose 6 actual line items to match 'Total number of items: 6' (or set the count to the items shown), each with a 'SALE 1@ $X, WAS: $Y each' sub-line where a discount applies.",
+   "Drop the inline raw UPC and '<A>' marker; use real catalog-style descriptions with '...' truncation (e.g. \"Tito's Handmade Vodka, 750 mL...\") and an 'Age check confirmed' line for the alcohol item.",
+   "Move the QR code back inline-left next to the email/customer-service paragraph, and remove the human-readable digits printed under the bottom barcode.",
+   "Add scan realism: slight rotation/skew, dot-matrix ink texture with light bleed, paper warp and grain, and faint dotted-line separators between sections to match the original scan."
+  ]
+ },
+ {
+  "merchant": "Amazon Fresh",
+  "op": "remove_line_item",
+  "realism": 2.5,
+  "tell": "The totals block is internally broken and rendered in a shrunken, mis-aligned font: Subtotal ($31.36) and Purchase total ($32.52) and the MasterCard charge ($32.52) are typeset ~40% smaller than every other glyph and float off the right margin. Worse, the math no longer reconciles after the line removal (Pre-savings $35.95 minus $3.10 should be $32.85, not $31.36; item count still says 6 though a product line was removed). The arithmetic was never recomputed, so the receipt is mathematically impossible.",
+  "fixes": [
+   "Recompute the full totals cascade after removal: subtract the removed item's price (and any savings) from Pre-savings total, Subtotal, Sales tax, Purchase total, the TOTAL SAVINGS box, and the MasterCard charge so every number reconciles; drop item count from 6 to 5.",
+   "Render every monetary amount at the same font size/weight as the body and right-align all of them to a single decimal/price column shared by line items and totals.",
+   "Swap the proportional serif font for a fixed-width dot-matrix/thermal face (e.g. a monospace receipt font), use straight ASCII apostrophes, and enforce single-space word spacing.",
+   "Replace all en/em dashes with plain ASCII hyphens in addresses, phone numbers, Pre-savings, and the dash before negative amounts.",
+   "Add the QR code under 'Scan the QR code...' and the full-width Code128-style barcode at the bottom, matching the original's placement and sizing.",
+   "Normalize the markdown flag to lowercase 'now' on every sale line to match Amazon Fresh's consistent casing.",
+   "Draw the rectangular border box around 'TOTAL SAVINGS $3.10' as on the original.",
+   "Add thermal-print realism: slight scan skew, dot-matrix edge noise, faint paper grain and uneven ink density instead of the flat clean background."
+  ]
+ },
+ {
+  "merchant": "Amazon Fresh",
+  "op": "replace_field",
+  "realism": 1,
+  "tell": "The swapped address is a chiropractor's clinic block (128 AUBURN CT / WESTLAKE VILLAGE, CA. 91 / 805-495-0110) sitting directly under the amazonfresh logo, with a truncated, broken ZIP (CA. 91) and a local 805 number instead of an Amazon 1-800 line. The header is internally self-contradictory: a different business's address under the Amazon Fresh wordmark.",
+  "fixes": [
+   "Replace the chiropractor block with a real Amazon Fresh store address: a store-name line (Westlake Village Store), 140 PROMENADE WAY STE A, THOUSAND OAKS, CA 91362-3828, then https://www.amazon.com. Keep the entity consistent with the logo.",
+   "Emit a full 5+4 ZIP (91362-3828) and never truncate; validate the state/ZIP token so CA. 91 can never render.",
+   "Use Amazon's national customer line format (1-800-...) rather than a local 805 number, or drop the phone entirely since the real receipt has none in the header.",
+   "Collapse the multi-space gaps inside address lines; render each line as a single left-aligned/centered string with single spaces instead of laying out tokens word-by-word.",
+   "Tighten the header vertical rhythm: the real block is compact and centered directly under the logo, not spread across large gaps.",
+   "Match the thermal monospace font weight and slight dot-matrix character irregularity of the original; the candidate's clean even sans reads as digital.",
+   "Add thermal-paper texture: subtle warm-gray background, faint horizontal banding, ink-density variation, and light scan noise instead of flat white.",
+   "Restore the document structure so the field lives in a real Amazon Fresh receipt: itemized lines, totals/savings block, TOTAL SAVINGS box, QR code, and bottom barcode rather than a bare card-terminal slip."
+  ]
+ },
+ {
+  "merchant": "Costco Wholesale",
+  "op": "add_line_item",
+  "realism": 4,
+  "tell": "The numeric amounts render in TWO different font sizes: the added line-item prices (15.02, 8.99, 15.99) are full body size, but the rolled-up totals they feed (SUBTOTAL 40.00, AMOUNT $40.00, EFT/Debit 40.00) print in a much smaller font. A real Costco thermal receipt uses one uniform monospace size for every digit, so this size split immediately reads as a composited/injected block.",
+  "fixes": [
+   "Render ALL numeric amounts (line prices, SUBTOTAL, TAX, TOTAL, AMOUNT, EFT/Debit, CHANGE) in one identical monospace size and weight -- kill the small-font totals so 40.00 matches the 15.99 line price exactly.",
+   "Add the missing 'E' tax-status flag in the left column of the third added line ('9050611 KS THICK CUT') so every item row has a flag, matching the first two rows.",
+   "Decimal-align every price to a single fixed right-hand column; right-justify 8.99 to the same rightmost x as 15.02/15.99 so the decimal points stack.",
+   "Increase body font weight/darkness to match real Costco thermal print -- thicker strokes, higher contrast, slight ink-bleed, instead of the thin light grey currently used.",
+   "Align the SUBTOTAL/TAX/TOTAL block's left margin and the item-number indentation to the same grid the item names use, removing the extra inward indent on the totals group.",
+   "Complete the truncated marker to '***END OF PRE-SCANNED ITEMS***' (or drop it) and left-justify it consistently with the surrounding block.",
+   "Add the scanned-thermal paper look: the cyan/blue background tint and edge cast seen in the original, plus subtle vertical roller streaks, so the white synthetic stock matches the real scan.",
+   "Tighten inter-line vertical spacing of the three item rows to match the denser line pitch of the real receipt's item block."
+  ]
+ },
+ {
+  "merchant": "Costco Wholesale",
+  "op": "compose_store_header",
+  "realism": 2,
+  "tell": "The street line \"5700 Lindero Canyon Rd Westlake Village, CA 91362\" is rendered in a microscopic font (roughly a third the height of every other line) crammed onto a single line, while the lines above and below it (\"Henderson #673\" and \"Hendersan/ NV 89014\") are normal size. That abrupt, isolated font-scale collapse in the middle of the header is an unmistakable composited-text artifact no thermal printer produces.",
+  "fixes": [
+   "Make the header one coherent store. If it is Henderson #673 NV, replace the street line with the real Henderson NV Costco address (street + 'Henderson, NV 89014') and matching local phone; do not paste the Westlake Village CA street under a Henderson name.",
+   "Render every header line at the SAME font size as the store-name line. Eliminate the microscopic street line; set street on its own full-size line and city/state/zip on the next, matching Costco's body font.",
+   "Fix the spelling and punctuation: 'Henderson' (not 'Hendersan'), drop the stray '/', and format the city/state/zip as 'Henderson, NV 89014' with a comma, not a slash.",
+   "Repair the logo: render a single clean COSTCO wordmark with one integrated WHOLESALE banner (sharp horizontal bars). Remove the duplicate small-caps 'WHOLESALE' line beneath it.",
+   "Tighten the store name to Costco's layout: 'Henderson #673' with a single space and number close to the name, centered, not split by a wide gap.",
+   "Add the store phone line, '(xxx) xxx-xxxx', centered directly under the city/state/zip, matching the real receipt's structure.",
+   "Center all header lines on a shared vertical axis with consistent leading, and add a balanced gap between the logo and the first text line so baselines line up to a grid.",
+   "Apply uniform thermal-print weight and faint paper texture across the header so the composed lines match the grain/contrast of the rest of the receipt instead of looking pasted in."
+  ]
+ },
+ {
+  "merchant": "Costco Wholesale",
+  "op": "remove_line_item",
+  "realism": 3,
+  "tell": "The price column has no font/size discipline. The surviving line item renders \"12.99\" large, but the SAME value on SUBTOTAL, TOTAL, AMOUNT and the EFT/Debit line is shrunk to a tiny superscript size and floated at random x-positions. The real receipt prints every amount in one uniform monospace size, right-justified to a single hard column. This instantly reads as machine-composited rather than thermal-printed.",
+  "fixes": [
+   "Render all currency amounts (line item, SUBTOTAL, TAX, TOTAL, AMOUNT, EFT/Debit, CHANGE) at ONE identical font size and right-justify them to a single shared right margin, recreating the original's clean price gutter.",
+   "Replace the proportional sans typeface with a heavy fixed-pitch thermal/dot-matrix font (the original is monospaced with thick uniform glyphs); apply equally to labels and numerals.",
+   "Restore the reverse-video black highlight bar behind the grand TOTAL and re-add the leading '**** ' asterisk prefix on the TOTAL line.",
+   "Re-add the left-margin 'E' item-type code aligned in its own column before the item number on the surviving CHEESE TRAY row, matching Costco's per-line tax/type flag.",
+   "Close the vertical gap left by the removed row: keep inter-line leading constant so the block compresses by exactly one line height instead of leaving white space.",
+   "Generate and composite an actual 1D barcode above the numeric string 21011720501782509081845 so it matches the original's scannable bars.",
+   "Rebuild the COSTCO logo: the synthetic shows a degraded mark plus a tiny detached 'WHOLESALE' caption; replace with the single integrated bold-italic COSTCO over the striped WHOLESALE bar at the correct width.",
+   "Add thermal-paper realism: faint cyan/teal scan tint along the edges, slight curl/shadow, paper grain and ink-bleed/threshold noise so glyph edges roughen instead of staying crisp anti-aliased vector text."
+  ]
+ },
+ {
+  "merchant": "Costco Wholesale",
+  "op": "replace_field",
+  "realism": 3,
+  "tell": "The COSTCO WHOLESALE logo is broken: it renders at roughly half the real size and \"WHOLESALE\" is collided with its horizontal bar graphics into an illegible smear, whereas the real receipt has a large, crisp, heavy condensed logo with clean stripe bars flanking COSTCO.",
+  "fixes": [
+   "Rebuild the COSTCO WHOLESALE logo as a single high-res asset: large heavy condensed COSTCO with flanking horizontal stripe bars and WHOLESALE cleanly underset, scaled to ~75% of receipt width like the original; eliminate the bar-on-text overlap.",
+   "Swap the body font to a heavy thermal dot-matrix monospace and increase stroke weight so glyphs match the dark, slightly bleeding print of the real receipt rather than thin clean sans.",
+   "Set all four header lines (store name, street, city/state/zip, phone) at one uniform point size and weight; the phone line must not be smaller than the address lines.",
+   "Fix the phone token spacing to tight '(818) 597-3901' with no space after the open paren.",
+   "Render a real Code128 barcode bitmap above the digit string instead of showing only the numeric line '2 011720301102510201344'; the original has full bars.",
+   "Add thermal paper texture and the blue-tinted scanner background margins; the synthetic is on flat pure white, which never matches a scanned thermal slip.",
+   "Style the closing 'Thank You! / Please Come Again' as the large letter-spaced display lines used by Costco instead of small scattered plain words.",
+   "Introduce subtle global skew, slight print density variation, and faint edge darkening to break the too-clean digital uniformity and emulate a scanned receipt."
+  ]
+ },
+ {
+  "merchant": "Gelson's Westlake Village",
+  "op": "add_line_item",
+  "realism": 3.5,
+  "tell": "A stray, center-floating \"1b\" token sits directly under the added GARLIC-BULK line with no accompanying weight/unit-price line (no \"X lb @ $Y / lb\"). It is the orphaned remnant of a weighed-item layout and instantly reads as machine-generated garbage that no real Gelson's register would print.",
+  "fixes": [
+   "Delete the orphan centered '1b' token below GARLIC-BULK. If weighed, replace with a complete indented sub-line in the real format e.g. '0.45 lb @ $4.99 / lb'; if fixed-price, drop the weight line entirely.",
+   "Move GARLIC-BULK into the PRODUCE section where bulk produce belongs at Gelson's, instead of REG DELI; keep section grouping believable.",
+   "Right-align the '2.24' to the exact price-column x used by 4.29 / 5.99 / 7.13, and align the trailing 'F' to the same tax-flag column.",
+   "Match the line-total font size and weight to the other item lines; the inserted total is noticeably bolder/larger than neighbors.",
+   "Tighten the leading above and below the inserted line so its baseline spacing equals the uniform item-row pitch of the real receipt.",
+   "Render the barcode flush-left and the product name indented one space beneath it, mirroring the exact two-line item structure of GREEK FETA / TOMATOES-CRUSHED.",
+   "Use the same monospace receipt font and character cell width as adjacent rows; the added glyphs are subtly heavier and slightly wider than the surrounding dot-matrix text.",
+   "Apply matching paper grain, slight ink-bleed and thermal fade to the new glyphs; the inserted text is too crisp/clean versus the speckled, faded real lines."
+  ]
+ },
+ {
+  "merchant": "Gelson's Westlake Village",
+  "op": "remove_line_item",
+  "realism": 3,
+  "tell": "Amount typography is wildly inconsistent in size and weight: several line totals (5.70 F, 7.13 F, 0.50 F) are rendered large/bold while the grand totals (USD$ 35.29, BALANCE DUE 35.29, $35.29) shrink to tiny superscript-sized text. A real thermal POS printer uses ONE fixed monospace size for the entire amount column, so this size jitter instantly reads as composited/synthetic.",
+  "fixes": [
+   "Render every numeric amount (line totals, unit prices, Total, BALANCE DUE, CREDIT CARD, CHANGE) in ONE fixed monospace size and weight; remove the large/bold treatment on 5.70/7.13/0.50 and the tiny superscript treatment on the 35.29 grand totals.",
+   "Right-align all amounts to a single decimal/units column at a fixed x, and right-align the 'F' tax flag to its own narrower column to the right of that, matching the original's rigid two-column grid.",
+   "Normalize vertical line spacing to a single consistent leading throughout, especially across the edited GROCERY block, so the removed line leaves no tighter/looser gap than neighboring rows.",
+   "Fix the per-unit weight sublines so 'QTY lb @ $UNIT / lb' is left-indented directly under its product name (as with TOMATOES/ONION), not pushed to the right or onto the wrong line; correct the JALAPENO weight line placement.",
+   "Swap the body font to a heavier dot-matrix/thermal monospace that matches the original's glyph weight and slightly irregular ink, instead of the current thin clean monospace.",
+   "Replace the logo with the authentic ornate Gelson's script including the large flourished swash-G to match the real masthead.",
+   "Restore the full address block: '2734 TOWNSGATE ROAD' over 'WESTLAKE VILLAGE, CA 91361' over phone; fix the TOHNSGATE/READ corruption so the header reads cleanly and centered.",
+   "Add scan realism: warm off-white paper tone, subtle vertical thermal banding, faint scanner noise/speckle, a slight skew/curl, and softened edges so it does not look like flat uniform gray digital text."
+  ]
+ },
+ {
+  "merchant": "Smith's",
+  "op": "add_line_item",
+  "realism": 2,
+  "tell": "The added item block overruns the masthead: KRAFT DRESSING and stray \"F F F\" glyphs collide with the \"Smith's\" logo and the \"FRESH FOR EVERYONE\" tagline at the very top, an impossible layout on a real printed receipt where items always start well below the address block.",
+  "fixes": [
+   "Clip and reflow the inserted item block so it begins below the 'Your cashier was CHEC 512' line; never let any product row render above the address/phone block or over the Smith's masthead.",
+   "Render every price in the SAME monospace font, size, and weight as the body text, and place them on the shared text baseline (no superscripting, no lighter ink).",
+   "Hard-align all prices to a single right-edge column with consistent decimal alignment and the trailing 'F' tax flag in a fixed column, matching the real receipt's '4.99 F' stack.",
+   "Fix the corrupted quantity token: use '2/5.00' (qty/price) consistently for the avocado promo and drop the bogus '215.00'; validate that per-unit/promo prices are realistic grocery values.",
+   "Remove the back-to-back duplicate product rows (AVOCADO, BABY ROMAINE, CORN) or give each a distinct qty/price so the itemization reads like a real basket.",
+   "Use Smith's real two-line discount format: item line, then an indented 'SC  YOU SAVE  0.50' on the next line, anchored under the item, instead of floating 'SC'/'YOU' fragments in the left margin.",
+   "Tint the paper to the cool bluish-grey thermal tone of the original and add subtle fold lines, a faint curl shadow, and slight perspective/rotation instead of the flat pure-white background.",
+   "Apply uniform thermal-print ink density and a touch of edge blur/noise to the added lines so they match the slightly soft, even darkness of the surrounding real text rather than appearing crisply pasted."
+  ]
+ },
+ {
+  "merchant": "Smith's",
+  "op": "remove_line_item",
+  "realism": 3,
+  "tell": "The line was deleted and the subtotal correctly dropped from 10.16 to 9.47 (4.99+3.29+1.19), but \"TOTAL NUMBER OF ITEMS_SOLD = 4\" was NOT decremented to 3 \u2014 the count still claims 4 items while only 3 product lines remain. Any reader who counts the lines catches the synthetic edit instantly.",
+  "fixes": [
+   "Decrement 'TOTAL NUMBER OF ITEMS_SOLD' from 4 to 3 to match the removed line, so the item count stays consistent with the 3 remaining product rows",
+   "Render the recomputed amounts (9.47 on BALANCE/TOTAL/PURCHASE/DEBIT) in the exact same font size, weight, and baseline as the untouched line totals, and right-align them to the identical column edge \u2014 eliminate the shrunken superscript look",
+   "Re-insert the structural blocks that exist on the real receipt: 'US DEBIT Purchase', the masked '************1454 - H' line, 'Annual Card Savings $0.00', and the full rows of '*' / dashed separators, so there are no large blank gaps",
+   "Fix the corrupted header: the synthetic 'FRESH / FOR / EVERYONE.' is garbled into overlapping 'F F INE-.' glyphs \u2014 restore the clean three-line stacked tagline beside the Smith's wordmark",
+   "Lock the trailing 'F' tax flags into one rigid right column at uniform size and baseline; the oversized/floating F glyphs must match the body font metrics",
+   "Correct the wording back to Smith's canonical strings: 'VERIFIED BY PIN', 'AID:' (not 'DID:'), '06:05pm' (not '06:05pa'), and a coherent 'If you have any questions,' line; remove the stray '** $78' fragment",
+   "Swap the crisp uniform digital font for a thermal dot-matrix face with slightly broken/ink-starved edges and faint horizontal banding; the synthetic body text is too dark and too sharp versus the lighter, granular real print",
+   "Add real receipt paper realism: warm off-white tone, slight curl/wrinkle shadowing, and uneven thermal density \u2014 the synthetic is a flat even gray sheet with no texture or lighting gradient"
+  ]
+ },
+ {
+  "merchant": "Smith's",
+  "op": "replace_field",
+  "realism": 3,
+  "tell": "The Smith's logo masthead collides with garbled, half-rendered tagline glyphs (\"F F NE-.\" overlapping the logo) instead of the clean \"FRESH FOR EVERYONE.\" small-caps lockup on the real receipt. It reads as a broken render before you even reach the swapped address field.",
+  "fixes": [
+   "Render the 'FRESH FOR EVERYONE.' tagline as clean small caps to the right of the logo instead of overlapping garbled glyphs ('F F NE-.'); fix the logo/tagline lockup so the masthead matches the original.",
+   "Move the address/phone/cashier block up to hug the masthead and tighten inter-line leading to match the real receipt's compact spacing; eliminate the large white gap above it.",
+   "Use plain ASCII hyphens in '702-220-7763' (not en-dashes) and render the whole header block in the same condensed monospace thermal font used elsewhere.",
+   "Baseline-align the trailing item flags (the 'F' tax-code column) into a fixed right-hand column instead of floating them as superscripts; align prices on the decimal.",
+   "Restore the missing/corrupted payment anchor lines: 'US DEBIT Purchase', masked card '************1454', 'AID:' (not 'DID:'), and 'VERIFIED BY PIN' (not 'WIN').",
+   "Re-add the dotted/asterisk separator rows and the 'Annual Card Savings $0.00' line, and remove the stray '** $78' fragment; rejoin 'RECALL NOTICE' on one line with normal kerning.",
+   "Add a faint bluish-gray thermal paper tint and subtle vertical print-density variation rather than flat pure white.",
+   "Introduce slight skew, edge curl, and a soft drop shadow so the tape looks photographed on a surface rather than a flat digital canvas."
+  ]
+ },
+ {
+  "merchant": "Sprouts Farmers Market",
+  "op": "remove_line_item",
+  "realism": 2,
+  "tell": "The entire receipt is set in a clean proportional sans-serif (Helvetica/Arial-like), but a real Sprouts receipt is printed in a fixed-width monospace thermal font. With only one line item left after removal, that wrong typeface plus broken column alignment makes the single surviving product row read as a styled mockup, not a printout.",
+  "fixes": [
+   "Replace the proportional sans-serif with a fixed-width thermal monospace face (e.g. a dot-matrix/receipt font), so every glyph occupies one cell and the price column auto-aligns. This single change fixes most of the line-item realism.",
+   "Use one uniform body font size for ALL transaction/line-item/total rows. Eliminate the large-vs-tiny mix; the product line, BALANCE DUE, DEBIT, and CHANGE must all be the same height.",
+   "Right-align every amount (7.99, 7.99, $7.99, 0.00) to a single fixed price column, matching the line-item total and the BALANCE DUE / DEBIT totals to the same right margin.",
+   "Render the department banner as the underlined 'DAIRY' header above the milk line instead of 'DAILY'; do not let the store-hours 'DAILY' token become a product department label.",
+   "Collapse the excessive vertical whitespace around the single surviving line item so the receipt stays dense; tighten line spacing to the ~1-line monospace leading seen on the original instead of double/triple gaps.",
+   "Remove the floating stray comma above the phone number, and rebuild the 'FARMERS MARKET' subtitle under the SPROUTS logo as clean legible text rather than an overlapping black blob.",
+   "Fix 'BALANCE DUE' spacing to a single space and move the barcode back into the body (mid-receipt) above the feedback block, matching the real layout; ensure the human-readable digits under the barcode match the printed barcode number.",
+   "Add thermal-paper realism: slight warm off-white background, faint horizontal print banding, ink density variation and edge speckle, and very light glyph blur so type does not look like crisp vector text on flat gray."
+  ]
+ },
+ {
+  "merchant": "Target",
+  "op": "add_line_item",
+  "realism": 3,
+  "tell": "The inserted Barbasol line is visually broken: the description \"049063338 Barbasol\" sits on one baseline while its \"$2.49\" price floats on a lower baseline, the price is not right-aligned to the shared price column the other items use, and there is an orphaned floating dash (\"--\" token) hovering above the price. No real Target line item looks like this.",
+  "fixes": [
+   "Render description and price of the Barbasol line on a single shared baseline, exactly matching the row height/leading of the GG Fruit, SOUR PATCH, and CarltonCards rows.",
+   "Right-align '$2.49' to the same fixed price column x-coordinate as $4.99/$3.00/$5.99, and align $16.47/$0.58/$17.05 to that same column.",
+   "Remove the floating '--' artifact and instead place a real tax-class letter (T) in the class column just left of the price, matching the NF/T column position.",
+   "Add a correct department header (e.g. HEALTH or BEAUTY) above Barbasol instead of leaving it dangling under STATIONERY & OFFICE SUPPLIES.",
+   "If Barbasol is marked T (taxable), recompute the tax line to include $2.49 in the taxable base (TAX 9.75% on $8.48 = $0.83) so the math stays internally consistent; otherwise keep it NF and explicitly mark NF.",
+   "Match the original monospace font (single uniform weight, no bolding) and a single consistent type size for all line items and totals; eliminate the shrunken totals font.",
+   "Tighten line spacing so the Barbasol row uses the same vertical pitch as neighboring item rows; remove the extra whitespace gap above and below it.",
+   "Apply the same thermal-print weathering/ink density and subtle paper texture/noise to the inserted row so it does not read as a cleaner, denser overlay than surrounding text."
+  ]
+ },
+ {
+  "merchant": "Target",
+  "op": "remove_line_item",
+  "realism": 1.5,
+  "tell": "There is no single price column: every line item shows its amount TWICE \u2014 once as a large floating number mid-line ($3.19, $8.07, $2.39) and again as a separate tiny right-aligned number ($2.49, $8.07, $8.75). The removed line left orphaned/duplicate price tokens, so the math column reads as two mismatched ledgers. A real Target receipt has exactly one rigidly right-aligned price column.",
+  "fixes": [
+   "Render the entire receipt body in ONE fixed-width monospace face (e.g. a dot-matrix/thermal mono) at a single point size and single baseline per row. Eliminate all per-word size and vertical jitter.",
+   "Establish exactly one right-aligned price column at a fixed x and snap every line total, subtotal, tax and total to it. Delete the duplicate tiny price tokens left over from the removed line.",
+   "Reformat each item as a single fixed-pitch row: DPCI (9 digits) + space + product name (left), tax flag (NF/T) in a fixed lane, then the price in the right column. Apply to Up&Up $3.19, Barbasol $2.49 (give it a DPCI), and Dealworthy T $2.39.",
+   "When removing a line item, fully delete its tokens and re-flow rows upward \u2014 do not leave residual dashes/underscores or orphaned duplicate price fragments in the layout.",
+   "Join multi-token brand names into the printed product string: Up Up to Up&Up, Deal worthy to Dealworthy, so they read as one left-aligned name.",
+   "Move the barcode to BELOW the address/date block as on the real receipt, and either drop the human-readable digits or make them match the REC# pattern.",
+   "Add a consistent tax-flag column (NF/T) aligned vertically between the product name and the price column for every item row.",
+   "Apply uniform thermal-print texture: slightly ink-bled monospace glyphs, faint horizontal scan banding, and consistent contrast, instead of the clean anti-aliased vector text currently used."
+  ]
+ },
+ {
+  "merchant": "Target",
+  "op": "replace_field",
+
+codex
+The task is clear: it wants a synthesized ranking across all 25 analyses. The first read cut off before the end of the JSON display, so I’m going back through the file with structured queries to avoid missing recurring issues.
+exec
+/bin/zsh -lc "jq -r '.[] | \"\\(.merchant) | \\(.op) | realism=\\(.realism) | tell=\\(.tell)\"' /tmp/realism_findings.json" in /Users/tnorlund/Portfolio_content
+exec
+/bin/zsh -lc "jq 'length' /tmp/realism_findings.json" in /Users/tnorlund/Portfolio_content
+exec
+/bin/zsh -lc "jq -r '.[] | \"### \\(.merchant) | \\(.op) | realism=\\(.realism)\\n\" + (.fixes | to_entries | map(\"- [\\(.key+1)] \\(.value)\") | join(\"\\n\")) + \"\\n\"' /tmp/realism_findings.json" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+25
+
+ succeeded in 0ms:
+Amazon Fresh | add_line_item | realism=2.5 | tell=A stray order number ("Order # 111-8730966-9276221") is rendered in the MIDDLE of the product list, sandwiched between added line items — real Amazon Fresh receipts never interleave an order number among products, so the added block immediately reads as machine-generated garbage.
+Amazon Fresh | compose_online_catalog | realism=2.5 | tell=The composed items don't follow the receipt's line grammar. Real Amazon Fresh rows are a left-aligned (wrapped/truncated) product name, an optional "now" column, and a right-margin price with a trailing F/T tax flag, plus a "SALE 1@ ... WAS: ... each" sub-line. The synthetic items are centered free-floating strings ("ORGANIC  WHITE  ONION  <A>  $1.49") with a raw UPC ("061994700002") dumped inline, no tax flag, no price column, and no sub-line. It reads as catalog tokens pasted in, not a printed register line.
+Amazon Fresh | remove_line_item | realism=2.5 | tell=The totals block is internally broken and rendered in a shrunken, mis-aligned font: Subtotal ($31.36) and Purchase total ($32.52) and the MasterCard charge ($32.52) are typeset ~40% smaller than every other glyph and float off the right margin. Worse, the math no longer reconciles after the line removal (Pre-savings $35.95 minus $3.10 should be $32.85, not $31.36; item count still says 6 though a product line was removed). The arithmetic was never recomputed, so the receipt is mathematically impossible.
+Amazon Fresh | replace_field | realism=1 | tell=The swapped address is a chiropractor's clinic block (128 AUBURN CT / WESTLAKE VILLAGE, CA. 91 / 805-495-0110) sitting directly under the amazonfresh logo, with a truncated, broken ZIP (CA. 91) and a local 805 number instead of an Amazon 1-800 line. The header is internally self-contradictory: a different business's address under the Amazon Fresh wordmark.
+Costco Wholesale | add_line_item | realism=4 | tell=The numeric amounts render in TWO different font sizes: the added line-item prices (15.02, 8.99, 15.99) are full body size, but the rolled-up totals they feed (SUBTOTAL 40.00, AMOUNT $40.00, EFT/Debit 40.00) print in a much smaller font. A real Costco thermal receipt uses one uniform monospace size for every digit, so this size split immediately reads as a composited/injected block.
+Costco Wholesale | compose_store_header | realism=2 | tell=The street line "5700 Lindero Canyon Rd Westlake Village, CA 91362" is rendered in a microscopic font (roughly a third the height of every other line) crammed onto a single line, while the lines above and below it ("Henderson #673" and "Hendersan/ NV 89014") are normal size. That abrupt, isolated font-scale collapse in the middle of the header is an unmistakable composited-text artifact no thermal printer produces.
+Costco Wholesale | remove_line_item | realism=3 | tell=The price column has no font/size discipline. The surviving line item renders "12.99" large, but the SAME value on SUBTOTAL, TOTAL, AMOUNT and the EFT/Debit line is shrunk to a tiny superscript size and floated at random x-positions. The real receipt prints every amount in one uniform monospace size, right-justified to a single hard column. This instantly reads as machine-composited rather than thermal-printed.
+Costco Wholesale | replace_field | realism=3 | tell=The COSTCO WHOLESALE logo is broken: it renders at roughly half the real size and "WHOLESALE" is collided with its horizontal bar graphics into an illegible smear, whereas the real receipt has a large, crisp, heavy condensed logo with clean stripe bars flanking COSTCO.
+Gelson's Westlake Village | add_line_item | realism=3.5 | tell=A stray, center-floating "1b" token sits directly under the added GARLIC-BULK line with no accompanying weight/unit-price line (no "X lb @ $Y / lb"). It is the orphaned remnant of a weighed-item layout and instantly reads as machine-generated garbage that no real Gelson's register would print.
+Gelson's Westlake Village | remove_line_item | realism=3 | tell=Amount typography is wildly inconsistent in size and weight: several line totals (5.70 F, 7.13 F, 0.50 F) are rendered large/bold while the grand totals (USD$ 35.29, BALANCE DUE 35.29, $35.29) shrink to tiny superscript-sized text. A real thermal POS printer uses ONE fixed monospace size for the entire amount column, so this size jitter instantly reads as composited/synthetic.
+Smith's | add_line_item | realism=2 | tell=The added item block overruns the masthead: KRAFT DRESSING and stray "F F F" glyphs collide with the "Smith's" logo and the "FRESH FOR EVERYONE" tagline at the very top, an impossible layout on a real printed receipt where items always start well below the address block.
+Smith's | remove_line_item | realism=3 | tell=The line was deleted and the subtotal correctly dropped from 10.16 to 9.47 (4.99+3.29+1.19), but "TOTAL NUMBER OF ITEMS_SOLD = 4" was NOT decremented to 3 — the count still claims 4 items while only 3 product lines remain. Any reader who counts the lines catches the synthetic edit instantly.
+Smith's | replace_field | realism=3 | tell=The Smith's logo masthead collides with garbled, half-rendered tagline glyphs ("F F NE-." overlapping the logo) instead of the clean "FRESH FOR EVERYONE." small-caps lockup on the real receipt. It reads as a broken render before you even reach the swapped address field.
+Sprouts Farmers Market | remove_line_item | realism=2 | tell=The entire receipt is set in a clean proportional sans-serif (Helvetica/Arial-like), but a real Sprouts receipt is printed in a fixed-width monospace thermal font. With only one line item left after removal, that wrong typeface plus broken column alignment makes the single surviving product row read as a styled mockup, not a printout.
+Target | add_line_item | realism=3 | tell=The inserted Barbasol line is visually broken: the description "049063338 Barbasol" sits on one baseline while its "$2.49" price floats on a lower baseline, the price is not right-aligned to the shared price column the other items use, and there is an orphaned floating dash ("--" token) hovering above the price. No real Target line item looks like this.
+Target | remove_line_item | realism=1.5 | tell=There is no single price column: every line item shows its amount TWICE — once as a large floating number mid-line ($3.19, $8.07, $2.39) and again as a separate tiny right-aligned number ($2.49, $8.07, $8.75). The removed line left orphaned/duplicate price tokens, so the math column reads as two mismatched ledgers. A real Target receipt has exactly one rigidly right-aligned price column.
+Target | replace_field | realism=3 | tell=The address swap left a hole: the synthetic header jumps straight from "Westlake Village – 818-661-2631" to the date, dropping BOTH the street line ("30740 Russell Ranch Rd") and the city/state/ZIP line ("Westlake Village, California 91362-4063"). A real Target header is 4 lines; this is only 2, so the replaced field is effectively blank.
+The Home Depot | add_line_item | realism=2 | tell=The added line-item prices are not in a right-aligned price column. The Loctite "7.98" total is shrunk and floated into the extreme top-right corner, fully detached from its product row, while 14.97 and 22.95 sit at different x-positions and sizes. A real Home Depot receipt right-aligns every price to one fixed money column.
+The Home Depot | compose_online_catalog | realism=2 | tell=The composed line items are collapsed to single catalog-style rows (UPC + truncated name + <A> + $price) with NO wrapped full-description second line and NO quantity/extended-price line. A real Home Depot item is a 2-3 line block (e.g. "192968500200 4PK 6IN SW <A>" / "4PK - 5&6IN RECESSED LED TRIM SW T20" / "4@24.97 .... 99.88"), so the synthetic items read as a catalog/database dump rather than a register print.
+The Home Depot | compose_store_header | realism=2 | tell=The iconic Home Depot logo graphic (the solid black square box containing the white outlined "THE HOME DEPOT" lettering) is completely missing from the composed header — the synthetic version starts with floating slogan text against blank paper, which no real Home Depot receipt ever does.
+The Home Depot | replace_field | realism=2 | tell=The render abandons the monospace, column-aligned thermal layout entirely: tokens are scattered as individual words with huge random inter-word gaps on a clean white digital background, so prices and decimals float at arbitrary x-positions instead of forming the tight right-aligned price column the real receipt has. The replace_field swap is buried inside a render that already fails to read as a Home Depot receipt grid.
+Vons | add_line_item | realism=3 | tell=The added "CRV LIQUOR 12 PACK" line is internally incoherent: a $0.60 CRV deposit line carrying a "Member Savings -6.00" that never flows into TAX/BALANCE (Cilantro 1.49 + 0.60 = 2.09 exactly, so the -6.00 is phantom), and its product-number/price columns don't sit on the established grid. The line announces itself as a paste-in.
+Vons | compose_store_header | realism=3.5 | tell=The phone number "877-276-9637" is rendered as a bold, oversized, en-dash-styled graphic line dropped into the header where the real receipt's local store phone ("Main:(805) 497-1921") sits. Its weight, size, and dash glyphs match nothing else on the receipt, so it reads as a pasted-in element rather than thermal print.
+Vons | remove_line_item | realism=2 | tell=Every line floats at a random baseline and a random font size/weight (e.g. "GEN MERCHANDISE" is tiny, "TAX" is large, and words within a single line like "Did Tomas de la Cruz" rise and fall). No thermal printer produces this. The real Vons receipt is a rigid single-size monospace grid with dead-flat baselines; the synthetic looks like each word was pasted at its own jittered y-offset and scale.
+Vons | replace_field | realism=4 | tell=The swapped address line reads "2725 Agoura Read" instead of "2725 Agoura Road" — a real street suffix turned into a non-word, which instantly flags the field as machine-corrupted rather than printed.
+
+ succeeded in 0ms:
+### Amazon Fresh | add_line_item | realism=2.5
+- [1] Replace the proportional font with the original's uniform monospace thermal typeface at the same character pitch and weight; render added lines with the exact same glyphs so the new items are indistinguishable from existing ones.
+- [2] Right-align every price ($2.79, $3.98, $4.39) to a single fixed decimal column matching the original's price gutter; align the trailing 'F'/'T' flag to its own column beyond the price.
+- [3] Remove the stray 'Order # 111-8730966-9276221' from inside the product list; an order number must only appear in the header block, never between line items.
+- [4] Give each added item the canonical two-line structure: line 1 = 'Name truncated...  now  $X.XX F', line 2 (indented) = 'SALE 1@ $X.XX, WAS: $Y.YY each' with a real WAS value; complete the 'Amazon Fresh Brand... WAS:' fragment instead of leaving it dangling.
+- [5] Normalize intra-line spacing to single monospace cells — kill double spaces like 'Whole  Foods Market' and 'SAVE 20  $1.99' so kerning matches the original's even grid.
+- [6] Tighten vertical rhythm: use the original's consistent one-blank-line gap between items and place the indented SALE line directly under its product, eliminating the large floating gaps in the added block.
+- [7] Reconcile the arithmetic: make visible line prices sum to pre-savings $8.37, apply the -$1.60 promo to reach subtotal, set the item count to the true number of product lines, and delete the duplicated subscript '$11.16' fragments overlapping the totals/payment rows.
+- [8] Match paper/ink character: add the original's slightly grainy thermal texture, faint ink-spread on glyph edges, and consistent baseline jitter so the crisp clean added text blends with the scanned look rather than appearing as sharp digital overlay.
+
+### Amazon Fresh | compose_online_catalog | realism=2.5
+- [1] Render the entire body in the same dot-matrix/thermal monospace face used by the logo's receipt, at one fixed pitch, so every glyph lands on a fixed character grid.
+- [2] Lay items out on a true monospace grid: left-aligned product name, optional 'now' column, and price right-aligned to a fixed money column with a trailing 'F' or 'T' tax flag (food vs taxable).
+- [3] Reuse one right-aligned money column for the totals block so $17.48 / $0.65 / $18.13 sit at the same x and the same font size as the labels, not a shrunken floating font.
+- [4] Fix the totals semantics: give 'Pre-savings total:' its value, make Subtotal = items - savings, Sales tax a plausible CA rate on taxable lines only, and Purchase total = Subtotal + tax; ensure the chain reconciles.
+- [5] Compose 6 actual line items to match 'Total number of items: 6' (or set the count to the items shown), each with a 'SALE 1@ $X, WAS: $Y each' sub-line where a discount applies.
+- [6] Drop the inline raw UPC and '<A>' marker; use real catalog-style descriptions with '...' truncation (e.g. "Tito's Handmade Vodka, 750 mL...") and an 'Age check confirmed' line for the alcohol item.
+- [7] Move the QR code back inline-left next to the email/customer-service paragraph, and remove the human-readable digits printed under the bottom barcode.
+- [8] Add scan realism: slight rotation/skew, dot-matrix ink texture with light bleed, paper warp and grain, and faint dotted-line separators between sections to match the original scan.
+
+### Amazon Fresh | remove_line_item | realism=2.5
+- [1] Recompute the full totals cascade after removal: subtract the removed item's price (and any savings) from Pre-savings total, Subtotal, Sales tax, Purchase total, the TOTAL SAVINGS box, and the MasterCard charge so every number reconciles; drop item count from 6 to 5.
+- [2] Render every monetary amount at the same font size/weight as the body and right-align all of them to a single decimal/price column shared by line items and totals.
+- [3] Swap the proportional serif font for a fixed-width dot-matrix/thermal face (e.g. a monospace receipt font), use straight ASCII apostrophes, and enforce single-space word spacing.
+- [4] Replace all en/em dashes with plain ASCII hyphens in addresses, phone numbers, Pre-savings, and the dash before negative amounts.
+- [5] Add the QR code under 'Scan the QR code...' and the full-width Code128-style barcode at the bottom, matching the original's placement and sizing.
+- [6] Normalize the markdown flag to lowercase 'now' on every sale line to match Amazon Fresh's consistent casing.
+- [7] Draw the rectangular border box around 'TOTAL SAVINGS $3.10' as on the original.
+- [8] Add thermal-print realism: slight scan skew, dot-matrix edge noise, faint paper grain and uneven ink density instead of the flat clean background.
+
+### Amazon Fresh | replace_field | realism=1
+- [1] Replace the chiropractor block with a real Amazon Fresh store address: a store-name line (Westlake Village Store), 140 PROMENADE WAY STE A, THOUSAND OAKS, CA 91362-3828, then https://www.amazon.com. Keep the entity consistent with the logo.
+- [2] Emit a full 5+4 ZIP (91362-3828) and never truncate; validate the state/ZIP token so CA. 91 can never render.
+- [3] Use Amazon's national customer line format (1-800-...) rather than a local 805 number, or drop the phone entirely since the real receipt has none in the header.
+- [4] Collapse the multi-space gaps inside address lines; render each line as a single left-aligned/centered string with single spaces instead of laying out tokens word-by-word.
+- [5] Tighten the header vertical rhythm: the real block is compact and centered directly under the logo, not spread across large gaps.
+- [6] Match the thermal monospace font weight and slight dot-matrix character irregularity of the original; the candidate's clean even sans reads as digital.
+- [7] Add thermal-paper texture: subtle warm-gray background, faint horizontal banding, ink-density variation, and light scan noise instead of flat white.
+- [8] Restore the document structure so the field lives in a real Amazon Fresh receipt: itemized lines, totals/savings block, TOTAL SAVINGS box, QR code, and bottom barcode rather than a bare card-terminal slip.
+
+### Costco Wholesale | add_line_item | realism=4
+- [1] Render ALL numeric amounts (line prices, SUBTOTAL, TAX, TOTAL, AMOUNT, EFT/Debit, CHANGE) in one identical monospace size and weight -- kill the small-font totals so 40.00 matches the 15.99 line price exactly.
+- [2] Add the missing 'E' tax-status flag in the left column of the third added line ('9050611 KS THICK CUT') so every item row has a flag, matching the first two rows.
+- [3] Decimal-align every price to a single fixed right-hand column; right-justify 8.99 to the same rightmost x as 15.02/15.99 so the decimal points stack.
+- [4] Increase body font weight/darkness to match real Costco thermal print -- thicker strokes, higher contrast, slight ink-bleed, instead of the thin light grey currently used.
+- [5] Align the SUBTOTAL/TAX/TOTAL block's left margin and the item-number indentation to the same grid the item names use, removing the extra inward indent on the totals group.
+- [6] Complete the truncated marker to '***END OF PRE-SCANNED ITEMS***' (or drop it) and left-justify it consistently with the surrounding block.
+- [7] Add the scanned-thermal paper look: the cyan/blue background tint and edge cast seen in the original, plus subtle vertical roller streaks, so the white synthetic stock matches the real scan.
+- [8] Tighten inter-line vertical spacing of the three item rows to match the denser line pitch of the real receipt's item block.
+
+### Costco Wholesale | compose_store_header | realism=2
+- [1] Make the header one coherent store. If it is Henderson #673 NV, replace the street line with the real Henderson NV Costco address (street + 'Henderson, NV 89014') and matching local phone; do not paste the Westlake Village CA street under a Henderson name.
+- [2] Render every header line at the SAME font size as the store-name line. Eliminate the microscopic street line; set street on its own full-size line and city/state/zip on the next, matching Costco's body font.
+- [3] Fix the spelling and punctuation: 'Henderson' (not 'Hendersan'), drop the stray '/', and format the city/state/zip as 'Henderson, NV 89014' with a comma, not a slash.
+- [4] Repair the logo: render a single clean COSTCO wordmark with one integrated WHOLESALE banner (sharp horizontal bars). Remove the duplicate small-caps 'WHOLESALE' line beneath it.
+- [5] Tighten the store name to Costco's layout: 'Henderson #673' with a single space and number close to the name, centered, not split by a wide gap.
+- [6] Add the store phone line, '(xxx) xxx-xxxx', centered directly under the city/state/zip, matching the real receipt's structure.
+- [7] Center all header lines on a shared vertical axis with consistent leading, and add a balanced gap between the logo and the first text line so baselines line up to a grid.
+- [8] Apply uniform thermal-print weight and faint paper texture across the header so the composed lines match the grain/contrast of the rest of the receipt instead of looking pasted in.
+
+### Costco Wholesale | remove_line_item | realism=3
+- [1] Render all currency amounts (line item, SUBTOTAL, TAX, TOTAL, AMOUNT, EFT/Debit, CHANGE) at ONE identical font size and right-justify them to a single shared right margin, recreating the original's clean price gutter.
+- [2] Replace the proportional sans typeface with a heavy fixed-pitch thermal/dot-matrix font (the original is monospaced with thick uniform glyphs); apply equally to labels and numerals.
+- [3] Restore the reverse-video black highlight bar behind the grand TOTAL and re-add the leading '**** ' asterisk prefix on the TOTAL line.
+- [4] Re-add the left-margin 'E' item-type code aligned in its own column before the item number on the surviving CHEESE TRAY row, matching Costco's per-line tax/type flag.
+- [5] Close the vertical gap left by the removed row: keep inter-line leading constant so the block compresses by exactly one line height instead of leaving white space.
+- [6] Generate and composite an actual 1D barcode above the numeric string 21011720501782509081845 so it matches the original's scannable bars.
+- [7] Rebuild the COSTCO logo: the synthetic shows a degraded mark plus a tiny detached 'WHOLESALE' caption; replace with the single integrated bold-italic COSTCO over the striped WHOLESALE bar at the correct width.
+- [8] Add thermal-paper realism: faint cyan/teal scan tint along the edges, slight curl/shadow, paper grain and ink-bleed/threshold noise so glyph edges roughen instead of staying crisp anti-aliased vector text.
+
+### Costco Wholesale | replace_field | realism=3
+- [1] Rebuild the COSTCO WHOLESALE logo as a single high-res asset: large heavy condensed COSTCO with flanking horizontal stripe bars and WHOLESALE cleanly underset, scaled to ~75% of receipt width like the original; eliminate the bar-on-text overlap.
+- [2] Swap the body font to a heavy thermal dot-matrix monospace and increase stroke weight so glyphs match the dark, slightly bleeding print of the real receipt rather than thin clean sans.
+- [3] Set all four header lines (store name, street, city/state/zip, phone) at one uniform point size and weight; the phone line must not be smaller than the address lines.
+- [4] Fix the phone token spacing to tight '(818) 597-3901' with no space after the open paren.
+- [5] Render a real Code128 barcode bitmap above the digit string instead of showing only the numeric line '2 011720301102510201344'; the original has full bars.
+- [6] Add thermal paper texture and the blue-tinted scanner background margins; the synthetic is on flat pure white, which never matches a scanned thermal slip.
+- [7] Style the closing 'Thank You! / Please Come Again' as the large letter-spaced display lines used by Costco instead of small scattered plain words.
+- [8] Introduce subtle global skew, slight print density variation, and faint edge darkening to break the too-clean digital uniformity and emulate a scanned receipt.
+
+### Gelson's Westlake Village | add_line_item | realism=3.5
+- [1] Delete the orphan centered '1b' token below GARLIC-BULK. If weighed, replace with a complete indented sub-line in the real format e.g. '0.45 lb @ $4.99 / lb'; if fixed-price, drop the weight line entirely.
+- [2] Move GARLIC-BULK into the PRODUCE section where bulk produce belongs at Gelson's, instead of REG DELI; keep section grouping believable.
+- [3] Right-align the '2.24' to the exact price-column x used by 4.29 / 5.99 / 7.13, and align the trailing 'F' to the same tax-flag column.
+- [4] Match the line-total font size and weight to the other item lines; the inserted total is noticeably bolder/larger than neighbors.
+- [5] Tighten the leading above and below the inserted line so its baseline spacing equals the uniform item-row pitch of the real receipt.
+- [6] Render the barcode flush-left and the product name indented one space beneath it, mirroring the exact two-line item structure of GREEK FETA / TOMATOES-CRUSHED.
+- [7] Use the same monospace receipt font and character cell width as adjacent rows; the added glyphs are subtly heavier and slightly wider than the surrounding dot-matrix text.
+- [8] Apply matching paper grain, slight ink-bleed and thermal fade to the new glyphs; the inserted text is too crisp/clean versus the speckled, faded real lines.
+
+### Gelson's Westlake Village | remove_line_item | realism=3
+- [1] Render every numeric amount (line totals, unit prices, Total, BALANCE DUE, CREDIT CARD, CHANGE) in ONE fixed monospace size and weight; remove the large/bold treatment on 5.70/7.13/0.50 and the tiny superscript treatment on the 35.29 grand totals.
+- [2] Right-align all amounts to a single decimal/units column at a fixed x, and right-align the 'F' tax flag to its own narrower column to the right of that, matching the original's rigid two-column grid.
+- [3] Normalize vertical line spacing to a single consistent leading throughout, especially across the edited GROCERY block, so the removed line leaves no tighter/looser gap than neighboring rows.
+- [4] Fix the per-unit weight sublines so 'QTY lb @ $UNIT / lb' is left-indented directly under its product name (as with TOMATOES/ONION), not pushed to the right or onto the wrong line; correct the JALAPENO weight line placement.
+- [5] Swap the body font to a heavier dot-matrix/thermal monospace that matches the original's glyph weight and slightly irregular ink, instead of the current thin clean monospace.
+- [6] Replace the logo with the authentic ornate Gelson's script including the large flourished swash-G to match the real masthead.
+- [7] Restore the full address block: '2734 TOWNSGATE ROAD' over 'WESTLAKE VILLAGE, CA 91361' over phone; fix the TOHNSGATE/READ corruption so the header reads cleanly and centered.
+- [8] Add scan realism: warm off-white paper tone, subtle vertical thermal banding, faint scanner noise/speckle, a slight skew/curl, and softened edges so it does not look like flat uniform gray digital text.
+
+### Smith's | add_line_item | realism=2
+- [1] Clip and reflow the inserted item block so it begins below the 'Your cashier was CHEC 512' line; never let any product row render above the address/phone block or over the Smith's masthead.
+- [2] Render every price in the SAME monospace font, size, and weight as the body text, and place them on the shared text baseline (no superscripting, no lighter ink).
+- [3] Hard-align all prices to a single right-edge column with consistent decimal alignment and the trailing 'F' tax flag in a fixed column, matching the real receipt's '4.99 F' stack.
+- [4] Fix the corrupted quantity token: use '2/5.00' (qty/price) consistently for the avocado promo and drop the bogus '215.00'; validate that per-unit/promo prices are realistic grocery values.
+- [5] Remove the back-to-back duplicate product rows (AVOCADO, BABY ROMAINE, CORN) or give each a distinct qty/price so the itemization reads like a real basket.
+- [6] Use Smith's real two-line discount format: item line, then an indented 'SC  YOU SAVE  0.50' on the next line, anchored under the item, instead of floating 'SC'/'YOU' fragments in the left margin.
+- [7] Tint the paper to the cool bluish-grey thermal tone of the original and add subtle fold lines, a faint curl shadow, and slight perspective/rotation instead of the flat pure-white background.
+- [8] Apply uniform thermal-print ink density and a touch of edge blur/noise to the added lines so they match the slightly soft, even darkness of the surrounding real text rather than appearing crisply pasted.
+
+### Smith's | remove_line_item | realism=3
+- [1] Decrement 'TOTAL NUMBER OF ITEMS_SOLD' from 4 to 3 to match the removed line, so the item count stays consistent with the 3 remaining product rows
+- [2] Render the recomputed amounts (9.47 on BALANCE/TOTAL/PURCHASE/DEBIT) in the exact same font size, weight, and baseline as the untouched line totals, and right-align them to the identical column edge — eliminate the shrunken superscript look
+- [3] Re-insert the structural blocks that exist on the real receipt: 'US DEBIT Purchase', the masked '************1454 - H' line, 'Annual Card Savings $0.00', and the full rows of '*' / dashed separators, so there are no large blank gaps
+- [4] Fix the corrupted header: the synthetic 'FRESH / FOR / EVERYONE.' is garbled into overlapping 'F F INE-.' glyphs — restore the clean three-line stacked tagline beside the Smith's wordmark
+- [5] Lock the trailing 'F' tax flags into one rigid right column at uniform size and baseline; the oversized/floating F glyphs must match the body font metrics
+- [6] Correct the wording back to Smith's canonical strings: 'VERIFIED BY PIN', 'AID:' (not 'DID:'), '06:05pm' (not '06:05pa'), and a coherent 'If you have any questions,' line; remove the stray '** $78' fragment
+- [7] Swap the crisp uniform digital font for a thermal dot-matrix face with slightly broken/ink-starved edges and faint horizontal banding; the synthetic body text is too dark and too sharp versus the lighter, granular real print
+- [8] Add real receipt paper realism: warm off-white tone, slight curl/wrinkle shadowing, and uneven thermal density — the synthetic is a flat even gray sheet with no texture or lighting gradient
+
+### Smith's | replace_field | realism=3
+- [1] Render the 'FRESH FOR EVERYONE.' tagline as clean small caps to the right of the logo instead of overlapping garbled glyphs ('F F NE-.'); fix the logo/tagline lockup so the masthead matches the original.
+- [2] Move the address/phone/cashier block up to hug the masthead and tighten inter-line leading to match the real receipt's compact spacing; eliminate the large white gap above it.
+- [3] Use plain ASCII hyphens in '702-220-7763' (not en-dashes) and render the whole header block in the same condensed monospace thermal font used elsewhere.
+- [4] Baseline-align the trailing item flags (the 'F' tax-code column) into a fixed right-hand column instead of floating them as superscripts; align prices on the decimal.
+- [5] Restore the missing/corrupted payment anchor lines: 'US DEBIT Purchase', masked card '************1454', 'AID:' (not 'DID:'), and 'VERIFIED BY PIN' (not 'WIN').
+- [6] Re-add the dotted/asterisk separator rows and the 'Annual Card Savings $0.00' line, and remove the stray '** $78' fragment; rejoin 'RECALL NOTICE' on one line with normal kerning.
+- [7] Add a faint bluish-gray thermal paper tint and subtle vertical print-density variation rather than flat pure white.
+- [8] Introduce slight skew, edge curl, and a soft drop shadow so the tape looks photographed on a surface rather than a flat digital canvas.
+
+### Sprouts Farmers Market | remove_line_item | realism=2
+- [1] Replace the proportional sans-serif with a fixed-width thermal monospace face (e.g. a dot-matrix/receipt font), so every glyph occupies one cell and the price column auto-aligns. This single change fixes most of the line-item realism.
+- [2] Use one uniform body font size for ALL transaction/line-item/total rows. Eliminate the large-vs-tiny mix; the product line, BALANCE DUE, DEBIT, and CHANGE must all be the same height.
+- [3] Right-align every amount (7.99, 7.99, $7.99, 0.00) to a single fixed price column, matching the line-item total and the BALANCE DUE / DEBIT totals to the same right margin.
+- [4] Render the department banner as the underlined 'DAIRY' header above the milk line instead of 'DAILY'; do not let the store-hours 'DAILY' token become a product department label.
+- [5] Collapse the excessive vertical whitespace around the single surviving line item so the receipt stays dense; tighten line spacing to the ~1-line monospace leading seen on the original instead of double/triple gaps.
+- [6] Remove the floating stray comma above the phone number, and rebuild the 'FARMERS MARKET' subtitle under the SPROUTS logo as clean legible text rather than an overlapping black blob.
+- [7] Fix 'BALANCE DUE' spacing to a single space and move the barcode back into the body (mid-receipt) above the feedback block, matching the real layout; ensure the human-readable digits under the barcode match the printed barcode number.
+- [8] Add thermal-paper realism: slight warm off-white background, faint horizontal print banding, ink density variation and edge speckle, and very light glyph blur so type does not look like crisp vector text on flat gray.
+
+### Target | add_line_item | realism=3
+- [1] Render description and price of the Barbasol line on a single shared baseline, exactly matching the row height/leading of the GG Fruit, SOUR PATCH, and CarltonCards rows.
+- [2] Right-align '$2.49' to the same fixed price column x-coordinate as $4.99/$3.00/$5.99, and align $16.47/$0.58/$17.05 to that same column.
+- [3] Remove the floating '--' artifact and instead place a real tax-class letter (T) in the class column just left of the price, matching the NF/T column position.
+- [4] Add a correct department header (e.g. HEALTH or BEAUTY) above Barbasol instead of leaving it dangling under STATIONERY & OFFICE SUPPLIES.
+- [5] If Barbasol is marked T (taxable), recompute the tax line to include $2.49 in the taxable base (TAX 9.75% on $8.48 = $0.83) so the math stays internally consistent; otherwise keep it NF and explicitly mark NF.
+- [6] Match the original monospace font (single uniform weight, no bolding) and a single consistent type size for all line items and totals; eliminate the shrunken totals font.
+- [7] Tighten line spacing so the Barbasol row uses the same vertical pitch as neighboring item rows; remove the extra whitespace gap above and below it.
+- [8] Apply the same thermal-print weathering/ink density and subtle paper texture/noise to the inserted row so it does not read as a cleaner, denser overlay than surrounding text.
+
+### Target | remove_line_item | realism=1.5
+- [1] Render the entire receipt body in ONE fixed-width monospace face (e.g. a dot-matrix/thermal mono) at a single point size and single baseline per row. Eliminate all per-word size and vertical jitter.
+- [2] Establish exactly one right-aligned price column at a fixed x and snap every line total, subtotal, tax and total to it. Delete the duplicate tiny price tokens left over from the removed line.
+- [3] Reformat each item as a single fixed-pitch row: DPCI (9 digits) + space + product name (left), tax flag (NF/T) in a fixed lane, then the price in the right column. Apply to Up&Up $3.19, Barbasol $2.49 (give it a DPCI), and Dealworthy T $2.39.
+- [4] When removing a line item, fully delete its tokens and re-flow rows upward — do not leave residual dashes/underscores or orphaned duplicate price fragments in the layout.
+- [5] Join multi-token brand names into the printed product string: Up Up to Up&Up, Deal worthy to Dealworthy, so they read as one left-aligned name.
+- [6] Move the barcode to BELOW the address/date block as on the real receipt, and either drop the human-readable digits or make them match the REC# pattern.
+- [7] Add a consistent tax-flag column (NF/T) aligned vertically between the product name and the price column for every item row.
+- [8] Apply uniform thermal-print texture: slightly ink-bled monospace glyphs, faint horizontal scan banding, and consistent contrast, instead of the clean anti-aliased vector text currently used.
+
+### Target | replace_field | realism=3
+- [1] Restore the full swapped address block as three lines: store-name/phone line, then the street line, then 'City, State ZIP-NNNN'. The replace_field output must include a plausible Target street ('30740 Russell Ranch Rd') and a 'Westlake Village, California 91362-4063' line -- never leave the field with only the name/phone line.
+- [2] Render the entire receipt in a monospaced dot-matrix thermal font (e.g. a fixed-width like the original's) so every glyph occupies one cell; drop the proportional humanist face.
+- [3] Replace the en-dash in 'Westlake Village – 818-661-2631' with a plain hyphen-minus '-' to match the context token and real thermal output.
+- [4] Make the store-name header line bolder/larger weight than the body, matching the heavier first line in the original.
+- [5] Right-align all price/amount values to a single hard right margin and pin the 'T'/'NF' tax flags to a fixed column so the amount stack lines up vertically.
+- [6] Widen the top barcode to near full receipt width and remove the human-readable '829261353457' numerals printed beneath it.
+- [7] Add real thermal scan character: subtle horizontal print banding, slight skew/rotation, edge darkening and paper grain instead of the flat clean gray background.
+- [8] Tighten leading and shift the header block to the original's left-of-center justification; reduce the oversized gap between the header and the barcode and between body sections.
+
+### The Home Depot | add_line_item | realism=2
+- [1] Right-align every line-item total (7.98, 14.97) to the exact same money-column x-edge used by SUBTOTAL/TAX/TOTAL; never float a price into the corner or shrink it.
+- [2] Render the whole body in one fixed-pitch monospace thermal/dot-matrix font at a single consistent size and weight; remove the proportional variable-weight font and per-token size changes.
+- [3] Structure each added item as two left-aligned rows: row 1 = UPC + short description + tax flag '<A>' + right-aligned price; row 2 = full product name, matching the original's '4PK 6IN SW <A>' / continuation pattern.
+- [4] Keep units/decimals as single atomic tokens: render '.20L' and '14.1 OZ' (not '.2'/'0L'/'14.10Z'); preserve the space and never break a measurement across baselines.
+- [5] Lock all text to a consistent left margin and baseline grid; eliminate the per-token vertical jitter and superscript scaling (e.g. the '271' and '7.98').
+- [6] Fix the promo line to the real wording '-Pro Xtra Preferred Pricing-' with the discount amount in the price column instead of the garbled 'Pricing-.--.'.
+- [7] Composite onto a real crumpled thermal-paper photo with the original's wrinkle shadows, slight skew, and warm off-white tone, instead of a flat uniform background.
+- [8] Add the Home Depot logo/header and apply thermal-print degradation (ink bleed, faint dot edges, slight contrast falloff) so added lines match the weathered look of the surrounding real text.
+
+### The Home Depot | compose_online_catalog | realism=2
+- [1] Render each composed item as a multi-line block: line 1 = UPC + abbreviated name + <A> + flush-right bare line total (no $); line 2 = full indented product description; add an indented 'n@unit' line when qty>1, mirroring the real receipt's item structure.
+- [2] Strip the '$' from all line-item totals (26.98, 3.98, 28.97) and from SUBTOTAL/SALES TAX; keep '$' only on the grand TOTAL, matching Home Depot convention.
+- [3] Use one consistent bold monospace dot-matrix font at a single size for ALL numbers; the tiny $9.93/4.35/$64.28 values must match the label font size and weight exactly.
+- [4] Establish a fixed right-margin decimal column and right-align every price (line totals, subtotal, tax, total, cash, change) to it so decimals stack vertically.
+- [5] Move the QR code and barcode out of the top: the header should be the Home Depot logo box + 'How doers / get more done.' tagline; the barcode belongs in the mid-receipt block above the 1070/date/policy section, and there is no top QR on the real receipt.
+- [6] Restore the full store-header block: street address line ('22855 VICTORY BLVD. WEST HILLS, CA 91307'), manager/phone line, then the register transaction line ('1070 00011 89539  03/01/24  01:30 PM') and 'SALE CASHIER <name>'.
+- [7] Fix the tagline rendering: render 'How doers get more done.' as a single bold two-line headline with normal kerning next to the logo, not as scattered words with large random gaps.
+- [8] Repair the stitched fragments: 'PRO XTRA MEMBER STATEMENT' (not 'EMENT'), remove the floating 'ma', and reflow 'Get the CREDIT LINE your business needs ... Pro Xtra Credit Card' into correct reading order.
+
+### The Home Depot | compose_store_header | realism=2
+- [1] Render the solid black Home Depot logo square (white 'THE HOME DEPOT' outline lettering with the registered ® mark) in the top-left of the header block — this is the single most identifying element and is currently absent.
+- [2] Replace the slogan typeface with a heavy bold condensed sans (Helvetica/Arial Bold, ~900 weight, tight tracking) and set 'How doers' / 'get more done.' on two lines flush-right of the logo with consistent single-space word gaps; kill the irregular extra spacing.
+- [3] Set the address and phone in the same fixed-pitch monospace dot-matrix font as the receipt body so the header block matches the line items; the proportional font is an immediate mismatch.
+- [4] Restore the second header line 'STR MGR <name> <phone> #<store>' and keep the address + manager line as two tight left-aligned monospace rows instead of dropping the manager line.
+- [5] Left-align the entire address block flush to the left margin (not centered) and close the gap in the phone number so it reads '(805) 480-9114' on one continuous run.
+- [6] Replace the en-dash in the phone with a plain hyphen ('480-9114') to match thermal-printer ASCII output.
+- [7] Tighten vertical spacing: pack the logo+slogan+address into a compact top block with minimal leading, eliminating the large empty margins that make the header float.
+- [8] Add thermal-print texture to the header — slight ink bleed, uneven glyph density, and the paper crumple/grayscale noise visible on the original — so the composed block does not read as crisp clean vector text on flat white.
+
+### The Home Depot | replace_field | realism=2
+- [1] Tie the replaced phone area code to the unchanged store locale: emit 818 (West Hills/SFV) like the original, never 813 (Tampa). Derive the area code from the address ZIP/city token so the swap stays internally consistent.
+- [2] Fix the garbled manager line: restore the 'STR MGR' (Store Manager) abbreviation and a plausible first name; never output 'VISA' (collides with payment method) or invented roles like 'SIR MGR'.
+- [3] Render the entire body in a single bold monospaced thermal font (e.g. a condensed dot-matrix face) so every glyph shares a fixed advance width, replacing the current proportional/serif look.
+- [4] Lay text out on a fixed-pitch character grid with a stable left margin and a right-aligned price column; remove the large random inter-word gaps so item names left-align and amounts/decimals line up vertically.
+- [5] Composite onto a real thermal-paper background: off-white/gray gradient, fiber noise, fade toward edges, plus crinkle folds and shadow creases like the original scan.
+- [6] Add the missing Home Depot logo block (the boxed 'THE HOME DEPOT' wordmark) and the 'How doers get more done.' headline in the correct heavy display type at the top.
+- [7] Replace the tiny garbled barcode stub with a full-width Code-128 barcode plus the human-readable '1070 51 64827 01/06/2025' line beneath it, matching the original's scale and position.
+- [8] Apply a light global blur/threshold and slight ink-bleed so edges look thermally printed and scanned rather than crisply anti-aliased digital text.
+
+### Vons | add_line_item | realism=3
+- [1] Replace 'CRV LIQUOR 12 PACK' with a realistic grocery/liquor product name and handle CRV correctly: show the item at full price then a separate indented '+CRV  0.60' deposit line, instead of folding 'CRV' into the product name.
+- [2] Fix the arithmetic: make 'Member Savings -6.00' actually subtract from the running total and surface a 'YOU SAVED $6.00' summary near BALANCE, or drop the -6.00 so BALANCE 2.09 reconciles cleanly with the listed lines.
+- [3] Render the entire receipt in a single fixed-width thermal monospace font (matching the original's face and weight); eliminate proportional spacing so every glyph cell is equal width.
+- [4] Stop shrinking the price decimals: 2.09 / 0.60 / 1.49 must be the same point size and sit on the same baseline as the labels, not as smaller superscript-style numerals.
+- [5] Right-align all Price and You-Pay amounts to a shared decimal column so the new 0.60/0.60 line lines up exactly with the cilantro line and with TAX/BALANCE below.
+- [6] Left-align the UPC/product-number column (9612 under 3338390419) on the same x-origin, and add the trailing tax-flag column ('S'/'T'/'B') to the new item to match the genuine line format.
+- [7] Match line pitch: give the inserted item and its Member Savings sub-line the same vertical spacing/leading as the surrounding rows so the two-item block isn't visibly denser.
+- [8] Restore the missing structural graphics around the body (the barcode block, dashed section dividers, and the slightly bolder PRODUCE header) and overlay the same paper crinkle/thermal-fade texture across the added line so it doesn't sit on cleaner background than the rest.
+
+### Vons | compose_store_header | realism=3.5
+- [1] Render the entire header in the same single monospaced thermal font (Courier-like, fixed-width) used by the body. No proportional sans anywhere in the header.
+- [2] Remove the bold/oversized treatment of the phone line. Set it at the exact same point size and weight as the store and address lines -- thermal receipts have one weight only (the VONS logo is the sole bold element).
+- [3] Restore the local store phone in the header as 'Main:(805) 497-1921' format (label + parenthetical area code). Keep the national 877 number only in the footer, matching the real layout.
+- [4] Replace en-dashes with plain monospace hyphens so the phone digits and dashes are the same fixed cell width as all other glyphs.
+- [5] Fix the corrupted token: 'Did' -> 'Dir' so it reads 'Store 3135 Dir Tomas de la Cruz'.
+- [6] Make the store number and address mutually consistent: if store 3135, use the real Westlake address ('2725 Agoura Road' / 'WESTLAKE CA 91360'); do not graft the Thousand Oaks/Moorpark address onto 3135.
+- [7] Set the city line ALL-CAPS with no comma ('THOUSAND OAKS CA 91360' style) to match Vons thermal casing/punctuation convention.
+- [8] Normalize header line leading to a single uniform value matching body line spacing, and add a slight ink-spread/thermal-blur plus paper warp so the header glyphs share the same edge softness and grain as the rest of the receipt instead of looking crisply composited.
+
+### Vons | remove_line_item | realism=2
+- [1] Lock all body text to a single fixed-pitch thermal font at one size with dead-flat baselines and a constant line pitch. Remove all per-word y-jitter and per-word scaling so every glyph shares the same baseline grid.
+- [2] Reinstate the two right-aligned money columns ('Price' and 'You Pay'). Right-align 4.69, 4.69, 0.34, 5.03 to the same decimal x-positions used by the original so amounts stack vertically under their headers.
+- [3] Render the kept line item with full structure: a department/aisle context, a left-aligned PLU/item number, the product name, then Price and You Pay amounts, plus the trailing tax-flag glyph (the original uses a single 'S' after the You Pay amount).
+- [4] Restore even, tight line spacing throughout. Eliminate the large random vertical gaps between TAX/BALANCE and the payment block so line pitch matches the original's consistent thermal feed.
+- [5] Stop baking OCR errors into the render. Use clean source tokens: 'Dir' not 'Did', 'Agoura Road' not 'Agoura Read', and 'WESTLAKE CA 91360' with the state included.
+- [6] Move the barcode back under the address near the top with the numeric string directly beneath it, matching the original's placement; do not relocate it to the footer.
+- [7] Re-add the leader/asterisk formatting the original uses ('**** BALANCE') and the dashed separator rules between sections so the section breaks read as printed dividers, not blank space.
+- [8] Add realistic thermal paper texture: subtle crinkle/wrinkle highlights, faint scanner shadow gradient, slightly irregular torn edges, and light print-density variation. The current render is too flat and uniformly clean.
+
+### Vons | replace_field | realism=4
+- [1] Fix the swapped value to a real, valid address token: 'Agoura Read' -> 'Agoura Road'. Never substitute a street suffix with an unrelated dictionary word; constrain replace_field to plausible address vocabulary.
+- [2] Restore the state abbreviation in the city line: render 'WESTLAKE CA 91360', not 'WESTLAKE   91360'. The city/state/ZIP must keep CITY + 2-letter STATE + ZIP.
+- [3] Correct 'Did' back to 'Dir' (the store-director abbreviation) so the manager line reads 'Store 3135 Dir Tomas de la Cruz'.
+- [4] Render the entire receipt, including the address block, in a fixed-width Courier/monospace thermal font matching the original instead of the current proportional slab face.
+- [5] Normalize intra-line spacing to single spaces: 'de la Cruz', 'WESTLAKE CA 91360', and 'Main:(805) 497-1921' (no space after the colon, matching the source).
+- [6] Tighten line leading in the header block so the four address lines have the same compact vertical pitch as the original rather than the looser spacing seen now.
+- [7] Add real ink-on-thermal artifacts to the swapped text (slight stroke bleed, faint dot-matrix granularity, minor baseline jitter) so the edited line matches the weathering of surrounding printed lines.
+- [8] Render an actual 1D barcode graphic above the loyalty digit string (original has bars; synthetic shows only the number '94147496367634145690347' floating in whitespace), so the header region reads as a genuine receipt top.
+
+
+codex
+I’ve got the full set now. I’m checking the renderer and synthesis files next so the “where in code” entries point to actual modules/functions instead of only repeating the task’s coarse code map.
+exec
+/bin/zsh -lc "rg --files | rg 'render_synthetic_receipts.py|receipt_renderer.py|merchant_synthesis.py|synthesis_reconcile.py|synthesis_text_clean.py|font_profile.py'" in /Users/tnorlund/Portfolio_content
+exec
+/bin/zsh -lc "rg -n \"def _render_cached_hybrid|def render_receipt|def _fit_font|def _draw_text|class|def .*synth|def .*reconcile|font\" scripts/render_synthetic_receipts.py receipt_agent -g 'receipt_renderer.py' -g 'merchant_synthesis.py' -g 'synthesis_reconcile.py' -g 'synthesis_text_clean.py' -g 'font_profile.py'" in /Users/tnorlund/Portfolio_content
+ exited 127 in 0ms:
+zsh:1: command not found: rg
+zsh:1: command not found: rg
+
+ exited 127 in 0ms:
+zsh:1: command not found: rg
+
+codex
+`rg` isn’t installed in this shell, so I’m using `find`/`grep` for the same code map check.
+exec
+/bin/zsh -lc "grep -RInE \"def _render_cached_hybrid|def render_receipt|def _fit_font|def _draw_text|def .*synth|def .*reconcile|class .*Font|font\" scripts/render_synthetic_receipts.py receipt_agent --include='receipt_renderer.py' --include='merchant_synthesis.py' --include='synthesis_reconcile.py' --include='synthesis_text_clean.py' --include='font_profile.py'" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+receipt_agent/receipt_agent/agents/label_evaluator/synthesis_reconcile.py:651:def reconcile_candidate(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:282:def build_merchant_synthesis_profile(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:345:def build_merchant_synthesis_readiness(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:384:def generate_merchant_synthesis_candidates(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:390:    font_geometry: dict[str, Any] | None = None,
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:400:    ``font_geometry`` is an optional merchant font profile in synthesis pixel
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:402:    ``rendering.font_profile`` (built on PR #994). When provided it is stamped on
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:424:    if font_geometry:
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:426:            receipt["font_geometry"] = font_geometry
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:598:def _build_synthesis_readiness(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:1483:        allow_font_geometry_fallback=True,
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:1774:        allow_font_geometry_fallback=True,
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2604:    region (the small print), not the larger header fonts. The local
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2609:    specific signal for the receipt being edited). PR #994's merchant font
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2610:    profile — supplied via ``receipt["font_geometry"]`` (see
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2618:    fg = receipt.get("font_geometry") or {}
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2619:    char_w_fallback = _font_geometry_px(fg, "char_width_px", default=16)
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2620:    height_fallback = _font_geometry_px(fg, "font_height_px", default=18)
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2651:    profile_price_center = _font_geometry_px(fg, "price_column_x_px", default=0)
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2668:def _font_geometry_px(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2669:    font_geometry: dict[str, Any], key: str, *, default: int
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2671:    """A positive integer pixel value from a font-geometry dict, else ``default``.
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2673:    ``font_geometry`` mirrors ``MerchantFontProfile.to_geometry_params()`` where
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2677:    value = font_geometry.get(key)
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:2931:        items, scaffold.receipt, allow_font_geometry_fallback=True
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:3285:def build_synthetic_receipt_preview(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:3427:def build_synthesis_accuracy_evidence(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:3595:def build_synthesis_candidate_quality(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:3856:def select_high_fidelity_synthesis_candidate(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:4096:def _is_synthetic_line_id(value: Any) -> bool:
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:4224:def _is_synthetic_insert_id(value: Any) -> bool:
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:5319:            allow_font_geometry_fallback=True,
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6380:def _reconcile_item_count(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6457:    allow_font_geometry_fallback: bool = False,
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6470:    ``allow_font_geometry_fallback`` is opt-in and set ONLY by row-GENERATION
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6472:    sites prefer PR #994's merchant row pitch (``font_geometry.line_step_px``)
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6486:        if allow_font_geometry_fallback:
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6487:            profile_step = _font_geometry_px(
+receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py:6488:                receipt.get("font_geometry") or {}, "line_step_px", default=0
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:9:Recovering the real typeface name is out of scope (see the font-analysis pilot
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:10:caveat — OCR geometry yields style *groups*, not font names). We render in a
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:31:from receipt_agent.agents.label_evaluator.rendering.font_profile import (
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:36:# scalable default when none are present (e.g. CI without system fonts).
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:42:    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:43:    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:72:    min_font_px: int = 6
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:73:    max_font_px: int = 72
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:74:    font_path: str | None = None
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:77:def render_receipt(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:89:        profile: merchant font profile; supplies the condensation factor and a
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:132:        font = _fit_font(draw, text, box_w, box_h, config, condense=condense)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:133:        size = int(getattr(font, "size", box_h) or box_h)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:142:        font = _load_font(line_size[line_key], config)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:144:        # (the 9px font floor can otherwise push text past the box right edge,
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:146:        eff_condense = _fit_condense(draw, text, font, box_w, condense)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:149:            image, draw, (left, top + box_h / 2), text, font, ink, eff_condense
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:155:def render_real_vs_synthetic(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:265:def _fit_font(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:274:    """Largest font (capped by box height) whose text still fits the box width."""
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:275:    size = int(max(config.min_font_px, min(config.max_font_px, box_h)))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:276:    font = _load_font(size, config)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:277:    width = _text_width(draw, text, font) * condense
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:279:        return font
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:281:    shrunk = max(config.min_font_px, int(size * (box_w / width)))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:283:        return font
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:284:    return _load_font(shrunk, config)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:290:    font: ImageFont.FreeTypeFont,
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:301:    raw = _text_width(draw, text, font)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:315:def _draw_text(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:320:    font: ImageFont.FreeTypeFont,
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:326:        draw.text((left, center_y), text, font=font, fill=ink, anchor="lm")
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:329:    ascent, descent = font.getmetrics()
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:330:    text_w = max(1, int(_text_width(draw, text, font)))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:334:    layer_draw.text((0, 0), text, font=font, fill=ink + (255,))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:362:    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:365:        return float(draw.textlength(text, font=font))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:367:        bbox = font.getbbox(text)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:374:def _load_font(size: int, config: RenderConfig) -> ImageFont.FreeTypeFont:
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:376:    key = (config.font_path, size)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:381:        [config.font_path] if config.font_path else []
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:386:                font = ImageFont.truetype(path, size)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:387:                _FONT_CACHE[key] = font
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:388:                return font
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:391:    font = ImageFont.load_default(size=size)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:392:    _FONT_CACHE[key] = font
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:393:    return font
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:409:    font = ImageFont.load_default(size=14)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:410:    draw.text((4, 4), labels[0], font=font, fill=(0, 0, 0))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py:411:    draw.text((left.width + gap + 4, 4), labels[1], font=font, fill=(0, 0, 0))
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:1:"""Per-merchant font/geometry profiles built on #994's font analyzer.
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:4:merchant's real receipts — character width, font height, line pitch, and the
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:40:    ``receipt_upload`` (which holds #994's font analyzer) is not pip-installed in
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:46:        import receipt_upload.font_analysis  # noqa: F401
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:58:    # the repo's outer ``receipt_upload`` dir (which has no ``font_analysis``
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:67:from receipt_upload.font_analysis import (  # noqa: E402
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:70:    analyze_receipt_fonts,
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:83:class ReceiptFontProfile:
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:89:    font_height: float
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:102:            "font_height": round(self.font_height, 6),
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:119:class MerchantFontProfile:
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:120:    """Aggregated font/geometry profile for a merchant.
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:128:    font_height: float
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:146:            "font_height_px": self.font_height * canvas,
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:165:            "font_height": round(self.font_height, 6),
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:182:def extract_receipt_font_profile(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:193:    Typography (``font_height`` / ``char_width`` / ``char_aspect``) is read from
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:194:    the dominant #994 font cluster — the merchant's main body-text style — when a
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:209:        analysis = analyze_receipt_fonts(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:220:        font_height = float(dominant.metrics["height"])
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:228:        font_height = _median_or_zero([m["height"] for m in word_metrics])
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:235:    if font_height <= _EPSILON or char_width <= _EPSILON:
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:238:    char_aspect = char_width / font_height
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:247:        font_height=font_height,
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:257:def build_merchant_font_profile(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:295:        font_height=median(profile.font_height for profile in profiles),
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:306:def build_merchant_font_profile_from_dynamo(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:323:    profile with :func:`extract_receipt_font_profile` (which runs #994's
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:326:    ``eps=3.0`` matches the receipt-level recommendation from the font pilot
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:327:    (``docs/receipt-font-analysis-pilot.md``). When ``use_raw_image`` is set the
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:335:    from receipt_upload.font_analysis import load_raw_image_from_s3
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:385:            profile = extract_receipt_font_profile(
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:399:    return build_merchant_font_profile(merchant_name, receipt_profiles)
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:405:    """The largest font-style cluster — the merchant's main body-text font."""
+receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py:536:    ``font_analysis._box`` does.
+
+exec
+/bin/zsh -lc "find . -path './.git' -prune -o \\( -name 'render_synthetic_receipts.py' -o -name 'receipt_renderer.py' -o -name 'merchant_synthesis.py' -o -name 'synthesis_reconcile.py' -o -name 'synthesis_text_clean.py' -o -name 'font_profile.py' \\) -print" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+./receipt_agent/receipt_agent/agents/label_evaluator/synthesis_reconcile.py
+./receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py
+./receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py
+./receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py
+./receipt_agent/receipt_agent/agents/label_evaluator/synthesis_text_clean.py
+./scripts/render_synthetic_receipts.py
+
+codex
+The locations are real files under `receipt_agent/receipt_agent/agents/label_evaluator`. I’m pulling the relevant function blocks only, mainly to distinguish renderer issues from synthesis/reconciliation issues.
+exec
+/bin/zsh -lc "sed -n '70,155p' receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+    color_by_label: bool = False
+    draw_price_column: bool = False
+    min_font_px: int = 6
+    max_font_px: int = 72
+    font_path: str | None = None
+
+
+def render_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    profile: MerchantFontProfile | None = None,
+    config: RenderConfig | None = None,
+    coord_max: float | None = None,
+) -> Image.Image:
+    """Render a receipt dict to a Pillow image.
+
+    Args:
+        receipt: ``{"lines": [{"words": [{"text", "bbox", "labels"}, ...]}]}``
+            (a flat ``receipt["words"]`` list is also accepted).
+        profile: merchant font profile; supplies the condensation factor and a
+            fallback glyph height. ``None`` renders with neutral defaults.
+        config: rendering parameters (size, colors, guides).
+        coord_max: coordinate scale of the boxes. Auto-detected when ``None``
+            (``1.0`` for normalized 0-1 OCR, else ``1000.0``).
+    """
+    config = config or RenderConfig()
+    words = _iter_words(receipt)
+    scale = coord_max or _detect_coord_max(words)
+
+    image = Image.new("RGB", (config.width, config.height), config.background)
+    draw = ImageDraw.Draw(image)
+
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    condense = _condense_factor(profile)
+
+    if config.draw_price_column and profile and profile.price_column_x:
+        # Profile fields are always normalized 0-1, independent of the box scale.
+        col_x = config.margin + profile.price_column_x * inner_w
+        draw.line(
+            [(col_x, config.margin), (col_x, config.height - config.margin)],
+            fill=(220, 215, 205),
+            width=1,
+        )
+
+    # Pass 1: fit each word to its own box, but bucket by line and remember the
+    # SMALLEST fitted size on each line. A lone char ("a", "@", "t") otherwise
+    # renders at full line-height while words get width-shrunk, so single-char
+    # tokens looked oversized/serif-ish. Unifying to the line's body size fixes it.
+    prepared = []
+    line_size: dict[int, int] = {}
+    for word in words:
+        bbox = word.get("bbox")
+        text = str(word.get("text") or "")
+        if not bbox or not text.strip():
+            continue
+        px = _to_pixel_box(bbox, scale, config, inner_w, inner_h)
+        if px is None:
+            continue
+        left, top, right, bottom = px
+        box_h = max(1, bottom - top)
+        box_w = max(1, right - left)
+        font = _fit_font(draw, text, box_w, box_h, config, condense=condense)
+        size = int(getattr(font, "size", box_h) or box_h)
+        line_key = int(round((top + box_h / 2) / 6))
+        line_size[line_key] = min(line_size.get(line_key, size), size)
+        prepared.append(
+            (left, top, box_w, box_h, text, _ink_for(word, config), line_key)
+        )
+
+    # Pass 2: draw every token at its line's body size (consistent within a line).
+    for left, top, box_w, box_h, text, ink, line_key in prepared:
+        font = _load_font(line_size[line_key], config)
+        # Per-token horizontal squeeze so the glyphs never overrun the word box
+        # (the 9px font floor can otherwise push text past the box right edge,
+        # fusing it into the neighbour or clipping it off the paper margin).
+        eff_condense = _fit_condense(draw, text, font, box_w, condense)
+        # Vertically center the glyph in its box; left-align horizontally.
+        _draw_text(
+            image, draw, (left, top + box_h / 2), text, font, ink, eff_condense
+        )
+
+    return image
+
+
+def render_real_vs_synthetic(
+
+exec
+/bin/zsh -lc "sed -n '255,335p' receipt_agent/receipt_agent/agents/label_evaluator/rendering/receipt_renderer.py" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+    merchant's measured advance/height. Clamp the ratio to a gentle range so a
+    noisy aspect never collapses or balloons the text.
+    """
+    if profile is None or profile.char_aspect <= 0:
+        return 1.0
+    monospace_aspect = 0.6
+    factor = profile.char_aspect / monospace_aspect
+    return max(0.6, min(1.6, factor))
+
+
+def _fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    box_w: float,
+    box_h: float,
+    config: RenderConfig,
+    *,
+    condense: float,
+) -> ImageFont.FreeTypeFont:
+    """Largest font (capped by box height) whose text still fits the box width."""
+    size = int(max(config.min_font_px, min(config.max_font_px, box_h)))
+    font = _load_font(size, config)
+    width = _text_width(draw, text, font) * condense
+    if width <= box_w or width <= 0:
+        return font
+    # Shrink proportionally to fit, then floor at the minimum readable size.
+    shrunk = max(config.min_font_px, int(size * (box_w / width)))
+    if shrunk >= size:
+        return font
+    return _load_font(shrunk, config)
+
+
+def _fit_condense(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    box_w: float,
+    condense: float,
+) -> float:
+    """Squeeze factor that keeps ``text`` inside its box with a small gap.
+
+    Reserves a thin inter-word gap inside each box so adjacent same-line tokens
+    keep visible whitespace, then narrows the glyph horizontally (height — and
+    thus OCR legibility — is preserved) only as much as needed to fit. Floored
+    so text is never crushed into an unreadable sliver.
+    """
+    raw = _text_width(draw, text, font)
+    if raw <= 0:
+        return condense
+    gap = max(1.5, box_w * 0.05)
+    avail = max(1.0, box_w - gap)
+    eff = condense
+    if raw * eff > avail:
+        eff = avail / raw
+    # Floor the squeeze so a long token (e.g. a 9px-floored value crammed into a
+    # thin box) stays legible. A little overflow past the box is preferable to an
+    # unreadable sliver; the gap reservation still keeps neighbours separated.
+    return max(0.62, min(condense, eff))
+
+
+def _draw_text(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    anchor_left_center: tuple[float, float],
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    ink: tuple[int, int, int],
+    condense: float,
+) -> None:
+    left, center_y = anchor_left_center
+    if abs(condense - 1.0) < 1e-3:
+        draw.text((left, center_y), text, font=font, fill=ink, anchor="lm")
+        return
+    # Condensing means rendering to a scratch layer and squashing horizontally.
+    ascent, descent = font.getmetrics()
+    text_w = max(1, int(_text_width(draw, text, font)))
+    text_h = max(1, ascent + descent)
+    layer = Image.new("RGBA", (text_w, text_h), (0, 0, 0, 0))
+    layer_draw = ImageDraw.Draw(layer)
+    layer_draw.text((0, 0), text, font=font, fill=ink + (255,))
+    new_w = max(1, int(text_w * condense))
+
+exec
+/bin/zsh -lc 'grep -n "def _render_cached_hybrid" -A80 scripts/render_synthetic_receipts.py' in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+548:def _render_cached_hybrid(
+549-    receipt: dict,
+550-    atlas,
+551-    *,
+552-    profile,
+553-    width: int,
+554-    height: int,
+555-    path: str,
+556-) -> str:
+557-    config = RenderConfig(
+558-        width=width,
+559-        height=height,
+560-        margin=10,
+561-        color_by_label=False,
+562-        draw_price_column=False,
+563-        background=(250, 249, 245),
+564-        # Legibility floor (review action #4): thin synthesized bboxes shrank totals/payment tokens
+565-        # to ~5px -> faint gray micro-font Apple Vision dropped/misread (SUBTOTAL gone, decimals as
+566-        # dashes). Floor at 9px so every field is OCR-readable; mild box overflow is acceptable.
+567-        min_font_px=9,
+568-        max_font_px=14,
+569-    )
+570-    image = render_receipt(
+571-        receipt,
+572-        profile=profile,
+573-        config=config,
+574-        coord_max=1000.0,
+575-    ).convert("RGBA")
+576-    _overlay_cached_logo(image, receipt, atlas, config=config, coord_max=1000.0)
+577-    _overlay_qr_and_barcode(image, receipt, config=config, coord_max=1000.0)
+578-    # Deterministic per-output seed so re-rendering the same file is stable.
+579-    texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
+580-    image = _composite_paper_texture(image, seed=texture_seed)
+581-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+582-    image.convert("RGB").save(path, format="PNG")
+583-    return path
+584-
+585-
+586-def _overlay_cached_logo(
+587-    image,
+588-    receipt: dict,
+589-    atlas,
+590-    *,
+591-    config: RenderConfig,
+592-    coord_max: float,
+593-) -> None:
+594-    if atlas.logo is None:
+595-        return
+596-    logo_line = _cached_logo_line(receipt)
+597-    if not logo_line:
+598-        return
+599-    bbox = _union_bbox([word["bbox"] for word in logo_line if word.get("bbox")])
+600-    if bbox is None:
+601-        return
+602-    inner_w = config.width - 2 * config.margin
+603-    inner_h = config.height - 2 * config.margin
+604-    left, top, right, bottom = _to_pixel_box(
+605-        bbox,
+606-        coord_max=coord_max,
+607-        margin=config.margin,
+608-        inner_w=inner_w,
+609-        inner_h=inner_h,
+610-    )
+611-    box_w = max(1, right - left)
+612-    box_h = max(1, bottom - top)
+613-    logo = atlas.logo
+614-    scale = min(box_w / logo.width, box_h / logo.height)
+615-    if scale <= 0:
+616-        return
+617-    size = (max(1, int(logo.width * scale)), max(1, int(logo.height * scale)))
+618-    # Raise contrast so the wordmark reads as near-black thermal ink instead of
+619-    # the faint light-gray crop straight off the aged paper photo.
+620-    scaled = _darken_logo(logo).resize(size)
+621-    x = int(left + (box_w - size[0]) / 2)
+622-    y = int(top + (box_h - size[1]) / 2)
+623-    from PIL import ImageDraw
+624-
+625-    draw = ImageDraw.Draw(image)
+626-    pad = 3
+627-    draw.rectangle(
+628-        [left - pad, top - pad, right + pad, bottom + pad],
+
+exec
+/bin/zsh -lc "sed -n '6380,6525p' receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py && sed -n '651,735p' receipt_agent/receipt_agent/agents/label_evaluator/synthesis_reconcile.py" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+def _reconcile_item_count(
+    receipt: dict[str, Any], *, delta_count: int
+) -> int:
+    """Adjust an item-count summary field ("ITEMS SOLD 4") by ``delta_count``.
+
+    The arithmetic gate reconciles currency totals only, leaving item counters
+    stale after an add/remove. Match a line whose text denotes an item COUNT
+    (not an item/transaction number) and bump its integer (on the same line, or
+    the immediately following line if the label and number are split). Returns
+    the number of fields updated.
+    """
+    if not delta_count:
+        return 0
+    lines = receipt.get("lines") or []
+    updated = 0
+    for index, line in enumerate(lines):
+        words = line.get("words") or []
+        joined = " ".join(str(word.get("text") or "") for word in words)
+        low = joined.lower().replace("_", " ")
+        if not any(phrase in low for phrase in _ITEM_COUNT_PHRASES):
+            continue
+        target_words = list(words)
+        if not any(
+            re.fullmatch(r"\d+", str(word.get("text") or "").strip())
+            for word in target_words
+        ) and index + 1 < len(lines):
+            target_words = lines[index + 1].get("words") or []
+        for word in reversed(target_words):
+            text = str(word.get("text") or "").strip()
+            if re.fullmatch(r"\d+", text):
+                word["text"] = str(max(0, int(text) + delta_count))
+                updated += 1
+                break
+    return updated
+
+
+# Default row pitch used only when no real row geometry can be measured at all
+# (no matched items AND no labeled item-region rows). Kept as the historical
+# constant so well-formed receipts are unaffected.
+_DEFAULT_LINE_STEP = 26
+
+
+def _row_pitch(centers: list[float]) -> int | None:
+    """Median vertical gap between consecutive row centers, clamped to the
+    realistic single-row pitch range. ``None`` when fewer than two distinct rows
+    exist (no measurable pitch)."""
+    ordered = sorted({round(value, 1) for value in centers}, reverse=True)
+    gaps = [
+        abs(ordered[idx] - ordered[idx + 1])
+        for idx in range(len(ordered) - 1)
+        if abs(ordered[idx] - ordered[idx + 1]) >= 8
+    ]
+    if not gaps:
+        return None
+    return max(18, min(44, int(round(statistics.median(gaps)))))
+
+
+def _label_row_centers(receipt: dict[str, Any], label: str) -> list[float]:
+    """Vertical centers (in the 0-1000 ``center_y`` frame used by line items) of
+    every receipt line carrying ``label`` — the labeled item-region row rhythm,
+    independent of whether each row also matched a paired line item."""
+    centers: list[float] = []
+    for line in receipt.get("lines", []) or []:
+        ys = [
+            _cy(word["bbox"])
+            for word in line.get("words", []) or []
+            if label in (word.get("labels") or [])
+        ]
+        if ys:
+            centers.append(statistics.median(ys))
+    return centers
+
+
+def _line_step(
+    items: list[MerchantLineItem],
+    receipt: dict[str, Any] | None = None,
+    *,
+    allow_font_geometry_fallback: bool = False,
+) -> int:
+    """Estimate the merchant's single item-row pitch.
+
+    Matched line items are the most precise signal, so they are used first.
+    When labeling is sparse — common for thin merchants where PRODUCT_NAME /
+    LINE_TOTAL pairing yields fewer than two matched items — the row rhythm is
+    instead measured from the receipt's labeled item-region rows (LINE_TOTAL
+    first, then PRODUCT_NAME). This keeps the geometry comparison anchored to the
+    merchant's real row spacing instead of collapsing to a flat constant that no
+    real or synthetic receipt actually matches. The constant fallback is reached
+    only when no row geometry exists at all.
+
+    ``allow_font_geometry_fallback`` is opt-in and set ONLY by row-GENERATION
+    /layout call sites. When a receipt has no measurable row geometry, those
+    sites prefer PR #994's merchant row pitch (``font_geometry.line_step_px``)
+    over the flat constant. Structure SCORING / signature call sites leave it
+    off so the profile can never influence the structure-similarity gate or the
+    emitted structure evidence — they stay on measured geometry plus the
+    constant.
+    """
+    pitch = _row_pitch([item.center_y for item in items])
+    if pitch is not None:
+        return pitch
+    if receipt is not None:
+        for label in ("LINE_TOTAL", "PRODUCT_NAME"):
+            pitch = _row_pitch(_label_row_centers(receipt, label))
+            if pitch is not None:
+                return pitch
+        if allow_font_geometry_fallback:
+            profile_step = _font_geometry_px(
+                receipt.get("font_geometry") or {}, "line_step_px", default=0
+            )
+            if profile_step:
+                return profile_step
+    return _DEFAULT_LINE_STEP
+
+
+def _label_x_p50(receipt: dict[str, Any], label: str) -> float | None:
+    xs = [
+        _cx(word["bbox"])
+        for line in receipt.get("lines", [])
+        for word in line.get("words", [])
+        if label in word.get("labels", [])
+    ]
+    summary = _summary(xs)
+    return summary.p50 if summary else None
+
+
+def _summary(values: list[float | int]) -> GeometrySummary:
+    numeric = sorted(float(value) for value in values)
+    if not numeric:
+        return GeometrySummary(n=0, p10=0.0, p50=0.0, p90=0.0)
+    return GeometrySummary(
+        n=len(numeric),
+        p10=round(_percentile(numeric, 0.10), 1),
+        p50=round(statistics.median(numeric), 1),
+        p90=round(_percentile(numeric, 0.90), 1),
+    )
+
+
+def _percentile(values: list[float], q: float) -> float:
+    if len(values) == 1:
+        return values[0]
+    idx = round(q * (len(values) - 1))
+    return values[max(0, min(len(values) - 1, idx))]
+
+
+def _parse_money(value: Any) -> Decimal | None:
+def reconcile_candidate(
+    tokens: list[str],
+    bboxes: list[list[int]],
+    ner_tags: list[str],
+    merchant_name: str | None = None,
+) -> tuple[list[str], list[list[int]], list[str]]:
+    """Run every reconciliation pass in the canonical order.
+
+    Cleans a flattened synthetic candidate so it survives objective verification:
+      1. collapse/drop duplicate header blocks -> exactly one MERCHANT_NAME (and
+         one ADDRESS_LINE block), and strip stray-comma address artifacts.
+      2. collapse/drop duplicate payment/card blocks -> at most one masked-card
+         trailing-4 (the injected second tender block tell).
+      3. de-overlap AND re-space words that share a visual line so adjacent words
+         carry a real word-gap (the footer "squish" tell).
+      4. content-aware label sanitization: demote-to-O any BIO entity run whose
+         joined text can't be its label (mislabeled entities poison LayoutLM).
+
+    Returns the cleaned ``(tokens, bboxes, ner_tags)``.
+    """
+    tokens, bboxes, ner_tags = clean_token_text(
+        tokens, bboxes, ner_tags, merchant_name
+    )
+    tokens, bboxes, ner_tags = _dedupe_header_blocks(
+        tokens, bboxes, ner_tags, merchant_name
+    )
+    tokens, bboxes, ner_tags = _dedupe_payment_blocks(tokens, bboxes, ner_tags)
+    tokens, bboxes, ner_tags = _deoverlap_line_words(tokens, bboxes, ner_tags)
+    tokens, bboxes, ner_tags = _sanitize_entity_labels(tokens, bboxes, ner_tags)
+    return tokens, bboxes, ner_tags
+
+codex
+The renderer currently fits each word box independently, then only normalizes within a detected line. That matches the analysts’ repeated complaint about tiny totals, floating prices, and inconsistent baselines: the biggest fixes belong in the renderer plus the row/amount synthesis path.
+exec
+/bin/zsh -lc "sed -n '1,220p' receipt_agent/receipt_agent/agents/label_evaluator/synthesis_text_clean.py" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+"""synthesis_text_clean.py -- repair source-OCR noise in synthesized receipt tokens.
+
+The synthesis assembles receipts from REAL receipt OCR tokens, which carry the source OCR's errors
+(e.g. 'Subtota!::' for 'Subtotal:', 'amasen.com' for 'amazon.com', 'briet' for 'brief'). Those errors
+get baked into the ground truth and rendered as if printed -- making the synthetic image look wrong AND
+poisoning the labels. The principled split: GROUND TRUTH should be CLEAN (what the receipt actually
+printed); realistic OCR noise belongs in the downstream re-OCR pass, not here.
+
+This pass makes high-confidence, SAFE repairs only:
+  1. punctuation normalization ('::'->':' , stray repeats)
+  2. vocabulary repair: a standalone non-PRODUCT word that is OCR-close to a common receipt word is
+     corrected to it ('Subtota!::'->'Subtotal:', 'briet'->'brief'). Skips amounts/IDs/product names.
+  3. merchant-domain normalization: a URL/domain token OCR-close to the merchant's own name is fixed
+     ('www.amasen.com'->'www.amazon.com'), driven off merchant_name (generalizable, not hardcoded).
+"""
+from __future__ import annotations
+import re
+
+RECEIPT_VOCAB = {
+    "subtotal", "total", "tax", "sales", "change", "balance", "due", "purchase", "cash", "credit",
+    "debit", "card", "member", "receipt", "thank", "you", "for", "shopping", "store", "hours", "open",
+    "daily", "please", "come", "again", "save", "money", "paper", "brief", "survey", "return", "returns",
+    "policy", "feedback", "emailed", "questions", "call", "customer", "service", "read", "scan", "code",
+    "view", "your", "order", "online", "number", "items", "promo", "markdown", "savings", "ending",
+    "approved", "cashier", "transaction", "reference", "auth", "account", "payment", "method", "amount",
+    "tendered", "visa", "mastercard", "discover", "express", "verified", "terminal", "register", "date",
+    "time", "phone", "welcome", "original", "weekly", "ads", "sign", "keep", "required", "without", "did",
+    "how", "tell", "the", "and", "our", "gift", "win", "chance", "quick", "fresh", "market", "wholesale",
+}
+# OCR-confusable character pairs (symmetric); a substitution between these costs 0.5 instead of 1.0.
+_CONF = [("l", "1"), ("l", "i"), ("l", "!"), ("l", "|"), ("i", "1"), ("i", "!"), ("o", "0"), ("s", "5"),
+         ("s", "z"), ("e", "c"), ("a", "o"), ("n", "m"), ("r", "n"), ("c", "e"), ("g", "9"), ("b", "6"),
+         ("t", "f"), ("u", "v"), ("a", "e"), ("h", "b")]
+_CONF_SET = {frozenset(p) for p in _CONF}
+_WORDISH = re.compile(r"^[A-Za-z!|0-9]+$")
+# Real trailing punctuation to preserve. '!' and '|' are EXCLUDED: in OCR they are misread letters
+# (l/i/1), so when we vocab-correct a word they belong to the word, not as trailing punctuation.
+_TRAIL = re.compile(r"[:.,;]+$")
+
+
+def _sub_cost(a: str, b: str) -> float:
+    if a == b:
+        return 0.0
+    return 0.5 if frozenset((a.lower(), b.lower())) in _CONF_SET else 1.0
+
+
+def _ocr_dist(a: str, b: str) -> float:
+    n, m = len(a), len(b)
+    dp = [[0.0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        dp[i][0] = i
+    for j in range(m + 1):
+        dp[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + _sub_cost(a[i - 1], b[j - 1]))
+    return dp[n][m]
+
+
+def _best_vocab(core_lower: str) -> str | None:
+    if len(core_lower) < 3 or core_lower in RECEIPT_VOCAB:
+        return None
+    best, bestd = None, 99.0
+    for w in RECEIPT_VOCAB:
+        if abs(len(w) - len(core_lower)) > 2:
+            continue
+        d = _ocr_dist(core_lower, w)
+        if d < bestd:
+            bestd, best = d, w
+    return best if best and bestd <= 1.0 else None
+
+
+def _match_case(src: str, repl: str) -> str:
+    if src.isupper():
+        return repl.upper()
+    if src[:1].isupper():
+        return repl.capitalize()
+    return repl
+
+
+def _merchant_core(merchant_name: str | None) -> str | None:
+    if not merchant_name:
+        return None
+    for w in re.split(r"\s+", merchant_name):
+        wl = re.sub(r"[^A-Za-z]", "", w).lower()
+        if len(wl) >= 5 and wl not in ("fresh", "market", "wholesale", "store", "farmers"):
+            return wl  # the distinctive brand word (amazon, costco, sprouts, gelsons, ...)
+    return None
+
+
+def _fix_domain(token: str, brand: str) -> str:
+    # find a dotted host segment OCR-close to the brand and replace it
+    def repl(m):
+        seg = m.group(0)
+        return brand if 0 < _ocr_dist(seg.lower(), brand) <= 1.5 else seg
+    return re.sub(r"[A-Za-z][A-Za-z0-9]{3,}", repl, token)
+
+
+def clean_token_text(tokens, bboxes, ner_tags, merchant_name=None):
+    """5th reconcile pass: repair source-OCR noise in the token TEXT. bboxes/tags unchanged."""
+    brand = _merchant_core(merchant_name)
+    out = []
+    for tok, tag in zip(tokens, ner_tags):
+        ent = tag.split("-", 1)[-1] if tag and tag != "O" else "O"
+        t = str(tok)
+        # 1. punctuation normalization
+        t = re.sub(r"::+", ":", t)
+        t = re.sub(r"([:.,;])\1+", r"\1", t)
+        # 2. merchant-domain normalization (URL/domain tokens)
+        if brand and (".com" in t.lower() or "www." in t.lower() or "://" in t.lower()):
+            t = _fix_domain(t, brand)
+        # 3. vocabulary repair -- only safe label classes (never amounts / ids / product names)
+        if ent not in ("PRODUCT_NAME", "LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL", "PHONE_NUMBER",
+                       "LOYALTY_ID", "PAYMENT_METHOD"):
+            trail_m = _TRAIL.search(t)
+            trail = trail_m.group(0) if trail_m else ""
+            body = t[: len(t) - len(trail)] if trail else t
+            core = re.sub(r"[^A-Za-z]", "", body)
+            if body and _WORDISH.match(body) and core and not any(ch.isdigit() for ch in body):
+                repl = _best_vocab(core.lower())
+                if repl:
+                    t = _match_case(core, repl) + trail
+        out.append(t)
+    return out, bboxes, ner_tags
+
+exec
+/bin/zsh -lc "sed -n '119,170p' receipt_agent/receipt_agent/agents/label_evaluator/rendering/font_profile.py" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+class MerchantFontProfile:
+    """Aggregated font/geometry profile for a merchant.
+
+    All scalar geometry fields are medians over the contributing receipts and
+    are in normalized (0-1) receipt units.
+    """
+
+    merchant_name: str
+    receipt_count: int
+    font_height: float
+    char_width: float
+    char_aspect: float
+    line_pitch: float | None
+    price_column_x: float | None
+    dominant_style_label: str
+    style_label_counts: dict[str, int] = field(default_factory=dict)
+    source_image_ids: tuple[str, ...] = ()
+
+    def to_geometry_params(self, *, canvas: int = 1000) -> dict[str, float]:
+        """Scale the normalized profile into synthesis pixel space.
+
+        Returns the spacing parameters the ``merchant_synthesis`` helpers and the
+        renderer consume, in the ``0..canvas`` coordinate space (default 1000).
+        ``line_step_px`` / ``price_column_x_px`` are ``None`` when the profile
+        could not observe them.
+        """
+        return {
+            "font_height_px": self.font_height * canvas,
+            "char_width_px": self.char_width * canvas,
+            "char_aspect": self.char_aspect,
+            "line_step_px": (
+                None
+                if self.line_pitch is None
+                else self.line_pitch * canvas
+            ),
+            "price_column_x_px": (
+                None
+                if self.price_column_x is None
+                else self.price_column_x * canvas
+            ),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "merchant_name": self.merchant_name,
+            "receipt_count": self.receipt_count,
+            "font_height": round(self.font_height, 6),
+            "char_width": round(self.char_width, 6),
+            "char_aspect": round(self.char_aspect, 6),
+            "line_pitch": (
+                None if self.line_pitch is None else round(self.line_pitch, 6)
+            ),
+
+exec
+/bin/zsh -lc "grep -n \"def _overlay_qr_and_barcode\\|def _composite_paper_texture\\|def _overlay_cached_logo\\|barcode\\|QR\" scripts/render_synthetic_receipts.py | head -120" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+514:def _composite_paper_texture(image, *, seed: int | None = None):
+577:    _overlay_qr_and_barcode(image, receipt, config=config, coord_max=1000.0)
+586:def _overlay_cached_logo(
+675:    """Draw a synthetic-but-plausible QR block (finder patterns + modules)."""
+712:def _draw_barcode(draw, x: int, y: int, w: int, h: int, seed: int) -> None:
+713:    """Draw a synthetic 1D (Code128-style) barcode with a numeric caption."""
+739:def _overlay_qr_and_barcode(
+742:    """Stamp a QR block and a 1D barcode in the blank footer region.
+744:    The renderer's footer narration ("Scan the QR code") promised anchors that
+811:        _draw_barcode(
+816:        _draw_barcode(draw, int(cx - bar_w / 2), y0, bar_w, bar_h, seed ^ 0x5A5A)
+
+exec
+/bin/zsh -lc "grep -n \"def .*amount\\|def .*price\\|price_column\\|LINE_TOTAL\\|line total\\|tax flag\\|TAX\\|BALANCE\\|TOTAL\" receipt_agent/receipt_agent/agents/label_evaluator/merchant_synthesis.py | head -160" in /Users/tnorlund/Portfolio_content
+ succeeded in 0ms:
+68:    "GRAND_TOTAL",
+69:    "SUBTOTAL",
+70:    "TAX",
+71:    "LINE_TOTAL",
+82:    "price_column": 0.75,
+154:    # (product code, tax flag, exact price token, two-line layout) so the
+1081:    product code and tax flag train as ``O`` and the name/price keep their tags.
+1402:    top edge of the lowest real PRODUCT_NAME / LINE_TOTAL / QUANTITY /
+1410:    item_labels = {"PRODUCT_NAME", "LINE_TOTAL", "QUANTITY", "UNIT_PRICE"}
+1425:    """Top edge (highest y) of the SUBTOTAL/TAX/TOTAL summary block — the line
+1445:        if not (labels & {"SUBTOTAL", "TAX", "GRAND_TOTAL"}):
+1537:    # A real item row precedes the SUBTOTAL/TOTAL block. If the chosen boundary
+1551:    # Taxable items reconcile subtotal + TAX (at the merchant's taxable-item rate) +
+1559:        # drift never leaks into recomputed TAX.
+1666:    # jurisdiction rate to recompute TAX with; otherwise restrict to non-taxable
+1714:        # Surface a TAXABLE removal specifically (the overall best is usually a
+2528:    # jurisdiction rate to recompute TAX with; otherwise restrict to non-taxable
+2563:# price -> LINE_TOTAL) because we control it; the header/totals/footer come from
+2643:    # LINE_TOTAL column (that center x is exactly what the price_column structure
+2645:    # the receipt's right margin, when this scaffold has no LINE_TOTAL label.
+2647:    # _label_x_p50 returns 0.0 (not None) when the scaffold has no LINE_TOTAL
+2650:    real_price_center = _label_x_p50(receipt, "LINE_TOTAL")
+2651:    profile_price_center = _font_geometry_px(fg, "price_column_x_px", default=0)
+2695:    UPC/flag -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL."""
+2760:            "labels": ["LINE_TOTAL"],
+2778:        return "LINE_TOTAL"
+2849:_MIN_PLAUSIBLE_TAX_RATE = Decimal("0.001")
+2850:_MAX_PLAUSIBLE_TAX_RATE = Decimal("0.20")
+2860:    so ``tax / taxable_subtotal`` is fragile. The labeled SUBTOTAL and TAX
+2881:        if _MIN_PLAUSIBLE_TAX_RATE <= rate <= _MAX_PLAUSIBLE_TAX_RATE:
+2983:    # Only rendered entries marked taxable contribute to TAX. Exempt catalog rows
+3066:    """Rewrite the scaffold's SUBTOTAL / TAX / GRAND_TOTAL amounts in place, plus
+3076:    summary_labels = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
+3090:            if not effective_labels & {"LINE_TOTAL", *summary_labels}:
+3092:            if "SUBTOTAL" in effective_labels:
+3096:            elif "TAX" in effective_labels:
+3097:                # Defer: a scaffold can show several TAX rows (e.g. state + city)
+3100:            elif "GRAND_TOTAL" in effective_labels:
+3107:                and not labels & {"LINE_TOTAL", "TAX", "SUBTOTAL", "GRAND_TOTAL"}
+3113:    # Distribute the composed tax across the scaffold's TAX rows (proportional to
+3639:                # An item inserted below the SUBTOTAL/TOTAL block is invalid.
+4246:    if label_set & {"PRODUCT_NAME", "LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}:
+4248:    if label_set & {"SUBTOTAL", "TAX", "GRAND_TOTAL", "DISCOUNT", "COUPON"}:
+4488:_ITEM_BODY_LABELS = {"PRODUCT_NAME", "LINE_TOTAL", "QUANTITY", "UNIT_PRICE"}
+4490:# row unlabeled (so a bare "SUBTOTAL 12.34" still stops band expansion).
+4492:    "SUBTOTAL",
+4493:    "TOTAL",
+4494:    "TAX",
+4495:    "BALANCE",
+4511:    summary line (SUBTOTAL/TAX/GRAND_TOTAL). An item's band is then the
+4535:        # SUBTOTAL / TAX / GRAND_TOTAL / DISCOUNT / COUPON — never belongs to an
+4542:        # attributed to an item (e.g. an OCR'd "SUBTOTAL 12.34" or "TOTAL 13.10"
+4619:            if "LINE_TOTAL" in word.get("labels", [])
+4644:            "GRAND_TOTAL" in word.get("labels", [])
+4657:            "SUBTOTAL" in word.get("labels", [])
+4668:            "TAX" in word.get("labels", []) for word in line.get("words", [])
+4703:                # just the labeled product/total lines: a tax flag ('T') can sit
+5070:    """This receipt's own taxable-item rate (tax / sum of taxable line totals),
+5071:    or ``None`` when it has no positive TAX or no parsed taxable items."""
+5089:    Uses the labeled SUBTOTAL, else ``grand_total - tax`` — both reliable, unlike
+5123:    """True when some receipt has positive TAX but no parsed taxable items.
+5147:    a recomputed TAX is never applied at the wrong jurisdiction's rate. Needs at
+5187:    """Validated rate to recompute TAX for a taxable edit ON ``analysis``.
+5197:        is needed to disambiguate, and the recomputed TAX uses the verified
+5198:        rate. (A taxable add/remove changes TAX by ``delta * rate``; the
+5204:        unobserved positive-TAX receipt whose jurisdiction is unknown (a blind
+5382:    total_x = _label_x_p50(receipt, "LINE_TOTAL") or 850
+5391:        ["PRODUCT_NAME"] * len(entry.product_tokens) + ["LINE_TOTAL"],
+5537:            if "SUBTOTAL" in labels:
+5541:            elif "GRAND_TOTAL" in labels:
+5548:                "LINE_TOTAL",
+5549:                "TAX",
+5550:                "SUBTOTAL",
+5551:                "GRAND_TOTAL",
+5581:    """Reconcile a TAXABLE item add/remove using the merchant's stable taxable-item
+5584:    path (which freezes tax), this edits the real TAX value — only safe because a
+5593:        return None  # taxable math needs a real TAX anchor to move
+5597:        # Many real receipts label TAX + GRAND_TOTAL but omit a SUBTOTAL line
+5598:        # (e.g. the Vons/Sprouts exports carry zero SUBTOTAL words). Reconstruct
+5633:    summary_labels = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
+5647:            if not effective_labels & {"LINE_TOTAL", *summary_labels}:
+5649:            if "SUBTOTAL" in effective_labels:
+5653:            elif "TAX" in effective_labels:
+5655:            elif "GRAND_TOTAL" in effective_labels:
+5660:                "LINE_TOTAL",
+5661:                "TAX",
+5662:                "SUBTOTAL",
+5663:                "GRAND_TOTAL",
+5798:    candidate_price_x = _label_x_p50(candidate.receipt, "LINE_TOTAL")
+5799:    real_price_x = _label_x_p50(real.receipt, "LINE_TOTAL")
+5816:        "price_column": (
+5837:        + components.get("price_column", 0.0) * 0.18
+6002:    if components.get("price_column", 0.0) >= thresholds["price_column"]:
+6003:        shape_checks.append("price_column_aligned")
+6028:        "line_total_x_p50": _label_x_p50(analysis.receipt, "LINE_TOTAL"),
+6179:        "BALANCE",
+6180:        "BALANCE DUE",
+6195:        "SUBTOTAL",
+6196:        "TAX",
+6198:        "TOTAL",
+6199:        "TOTAL TAX",
+6324:_TAXABLE_FLAGS = frozenset({"T", "TT"})
+6325:_NONTAXABLE_FLAGS = frozenset({"F", "FF", "FT", "FS", "N", "NT"})
+6331:    if token in _TAXABLE_FLAGS:
+6333:    if token in _NONTAXABLE_FLAGS:
+6339:        if suffix in _TAXABLE_FLAGS:
+6341:        if suffix in _NONTAXABLE_FLAGS:
+6463:    LINE_TOTAL pairing yields fewer than two matched items — the row rhythm is
+6464:    instead measured from the receipt's labeled item-region rows (LINE_TOTAL
+6482:        for label in ("LINE_TOTAL", "PRODUCT_NAME"):
+
+codex
+Verdict: the receipts fail first as typography/layout renders, then as unconstrained merchant content; fix the renderer grid before polishing details.
+
+**1. Top 5 Changes**
+1. Concrete change: render body text with one merchant-profiled thermal monospace size/weight per line/section; stop per-word shrinking that creates tiny totals, superscript prices, and mixed glyph weights.  
+   Layer: typography. Recurs in: 25/25.  
+   Where: `receipt_agent/.../rendering/receipt_renderer.py` `render_receipt`, `_fit_font`, `_draw_text`; `rendering/font_profile.py`; `scripts/render_synthetic_receipts.py` `_render_cached_hybrid`.
+
+2. Concrete change: enforce a fixed receipt grid: stable baselines, constant line pitch, one right-aligned money/decimal column, and separate tax-flag lanes; reflow rows after add/remove instead of leaving gaps or duplicate fragments.  
+   Layer: layout. Recurs in: 23/25.  
+   Where: `merchant_synthesis.py` row generation around `_line_step`, `_label_x_p50`, item/totals placement; `receipt_renderer.py` line grouping/drawing.
+
+3. Concrete change: add merchant-specific grammar validators/templates for item rows, headers, payment blocks, totals, and field replacements; reject catalog dumps, impossible addresses, orphan tokens, stale item counts, and unreconciled tax/tender math.  
+   Layer: content. Recurs in: 25/25.  
+   Where: `merchant_synthesis.py` `generate_merchant_synthesis_candidates`, totals/tax rewrite paths, `_reconcile_item_count`; `synthesis_reconcile.py` `reconcile_candidate`; `synthesis_text_clean.py` `clean_token_text`.
+
+4. Concrete change: render real structural graphics at merchant-correct positions: logos, barcodes, QR codes, Costco total bar, Amazon savings box, separator rows, and footer anchors.  
+   Layer: graphics. Recurs in: 19/25.  
+   Where: `scripts/render_synthetic_receipts.py` `_overlay_cached_logo`, `_overlay_qr_and_barcode`, `_draw_barcode`; content placement in `merchant_synthesis.py`.
+
+5. Concrete change: apply a global scan/thermal-paper model after rendering: merchant-matched paper tint, skew/curl, edge shadow, banding, grain, ink bleed, density variation, and light blur so added text does not look digitally pasted.  
+   Layer: paper-texture. Recurs in: 25/25.  
+   Where: `scripts/render_synthetic_receipts.py` `_composite_paper_texture`, `_render_cached_hybrid`; glyph edge treatment in `receipt_renderer.py` `_draw_text`.
+
+**2. Grouped Backlog**
+Typography: normalize ASCII punctuation, remove en/em dashes, tune merchant-specific weight/condensation, and keep display/logo text separate from body text.
+
+Layout: compact headers, prevent item rows from overlapping mastheads, restore section spacing, keep weighted-item sublines under products, and snap all totals/payment rows to the same grid.
+
+Content: validate store/address/phone/ZIP consistency, repair `Road`/`Dir`/state tokens, recompute subtotal/tax/grand total/tender/item count, handle CRV/deposits, alcohol age-checks, sale sublines, department headers, and remove raw UPC/catalog artifacts where merchants do not print them.
+
+Graphics: replace broken Costco/Gelson’s/Smith’s/Sprouts/Home Depot logos, generate real 1D barcodes, remove wrong human-readable barcode digits, restore QR placement, total boxes, reverse-video bars, dashed/asterisk separators.
+
+Paper-texture: make paper tone merchant-specific, add curl/wrinkle shadows, scanner edge tint, thermal fade, horizontal/vertical banding, and blend inserted glyphs into the same degradation pass as untouched text.
+
+**3. Do First**
+Fix the renderer’s word-box typography/grid first: make `render_receipt` render line groups with merchant-profiled body size, baseline, pitch, and amount columns instead of independently fitting every token box.
+
+Why: it hits every one of the 25 analyses and explains the most visible tells: tiny totals, floating prices, inconsistent glyph sizes, broken baselines, and pasted-looking inserted lines. Content fixes will still look synthetic if the print engine keeps producing mixed-size digital text.
+
+**4. Analyst Disagreements**
+The analysts are right on priority, but some merchant micro-details are overstated for a frontend demo: exact Costco logo geometry, exact Amazon `WAS:` wording, and perfect local phone provenance matter less than uniform thermal type, aligned columns, and coherent totals.
+
+The paper-texture asks are directionally right, but texture alone will not rescue these. Applying grain over bad typography just makes a bad render noisy. Do it after the renderer grid and merchant grammar are fixed.
+tokens used
+60,396
+Verdict: the receipts fail first as typography/layout renders, then as unconstrained merchant content; fix the renderer grid before polishing details.
+
+**1. Top 5 Changes**
+1. Concrete change: render body text with one merchant-profiled thermal monospace size/weight per line/section; stop per-word shrinking that creates tiny totals, superscript prices, and mixed glyph weights.  
+   Layer: typography. Recurs in: 25/25.  
+   Where: `receipt_agent/.../rendering/receipt_renderer.py` `render_receipt`, `_fit_font`, `_draw_text`; `rendering/font_profile.py`; `scripts/render_synthetic_receipts.py` `_render_cached_hybrid`.
+
+2. Concrete change: enforce a fixed receipt grid: stable baselines, constant line pitch, one right-aligned money/decimal column, and separate tax-flag lanes; reflow rows after add/remove instead of leaving gaps or duplicate fragments.  
+   Layer: layout. Recurs in: 23/25.  
+   Where: `merchant_synthesis.py` row generation around `_line_step`, `_label_x_p50`, item/totals placement; `receipt_renderer.py` line grouping/drawing.
+
+3. Concrete change: add merchant-specific grammar validators/templates for item rows, headers, payment blocks, totals, and field replacements; reject catalog dumps, impossible addresses, orphan tokens, stale item counts, and unreconciled tax/tender math.  
+   Layer: content. Recurs in: 25/25.  
+   Where: `merchant_synthesis.py` `generate_merchant_synthesis_candidates`, totals/tax rewrite paths, `_reconcile_item_count`; `synthesis_reconcile.py` `reconcile_candidate`; `synthesis_text_clean.py` `clean_token_text`.
+
+4. Concrete change: render real structural graphics at merchant-correct positions: logos, barcodes, QR codes, Costco total bar, Amazon savings box, separator rows, and footer anchors.  
+   Layer: graphics. Recurs in: 19/25.  
+   Where: `scripts/render_synthetic_receipts.py` `_overlay_cached_logo`, `_overlay_qr_and_barcode`, `_draw_barcode`; content placement in `merchant_synthesis.py`.
+
+5. Concrete change: apply a global scan/thermal-paper model after rendering: merchant-matched paper tint, skew/curl, edge shadow, banding, grain, ink bleed, density variation, and light blur so added text does not look digitally pasted.  
+   Layer: paper-texture. Recurs in: 25/25.  
+   Where: `scripts/render_synthetic_receipts.py` `_composite_paper_texture`, `_render_cached_hybrid`; glyph edge treatment in `receipt_renderer.py` `_draw_text`.
+
+**2. Grouped Backlog**
+Typography: normalize ASCII punctuation, remove en/em dashes, tune merchant-specific weight/condensation, and keep display/logo text separate from body text.
+
+Layout: compact headers, prevent item rows from overlapping mastheads, restore section spacing, keep weighted-item sublines under products, and snap all totals/payment rows to the same grid.
+
+Content: validate store/address/phone/ZIP consistency, repair `Road`/`Dir`/state tokens, recompute subtotal/tax/grand total/tender/item count, handle CRV/deposits, alcohol age-checks, sale sublines, department headers, and remove raw UPC/catalog artifacts where merchants do not print them.
+
+Graphics: replace broken Costco/Gelson’s/Smith’s/Sprouts/Home Depot logos, generate real 1D barcodes, remove wrong human-readable barcode digits, restore QR placement, total boxes, reverse-video bars, dashed/asterisk separators.
+
+Paper-texture: make paper tone merchant-specific, add curl/wrinkle shadows, scanner edge tint, thermal fade, horizontal/vertical banding, and blend inserted glyphs into the same degradation pass as untouched text.
+
+**3. Do First**
+Fix the renderer’s word-box typography/grid first: make `render_receipt` render line groups with merchant-profiled body size, baseline, pitch, and amount columns instead of independently fitting every token box.
+
+Why: it hits every one of the 25 analyses and explains the most visible tells: tiny totals, floating prices, inconsistent glyph sizes, broken baselines, and pasted-looking inserted lines. Content fixes will still look synthetic if the print engine keeps producing mixed-size digital text.
+
+**4. Analyst Disagreements**
+The analysts are right on priority, but some merchant micro-details are overstated for a frontend demo: exact Costco logo geometry, exact Amazon `WAS:` wording, and perfect local phone provenance matter less than uniform thermal type, aligned columns, and coherent totals.
+
+The paper-texture asks are directionally right, but texture alone will not rescue these. Applying grain over bad typography just makes a bad render noisy. Do it after the renderer grid and merchant grammar are fixed.
