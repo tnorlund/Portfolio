@@ -2,7 +2,9 @@
 
 **Objective:** raise the opus realism mean (24 merchant×operation analyses). Baseline v1 = 2.60, v2 (after
 typography+content) = 2.62. Climb toward demo-real.
-**Mode:** semi-autonomous. Codex reviews the PLAN and the RESULT each round. User gates the "pick next item".
+**Mode:** FULL-AUTO. Codex reviews the PLAN and the RESULT each round — the ONLY gates. No user pause: pick the
+next backlog item and proceed. Deterministic ratchet + the two codex gates are the guardrails; user interrupts
+only if it goes sideways. Report at each round's end (merge + score + next-item) without waiting for an OK.
 **Isolation:** one fix per git worktree, file-disjoint, off `feat/synthesis-content-clean`; merge when verified.
 
 ## Ratchet metrics (cheap, deterministic — checked every round; opus is noisy so don't ratchet on it)
