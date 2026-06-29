@@ -601,12 +601,48 @@ def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
         max_x1 -= shift_left
         min_x0 -= shift_left
 
-    # Only commit if the line stays in-bounds (otherwise leave it untouched).
-    if max_x1 > 1000 or min_x0 < 0:
+    if max_x1 <= 1000 and min_x0 >= 0:
+        for idx, i in enumerate(ordered):
+            boxes[i][0] = int(round(new[idx][0]))
+            boxes[i][2] = int(round(new[idx][1]))
+        return
+
+    # If the line is already hard against both page edges, pushing words right
+    # cannot open verifier-safe gaps. Compress only this visual line enough to
+    # keep the same order, preserve positive-width boxes, and fit target gaps.
+    widths = [max(float(b[2] - b[0]), 1.0) for b in orig]
+    gaps = [
+        max(0.40 * max(orig[k][3] - orig[k][1], 6), 3.0)
+        for k in range(len(orig) - 1)
+    ]
+
+    left_anchor = max(0.0, min(float(b[0]) for b in orig))
+    available = 1000.0 - left_anchor
+    required_min = float(len(orig)) + sum(gaps)
+    if available < required_min:
+        left_anchor = 0.0
+        available = 1000.0
+    if available < required_min:
+        return
+
+    scale = min(1.0, (available - sum(gaps)) / sum(widths))
+    if scale <= 0:
+        return
+
+    compressed: list[list[float]] = []
+    x = left_anchor
+    for k, width in enumerate(widths):
+        scaled_width = max(width * scale, 1.0)
+        compressed.append([x, x + scaled_width])
+        x += scaled_width
+        if k < len(gaps):
+            x += gaps[k]
+
+    if compressed[-1][1] > 1000 or compressed[0][0] < 0:
         return
     for idx, i in enumerate(ordered):
-        boxes[i][0] = int(round(new[idx][0]))
-        boxes[i][2] = int(round(new[idx][1]))
+        boxes[i][0] = int(round(compressed[idx][0]))
+        boxes[i][2] = int(round(compressed[idx][1]))
 
 
 # --- canonical entry point ------------------------------------------------------
