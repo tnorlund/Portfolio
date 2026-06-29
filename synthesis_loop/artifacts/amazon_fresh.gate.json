@@ -1,0 +1,23 @@
+{
+  "pass": true,
+  "candidate_id": "amazon-fresh-merchant-online-catalog-compose-online-catalog-7",
+  "pre_ocr": {
+    "arithmetic_reconciles": true,
+    "empty_value_fields": []
+  },
+  "coverage": {
+    "ADDRESS_LINE": true,
+    "DATE": true,
+    "GRAND_TOTAL": true,
+    "LINE_TOTAL": true,
+    "MERCHANT_NAME": true,
+    "PAYMENT_METHOD": true,
+    "PRODUCT_NAME": true,
+    "STORE_HOURS": true,
+    "SUBTOTAL": true,
+    "TAX": true,
+    "TIME": true
+  },
+  "uncovered_required": [],
+  "quarantine_reasons": []
+}

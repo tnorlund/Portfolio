@@ -1,0 +1,24 @@
+{
+  "pass": true,
+  "candidate_id": "costco-wholesale-merchant-arithmetic-geometry-remove-line-item-23",
+  "pre_ocr": {
+    "arithmetic_reconciles": true,
+    "empty_value_fields": []
+  },
+  "coverage": {
+    "ADDRESS_LINE": true,
+    "DATE": true,
+    "GRAND_TOTAL": true,
+    "LINE_TOTAL": true,
+    "LOYALTY_ID": true,
+    "MERCHANT_NAME": true,
+    "PAYMENT_METHOD": true,
+    "PHONE_NUMBER": true,
+    "PRODUCT_NAME": true,
+    "SUBTOTAL": true,
+    "TAX": true,
+    "TIME": true
+  },
+  "uncovered_required": [],
+  "quarantine_reasons": []
+}

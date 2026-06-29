@@ -1,0 +1,1881 @@
+{
+  "candidate_id": "costco-wholesale-merchant-arithmetic-geometry-remove-line-item-23.reocr-align",
+  "tokens": [
+    "COSTCO",
+    "EWHOLESALE",
+    "WestlakeVillage",
+    "#117",
+    "5700",
+    "Lindero",
+    "Canyon",
+    "Ro",
+    "WestlakeVillage,",
+    "CA",
+    "91362",
+    "(818)",
+    "597-3901",
+    "SELF-CHECKOUT",
+    "B1",
+    "Member",
+    "112012911712",
+    "1484855CHEESE",
+    "TRAY",
+    "12.99",
+    "12.99",
+    "SUBTOTAL",
+    "0.00",
+    "TAX",
+    "12.99",
+    "TOTAL",
+    "XXXXXXXXXXXX3931",
+    "H",
+    "AID:",
+    "A0000000980840",
+    "VERIFIED",
+    "BY",
+    "PIN",
+    "App#:",
+    "233032",
+    "Seg#",
+    "205061",
+    "EFT/Debit",
+    "Resp:",
+    "APPROVED",
+    "Tran",
+    "ID#:",
+    "525100205061.",
+    "...",
+    "APPROVED-",
+    "Purchase",
+    "$12.99",
+    "AMOUNT:",
+    "09/08/202518:45",
+    "117",
+    "205",
+    "178",
+    "705",
+    "EFT/Debit",
+    "12.99",
+    "CHANGE",
+    "0.00-",
+    "TOTAL",
+    "NUMBER",
+    "OF",
+    "ITEMS",
+    "SOLD",
+    "=",
+    "1",
+    "09708722025",
+    "18:",
+    "45",
+    "117",
+    "205",
+    "178",
+    "705",
+    "21011720501782509081845",
+    "OP#:",
+    "705",
+    "Name:",
+    "SCO",
+    "Thank",
+    "You!",
+    "Please",
+    "Come",
+    "Whse:",
+    "117",
+    "Trm:205",
+    "Trn:",
+    "178",
+    "OP:",
+    "705",
+    "Sold:",
+    "Items",
+    "1",
+    "18:45",
+    "B1",
+    "09/08/2025"
+  ],
+  "bboxes": [
+    [
+      206.0,
+      947.1,
+      826.7,
+      997.4
+    ],
+    [
+      333.0,
+      921.9,
+      637.9,
+      935.2
+    ],
+    [
+      235.0,
+      881.9,
+      679.2,
+      896.8
+    ],
+    [
+      683.7,
+      881.9,
+      801.3,
+      896.8
+    ],
+    [
+      206.0,
+      862.7,
+      325.1,
+      877.7
+    ],
+    [
+      329.7,
+      862.8,
+      544.7,
+      877.7
+    ],
+    [
+      549.3,
+      862.8,
+      727.6,
+      877.7
+    ],
+    [
+      732.2,
+      862.7,
+      794.0,
+      877.7
+    ],
+    [
+      151.5,
+      838.9,
+      613.7,
+      855.3
+    ],
+    [
+      618.7,
+      838.9,
+      693.1,
+      855.1
+    ],
+    [
+      698.1,
+      838.9,
+      852.1,
+      855.3
+    ],
+    [
+      311.2,
+      822.7,
+      460.7,
+      836.1
+    ],
+    [
+      464.7,
+      822.7,
+      670.6,
+      836.1
+    ],
+    [
+      213.2,
+      757.6,
+      590.8,
+      770.9
+    ],
+    [
+      9.9,
+      713.2,
+      74.5,
+      726.5
+    ],
+    [
+      78.6,
+      713.3,
+      264.9,
+      726.5
+    ],
+    [
+      269.0,
+      713.2,
+      619.8,
+      726.5
+    ],
+    [
+      144.3,
+      688.0,
+      529.4,
+      701.4
+    ],
+    [
+      533.5,
+      688.0,
+      652.5,
+      701.4
+    ],
+    [
+      801.3,
+      685.1,
+      942.9,
+      699.9
+    ],
+    [
+      880.8,
+      665.3,
+      979.5,
+      679.6
+    ],
+    [
+      220.5,
+      665.8,
+      452.8,
+      679.1
+    ],
+    [
+      826.5,
+      643.3,
+      943.1,
+      658.7
+    ],
+    [
+      216.9,
+      646.6,
+      307.6,
+      658.4
+    ],
+    [
+      917.4,
+      628.7,
+      1008.3,
+      639.3
+    ],
+    [
+      220.4,
+      628.7,
+      314.9,
+      637.8
+    ],
+    [
+      9.9,
+      584.4,
+      416.5,
+      596.2
+    ],
+    [
+      688.8,
+      585.9,
+      717.8,
+      596.2
+    ],
+    [
+      9.9,
+      563.4,
+      151.9,
+      577.1
+    ],
+    [
+      156.0,
+      563.4,
+      578.4,
+      577.1
+    ],
+    [
+      582.6,
+      563.4,
+      821.0,
+      577.1
+    ],
+    [
+      825.1,
+      563.4,
+      896.2,
+      577.1
+    ],
+    [
+      900.4,
+      563.4,
+      990.1,
+      577.1
+    ],
+    [
+      481.8,
+      542.9,
+      633.2,
+      557.9
+    ],
+    [
+      637.7,
+      542.9,
+      812.2,
+      557.9
+    ],
+    [
+      9.9,
+      541.3,
+      151.5,
+      556.3
+    ],
+    [
+      156.0,
+      541.3,
+      336.6,
+      556.3
+    ],
+    [
+      9.9,
+      522.2,
+      238.6,
+      535.5
+    ],
+    [
+      383.8,
+      522.1,
+      525.7,
+      535.5
+    ],
+    [
+      529.8,
+      522.1,
+      739.6,
+      535.5
+    ],
+    [
+      13.6,
+      503.0,
+      127.3,
+      514.9
+    ],
+    [
+      131.0,
+      503.0,
+      259.0,
+      514.9
+    ],
+    [
+      262.7,
+      503.0,
+      595.7,
+      514.9
+    ],
+    [
+      599.3,
+      503.0,
+      670.6,
+      514.9
+    ],
+    [
+      6.3,
+      442.1,
+      282.5,
+      455.7
+    ],
+    [
+      286.7,
+      442.1,
+      525.4,
+      455.7
+    ],
+    [
+      322.0,
+      422.8,
+      434.8,
+      433.6
+    ],
+    [
+      9.9,
+      423.0,
+      140.7,
+      433.4
+    ],
+    [
+      9.9,
+      399.3,
+      449.6,
+      414.1
+    ],
+    [
+      454.0,
+      399.5,
+      556.2,
+      414.0
+    ],
+    [
+      560.6,
+      399.5,
+      662.8,
+      414.0
+    ],
+    [
+      667.3,
+      399.5,
+      765.0,
+      414.0
+    ],
+    [
+      769.5,
+      399.3,
+      859.4,
+      414.1
+    ],
+    [
+      216.9,
+      363.8,
+      380.2,
+      372.7
+    ],
+    [
+      884.7,
+      360.7,
+      979.3,
+      371.4
+    ],
+    [
+      213.2,
+      340.1,
+      369.3,
+      352.0
+    ],
+    [
+      819.4,
+      337.2,
+      946.5,
+      350.5
+    ],
+    [
+      2.7,
+      298.6,
+      148.2,
+      312.0
+    ],
+    [
+      152.3,
+      298.6,
+      338.6,
+      311.8
+    ],
+    [
+      342.7,
+      298.6,
+      415.6,
+      311.8
+    ],
+    [
+      419.6,
+      298.6,
+      577.6,
+      311.8
+    ],
+    [
+      581.7,
+      298.6,
+      715.4,
+      311.8
+    ],
+    [
+      719.4,
+      298.6,
+      765.0,
+      312.0
+    ],
+    [
+      852.1,
+      298.7,
+      881.2,
+      309.0
+    ],
+    [
+      6.3,
+      277.7,
+      286.7,
+      291.4
+    ],
+    [
+      290.9,
+      277.7,
+      362.0,
+      291.4
+    ],
+    [
+      366.2,
+      277.7,
+      416.4,
+      291.4
+    ],
+    [
+      445.6,
+      277.7,
+      546.0,
+      291.4
+    ],
+    [
+      550.2,
+      277.7,
+      629.6,
+      291.4
+    ],
+    [
+      658.9,
+      277.7,
+      763.5,
+      291.4
+    ],
+    [
+      767.6,
+      277.7,
+      852.1,
+      291.4
+    ],
+    [
+      242.3,
+      211.3,
+      823.1,
+      220.2
+    ],
+    [
+      6.3,
+      186.2,
+      132.1,
+      199.5
+    ],
+    [
+      136.2,
+      186.2,
+      229.4,
+      199.4
+    ],
+    [
+      233.4,
+      186.2,
+      387.4,
+      199.4
+    ],
+    [
+      391.4,
+      186.2,
+      485.5,
+      199.5
+    ],
+    [
+      260.4,
+      168.3,
+      409.3,
+      181.8
+    ],
+    [
+      525.4,
+      168.4,
+      641.6,
+      181.7
+    ],
+    [
+      147.9,
+      149.1,
+      347.5,
+      161.0
+    ],
+    [
+      485.4,
+      148.9,
+      598.1,
+      159.7
+    ],
+    [
+      -0.9,
+      126.9,
+      134.1,
+      137.3
+    ],
+    [
+      137.2,
+      127.0,
+      237.6,
+      137.2
+    ],
+    [
+      240.7,
+      127.0,
+      450.9,
+      137.2
+    ],
+    [
+      454.0,
+      127.0,
+      566.9,
+      137.2
+    ],
+    [
+      570.0,
+      127.0,
+      661.0,
+      137.2
+    ],
+    [
+      664.1,
+      127.0,
+      742.5,
+      137.2
+    ],
+    [
+      745.7,
+      126.9,
+      819.4,
+      137.3
+    ],
+    [
+      332.9,
+      61.6,
+      474.7,
+      75.3
+    ],
+    [
+      56.9,
+      59.9,
+      202.5,
+      74.0
+    ],
+    [
+      612.5,
+      60.3,
+      641.6,
+      73.6
+    ],
+    [
+      706.9,
+      27.7,
+      852.1,
+      42.6
+    ],
+    [
+      53.5,
+      29.2,
+      115.2,
+      42.6
+    ],
+    [
+      198.7,
+      26.3,
+      489.1,
+      41.1
+    ]
+  ],
+  "ner_tags": [
+    "B-MERCHANT_NAME",
+    "I-MERCHANT_NAME",
+    "B-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "O",
+    "B-PHONE_NUMBER",
+    "O",
+    "O",
+    "O",
+    "B-LOYALTY_ID",
+    "B-PRODUCT_NAME",
+    "I-PRODUCT_NAME",
+    "B-LINE_TOTAL",
+    "B-SUBTOTAL",
+    "O",
+    "B-TAX",
+    "O",
+    "B-GRAND_TOTAL",
+    "O",
+    "B-PAYMENT_METHOD",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-PAYMENT_METHOD",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-DATE",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-PAYMENT_METHOD",
+    "B-GRAND_TOTAL",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-TIME",
+    "I-TIME",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-TIME",
+    "I-TIME",
+    "B-DATE"
+  ],
+  "metadata": {
+    "arithmetic_reconciliation": {
+      "grand_total_delta": "-15.03",
+      "new_grand_total": "12.99",
+      "new_subtotal": "12.99",
+      "old_grand_total": "28.02",
+      "old_subtotal": "28.02",
+      "subtotal_delta": "-15.03",
+      "summary_update_policy": "non_taxable_item_delta",
+      "tax_delta": "0.00",
+      "tax_policy": "left unchanged because synthesized item is non-taxable",
+      "updated_summary_labels": {
+        "grand_total": 2,
+        "payment_or_balance": 1,
+        "subtotal": 1
+      }
+    },
+    "artifact_synthesis_readiness": {
+      "blockers": [],
+      "score": 0.86,
+      "status": "ready"
+    },
+    "balancing_strategy": "remove one non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
+    "base_receipt_key": "d67ee0e3-6f30-4142-8209-cebbf309f40e#00002",
+    "candidate_quality": {
+      "components": {
+        "arithmetic_reconciliation": 1.0,
+        "layout_integrity": 1.0,
+        "removed_item_safe": 1.0,
+        "structure_component_pass_rate": 1.0,
+        "structure_similarity": 0.999,
+        "token_budget": 1.0
+      },
+      "high_fidelity": true,
+      "schema_version": "synthetic-candidate-quality-v1",
+      "score": 1.0,
+      "selection_policy": "Prefer merchant-local candidates with strong nearest-real structure, cross-receipt grounding for item additions, arithmetic reconciliation for total-changing edits, and stable geometry for field replacements.",
+      "structure_gate": {
+        "component_thresholds": {
+          "category_sequence": 0.4,
+          "category_set": 0.4,
+          "line_step": 0.45,
+          "price_column": 0.75,
+          "token_count": 0.35
+        },
+        "failed_components": {},
+        "min_structure_similarity": 0.6,
+        "missing_components": [],
+        "pass_rate": 1.0,
+        "passed": true,
+        "passed_components": [
+          "price_column",
+          "line_step",
+          "category_sequence",
+          "category_set",
+          "token_count"
+        ],
+        "structure_similarity_passed": true
+      }
+    },
+    "generation_plan": {
+      "operation_plan_count": 75,
+      "operation_plan_rank": 56,
+      "preselection_score": 6.97,
+      "selection_basis": "all_feasible_remove_item_plans_ranked_by_candidate_quality"
+    },
+    "item_count_fields_reconciled": 2,
+    "layout_integrity": {
+      "base_overlap_pair_count": 0,
+      "edit_introduced_overlap_pair_count": 0,
+      "invalid_word_box_count": 0,
+      "invalid_word_examples": [],
+      "line_count": 42,
+      "line_inversion_count": 0,
+      "line_order_valid": true,
+      "out_of_bounds_examples": [],
+      "out_of_bounds_word_count": 0,
+      "overlap_examples": [],
+      "overlap_pair_count": 0,
+      "passed": true,
+      "schema_version": "synthetic-layout-integrity-v1",
+      "score": 1.0,
+      "synthetic_overlap_pair_count": 0,
+      "word_count": 97
+    },
+    "new_grand_total": "12.99",
+    "new_subtotal": "12.99",
+    "old_grand_total": "28.02",
+    "old_subtotal": "28.02",
+    "operation": "remove_line_item",
+    "parameterization_version": "merchant-generic-v1",
+    "profile": {
+      "category_patterns": {
+        "heading_counts": {},
+        "top_items_by_category": {
+          "UNCATEGORIZED": [
+            {
+              "count": 4,
+              "product_text": "ROTISSERIE"
+            },
+            {
+              "count": 3,
+              "product_text": "ORG FR EGGS"
+            },
+            {
+              "count": 3,
+              "product_text": "IRISH BUTTER"
+            },
+            {
+              "count": 2,
+              "product_text": "GATORADECORE"
+            },
+            {
+              "count": 2,
+              "product_text": "CAPREE SHKR"
+            },
+            {
+              "count": 2,
+              "product_text": "BEEF"
+            },
+            {
+              "count": 2,
+              "product_text": "PASTURE EGGS"
+            },
+            {
+              "count": 2,
+              "product_text": "ORGANIC GRND"
+            }
+          ]
+        }
+      },
+      "generation_limits": {
+        "max_arithmetic_candidates_per_training_run": 1,
+        "max_candidates_per_training_run": 5,
+        "validation_split": "real_receipts_only"
+      },
+      "merchant_name": "Costco Wholesale",
+      "real_structure_baseline": {
+        "component_summaries": {
+          "category_sequence": {
+            "avg": 1.0,
+            "count": 351,
+            "max": 1.0,
+            "min": 1.0
+          },
+          "category_set": {
+            "avg": 1.0,
+            "count": 351,
+            "max": 1.0,
+            "min": 1.0
+          },
+          "item_count": {
+            "avg": 0.576,
+            "count": 351,
+            "max": 1.0,
+            "min": 0.062
+          },
+          "line_step": {
+            "avg": 0.934,
+            "count": 351,
+            "max": 1.0,
+            "min": 0.775
+          },
+          "price_column": {
+            "avg": 0.949,
+            "count": 351,
+            "max": 1.0,
+            "min": 0.81
+          },
+          "token_count": {
+            "avg": 0.87,
+            "count": 351,
+            "max": 1.0,
+            "min": 0.649
+          }
+        },
+        "pair_count": 351,
+        "receipt_count": 27,
+        "schema_version": "real-structure-baseline-v1",
+        "score_summary": {
+          "avg": 0.891,
+          "count": 351,
+          "max": 0.998,
+          "min": 0.756
+        }
+      },
+      "receipt_count": 38,
+      "tax_policy": {
+        "non_taxable_item_count": 85,
+        "receipts_with_tax_total": 6,
+        "receipts_with_taxable_items": 0,
+        "stable_tax_rate": false,
+        "supported_policy": "non_taxable_item_delta",
+        "tax_changing_synthesis_blockers": [
+          "merchant_not_validated_for_taxable_edits"
+        ],
+        "tax_changing_synthesis_ready": false,
+        "tax_rate_observation_count": 0,
+        "taxable_item_count": 0
+      }
+    },
+    "removal_context": {
+      "category": "UNCATEGORIZED",
+      "category_item_count_after": null,
+      "category_item_count_before": null,
+      "line_step": 20,
+      "removed_y": 695.0,
+      "selection_reason": "removed non-taxable item and shifted lower receipt lines to close the gap",
+      "shifted_line_count": 34,
+      "shifted_lower_line_shift_max": 19,
+      "shifted_lower_line_shift_min": 19,
+      "shifted_lower_lines_by": 19
+    },
+    "removed_item": {
+      "category": "UNCATEGORIZED",
+      "line_total": "15.03",
+      "product_text": "CHICKEN",
+      "taxable": false
+    },
+    "selection_evidence": {
+      "ranked_by": [
+        "candidate_quality.high_fidelity",
+        "real_baseline_comparison.within_real_score_range",
+        "candidate_quality.score",
+        "real_baseline_comparison.delta_from_min",
+        "structure_similarity.score",
+        "structure_component_pass_rate",
+        "layout_integrity",
+        "token_budget"
+      ],
+      "schema_version": "synthetic-candidate-selection-v1",
+      "selected_from_candidate_count": 75,
+      "selected_input_index": 55,
+      "selected_score": {
+        "baseline_pair_count": 351,
+        "candidate_quality": 1.0,
+        "delta_from_min": 0.243,
+        "high_fidelity": true,
+        "layout_integrity": 1.0,
+        "structure_component_pass_rate": 1.0,
+        "structure_similarity": 0.999,
+        "token_budget": 1.0,
+        "token_count": 95,
+        "within_real_score_range": true
+      },
+      "selection_policy": "Generate feasible merchant-local mutations, then keep the highest fidelity option instead of maximizing synthetic volume."
+    },
+    "source": "reocr-apple-vision-charalign",
+    "structure_similarity": {
+      "candidate_signature": {
+        "category_sequence": [],
+        "line_count": 42,
+        "line_item_count": 1,
+        "line_step": 26,
+        "line_total_x_p50": 872.5,
+        "token_count": 97
+      },
+      "components": {
+        "category_sequence": 1.0,
+        "category_set": 1.0,
+        "item_count": 1.0,
+        "line_step": 1.0,
+        "price_column": 0.992,
+        "token_count": 1.0
+      },
+      "match_summary": {
+        "matched_components": [
+          "category_sequence",
+          "category_set",
+          "item_count",
+          "line_step",
+          "price_column",
+          "token_count"
+        ],
+        "shape_checks": [
+          "line_count_close",
+          "line_item_count_close",
+          "token_count_close",
+          "price_column_aligned",
+          "line_spacing_close",
+          "category_order_close",
+          "category_set_close"
+        ],
+        "weak_components": []
+      },
+      "nearest_real_receipt_key": "5cef2e7e-baad-4c29-9e5f-6a3d5ec20885#00001",
+      "nearest_signature": {
+        "category_sequence": [],
+        "line_count": 41,
+        "line_item_count": 1,
+        "line_step": 26,
+        "line_total_x_p50": 870.5,
+        "token_count": 97
+      },
+      "real_baseline_comparison": {
+        "baseline_avg": 0.891,
+        "baseline_max": 0.998,
+        "baseline_min": 0.756,
+        "baseline_pair_count": 351,
+        "baseline_receipt_count": 27,
+        "candidate_score": 0.999,
+        "delta_from_avg": 0.108,
+        "delta_from_min": 0.243,
+        "within_real_score_range": true
+      },
+      "score": 0.999,
+      "shape_deltas": {
+        "line_count_delta": 1,
+        "line_item_count_delta": 0,
+        "line_step_delta": 0.0,
+        "line_total_x_delta": 2.0,
+        "token_count_delta": 0
+      }
+    },
+    "synthesis_accuracy_evidence": {
+      "category": "UNCATEGORIZED",
+      "changed_text": "CHICKEN",
+      "checks": [
+        "train_only_real_validation_policy",
+        "merchant_local_geometry",
+        "nearest_real_structure_similarity",
+        "layout_integrity_checked",
+        "no_overlapping_or_out_of_bounds_boxes",
+        "non_taxable_arithmetic_reconciled",
+        "removed_item_non_taxable",
+        "lower_lines_shifted_to_close_gap"
+      ],
+      "layout_integrity": {
+        "invalid_word_box_count": 0,
+        "line_count": 42,
+        "line_order_valid": true,
+        "out_of_bounds_word_count": 0,
+        "overlap_pair_count": 0,
+        "passed": true,
+        "score": 1.0,
+        "word_count": 97
+      },
+      "new_grand_total": "12.99",
+      "old_grand_total": "28.02",
+      "operation": "remove_line_item",
+      "removal_context": {
+        "category": "UNCATEGORIZED",
+        "category_item_count_after": null,
+        "category_item_count_before": null,
+        "line_step": 20,
+        "removed_y": 695.0,
+        "selection_reason": "removed non-taxable item and shifted lower receipt lines to close the gap",
+        "shifted_line_count": 34,
+        "shifted_lower_line_shift_max": 19,
+        "shifted_lower_line_shift_min": 19,
+        "shifted_lower_lines_by": 19
+      },
+      "structure_similarity": {
+        "components": {
+          "category_sequence": 1.0,
+          "category_set": 1.0,
+          "item_count": 1.0,
+          "line_step": 1.0,
+          "price_column": 0.992,
+          "token_count": 1.0
+        },
+        "match_summary": {
+          "matched_components": [
+            "category_sequence",
+            "category_set",
+            "item_count",
+            "line_step",
+            "price_column",
+            "token_count"
+          ],
+          "shape_checks": [
+            "line_count_close",
+            "line_item_count_close",
+            "token_count_close",
+            "price_column_aligned",
+            "line_spacing_close",
+            "category_order_close",
+            "category_set_close"
+          ],
+          "weak_components": []
+        },
+        "nearest_real_receipt_key": "5cef2e7e-baad-4c29-9e5f-6a3d5ec20885#00001",
+        "real_baseline_comparison": {
+          "baseline_avg": 0.891,
+          "baseline_max": 0.998,
+          "baseline_min": 0.756,
+          "baseline_pair_count": 351,
+          "baseline_receipt_count": 27,
+          "candidate_score": 0.999,
+          "delta_from_avg": 0.108,
+          "delta_from_min": 0.243,
+          "within_real_score_range": true
+        },
+        "score": 0.999,
+        "shape_deltas": {
+          "line_count_delta": 1,
+          "line_item_count_delta": 0,
+          "line_step_delta": 0.0,
+          "line_total_x_delta": 2.0,
+          "token_count_delta": 0
+        }
+      },
+      "tax_delta": "0.00"
+    },
+    "synthetic_receipt_preview": {
+      "coordinate_system": "normalized_receipt_0_1000_y_high_is_top",
+      "line_count": 42,
+      "lines": [
+        {
+          "bbox": [
+            103,
+            939,
+            934,
+            996
+          ],
+          "labels": [
+            "MERCHANT_NAME"
+          ],
+          "line_id": 1,
+          "line_number": 1,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "COSTCO",
+          "y": 0.9675
+        },
+        {
+          "bbox": [
+            333,
+            917,
+            918,
+            940
+          ],
+          "labels": [
+            "MERCHANT_NAME"
+          ],
+          "line_id": 2,
+          "line_number": 2,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "EWHOLESALE",
+          "y": 0.9285
+        },
+        {
+          "bbox": [
+            239,
+            882,
+            798,
+            900
+          ],
+          "labels": [
+            "ADDRESS_LINE"
+          ],
+          "line_id": 3,
+          "line_number": 3,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "Westlake Village #117",
+          "y": 0.891
+        },
+        {
+          "bbox": [
+            210,
+            862,
+            794,
+            880
+          ],
+          "labels": [
+            "ADDRESS_LINE"
+          ],
+          "line_id": 4,
+          "line_number": 4,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "5700 Lindero Canyon Ro",
+          "y": 0.871
+        },
+        {
+          "bbox": [
+            160,
+            839,
+            848,
+            859
+          ],
+          "labels": [
+            "ADDRESS_LINE"
+          ],
+          "line_id": 5,
+          "line_number": 5,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "Westlake Village, CA 91362",
+          "y": 0.849
+        },
+        {
+          "bbox": [
+            313,
+            821,
+            683,
+            839
+          ],
+          "labels": [
+            "PHONE_NUMBER"
+          ],
+          "line_id": 6,
+          "line_number": 6,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "(818) 597-3901",
+          "y": 0.83
+        },
+        {
+          "bbox": [
+            214,
+            751,
+            815,
+            779
+          ],
+          "labels": [],
+          "line_id": 7,
+          "line_number": 7,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "SELF-CHECKOUT",
+          "y": 0.765
+        },
+        {
+          "bbox": [
+            12,
+            706,
+            601,
+            735
+          ],
+          "labels": [
+            "LOYALTY_ID"
+          ],
+          "line_id": 8,
+          "line_number": 8,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "B1 Member 112012911712",
+          "y": 0.7205
+        },
+        {
+          "bbox": [
+            144,
+            685,
+            654,
+            705
+          ],
+          "labels": [
+            "PRODUCT_NAME"
+          ],
+          "line_id": 11,
+          "line_number": 9,
+          "modified_labels": [],
+          "role": "line_item",
+          "synthetic_insert": false,
+          "text": "1484855 CHEESE TRAY",
+          "y": 0.695
+        },
+        {
+          "bbox": [
+            802,
+            683,
+            943,
+            704
+          ],
+          "labels": [
+            "LINE_TOTAL"
+          ],
+          "line_id": 16,
+          "line_number": 10,
+          "modified_labels": [],
+          "role": "line_item",
+          "synthetic_insert": false,
+          "text": "12.99",
+          "y": 0.6935
+        },
+        {
+          "bbox": [
+            222,
+            664,
+            440,
+            683
+          ],
+          "labels": [],
+          "line_id": 12,
+          "line_number": 11,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "SUBTOTAL",
+          "y": 0.6735
+        },
+        {
+          "bbox": [
+            888,
+            663,
+            943,
+            683
+          ],
+          "labels": [
+            "SUBTOTAL"
+          ],
+          "line_id": 17,
+          "line_number": 12,
+          "modified_labels": [],
+          "role": "summary",
+          "synthetic_insert": false,
+          "text": "12.99",
+          "y": 0.673
+        },
+        {
+          "bbox": [
+            831,
+            643,
+            947,
+            663
+          ],
+          "labels": [
+            "TAX"
+          ],
+          "line_id": 18,
+          "line_number": 13,
+          "modified_labels": [],
+          "role": "summary",
+          "synthetic_insert": false,
+          "text": "0.00",
+          "y": 0.653
+        },
+        {
+          "bbox": [
+            222,
+            644,
+            313,
+            661
+          ],
+          "labels": [],
+          "line_id": 13,
+          "line_number": 14,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "TAX",
+          "y": 0.6525
+        },
+        {
+          "bbox": [
+            917,
+            625,
+            972,
+            643
+          ],
+          "labels": [
+            "GRAND_TOTAL"
+          ],
+          "line_id": 19,
+          "line_number": 15,
+          "modified_labels": [],
+          "role": "summary",
+          "synthetic_insert": false,
+          "text": "12.99",
+          "y": 0.634
+        },
+        {
+          "bbox": [
+            82,
+            623,
+            362,
+            641
+          ],
+          "labels": [],
+          "line_id": 14,
+          "line_number": 16,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "**** TOTAL",
+          "y": 0.632
+        },
+        {
+          "bbox": [
+            12,
+            583,
+            436,
+            600
+          ],
+          "labels": [
+            "PAYMENT_METHOD"
+          ],
+          "line_id": 20,
+          "line_number": 17,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "XXXXXXXXXXXX3931",
+          "y": 0.5915
+        },
+        {
+          "bbox": [
+            695,
+            584,
+            728,
+            599
+          ],
+          "labels": [],
+          "line_id": 21,
+          "line_number": 18,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "H",
+          "y": 0.5915
+        },
+        {
+          "bbox": [
+            12,
+            561,
+            996,
+            581
+          ],
+          "labels": [],
+          "line_id": 22,
+          "line_number": 19,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "AID: A0000000980840 VERIFIED BY PIN",
+          "y": 0.571
+        },
+        {
+          "bbox": [
+            486,
+            542,
+            815,
+            561
+          ],
+          "labels": [],
+          "line_id": 24,
+          "line_number": 20,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "App#: 233032",
+          "y": 0.5515
+        },
+        {
+          "bbox": [
+            12,
+            541,
+            333,
+            560
+          ],
+          "labels": [],
+          "line_id": 23,
+          "line_number": 21,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Seg# 205061",
+          "y": 0.5505
+        },
+        {
+          "bbox": [
+            12,
+            520,
+            255,
+            540
+          ],
+          "labels": [
+            "PAYMENT_METHOD"
+          ],
+          "line_id": 25,
+          "line_number": 22,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "EFT/Debit",
+          "y": 0.53
+        },
+        {
+          "bbox": [
+            383,
+            522,
+            757,
+            538
+          ],
+          "labels": [],
+          "line_id": 26,
+          "line_number": 23,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Resp: APPROVED",
+          "y": 0.53
+        },
+        {
+          "bbox": [
+            12,
+            500,
+            700,
+            518
+          ],
+          "labels": [],
+          "line_id": 27,
+          "line_number": 24,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Tran ID#: 525100205061....",
+          "y": 0.509
+        },
+        {
+          "bbox": [
+            12,
+            441,
+            519,
+            457
+          ],
+          "labels": [],
+          "line_id": 28,
+          "line_number": 25,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "APPROVED - Purchase",
+          "y": 0.449
+        },
+        {
+          "bbox": [
+            12,
+            417,
+            387,
+            438
+          ],
+          "labels": [],
+          "line_id": 29,
+          "line_number": 26,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "AMOUNT: $12.99",
+          "y": 0.4275
+        },
+        {
+          "bbox": [
+            12,
+            400,
+            864,
+            417
+          ],
+          "labels": [
+            "DATE",
+            "TIME"
+          ],
+          "line_id": 30,
+          "line_number": 27,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "09/08/2025 18:45 117 205 178 705",
+          "y": 0.4085
+        },
+        {
+          "bbox": [
+            218,
+            358,
+            465,
+            377
+          ],
+          "labels": [
+            "PAYMENT_METHOD"
+          ],
+          "line_id": 31,
+          "line_number": 28,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "EFT/Debit",
+          "y": 0.3675
+        },
+        {
+          "bbox": [
+            887,
+            356,
+            942,
+            377
+          ],
+          "labels": [
+            "GRAND_TOTAL"
+          ],
+          "line_id": 35,
+          "line_number": 29,
+          "modified_labels": [],
+          "role": "summary",
+          "synthetic_insert": false,
+          "text": "12.99",
+          "y": 0.3665
+        },
+        {
+          "bbox": [
+            218,
+            337,
+            387,
+            356
+          ],
+          "labels": [],
+          "line_id": 32,
+          "line_number": 30,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "CHANGE",
+          "y": 0.3465
+        },
+        {
+          "bbox": [
+            823,
+            336,
+            955,
+            355
+          ],
+          "labels": [],
+          "line_id": 36,
+          "line_number": 31,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "0.00.",
+          "y": 0.3455
+        },
+        {
+          "bbox": [
+            8,
+            295,
+            774,
+            316
+          ],
+          "labels": [],
+          "line_id": 33,
+          "line_number": 32,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "TOTAL NUMBER OF ITEMS SOLD =",
+          "y": 0.3055
+        },
+        {
+          "bbox": [
+            852,
+            297,
+            885,
+            313
+          ],
+          "labels": [],
+          "line_id": 37,
+          "line_number": 33,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "1",
+          "y": 0.305
+        },
+        {
+          "bbox": [
+            8,
+            275,
+            864,
+            295
+          ],
+          "labels": [
+            "TIME"
+          ],
+          "line_id": 34,
+          "line_number": 34,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "09708722025 18:45 117 205 178 705",
+          "y": 0.285
+        },
+        {
+          "bbox": [
+            243,
+            208,
+            774,
+            222
+          ],
+          "labels": [],
+          "line_id": 38,
+          "line_number": 35,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "21011720501782509081845",
+          "y": 0.215
+        },
+        {
+          "bbox": [
+            8,
+            185,
+            490,
+            202
+          ],
+          "labels": [],
+          "line_id": 39,
+          "line_number": 36,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "OP#: 705 Name: SCO",
+          "y": 0.1935
+        },
+        {
+          "bbox": [
+            263,
+            167,
+            708,
+            183
+          ],
+          "labels": [],
+          "line_id": 40,
+          "line_number": 37,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Thank You!",
+          "y": 0.175
+        },
+        {
+          "bbox": [
+            173,
+            147,
+            728,
+            161
+          ],
+          "labels": [],
+          "line_id": 41,
+          "line_number": 38,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Please Come",
+          "y": 0.154
+        },
+        {
+          "bbox": [
+            720,
+            147,
+            947,
+            161
+          ],
+          "labels": [],
+          "line_id": 42,
+          "line_number": 39,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Asaim",
+          "y": 0.154
+        },
+        {
+          "bbox": [
+            0,
+            123,
+            831,
+            141
+          ],
+          "labels": [],
+          "line_id": 43,
+          "line_number": 40,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Whse: 117 Trm:205 Trn: 178 OP:705",
+          "y": 0.132
+        },
+        {
+          "bbox": [
+            58,
+            55,
+            679,
+            81
+          ],
+          "labels": [],
+          "line_id": 44,
+          "line_number": 41,
+          "modified_labels": [],
+          "role": "context",
+          "synthetic_insert": false,
+          "text": "Items Sold: 1",
+          "y": 0.068
+        },
+        {
+          "bbox": [
+            53,
+            22,
+            951,
+            50
+          ],
+          "labels": [
+            "DATE",
+            "TIME"
+          ],
+          "line_id": 45,
+          "line_number": 42,
+          "modified_labels": [],
+          "role": "header",
+          "synthetic_insert": false,
+          "text": "B1 09/08/2025 18:45",
+          "y": 0.036
+        }
+      ],
+      "text": "COSTCO\nEWHOLESALE\nWestlake Village #117\n5700 Lindero Canyon Ro\nWestlake Village, CA 91362\n(818) 597-3901\nSELF-CHECKOUT\nB1 Member 112012911712\n1484855 CHEESE TRAY\n12.99\nSUBTOTAL\n12.99\n0.00\nTAX\n12.99\n**** TOTAL\nXXXXXXXXXXXX3931\nH\nAID: A0000000980840 VERIFIED BY PIN\nApp#: 233032\nSeg# 205061\nEFT/Debit\nResp: APPROVED\nTran ID#: 525100205061....\nAPPROVED - Purchase\nAMOUNT: $12.99\n09/08/2025 18:45 117 205 178 705\nEFT/Debit\n12.99\nCHANGE\n0.00.\nTOTAL NUMBER OF ITEMS SOLD =\n1\n09708722025 18:45 117 205 178 705\n21011720501782509081845\nOP#: 705 Name: SCO\nThank You!\nPlease Come\nAsaim\nWhse: 117 Trm:205 Trn: 178 OP:705\nItems Sold: 1\nB1 09/08/2025 18:45",
+      "token_count": 97,
+      "truncated": false
+    },
+    "tax_delta": "0.00",
+    "train_only_reason": "Synthetic examples target known model confusions and must not enter validation."
+  }
+}

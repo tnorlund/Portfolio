@@ -1,0 +1,23 @@
+{
+  "pass": true,
+  "candidate_id": "sprouts-arithmetic-2-remove-line-item-00ded398-af6f-4a49-86f7-c79ccb554e48-00002",
+  "pre_ocr": {
+    "arithmetic_reconciles": null,
+    "empty_value_fields": []
+  },
+  "coverage": {
+    "ADDRESS_LINE": true,
+    "DATE": true,
+    "GRAND_TOTAL": true,
+    "LINE_TOTAL": true,
+    "MERCHANT_NAME": true,
+    "PAYMENT_METHOD": true,
+    "PHONE_NUMBER": true,
+    "PRODUCT_NAME": true,
+    "STORE_HOURS": true,
+    "TIME": true,
+    "WEBSITE": true
+  },
+  "uncovered_required": [],
+  "quarantine_reasons": []
+}

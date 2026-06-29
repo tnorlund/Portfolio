@@ -73,6 +73,8 @@ def score_propagation(gt_tokens, gt_bboxes, gt_tags, re_tokens, re_bboxes, re_ta
             covered_types.add(ge)
             if ge in VALUE_ENTS:
                 value_cers.append(_cer(gtok, hit))
+        elif ge in VALUE_ENTS:
+            value_cers.append(1.0)  # uncovered value token = max error (no selection bias)
     n_gt = max(1, len(gt_lab))
     recall = covered / n_gt
 
@@ -80,7 +82,10 @@ def score_propagation(gt_tokens, gt_bboxes, gt_tags, re_tokens, re_bboxes, re_ta
     tp = fp = mis = degen = 0
     for rtok, rb, re_ in re_lab:
         if _degenerate(rtok):
+            # A supervised label on a punctuation/symbol-only token is a FALSE label that poisons
+            # training (e.g. '='->TAX). Count it as a failure, not a free skip.
             degen += 1
+            fp += 1
             continue
         same = any(ge == re_ and _over(rb, gb) >= cover for _, gb, ge in gt_lab)
         diff = any(ge != re_ and _over(rb, gb) >= cover for _, gb, ge in gt_lab)

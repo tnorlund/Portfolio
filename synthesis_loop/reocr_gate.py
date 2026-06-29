@@ -21,6 +21,7 @@ if HERE not in sys.path:
 import re_ocr_align as RA  # reuse coord transforms + apple_vision_ocr  # noqa: E402
 
 REQUIRED = {"MERCHANT_NAME", "SUBTOTAL", "TAX", "GRAND_TOTAL", "DATE", "LINE_TOTAL"}
+MANDATORY = {"MERCHANT_NAME", "GRAND_TOTAL", "DATE"}  # must EXIST in GT (merchant-agnostic baseline)
 VALUE_ENTS = {"LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"}
 _CUR = re.compile(r"-?\$?\s*([0-9]+(?:\.[0-9]{2})?)")
 
@@ -51,6 +52,10 @@ def gate(bundle_p, hybrid_png, ci=0):
     for tok, e in zip(toks, ents):
         if e:
             by_ent.setdefault(e, []).append(tok)
+    # mandatory fields every receipt must HAVE (absence = synthesis incompleteness, masked before)
+    absent_mandatory = sorted(MANDATORY - set(by_ent))
+    if absent_mandatory:
+        reasons.append(f"mandatory fields absent from synthesized GT: {absent_mandatory}")
     # empty value fields
     empties = [e for e in VALUE_ENTS if e in by_ent and not any(_money(t) is not None for t in by_ent[e])]
     if empties:
