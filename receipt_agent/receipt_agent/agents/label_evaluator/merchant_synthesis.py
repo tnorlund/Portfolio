@@ -14,7 +14,7 @@ import hashlib
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from difflib import SequenceMatcher
@@ -2422,6 +2422,172 @@ def _apply_store_header_swap(
     return swaps or None
 
 
+def _own_store_profile(receipt: dict[str, Any]) -> StoreProfile | None:
+    """The receipt's OWN clean Google Places identity (its real store).
+
+    Prefers the branch-pool entry whose ``place_id`` matches this receipt, then
+    its directly-attached ``receipt_place`` record. Returns a complete
+    :class:`StoreProfile` (real street + city/state/zip) or ``None`` when the
+    receipt has no resolved place to clean toward. Never returns a *different*
+    branch: cleaning must preserve this store's real identity, not diversify it
+    (that is ``compose_store_header``'s job).
+    """
+    own_place_id = str(receipt.get("place_id") or "").strip()
+    receipt_place = receipt.get("receipt_place")
+    records: list[dict[str, Any]] = []
+    if isinstance(receipt_place, dict):
+        records.append(receipt_place)
+    pool = receipt.get("merchant_place_pool")
+    if isinstance(pool, list):
+        records.extend(row for row in pool if isinstance(row, dict))
+    if not records:
+        return None
+
+    if own_place_id:
+        for profile in extract_store_profiles(records):
+            if profile.place_id == own_place_id and profile.is_complete():
+                return profile
+    # No usable place_id match: fall back to the receipt's OWN attached record
+    # only (never a sibling from the pool).
+    if isinstance(receipt_place, dict):
+        for profile in extract_store_profiles([receipt_place]):
+            if profile.is_complete():
+                return profile
+    return None
+
+
+def _store_identity_key(text: Any) -> str:
+    """Loose comparison key for a printed store-identity value (case/punctuation/
+    whitespace insensitive) so an already-clean header is recognized as a no-op."""
+    return re.sub(r"[^a-z0-9]+", "", str(text or "").lower())
+
+
+def _printed_store_identity(receipt: dict[str, Any]) -> tuple[str, str, str]:
+    """The receipt's currently-printed (address, phone, website) text drawn from
+    the owned store-identity lines, joined top-to-bottom."""
+    lines = [
+        line for line in receipt.get("lines", []) or [] if isinstance(line, dict)
+    ]
+
+    def _text(line: dict[str, Any]) -> str:
+        return " ".join(
+            str(word.get("text") or "")
+            for word in line.get("words", []) or []
+        ).strip()
+
+    address_lines = sorted(
+        (line for line in lines if _line_owned_by(line, "ADDRESS_LINE")),
+        key=lambda line: -_safe_float(line.get("y"), 0.5),
+    )
+    address = " ".join(_text(line) for line in address_lines).strip()
+    phone = " ".join(
+        _text(line) for line in lines if _line_owned_by(line, "PHONE_NUMBER")
+    ).strip()
+    website = " ".join(
+        _text(line) for line in lines if _line_owned_by(line, "WEBSITE")
+    ).strip()
+    return address, phone, website
+
+
+def normalize_store_identity(
+    receipt: dict[str, Any],
+    *,
+    operation: str,
+) -> dict[str, Any]:
+    """Universal store-identity CLEANING applied to EVERY synthesized candidate.
+
+    Real receipt OCR carries garbled store-identity tokens (a split street like
+    ``Russel| Rd``, a truncated ``CA. 91`` ZIP, a stray ``#673 673`` tail, an
+    email mislabeled MERCHANT_NAME). This swaps the (possibly garbled) printed
+    store cluster for the receipt's OWN real Google Places values, reusing the
+    atomic :func:`_apply_store_header_swap` machinery so the same guards apply
+    (>2 owned address lines, mandatory matching phone/website, all-or-nothing
+    reflow) and an un-cleanable header is left untouched rather than half-swapped.
+
+    This is a CLEANING pass, not a diversity swap: it never substitutes a
+    *different* branch. ``compose_store_header`` candidates were deliberately
+    given a clean *sibling* branch for location diversity, so they are skipped
+    here (re-cleaning would fight that intentional swap).
+
+    Mutates ``receipt`` in place when a clean is applied. Returns metadata that
+    always carries ``applied``; a ``reason`` is set whenever it is skipped.
+    """
+    if operation == "compose_store_header":
+        return {
+            "applied": False,
+            "reason": "compose_store_header_clean_sibling",
+        }
+
+    profile = _own_store_profile(receipt)
+    if profile is None:
+        return {"applied": False, "reason": "no_resolved_place"}
+
+    address, phone, website = _printed_store_identity(receipt)
+    if not address and not phone and not website:
+        return {"applied": False, "reason": "no_store_identity_printed"}
+
+    # Already-clean no-op: the printed address already equals the real place's
+    # (case/punctuation/spacing aside), and any printed phone/website matches too,
+    # so there is nothing garbled to fix — avoid a needless geometry reflow.
+    clean_address = f"{profile.street} {profile.city_state_zip}"
+    already_clean = bool(address) and (
+        _store_identity_key(address) == _store_identity_key(clean_address)
+    )
+    if already_clean and phone and profile.phone:
+        already_clean = _store_identity_key(phone) == _store_identity_key(
+            profile.phone
+        )
+    if already_clean and website and profile.website:
+        already_clean = _store_identity_key(website) == _store_identity_key(
+            profile.website
+        )
+    if already_clean:
+        return {
+            "applied": False,
+            "reason": "already_clean",
+            "place_id": profile.place_id,
+        }
+
+    # The atomic swap requires a phone/website when the receipt PRINTS one (so a
+    # cleaned address never sits beside a different store's phone). When the
+    # resolved place did not capture this store's phone/website, the printed value
+    # IS this same store's own — backfill it so the address still gets cleaned and
+    # the store's own phone/website is preserved verbatim (no cross-store mixing,
+    # since street + city/state/zip and any place-sourced field still come from
+    # this one place). When the place HAS the field, its clean value wins.
+    swap_profile = profile
+    if (phone and not profile.phone) or (website and not profile.website):
+        swap_profile = replace(
+            profile,
+            phone=profile.phone or (phone or None),
+            website=profile.website or (website or None),
+        )
+    swaps = _apply_store_header_swap(receipt, swap_profile)
+    if not swaps:
+        # The atomic guards rejected the swap (no owned address anchor, a printed
+        # phone/website the place lacks, >2 address lines, or un-reflowable
+        # geometry). Leave the header as-is rather than emit an incoherent one.
+        return {
+            "applied": False,
+            "reason": "unswappable_guarded",
+            "place_id": profile.place_id,
+        }
+    _refresh_words(receipt)
+    return {
+        "applied": True,
+        "place_id": profile.place_id,
+        "source_merchant_name": profile.merchant_name,
+        "cleaned_from_own_place": True,
+        "all_fields_from_single_place": True,
+        "phone_from_place": bool(profile.phone),
+        "website_from_place": bool(profile.website),
+        "phone_preserved_from_receipt": bool(phone and not profile.phone),
+        "website_preserved_from_receipt": bool(website and not profile.website),
+        "swapped_labels": sorted({swap["label"] for swap in swaps}),
+        "fields_swapped": swaps,
+    }
+
+
 _GENERIC_STORE_NAME_TOKENS = {"the", "a", "an"}
 
 
@@ -3267,6 +3433,12 @@ def _candidate_from_receipt(
     index: int,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    # Universal store-identity cleaning: BEFORE flattening, replace this
+    # candidate's (possibly garbled) printed store cluster with the receipt's own
+    # real Google Places address/phone/website. Runs here because this is the
+    # single exit every operation funnels through. compose_store_header is skipped
+    # (it already swapped in a clean sibling branch); see normalize_store_identity.
+    places_clean = normalize_store_identity(receipt, operation=operation)
     tokens, bboxes, tags = _flatten_lines(
         receipt.get("lines", []), merchant_name
     )
@@ -3308,6 +3480,7 @@ def _candidate_from_receipt(
         build_synthesis_accuracy_evidence(operation, candidate_metadata),
     )
     candidate_metadata["content_reconciliation"] = content_report.to_dict()
+    candidate_metadata["places_store_identity_clean"] = places_clean
     return {
         "candidate_id": slug,
         "recipe_id": f"{source}-{operation}",
