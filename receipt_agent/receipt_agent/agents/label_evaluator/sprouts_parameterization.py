@@ -1752,6 +1752,111 @@ def _label_x_p50(receipt: dict[str, Any], label: str) -> float | None:
     return summary.p50 if summary else None
 
 
+# --- content-aware label sanitization (verify_candidates.py-equivalent) ---------
+# These mirror `synthesis_loop/verify_candidates.py`'s `_label_violations` /
+# `_entity_runs` EXACTLY so the demote-to-O pass removes precisely the runs the
+# objective `labels_valid` check would flag. Implemented locally (no import from
+# synthesis_loop) but kept byte-equivalent to the verifier's vocab/patterns.
+_VERIFIER_TENDER = {
+    "DEBIT", "CREDIT", "VISA", "MASTERCARD", "MC", "AMEX", "DISCOVER", "CASH",
+    "US", "CHECK", "EBT", "CONTACTLESS", "CHIP", "SWIPE", "CARD", "TENDER",
+    "PIN", "ATM",
+}
+_VERIFIER_PHONE = re.compile(
+    r"\(\d{3}\)\s?\d{3}[- ]?\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b|\b\d{3}[-.]\d{4}\b"
+)
+_VERIFIER_DOMAIN = re.compile(r"[A-Za-z0-9-]+\.(?:com|net|org|co|us|gov)\b", re.I)
+_VERIFIER_CURRENCYISH = re.compile(r"-?\$?\d+\.\d{2}-?$")
+_VERIFIER_MONEY = {
+    "LINE_TOTAL", "GRAND_TOTAL", "SUBTOTAL", "TAX", "UNIT_PRICE", "BALANCE_DUE",
+}
+_VERIFIER_CONTENT_LABELS = _VERIFIER_MONEY | {
+    "PAYMENT_METHOD", "PHONE_NUMBER", "WEBSITE",
+}
+
+
+def _verifier_entity_runs(tags: list[str]) -> list[tuple[str, int, int]]:
+    """Contiguous BIO spans -> (label, start, end) inclusive.
+
+    Mirrors verify_candidates.py `_entity_runs`: a same-label token that begins a
+    fresh ``B-`` starts a NEW run (so two adjacent entities are not merged).
+    """
+    runs: list[tuple[str, int, int]] = []
+    i, n = 0, len(tags)
+    while i < n:
+        lab = _tag_label(tags[i])
+        if lab == "O":
+            i += 1
+            continue
+        j = i
+        while (
+            j + 1 < n
+            and _tag_label(tags[j + 1]) == lab
+            and not str(tags[j + 1]).startswith("B-")
+        ):
+            j += 1
+        runs.append((lab, i, j))
+        i = j + 1
+    return runs
+
+
+def _entity_run_violates(lab: str, text: str) -> bool:
+    """True when a run's joined text can't be its label (verifier `_label_violations`)."""
+    joined = text.replace(" ", "")
+    if not text:
+        return False
+    if lab in _VERIFIER_MONEY:
+        return not _VERIFIER_CURRENCYISH.match(joined.replace(",", ""))
+    if lab == "PAYMENT_METHOD":
+        up = text.upper()
+        return not (
+            any(w in up for w in _VERIFIER_TENDER)
+            or re.search(r"[X*]{3,}\w", joined)
+        )
+    if lab == "PHONE_NUMBER":
+        return not _VERIFIER_PHONE.search(text) and not _VERIFIER_PHONE.search(joined)
+    if lab == "WEBSITE":
+        return not _VERIFIER_DOMAIN.search(joined) and not re.search(
+            r"[A-Za-z]{3,}", text
+        )
+    return False
+
+
+def _sanitize_entity_labels(
+    tokens: list[str],
+    bboxes: list[list[int]],
+    ner_tags: list[str],
+) -> tuple[list[str], list[list[int]], list[str]]:
+    """Demote-to-O every BIO entity run whose content violates its label.
+
+    A wrong entity label is worse than no label for LayoutLM, so each contiguous
+    run that the objective `labels_valid` check would flag (a money field that
+    isn't currency, a PAYMENT_METHOD with no tender word / mask, a PHONE_NUMBER
+    that isn't a phone, a WEBSITE with no domain/letters) is set entirely to
+    ``O``. Conservative by construction: the violation test is byte-equivalent to
+    the verifier's, so legitimate multi-token entities (e.g. "(805) 917-4200",
+    valid currency totals) are never demoted and arithmetic/bbox checks are
+    untouched (no token is dropped, no bbox is changed).
+    """
+    tags = list(ner_tags)
+    for lab, i, j in _verifier_entity_runs(tags):
+        if lab not in _VERIFIER_CONTENT_LABELS:
+            continue
+        text = " ".join((tokens[k] or "") for k in range(i, j + 1)).strip()
+        if _entity_run_violates(lab, text):
+            for k in range(i, j + 1):
+                tags[k] = "O"
+
+    # Re-emit valid BIO: any surviving ``I-`` whose predecessor is a different
+    # label (or none) becomes a ``B-`` so there are no orphan ``I-`` tags.
+    for k in range(len(tags)):
+        if str(tags[k]).startswith("I-"):
+            lab = _tag_label(tags[k])
+            if k == 0 or _tag_label(tags[k - 1]) != lab:
+                tags[k] = f"B-{lab}"
+    return tokens, bboxes, tags
+
+
 def _flatten_receipt_lines(
     lines: list[dict[str, Any]],
 ) -> tuple[list[str], list[list[int]], list[str]]:
@@ -1772,9 +1877,12 @@ def _flatten_receipt_lines(
     #      trailing-4 (the injected second tender block tell).
     #   3. de-overlap AND re-space words that share a visual line so adjacent
     #      words carry a real word-gap (the footer "squish" tell).
+    #   4. content-aware label sanitization: demote-to-O any BIO entity run whose
+    #      joined text can't be its label (mislabeled entities poison LayoutLM).
     tokens, bboxes, ner_tags = _dedupe_header_blocks(tokens, bboxes, ner_tags)
     tokens, bboxes, ner_tags = _dedupe_payment_blocks(tokens, bboxes, ner_tags)
     tokens, bboxes, ner_tags = _deoverlap_line_words(tokens, bboxes, ner_tags)
+    tokens, bboxes, ner_tags = _sanitize_entity_labels(tokens, bboxes, ner_tags)
     return tokens, bboxes, ner_tags
 
 
