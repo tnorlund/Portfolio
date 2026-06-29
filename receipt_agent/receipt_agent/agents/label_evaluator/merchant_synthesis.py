@@ -1553,7 +1553,12 @@ def _build_add_item_candidate_from_plan(
     else:
         delta_amount = entry.amount
         band_lines = [
-            _build_line_item_line(receipt, entry, y_center=band_top_anchor)
+            _build_line_item_line(
+                receipt,
+                entry,
+                y_center=band_top_anchor,
+                merchant_name=merchant_name,
+            )
         ]
         row_cloned = False
     _apply_row_slope(band_lines, slope, ref_x=ref_x)
@@ -2888,9 +2893,16 @@ def _build_template_filled_row(
     y0: int,
     geo: dict[str, Any],
     line_id: int,
+    merchant_name: str | None = None,
 ) -> dict[str, Any] | None:
     """One item row with NON-OVERLAPPING columns and labels we assign:
-    UPC/flag -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL."""
+    UPC/flag -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL.
+
+    For a KNOWN merchant (one with a validated tax profile) the flag column
+    carries the merchant's real tax-class token (e.g. Vons ``T``/``S``); for an
+    unknown merchant (or a known merchant with no flag for this item's class) it
+    keeps the conservative neutral ``<A>`` placeholder. Either way the flag slot
+    is always rendered and always labeled ``O``."""
     char_w = geo["char_w"]
     y1 = y0 + geo["height"]
     words: list[dict[str, Any]] = []
@@ -2941,9 +2953,10 @@ def _build_template_filled_row(
         product_name_words += 1
     if product_name_words <= 0:
         return None
+    flag_token = _merchant_item_tax_flag(merchant_name, entry.taxable) or "<A>"
     words.append(
         {
-            "text": "<A>",
+            "text": flag_token,
             "bbox": [flag_x0, y0, flag_x1, y1],
             "labels": [],
             "line_id": line_id,
@@ -2977,6 +2990,15 @@ def _expected_template_label(
     if value == "<A>":
         return "O"
     if (
+        word_index is not None
+        and flag_index is not None
+        and word_index == flag_index
+    ):
+        # The merchant tax-class flag slot (a real flag token like "T"/"F"/"A"
+        # for a known merchant, or the neutral "<A>" for an unknown one). Always
+        # supervision-neutral, exactly as "<A>" has always been.
+        return "O"
+    if (
         word_index == 0
         and value.isdigit()
         and len(value) >= 8
@@ -3006,14 +3028,30 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
             continue
         row_count += 1
         words = line.get("words", []) or []
-        flag_index = next(
+        # The flag column always sits immediately before the price (LINE_TOTAL)
+        # in a composed row, so locate it positionally — that covers both the
+        # neutral "<A>" placeholder and a known merchant's real flag token. Fall
+        # back to the "<A>" text match if no price word is present.
+        price_index = next(
             (
                 index
                 for index, word in enumerate(words)
-                if str(word.get("text") or "") == "<A>"
+                if str(word.get("text") or "").startswith("$")
+                and _parse_money(word.get("text")) is not None
             ),
             None,
         )
+        if price_index is not None and price_index > 0:
+            flag_index = price_index - 1
+        else:
+            flag_index = next(
+                (
+                    index
+                    for index, word in enumerate(words)
+                    if str(word.get("text") or "") == "<A>"
+                ),
+                None,
+            )
         row_has_product_name = False
         for index, word in enumerate(words):
             expected = _expected_template_label(
@@ -3149,6 +3187,7 @@ def _compose_online_catalog_receipt(
             y0=y0,
             geo=geo,
             line_id=_SYNTHETIC_LINE_ID_BASE + offset,
+            merchant_name=merchant_name,
         )
         if row is None:
             return None
@@ -5585,26 +5624,105 @@ def _category_insertion_context(
     }
 
 
+def _merchant_item_tax_flag(
+    merchant_name: str | None, taxable: bool
+) -> str | None:
+    """The single trailing tax-class token this merchant prints for a taxable
+    (or non-taxable) item, or ``None`` when there is no validated flag for that
+    class. ``sorted(...)[0]`` makes the canonical pick stable for the rare
+    multi-flag set so synthesis is deterministic.
+    """
+    if not merchant_name:
+        return None
+    profile = merchant_tax_profile(merchant_name)
+    if profile is None:
+        return None
+    flags = profile.taxable_flags if taxable else profile.nontaxable_flags
+    if not flags:
+        return None
+    return sorted(flags)[0]
+
+
+def _truncate_token_to_width(token: str, max_width: int) -> str:
+    """Longest prefix of ``token`` (with a trailing ``...`` when shortened) whose
+    rendered width fits in ``max_width`` px, or ``""`` when even the shortest
+    truncated form will not fit.
+    """
+    if _token_width(token) <= max_width:
+        return token
+    for keep in range(len(token) - 1, 0, -1):
+        candidate = token[:keep] + "..."
+        if _token_width(candidate) <= max_width:
+            return candidate
+    return ""
+
+
+def _truncate_tokens_to_width(
+    tokens: list[str], max_width: int
+) -> list[str]:
+    """Keep the leading product tokens that fit within ``max_width`` px (same
+    per-token width + 10px spacing model as ``_build_line``); truncate the first
+    overflowing token with a trailing ``...``. Always returns at least one
+    (possibly truncated) token so the row keeps a PRODUCT_NAME.
+    """
+    if not tokens:
+        return tokens
+    kept: list[str] = []
+    used = 0
+    for token in tokens:
+        spacing = 10 if kept else 0
+        width = _token_width(token)
+        if used + spacing + width <= max_width:
+            kept.append(token)
+            used += spacing + width
+            continue
+        if not kept:
+            # First token alone overflows the lane: truncate it (and keep the
+            # full token only if even an ellipsis form will not fit).
+            kept.append(
+                _truncate_token_to_width(token, max_width) or token
+            )
+        break
+    return kept
+
+
 def _build_line_item_line(
     receipt: dict[str, Any],
     entry: MerchantCatalogEntry,
     *,
     y_center: float,
+    merchant_name: str | None = None,
 ) -> dict[str, Any]:
-    product_x = _label_x_p50(receipt, "PRODUCT_NAME") or 90
-    total_x = _label_x_p50(receipt, "LINE_TOTAL") or 850
+    # ``_label_x_p50`` yields 0.0 (not None) for an unmeasured label, so treat a
+    # non-positive value as missing and fall back to the column defaults.
+    product_x_raw = _label_x_p50(receipt, "PRODUCT_NAME")
+    product_x = product_x_raw if product_x_raw and product_x_raw > 0 else 90
+    total_x_raw = _label_x_p50(receipt, "LINE_TOTAL")
+    total_x = total_x_raw if total_x_raw and total_x_raw > 0 else 850
     product_x = max(25, int(round(product_x - 35)))
     price = _format_money(entry.amount)
     price_width = _token_width(price)
     price_x = max(
         0, min(1000 - price_width, int(round(total_x - price_width / 2)))
     )
+    flag = _merchant_item_tax_flag(merchant_name, entry.taxable)
+    # Truncate the product name so it ends cleanly before the price column
+    # (leaving a 10px gutter), regardless of whether a trailing flag follows.
+    name_budget = max(0, price_x - product_x - 10)
+    name_tokens = _truncate_tokens_to_width(entry.product_tokens, name_budget)
+    tokens = name_tokens + [price]
+    labels = ["PRODUCT_NAME"] * len(name_tokens) + ["LINE_TOTAL"]
+    price_index = len(tokens) - 1
+    if flag:
+        tokens.append(flag)
+        labels.append("O")
     return _build_line(
-        entry.product_tokens + [price],
-        ["PRODUCT_NAME"] * len(entry.product_tokens) + ["LINE_TOTAL"],
+        tokens,
+        labels,
         x0=product_x,
         y0=max(0, min(976, int(round(y_center - 12)))),
         price_x=price_x,
+        price_index=price_index,
     )
 
 
@@ -5653,13 +5771,21 @@ def _build_line(
     x0: int,
     y0: int,
     price_x: int | None = None,
+    price_index: int | None = None,
 ) -> dict[str, Any]:
+    # ``price_index`` is the 0-based index of the price token that must snap to
+    # the merchant's price column (``price_x``). It defaults to the final token
+    # so existing callers (price is last) are unchanged; when a trailing tax
+    # flag follows the price, the caller passes the price's own index so the
+    # price still lands in its column and the flag flows just after it.
+    if price_x is not None and price_index is None:
+        price_index = len(tokens) - 1
     words = []
     cursor = x0
-    for idx, token in enumerate(tokens, start=1):
-        label = labels[idx - 1] if idx - 1 < len(labels) else "O"
+    for idx, token in enumerate(tokens):
+        label = labels[idx] if idx < len(labels) else "O"
         width = _token_width(token)
-        if price_x is not None and idx == len(tokens):
+        if price_x is not None and idx == price_index:
             cursor = price_x
         words.append(
             {
@@ -5667,7 +5793,7 @@ def _build_line(
                 "bbox": [cursor, y0, min(1000, cursor + width), y0 + 24],
                 "labels": [] if label == "O" else [label],
                 "line_id": 20_000,
-                "word_id": idx,
+                "word_id": idx + 1,
             }
         )
         cursor = min(1000, cursor + width + 10)
