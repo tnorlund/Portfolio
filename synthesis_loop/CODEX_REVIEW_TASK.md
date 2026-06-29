@@ -46,3 +46,31 @@ before answering — do not review from this summary alone.
 
 Output a structured review: a one-line VERDICT (right direction / course-correct / wrong), then numbered
 answers to 1-7, then a prioritized action list. Be direct about disagreements.
+
+## ROUND 2 UPDATE — we acted on your last review; re-verify it landed
+Since the first review (which ruled "course-correct"), we implemented 3 of your prioritized actions on this
+branch — READ these files, they are new/changed:
+- **#2 `synthesis_loop/reocr_gate.py`** — deterministic quarantine gate: pre-OCR (arithmetic reconciles +
+  no empty value fields) and post-OCR (every REQUIRED field has raw OCR coverage, else quarantine). Replaces
+  opus image-review as the recall gate.
+- **#3 `synthesis_loop/reocr_score.py`** — hardened: added label_precision, false_positive_rate (labels on
+  GT-'O' regions), value_cer, and degenerate-label rejection so a punctuation token ('='->TAX) no longer
+  counts as correct.
+- **#4 `scripts/render_synthetic_receipts.py`** — root-cause renderer fix: `_render_cached_hybrid` capped
+  fonts at 5/10px so thin synthesized totals/payment bboxes shrank to ~5px (faint micro-font, decimals as
+  dashes). Floored at 9/14px.
+
+NEW measured results on the SAME 3 merchants after #4 (re-rendered, re-OCR'd):
+- Gate: ALL THREE now PASS (0 uncovered required fields; previously all quarantined).
+- Hardened scorer: Amazon f1 1.0 / Costco 0.966 / Sprouts 0.967; value_cer 0.0 (was up to 0.2);
+  0 degenerate labels; 0 mislabels; all entity types recovered.
+
+Re-verify, specifically and skeptically:
+A. Did the course-correction actually resolve the problems you raised, or is the font-floor a band-aid that
+   trades one failure for another (e.g. 9px tokens overflowing their boxes and colliding -> new OCR errors,
+   merged tokens, or bbox drift)? Inspect re_ocr_align.py / reocr_gate.py / reocr_score.py logic, not just
+   the headline numbers.
+B. Is the hardened scorer now measuring the right thing, or is it still gameable?
+C. Is the deterministic gate's "required fields + coverage" definition correct and complete?
+D. With these fixes in, what is the SINGLE highest-value next step before a real LayoutLM A/B? Restate the
+   VERDICT (right direction / course-correct / wrong) given the new state.
