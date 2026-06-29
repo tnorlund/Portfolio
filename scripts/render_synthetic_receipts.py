@@ -45,6 +45,9 @@ from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
     render_real_vs_synthetic,
     save_receipt_png,
 )
+from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
+    receipt_graphics,
+)
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -111,7 +114,13 @@ def _synthetic_receipt_dict(example: dict, id_to_label: dict[int, str]) -> dict:
                 "labels": [label] if label and label != "O" else [],
             }
         )
-    return {"words": words}
+    receipt: dict = {"words": words}
+    # Preserve the merchant so the graphics pass can pick a sensible barcode
+    # symbology (grocery UPC-A vs. transaction Code128).
+    merchant_name = example.get("merchant_name")
+    if merchant_name:
+        receipt["merchant_name"] = merchant_name
+    return receipt
 
 
 def _cached_token_receipt_dict(example: dict) -> dict:
@@ -674,83 +683,46 @@ def _iter_receipt_bboxes(receipt: dict) -> list[list[float]]:
     return boxes
 
 
-def _draw_qr(draw, x: int, y: int, size: int, seed: int) -> None:
-    """Draw a synthetic-but-plausible QR block (finder patterns + modules)."""
-    modules = 25
-    cell = max(2, size // modules)
-    span = cell * modules
+def _qr_payload(receipt: dict, seed: int) -> str:
+    """Deterministic, plausible QR payload (a short receipt-lookup URL)."""
+    merchant = (receipt.get("merchant_name") or "store").strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "", merchant) or "store"
+    token = f"{seed & 0xFFFFFFFF:08x}"
+    return f"https://r.{slug[:18]}.example/t/{token}"
+
+
+def _barcode_payload(kind: str, seed: int) -> str:
+    """Deterministic, plausible 1D barcode payload for ``kind``."""
     rng = __import__("random").Random(seed)
-    dark = (20, 20, 20)
-    light = (250, 249, 245)
-    # Quiet-zone background.
-    draw.rectangle([x - cell, y - cell, x + span + cell, y + span + cell], fill=light)
-
-    def in_finder(r: int, c: int) -> bool:
-        for fr, fc in ((0, 0), (0, modules - 7), (modules - 7, 0)):
-            if fr <= r < fr + 7 and fc <= c < fc + 7:
-                return True
-        return False
-
-    def draw_finder(fr: int, fc: int) -> None:
-        ox, oy = x + fc * cell, y + fr * cell
-        draw.rectangle([ox, oy, ox + 7 * cell, oy + 7 * cell], fill=dark)
-        draw.rectangle(
-            [ox + cell, oy + cell, ox + 6 * cell, oy + 6 * cell], fill=light
-        )
-        draw.rectangle(
-            [ox + 2 * cell, oy + 2 * cell, ox + 5 * cell, oy + 5 * cell], fill=dark
-        )
-
-    for r in range(modules):
-        for c in range(modules):
-            if in_finder(r, c):
-                continue
-            if rng.random() < 0.5:
-                cx, cy = x + c * cell, y + r * cell
-                draw.rectangle([cx, cy, cx + cell, cy + cell], fill=dark)
-    for fr, fc in ((0, 0), (0, modules - 7), (modules - 7, 0)):
-        draw_finder(fr, fc)
+    if kind == "upca":
+        return "".join(str(rng.randint(0, 9)) for _ in range(11))
+    # Code128 transaction barcode: a long numeric transaction id.
+    return "".join(str(rng.randint(0, 9)) for _ in range(18))
 
 
-def _draw_barcode(draw, x: int, y: int, w: int, h: int, seed: int) -> None:
-    """Draw a synthetic 1D (Code128-style) barcode with a numeric caption."""
-    rng = __import__("random").Random(seed)
-    dark = (20, 20, 20)
-    cx = x
-    end = x + w
-    # Quiet zone left/right is implicit (white paper).
-    while cx < end:
-        bar_w = rng.choice((1, 1, 2, 2, 3))
-        if cx + bar_w > end:
-            break
-        if rng.random() < 0.5:
-            draw.rectangle([cx, y, cx + bar_w, y + h], fill=dark)
-        cx += bar_w
-    digits = "".join(str(rng.randint(0, 9)) for _ in range(12))
-    try:
-        from PIL import ImageFont
+def _paste_graphic_tile(image, tile, x: int, y: int) -> None:
+    """Paste a grayscale code tile into the (RGBA) receipt at (x, y).
 
-        font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 13)
-    except OSError:
-        from PIL import ImageFont
-
-        font = ImageFont.load_default(size=13)
-    tw = draw.textlength(digits, font=font)
-    draw.text((x + (w - tw) / 2, y + h + 3), digits, font=font, fill=dark)
+    The tile is opaque paper-toned grayscale, so it replaces the blank band it
+    lands in. It is pasted *before* the paper-texture pass so it ages with the
+    rest of the print instead of looking like a clean sticker on top.
+    """
+    image.paste(tile.convert("RGBA"), (int(x), int(y)))
 
 
 def _overlay_qr_and_barcode(
     image, receipt: dict, *, config: RenderConfig, coord_max: float
 ) -> None:
-    """Stamp a QR block and a 1D barcode in the blank footer region.
+    """Stamp a REAL QR symbol and a REAL 1D barcode in the blank footer region.
 
     The renderer's footer narration ("Scan the QR code") promised anchors that
-    were never drawn. These are synthetic placeholder graphics (they do not
-    encode real data) keyed off the receipt so re-renders are stable; their job
-    is to be present as believable visual anchors below the printed body.
+    were never drawn (the old pass faked them with random modules / random
+    bars + a stray digit caption). We now generate genuine, scannable codes via
+    :mod:`receipt_graphics` (segno + python-barcode) and paste them into a real
+    blank band keyed off the receipt so re-renders are stable. The barcode
+    symbology is chosen per merchant; the human-readable caption is omitted to
+    match real receipt footers (the spurious digits were a realism tell).
     """
-    from PIL import ImageDraw
-
     boxes = _iter_receipt_bboxes(receipt)
     if not boxes:
         return
@@ -799,24 +771,39 @@ def _overlay_qr_and_barcode(
     if avail_h < 60:
         return
 
-    draw = ImageDraw.Draw(image)
     seed = zlib.crc32(("".join(str(b) for b in boxes[:8])).encode("utf-8"))
     cx = config.margin + inner_w / 2.0
     bar_w = int(inner_w * 0.6)
     bar_h = 46
-    cap = 22
+    gap = 24
     qr_size = min(120, int(inner_w * 0.32))
-    block_full = qr_size + 24 + bar_h + cap
+    block_full = qr_size + gap + bar_h
+
+    gfx = receipt_graphics.graphics_profile_for_merchant(
+        receipt.get("merchant_name")
+    )
+    kind = gfx["barcode_kind"]
+    with_hri = gfx["barcode_with_hri"]
+    barcode_tile = receipt_graphics.render_barcode_tile(
+        _barcode_payload(kind, seed ^ 0x5A5A),
+        kind,
+        bar_w,
+        bar_h,
+        with_hri=with_hri,
+    )
 
     if avail_h >= block_full:
         y0 = int(gtop + (avail_h - block_full) / 2)
-        _draw_qr(draw, int(cx - qr_size / 2), y0, qr_size, seed)
-        _draw_barcode(
-            draw, int(cx - bar_w / 2), y0 + qr_size + 24, bar_w, bar_h, seed ^ 0x5A5A
+        qr_tile = receipt_graphics.render_qr_tile(
+            _qr_payload(receipt, seed), qr_size, seed
         )
-    elif avail_h >= bar_h + cap + 6:
-        y0 = int(gtop + (avail_h - (bar_h + cap)) / 2)
-        _draw_barcode(draw, int(cx - bar_w / 2), y0, bar_w, bar_h, seed ^ 0x5A5A)
+        _paste_graphic_tile(image, qr_tile, int(cx - qr_size / 2), y0)
+        _paste_graphic_tile(
+            image, barcode_tile, int(cx - bar_w / 2), y0 + qr_size + gap
+        )
+    elif avail_h >= bar_h + 6:
+        y0 = int(gtop + (avail_h - bar_h) / 2)
+        _paste_graphic_tile(image, barcode_tile, int(cx - bar_w / 2), y0)
 
 
 def _cached_logo_line(receipt: dict) -> list[dict] | None:
