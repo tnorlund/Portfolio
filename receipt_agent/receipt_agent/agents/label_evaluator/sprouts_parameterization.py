@@ -1765,7 +1765,180 @@ def _flatten_receipt_lines(
             bboxes.append(word["bbox"])
             line_labels.append(_first_label(word.get("labels", [])))
         ner_tags.extend(_bio_tags(line_labels))
+    # Reconcile the flattened candidate so it survives objective verification:
+    #   1. collapse/drop duplicate header blocks -> exactly one MERCHANT_NAME
+    #      (and one ADDRESS_LINE block), and strip stray-comma address artifacts.
+    #   2. de-overlap words that share a visual line (the footer "squish" tell).
+    tokens, bboxes, ner_tags = _dedupe_header_blocks(tokens, bboxes, ner_tags)
+    tokens, bboxes, ner_tags = _deoverlap_line_words(tokens, bboxes, ner_tags)
     return tokens, bboxes, ner_tags
+
+
+def _tag_label(tag: str) -> str:
+    """Strip the BIO prefix from a tag, returning the bare label (or 'O')."""
+    if not tag or tag == "O":
+        return "O"
+    return tag.split("-", 1)[-1]
+
+
+def _label_runs(tags: list[str], label: str) -> list[tuple[int, int]]:
+    """Return [start, end) index ranges of maximal contiguous `label` blocks."""
+    runs: list[tuple[int, int]] = []
+    i, n = 0, len(tags)
+    while i < n:
+        if _tag_label(tags[i]) == label:
+            j = i
+            while j < n and _tag_label(tags[j]) == label:
+                j += 1
+            runs.append((i, j))
+            i = j
+        else:
+            i += 1
+    return runs
+
+
+_STRAY_COMMA_RE = re.compile(r",\s*,+")
+
+
+def _dedupe_header_blocks(
+    tokens: list[str],
+    bboxes: list[list[int]],
+    ner_tags: list[str],
+) -> tuple[list[str], list[list[int]], list[str]]:
+    """Guarantee a single MERCHANT_NAME (and ADDRESS_LINE) header block.
+
+    Cloned base receipts can carry the merchant header twice (a fresh canonical
+    Sprouts header plus the base's original header/address rows), and the
+    per-line BIO flatten emits a fresh ``B-`` on every visual line of a
+    multi-line header. Both inflate the ``B-MERCHANT_NAME`` count. We keep one
+    canonical block, drop the redundant rows, scrub stray-comma address
+    artifacts (e.g. "WESTLAKE , , CA"), then re-emit BIO so each surviving
+    header block has exactly one ``B-`` tag.
+    """
+    tokens = list(tokens)
+    bboxes = list(bboxes)
+    tags = list(ner_tags)
+    drop: set[int] = set()
+
+    # MERCHANT_NAME: when multiple non-contiguous blocks exist, keep the one
+    # that actually names Sprouts (else the longest) and drop the rest.
+    merch_runs = _label_runs(tags, "MERCHANT_NAME")
+    if len(merch_runs) > 1:
+        def _run_text(run: tuple[int, int]) -> str:
+            return " ".join(str(tokens[k]) for k in range(run[0], run[1])).upper()
+
+        canon = next(
+            (run for run in merch_runs if "SPROUT" in _run_text(run)), None
+        )
+        if canon is None:
+            canon = max(merch_runs, key=lambda run: run[1] - run[0])
+        for run in merch_runs:
+            if run != canon:
+                drop.update(range(run[0], run[1]))
+
+    # ADDRESS_LINE: keep the first block, drop duplicates, scrub comma junk.
+    addr_runs = _label_runs(tags, "ADDRESS_LINE")
+    if addr_runs:
+        keep_addr = addr_runs[0]
+        for run in addr_runs[1:]:
+            drop.update(range(run[0], run[1]))
+        for k in range(keep_addr[0], keep_addr[1]):
+            text = str(tokens[k])
+            stripped = text.strip()
+            if stripped in {"", ","}:
+                # lone stray comma ("WESTLAKE , , CA" -> drop the bare comma)
+                drop.add(k)
+            elif _STRAY_COMMA_RE.search(text):
+                tokens[k] = _STRAY_COMMA_RE.sub(",", text)
+
+    if drop:
+        keep = [i for i in range(len(tokens)) if i not in drop]
+        tokens = [tokens[i] for i in keep]
+        bboxes = [bboxes[i] for i in keep]
+        tags = [tags[i] for i in keep]
+
+    # Re-emit BIO within each surviving header block so a multi-line block
+    # carries exactly one B- tag (the per-line flatten resets it every line).
+    for label in ("MERCHANT_NAME", "ADDRESS_LINE"):
+        for start, end in _label_runs(tags, label):
+            for k in range(start, end):
+                tags[k] = f"B-{label}" if k == start else f"I-{label}"
+
+    return tokens, bboxes, tags
+
+
+def _visual_lines(bboxes: list[list[int]]) -> list[list[int]]:
+    """Group word indices into visual lines by y-center proximity.
+
+    Mirrors the verifier's line grouping so the de-overlap pass operates on the
+    same lines that no_overlap is scored against.
+    """
+    centers = [
+        ((b[1] + b[3]) / 2, i)
+        for i, b in enumerate(bboxes)
+        if isinstance(b, (list, tuple)) and len(b) == 4
+    ]
+    centers.sort(reverse=True)
+    lines: list[list[int]] = []
+    cur: list[int] = []
+    last: float | None = None
+    for cy, i in centers:
+        if last is None or abs(cy - last) <= 8:
+            cur.append(i)
+        else:
+            lines.append(cur)
+            cur = [i]
+        last = cy
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _deoverlap_line_words(
+    tokens: list[str],
+    bboxes: list[list[int]],
+    ner_tags: list[str],
+) -> tuple[list[str], list[list[int]], list[str]]:
+    """Remove x-overlaps between words sharing a visual line (footer squish).
+
+    For each visual line we sweep words left-to-right. When a word starts left
+    of the previous word's right edge (beyond a 2px tolerance, matching the
+    verifier), we either drop it (redundant/stacked ``O`` junk such as the
+    copied footer survey block) or nudge it right just enough to clear the
+    overlap, clamping to stay in-bounds and preserve right-aligned prices.
+    """
+    boxes = [list(b) if isinstance(b, (list, tuple)) else b for b in bboxes]
+    drop: set[int] = set()
+
+    for line in _visual_lines(boxes):
+        ordered = sorted(line, key=lambda i: boxes[i][0])
+        prev_right: float | None = None
+        for i in ordered:
+            x0, y0, x1, y1 = boxes[i]
+            if prev_right is not None and x0 < prev_right - 2:
+                if _tag_label(ner_tags[i]) == "O":
+                    # stacked, unlabeled footer/EMV duplicate -> drop it
+                    drop.add(i)
+                    continue
+                # labeled content -> nudge right to clear the overlap
+                shift = (prev_right + 1) - x0
+                x0 += shift
+                x1 += shift
+                if x1 > 1000:
+                    x1 = 1000
+                    if x0 >= x1:
+                        x0 = x1 - 1
+                boxes[i] = [x0, y0, x1, y1]
+            prev_right = boxes[i][2]
+
+    if drop:
+        keep = [i for i in range(len(tokens)) if i not in drop]
+        return (
+            [tokens[i] for i in keep],
+            [boxes[i] for i in keep],
+            [ner_tags[i] for i in keep],
+        )
+    return tokens, boxes, ner_tags
 
 
 def _sanitize_sprouts_footer_blocks(

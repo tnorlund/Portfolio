@@ -82,9 +82,29 @@ def check(cand: dict) -> dict:
                 overlaps += 1
     res["no_overlap"] = {"pass": overlaps == 0, "overlap_pairs": overlaps}
 
+    # word_spacing: adjacent words on a line need a REAL gap, not just non-overlap.
+    # "Not overlapping" != "properly spaced" — the footer squish has words TOUCHING
+    # (gap ~0). Flag pairs whose gap is below a word-space (~a third of line height).
+    jammed = 0
+    for line in _lines(boxes):
+        ordered = sorted(line, key=lambda i: boxes[i][0])
+        for p, q in zip(ordered, ordered[1:]):
+            gap = boxes[q][0] - boxes[p][2]
+            h = max(boxes[p][3] - boxes[p][1], 6)
+            if 0 <= gap < 0.30 * h:      # touching: smaller than a normal word-space
+                jammed += 1
+    res["word_spacing"] = {"pass": jammed == 0, "jammed_pairs": jammed}
+
     # single_header: one MERCHANT_NAME block
     merch_blocks = sum(1 for i in range(n) if tags[i] == "B-MERCHANT_NAME")
     res["single_header"] = {"pass": merch_blocks == 1, "merchant_blocks": merch_blocks}
+
+    # single_payment_block: exactly one card/payment section (catches the injected dup block)
+    card_tails = set()
+    for t in toks:
+        if re.search(r"[X*xX]{4,}", t or ""):     # masked card number, e.g. XXXXXXXX8712
+            card_tails.add((t or "")[-4:])
+    res["single_payment_block"] = {"pass": len(card_tails) <= 1, "cards": sorted(card_tails)}
 
     # no_garble
     garble = [toks[i] for i in range(len(toks))
@@ -137,9 +157,9 @@ def main() -> int:
             agg["_score"].append(r["_score"])
 
     print(f"== verified {len(rows)} candidates ==")
-    for k in ["bbox_valid", "no_overlap", "single_header", "no_garble", "arithmetic"]:
+    for k in ["bbox_valid", "no_overlap", "word_spacing", "single_header", "single_payment_block", "no_garble", "arithmetic"]:
         if agg[k]:
-            print(f"  {k:14} {sum(agg[k])}/{len(agg[k])} pass")
+            print(f"  {k:20} {sum(agg[k])}/{len(agg[k])} pass")
     if agg["_score"]:
         print(f"  {'OVERALL':14} mean check pass-rate {statistics.mean(agg['_score']):.3f}")
 
@@ -152,15 +172,15 @@ def main() -> int:
     if a.md:
         lines = ["# Synthetic candidate verification (objective, reproducible)\n",
                  f"Verified **{len(rows)}** candidates. Mean check pass-rate: **{out['mean_score']}**\n",
-                 "| candidate | score | bbox | overlap | header | garble | arith |",
-                 "|---|---|---|---|---|---|---|"]
+                 "| candidate | score | bbox | overlap | spacing | header | 1pay | garble | arith |",
+                 "|---|---|---|---|---|---|---|---|---|"]
         def cell(v):
             if v.get("pass") is None: return "—"
             return "✅" if v["pass"] else "❌"
         for cid, r in rows:
             lines.append(f"| `{cid[:40]}` | {r['_score']} | {cell(r['bbox_valid'])} | "
-                         f"{cell(r['no_overlap'])} | {cell(r['single_header'])} | "
-                         f"{cell(r['no_garble'])} | {cell(r['arithmetic'])} |")
+                         f"{cell(r['no_overlap'])} | {cell(r['word_spacing'])} | {cell(r['single_header'])} | "
+                         f"{cell(r['single_payment_block'])} | {cell(r['no_garble'])} | {cell(r['arithmetic'])} |")
         lines += ["", "## Aggregate", "```", json.dumps(out["aggregate"], indent=2), "```"]
         open(a.md, "w").write("\n".join(lines) + "\n")
         print("wrote", a.md)
