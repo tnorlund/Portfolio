@@ -1268,41 +1268,132 @@ def _reflow_remove_lines(
     band_indices: list[int],
     line_step: int,
 ) -> dict[str, int]:
-    """Delete the rows at ``band_indices`` and pull every LOWER row up by the
-    removed band's height (by INDEX), closing the gap with no orphans."""
+    """Delete the rows at ``band_indices`` and pull every visually LOWER row up to
+    close the vacated gap.
+
+    Coordinate model is y-high-is-top: ``box[3]`` is a word's TOP edge, ``box[1]``
+    its BOTTOM edge, and a LARGER y sits higher on the receipt. Removing the band
+    leaves a hole; every row that sits BELOW the band (smaller y) must move UP
+    (larger y) by exactly the band's vacated height so the receipt closes up
+    without inverting reading order.
+
+    Rows to move are chosen by Y-POSITION (not array index), so the close-up is
+    robust even when the lines array is not stored top-to-bottom. The shift is the
+    gap between the band's top and the nearest lower row's top, which equals the
+    removed band's vertical extent; because every lower row only moves up toward
+    where the band already sat (never above the band's old top), no row can run
+    off the top edge, so the shift is applied with NO 1000 clamp — the old clamp
+    is what collapsed near-top rows onto y=1000 and scrambled the order.
+    """
     lines = receipt.setdefault("lines", [])
     band = sorted(i for i in set(band_indices) if 0 <= i < len(lines))
     if not band:
         return {"line_count": 0, "median_shift": 0, "min_shift": 0, "max_shift": 0}
+
+    band_set = set(band)
+    band_lines = [lines[i] for i in band]
+
+    # Band's vertical extent from its words (y-high-is-top).
     tops: list[int] = []
     bottoms: list[int] = []
-    for index in band:
-        for word in lines[index].get("words") or []:
+    for line in band_lines:
+        for word in line.get("words") or []:
             box = word.get("bbox")
             if box:
                 tops.append(box[3])
                 bottoms.append(box[1])
-    height = (max(tops) - min(bottoms)) if tops else line_step
-    reserve = max(line_step, height + 8)
-    lo, hi = band[0], band[-1]
+
+    def _delete_band_and_normalize() -> None:
+        for i in sorted(band_set, reverse=True):
+            del lines[i]
+        _normalize_word_boxes(receipt)
+        _refresh_words(receipt)
+
+    if not tops:
+        # Empty band occupies no visual space; nothing below it needs to move.
+        _delete_band_and_normalize()
+        return {"line_count": 0, "median_shift": 0, "min_shift": 0, "max_shift": 0}
+
+    band_top = max(tops)
+    band_bottom = min(bottoms)
+    band_center = (band_top + band_bottom) / 2.0
+
+    # Classify the remaining rows by VISUAL position: a row is "below" the band
+    # when its center sits lower (smaller y) than the band's center. This splits
+    # cleanly because the band is a contiguous vertical slot — the nearest lower
+    # row's center is below band_bottom and the nearest upper row's center is
+    # above band_top.
+    below: list[tuple[float, dict[str, Any]]] = []
+    for index, line in enumerate(lines):
+        if index in band_set:
+            continue
+        boxes = [w.get("bbox") for w in (line.get("words") or []) if w.get("bbox")]
+        if not boxes:
+            continue
+        center_y = sum((b[1] + b[3]) / 2.0 for b in boxes) / len(boxes)
+        if center_y < band_center:
+            below.append((max(b[3] for b in boxes), line))
+
+    if not below:
+        # Band is at the very bottom — no lower rows to pull up.
+        _delete_band_and_normalize()
+        return {"line_count": 0, "median_shift": 0, "min_shift": 0, "max_shift": 0}
+
+    # The nearest lower row is the one whose top edge is highest among the lower
+    # rows. Pulling its top up to where the band's top was closes exactly the
+    # band's vacated extent; every lower row shifts up by that same amount.
+    next_top = max(top for top, _ in below)
+    shift = int(round(band_top - next_top))
+    if shift <= 0:
+        # Degenerate overlap; do not push rows down (that would open a gap or
+        # invert order). Just drop the band.
+        _delete_band_and_normalize()
+        return {"line_count": 0, "median_shift": 0, "min_shift": 0, "max_shift": 0}
+
     shifted = 0
-    for line in lines[hi + 1 :]:
+    for _, line in below:
         for word in line.get("words") or []:
             box = word.get("bbox")
             if box:
-                box[1] = min(1000, box[1] + reserve)
-                box[3] = min(1000, box[3] + reserve)
-        if isinstance(line.get("y"), (int, float)):
-            line["y"] = min(1.0, line["y"] + reserve / 1000)
+                # Preserve x exactly; only translate vertically (no clamp — the
+                # row only rises toward the band's old slot, never off-canvas).
+                box[1] += shift
+                box[3] += shift
         shifted += 1
-    del lines[lo : hi + 1]
+
+    # Drop the band rows, normalize any inverted boxes, then re-derive each line's
+    # y from its (now shifted) words.
+    for i in sorted(band_set, reverse=True):
+        del lines[i]
+    _normalize_word_boxes(receipt)
+    for line in lines:
+        if line.get("words"):
+            line["y"] = _line_y(line)
     _refresh_words(receipt)
     return {
         "line_count": shifted,
-        "median_shift": reserve,
-        "min_shift": reserve,
-        "max_shift": reserve,
+        "median_shift": shift,
+        "min_shift": shift,
+        "max_shift": shift,
     }
+
+
+def _normalize_word_boxes(receipt: dict[str, Any]) -> None:
+    """Canonicalize every word bbox so x0 <= x1 and y0 <= y1.
+
+    Geometry edits can leave inverted boxes (y0 > y1 or x0 > x1) that both render
+    wrong and poison training geometry. Swap the offending pair in place so each
+    box has a non-negative width and height.
+    """
+    for line in receipt.get("lines", []):
+        for word in line.get("words") or []:
+            box = word.get("bbox")
+            if not box or len(box) < 4:
+                continue
+            if box[0] > box[2]:
+                box[0], box[2] = box[2], box[0]
+            if box[1] > box[3]:
+                box[1], box[3] = box[3], box[1]
 
 
 def _item_region_floor_y(receipt: dict[str, Any]) -> float | None:

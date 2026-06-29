@@ -2155,14 +2155,85 @@ def _shift_lines_below(
     removed_center_y: float,
     delta: int,
 ) -> None:
+    """Pull every visually LOWER row UP to close the hole left by the removed item.
+
+    Coordinate model is y-high-is-top: ``bbox[3]`` is a word's TOP edge,
+    ``bbox[1]`` its BOTTOM edge, and a LARGER y sits higher on the receipt. The
+    removed item's lines have already been deleted by the caller; ``delta`` is the
+    receipt's normal row pitch (``_line_step``).
+
+    Rows below the hole (line center y < ``removed_center_y``) move UP so the
+    nearest surviving lower row closes up to exactly one normal pitch below the
+    nearest surviving upper row. That shift is derived from the ACTUAL surviving
+    geometry, so it self-corrects when the removed item spanned several rows
+    (where ``delta`` alone would under-close). Because the lower rows only rise
+    toward where the band sat (never above the upper anchor), the move can't run
+    off the top edge, so there is NO ``min(1000, ...)`` clamp — that clamp is what
+    pinned near-top rows at y=1000 and scrambled reading order.
+    """
+    below: list[dict[str, Any]] = []
+    below_tops: list[int] = []
+    above_anchor_top: int | None = None
+    above_anchor_cy: float | None = None
     for line in receipt.get("lines", []):
-        if _line_y(line) * 1000 >= removed_center_y:
+        boxes = [
+            word["bbox"]
+            for word in line.get("words", [])
+            if word.get("bbox")
+        ]
+        if not boxes:
             continue
-        for word in line.get("words", []):
-            word["bbox"][1] = min(1000, word["bbox"][1] + delta)
-            word["bbox"][3] = min(1000, word["bbox"][3] + delta)
-        line["y"] = min(1.0, _line_y(line))
+        center_y = _line_y(line) * 1000
+        top = max(box[3] for box in boxes)
+        if center_y < removed_center_y:
+            below.append(line)
+            below_tops.append(top)
+        else:
+            # Nearest upper row = the surviving above-row closest to the hole
+            # (smallest center y among the rows above it).
+            if above_anchor_cy is None or center_y < above_anchor_cy:
+                above_anchor_cy = center_y
+                above_anchor_top = top
+
+    if below:
+        lower_anchor_top = max(below_tops)
+        if above_anchor_top is not None:
+            # Close the vacated band down to a single normal row pitch.
+            shift = int(round((above_anchor_top - lower_anchor_top) - delta))
+        else:
+            # Removed item sat at the very top with no surviving row above it;
+            # fall back to one normal pitch.
+            shift = int(delta)
+        if shift > 0:
+            for line in below:
+                for word in line.get("words", []):
+                    box = word.get("bbox")
+                    if box:
+                        # Translate vertically only — preserve x exactly, no clamp.
+                        box[1] += shift
+                        box[3] += shift
+                line["y"] = _line_y(line)
+
+    _normalize_word_boxes(receipt)
     _refresh_receipt_words(receipt)
+
+
+def _normalize_word_boxes(receipt: dict[str, Any]) -> None:
+    """Canonicalize every word bbox so x0 <= x1 and y0 <= y1.
+
+    Geometry edits can leave inverted boxes (y0 > y1 or x0 > x1) that both render
+    wrong and poison training geometry. Swap the offending pair in place so each
+    box keeps a non-negative width and height.
+    """
+    for line in receipt.get("lines", []):
+        for word in line.get("words", []):
+            box = word.get("bbox")
+            if not box or len(box) < 4:
+                continue
+            if box[0] > box[2]:
+                box[0], box[2] = box[2], box[0]
+            if box[1] > box[3]:
+                box[1], box[3] = box[3], box[1]
 
 
 def _can_shift_lines_below_down(
