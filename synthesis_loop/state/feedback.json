@@ -1,6 +1,6 @@
 {
-  "round": 1,
-  "overall_mean": 0.962,
+  "round": 2,
+  "overall_mean": 0.98,
   "per_merchant": {
     "amazon_fresh": {
       "mean": 1.0,
@@ -8,18 +8,17 @@
       "failing_checks": {}
     },
     "costco_wholesale": {
-      "mean": 0.971,
+      "mean": 0.993,
       "n": 17,
       "failing_checks": {
-        "arithmetic": "12/16"
+        "arithmetic": "15/16"
       }
     },
     "gelsons_westlake_village": {
-      "mean": 0.825,
+      "mean": 0.912,
       "n": 10,
       "failing_checks": {
-        "no_garble": "3/10",
-        "arithmetic": "3/10"
+        "no_garble": "3/10"
       }
     },
     "smiths": {
@@ -35,19 +34,17 @@
       "failing_checks": {}
     },
     "target": {
-      "mean": 0.973,
+      "mean": 1.0,
       "n": 14,
-      "failing_checks": {
-        "arithmetic": "11/14"
-      }
+      "failing_checks": {}
     },
     "the_home_depot": {
-      "mean": 0.946,
+      "mean": 0.953,
       "n": 20,
       "failing_checks": {
         "word_spacing": "16/20",
         "single_header": "18/20",
-        "arithmetic": "10/12"
+        "arithmetic": "11/12"
       }
     },
     "vons": {
@@ -57,43 +54,86 @@
     }
   },
   "line_review": {
-    "merchant": "costco_wholesale",
+    "merchant": "the_home_depot",
     "worst_lines": [
-      "line 2: logo subtitle malformed 'EWHOLESALE'",
-      "line 11: TAX 0.00 implausible for taxable items",
-      "line 19: AMOUNT $26.82 \u2260 TOTAL 28.84 arithmetic mismatch",
-      "line 9: price not flush with column above"
+      "line 24: 'target.com' is the wrong merchant domain on a Home Depot receipt",
+      "line 34: 'target.com' wrong domain repeated in footer",
+      "line 8: stray '4024.97' token and price not aligned to column",
+      "line 18: 'THISRECEIPT(PO)NUMBER' words fused with no spaces",
+      "line 37: 'Entriesmust'/'completedwithin' words touching"
     ],
     "bad_lines": [
       {
         "n": 2,
-        "text": "EWHOLESALE",
+        "text": "get more done..",
         "ok": false,
-        "issue": "logo subtitle malformed: leading glyphs read 'EW' instead of 'W' in WHOLESALE"
+        "issue": "slogan has a stray trailing '..' instead of a single period"
       },
       {
-        "n": 9,
-        "text": "1404655 CHEESE TRAY 12.99",
+        "n": 4,
+        "text": "(805)    486-9114",
         "ok": false,
-        "issue": "price 12.99 sits slightly left of the price column set by line 8's 15.85; right edges not flush"
+        "issue": "oversized gap between area code and number, not a tight phone format"
       },
       {
-        "n": 11,
-        "text": "TAX 0.00",
+        "n": 8,
+        "text": "4PK - 586IN RECESSED LED TRIM SW T20  99.88",
         "ok": false,
-        "issue": "TAX 0.00 implausible for taxable Costco items (CHEESE TRAY); tax column value rendered in red but zero"
+        "issue": "price 99.88 not right-aligned to the price column; stray '4024.97' token leaked above it"
       },
       {
-        "n": 14,
-        "text": "AID: A0000000031010 VERIFIED BY PIN",
+        "n": 18,
+        "text": "THISRECEIPT(PO)NUMBER 02/29:",
         "ok": false,
-        "issue": "AID/VERIFIED BY PIN run together with tight spacing; reads cramped vs original"
+        "issue": "label words touching with no spaces ('THISRECEIPT(PO)NUMBER')"
       },
       {
         "n": 19,
-        "text": "AMOUNT: $26.82",
+        "text": "2024PRO XTRA SPEND 02/29  $5,224.35",
         "ok": false,
-        "issue": "AMOUNT $26.82 disagrees with TOTAL 28.84 above \u2014 arithmetic mismatch after item removal"
+        "issue": "'2024PRO' run together with no space"
+      },
+      {
+        "n": 23,
+        "text": "CreditCard. ApplyHomeDEPOT SAVE UP TO $100.",
+        "ok": false,
+        "issue": "'ApplyHomeDEPOT' words touching and mixed-case weight too heavy"
+      },
+      {
+        "n": 24,
+        "text": "target.com",
+        "ok": false,
+        "issue": "wrong merchant domain on a Home Depot receipt \u2014 should be homedepot.com"
+      },
+      {
+        "n": 27,
+        "text": "RETURNPOLICYDEFINITIONS",
+        "ok": false,
+        "issue": "heading words touching with no spaces"
+      },
+      {
+        "n": 29,
+        "text": "05/30/2024",
+        "ok": false,
+        "issue": "orphan expiry date with empty POLICYID/DAYS columns above it"
+      },
+      {
+        "n": 33,
+        "text": "opinion espa\u00f1ol",
+        "ok": false,
+        "issue": "truncated/garbled Spanish prompt ('opini\u00f3n en espa\u00f1ol' expected)"
+      },
+      {
+        "n": 34,
+        "text": "target.com",
+        "ok": false,
+        "issue": "wrong merchant domain again \u2014 should be homedepot.com"
+      },
+      {
+        "n": 36,
+        "text": "PASSWORD:24151 179367",
+        "ok": false,
+        "issue": "no space after 'PASSWORD:' label"
       }
     ]
   }

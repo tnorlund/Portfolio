@@ -1,6 +1,6 @@
 {
-  "overall_mean": 0.962,
-  "worst_merchant_mean": 0.825,
+  "overall_mean": 0.98,
+  "worst_merchant_mean": 0.912,
   "merchants": {
     "amazon_fresh": {
       "mean": 1.0,
@@ -8,18 +8,17 @@
       "failing_checks": {}
     },
     "costco_wholesale": {
-      "mean": 0.971,
+      "mean": 0.993,
       "n": 17,
       "failing_checks": {
-        "arithmetic": "12/16"
+        "arithmetic": "15/16"
       }
     },
     "gelsons_westlake_village": {
-      "mean": 0.825,
+      "mean": 0.912,
       "n": 10,
       "failing_checks": {
-        "no_garble": "3/10",
-        "arithmetic": "3/10"
+        "no_garble": "3/10"
       }
     },
     "smiths": {
@@ -35,19 +34,17 @@
       "failing_checks": {}
     },
     "target": {
-      "mean": 0.973,
+      "mean": 1.0,
       "n": 14,
-      "failing_checks": {
-        "arithmetic": "11/14"
-      }
+      "failing_checks": {}
     },
     "the_home_depot": {
-      "mean": 0.946,
+      "mean": 0.953,
       "n": 20,
       "failing_checks": {
         "word_spacing": "16/20",
         "single_header": "18/20",
-        "arithmetic": "10/12"
+        "arithmetic": "11/12"
       }
     },
     "vons": {
