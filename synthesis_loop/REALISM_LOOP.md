@@ -59,3 +59,7 @@ next item (codex-review the plan first). Merge all landed lanes, then re-render 
 - Opus mean 2.58 -> 2.71 (+0.13, beyond prior 0.04 wobble = real). Deterministic composite 0.640->0.644 (flat; weights gap_p90 only 0.10). The SALE-line gap fix moved the VISUAL realism. LAYOUT confirmed as the lever.
 - v4 dominant remaining tells: right-aligned PRICE COLUMN (column 96/align 86/right-align 42) = #1; justified-spacing residue (justif 71); 'now'->'HOW' + reversed order 'F HOW $4.99' content bug (HOW 38).
 - DECISION: CONTINUE layout backlog. Next = price-column right-edge anchor (codex #3: real amount-right-edge, not center _label_x_p50). Then vertical pitch on add/remove. Plus fix the now/HOW order bug.
+
+## LOOP MECHANICS FIX (reinvoke gap)
+- BUG: codex plan/visual reviews launched via 'nohup codex exec ... &' detach from the harness -> NO completion notification -> the loop idled until the 30-min heartbeat. (Agent + Workflow tasks ARE tracked and notify; only the nohup codex-exec step wasn't.)
+- FIX: launch every codex review via the Bash tool's run_in_background:true (harness-tracked, re-invokes on exit), NOT nohup&. Same mechanism as the render-watchers. Closes the reinvoke gap; heartbeat stays as fallback only.
