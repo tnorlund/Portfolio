@@ -303,6 +303,10 @@ class WebAnalytics(ComponentResource):
             role=transform_role.arn,
             timeout=600,
             memory_size=256,
+            # Serialize runs: the per-day drop/delete/INSERT rebuild is not
+            # atomic, so a backfill overlapping the scheduled run must not
+            # interleave on the same partition.
+            reserved_concurrent_executions=1,
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
                     "ANALYTICS_DB": database_name,
@@ -551,6 +555,9 @@ def _policy_json(
                         "s3:PutObject",
                         "s3:ListBucket",
                         "s3:GetBucketLocation",
+                        "s3:AbortMultipartUpload",
+                        "s3:ListMultipartUploadParts",
+                        "s3:ListBucketMultipartUploads",
                     ],
                     "Resource": [
                         results_bucket_arn,
@@ -619,6 +626,9 @@ def _transform_policy_json(
                         "s3:DeleteObject",
                         "s3:ListBucket",
                         "s3:GetBucketLocation",
+                        "s3:AbortMultipartUpload",
+                        "s3:ListMultipartUploadParts",
+                        "s3:ListBucketMultipartUploads",
                     ],
                     "Resource": [
                         curated_bucket_arn,

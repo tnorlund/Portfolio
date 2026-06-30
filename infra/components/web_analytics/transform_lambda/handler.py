@@ -39,27 +39,24 @@ _athena = boto3.client("athena", region_name=REGION)
 _s3 = boto3.client("s3", region_name=REGION)
 
 
-def _run(sql: str, max_wait: int = 240) -> str:
+def _run(sql: str, deadline: float) -> str:
     qid = _athena.start_query_execution(
         QueryString=sql,
         QueryExecutionContext={"Database": DB},
         WorkGroup=WORKGROUP,
     )["QueryExecutionId"]
-    waited = 0.0
     while True:
         status = _athena.get_query_execution(QueryExecutionId=qid)[
             "QueryExecution"
         ]["Status"]
         if status["State"] in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
-        time.sleep(1.0)
-        waited += 1.0
-        if waited > max_wait:
-            # Don't leave the query running past the Lambda's own timeout.
+        if time.time() >= deadline:
+            # Stop the query before the Lambda is killed, so it can't keep
+            # mutating the partition after the function dies.
             _athena.stop_query_execution(QueryExecutionId=qid)
-            raise TimeoutError(
-                f"Athena query exceeded {max_wait}s; stopped"
-            )
+            raise TimeoutError("Athena query stopped near Lambda deadline")
+        time.sleep(1.0)
     if status["State"] != "SUCCEEDED":
         raise RuntimeError(
             f"Athena {status['State']}: {status.get('StateChangeReason')}"
@@ -68,16 +65,21 @@ def _run(sql: str, max_wait: int = 240) -> str:
 
 
 def _insert_sql(dt: str) -> str:
-    # CloudFront percent-encodes log fields once; the beacon query string's
-    # nested params were url-encoded by the client too, so only it needs a
-    # second decode. Single-decode referrer/UA to avoid corrupting values
-    # that legitimately contain percent sequences.
-    qd = "url_decode(url_decode(query_string))"
+    # CloudFront percent-encodes each log field ONCE. The beacon query string's
+    # nested param values were additionally url-encoded by the client, so we
+    # single-decode the field and decode only each extracted beacon value —
+    # never double-decode the whole field (a non-beacon value like "100%-off"
+    # would make the second url_decode throw and fail the whole rebuild).
+    qs = "url_decode(query_string)"
     ua = "lower(url_decode(user_agent))"
+
+    def beacon_param(name: str) -> str:
+        return f"url_decode(regexp_extract({qs}, '{name}=([^&]+)', 1))"
+
     return f"""
 INSERT INTO {DB}.web_events
 WITH src AS (
-  SELECT *, regexp_extract({qd}, 'eid=([^&]+)', 1) AS _eid
+  SELECT *, {beacon_param('eid')} AS _eid
   FROM {DB}.cloudfront_logs_prod WHERE "$path" LIKE '%.{dt}-%'
 ),
 dedup AS (
@@ -96,11 +98,11 @@ SELECT
   status,
   url_decode(referrer) AS referrer,
   {ua} AS user_agent,
-  {qd} AS query_decoded,
+  {qs} AS query_decoded,
   (uri = '/analytics/pixel.txt') AS is_beacon,
-  regexp_extract({qd}, 'event=([^&]+)', 1) AS event,
-  regexp_extract({qd}, 'path=([^&]+)', 1) AS evt_path,
-  regexp_extract({qd}, 'sid=([^&]+)', 1) AS sid,
+  {beacon_param('event')} AS event,
+  {beacon_param('path')} AS evt_path,
+  {beacon_param('sid')} AS sid,
   _eid AS eid,
   regexp_like(request_ip, '^(104\\.28\\.|2a09:bac)') AS is_warp,
   (regexp_like({ua}, '{_BOT_RE}')
@@ -127,10 +129,13 @@ def _delete_partition_objects(dt: str) -> None:
         _s3.delete_objects(Bucket=CURATED_BUCKET, Delete={"Objects": batch})
 
 
-def _rebuild_partition(dt: str) -> str:
-    _run(f"ALTER TABLE {DB}.web_events DROP IF EXISTS PARTITION (dt='{dt}')")
+def _rebuild_partition(dt: str, deadline: float) -> str:
+    _run(
+        f"ALTER TABLE {DB}.web_events DROP IF EXISTS PARTITION (dt='{dt}')",
+        deadline,
+    )
     _delete_partition_objects(dt)
-    _run(_insert_sql(dt))
+    _run(_insert_sql(dt), deadline)
     return dt
 
 
@@ -149,7 +154,20 @@ def _target_dates(event: dict) -> list:
     return [(today - timedelta(days=n)).isoformat() for n in (3, 2, 1, 0)]
 
 
-def handler(event, _context):
+def handler(event, context):
     event = event or {}
-    rebuilt = [_rebuild_partition(dt) for dt in _target_dates(event)]
+    # Bound all Athena polling to the Lambda's own deadline (minus a buffer) so
+    # a slow/queued query is stopped rather than orphaned when we're killed.
+    remaining_ms = (
+        context.get_remaining_time_in_millis()
+        if context is not None
+        and hasattr(context, "get_remaining_time_in_millis")
+        else 540_000
+    )
+    deadline = time.time() + max(0.0, remaining_ms / 1000.0 - 15)
+    rebuilt = []
+    for dt in _target_dates(event):
+        if time.time() >= deadline:
+            break
+        rebuilt.append(_rebuild_partition(dt, deadline))
     return {"rebuilt_partitions": rebuilt}
