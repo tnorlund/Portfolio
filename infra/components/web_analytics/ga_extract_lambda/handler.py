@@ -38,18 +38,9 @@ _METRICS = [
 ]
 
 
-def _service_account_key() -> str:
-    """Read the SA key from Secrets Manager (preferred) or env; else ''."""
-    secret_arn = os.environ.get("GA_SECRET_ARN")
-    if secret_arn:
-        return boto3.client("secretsmanager").get_secret_value(
-            SecretId=secret_arn
-        )["SecretString"]
-    return os.environ.get("GA_SERVICE_ACCOUNT_KEY", "")
-
-
 def _client() -> BetaAnalyticsDataClient:
-    key = _service_account_key()
+    # Pulumi-encrypted config secret, injected as a Lambda env var at deploy.
+    key = os.environ.get("GA_SERVICE_ACCOUNT_KEY", "")
     if key:
         creds = service_account.Credentials.from_service_account_info(
             json.loads(key), scopes=_SCOPES

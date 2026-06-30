@@ -3088,6 +3088,10 @@ ANALYTICS_REGION = "us-east-1"
 
 
 def _analytics_check_date(d: str) -> str:
+    # Athena's ExecutionParameters bind predicate placeholders as integer
+    # (varchar/date params fail), so the structured tools validate inputs
+    # strictly and interpolate. Constraining the shape (YYYY-MM-DD) keeps
+    # interpolation injection-safe.
     import re
 
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", d or ""):
@@ -3292,20 +3296,20 @@ LIMIT 300
 
 
 async def analytics_query_impl(sql: str) -> dict:
-    try:
-        import re
+    """Run an ad-hoc read-only analytics query.
 
+    Allowlist: a single SELECT/WITH statement. The real guarantee is least
+    privilege, not string matching — the MCP role grants only read-only Athena +
+    Glue on the analytics database and S3 read on the analytics buckets, so a
+    query physically cannot write, run DDL, or read data outside this database
+    regardless of its text.
+    """
+    try:
         stmt = (sql or "").strip().rstrip(";").strip()
-        low = stmt.lower()
-        if not (low.startswith("select") or low.startswith("with")):
-            return {"error": "only read-only SELECT/WITH queries are allowed"}
         if ";" in stmt:
             return {"error": "only a single statement is allowed"}
-        if re.search(
-            r"\b(insert|update|delete|drop|create|alter|msck|grant|revoke|unload|truncate)\b",
-            low,
-        ):
-            return {"error": "write/DDL keywords are not allowed"}
+        if not stmt.lower().startswith(("select", "with")):
+            return {"error": "only read-only SELECT/WITH queries are allowed"}
         return {"rows": _athena_run(stmt), "sql": stmt}
     except Exception as exc:
         logger.exception("analytics_query failed")
