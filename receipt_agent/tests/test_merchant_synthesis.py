@@ -2545,3 +2545,56 @@ def test_store_header_swap_includes_website_lines():
         for line in receipt["lines"]
         for word in line["words"]
     )
+
+
+def test_space_line_block_to_pitch_repitches_rows_keeping_label_amount_aligned():
+    """The compose-online-catalog vertical-pitch helper re-pitches the totals
+    block to a uniform row pitch WITHOUT splitting a label from its right-aligned
+    amount (they live on separate line objects sharing one baseline)."""
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        _space_line_block_to_pitch,
+    )
+
+    def _line(line_id, words):
+        return {
+            "line_id": line_id,
+            "words": [
+                {"text": text, "bbox": list(bbox), "labels": labels}
+                for (text, bbox, labels) in words
+            ],
+        }
+
+    # Two visual rows; each is a LABEL line + a right-aligned AMOUNT line on the
+    # same baseline. The rows start jammed ~12px apart (heights 10 -> ~2px gap,
+    # the vertical-overlap tell).
+    lines = [
+        _line(1, [("SUBTOTAL", [100, 600, 200, 610], [])]),
+        _line(2, [("$16.36", [850, 601, 920, 611], ["SUBTOTAL"])]),
+        _line(3, [("TAX", [100, 588, 140, 598], [])]),
+        _line(4, [("$0.00", [850, 589, 910, 599], ["TAX"])]),
+    ]
+    pitch = 30
+
+    next_top = _space_line_block_to_pitch(lines, top_y=700, pitch=pitch)
+
+    def _cy(line):
+        boxes = [word["bbox"] for word in line["words"]]
+        return sum((b[1] + b[3]) / 2 for b in boxes) / len(boxes)
+
+    # Each label stays aligned with its amount on one baseline (within tolerance).
+    assert abs(_cy(lines[0]) - _cy(lines[1])) <= 2
+    assert abs(_cy(lines[2]) - _cy(lines[3])) <= 2
+    # The two visual rows are now a FULL pitch apart (no jammed 12px overlap).
+    assert round(_cy(lines[0]) - _cy(lines[2])) == pitch
+    # Positive vertical gap between rows -> no overlap.
+    row1_bottom = min(word["bbox"][1] for word in lines[0]["words"] + lines[1]["words"])
+    row2_top = max(word["bbox"][3] for word in lines[2]["words"] + lines[3]["words"])
+    assert row1_bottom > row2_top
+    # First row's top edge is placed at top_y; whole-line translation leaves the
+    # right-aligned amount column's x untouched.
+    assert (
+        max(word["bbox"][3] for word in lines[0]["words"] + lines[1]["words"]) == 700
+    )
+    assert lines[1]["words"][0]["bbox"][0] == 850
+    # Chain return value sits one pitch below the last placed row's top.
+    assert next_top == 700 - 2 * pitch

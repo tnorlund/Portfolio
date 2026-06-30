@@ -18,6 +18,7 @@ Public surface:
     that still reference them directly:
     ``_tag_label``, ``_label_runs``, ``_dedupe_header_blocks``,
     ``_dedupe_payment_blocks``, ``_deoverlap_line_words``, ``_respace_visual_line``,
+    ``_min_word_gap``,
     ``_visual_lines``, ``_sanitize_entity_labels``, ``_verifier_entity_runs``,
     ``_entity_run_violates``, ``_card_tail``, ``_has_digit``,
     ``_merchant_name_tokens`` and their backing constants.
@@ -473,6 +474,27 @@ def _dedupe_payment_blocks(
 
 
 # --- visual-line de-overlap / re-spacing ----------------------------------------
+# verify_candidates.py `word_spacing` flags any adjacent pair on a line whose gap
+# is below this fraction of the (left word's) line height. We respace to the
+# SMALLEST gap that clears it, not a wide justified gap.
+_VERIFIER_WORD_GAP_FRAC = 0.30
+
+
+def _min_word_gap(line_height: float) -> float:
+    """Smallest verifier-safe word-gap for a line of ``line_height`` px.
+
+    The objective verifier (``verify_candidates.py`` ``word_spacing``) flags an
+    adjacent word pair whose gap is ``< 0.30 * line_height``. We target exactly
+    that bound plus a small cushion that covers the integer rounding of both word
+    edges (each can move the final gap by up to 0.5px), so a respaced line opens a
+    single word-space instead of the old wide ``0.40 * line_height`` "justified
+    typewriter" sprawl. The absolute floor keeps the old word-fusion bug from
+    returning when a line's height collapses toward zero.
+    """
+    h = max(float(line_height), 6.0)
+    return max(_VERIFIER_WORD_GAP_FRAC * h + 1.5, 3.0)
+
+
 def _visual_lines(bboxes: list[list[int]]) -> list[list[int]]:
     """Group word indices into visual lines by y-center proximity.
 
@@ -563,12 +585,14 @@ def _deoverlap_line_words(
 def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
     """Open a real word-gap between adjacent words on a single visual line.
 
-    Target gap is ``~0.40 * line_height`` (with a small absolute floor), which
-    clears the verifier's ``0.30 * line_height`` threshold with margin even after
-    integer rounding. A monotone running shift is applied left->right so existing
-    large gaps (the right-aligned price column) are carried along, never shrunk.
-    The whole line is shifted back left to fit within ``[0, 1000]``; if it cannot
-    fit, the line is left unchanged so we never violate bbox/overlap checks.
+    Target gap is the smallest verifier-safe single word-space (``_min_word_gap``,
+    ``~0.30 * line_height`` plus a rounding cushion, with an absolute floor), which
+    clears the verifier's ``0.30 * line_height`` threshold even after integer
+    rounding WITHOUT widening lines into a justified-typewriter sprawl. A monotone
+    running shift is applied left->right so existing large gaps (the right-aligned
+    price column) are carried along, never shrunk. The whole line is shifted back
+    left to fit within ``[0, 1000]``; if it cannot fit, the line is left unchanged
+    so we never violate bbox/overlap checks.
     """
     if len(line) < 2:
         return
@@ -582,7 +606,7 @@ def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
         x1 = b[2] + running
         if prev_right is not None:
             h = max(orig[k - 1][3] - orig[k - 1][1], 6)
-            target = max(0.40 * h, 3.0)
+            target = _min_word_gap(h)
             gap = x0 - prev_right
             if gap < target:
                 extra = target - gap
@@ -614,7 +638,7 @@ def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
     # keep the same order, preserve positive-width boxes, and fit target gaps.
     widths = [max(float(b[2] - b[0]), 1.0) for b in orig]
     gaps = [
-        max(0.40 * max(orig[k][3] - orig[k][1], 6), 3.0)
+        _min_word_gap(orig[k][3] - orig[k][1])
         for k in range(len(orig) - 1)
     ]
 

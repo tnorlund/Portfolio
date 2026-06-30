@@ -3138,6 +3138,75 @@ def _rotate(values: list[Any], offset: int) -> list[Any]:
     return values[pivot:] + values[:pivot]
 
 
+# Two lines whose word centers fall within this many y-px are one visual row (the
+# same tolerance verify_candidates.py / the renderer use to group words into
+# lines), so a labeled real row whose label and right-aligned amount live on
+# separate line objects is re-pitched as a single unit, never split apart.
+_VISUAL_ROW_Y_TOL = 8.0
+
+
+def _space_line_block_to_pitch(
+    lines: list[dict[str, Any]],
+    *,
+    top_y: float,
+    pitch: int,
+) -> float:
+    """Stack the VISUAL ROWS of ``lines`` top-to-bottom at a uniform ``pitch``.
+
+    Coordinates are the synthesis ``y-high-is-top`` system, so successive rows
+    step DOWN by ``pitch`` (decreasing y). Lines whose word centers fall within
+    ``_VISUAL_ROW_Y_TOL`` are first clustered into one visual row (a label and its
+    right-aligned amount commonly live on separate line objects at the same
+    baseline), then each whole row is translated as a single unit — every word in
+    every line of the row shifts by the SAME vertical delta — so a labeled real
+    row's internal word geometry, labels, reading order and label/amount alignment
+    are preserved while only the row-to-row pitch is normalized. It never
+    re-spaces words inside a row or nudges one line on its own.
+
+    The first row's top edge is placed at ``top_y`` and every later row's top sits
+    ``pitch`` below the previous one. Returns the top-y one ``pitch`` below the
+    last placed row, so the caller can chain another block (e.g. the summary
+    directly beneath the item rows).
+    """
+    measured: list[tuple[float, float, dict[str, Any]]] = []
+    for line in lines:
+        boxes = [
+            word["bbox"]
+            for word in line.get("words", []) or []
+            if word.get("bbox")
+        ]
+        if not boxes:
+            continue
+        center = sum((box[1] + box[3]) / 2.0 for box in boxes) / len(boxes)
+        top = max(box[3] for box in boxes)
+        measured.append((center, top, line))
+    if not measured:
+        return float(top_y)
+
+    # Cluster into visual rows top-to-bottom (highest center first).
+    measured.sort(key=lambda item: item[0], reverse=True)
+    rows: list[list[tuple[float, float, dict[str, Any]]]] = []
+    for entry in measured:
+        if rows and abs(entry[0] - rows[-1][-1][0]) <= _VISUAL_ROW_Y_TOL:
+            rows[-1].append(entry)
+        else:
+            rows.append([entry])
+
+    target_top = float(top_y)
+    for row in rows:
+        row_top = max(top for _, top, _ in row)
+        delta = int(round(target_top - row_top))
+        for _, _, line in row:
+            for word in line.get("words", []) or []:
+                box = word.get("bbox")
+                if box:
+                    box[1] += delta
+                    box[3] += delta
+            line["y"] = _line_y(line)
+        target_top -= pitch
+    return target_top
+
+
 def _compose_online_catalog_receipt(
     merchant_name: str,
     profile: dict[str, Any],
@@ -3162,29 +3231,27 @@ def _compose_online_catalog_receipt(
     first_i, last_i = min(band_idx), max(band_idx)
     header, summary = lines[:first_i], lines[last_i + 1 :]
     geo = _template_fill_geometry(scaffold)
+    height = geo["height"]
 
+    # The merchant's single measured item-row pitch (font-geometry fallback when a
+    # sparse scaffold has no measurable row geometry). It is the row rhythm for
+    # BOTH the generated item rows and the summary/payment block below them, so the
+    # composed receipt never shows a jammed-pitch totals block overlapping itself.
     pitch = _line_step(
         items, scaffold.receipt, allow_font_geometry_fallback=True
     )
-    gap = max(6, pitch // 3)
-    cursor = (
-        min(
-            (
-                word["bbox"][1]
-                for line in header
-                for word in line.get("words", []) or []
-                if word.get("bbox")
-            ),
-            default=900,
-        )
-        - pitch
-    )
+
+    # Build the generated item rows; their final y is assigned by the pitch pass
+    # below, so the provisional top only has to be on-canvas and ordered.
     composed: list[dict[str, Any]] = []
+    # Provisional rows are stepped well clear of the visual-row tolerance so each
+    # generated item stays its own row when the pitch pass below clusters lines.
+    provisional_step = max(int(pitch), int(_VISUAL_ROW_Y_TOL) * 2 + height)
+    provisional_top = 800
     for offset, entry in enumerate(entries):
-        y0 = max(12, int(cursor) - geo["height"])
         row = _build_template_filled_row(
             entry,
-            y0=y0,
+            y0=max(12, provisional_top - height),
             geo=geo,
             line_id=_SYNTHETIC_LINE_ID_BASE + offset,
             merchant_name=merchant_name,
@@ -3192,24 +3259,27 @@ def _compose_online_catalog_receipt(
         if row is None:
             return None
         composed.append(row)
-        cursor = min(word["bbox"][1] for word in row["words"]) - gap
+        provisional_top -= provisional_step
 
-    # slide the summary/footer block up to sit just under the composed items
-    summary_top = max(
+    # Lay the generated item rows out at the merchant pitch starting one pitch-gap
+    # below the header's lowest word, then chain the real summary/footer block
+    # directly beneath at the same pitch. _space_line_block_to_pitch translates
+    # whole lines only, so the real totals/payment rows keep their internal label
+    # geometry while the block gains a consistent, non-overlapping vertical rhythm.
+    header_bottom = min(
         (
-            word["bbox"][3]
-            for line in summary
+            word["bbox"][1]
+            for line in header
             for word in line.get("words", []) or []
             if word.get("bbox")
         ),
-        default=int(cursor),
+        default=900,
     )
-    delta_y = int(cursor) - summary_top
-    for line in summary:
-        for word in line.get("words", []) or []:
-            if word.get("bbox"):
-                word["bbox"][1] += delta_y
-                word["bbox"][3] += delta_y
+    first_item_top = header_bottom - max(6, pitch - height)
+    next_top = _space_line_block_to_pitch(
+        composed, top_y=first_item_top, pitch=pitch
+    )
+    _space_line_block_to_pitch(summary, top_y=next_top, pitch=pitch)
 
     receipt["lines"] = header + composed + summary
 
@@ -3241,6 +3311,14 @@ def _compose_online_catalog_receipt(
     _fit_receipt_to_canvas(receipt)
     _refresh_words(receipt)
 
+    # Gate on geometry the composition itself produced: if a generated row collides
+    # with a neighbor or the totals/payment block (or any box is invalid/off
+    # canvas), drop this candidate so generation retries another scaffold / item
+    # count rather than emitting an overlapping receipt.
+    layout_integrity = build_layout_integrity_evidence(receipt)
+    if not layout_integrity.get("passed"):
+        return None
+
     arithmetic = {
         "summary_update_policy": "composed_catalog_totals",
         "new_subtotal": _format_money(subtotal),
@@ -3270,6 +3348,7 @@ def _compose_online_catalog_receipt(
         metadata={
             "profile": _profile_summary(profile),
             "base_receipt_key": _receipt_key(scaffold.receipt),
+            "layout_integrity": layout_integrity,
             "composed_item_count": len(entries),
             "composed_items": [entry.to_dict() for entry in entries],
             "online_catalog_grounding": grounding,
