@@ -165,9 +165,17 @@ def handler(event, context):
         else 540_000
     )
     deadline = time.time() + max(0.0, remaining_ms / 1000.0 - 15)
+    targets = _target_dates(event)
     rebuilt = []
-    for dt in _target_dates(event):
+    for dt in targets:
         if time.time() >= deadline:
             break
         rebuilt.append(_rebuild_partition(dt, deadline))
+    skipped = [dt for dt in targets if dt not in rebuilt]
+    if skipped:
+        # Fail loudly so the invocation is retried rather than reported as a
+        # success that silently dropped dates (esp. a long manual backfill).
+        raise RuntimeError(
+            f"Deadline reached: rebuilt {rebuilt}, skipped {skipped}"
+        )
     return {"rebuilt_partitions": rebuilt}

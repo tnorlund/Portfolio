@@ -434,6 +434,9 @@ class WebAnalytics(ComponentResource):
                     "role_arn": ga_role.arn,
                     "timeout": 300,
                     "memory_size": 512,
+                    # Serialize: the read-merge-write of ga_daily must not
+                    # race between a scheduled run and a manual backfill.
+                    "reserved_concurrent_executions": 1,
                     "environment": {
                         "GA_PROPERTY_ID": ga_property_id,
                         # Pulumi-encrypted config secret, injected at deploy.
@@ -533,13 +536,18 @@ def _policy_json(
                         "glue:GetTables",
                         "glue:GetPartition",
                         "glue:GetPartitions",
+                        "glue:BatchGetPartition",
                     ],
                     "Resource": glue_resources,
                 },
                 {
                     "Sid": "ReadLogsAndCurated",
                     "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:ListBucket"],
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation",
+                    ],
                     "Resource": [
                         f"arn:aws:s3:::{logs_bucket}",
                         f"arn:aws:s3:::{logs_bucket}/*",
@@ -600,6 +608,7 @@ def _transform_policy_json(
                         "glue:GetTables",
                         "glue:GetPartition",
                         "glue:GetPartitions",
+                        "glue:BatchGetPartition",
                         "glue:CreatePartition",
                         "glue:BatchCreatePartition",
                         "glue:UpdatePartition",
@@ -611,7 +620,11 @@ def _transform_policy_json(
                 {
                     "Sid": "ReadLogs",
                     "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:ListBucket"],
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation",
+                    ],
                     "Resource": [
                         f"arn:aws:s3:::{logs_bucket}",
                         f"arn:aws:s3:::{logs_bucket}/*",
