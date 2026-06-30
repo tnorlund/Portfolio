@@ -39,12 +39,13 @@ _athena = boto3.client("athena", region_name=REGION)
 _s3 = boto3.client("s3", region_name=REGION)
 
 
-def _run(sql: str) -> str:
+def _run(sql: str, max_wait: int = 240) -> str:
     qid = _athena.start_query_execution(
         QueryString=sql,
         QueryExecutionContext={"Database": DB},
         WorkGroup=WORKGROUP,
     )["QueryExecutionId"]
+    waited = 0.0
     while True:
         status = _athena.get_query_execution(QueryExecutionId=qid)[
             "QueryExecution"
@@ -52,6 +53,13 @@ def _run(sql: str) -> str:
         if status["State"] in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
         time.sleep(1.0)
+        waited += 1.0
+        if waited > max_wait:
+            # Don't leave the query running past the Lambda's own timeout.
+            _athena.stop_query_execution(QueryExecutionId=qid)
+            raise TimeoutError(
+                f"Athena query exceeded {max_wait}s; stopped"
+            )
     if status["State"] != "SUCCEEDED":
         raise RuntimeError(
             f"Athena {status['State']}: {status.get('StateChangeReason')}"
@@ -135,8 +143,10 @@ def _target_dates(event: dict) -> list:
             days.append(day.isoformat())
             day += timedelta(days=1)
         return days
+    # Reprocess a few trailing UTC days so late-delivered CloudFront logs
+    # (delivery can lag hours) get folded into their partitions. Idempotent.
     today = datetime.now(timezone.utc).date()
-    return [(today - timedelta(days=1)).isoformat(), today.isoformat()]
+    return [(today - timedelta(days=n)).isoformat() for n in (3, 2, 1, 0)]
 
 
 def handler(event, _context):

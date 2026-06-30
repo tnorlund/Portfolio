@@ -39,7 +39,7 @@ _CLOUDFRONT_COLUMNS = [
     ("date", "date"),
     ("time", "string"),
     ("location", "string"),
-    ("bytes", "bigint"),
+    ("bytes", "string"),
     ("request_ip", "string"),
     ("method", "string"),
     ("host", "string"),
@@ -53,22 +53,22 @@ _CLOUDFRONT_COLUMNS = [
     ("request_id", "string"),
     ("host_header", "string"),
     ("request_protocol", "string"),
-    ("request_bytes", "bigint"),
-    ("time_taken", "float"),
+    ("request_bytes", "string"),
+    ("time_taken", "string"),
     ("xforwarded_for", "string"),
     ("ssl_protocol", "string"),
     ("ssl_cipher", "string"),
     ("response_result_type", "string"),
     ("http_version", "string"),
     ("fle_status", "string"),
-    ("fle_encrypted_fields", "int"),
-    ("c_port", "int"),
-    ("time_to_first_byte", "float"),
+    ("fle_encrypted_fields", "string"),
+    ("c_port", "string"),
+    ("time_to_first_byte", "string"),
     ("x_edge_detailed_result_type", "string"),
     ("sc_content_type", "string"),
-    ("sc_content_len", "bigint"),
-    ("sc_range_start", "bigint"),
-    ("sc_range_end", "bigint"),
+    ("sc_content_len", "string"),
+    ("sc_range_start", "string"),
+    ("sc_range_end", "string"),
 ]
 
 
@@ -409,10 +409,23 @@ class WebAnalytics(ComponentResource):
                 ),
                 opts=ResourceOptions(parent=ga_role),
             )
+            # Keep the SA private key in Secrets Manager, not the Lambda's
+            # plaintext env config; the extractor fetches it at runtime.
+            ga_secret = aws.secretsmanager.Secret(
+                f"{name}-ga-sa-key", opts=child
+            )
+            aws.secretsmanager.SecretVersion(
+                f"{name}-ga-sa-key-v",
+                secret_id=ga_secret.id,
+                secret_string=ga_service_account_key,
+                opts=ResourceOptions(parent=ga_secret),
+            )
             aws.iam.RolePolicy(
                 f"{name}-ga-policy",
                 role=ga_role.id,
-                policy=self.curated_bucket.arn.apply(_ga_policy_json),
+                policy=Output.all(
+                    self.curated_bucket.arn, ga_secret.arn
+                ).apply(lambda a: _ga_policy_json(a[0], a[1])),
                 opts=ResourceOptions(parent=ga_role),
             )
             ga_image = CodeBuildDockerImage(
@@ -432,7 +445,7 @@ class WebAnalytics(ComponentResource):
                     "memory_size": 512,
                     "environment": {
                         "GA_PROPERTY_ID": ga_property_id,
-                        "GA_SERVICE_ACCOUNT_KEY": ga_service_account_key,
+                        "GA_SECRET_ARN": ga_secret.arn,
                         "CURATED_BUCKET": self.curated_bucket.bucket,
                         "GA_PREFIX": "ga_daily/",
                     },
@@ -631,8 +644,8 @@ def _transform_policy_json(
     )
 
 
-def _ga_policy_json(curated_bucket_arn: str) -> str:
-    """Permissions for the GA4 extractor Lambda: write the ga_daily NDJSON."""
+def _ga_policy_json(curated_bucket_arn: str, secret_arn: str) -> str:
+    """GA4 extractor perms: write ga_daily NDJSON + read the SA secret."""
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -649,7 +662,13 @@ def _ga_policy_json(curated_bucket_arn: str) -> str:
                         curated_bucket_arn,
                         f"{curated_bucket_arn}/*",
                     ],
-                }
+                },
+                {
+                    "Sid": "ReadSaSecret",
+                    "Effect": "Allow",
+                    "Action": ["secretsmanager:GetSecretValue"],
+                    "Resource": secret_arn,
+                },
             ],
         }
     )

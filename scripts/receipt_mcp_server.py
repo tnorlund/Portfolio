@@ -3159,7 +3159,7 @@ SELECT pt_date,
   count_if(NOT is_bot AND NOT is_warp) AS requests_outside_human,
   count_if(is_warp) AS requests_warp,
   count_if(is_bot) AS requests_bot,
-  count(DISTINCT IF(is_beacon AND NOT is_bot AND NOT is_warp, sid, NULL)) AS human_sessions,
+  count(DISTINCT IF(is_beacon AND NOT is_bot AND NOT is_warp AND sid <> '', sid, NULL)) AS human_sessions,
   count_if(is_beacon AND event = 'page_view' AND NOT is_bot AND NOT is_warp) AS human_pageviews
 FROM base
 WHERE pt_date BETWEEN '{s}' AND '{e}'
@@ -3376,7 +3376,7 @@ WITH beacon AS (
   SELECT
     date_format({pt}, '%Y-%m-%d') AS pt_date,
     count(DISTINCT IF(
-      is_beacon AND NOT is_bot AND NOT is_warp, sid, NULL
+      is_beacon AND NOT is_bot AND NOT is_warp AND sid <> '', sid, NULL
     )) AS beacon_human_sessions,
     count_if(
       is_beacon AND event = 'page_view' AND NOT is_bot AND NOT is_warp

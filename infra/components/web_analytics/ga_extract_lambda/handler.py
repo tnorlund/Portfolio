@@ -38,8 +38,18 @@ _METRICS = [
 ]
 
 
+def _service_account_key() -> str:
+    """Read the SA key from Secrets Manager (preferred) or env; else ''."""
+    secret_arn = os.environ.get("GA_SECRET_ARN")
+    if secret_arn:
+        return boto3.client("secretsmanager").get_secret_value(
+            SecretId=secret_arn
+        )["SecretString"]
+    return os.environ.get("GA_SERVICE_ACCOUNT_KEY", "")
+
+
 def _client() -> BetaAnalyticsDataClient:
-    key = os.environ.get("GA_SERVICE_ACCOUNT_KEY")
+    key = _service_account_key()
     if key:
         creds = service_account.Credentials.from_service_account_info(
             json.loads(key), scopes=_SCOPES
@@ -62,27 +72,52 @@ def handler(event, _context):
             metrics=[Metric(name=m) for m in _METRICS],
         )
     )
-    lines = []
+    pulled = {}
     for row in report.rows:
         day = row.dimension_values[0].value  # YYYYMMDD (property TZ = PT)
         vals = [m.value for m in row.metric_values]
-        lines.append(
-            json.dumps(
-                {
-                    "dt": f"{day[0:4]}-{day[4:6]}-{day[6:8]}",
-                    "sessions": int(vals[0]),
-                    "total_users": int(vals[1]),
-                    "new_users": int(vals[2]),
-                    "pageviews": int(vals[3]),
-                    "engaged_sessions": int(vals[4]),
-                }
-            )
+        dt = f"{day[0:4]}-{day[4:6]}-{day[6:8]}"
+        pulled[dt] = {
+            "dt": dt,
+            "sessions": int(vals[0]),
+            "total_users": int(vals[1]),
+            "new_users": int(vals[2]),
+            "pageviews": int(vals[3]),
+            "engaged_sessions": int(vals[4]),
+        }
+
+    # Merge with existing rows so a narrow backfill never drops history:
+    # newly-pulled dates overwrite, all other dates are preserved.
+    s3 = boto3.client("s3")
+    key = f"{GA_PREFIX}data.json"
+    merged = {}
+    try:
+        existing = (
+            s3.get_object(Bucket=CURATED_BUCKET, Key=key)["Body"]
+            .read()
+            .decode()
         )
-    body = ("\n".join(lines) + "\n").encode() if lines else b""
-    boto3.client("s3").put_object(
+        for line in existing.splitlines():
+            line = line.strip()
+            if line:
+                row = json.loads(line)
+                merged[row["dt"]] = row
+    except s3.exceptions.NoSuchKey:
+        pass
+    merged.update(pulled)
+
+    body = (
+        "\n".join(json.dumps(merged[d]) for d in sorted(merged)) + "\n"
+    ).encode()
+    s3.put_object(
         Bucket=CURATED_BUCKET,
-        Key=f"{GA_PREFIX}data.json",
+        Key=key,
         Body=body,
         ContentType="application/x-ndjson",
     )
-    return {"rows": len(lines), "start": start, "end": end}
+    return {
+        "rows_pulled": len(pulled),
+        "rows_total": len(merged),
+        "start": start,
+        "end": end,
+    }
