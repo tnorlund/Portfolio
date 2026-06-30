@@ -347,20 +347,40 @@ def plan_grid_line(
     When ``amount_lane`` is given, a price whose right edge falls within
     ``_AMOUNT_LANE_TOL_CELLS`` of the lane is snapped so its right edge sits on
     the lane -- giving one straight decimal column across the receipt.
+
+    Body (left-aligned, non-first) tokens are placed by SOURCE whitespace, not
+    their absolute snapped column: ``start = min(absolute_col, cursor +
+    source_gap)`` floored at ``cursor + 1``. Because the source pitch is wider
+    than the rendered cell, the absolute column inflates every inter-word gap (the
+    ``365   Everyday   Value`` sprawl); taking the source gap collapses that to the
+    real ~1-space spacing, while ``min(absolute_col, ...)`` guarantees we never
+    push a token PAST its own column -- so a genuine middle column (a ``NF`` / ``T``
+    tax flag that really sits far right in the source) keeps its position.
     """
     placed: list[PlacedToken] = []
     cursor_col = None
+    prev_right_px: float | None = None
     for word in line:
         price = is_price_token(word.text)
-        start = token_start_col(word.text, word.left, word.right, spec)
+        absolute = token_start_col(word.text, word.left, word.right, spec)
         cells = drawn_cell_count(word.text)
-        # Snap a near-lane price's right edge onto the shared amount column.
-        if price and amount_lane is not None:
-            if abs((start + cells) - amount_lane) <= _AMOUNT_LANE_TOL_CELLS:
+        if price:
+            start = absolute
+            # Snap a near-lane price's right edge onto the shared amount column.
+            if amount_lane is not None and abs((start + cells) - amount_lane) <= _AMOUNT_LANE_TOL_CELLS:
                 start = amount_lane - cells
-        # Price tokens keep their (possibly lane-snapped) column; only LEFT-aligned
-        # tokens are nudged off the running cursor.
-        if not price and cursor_col is not None:
+        elif cursor_col is None:
+            # First token on the line keeps its absolute column (line indent).
+            start = absolute
+        else:
+            # Body token: place by source whitespace, but never past its own
+            # absolute column, and never glued to the previous token.
+            source_gap = 1
+            if prev_right_px is not None:
+                source_gap = max(
+                    1, round((word.left - prev_right_px) / spec.cell_w)
+                )
+            start = min(absolute, cursor_col + source_gap)
             start = max(start, cursor_col + 1)
         placed.append(
             PlacedToken(word=word, start_col=start, cells=cells, is_price=price)
@@ -368,6 +388,7 @@ def plan_grid_line(
         # Advance the cursor past EVERY token (price tokens included) so the next
         # word clears the price's right edge by at least one cell.
         cursor_col = start + cells
+        prev_right_px = word.right
     return placed
 
 

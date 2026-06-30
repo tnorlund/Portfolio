@@ -347,6 +347,40 @@ def test_amount_lane_aligns_jittered_prices():
     assert max(ends) - min(ends) == 0, ends
 
 
+def test_body_gaps_collapse_but_preserve_real_columns():
+    """Stage 4: source-whitespace gaps, not absolute snapped columns.
+
+    The source pitch (~8px/char here) is wider than the rendered cell (6px), so
+    the absolute column inflates every inter-word gap. Body tokens with normal
+    one-space source spacing must render tight, while a token with a genuinely
+    large source gap (a tax-flag middle column) keeps its position.
+    """
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=6.0, cell_h=14.0, font_px=13, grid_left=0.0)
+    ink = (0, 0, 0)
+    # "AAA BBB CCC" -- 3-char words, one ~8px space between (normal spacing).
+    aaa = rg.GridWord(left=0, top=0, right=24, bottom=14, text="AAA", ink=ink)
+    bbb = rg.GridWord(left=32, top=0, right=56, bottom=14, text="BBB", ink=ink)
+    ccc = rg.GridWord(left=64, top=0, right=88, bottom=14, text="CCC", ink=ink)
+    plan = rg.plan_grid_line([aaa, bbb, ccc], spec)
+    starts = {p.word.text: p.start_col for p in plan}
+    # Tight single-cell gaps (source-based), NOT the inflated absolute columns
+    # (round(32/6)=5, round(64/6)=11 -> 2- and 4-cell gaps).
+    assert starts["BBB"] == starts["AAA"] + 3 + 1
+    assert starts["CCC"] == starts["BBB"] + 3 + 1
+
+    # A genuine far-right middle column (big source gap) stays a far column:
+    # never pulled tight to a 1-cell gap, never pushed past its own column.
+    name = rg.GridWord(left=0, top=0, right=40, bottom=14, text="Fruit", ink=ink)
+    flag = rg.GridWord(left=120, top=0, right=132, bottom=14, text="NF", ink=ink)
+    plan2 = rg.plan_grid_line([name, flag], spec)
+    name_end = next(p.end_col for p in plan2 if p.word.text == "Fruit")
+    flag_start = next(p.start_col for p in plan2 if p.word.text == "NF")
+    assert flag_start - name_end >= 8           # still a distinct far column
+    assert flag_start <= round(120 / 6)         # never pushed past its column
+
+
 def test_assign_row_baselines_decramps_only_tight_rows():
     """Cramped rows get pushed to min_pitch; well-spaced rows are untouched."""
     from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
