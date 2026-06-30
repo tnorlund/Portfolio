@@ -280,6 +280,78 @@ def _merchant_online_catalog(
     return entries
 
 
+# ---------------------------------------------------------------------------
+# Per-merchant item-line GRAMMAR (markdown marker + sale sub-line) wiring.
+#
+# The merchant-research export carries a derived item-line grammar
+# (``extract_item_line_template``): whether discounted rows print a "NOW" sale
+# marker left of the price and whether a "SALE 1@ $x, WAS: $y each" sub-line is
+# printed beneath the item. We lazily load that grammar (cached per slug) and
+# render it into the synthesized item rows so a composed/added Amazon row looks
+# like a real Amazon row, while merchants without the grammar (e.g. Costco) are
+# unchanged.
+# ---------------------------------------------------------------------------
+
+# Markdown / "sale now" marker tokens (OCR is noisy: NOW / now / nOW ...).
+# Mirrors merchant_research.item_line_grammar._MARKER_RE so the label verifier
+# recognizes a rendered marker without importing the research module.
+_MARKDOWN_MARKER_RE = re.compile(r"^n[o0]w$", re.IGNORECASE)
+
+
+def _merchant_research_slug(merchant_name: str | None) -> str:
+    """Slug a merchant name to its merchant-research export key (``amazon_fresh``,
+    ``costco_wholesale``).
+
+    Mirrors ``merchant_tax_config._slug``: apostrophes are dropped before the
+    non-alphanumeric split so "Smith's" collapses to ``smiths`` (not
+    ``smith_s``), and the result is underscore-joined to match the export
+    filenames.
+    """
+    cleaned = re.sub(r"['‘’ʼ`]", "", str(merchant_name or "").lower())
+    return re.sub(r"[^a-z0-9]+", "_", cleaned).strip("_")
+
+
+@functools.lru_cache(maxsize=None)
+def _item_line_template_for_merchant(slug: str):
+    """The merchant's derived item-line grammar (``ItemLineTemplate``) or ``None``.
+
+    Lazily imports the merchant-research export loader + extractor so this module
+    has no hard dependency on the research package; returns ``None`` — never
+    raises — when the slug is empty, the export is missing, or it fails to parse,
+    so a merchant without a grammar simply renders the existing plain rows.
+    """
+    if not slug:
+        return None
+    try:
+        from .merchant_research.item_line_grammar import (
+            extract_item_line_template,
+            load_merchant_export,
+        )
+
+        export = load_merchant_export(slug)
+        return extract_item_line_template(export)
+    except Exception:  # missing export / parse failure -> no grammar
+        return None
+
+
+def _template_word_gap(line_height: float) -> int:
+    """Smallest verifier-safe inter-word gap for a row of ``line_height`` px,
+    rounded to whole pixels for integer bboxes.
+
+    Mirrors ``synthesis_reconcile._min_word_gap`` (the objective verifier flags an
+    adjacent word pair whose gap is ``< 0.30 * line_height``): target that bound
+    plus a small rounding cushion so a rendered row opens a single tight
+    word-space instead of the old wide ``char_w`` "justified typewriter" sprawl.
+    """
+    h = max(float(line_height), 6.0)
+    return max(int(round(_VERIFIER_WORD_GAP_FRAC * h + 1.5)), 3)
+
+
+# Mirror of synthesis_reconcile._VERIFIER_WORD_GAP_FRAC (kept local so this module
+# has no import dependency on it).
+_VERIFIER_WORD_GAP_FRAC = 0.30
+
+
 def build_merchant_synthesis_profile(
     merchant_name: str,
     receipts_data: list[dict[str, Any]],
@@ -1546,21 +1618,30 @@ def _build_add_item_candidate_from_plan(
     band_top_anchor = max(12.0, boundary_bottom - gap + 12)
 
     captured = _select_source_row(entry, exclude_key=base_key)
+    sub_line_added = False
     if captured:
+        # A real captured row group already carries the merchant's full row
+        # grammar (marker, sub-line, exact tokens), so transplant it verbatim.
         delta_amount = _parse_money(captured.get("amount")) or entry.amount
         band_lines = _clone_row_group_lines(captured, y_center=band_top_anchor)
         row_cloned = True
     else:
+        # Synthetic fallback row: render the merchant's item-line grammar (NOW
+        # marker + optional SALE/WAS sub-line) so the rebuilt row matches format.
         delta_amount = entry.amount
-        band_lines = [
-            _build_line_item_line(
-                receipt,
-                entry,
-                y_center=band_top_anchor,
-                merchant_name=merchant_name,
-            )
-        ]
+        template = _item_line_template_for_merchant(
+            _merchant_research_slug(merchant_name)
+        )
+        band_lines = _build_line_item_band(
+            receipt,
+            entry,
+            y_center=band_top_anchor,
+            merchant_name=merchant_name,
+            template=template,
+            line_step=line_step,
+        )
         row_cloned = False
+        sub_line_added = len(band_lines) > 1
     _apply_row_slope(band_lines, slope, ref_x=ref_x)
     # Re-anchor AFTER tilting so the band's highest tilted word still sits a gap
     # below the boundary row — the tilt can never push a word up into it.
@@ -1584,6 +1665,20 @@ def _build_add_item_candidate_from_plan(
     insertion_position_valid = summary_top is None or (
         min(inserted_bottoms, default=0) >= summary_top - gap
     )
+
+    # Adding the sale sub-line as a second band row can crowd the reflowed
+    # neighbors; if the two-line band introduced an overlap or pushed a box off
+    # canvas, drop the candidate rather than emit a colliding receipt.
+    if sub_line_added:
+        _gate_base_overlap, _gate_base_inversions = _base_layout_counts(
+            analysis.receipt
+        )
+        if not build_layout_integrity_evidence(
+            receipt,
+            base_overlap_count=_gate_base_overlap,
+            base_line_inversion_count=_gate_base_inversions,
+        ).get("passed"):
+            return None
 
     # Taxable items reconcile subtotal + TAX (at the merchant's taxable-item rate) +
     # grand total; non-taxable items move subtotal/grand and freeze tax. A
@@ -2894,23 +2989,45 @@ def _build_template_filled_row(
     geo: dict[str, Any],
     line_id: int,
     merchant_name: str | None = None,
+    template=None,
 ) -> dict[str, Any] | None:
     """One item row with NON-OVERLAPPING columns and labels we assign:
-    UPC/flag -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL.
+    UPC/flag/marker -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL.
 
     For a KNOWN merchant (one with a validated tax profile) the flag column
     carries the merchant's real tax-class token (e.g. Vons ``T``/``S``); for an
     unknown merchant (or a known merchant with no flag for this item's class) it
     keeps the conservative neutral ``<A>`` placeholder. Either way the flag slot
-    is always rendered and always labeled ``O``."""
+    is always rendered and always labeled ``O``.
+
+    When the merchant's item-line grammar prints a markdown marker (e.g. Amazon's
+    ``NOW``), it is rendered in its own slot immediately left of the price, also
+    labeled ``O``. Token widths stay at the load-bearing ``char_w``; only the
+    inter-word/column GAPS use the tight ``_template_word_gap`` so the row reads
+    as a single word-space instead of a wide justified sprawl."""
     char_w = geo["char_w"]
+    gap = _template_word_gap(geo["height"])
     y1 = y0 + geo["height"]
     words: list[dict[str, Any]] = []
 
     price_text = f"${_format_money(entry.price)}"
     price_x0 = geo["price_x1"] - len(price_text) * char_w
-    flag_x1 = price_x0 - char_w
+    marker_token = (
+        template.markdown_marker.token
+        if (template is not None and template.markdown_marker.present)
+        else None
+    )
+    if marker_token:
+        # The sale marker sits in its own slot immediately left of the price.
+        marker_w = max(1, len(marker_token)) * char_w
+        marker_x1 = price_x0 - gap
+        marker_x0 = marker_x1 - marker_w
+        flag_x1 = marker_x0 - gap
+    else:
+        marker_x0 = marker_x1 = None
+        flag_x1 = price_x0 - gap
     flag_x0 = flag_x1 - 3 * char_w
+    name_limit = flag_x0 - gap
 
     word_id = 1
     upc = str(entry.upc or "")
@@ -2929,15 +3046,15 @@ def _build_template_filled_row(
     product_name_words = 0
     for token in _abbrev_product_name(entry.name).split():
         width = len(token) * char_w
-        if cursor + width > flag_x0 - char_w:  # keep clear of the flag/price
+        if cursor + width > name_limit:  # keep clear of the flag/marker/price
             if product_name_words:
                 break
-            max_chars = max(0, (flag_x0 - char_w - cursor) // char_w)
+            max_chars = max(0, (name_limit - cursor) // char_w)
             if max_chars <= 0:
                 return None
             token = token[:max_chars]
             width = len(token) * char_w
-            if not token or cursor + width > flag_x0 - char_w:
+            if not token or cursor + width > name_limit:
                 return None
         words.append(
             {
@@ -2948,7 +3065,7 @@ def _build_template_filled_row(
                 "word_id": word_id,
             }
         )
-        cursor += width + char_w
+        cursor += width + gap
         word_id += 1
         product_name_words += 1
     if product_name_words <= 0:
@@ -2964,6 +3081,17 @@ def _build_template_filled_row(
         }
     )
     word_id += 1
+    if marker_token:
+        words.append(
+            {
+                "text": marker_token,
+                "bbox": [marker_x0, y0, marker_x1, y1],
+                "labels": [],
+                "line_id": line_id,
+                "word_id": word_id,
+            }
+        )
+        word_id += 1
     words.append(
         {
             "text": price_text,
@@ -3026,12 +3154,26 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
     for line in receipt.get("lines", []) or []:
         if (line.get("line_id") or 0) < _SYNTHETIC_LINE_ID_BASE:
             continue
-        row_count += 1
         words = line.get("words", []) or []
+        # A composed sale sub-line (``SALE 1 $x, WAS: $y each``) carries NO labels
+        # on any token — it is decorative real-format copy, expected ALL-``O``, not
+        # item supervision. Verify that and skip the primary-row product/price
+        # accounting so it never demands a PRODUCT_NAME / LINE_TOTAL.
+        if words and all(not (word.get("labels") or []) for word in words):
+            for word in words:
+                labels = word.get("labels") or []
+                got = labels[0] if labels else "O"
+                total += 1
+                correct += int(got == "O")
+            continue
+        row_count += 1
         # The flag column always sits immediately before the price (LINE_TOTAL)
         # in a composed row, so locate it positionally — that covers both the
         # neutral "<A>" placeholder and a known merchant's real flag token. Fall
-        # back to the "<A>" text match if no price word is present.
+        # back to the "<A>" text match if no price word is present. A markdown
+        # marker ("NOW"), when present, sits between the flag and the price, so it
+        # takes the slot just left of the price and the flag shifts one left; both
+        # remain supervision-neutral (O).
         price_index = next(
             (
                 index
@@ -3041,7 +3183,18 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
             ),
             None,
         )
-        if price_index is not None and price_index > 0:
+        marker_index = None
+        if (
+            price_index is not None
+            and price_index > 0
+            and _MARKDOWN_MARKER_RE.match(
+                str(words[price_index - 1].get("text") or "")
+            )
+        ):
+            marker_index = price_index - 1
+        if marker_index is not None:
+            flag_index = price_index - 2 if price_index - 2 >= 0 else None
+        elif price_index is not None and price_index > 0:
             flag_index = price_index - 1
         else:
             flag_index = next(
@@ -3054,11 +3207,14 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
             )
         row_has_product_name = False
         for index, word in enumerate(words):
-            expected = _expected_template_label(
-                word.get("text"),
-                word_index=index,
-                flag_index=flag_index,
-            )
+            if index == marker_index:
+                expected = "O"  # the markdown sale marker slot
+            else:
+                expected = _expected_template_label(
+                    word.get("text"),
+                    word_index=index,
+                    flag_index=flag_index,
+                )
             labels = word.get("labels") or []
             got = labels[0] if labels else "O"
             total += 1
@@ -3232,6 +3388,12 @@ def _compose_online_catalog_receipt(
     header, summary = lines[:first_i], lines[last_i + 1 :]
     geo = _template_fill_geometry(scaffold)
     height = geo["height"]
+    # The merchant's item-line grammar (markdown marker + sale sub-line), or None
+    # when the merchant has no research export; rendered into each composed row.
+    template = _item_line_template_for_merchant(
+        _merchant_research_slug(merchant_name)
+    )
+    sub_line_present = template is not None and template.sub_line.present
 
     # The merchant's single measured item-row pitch (font-geometry fallback when a
     # sparse scaffold has no measurable row geometry). It is the row rhythm for
@@ -3242,24 +3404,43 @@ def _compose_online_catalog_receipt(
     )
 
     # Build the generated item rows; their final y is assigned by the pitch pass
-    # below, so the provisional top only has to be on-canvas and ordered.
+    # below, so the provisional top only has to be on-canvas and ordered. When the
+    # merchant prints a sale sub-line, append it directly after its item row as a
+    # second all-O line so _space_line_block_to_pitch lays both out in sequence.
     composed: list[dict[str, Any]] = []
     # Provisional rows are stepped well clear of the visual-row tolerance so each
     # generated item stays its own row when the pitch pass below clusters lines.
     provisional_step = max(int(pitch), int(_VISUAL_ROW_Y_TOL) * 2 + height)
     provisional_top = 800
-    for offset, entry in enumerate(entries):
+    line_id = _SYNTHETIC_LINE_ID_BASE
+    for entry in entries:
         row = _build_template_filled_row(
             entry,
             y0=max(12, provisional_top - height),
             geo=geo,
-            line_id=_SYNTHETIC_LINE_ID_BASE + offset,
+            line_id=line_id,
             merchant_name=merchant_name,
+            template=template,
         )
         if row is None:
             return None
         composed.append(row)
+        line_id += 1
         provisional_top -= provisional_step
+        if sub_line_present:
+            sub = _build_sale_sub_line(
+                template=template,
+                price=entry.price,
+                line_id=line_id,
+                y0=max(12, provisional_top - height),
+                char_w=geo["char_w"],
+                height=height,
+                x0=geo["name_x0"],
+            )
+            if sub is not None:
+                composed.append(sub)
+                line_id += 1
+                provisional_top -= provisional_step
 
     # Lay the generated item rows out at the merchant pitch starting one pitch-gap
     # below the header's lowest word, then chain the real summary/footer block
@@ -5771,6 +5952,7 @@ def _build_line_item_line(
     *,
     y_center: float,
     merchant_name: str | None = None,
+    marker_token: str | None = None,
 ) -> dict[str, Any]:
     # ``_label_x_p50`` yields 0.0 (not None) for an unmeasured label, so treat a
     # non-positive value as missing and fall back to the column defaults.
@@ -5785,12 +5967,21 @@ def _build_line_item_line(
         0, min(1000 - price_width, int(round(total_x - price_width / 2)))
     )
     flag = _merchant_item_tax_flag(merchant_name, entry.taxable)
+    # Reserve room for the markdown marker ("NOW") that prints just before the
+    # price on a discounted row, so truncating the name never collides with it.
+    marker_reserve = (_token_width(marker_token) + 10) if marker_token else 0
     # Truncate the product name so it ends cleanly before the price column
-    # (leaving a 10px gutter), regardless of whether a trailing flag follows.
-    name_budget = max(0, price_x - product_x - 10)
+    # (leaving a 10px gutter + any marker room), regardless of a trailing flag.
+    name_budget = max(0, price_x - product_x - 10 - marker_reserve)
     name_tokens = _truncate_tokens_to_width(entry.product_tokens, name_budget)
-    tokens = name_tokens + [price]
-    labels = ["PRODUCT_NAME"] * len(name_tokens) + ["LINE_TOTAL"]
+    tokens = list(name_tokens)
+    labels = ["PRODUCT_NAME"] * len(name_tokens)
+    if marker_token:
+        # The sale marker sits just left of the price, supervision-neutral (O).
+        tokens.append(marker_token)
+        labels.append("O")
+    tokens.append(price)
+    labels.append("LINE_TOTAL")
     price_index = len(tokens) - 1
     if flag:
         tokens.append(flag)
@@ -5803,6 +5994,125 @@ def _build_line_item_line(
         price_x=price_x,
         price_index=price_index,
     )
+
+
+def _fill_sale_sub_line_text(template, price: Decimal) -> str | None:
+    """Render a merchant's sale sub-line template (``SALE {n} {price}, WAS:
+    {price} each``) with concrete values: quantity 1, the row's own price as the
+    sale price, and a strictly larger "WAS" price (a discount only reads as a
+    discount when WAS > NOW)."""
+    if template is None or not template.sub_line.present:
+        return None
+    raw = template.sub_line.template
+    if not raw:
+        return None
+    sale = _money(price)
+    was = _money(price * Decimal("1.5"))
+    if was <= sale:
+        was = _money(sale + Decimal("1.00"))
+    # The grammar's {price} placeholder consumed the dollar sign, so re-add it.
+    prices = iter([f"${_format_money(sale)}", f"${_format_money(was)}"])
+    filled_prices = re.sub(
+        r"\{price\}", lambda _m: next(prices, f"${_format_money(sale)}"), raw
+    )
+    text = filled_prices.replace("{n}", "1")
+    return re.sub(r"\s+", " ", text).strip() or None
+
+
+def _build_sale_sub_line(
+    *,
+    template,
+    price: Decimal,
+    line_id: int,
+    y0: int,
+    char_w: int,
+    height: int,
+    x0: int,
+) -> dict[str, Any] | None:
+    """A SECOND synthetic line beneath an item row rendering the merchant's sale
+    sub-line (``SALE 1 $x.xx, WAS: $y.yy each``).
+
+    Every token is supervision-neutral (all ``O``): the sub-line is decorative
+    real-format copy, not item supervision. Returns ``None`` when the merchant has
+    no sub-line grammar or nothing fits on canvas."""
+    text = _fill_sale_sub_line_text(template, price)
+    if not text:
+        return None
+    tokens = text.split()
+    if not tokens:
+        return None
+    gap = _template_word_gap(height)
+    char_w = max(1, int(char_w))
+    words: list[dict[str, Any]] = []
+    cursor = int(x0)
+    for token in tokens:
+        if cursor >= 1000:
+            break
+        width = max(1, len(token)) * char_w
+        x1 = min(1000, cursor + width)
+        words.append(
+            {
+                "text": token,
+                "bbox": [cursor, y0, x1, y0 + height],
+                "labels": [],
+                "line_id": line_id,
+                "word_id": len(words) + 1,
+            }
+        )
+        cursor = min(1000, x1 + gap)
+    if not words:
+        return None
+    return {"line_id": line_id, "y": y0 / 1000, "words": words}
+
+
+def _build_line_item_band(
+    receipt: dict[str, Any],
+    entry: MerchantCatalogEntry,
+    *,
+    y_center: float,
+    merchant_name: str | None,
+    template,
+    line_step: int,
+) -> list[dict[str, Any]]:
+    """A synthetic fallback item band: ``[primary_line]`` or ``[primary_line,
+    sub_line]``.
+
+    The primary row carries the markdown marker (when the merchant's grammar
+    prints one); when the grammar also prints a sale sub-line, a second all-``O``
+    line is placed one ``line_step`` below the primary (the add path then tilts +
+    anchors the whole band as a unit)."""
+    marker_token = (
+        template.markdown_marker.token
+        if (template is not None and template.markdown_marker.present)
+        else None
+    )
+    primary = _build_line_item_line(
+        receipt,
+        entry,
+        y_center=y_center,
+        merchant_name=merchant_name,
+        marker_token=marker_token,
+    )
+    band = [primary]
+    if template is not None and template.sub_line.present:
+        # Coordinate model is y-high-is-top, so a row one step BELOW the primary
+        # sits one ``line_step`` lower in y. Indent the sub-line to the primary's
+        # name column.
+        name_x0 = min(
+            (w["bbox"][0] for w in primary.get("words") or []), default=90
+        )
+        sub = _build_sale_sub_line(
+            template=template,
+            price=entry.amount,
+            line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+            y0=max(0, int(round(y_center - line_step - 12))),
+            char_w=9,  # ~_token_width slope; sub-line is decorative all-O copy
+            height=24,  # matches _build_line's primary row height
+            x0=int(name_x0),
+        )
+        if sub is not None:
+            band.append(sub)
+    return band
 
 
 def _observed_item_evidence(
