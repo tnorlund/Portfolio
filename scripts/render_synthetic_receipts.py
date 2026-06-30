@@ -562,6 +562,7 @@ def _render_cached_hybrid(
     width: int,
     height: int,
     path: str,
+    font_path: str | None = None,
 ) -> str:
     config = RenderConfig(
         width=width,
@@ -578,6 +579,10 @@ def _render_cached_hybrid(
         min_font_px=9,
         max_font_px=28,
         grid_mode=True,
+        # Optional body-font override. None -> the grid-font candidate list
+        # (Andale -> vendored B612 -> legacy). The grid recalibrates cell_w / row
+        # pitch from whatever face loads, so the SAME layout renders in any font.
+        font_path=font_path,
     )
     # When the atlas supplies a logo bitmap, that bitmap is the source of truth
     # for the merchant wordmark. The MERCHANT_NAME glyph tokens the logo depicts

@@ -41,11 +41,24 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     group_words_into_grid_lines,
 )
 
-# Vendored fixed-pitch thermal face for the grid path (Px437 IBM VGA 8x16,
-# CC BY-SA 4.0 -- see fonts/NOTICE). Preferred over system monospace in grid
-# mode because it renders as a hard pixel grid with anti-aliasing off.
-_GRID_FONT_PATH = os.path.join(
-    os.path.dirname(__file__), "fonts", "Px437_IBM_VGA_8x16.ttf"
+# Grid-path body face, most receipt-like first. Real thermal receipts use a
+# clean, light, condensed sans monospace (Epson Font A family). A measured
+# bake-off against real receipt photos picked:
+#   1. Andale Mono  -- closest match (condensed, light); macOS-bundled, NOT
+#      redistributable, so used only when present (e.g. local demo renders).
+#   2. B612 Mono    -- vendored, SIL OFL (see fonts/B612Mono-LICENSE.txt); the
+#      redistributable default so CI / non-mac renders still get a clean face.
+# The old Px437 IBM VGA 8x16 face read as a blocky "serif typewriter" vs the
+# real receipts (the dominant Opus typography tell); it is kept only as a last
+# resort. ``_GRID_FONT_PATH`` stays defined (= the vendored OFL face) for any
+# callers/tests that import it.
+_FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+_VENDORED_THERMAL_FONT = os.path.join(_FONTS_DIR, "B612Mono-Regular.ttf")
+_GRID_FONT_PATH = _VENDORED_THERMAL_FONT
+_GRID_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
+    _VENDORED_THERMAL_FONT,
+    os.path.join(_FONTS_DIR, "Px437_IBM_VGA_8x16.ttf"),  # legacy last resort
 )
 
 # Monospace candidates, most receipt-like first. Falls back to Pillow's bundled
@@ -242,22 +255,26 @@ def _load_grid_font(
 ) -> ImageFont.FreeTypeFont:
     """Load the body font for the grid path.
 
-    Prefers an explicit ``config.font_path``, else the vendored Px437 IBM VGA
-    face, else the legacy monospace candidates / Pillow default.
+    Prefers an explicit ``config.font_path``, else the first present face in
+    ``_GRID_FONT_CANDIDATES`` (Andale Mono -> vendored B612 Mono -> legacy
+    Px437), else the legacy monospace candidates / Pillow default.
     """
     if config.font_path:
         return _load_font(size, config)
-    if os.path.exists(_GRID_FONT_PATH):
-        key = (_GRID_FONT_PATH, int(max(1, size)))
+    px = int(max(1, size))
+    for path in _GRID_FONT_CANDIDATES:
+        if not os.path.exists(path):
+            continue
+        key = (path, px)
         cached = _FONT_CACHE.get(key)
         if cached is not None:
             return cached
         try:
-            font = ImageFont.truetype(_GRID_FONT_PATH, int(max(1, size)))
+            font = ImageFont.truetype(path, px)
             _FONT_CACHE[key] = font
             return font
         except OSError:
-            pass
+            continue
     return _load_font(size, config)
 
 
