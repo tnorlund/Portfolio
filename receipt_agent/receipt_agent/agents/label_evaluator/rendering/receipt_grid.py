@@ -369,6 +369,13 @@ class PlacedToken:
     start_col: int
     cells: int
     is_price: bool
+    # The text actually drawn -- equals the word text unless a long description was
+    # truncated (with an ellipsis) to clear the price column. Empty -> use word.text.
+    text: str = ""
+
+    @property
+    def draw_text(self) -> str:
+        return self.text or self.word.text
 
     @property
     def end_col(self) -> int:
@@ -434,39 +441,83 @@ def plan_grid_line(
     push a token PAST its own column -- so a genuine middle column (a ``NF`` / ``T``
     tax flag that really sits far right in the source) keeps its position.
     """
+    line = list(line)
+    cell_of = [drawn_cell_count(w.text) for w in line]
+    is_p = [is_price_token(w.text) for w in line]
+    price_idxs = [i for i, p in enumerate(is_p) if p]
+
+    # Right-anchored price slots: the rightmost price owns the amount lane; each
+    # further-left price (a unit price on a weight/qty line) gets its own slot one
+    # cell to the left, so two amounts never overprint into "23.9723.97". Only
+    # prices already near the lane are stacked; far-left prices (coupon columns)
+    # keep their own column.
+    anchored: dict[int, int] = {}
+    leftmost_price_start = None
+    if amount_lane is not None and price_idxs:
+        slot_right = amount_lane
+        for i in reversed(price_idxs):
+            abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
+            if abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS and i not in anchored and anchored:
+                break  # this price is far left of the stack -> leave it in flow
+            anchored[i] = slot_right - cell_of[i]
+            slot_right = anchored[i] - 1
+        if anchored:
+            leftmost_price_start = min(anchored.values())
+
     placed: list[PlacedToken] = []
     cursor_col = None
     prev_right_px: float | None = None
-    for word in line:
-        price = is_price_token(word.text)
-        absolute = token_start_col(word.text, word.left, word.right, spec)
-        cells = drawn_cell_count(word.text)
-        if price:
-            start = absolute
-            # Snap a near-lane price's right edge onto the shared amount column.
-            if amount_lane is not None and abs((start + cells) - amount_lane) <= _AMOUNT_LANE_TOL_CELLS:
-                start = amount_lane - cells
-        elif cursor_col is None:
-            # First token on the line keeps its absolute column (line indent).
-            start = absolute
+    for i, word in enumerate(line):
+        price = is_p[i]
+        cells = cell_of[i]
+        text = word.text
+        if i in anchored:
+            start = anchored[i]
         else:
-            # Body token: place by source whitespace, but never past its own
-            # absolute column, and never glued to the previous token.
-            source_gap = 1
-            if prev_right_px is not None:
-                source_gap = max(
-                    1, round((word.left - prev_right_px) / spec.cell_w)
-                )
-            start = min(absolute, cursor_col + source_gap)
-            start = max(start, cursor_col + 1)
+            absolute = token_start_col(word.text, word.left, word.right, spec)
+            if cursor_col is None:
+                start = absolute
+            elif price:
+                # A non-anchored price still must not glue to the prior token.
+                start = max(absolute, cursor_col + 1)
+            else:
+                # Body token: place by source whitespace, never past its own
+                # column, never glued to the previous token.
+                source_gap = 1
+                if prev_right_px is not None:
+                    source_gap = max(
+                        1, round((word.left - prev_right_px) / spec.cell_w)
+                    )
+                start = max(min(absolute, cursor_col + source_gap), cursor_col + 1)
+            # Truncate a description that would run into the price column.
+            if (
+                leftmost_price_start is not None
+                and not price
+                and (not price_idxs or i < price_idxs[0])
+            ):
+                avail = leftmost_price_start - 1 - start
+                if avail <= 0:
+                    continue  # no room: drop this token rather than overprint
+                if cells > avail:
+                    text, cells = _truncate_to_cells(word.text, avail)
         placed.append(
-            PlacedToken(word=word, start_col=start, cells=cells, is_price=price)
+            PlacedToken(
+                word=word, start_col=start, cells=cells, is_price=price, text=text
+            )
         )
-        # Advance the cursor past EVERY token (price tokens included) so the next
-        # word clears the price's right edge by at least one cell.
+        # Advance past EVERY token so the next word clears it by at least one cell.
         cursor_col = start + cells
         prev_right_px = word.right
     return placed
+
+
+def _truncate_to_cells(text: str, avail: int) -> tuple[str, int]:
+    """Shorten ``text`` to fit ``avail`` drawn cells, ending with an ellipsis."""
+    glyphs = text.replace(" ", "")
+    if avail >= 2:
+        out = glyphs[: avail - 1] + "…"
+        return out, drawn_cell_count(out)
+    return glyphs[:avail], avail
 
 
 def draw_grid_line(
@@ -485,7 +536,7 @@ def draw_grid_line(
     for placed in plan_grid_line(line, spec, amount_lane=amount_lane):
         draw_token_chars(
             draw,
-            placed.word.text,
+            placed.draw_text,
             placed.start_col,
             baseline_y,
             spec,
