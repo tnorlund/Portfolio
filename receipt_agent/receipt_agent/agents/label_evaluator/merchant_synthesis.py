@@ -3030,18 +3030,19 @@ def _template_fill_geometry(analysis: MerchantAnalysis) -> dict[str, Any]:
     char_w = max(
         6, int(statistics.median(char_ws)) if char_ws else char_w_fallback
     )
-    # Right-align composed prices so their CENTER lands on the scaffold's real
-    # LINE_TOTAL column (that center x is exactly what the price_column structure
-    # score compares); fall back to the merchant profile's price column, then to
-    # the receipt's right margin, when this scaffold has no LINE_TOTAL label.
+    # Right-anchor composed prices so their RIGHT EDGE lands on the scaffold's
+    # real LINE_TOTAL right-edge column (every item price ends at the same x —
+    # the #1 realism tell). Fall back to the merchant profile's price column
+    # (center + half a "$dd.dd" width), then to the receipt's right margin, when
+    # this scaffold has no measurable LINE_TOTAL right edge.
     typical_price_half_width = 3 * char_w  # half of "$dd.dd"
-    # _label_x_p50 returns 0.0 (not None) when the scaffold has no LINE_TOTAL
-    # label, so a non-positive center means "unmeasured" — fall back to the
-    # merchant profile's price column, then the receipt's right margin.
-    real_price_center = _label_x_p50(receipt, "LINE_TOTAL")
+    # _label_right_x_p50 returns None when the scaffold has no measurable
+    # LINE_TOTAL right edge, so treat that (or a non-positive value) as
+    # "unmeasured" and fall back to the merchant profile, then the right margin.
+    real_price_right = _label_right_x_p50(receipt, "LINE_TOTAL")
     profile_price_center = _font_geometry_px(fg, "price_column_x_px", default=0)
-    if real_price_center and real_price_center > 0:
-        price_x1 = int(real_price_center + typical_price_half_width)
+    if real_price_right and real_price_right > 0:
+        price_x1 = int(real_price_right)
     elif profile_price_center:
         price_x1 = int(profile_price_center + typical_price_half_width)
     else:
@@ -6051,14 +6052,24 @@ def _build_line_item_line(
     # non-positive value as missing and fall back to the column defaults.
     product_x_raw = _label_x_p50(receipt, "PRODUCT_NAME")
     product_x = product_x_raw if product_x_raw and product_x_raw > 0 else 90
-    total_x_raw = _label_x_p50(receipt, "LINE_TOTAL")
-    total_x = total_x_raw if total_x_raw and total_x_raw > 0 else 850
     product_x = max(25, int(round(product_x - 35)))
     price = _format_money(entry.amount)
     price_width = _token_width(price)
-    price_x = max(
-        0, min(1000 - price_width, int(round(total_x - price_width / 2)))
-    )
+    # RIGHT-anchor the price to the LINE_TOTAL column's real right edge so every
+    # generated item price ends at the SAME x (one hard right column). Fall back
+    # to the center column (+ half a price width) then a default right edge when
+    # the scaffold has no measurable LINE_TOTAL right edge.
+    right_x_raw = _label_right_x_p50(receipt, "LINE_TOTAL")
+    if right_x_raw and right_x_raw > 0:
+        right_x = right_x_raw
+    else:
+        center_raw = _label_x_p50(receipt, "LINE_TOTAL")
+        center = center_raw if center_raw and center_raw > 0 else 850
+        right_x = center + price_width / 2
+    right_x = int(round(min(996, right_x)))
+    # The price's left edge (right_x - width) is also the budget against which the
+    # product name is truncated, so name and price never overlap.
+    price_x = max(0, min(1000 - price_width, right_x - price_width))
     flag = _merchant_item_tax_flag(merchant_name, entry.taxable)
     # Reserve room for the markdown marker ("NOW") that prints just before the
     # price on a discounted row, so truncating the name never collides with it.
@@ -6084,7 +6095,7 @@ def _build_line_item_line(
         labels,
         x0=product_x,
         y0=max(0, min(976, int(round(y_center - 12)))),
-        price_x=price_x,
+        price_right_x=right_x,
         price_index=price_index,
     )
 
@@ -6277,20 +6288,28 @@ def _build_line(
     y0: int,
     price_x: int | None = None,
     price_index: int | None = None,
+    price_right_x: int | None = None,
 ) -> dict[str, Any]:
     # ``price_index`` is the 0-based index of the price token that must snap to
-    # the merchant's price column (``price_x``). It defaults to the final token
-    # so existing callers (price is last) are unchanged; when a trailing tax
-    # flag follows the price, the caller passes the price's own index so the
-    # price still lands in its column and the flag flows just after it.
-    if price_x is not None and price_index is None:
+    # the merchant's price column. It defaults to the final token so existing
+    # callers (price is last) are unchanged; when a trailing tax flag follows the
+    # price, the caller passes the price's own index so the price still lands in
+    # its column and the flag flows just after it.
+    #
+    # ``price_right_x`` RIGHT-anchors the price token (``bbox[2] == price_right_x``,
+    # i.e. ``x0 = price_right_x - width``) so every generated item price ends at
+    # the SAME right-edge column. ``price_x`` LEFT-anchors it (legacy) and is used
+    # only when ``price_right_x`` is not supplied.
+    if (price_x is not None or price_right_x is not None) and price_index is None:
         price_index = len(tokens) - 1
     words = []
     cursor = x0
     for idx, token in enumerate(tokens):
         label = labels[idx] if idx < len(labels) else "O"
         width = _token_width(token)
-        if price_x is not None and idx == price_index:
+        if idx == price_index and price_right_x is not None:
+            cursor = max(0, price_right_x - width)
+        elif idx == price_index and price_x is not None:
             cursor = price_x
         words.append(
             {
@@ -7342,6 +7361,25 @@ def _label_x_p50(receipt: dict[str, Any], label: str) -> float | None:
         for line in receipt.get("lines", [])
         for word in line.get("words", [])
         if label in word.get("labels", [])
+    ]
+    summary = _summary(xs)
+    return summary.p50 if summary else None
+
+
+def _label_right_x_p50(receipt: dict[str, Any], label: str) -> float | None:
+    """Median of the RIGHT edges (``bbox[2]``) of tokens carrying ``label`` — the
+    real right-edge column for that label (e.g. the price column a receipt's
+    LINE_TOTAL amounts hard-align to), as opposed to the center-based
+    ``_label_x_p50``. Non-positive / missing right edges are treated as
+    unmeasured so a sparse scaffold falls back to its center column instead of
+    snapping prices to x=0."""
+    xs = [
+        float(bbox[2])
+        for line in receipt.get("lines", [])
+        for word in line.get("words", [])
+        if label in word.get("labels", [])
+        for bbox in (word.get("bbox"),)
+        if isinstance(bbox, list) and len(bbox) == 4 and bbox[2] > 0
     ]
     summary = _summary(xs)
     return summary.p50 if summary else None

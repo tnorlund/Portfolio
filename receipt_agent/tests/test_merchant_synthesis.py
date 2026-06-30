@@ -2352,6 +2352,70 @@ def test_build_line_item_line_truncates_name_before_price():
     assert words[-1]["text"] == "T"  # flag still appended after the price
 
 
+def _priced_item_entry(text, amount, taxable=True):
+    return MerchantCatalogEntry(
+        product_text=text,
+        amount=Decimal(amount),
+        category="x",
+        taxable=taxable,
+        count=1,
+        source_receipt_keys=["k"],
+    )
+
+
+def test_build_line_item_line_prices_share_one_right_column():
+    """Every generated item price RIGHT-anchors to the same column: prices of
+    very different widths ($1.99, $12.99, $123.99) must all end at the IDENTICAL
+    bbox[2], and the product/marker tokens stay strictly left of the price."""
+    receipt = _item_anchor_receipt(product_x=90, total_x=860)
+    right_edges = set()
+    for amount in ("1.99", "12.99", "123.99"):
+        line = _build_line_item_line(
+            receipt,
+            _priced_item_entry("ORGANIC MILK", amount),
+            y_center=400,
+            merchant_name="Amazon Fresh",
+            marker_token="NOW",
+        )
+        words = line["words"]
+        price_idx = next(
+            i for i, w in enumerate(words) if w["labels"] == ["LINE_TOTAL"]
+        )
+        price_box = words[price_idx]["bbox"]
+        right_edges.add(price_box[2])
+        # Product/marker tokens all sit left of the price's left edge.
+        for other in words[:price_idx]:
+            assert other["bbox"][2] <= price_box[0]
+    # One hard right column across all three price widths.
+    assert len(right_edges) == 1
+
+
+def test_template_filled_row_prices_share_one_right_column():
+    """The online-catalog row path also right-anchors: rows sharing a geo emit a
+    LINE_TOTAL whose right edge equals the geo's price column regardless of the
+    price's character width."""
+    geo = {"char_w": 10, "name_x0": 150, "price_x1": 900, "height": 20}
+    right_edges = set()
+    for price in ("1.99", "12.99", "123.99"):
+        row = _build_template_filled_row(
+            OnlineCatalogEntry("ACME WIDGET", Decimal(price), "012345678905"),
+            y0=500,
+            geo=geo,
+            line_id=20_000,
+            merchant_name="Amazon Fresh",
+        )
+        assert row is not None
+        price_word = next(
+            w for w in row["words"] if w["labels"] == ["LINE_TOTAL"]
+        )
+        right_edges.add(price_word["bbox"][2])
+        for other in row["words"]:
+            if other is price_word:
+                continue
+            assert other["bbox"][2] <= price_word["bbox"][0]
+    assert right_edges == {geo["price_x1"]}
+
+
 def test_truncate_tokens_to_width_behaviour():
     # Whole tokens that fit are kept; overflowing tokens are dropped.
     assert _truncate_tokens_to_width(["SUPER", "LONG", "ORGANIC", "NAME"], 100) == [
