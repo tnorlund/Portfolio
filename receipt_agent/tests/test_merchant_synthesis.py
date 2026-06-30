@@ -15,7 +15,9 @@ from receipt_agent.agents.label_evaluator.merchant_synthesis import (
     _build_sale_sub_line,
     _build_template_filled_row,
     _build_remove_item_candidate_from_plan,
+    _ensure_amount_word_gaps,
     _fill_sale_sub_line_text,
+    _render_cell_width,
     _item_line_template_for_merchant,
     _merchant_item_tax_flag,
     _merchant_research_slug,
@@ -2725,6 +2727,105 @@ def test_build_sale_sub_line_is_all_o_and_on_canvas():
     assert all(w["labels"] == [] for w in sub["words"])
     assert all(0 <= w["bbox"][0] and w["bbox"][2] <= 1000 for w in sub["words"])
     assert sub["words"][0]["text"] == "SALE"
+
+
+def test_build_sale_sub_line_keeps_one_cell_gap_and_renders_every_token():
+    """Regression: the fixed-pitch renderer snaps each word to the character grid
+    and only guards against overlap, so a sub-cell gap after the right-aligned WAS
+    amount glued the trailing unit word ("$7.49each"). Every inter-token boundary
+    must keep >= one full character cell of clear space, and all tokens (including
+    the WAS value and "each") must render."""
+    template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
+    char_w = 22
+    sub = _build_sale_sub_line(
+        template=template,
+        price=Decimal("4.99"),
+        line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+        y0=200,
+        char_w=char_w,
+        height=24,
+        x0=90,
+    )
+    assert sub is not None
+    assert [w["text"] for w in sub["words"]] == [
+        "SALE",
+        "1",
+        "$4.99,",
+        "WAS:",
+        "$7.49",
+        "each",
+    ]
+    ordered = sorted(sub["words"], key=lambda w: w["bbox"][0])
+    for prev, nxt in zip(ordered, ordered[1:]):
+        assert nxt["bbox"][0] - prev["bbox"][2] >= char_w
+    assert all(w["bbox"][2] <= 1000 for w in sub["words"])
+
+
+def test_build_sale_sub_line_fits_long_value_on_canvas():
+    """A wide sub-line placed near the right edge is shifted left so the WAS value
+    and the trailing "each" stay on canvas instead of reading as truncated."""
+    template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
+    sub = _build_sale_sub_line(
+        template=template,
+        price=Decimal("88.88"),
+        line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+        y0=200,
+        char_w=30,
+        height=24,
+        x0=700,  # verbatim placement would push "each" off the right edge
+    )
+    assert sub is not None
+    assert sub["words"][-1]["text"] == "each"
+    assert all(0 <= w["bbox"][0] and w["bbox"][2] <= 1000 for w in sub["words"])
+
+
+def test_render_cell_width_uses_median_char_advance():
+    receipt = {
+        "lines": [
+            {
+                "words": [
+                    {"text": "ABCD", "bbox": [0, 0, 80, 20]},  # 20 px / char
+                    {"text": "WXYZ", "bbox": [0, 0, 80, 20]},
+                ]
+            }
+        ]
+    }
+    assert _render_cell_width(receipt) == 20
+
+
+def test_ensure_amount_word_gaps_degludes_price_and_flag():
+    """A cloned real row whose tax flag butts against the right-aligned price
+    ("$4.39F") renders glued on the character grid. The de-glue nudges only the
+    token following an amount right by one cell, leaving the already-spaced name
+    column untouched."""
+    line = {
+        "line_id": 20_000,
+        "words": [
+            {"text": "365", "bbox": [17, 640, 84, 664], "labels": ["PRODUCT_NAME"]},
+            {
+                "text": "Whole",
+                "bbox": [91, 640, 200, 664],
+                "labels": ["PRODUCT_NAME"],
+            },
+            {
+                "text": "$4.39",
+                "bbox": [825, 640, 937, 664],
+                "labels": ["LINE_TOTAL"],
+            },
+            {"text": "F", "bbox": [942, 640, 971, 664], "labels": []},
+        ],
+    }
+    name_before = (line["words"][1]["bbox"][0], line["words"][1]["bbox"][2])
+    _ensure_amount_word_gaps([line], cell_w=22)
+    price = next(w for w in line["words"] if w["text"] == "$4.39")
+    flag = next(w for w in line["words"] if w["text"] == "F")
+    assert flag["bbox"][0] - price["bbox"][2] >= 22  # one blank cell after price
+    assert flag["bbox"][2] <= 1000
+    # The spaced name token is not disturbed by the de-glue.
+    assert (
+        line["words"][1]["bbox"][0],
+        line["words"][1]["bbox"][2],
+    ) == name_before
 
 
 def test_build_line_item_band_appends_sub_line_for_amazon_template():

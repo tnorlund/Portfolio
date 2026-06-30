@@ -351,6 +351,84 @@ def _template_word_gap(line_height: float) -> int:
 # has no import dependency on it).
 _VERIFIER_WORD_GAP_FRAC = 0.30
 
+# Mirror of glyph_renderer._AMOUNT_LABELS / _AMOUNT_RE: a right-aligned amount
+# token (price / total / tax) is snapped to its ending grid cell at render time,
+# so a sub-cell gap after it collapses the next token onto the price's edge
+# ("$4.39F", "$7.49each"). We only need to widen the boundary AFTER such a token.
+_AMOUNT_LABELS = frozenset(
+    {
+        "LINE_TOTAL",
+        "SUBTOTAL",
+        "TAX",
+        "GRAND_TOTAL",
+        "UNIT_PRICE",
+        "AMOUNT",
+        "BALANCE",
+        "TOTAL",
+        "PRICE",
+    }
+)
+_AMOUNT_TOKEN_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}\$?[A-Z]?-?$")
+
+
+def _is_amount_token(word: dict[str, Any]) -> bool:
+    labels = {
+        str(label).split("-", 1)[-1] for label in (word.get("labels") or [])
+    }
+    if labels & _AMOUNT_LABELS:
+        return True
+    return bool(_AMOUNT_TOKEN_RE.match(str(word.get("text") or "").strip()))
+
+
+def _render_cell_width(receipt: dict[str, Any]) -> int:
+    """The receipt's median per-character width = the fixed-pitch renderer's
+    character cell. Mirrors ``glyph_renderer._pitch_norm`` (median word_width /
+    char_count) so a de-glue nudge uses the same cell the renderer snaps to."""
+    advances: list[float] = []
+    for line in receipt.get("lines") or []:
+        for word in line.get("words") or []:
+            box = word.get("bbox")
+            text = str(word.get("text") or "").strip()
+            if not box or len(box) < 4 or len(text) < 2:
+                continue
+            width = abs(float(box[2]) - float(box[0]))
+            if width > 0:
+                advances.append(width / len(text))
+    if not advances:
+        return 12
+    return max(6, int(round(statistics.median(advances))))
+
+
+def _ensure_amount_word_gaps(
+    lines: list[dict[str, Any]], *, cell_w: int
+) -> None:
+    """Keep at least one full character cell AFTER every amount token on a line.
+
+    The grid renderer right-aligns amounts to their ending cell and then only
+    prevents the next word from overlapping — it does not insert a blank cell.
+    So a real/cloned row whose price butts against a trailing tax flag ("$4.39F")
+    or a sale value against "each" ("$7.49each") renders glued. Nudging only the
+    token that immediately follows an amount right by one cell restores the
+    visible space while leaving already-spaced name columns (and every label /
+    token / reading order) untouched."""
+    cell = max(1, int(round(cell_w)))
+    for line in lines:
+        words = sorted(
+            (w for w in line.get("words") or [] if w.get("bbox")),
+            key=lambda w: w["bbox"][0],
+        )
+        for prev, word in zip(words, words[1:]):
+            if not _is_amount_token(prev):
+                continue
+            box = word["bbox"]
+            min_x0 = int(prev["bbox"][2]) + cell
+            if int(box[0]) < min_x0:
+                width = max(1, int(box[2]) - int(box[0]))
+                box[0] = min_x0
+                box[2] = min(1000, min_x0 + width)
+        if words:
+            line["y"] = _line_y(line)
+
 
 def build_merchant_synthesis_profile(
     merchant_name: str,
@@ -1642,6 +1720,13 @@ def _build_add_item_candidate_from_plan(
         )
         row_cloned = False
         sub_line_added = len(band_lines) > 1
+    # De-glue BEFORE tilt/anchor/reflow so the integrity gate below scores the
+    # final geometry: guarantee a blank cell after every price/flag/sale amount
+    # so a cloned real row's tight "$4.39F" (or a sale "$7.49each") does not
+    # render glued once the fixed-pitch renderer snaps it to the grid.
+    _ensure_amount_word_gaps(
+        band_lines, cell_w=_render_cell_width(analysis.receipt)
+    )
     _apply_row_slope(band_lines, slope, ref_x=ref_x)
     # Re-anchor AFTER tilting so the band's highest tilted word still sits a gap
     # below the boundary row — the tilt can never push a word up into it.
@@ -6041,14 +6126,31 @@ def _build_sale_sub_line(
     tokens = text.split()
     if not tokens:
         return None
-    gap = _template_word_gap(height)
     char_w = max(1, int(char_w))
+    # One FULL character cell between every token. The fixed-pitch grid renderer
+    # snaps each word onto the character grid and only guards against overlap, so
+    # a sub-cell gap collapses onto the previous token and renders GLUED
+    # ("SALE 1 $4.99, WAS: $7.49each"). A single-cell gap reads as a normal
+    # monospace word-space AND survives the snap, so every inter-token boundary
+    # (including the WAS value -> "each") keeps a visible space. _template_word_gap
+    # is the verifier floor; the cell is what the renderer actually needs.
+    gap = max(_template_word_gap(height), char_w)
+    widths = [max(1, len(token)) * char_w for token in tokens]
+    total = sum(widths) + gap * (len(tokens) - 1)
+    x0 = int(x0)
+    # Keep the whole sub-line on canvas so the WAS value and the trailing "each"
+    # never run off the right edge and read as truncated.
+    if x0 + total > 1000:
+        x0 = max(0, 1000 - total)
+    if total > 1000:  # pathological width: shrink the cell so nothing is dropped
+        scale = 1000.0 / total
+        char_w = max(1, int(char_w * scale))
+        gap = max(1, int(gap * scale))
+        widths = [max(1, len(token)) * char_w for token in tokens]
+        x0 = 0
     words: list[dict[str, Any]] = []
-    cursor = int(x0)
-    for token in tokens:
-        if cursor >= 1000:
-            break
-        width = max(1, len(token)) * char_w
+    cursor = x0
+    for token, width in zip(tokens, widths):
         x1 = min(1000, cursor + width)
         words.append(
             {
@@ -6101,12 +6203,15 @@ def _build_line_item_band(
         name_x0 = min(
             (w["bbox"][0] for w in primary.get("words") or []), default=90
         )
+        # Size the sub-line's character cell to the receipt's real font pitch so
+        # its one-cell word gaps match what the fixed-pitch renderer snaps to (a
+        # too-small cell would let the grid collapse the gaps and glue tokens).
         sub = _build_sale_sub_line(
             template=template,
             price=entry.amount,
             line_id=_SYNTHETIC_LINE_ID_BASE + 1,
             y0=max(0, int(round(y_center - line_step - 12))),
-            char_w=9,  # ~_token_width slope; sub-line is decorative all-O copy
+            char_w=_render_cell_width(receipt),
             height=24,  # matches _build_line's primary row height
             x0=int(name_x0),
         )
