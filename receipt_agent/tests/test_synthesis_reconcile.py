@@ -182,3 +182,50 @@ def test_min_word_gap_is_tight_verifier_safe_with_floor():
     # Floor keeps the old word-fusion bug from returning at tiny line heights.
     assert min_word_gap(0) >= 3.0
     assert min_word_gap(1) >= 3.0
+
+
+def test_respace_opens_overlapping_words_without_fusion():
+    # Tight-gap contract part (a): truly OVERLAPPING labeled words (negative gap)
+    # must still be pulled apart into a positive, verifier-safe gap -- the de-glue
+    # must never let an overlap collapse into a fused token.
+    line_height = 20
+    y0, y1 = 500, 500 + line_height
+    tokens = ["AUTH", "CODE", "REF"]
+    bboxes = [
+        [100, y0, 180, y1],
+        [150, y0, 230, y1],  # overlaps previous by 30px
+        [200, y0, 280, y1],  # overlaps previous by 30px
+    ]
+    tags = ["B-PAYMENT_METHOD", "I-PAYMENT_METHOD", "I-PAYMENT_METHOD"]
+
+    out_tokens, out_bboxes, out_tags = reconcile_candidate(tokens, bboxes, tags)
+
+    assert out_tokens == tokens  # nothing dropped / fused
+    assert _jammed_pairs(out_bboxes) == 0
+    ordered = sorted(range(len(out_bboxes)), key=lambda i: out_bboxes[i][0])
+    for p, q in zip(ordered, ordered[1:]):
+        gap = out_bboxes[q][0] - out_bboxes[p][2]
+        h = max(out_bboxes[p][3] - out_bboxes[p][1], 6)
+        assert gap >= 0.30 * h  # opened past the verifier floor, no overlap
+
+
+def test_respace_preserves_already_acceptable_gaps():
+    # Tight-gap contract part (b): a line whose adjacent gaps already clear the
+    # verifier floor must pass through UNCHANGED. The deglue-only contract never
+    # widens non-jammed text into a justified sprawl.
+    respace = _MODULE._respace_visual_line
+    min_word_gap = _MODULE._min_word_gap
+    line_height = 20
+    y0, y1 = 500, 500 + line_height
+    floor = min_word_gap(line_height)
+    # Build three words separated by COMFORTABLE gaps (well above the floor) plus a
+    # wide right-column gap before the last token (a price column).
+    g = int(floor) + 6
+    boxes = [
+        [100, y0, 160, y1],
+        [160 + g, y0, 220 + g, y1],
+        [600, y0, 700, y1],  # wide right-aligned column gap
+    ]
+    before = [list(b) for b in boxes]
+    respace(boxes, [0, 1, 2])
+    assert boxes == before  # acceptable gaps (tight AND wide) are preserved exactly

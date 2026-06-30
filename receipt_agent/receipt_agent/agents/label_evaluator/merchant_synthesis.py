@@ -402,15 +402,18 @@ def _render_cell_width(receipt: dict[str, Any]) -> int:
 def _ensure_amount_word_gaps(
     lines: list[dict[str, Any]], *, cell_w: int
 ) -> None:
-    """Keep at least one full character cell AFTER every amount token on a line.
+    """De-GLUE (only) the token that immediately FOLLOWS an amount token.
 
     The grid renderer right-aligns amounts to their ending cell and then only
-    prevents the next word from overlapping — it does not insert a blank cell.
-    So a real/cloned row whose price butts against a trailing tax flag ("$4.39F")
-    or a sale value against "each" ("$7.49each") renders glued. Nudging only the
-    token that immediately follows an amount right by one cell restores the
-    visible space while leaving already-spaced name columns (and every label /
-    token / reading order) untouched."""
+    prevents the next word from overlapping. A real/cloned row whose price butts
+    against a trailing tax flag ("$4.39F") or a sale value against "each"
+    ("$7.49each") would render glued. We open a gap ONLY when the following token
+    sits below the verifier-safe minimum -- a TIGHT single word-space, not a full
+    character cell. Bloating the SOURCE gap to a whole cell was a wide-spacing
+    tell; the renderer's per-row cursor (``draw_grid_line``) advances past a
+    right-anchored price so the flag/unit still renders visibly separated from a
+    tight source gap. Already-spaced name columns (and every label / token /
+    reading order) are left untouched."""
     cell = max(1, int(round(cell_w)))
     for line in lines:
         words = sorted(
@@ -420,8 +423,13 @@ def _ensure_amount_word_gaps(
         for prev, word in zip(words, words[1:]):
             if not _is_amount_token(prev):
                 continue
+            prev_box = prev["bbox"]
+            height = max(1, int(prev_box[3]) - int(prev_box[1]))
+            # Tight verifier-safe gap (mirrors _template_word_gap), capped at one
+            # cell so a tall row never reintroduces a wide gap.
+            gap = min(_template_word_gap(height), cell)
             box = word["bbox"]
-            min_x0 = int(prev["bbox"][2]) + cell
+            min_x0 = int(prev_box[2]) + gap
             if int(box[0]) < min_x0:
                 width = max(1, int(box[2]) - int(box[0]))
                 box[0] = min_x0
@@ -6127,14 +6135,17 @@ def _build_sale_sub_line(
     if not tokens:
         return None
     char_w = max(1, int(char_w))
-    # One FULL character cell between every token. The fixed-pitch grid renderer
-    # snaps each word onto the character grid and only guards against overlap, so
-    # a sub-cell gap collapses onto the previous token and renders GLUED
-    # ("SALE 1 $4.99, WAS: $7.49each"). A single-cell gap reads as a normal
-    # monospace word-space AND survives the snap, so every inter-token boundary
-    # (including the WAS value -> "each") keeps a visible space. _template_word_gap
-    # is the verifier floor; the cell is what the renderer actually needs.
-    gap = max(_template_word_gap(height), char_w)
+    # TIGHT single word-space between every token (NOT a full character cell). A
+    # full ``char_w`` gap between every token was the #1 realism tell: the SALE
+    # sub-line read as a "floating", pseudo-justified row instead of natural copy.
+    # Real receipts set ~1/3 of a cell between words, so we emit the verifier-safe
+    # ``_template_word_gap`` here. The fixed-pitch grid renderer keeps adjacent
+    # LEFT-aligned tokens from gluing on its own (``draw_grid_line`` advances a
+    # per-row cursor and nudges the next token to at least one cell past the prior
+    # word), and after a right-anchored price token the renderer's cursor advance
+    # separates the following flag/unit ("$7.49 each") -- so a tight SOURCE gap no
+    # longer needs to be bloated to a full cell to render with visible spaces.
+    gap = _template_word_gap(height)
     widths = [max(1, len(token)) * char_w for token in tokens]
     total = sum(widths) + gap * (len(tokens) - 1)
     x0 = int(x0)

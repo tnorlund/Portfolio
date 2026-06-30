@@ -211,3 +211,46 @@ def test_grid_mode_aligns_line_total_column():
 
 def test_grid_mode_disabled_by_default():
     assert RenderConfig().grid_mode is False
+
+
+def test_draw_grid_line_separates_flag_after_right_anchored_price():
+    """Tight-gap contract part (c): the de-glue lives in the render-time cursor.
+
+    A tax flag whose SOURCE bbox butts up against (or overlaps) a right-anchored
+    price column must still render at least one cell PAST the price's right edge.
+    This is what lets the synthesizer emit a TIGHT source gap after a price
+    instead of a bloated full-cell gap. We capture the column each token is drawn
+    at and assert the flag clears the price's drawn right edge.
+    """
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=7.0, cell_h=15.0, font_px=14, grid_left=10.0)
+    ink = (0, 0, 0)
+    # name (left), price (right-anchored to col ~127), flag whose own source left
+    # would land it BEFORE the price's right edge (glued) without the cursor fix.
+    name = rg.GridWord(left=40.0, top=100.0, right=180.0, bottom=120.0, text="MILK", ink=ink)
+    price = rg.GridWord(left=820.0, top=100.0, right=900.0, bottom=120.0, text="$4.39", ink=ink)
+    flag = rg.GridWord(left=885.0, top=100.0, right=914.0, bottom=120.0, text="F", ink=ink)
+
+    drawn: list[tuple[str, int]] = []
+    orig = rg.draw_token_chars
+    try:
+        rg.draw_token_chars = lambda draw, text, start_col, *a, **k: drawn.append(
+            (text, start_col)
+        )
+        rg.draw_grid_line(
+            draw=None,
+            line=[name, price, flag],
+            baseline_y=115.0,
+            spec=spec,
+            font=None,
+        )
+    finally:
+        rg.draw_token_chars = orig
+
+    starts = {text: col for text, col in drawn}
+    price_end = starts["$4.39"] + rg.drawn_cell_count("$4.39")
+    # The price keeps its right-anchored column.
+    assert starts["$4.39"] == round((900.0 - 10.0) / 7.0) - rg.drawn_cell_count("$4.39")
+    # The flag renders at least one full cell past the price's right edge.
+    assert starts["F"] >= price_end + 1

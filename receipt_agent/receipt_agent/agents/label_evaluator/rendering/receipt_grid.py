@@ -253,19 +253,27 @@ def draw_grid_line(
     """Draw every word of one visual row at a single shared baseline.
 
     Left-aligned words are nudged right when they would collide with the prior
-    word, preserving at least a one-cell inter-word gap; right-aligned price
-    tokens keep their column position (they sit in the empty right margin).
+    word, preserving at least a one-cell inter-word gap. A right-aligned price
+    token keeps its OWN column position (it is never nudged), but it DOES advance
+    the running cursor to its right edge -- so the token that follows it (a tax
+    flag ``F`` / unit ``each``) is nudged to at least one cell past the price and
+    renders visibly separated. This is the de-glue contract: the separation lives
+    in the render-time cursor advance, so the SOURCE bbox no longer has to carry a
+    bloated full-cell gap after every price (the old wide-spacing tell).
     """
     cursor_col = None
     for word in line:
         start = token_start_col(word.text, word.left, word.right, spec)
+        # Price tokens keep their right-anchored column; only LEFT-aligned tokens
+        # are nudged off the running cursor.
         if not is_price_token(word.text) and cursor_col is not None:
             start = max(start, cursor_col + 1)
         draw_token_chars(
             draw, word.text, start, baseline_y, spec, font, word.ink
         )
-        if not is_price_token(word.text):
-            cursor_col = start + drawn_cell_count(word.text)
+        # Advance the cursor past EVERY token (price tokens included) so the next
+        # word clears the price's right edge by at least one cell.
+        cursor_col = start + drawn_cell_count(word.text)
 
 
 def line_baseline(line: Sequence[GridWord], ascent: int) -> float:

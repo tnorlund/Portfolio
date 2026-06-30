@@ -583,16 +583,18 @@ def _deoverlap_line_words(
 
 
 def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
-    """Open a real word-gap between adjacent words on a single visual line.
+    """DEGLUE (only) adjacent words on a single visual line.
 
-    Target gap is the smallest verifier-safe single word-space (``_min_word_gap``,
-    ``~0.30 * line_height`` plus a rounding cushion, with an absolute floor), which
-    clears the verifier's ``0.30 * line_height`` threshold even after integer
-    rounding WITHOUT widening lines into a justified-typewriter sprawl. A monotone
-    running shift is applied left->right so existing large gaps (the right-aligned
-    price column) are carried along, never shrunk. The whole line is shifted back
-    left to fit within ``[0, 1000]``; if it cannot fit, the line is left unchanged
-    so we never violate bbox/overlap checks.
+    The contract is non-uniform and deglue-only: a pair is opened ONLY when it
+    overlaps or its gap is below the verifier-safe minimum (``_min_word_gap``,
+    ``~0.30 * line_height`` plus a rounding cushion). An already-acceptable gap is
+    PRESERVED exactly -- there is no full-line uniform repacking, so a naturally
+    tight single word-space (or a wide right-aligned price column) is never
+    widened or shrunk. Opening is done with a monotone running shift applied
+    left->right, so every word after an opened pair carries the SAME delta and its
+    own (acceptable) gap is unchanged. The whole line is then shifted back left to
+    fit within ``[0, 1000]``; if it still cannot fit, the edge-bound last-resort
+    compression below keeps the same reading order without overlap.
     """
     if len(line) < 2:
         return
@@ -606,10 +608,13 @@ def _respace_visual_line(boxes: list[list[int]], line: list[int]) -> None:
         x1 = b[2] + running
         if prev_right is not None:
             h = max(orig[k - 1][3] - orig[k - 1][1], 6)
-            target = _min_word_gap(h)
+            floor = _min_word_gap(h)
             gap = x0 - prev_right
-            if gap < target:
-                extra = target - gap
+            # DEGLUE-ONLY: open exclusively the pairs that overlap or fall below
+            # the verifier-safe floor. Acceptable gaps (gap >= floor) fall through
+            # untouched, so non-jammed text is never spread.
+            if gap < floor:
+                extra = floor - gap
                 running += extra
                 x0 += extra
                 x1 += extra

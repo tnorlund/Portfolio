@@ -2729,21 +2729,25 @@ def test_build_sale_sub_line_is_all_o_and_on_canvas():
     assert sub["words"][0]["text"] == "SALE"
 
 
-def test_build_sale_sub_line_keeps_one_cell_gap_and_renders_every_token():
-    """Regression: the fixed-pitch renderer snaps each word to the character grid
-    and only guards against overlap, so a sub-cell gap after the right-aligned WAS
-    amount glued the trailing unit word ("$7.49each"). Every inter-token boundary
-    must keep >= one full character cell of clear space, and all tokens (including
-    the WAS value and "each") must render."""
+def test_build_sale_sub_line_uses_tight_gap_not_full_cell():
+    """Tight-gap contract (the #1 wide-spacing tell): the SALE sub-line must set a
+    TIGHT verifier-safe single word-space between tokens, NOT a full character
+    cell. A full ``char_w`` gap between every token made the row read as a
+    floating, pseudo-justified sprawl. Every inter-token boundary must still be a
+    real positive gap (so nothing fuses), every token must render, and the gap
+    must be the tight ``_template_word_gap`` -- strictly LESS than the old full
+    ``char_w`` cell. The render-time grid cursor keeps the tight source gap from
+    gluing on the page."""
     template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
     char_w = 22
+    height = 24
     sub = _build_sale_sub_line(
         template=template,
         price=Decimal("4.99"),
         line_id=_SYNTHETIC_LINE_ID_BASE + 1,
         y0=200,
         char_w=char_w,
-        height=24,
+        height=height,
         x0=90,
     )
     assert sub is not None
@@ -2755,9 +2759,13 @@ def test_build_sale_sub_line_keeps_one_cell_gap_and_renders_every_token():
         "$7.49",
         "each",
     ]
+    tight = _template_word_gap(height)
+    assert tight < char_w  # the new gap is tighter than the old full cell
     ordered = sorted(sub["words"], key=lambda w: w["bbox"][0])
     for prev, nxt in zip(ordered, ordered[1:]):
-        assert nxt["bbox"][0] - prev["bbox"][2] >= char_w
+        gap = nxt["bbox"][0] - prev["bbox"][2]
+        assert gap > 0  # separated: nothing fuses in the source
+        assert gap == tight  # tight single word-space, not a full cell
     assert all(w["bbox"][2] <= 1000 for w in sub["words"])
 
 
@@ -2795,9 +2803,12 @@ def test_render_cell_width_uses_median_char_advance():
 
 def test_ensure_amount_word_gaps_degludes_price_and_flag():
     """A cloned real row whose tax flag butts against the right-aligned price
-    ("$4.39F") renders glued on the character grid. The de-glue nudges only the
-    token following an amount right by one cell, leaving the already-spaced name
-    column untouched."""
+    ("$4.39F") would render glued on the character grid. The de-glue opens a TIGHT
+    verifier-safe gap (NOT a full character cell -- that bloated source gap was a
+    wide-spacing tell) and leaves the already-spaced name column untouched. The
+    render-time grid cursor advances past the price so the flag still renders
+    visibly separated from the tight source gap."""
+    height = 24
     line = {
         "line_id": 20_000,
         "words": [
@@ -2812,14 +2823,19 @@ def test_ensure_amount_word_gaps_degludes_price_and_flag():
                 "bbox": [825, 640, 937, 664],
                 "labels": ["LINE_TOTAL"],
             },
-            {"text": "F", "bbox": [942, 640, 971, 664], "labels": []},
+            {"text": "F", "bbox": [938, 640, 967, 664], "labels": []},
         ],
     }
     name_before = (line["words"][1]["bbox"][0], line["words"][1]["bbox"][2])
-    _ensure_amount_word_gaps([line], cell_w=22)
+    cell_w = 22
+    _ensure_amount_word_gaps([line], cell_w=cell_w)
     price = next(w for w in line["words"] if w["text"] == "$4.39")
     flag = next(w for w in line["words"] if w["text"] == "F")
-    assert flag["bbox"][0] - price["bbox"][2] >= 22  # one blank cell after price
+    tight = min(_template_word_gap(height), cell_w)
+    gap = flag["bbox"][0] - price["bbox"][2]
+    assert gap > 0  # separated: price and flag never fuse in the source
+    assert gap == tight  # tight word-space, not the old full character cell
+    assert gap < cell_w  # tighter than the bloated full-cell gap
     assert flag["bbox"][2] <= 1000
     # The spaced name token is not disturbed by the de-glue.
     assert (
