@@ -121,10 +121,25 @@ def _real_glyphs(merchant_dir, lo, hi):
     return samples
 
 
-def _font_glyph(font, ch):
+def _font_glyph(font, ch, stroke=0):
     canvas = Image.new("L", (BOX * 2, BOX * 2), 0)
-    ImageDraw.Draw(canvas).text((BOX, BOX), ch, font=font, fill=255, anchor="mm")
+    ImageDraw.Draw(canvas).text(
+        (BOX, BOX), ch, font=font, fill=255, anchor="mm",
+        stroke_width=stroke, stroke_fill=255,
+    )
     return _normalize(np.asarray(canvas) > 128)
+
+
+def font_candidates(size=GH):
+    """(label, FreeTypeFont, stroke) candidates incl. emboldened (double-strike) variants."""
+    out = []
+    for name, path in FONTS.items():
+        if not os.path.exists(path):
+            continue
+        f = ImageFont.truetype(path, size)
+        out.append((name, f, 0))
+        out.append((f"{name}+bold", f, 1))  # double-strike emphasis
+    return out
 
 
 def _sim(a, b):

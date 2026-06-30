@@ -20,6 +20,21 @@ from __future__ import annotations
 import numpy as np
 
 
+def auto_polarity(gray: np.ndarray, dark_border: float = 110.0):
+    """Normalize a glyph crop to dark-ink-on-light. Returns (crop, was_reverse).
+
+    Reverse-video cells (white text in a black box) have a DARK border; we invert
+    them so the downstream ink detector still finds the glyph. The flag lets the
+    renderer reproduce the black box as a treatment.
+    """
+    if gray.size == 0:
+        return gray, False
+    border = np.concatenate([gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]])
+    if float(np.median(border)) < dark_border:
+        return (255 - gray.astype(np.int16)).clip(0, 255).astype(gray.dtype), True
+    return gray, False
+
+
 def sauvola_mask(gray: np.ndarray, window: int = 25, k: float = 0.18,
                  R: float = 128.0) -> np.ndarray:
     """Boolean ink mask (True = ink) via Sauvola adaptive thresholding."""
