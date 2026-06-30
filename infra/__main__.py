@@ -1315,10 +1315,19 @@ if pulumi.get_stack() == "prod":
     from components.web_analytics import WebAnalytics  # noqa: E402
     from s3_website import cloudfront_logs_bucket  # noqa: E402
 
+    # GA4 second source is optional: the extractor Lambda is only built when
+    # both the service-account key (secret) and property id are configured.
+    #   pulumi config set --secret portfolio:gaServiceAccountKey @key.json
+    #   pulumi config set portfolio:gaPropertyId 542366301
+    _analytics_cfg = pulumi.Config()
     web_analytics = WebAnalytics(
         "web-analytics",
         cloudfront_logs_bucket=cloudfront_logs_bucket.bucket,
         log_prefix="cloudfront/prod/",
+        ga_service_account_key=_analytics_cfg.get_secret(
+            "gaServiceAccountKey"
+        ),
+        ga_property_id=_analytics_cfg.get("gaPropertyId"),
     )
     # Let the MCP Lambda role run Athena/Glue/S3 reads for the analytics tools.
     aws.iam.RolePolicyAttachment(

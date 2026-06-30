@@ -68,7 +68,26 @@ IaC.
 | `analytics_top(dimension, start, end)` | top `page` / `referrer` / `ip` |
 | `analytics_ip(ip, start, end)` | full page-level timeline for one IP |
 | `analytics_lookup_ip(ips)` | live org / geo / network-type (hosting/proxy) for IPs — who a visitor is |
+| `analytics_ga(start, end)` | daily GA4 metrics (sessions/users/pageviews/engaged) |
+| `analytics_reconcile(start, end)` | GA4 vs first-party beacon, per day (reveals adblock gap / bot leakage) |
 | `analytics_query(sql)` | read-only SELECT/WITH escape hatch |
+
+## GA4 second source (optional)
+
+A scheduled **container Lambda** (`ga_extract_lambda/`) pulls daily metrics from
+the GA4 Data API (service account `ga4-reader`) and overwrites a small NDJSON
+file behind the `ga_daily` Glue table. `google-analytics-data` is ~52 MB, so it
+ships as a container image (the repo's `CodeBuildDockerImage` pattern) rather
+than a layer. It's only built when configured:
+
+```
+pulumi config set --secret portfolio:gaServiceAccountKey @ga4-reader-key.json
+pulumi config set portfolio:gaPropertyId 542366301
+```
+
+GA applies Google's own bot filtering but is blocked by adblock/ITP (it
+under-counts); the beacon is complete but raw. `analytics_reconcile` puts them
+side by side per day — beacon > GA usually means adblock loss.
 
 ## Classification rules (in the tool SQL)
 

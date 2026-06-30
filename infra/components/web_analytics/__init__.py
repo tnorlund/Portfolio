@@ -84,6 +84,8 @@ class WebAnalytics(ComponentResource):
         database_name: str = "portfolio_analytics",
         table_name: str = "cloudfront_logs_prod",
         results_expiration_days: int = 30,
+        ga_service_account_key: Optional[Input[str]] = None,
+        ga_property_id: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__("portfolio:analytics:WebAnalytics", name, None, opts)
@@ -333,6 +335,132 @@ class WebAnalytics(ComponentResource):
             opts=ResourceOptions(parent=self.transform_lambda),
         )
 
+        # --- GA4 daily metrics (second source; tiny NDJSON, overwritten) ---
+        ga_columns = [
+            ("dt", "string"),
+            ("sessions", "bigint"),
+            ("total_users", "bigint"),
+            ("new_users", "bigint"),
+            ("pageviews", "bigint"),
+            ("engaged_sessions", "bigint"),
+        ]
+        self.ga_daily_table = aws.glue.CatalogTable(
+            f"{name}-ga-daily-table",
+            name="ga_daily",
+            database_name=self.database.name,
+            table_type="EXTERNAL_TABLE",
+            parameters={"EXTERNAL": "TRUE", "classification": "json"},
+            storage_descriptor=aws.glue.CatalogTableStorageDescriptorArgs(
+                location=self.curated_bucket.bucket.apply(
+                    lambda b: f"s3://{b}/ga_daily/"
+                ),
+                input_format="org.apache.hadoop.mapred.TextInputFormat",
+                output_format=(
+                    "org.apache.hadoop.hive.ql.io."
+                    "HiveIgnoreKeyTextOutputFormat"
+                ),
+                columns=[
+                    aws.glue.CatalogTableStorageDescriptorColumnArgs(
+                        name=col, type=typ
+                    )
+                    for col, typ in ga_columns
+                ],
+                ser_de_info=_SerDeInfo(
+                    serialization_library=(
+                        "org.openx.data.jsonserde.JsonSerDe"
+                    ),
+                ),
+            ),
+            opts=child,
+        )
+
+        # GA4 extractor — container Lambda (deps too heavy for a zip). Only
+        # built when a service-account key + property id are configured.
+        if ga_service_account_key is not None and ga_property_id:
+            # Lazy import: only needed when GA is configured, and keeps the
+            # heavy build helper out of the import path otherwise.
+            # pylint: disable=import-outside-toplevel
+            from codebuild_docker_image import CodeBuildDockerImage
+
+            ga_role = aws.iam.Role(
+                f"{name}-ga-role",
+                assume_role_policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    }
+                ),
+                opts=child,
+            )
+            aws.iam.RolePolicyAttachment(
+                f"{name}-ga-basic",
+                role=ga_role.name,
+                policy_arn=(
+                    "arn:aws:iam::aws:policy/service-role/"
+                    "AWSLambdaBasicExecutionRole"
+                ),
+                opts=ResourceOptions(parent=ga_role),
+            )
+            aws.iam.RolePolicy(
+                f"{name}-ga-policy",
+                role=ga_role.id,
+                policy=self.curated_bucket.arn.apply(_ga_policy_json),
+                opts=ResourceOptions(parent=ga_role),
+            )
+            ga_image = CodeBuildDockerImage(
+                f"{name}-ga-img",
+                dockerfile_path=(
+                    "infra/components/web_analytics/"
+                    "ga_extract_lambda/Dockerfile"
+                ),
+                build_context_path=".",
+                source_paths=[
+                    "infra/components/web_analytics/ga_extract_lambda"
+                ],
+                lambda_function_name=f"{name}-ga-extract",
+                lambda_config={
+                    "role_arn": ga_role.arn,
+                    "timeout": 300,
+                    "memory_size": 512,
+                    "environment": {
+                        "GA_PROPERTY_ID": ga_property_id,
+                        "GA_SERVICE_ACCOUNT_KEY": ga_service_account_key,
+                        "CURATED_BUCKET": self.curated_bucket.bucket,
+                        "GA_PREFIX": "ga_daily/",
+                    },
+                },
+                platform="linux/arm64",
+                opts=ResourceOptions(parent=self, depends_on=[ga_role]),
+            )
+            self.ga_lambda = ga_image.lambda_function
+            ga_sched = aws.cloudwatch.EventRule(
+                f"{name}-ga-schedule",
+                schedule_expression="cron(45 9 * * ? *)",
+                opts=child,
+            )
+            aws.cloudwatch.EventTarget(
+                f"{name}-ga-target",
+                rule=ga_sched.name,
+                arn=self.ga_lambda.arn,
+                opts=ResourceOptions(parent=ga_sched),
+            )
+            aws.lambda_.Permission(
+                f"{name}-ga-perm",
+                action="lambda:InvokeFunction",
+                function=self.ga_lambda.name,
+                principal="events.amazonaws.com",
+                source_arn=ga_sched.arn,
+                opts=ResourceOptions(parent=self.ga_lambda),
+            )
+
         # --- Read-only IAM policy (attach to MCP Lambda role) ---
         account_id = aws.get_caller_identity().account_id
         region = aws.get_region().name
@@ -498,6 +626,30 @@ def _transform_policy_json(
                         f"{results_bucket_arn}/*",
                     ],
                 },
+            ],
+        }
+    )
+
+
+def _ga_policy_json(curated_bucket_arn: str) -> str:
+    """Permissions for the GA4 extractor Lambda: write the ga_daily NDJSON."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "WriteGaDaily",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:PutObject",
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                    ],
+                    "Resource": [
+                        curated_bucket_arn,
+                        f"{curated_bucket_arn}/*",
+                    ],
+                }
             ],
         }
     )

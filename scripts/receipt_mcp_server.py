@@ -1007,6 +1007,42 @@ Best-effort third-party data; `org` comes from the IP registry. Up to 100 IPs.""
             },
         ),
         Tool(
+            name="analytics_ga",
+            description="""Daily Google Analytics (GA4) metrics for the production site.
+
+Reads the ga_daily table (extracted from the GA4 Data API): sessions, total/new
+users, pageviews, engaged sessions per day (GA property timezone = Pacific).
+GA applies Google's own bot filtering but is blocked by adblockers / Safari ITP,
+so it UNDER-counts real humans; pair with analytics_traffic (first-party beacon)
+via analytics_reconcile. Dates YYYY-MM-DD, inclusive.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="analytics_reconcile",
+            description="""Reconcile GA4 vs the first-party CloudFront beacon, per day.
+
+Side-by-side daily counts: GA sessions/engaged/pageviews vs beacon human
+sessions/pageviews. GA = Google's bot-filtered but adblock-leaky view; the
+beacon = complete first-party signal with bots + your own WARP traffic removed.
+Gaps are meaningful: beacon > GA usually means adblock loss; large GA-only days
+can mean bot leakage. Dates YYYY-MM-DD, inclusive (Pacific).""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
             name="list_training_jobs",
             description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
 
@@ -1293,6 +1329,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await analytics_query_impl(sql=arguments["sql"])
         elif name == "analytics_lookup_ip":
             result = await analytics_lookup_ip_impl(ips=arguments["ips"])
+        elif name == "analytics_ga":
+            result = await analytics_ga_impl(
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+            )
+        elif name == "analytics_reconcile":
+            result = await analytics_reconcile_impl(
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -3296,6 +3342,73 @@ async def analytics_lookup_ip_impl(ips) -> dict:
         return {"results": results}
     except Exception as exc:
         logger.exception("analytics_lookup_ip failed")
+        return {"error": str(exc)}
+
+
+async def analytics_ga_impl(start_date: str, end_date: str) -> dict:
+    try:
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        sql = f"""
+SELECT dt, sessions, total_users, new_users, pageviews, engaged_sessions
+FROM {ANALYTICS_DB}.ga_daily
+WHERE dt BETWEEN '{s}' AND '{e}'
+ORDER BY dt
+"""
+        return {
+            "start": s,
+            "end": e,
+            "timezone": "America/Los_Angeles (GA property TZ)",
+            "days": _athena_run(sql),
+        }
+    except Exception as exc:
+        logger.exception("analytics_ga failed")
+        return {"error": str(exc)}
+
+
+async def analytics_reconcile_impl(start_date: str, end_date: str) -> dict:
+    try:
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        pt = "(ts_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles'"
+        sql = f"""
+WITH beacon AS (
+  SELECT
+    date_format({pt}, '%Y-%m-%d') AS pt_date,
+    count(DISTINCT IF(
+      is_beacon AND NOT is_bot AND NOT is_warp, sid, NULL
+    )) AS beacon_human_sessions,
+    count_if(
+      is_beacon AND event = 'page_view' AND NOT is_bot AND NOT is_warp
+    ) AS beacon_pageviews
+  FROM {ANALYTICS_DB}.web_events
+  WHERE dt BETWEEN date_format(date_add('day', -1, DATE '{s}'), '%Y-%m-%d')
+              AND date_format(date_add('day',  1, DATE '{e}'), '%Y-%m-%d')
+  GROUP BY 1
+)
+SELECT
+  coalesce(g.dt, b.pt_date) AS dt,
+  g.sessions AS ga_sessions,
+  g.engaged_sessions AS ga_engaged,
+  g.pageviews AS ga_pageviews,
+  b.beacon_human_sessions,
+  b.beacon_pageviews
+FROM {ANALYTICS_DB}.ga_daily g
+FULL OUTER JOIN beacon b ON g.dt = b.pt_date
+WHERE coalesce(g.dt, b.pt_date) BETWEEN '{s}' AND '{e}'
+ORDER BY 1
+"""
+        return {
+            "start": s,
+            "end": e,
+            "note": (
+                "GA = Google bot-filtered but adblock-leaky; beacon = "
+                "first-party humans (bots + WARP excluded)."
+            ),
+            "days": _athena_run(sql),
+        }
+    except Exception as exc:
+        logger.exception("analytics_reconcile failed")
         return {"error": str(exc)}
 
 
