@@ -130,13 +130,28 @@ def _font_glyph(font, ch, stroke=0):
     return _normalize(np.asarray(canvas) > 128)
 
 
+FONT_DIR = os.environ.get("FONT_LIB", "/tmp/fonts_lib")
+
+
+def _all_font_paths():
+    paths = dict(FONTS)
+    if os.path.isdir(FONT_DIR):
+        for fn in sorted(os.listdir(FONT_DIR)):
+            if fn.lower().endswith((".ttf", ".otf", ".ttc")):
+                paths.setdefault(os.path.splitext(fn)[0], os.path.join(FONT_DIR, fn))
+    return paths
+
+
 def font_candidates(size=GH):
     """(label, FreeTypeFont, stroke) candidates incl. emboldened (double-strike) variants."""
     out = []
-    for name, path in FONTS.items():
+    for name, path in _all_font_paths().items():
         if not os.path.exists(path):
             continue
-        f = ImageFont.truetype(path, size)
+        try:
+            f = ImageFont.truetype(path, size)
+        except OSError:
+            continue
         out.append((name, f, 0))
         out.append((f"{name}+bold", f, 1))  # double-strike emphasis
     return out

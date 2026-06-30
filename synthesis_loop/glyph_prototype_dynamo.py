@@ -153,6 +153,8 @@ def main() -> int:
 
     print(f"=== {merchant} ===")
     body_protos = {ch: np.mean(s, axis=0) for ch, s in body.items() if len(s) >= 3}
+    np.savez_compressed(os.path.join(out_dir, "body_protos.npz"), **body_protos)
+    print(f"cached body prototypes -> {out_dir}/body_protos.npz")
     _report_zone(body_protos, "body", out_dir)
 
     # sub-cluster emphasis by style (aspect x density), prototype each sub-style
