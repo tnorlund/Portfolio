@@ -159,10 +159,37 @@ class GridWord:
     bottom: float
     text: str
     ink: tuple[int, int, int]
+    # Source line id (when known), so the layout scorecard can detect a grouped
+    # row that fuses words from more than one printed line. ``None`` falls back to
+    # a vertical-extent heuristic.
+    source_line: int | None = None
 
     @property
     def center_y(self) -> float:
         return (self.top + self.bottom) / 2.0
+
+
+# A word joins the current row when its box overlaps the row's vertical band by
+# at least this fraction of the shorter height, OR its center is within
+# ``_ROW_CENTER_TOL_CELLS * cell_h`` of the row's running-median center. Real
+# same-line OCR boxes overlap ~80-95%; vertically adjacent printed lines overlap
+# only ~10-25%, so a 0.35 threshold cleanly separates them. The center fallback
+# catches same-line tokens whose heights differ enough to thin the overlap.
+_ROW_OVERLAP_FRAC = 0.35
+_ROW_CENTER_TOL_CELLS = 0.35
+
+
+def _row_band(rows: Sequence[GridWord]) -> tuple[float, float]:
+    """Representative (top, bottom) of a row: the MEDIAN edges of its members.
+
+    Median (not running mean) is what stops a row from drifting open as words
+    accrete -- the old running-mean anchor let three printed lines chain into one
+    fused row (the `NV TAX 8.37500 ... TOTAL` collapse).
+    """
+    return (
+        median(w.top for w in rows),
+        median(w.bottom for w in rows),
+    )
 
 
 def group_words_into_grid_lines(
@@ -171,26 +198,33 @@ def group_words_into_grid_lines(
 ) -> list[list[GridWord]]:
     """Cluster pixel-positioned words into visual rows (top -> bottom).
 
-    Words whose vertical centers fall within ``~0.6 * cell_h`` of the current
-    row's running center join that row; otherwise a new row opens. Each row is
-    returned left-to-right so columns are placed in reading order.
+    Overlap-aware: a word joins the current row when its box vertically overlaps
+    the row's running-median band by ``>= _ROW_OVERLAP_FRAC`` of the shorter
+    height, or its center is within ``_ROW_CENTER_TOL_CELLS * cell_h`` of the
+    band center; otherwise a new row opens. Each row is returned left-to-right so
+    columns are placed in reading order.
     """
     if not words:
         return []
-    band = max(1.0, cell_h * 0.6)
+    center_tol = max(1.0, cell_h * _ROW_CENTER_TOL_CELLS)
     ordered = sorted(words, key=lambda w: w.center_y)
     lines: list[list[GridWord]] = []
     current: list[GridWord] = []
-    anchor = None
     for word in ordered:
-        if anchor is None or abs(word.center_y - anchor) <= band:
+        if not current:
+            current = [word]
+            continue
+        band_top, band_bottom = _row_band(current)
+        overlap = min(word.bottom, band_bottom) - max(word.top, band_top)
+        shorter = min(word.bottom - word.top, band_bottom - band_top)
+        frac = (overlap / shorter) if shorter > 0 else 0.0
+        band_center = (band_top + band_bottom) / 2.0
+        center_close = abs(word.center_y - band_center) <= center_tol
+        if frac >= _ROW_OVERLAP_FRAC or center_close:
             current.append(word)
-            # Running mean keeps the band centered as a row accretes words.
-            anchor = sum(w.center_y for w in current) / len(current)
         else:
             lines.append(sorted(current, key=lambda w: w.left))
             current = [word]
-            anchor = word.center_y
     if current:
         lines.append(sorted(current, key=lambda w: w.left))
     return lines
@@ -243,14 +277,31 @@ def draw_token_chars(
         col += 1
 
 
-def draw_grid_line(
-    draw: ImageDraw.ImageDraw,
-    line: Sequence[GridWord],
-    baseline_y: float,
-    spec: GridSpec,
-    font: ImageFont.FreeTypeFont,
-) -> None:
-    """Draw every word of one visual row at a single shared baseline.
+@dataclass
+class PlacedToken:
+    """A word with its resolved grid column (the output of the planner).
+
+    ``start_col`` is the column of the first drawn glyph; ``cells`` is how many
+    columns the token occupies (``drawn_cell_count`` -- non-space glyphs). The
+    rendered span is ``[start_col, start_col + cells)``. Separating this PLAN from
+    the draw lets the layout scorecard inspect placements (overlaps, amount-column
+    variance) without a font, and keeps the draw step a pure execution of the plan.
+    """
+
+    word: GridWord
+    start_col: int
+    cells: int
+    is_price: bool
+
+    @property
+    def end_col(self) -> int:
+        return self.start_col + self.cells
+
+
+def plan_grid_line(
+    line: Sequence[GridWord], spec: GridSpec
+) -> list[PlacedToken]:
+    """Resolve every word of one visual row to a grid column (no drawing).
 
     Left-aligned words are nudged right when they would collide with the prior
     word, preserving at least a one-cell inter-word gap. A right-aligned price
@@ -261,19 +312,47 @@ def draw_grid_line(
     in the render-time cursor advance, so the SOURCE bbox no longer has to carry a
     bloated full-cell gap after every price (the old wide-spacing tell).
     """
+    placed: list[PlacedToken] = []
     cursor_col = None
     for word in line:
+        price = is_price_token(word.text)
         start = token_start_col(word.text, word.left, word.right, spec)
         # Price tokens keep their right-anchored column; only LEFT-aligned tokens
         # are nudged off the running cursor.
-        if not is_price_token(word.text) and cursor_col is not None:
+        if not price and cursor_col is not None:
             start = max(start, cursor_col + 1)
-        draw_token_chars(
-            draw, word.text, start, baseline_y, spec, font, word.ink
+        cells = drawn_cell_count(word.text)
+        placed.append(
+            PlacedToken(word=word, start_col=start, cells=cells, is_price=price)
         )
         # Advance the cursor past EVERY token (price tokens included) so the next
         # word clears the price's right edge by at least one cell.
-        cursor_col = start + drawn_cell_count(word.text)
+        cursor_col = start + cells
+    return placed
+
+
+def draw_grid_line(
+    draw: ImageDraw.ImageDraw,
+    line: Sequence[GridWord],
+    baseline_y: float,
+    spec: GridSpec,
+    font: ImageFont.FreeTypeFont,
+) -> None:
+    """Draw every word of one visual row at a single shared baseline.
+
+    Pure execution of :func:`plan_grid_line`: each planned token's glyphs are
+    drawn at its resolved column on the shared baseline.
+    """
+    for placed in plan_grid_line(line, spec):
+        draw_token_chars(
+            draw,
+            placed.word.text,
+            placed.start_col,
+            baseline_y,
+            spec,
+            font,
+            placed.word.ink,
+        )
 
 
 def line_baseline(line: Sequence[GridWord], ascent: int) -> float:

@@ -254,3 +254,75 @@ def test_draw_grid_line_separates_flag_after_right_anchored_price():
     assert starts["$4.39"] == round((900.0 - 10.0) / 7.0) - rg.drawn_cell_count("$4.39")
     # The flag renders at least one full cell past the price's right edge.
     assert starts["F"] >= price_end + 1
+
+
+# Real Target summary cluster (0-1000 space, y high-is-top) -- the v5 floor case
+# where the renderer fused three printed lines into one row ("NV TAX 8.37500 ...
+# TOTAL"). Each printed line keeps its own source_line id.
+_TARGET_SUMMARY = [
+    # line 30: SUBTOTAL row
+    ("SUBTOTAL", 527, 530, 715, 547, 30),
+    ("$8.07", 916, 527, 971, 545, 30),
+    # line 31: tax row (a left amount cluster + an "on $8.07" reference)
+    ("T = NV TAX 8.37500", 87, 514, 531, 534, 31),
+    ("on $8.07", 522, 512, 715, 531, 31),
+    # line 32: grand total
+    ("TOTAL", 594, 496, 710, 514, 32),
+    ("$8.07", 916, 496, 971, 514, 32),
+]
+
+
+def _target_summary_grid_words(spec):
+    """Build the Target summary cluster as pixel-space GridWords for `spec`."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    cfg = RenderConfig(width=460, height=1100, grid_mode=True,
+                       min_font_px=9, max_font_px=28)
+    inner_w = cfg.width - 2 * cfg.margin
+    inner_h = cfg.height - 2 * cfg.margin
+    words = []
+    for text, x0, y0, x1, y1, line_id in _TARGET_SUMMARY:
+        px = _to_pixel_box([x0, y0, x1, y1], 1000.0, cfg, inner_w, inner_h)
+        left, top, right, bottom = px
+        words.append(rg.GridWord(left=left, top=top, right=right, bottom=bottom,
+                                 text=text, ink=(0, 0, 0), source_line=line_id))
+    return words
+
+
+def _target_summary_spec():
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+    from PIL import Image, ImageDraw
+    cfg = RenderConfig(width=460, height=1100, grid_mode=True,
+                       min_font_px=9, max_font_px=28)
+    inner_w = cfg.width - 2 * cfg.margin
+    inner_h = cfg.height - 2 * cfg.margin
+    draw = ImageDraw.Draw(Image.new("RGB", (cfg.width, cfg.height)))
+    base = rg.build_grid_spec(None, inner_w, inner_h, cfg)
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        _load_grid_font,
+    )
+    font = _load_grid_font(base.font_px, cfg)
+    adv = rg.glyph_advance(draw, font)
+    return rg.build_grid_spec(None, inner_w, inner_h, cfg, char_advance_px=adv)
+
+
+def test_grid_summary_rows_do_not_fuse_target_floor():
+    """Regression: the three printed summary lines must render as three rows.
+
+    This is the v5 Target 1.5-floor collapse. The fix is overlap-aware row
+    grouping; the scorecard asserts zero fused rows and an aligned amount column.
+    """
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+    from receipt_agent.agents.label_evaluator.rendering.layout_score import (
+        score_grid_layout,
+    )
+
+    spec = _target_summary_spec()
+    words = _target_summary_grid_words(spec)
+    rows = rg.group_words_into_grid_lines(words, spec.cell_h)
+    report = score_grid_layout(rows, spec)
+
+    # Three printed lines -> three rendered rows, none fusing source lines.
+    assert report["row_merge_count"] == 0, (rows, report)
+    # The three $8.07 amounts share one right-edge column.
+    assert report["amount_col_spread"] <= 1, report
