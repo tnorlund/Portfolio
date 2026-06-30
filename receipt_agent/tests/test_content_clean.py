@@ -5,6 +5,7 @@ from __future__ import annotations
 from receipt_agent.agents.label_evaluator.rendering.content_clean import (
     canonicalize_auth_tokens,
     clean_for_render,
+    fix_currency_decimals,
 )
 
 
@@ -42,7 +43,21 @@ def test_did_not_changed_without_hex_aid():
     assert words[0]["text"] == "DID:"
 
 
+def test_currency_three_decimals_fixed_rates_preserved():
+    words = [
+        _w("TOTAL"), _w("19.981"),                 # 3-decimal total -> 19.98
+        _w("CA"), _w("TAX"), _w("9.75000"),        # tax RATE -> untouched
+        _w("BALANCE"), _w("$1,234.567"),           # comma-grouped 3-dec -> .56
+    ]
+    n = fix_currency_decimals(words)
+    assert n == 2
+    assert words[1]["text"] == "19.98"
+    assert words[4]["text"] == "9.75000"          # rate preserved (TAX context)
+    assert words[6]["text"] == "$1,234.56"
+
+
 def test_clean_for_render_reports_counts():
-    receipt = {"lines": [{"words": [_w("Seg#"), _w("1")]}]}
+    receipt = {"lines": [{"words": [_w("Seg#"), _w("1"), _w("TOTAL"), _w("5.001")]}]}
     rep = clean_for_render(receipt)
     assert rep["auth_fixed"] == 1
+    assert rep["totals_fixed"] == 1

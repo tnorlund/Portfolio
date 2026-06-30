@@ -25,6 +25,11 @@ _AID_HEX = re.compile(r"^A?[0-9A-F]{8,}$")
 # A bare currency amount, optionally with a trailing stray period from OCR.
 _PRICE_TRAILING_DOT = re.compile(r"^(\$?\d{1,3}(?:,\d{3})*\.\d{2})\.$")
 
+# A currency amount with exactly THREE decimals -- a near-certain OCR/synth error
+# on a 2-decimal price (e.g. ``19.981``). FOUR+ decimals are left alone because
+# those are legitimate printed tax RATES (``9.75000``, ``8.37500``).
+_AMOUNT_3DEC = re.compile(r"^([-+]?\$?\d{1,3}(?:,\d{3})*)\.(\d{3})([-+]?[A-Z]?)$")
+
 # Context-free single-token repairs that are essentially never legitimate text.
 _TOKEN_FIX = {
     "Seg#": "Seq#",
@@ -69,6 +74,29 @@ def canonicalize_auth_tokens(words: list[dict]) -> int:
     return n
 
 
+def fix_currency_decimals(words: list[dict]) -> int:
+    """Repair 3-decimal currency amounts to 2 decimals in place (skips tax rates).
+
+    A ``TOTAL 19.981`` is an impossible currency value; ``CA TAX 9.75000`` is a
+    legitimate rate. We only touch amounts with EXACTLY three decimals, and never
+    when the two preceding tokens mention TAX (a printed rate). Returns #changed.
+    """
+    n = 0
+    for i, w in enumerate(words):
+        t = str(w.get("text") or "")
+        m = _AMOUNT_3DEC.match(t)
+        if not m:
+            continue
+        ctx = " ".join(
+            str(words[j].get("text") or "") for j in range(max(0, i - 2), i)
+        ).upper()
+        if "TAX" in ctx:
+            continue  # printed tax rate, not a currency total
+        w["text"] = f"{m.group(1)}.{m.group(2)[:2]}{m.group(3)}"
+        n += 1
+    return n
+
+
 def clean_for_render(receipt: Mapping[str, Any]) -> dict:
     """Apply all render-time content repairs to ``receipt`` (mutates word dicts).
 
@@ -76,4 +104,5 @@ def clean_for_render(receipt: Mapping[str, Any]) -> dict:
     """
     words = list(_iter_word_dicts(receipt))
     auth_fixed = canonicalize_auth_tokens(words)
-    return {"auth_fixed": auth_fixed, "totals_fixed": 0}
+    totals_fixed = fix_currency_decimals(words)
+    return {"auth_fixed": auth_fixed, "totals_fixed": totals_fixed}
