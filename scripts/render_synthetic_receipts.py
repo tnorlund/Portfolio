@@ -622,6 +622,28 @@ _MERCHANT_TYPOGRAPHY = {
 }
 
 
+# Canonical merchant logos (averaged + cleaned across all the merchant's receipts
+# by logo_prototype.py) -- a denoised wordmark that overrides the smeared single-
+# receipt atlas capture. Black-on-white PNG; converted to ink-as-alpha for the
+# overlay (which segments ink by alpha). Kept local under $BITMATRIX_DIR.
+_MERCHANT_LOGO = {
+    "Costco Wholesale": os.path.join(_BITMATRIX_DIR, "costco_logo.png"),
+}
+
+
+def _merchant_logo(merchant: str | None):
+    """Canonical logo for a merchant as RGBA (alpha = ink), or None."""
+    path = _MERCHANT_LOGO.get(merchant or "")
+    if not path or not os.path.exists(path):
+        return None
+    import numpy as np
+    from PIL import Image
+    g = np.asarray(Image.open(path).convert("L")).astype(np.uint8)
+    rgba = np.zeros((*g.shape, 4), np.uint8)
+    rgba[..., 3] = 255 - g   # dark ink -> opaque, white paper -> transparent
+    return Image.fromarray(rgba, "RGBA")
+
+
 def merchant_typography(merchant: str | None) -> dict:
     """Per-merchant grid typography; {} -> default grid font.
 
@@ -740,8 +762,16 @@ def _render_cached_hybrid(
     render_input = receipt
     logo_bbox = None
     logo_image = None
-    if atlas is not None and getattr(atlas, "logo", None) is not None:
-        logo_image, depicts_subtitle = _trim_clipped_subtitle(atlas.logo)
+    # Prefer the canonical (averaged-across-receipts) logo over the smeared atlas
+    # capture; it is the full wordmark, so treat it as depicting the subtitle.
+    canon_logo = _merchant_logo(receipt.get("merchant_name"))
+    _have_logo = canon_logo is not None or (
+        atlas is not None and getattr(atlas, "logo", None) is not None)
+    if _have_logo:
+        if canon_logo is not None:
+            logo_image, depicts_subtitle = canon_logo, True
+        else:
+            logo_image, depicts_subtitle = _trim_clipped_subtitle(atlas.logo)
         logo_line = _cached_logo_line(receipt)
         if logo_line:
             if depicts_subtitle:
