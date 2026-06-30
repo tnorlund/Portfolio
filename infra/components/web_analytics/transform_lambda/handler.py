@@ -61,20 +61,22 @@ def _run(sql: str) -> str:
 
 def _insert_sql(dt: str) -> str:
     # CloudFront percent-encodes log fields once; the beacon query string's
-    # nested param values were url-encoded by the client too, so only it needs a
-    # second decode. Single-decode referrer/user_agent to avoid corrupting
-    # values that legitimately contain percent sequences.
+    # nested params were url-encoded by the client too, so only it needs a
+    # second decode. Single-decode referrer/UA to avoid corrupting values
+    # that legitimately contain percent sequences.
     qd = "url_decode(url_decode(query_string))"
     ua = "lower(url_decode(user_agent))"
     return f"""
 INSERT INTO {DB}.web_events
 WITH src AS (
-  SELECT * FROM {DB}.cloudfront_logs_prod WHERE "$path" LIKE '%.{dt}-%'
+  SELECT *, regexp_extract({qd}, 'eid=([^&]+)', 1) AS _eid
+  FROM {DB}.cloudfront_logs_prod WHERE "$path" LIKE '%.{dt}-%'
 ),
 dedup AS (
   SELECT * FROM (
     SELECT *, row_number() OVER (
-      PARTITION BY request_id ORDER BY time
+      PARTITION BY (CASE WHEN _eid <> '' THEN _eid ELSE request_id END)
+      ORDER BY time
     ) AS rn FROM src
   ) WHERE rn = 1
 )
@@ -91,6 +93,7 @@ SELECT
   regexp_extract({qd}, 'event=([^&]+)', 1) AS event,
   regexp_extract({qd}, 'path=([^&]+)', 1) AS evt_path,
   regexp_extract({qd}, 'sid=([^&]+)', 1) AS sid,
+  _eid AS eid,
   regexp_like(request_ip, '^(104\\.28\\.|2a09:bac)') AS is_warp,
   (regexp_like({ua}, '{_BOT_RE}')
      OR regexp_like(request_ip, '^185\\.177\\.72\\.')) AS is_bot,
@@ -136,7 +139,7 @@ def _target_dates(event: dict) -> list:
     return [(today - timedelta(days=1)).isoformat(), today.isoformat()]
 
 
-def handler(event, context):
+def handler(event, _context):
     event = event or {}
     rebuilt = [_rebuild_partition(dt) for dt in _target_dates(event)]
     return {"rebuilt_partitions": rebuilt}

@@ -29,6 +29,11 @@ from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 _HANDLER_DIR = str(Path(__file__).resolve().parent / "transform_lambda")
 
+# Short aliases for verbose pulumi_aws Args classes (keeps lines <= 79 cols).
+_SerDeInfo = aws.glue.CatalogTableStorageDescriptorSerDeInfoArgs
+_LifecycleExpiry = aws.s3.BucketLifecycleConfigurationRuleExpirationArgs
+_WgResultConfig = aws.athena.WorkgroupConfigurationResultConfigurationArgs
+
 # CloudFront standard access-log columns, in order.
 _CLOUDFRONT_COLUMNS = [
     ("date", "date"),
@@ -113,7 +118,7 @@ class WebAnalytics(ComponentResource):
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
                         prefix=""
                     ),
-                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                    expiration=_LifecycleExpiry(
                         days=results_expiration_days
                     ),
                 )
@@ -151,7 +156,7 @@ class WebAnalytics(ComponentResource):
                     )
                     for col, typ in _CLOUDFRONT_COLUMNS
                 ],
-                ser_de_info=aws.glue.CatalogTableStorageDescriptorSerDeInfoArgs(
+                ser_de_info=_SerDeInfo(
                     serialization_library=(
                         "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
                     ),
@@ -171,7 +176,7 @@ class WebAnalytics(ComponentResource):
             configuration=aws.athena.WorkgroupConfigurationArgs(
                 enforce_workgroup_configuration=True,
                 publish_cloudwatch_metrics_enabled=False,
-                result_configuration=aws.athena.WorkgroupConfigurationResultConfigurationArgs(
+                result_configuration=_WgResultConfig(
                     output_location=self.results_bucket.bucket.apply(
                         lambda b: f"s3://{b}/results/"
                     ),
@@ -205,6 +210,7 @@ class WebAnalytics(ComponentResource):
             ("event", "string"),
             ("evt_path", "string"),
             ("sid", "string"),
+            ("eid", "string"),
             ("is_warp", "boolean"),
             ("is_bot", "boolean"),
             ("edge_location", "string"),
@@ -240,7 +246,7 @@ class WebAnalytics(ComponentResource):
                     )
                     for col, typ in curated_columns
                 ],
-                ser_de_info=aws.glue.CatalogTableStorageDescriptorSerDeInfoArgs(
+                ser_de_info=_SerDeInfo(
                     serialization_library=(
                         "org.apache.hadoop.hive.ql.io.parquet.serde."
                         "ParquetHiveSerDe"
@@ -328,6 +334,13 @@ class WebAnalytics(ComponentResource):
         )
 
         # --- Read-only IAM policy (attach to MCP Lambda role) ---
+        account_id = aws.get_caller_identity().account_id
+        region = aws.get_region().name
+        glue_resources = [
+            f"arn:aws:glue:{region}:{account_id}:catalog",
+            f"arn:aws:glue:{region}:{account_id}:database/{database_name}",
+            f"arn:aws:glue:{region}:{account_id}:table/{database_name}/*",
+        ]
         self.read_policy = aws.iam.Policy(
             f"{name}-read-policy",
             policy=Output.all(
@@ -335,7 +348,9 @@ class WebAnalytics(ComponentResource):
                 self.results_bucket.arn,
                 self.curated_bucket.arn,
             ).apply(
-                lambda args: _policy_json(args[0], args[1], args[2])
+                lambda args: _policy_json(
+                    args[0], args[1], args[2], glue_resources
+                )
             ),
             opts=child,
         )
@@ -354,7 +369,10 @@ class WebAnalytics(ComponentResource):
 
 
 def _policy_json(
-    logs_bucket: str, results_bucket_arn: str, curated_bucket_arn: str
+    logs_bucket: str,
+    results_bucket_arn: str,
+    curated_bucket_arn: str,
+    glue_resources: list,
 ) -> str:
     return json.dumps(
         {
@@ -383,7 +401,7 @@ def _policy_json(
                         "glue:GetPartition",
                         "glue:GetPartitions",
                     ],
-                    "Resource": "*",
+                    "Resource": glue_resources,
                 },
                 {
                     "Sid": "ReadLogsAndCurated",
