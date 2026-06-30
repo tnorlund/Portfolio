@@ -60,8 +60,13 @@ def canonicalize_auth_tokens(words: list[dict]) -> int:
         nxt = str(words[i + 1].get("text") or "") if i + 1 < len(words) else ""
         if t in _TOKEN_FIX:
             new = _TOKEN_FIX[t]
-        elif t in ("DID:", "AND:", "AlD:", "A1D:", "AIO:") and _AID_HEX.match(nxt.upper()):
-            new = "AID:"
+        elif (
+            t.rstrip(":").upper() in ("DID", "AND", "ALD", "A1D", "AIO", "AlD")
+            and _AID_HEX.match(nxt.upper())
+        ):
+            # "AID" label before the hex AID, with/without the printed colon. The
+            # hex-follow gate makes substituting the common word "AND" safe here.
+            new = "AID:" if t.endswith(":") else "AID"
         elif t.upper() == "WIN" and prev.upper() == "BY":
             new = "PIN" if t.isupper() else "Pin"
         else:

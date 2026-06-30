@@ -713,6 +713,7 @@ def _render_cached_hybrid(
         bbox=logo_bbox,
         logo_image=logo_image,
     )
+    _overlay_inbody_barcodes(image, receipt, config=config, coord_max=1000.0)
     _overlay_qr_and_barcode(image, receipt, config=config, coord_max=1000.0)
     # Deterministic per-output seed so re-rendering the same file is stable.
     texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
@@ -912,6 +913,67 @@ def _paste_graphic_tile(image, tile, x: int, y: int) -> None:
     image.paste(tile.convert("RGBA"), (int(x), int(y)))
 
 
+def _hri_digits(text: str) -> str | None:
+    """The digit string if ``text`` is a long human-readable barcode caption."""
+    digits = re.sub(r"[^0-9]", "", str(text or ""))
+    raw = re.sub(r"\s", "", str(text or ""))
+    # >=14 digits and almost entirely numeric (allow a few separators).
+    if len(digits) >= 14 and len(digits) >= 0.8 * len(raw):
+        return digits
+    return None
+
+
+def _overlay_inbody_barcodes(
+    image, receipt: dict, *, config: RenderConfig, coord_max: float
+) -> int:
+    """Stamp Code-128 bars above in-body transaction-number lines (the HRI digits).
+
+    Real receipts print the long transaction number AS a barcode; our text render
+    shows only the digits. For each long-numeric line with genuine blank space
+    directly above it, paste a bar tile in that gap (never over existing text).
+    Returns the number stamped.
+    """
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    all_words = receipt.get("words") or [
+        w for line in (receipt.get("lines") or [])
+        for w in (line.get("words") or [])
+    ]
+    words = [w for w in all_words if w.get("bbox")]
+    if not words:
+        return 0
+    px = []
+    for w in words:
+        l, t, r, b = _to_pixel_box(
+            w["bbox"], coord_max=coord_max, margin=config.margin,
+            inner_w=inner_w, inner_h=inner_h,
+        )
+        px.append((w, min(t, b), max(t, b), min(l, r), max(l, r)))
+    stamped = 0
+    for i, (w, top, bot, left, right) in enumerate(px):
+        digits = _hri_digits(w.get("text"))
+        if digits is None:
+            continue
+        # nearest content bottom strictly above this line
+        above = [pb for j, (_, pt, pb, _, _) in enumerate(px)
+                 if j != i and pb <= top + 2]
+        nearest = max(above) if above else float(config.margin)
+        space = top - nearest
+        if space < 34:
+            continue
+        bar_h = int(min(30, space - 8))
+        bar_w = int(min(inner_w * 0.7, max(right - left, inner_w * 0.4) * 1.3))
+        cx = (left + right) / 2.0
+        tile = receipt_graphics.render_barcode_tile(
+            digits[:24], "code128", bar_w, bar_h, with_hri=False
+        )
+        _paste_graphic_tile(image, tile, int(cx - bar_w / 2), int(top - 6 - bar_h))
+        stamped += 1
+        if stamped >= 2:
+            break
+    return stamped
+
+
 def _overlay_qr_and_barcode(
     image, receipt: dict, *, config: RenderConfig, coord_max: float
 ) -> None:
@@ -1003,6 +1065,17 @@ def _overlay_qr_and_barcode(
         _paste_graphic_tile(
             image, barcode_tile, int(cx - bar_w / 2), y0 + qr_size + gap
         )
+    elif avail_h >= 64 + gap + bar_h:
+        # Band too short for a full QR block: fit a SMALLER QR + barcode rather
+        # than dropping the QR entirely (the footer narration promises one).
+        qs = min(qr_size, int(avail_h - gap - bar_h))
+        block = qs + gap + bar_h
+        y0 = int(gtop + (avail_h - block) / 2)
+        qr_tile = receipt_graphics.render_qr_tile(
+            _qr_payload(receipt, seed), qs, seed
+        )
+        _paste_graphic_tile(image, qr_tile, int(cx - qs / 2), y0)
+        _paste_graphic_tile(image, barcode_tile, int(cx - bar_w / 2), y0 + qs + gap)
     elif avail_h >= bar_h + 6:
         y0 = int(gtop + (avail_h - bar_h) / 2)
         _paste_graphic_tile(image, barcode_tile, int(cx - bar_w / 2), y0)
