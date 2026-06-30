@@ -579,13 +579,51 @@ def _render_cached_hybrid(
         max_font_px=28,
         grid_mode=True,
     )
+    # When the atlas supplies a logo bitmap, that bitmap is the source of truth
+    # for the merchant wordmark. The MERCHANT_NAME glyph tokens the logo depicts
+    # must NOT also be drawn as text, or they double-print into an illegible
+    # smear under the pasted logo (e.g. COSTCO's WHOLESALE, SPROUTS' FARMERS
+    # MARKET). We suppress those tokens and let the logo depict them.
+    #
+    # If the captured logo's subtitle band is clipped to an unreadable sliver, we
+    # crop it off and instead render the subtitle tokens as ordinary text in
+    # their own (reserved) row below the brand wordmark.
+    render_input = receipt
+    logo_bbox = None
+    logo_image = None
+    if atlas is not None and getattr(atlas, "logo", None) is not None:
+        logo_image, depicts_subtitle = _trim_clipped_subtitle(atlas.logo)
+        logo_line = _cached_logo_line(receipt)
+        if logo_line:
+            if depicts_subtitle:
+                # Logo shows the whole wordmark: suppress brand + subtitle text
+                # and size the logo to the full wordmark region.
+                wordmark = _logo_wordmark_words(receipt)
+                if wordmark:
+                    wordmark_words, logo_bbox = wordmark
+                    render_input = _receipt_drop_words(receipt, wordmark_words)
+            else:
+                # Logo shows only the brand line: suppress just that line and let
+                # the subtitle render as clean text in the row below it.
+                logo_bbox = _union_bbox(
+                    [w["bbox"] for w in logo_line if w.get("bbox")]
+                )
+                render_input = _receipt_drop_words(receipt, logo_line)
     image = render_receipt(
-        receipt,
+        render_input,
         profile=profile,
         config=config,
         coord_max=1000.0,
     ).convert("RGBA")
-    _overlay_cached_logo(image, receipt, atlas, config=config, coord_max=1000.0)
+    _overlay_cached_logo(
+        image,
+        receipt,
+        atlas,
+        config=config,
+        coord_max=1000.0,
+        bbox=logo_bbox,
+        logo_image=logo_image,
+    )
     _overlay_qr_and_barcode(image, receipt, config=config, coord_max=1000.0)
     # Deterministic per-output seed so re-rendering the same file is stable.
     texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
@@ -602,13 +640,23 @@ def _overlay_cached_logo(
     *,
     config: RenderConfig,
     coord_max: float,
+    bbox: list[float] | None = None,
+    logo_image=None,
 ) -> None:
-    if atlas.logo is None:
+    # ``logo_image`` (e.g. a clipped-subtitle-trimmed copy) overrides the atlas
+    # bitmap when supplied.
+    logo = logo_image if logo_image is not None else getattr(atlas, "logo", None)
+    if logo is None:
         return
-    logo_line = _cached_logo_line(receipt)
-    if not logo_line:
-        return
-    bbox = _union_bbox([word["bbox"] for word in logo_line if word.get("bbox")])
+    # ``bbox`` (the full wordmark region, including any reserved subtitle row)
+    # may be supplied by the caller; otherwise fall back to the brand line.
+    if bbox is None:
+        logo_line = _cached_logo_line(receipt)
+        if not logo_line:
+            return
+        bbox = _union_bbox(
+            [word["bbox"] for word in logo_line if word.get("bbox")]
+        )
     if bbox is None:
         return
     inner_w = config.width - 2 * config.margin
@@ -622,7 +670,6 @@ def _overlay_cached_logo(
     )
     box_w = max(1, right - left)
     box_h = max(1, bottom - top)
-    logo = atlas.logo
     scale = min(box_w / logo.width, box_h / logo.height)
     if scale <= 0:
         return
@@ -665,6 +712,72 @@ def _darken_logo(logo):
     out[..., 2] = 20
     out[..., 3] = (boosted * 255.0).astype(np.uint8)
     return Image.fromarray(out, mode="RGBA")
+
+
+# A captured subtitle band shorter than this fraction of the brand wordmark's
+# height is treated as a clipped sliver (letter-tops only) that reads as a smear
+# when pasted, and is cropped off the logo. Costco's WHOLESALE band (~0.20) is
+# kept; Sprouts' clipped FARMERS MARKET (~0.13) is dropped.
+_CLIPPED_SUBTITLE_RATIO = 0.16
+
+
+def _trim_clipped_subtitle(logo):
+    """Drop a clipped partial subtitle band fused to the bottom edge of a logo.
+
+    Some captured wordmark crops slice through the subtitle line (e.g. the
+    ``FARMERS MARKET`` band under SPROUTS is cut to letter-tops). Pasted as-is
+    that sliver reads as an illegible smear beneath the brand. We detect a thin
+    ink band that runs into the bottom edge and is separated from the main
+    wordmark by a horizontal whitespace gap, then crop it off.
+
+    Returns ``(logo, depicts_subtitle)``. ``depicts_subtitle`` is ``False`` when
+    a band was trimmed, so the caller knows the logo no longer shows the subtitle
+    and should render those tokens as ordinary text in their own row instead.
+    A full, legible subtitle band (e.g. Costco's WHOLESALE) is left in place and
+    reported as depicted.
+    """
+    import numpy as np
+
+    arr = np.asarray(logo.convert("RGBA")).astype(np.float32)
+    alpha = arr[..., 3] / 255.0
+    height = alpha.shape[0]
+    if height < 16:
+        return logo, True
+    row_ink = alpha.mean(axis=1)
+    peak = float(row_ink.max())
+    if peak <= 0.0:
+        return logo, True
+    ink = row_ink > 0.12 * peak
+    # The subtitle is only "clipped" if ink runs right into the bottom edge.
+    if not bool(ink[-1]):
+        return logo, True
+    # Walk up across the contiguous bottom ink band.
+    y = height - 1
+    while y >= 0 and ink[y]:
+        y -= 1
+    band_top = y + 1
+    band_h = height - band_top
+    # Require a whitespace gap separating the band from the wordmark above it.
+    gap = 0
+    while y >= 0 and not ink[y]:
+        y -= 1
+        gap += 1
+    if gap < 1 or y < 0:
+        return logo, True
+    # ``y`` now indexes the last ink row of the main wordmark (its baseline).
+    main_bottom = y + 1
+    # Height of the main wordmark (top-most ink row down to the gap).
+    top = 0
+    while top < height and not ink[top]:
+        top += 1
+    main_h = main_bottom - top
+    if main_h <= 0:
+        return logo, True
+    if band_h <= _CLIPPED_SUBTITLE_RATIO * main_h:
+        # Crop at the wordmark baseline so the whitespace gap and the clipped
+        # subtitle sliver (including its sub-threshold letter-tops) are dropped.
+        return logo.crop((0, 0, logo.width, main_bottom)), False
+    return logo, True
 
 
 def _iter_receipt_bboxes(receipt: dict) -> list[list[float]]:
@@ -845,6 +958,106 @@ def _cached_logo_line(receipt: dict) -> list[dict] | None:
     if not candidates:
         return None
     return max(candidates, key=lambda item: (item[0], item[1]))[2]
+
+
+def _flatten_receipt_words(receipt: dict) -> list[dict]:
+    """Return the receipt's word dicts (originals, for identity matching)."""
+    words = receipt.get("words")
+    if words:
+        return list(words)
+    return [
+        word
+        for line in (receipt.get("lines") or [])
+        for word in (line.get("words") or [])
+    ]
+
+
+def _logo_wordmark_words(receipt: dict) -> tuple[list[dict], list[float]] | None:
+    """The MERCHANT_NAME wordmark that the atlas logo bitmap depicts.
+
+    Returns the detected logo line plus any MERCHANT_NAME subtitle word(s)
+    contiguous with it (e.g. COSTCO + WHOLESALE, SPROUTS + FARMERS MARKET) and
+    the union bbox of the whole wordmark. These text tokens are suppressed from
+    the glyph render and depicted by the pasted logo bitmap instead, so the
+    wordmark never double-prints as a smear under the logo. The union bbox also
+    reserves the subtitle's row for the logo so the wordmark is sized to the full
+    region (not squashed into the single brand line).
+
+    Generalizes off the existing logo-line / MERCHANT_NAME detection; no
+    per-merchant hardcoding.
+    """
+    logo_line = _cached_logo_line(receipt)
+    if not logo_line:
+        return None
+    band = _union_bbox([word["bbox"] for word in logo_line if word.get("bbox")])
+    if band is None:
+        return None
+    cluster = list(logo_line)
+    cluster_ids = {id(word) for word in cluster}
+    line_h = max(1.0, band[3] - band[1])
+    # Only rows immediately adjacent to the brand line (within one line height)
+    # count as the logo's subtitle, so far-away MERCHANT_NAME tokens (e.g. a
+    # footer ".com" wordmark) are not absorbed.
+    gap = line_h
+    candidates = [
+        word
+        for word in _flatten_receipt_words(receipt)
+        if id(word) not in cluster_ids
+        and word.get("bbox")
+        and any(
+            _label_name(label) == "MERCHANT_NAME"
+            for label in (word.get("labels") or [])
+        )
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for word in candidates:
+            if id(word) in cluster_ids:
+                continue
+            x0, y0, x1, y1 = (float(v) for v in word["bbox"][:4])
+            # Vertical contiguity with the current wordmark band.
+            if y0 > band[3] + gap or y1 < band[1] - gap:
+                continue
+            # Must sit in the same horizontal column as the wordmark.
+            if x1 <= band[0] or x0 >= band[2]:
+                continue
+            cluster.append(word)
+            cluster_ids.add(id(word))
+            band = [
+                min(band[0], x0),
+                min(band[1], y0),
+                max(band[2], x1),
+                max(band[3], y1),
+            ]
+            changed = True
+    return cluster, band
+
+
+def _receipt_drop_words(receipt: dict, drop: list[dict]) -> dict:
+    """Shallow copy of ``receipt`` with ``drop`` word dicts removed.
+
+    The original word dicts are left untouched so callers that still need the
+    full receipt (e.g. logo placement) keep working.
+    """
+    drop_ids = {id(word) for word in drop}
+    new = dict(receipt)
+    if receipt.get("words") is not None:
+        new["words"] = [
+            word for word in receipt["words"] if id(word) not in drop_ids
+        ]
+    if receipt.get("lines") is not None:
+        new_lines = []
+        for line in receipt["lines"]:
+            new_line = dict(line)
+            new_line["words"] = [
+                word
+                for word in (line.get("words") or [])
+                if id(word) not in drop_ids
+            ]
+            new_lines.append(new_line)
+        new["lines"] = new_lines
+    return new
 
 
 def _union_bbox(boxes: list[list[float]]) -> list[float] | None:
