@@ -75,3 +75,10 @@ next item (codex-review the plan first). Merge all landed lanes, then re-render 
 - **Add a RENDERED-layout scorecard** (row-merge count, drawn-token overlap, amount-col variance, decimal-col variance, flag-lane collisions) — the measurement that would have caught these. Fold into PR1.
 - Also: Amazon QR block missing (overlay only stamps if blank band fits, render_synthetic_receipts.py:826/883). Ink erosion separable from paper grain (hybrid already adds grain/vignette :523/:629; missing ink dropout).
 - **"Not demo-good yet"** — QA thumbnails OK, not full-size side-by-side portfolio renders.
+
+## V6 RE-SCORE (feat/grid-discipline: PR1 layout + PR2 font + PR2b per-section size) — PLATEAU BROKEN
+- Opus/Claude 20-render mean **2.71 -> 4.63 (+1.92, +71%)**. Structural plateau cleared: 0 renders fail on font/layout/texture as the PRIMARY tell now.
+- Tell categories: content 17/20 (85%), graphics 2, paper-texture 1. CONTENT is now the gate, as predicted.
+- 0/20 demo-ready; near-ready 6.0 cluster (one content fix each): amazon remove, costco compose-header, vons compose-header, costco remove.
+- Stack committed: plan/draw split + rendered scorecard + overlap row-grouping + amount lane + row-pitch + body gaps (PR1); Andale->B612 OFL font + font_bakeoff (PR2); per-section size (header smaller, zonal/label-independent) dual-reviewed claude+codex, per-merchant map (PR2b); disk-cache atlas/profile 128s->0.004s.
+- PR3 SCOPE (content, ranked): (1) canonical EMV/auth string table [AID:/VERIFIED BY PIN/Seq#] ~13 renders near-free; (2) amount-gutter anti-fusion [fixed price col + gutter + truncate long names] ~11; (3) totals reconciliation [closed ledger, no blank/3-decimal] ~8 (sole blocker on the 6.0 cluster). Defer logos/barcodes + date/footer to PR4. (codex cross-check pending.)
