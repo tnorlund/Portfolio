@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
@@ -32,13 +32,16 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+    GridSpec,
     GridWord,
     amount_lane_end,
     assign_row_baselines,
     build_grid_spec,
     draw_grid_line,
+    effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
+    section_for_labels,
 )
 
 # Grid-path body face, most receipt-like first. Real thermal receipts use a
@@ -105,6 +108,13 @@ class RenderConfig:
     # hard (non-anti-aliased) glyphs on a shared baseline. When False the legacy
     # per-token box-fitting path is used (see ``render_receipt``).
     grid_mode: bool = False
+    # Per-section typography (real thermal receipts switch Font A / Font B per
+    # region). ``section_scale`` multiplies the body font size for a section
+    # (e.g. {"HEADER": 0.8}); ``section_font`` overrides the face for a section.
+    # BODY/TOTALS stay at scale 1.0 so they share the amount column. None = the
+    # whole receipt uses one size/font.
+    section_scale: Mapping[str, float] | None = None
+    section_font: Mapping[str, str] | None = None
 
 
 def render_receipt(
@@ -240,14 +250,45 @@ def _render_grid(
                 bottom=bottom,
                 text=text,
                 ink=_ink_for(word, config),
+                section=section_for_labels(word.get("labels")),
             )
         )
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
     amount_lane = amount_lane_end(rows, spec)
     baselines = assign_row_baselines(rows, ascent, min_pitch)
-    for line, baseline in zip(rows, baselines):
-        draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane)
+
+    # Per-section typography: a row whose section has a scale != 1.0 or a font
+    # override is drawn with its own (cached) spec/font. BODY/TOTALS stay at the
+    # base spec so the shared amount column still aligns; scaled sections (HEADER,
+    # PAYMENT) drop the lane since they carry no price column.
+    section_scale = config.section_scale or {}
+    section_font = config.section_font or {}
+    eff_sections = effective_row_sections(rows)
+    row_cache: dict[tuple[str | None, float], tuple] = {}
+    for line, baseline, sect in zip(rows, baselines, eff_sections):
+        sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
+        fpath = section_font.get(sect) if sect else None
+        if sc == 1.0 and not fpath:
+            draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane)
+            continue
+        key = (fpath, sc)
+        cached = row_cache.get(key)
+        if cached is None:
+            row_font_px = max(6, int(round(sizing.font_px * sc)))
+            row_cfg = config if not fpath else replace(config, font_path=fpath)
+            row_font = _load_grid_font(row_font_px, row_cfg)
+            row_adv = glyph_advance(draw, row_font)
+            row_spec = GridSpec(
+                cell_w=row_adv, cell_h=spec.cell_h,
+                font_px=row_font_px, grid_left=spec.grid_left,
+            )
+            row_cache[key] = (row_spec, row_font)
+            cached = row_cache[key]
+        row_spec, row_font = cached
+        # Lane only applies when the row shares the base cell grid (scale 1.0).
+        lane = amount_lane if sc == 1.0 else None
+        draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane)
 
 
 def _load_grid_font(

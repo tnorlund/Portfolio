@@ -563,6 +563,8 @@ def _render_cached_hybrid(
     height: int,
     path: str,
     font_path: str | None = None,
+    section_scale: dict | None = None,
+    section_font: dict | None = None,
 ) -> str:
     config = RenderConfig(
         width=width,
@@ -571,6 +573,8 @@ def _render_cached_hybrid(
         color_by_label=False,
         draw_price_column=False,
         background=(250, 249, 245),
+        section_scale=section_scale,
+        section_font=section_font,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps

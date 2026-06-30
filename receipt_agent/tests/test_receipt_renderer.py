@@ -347,6 +347,32 @@ def test_amount_lane_aligns_jittered_prices():
     assert max(ends) - min(ends) == 0, ends
 
 
+def test_header_zone_sizes_unlabeled_rows_without_labels():
+    """Per-section sizing is zonal: unlabeled header rows scale, no labels needed.
+
+    The header has a labeled address line plus an UNLABELED url/order row; the
+    body-start is found by a price token (no label). Both header rows must end up
+    HEADER (and thus scalable), while the item row stays BODY.
+    """
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    ink = (0, 0, 0)
+    def gw(text, top, section=None):
+        return rg.GridWord(left=20, top=top, right=200, bottom=top + 14,
+                           text=text, ink=ink, section=section)
+    rows = [
+        [gw("123 MAIN ST", 0, section="HEADER")],     # labeled header
+        [gw("www.shop.com", 16)],                      # UNLABELED header row
+        [gw("MILK", 40), gw("3.49", 40)],              # item row: price token, no label
+    ]
+    # "3.49" must be recognized as a price so the body-start is label-independent.
+    assert rg.is_price_token("3.49")
+    eff = rg.effective_row_sections(rows)
+    assert eff[0] == "HEADER"
+    assert eff[1] == "HEADER"          # unlabeled, promoted by zone
+    assert eff[2] != "HEADER"          # item row (price token) ends the header zone
+
+
 def test_body_gaps_collapse_but_preserve_real_columns():
     """Stage 4: source-whitespace gaps, not absolute snapped columns.
 

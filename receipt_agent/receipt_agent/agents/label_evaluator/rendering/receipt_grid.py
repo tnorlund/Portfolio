@@ -163,10 +163,87 @@ class GridWord:
     # row that fuses words from more than one printed line. ``None`` falls back to
     # a vertical-extent heuristic.
     source_line: int | None = None
+    # Receipt section (HEADER / BODY / TOTALS / PAYMENT), derived from the word's
+    # labels. Lets the renderer print each section at its own size/font, the way
+    # real thermal receipts switch between Font A / Font B per region.
+    section: str | None = None
 
     @property
     def center_y(self) -> float:
         return (self.top + self.bottom) / 2.0
+
+
+# Word labels grouped into the visual sections a thermal receipt sizes
+# independently. Order matters: the first matching section wins.
+SECTION_LABELS: dict[str, frozenset[str]] = {
+    "HEADER": frozenset({
+        "MERCHANT_NAME", "STORE_HOURS", "PHONE_NUMBER", "WEBSITE",
+        "ADDRESS_LINE", "DATE", "TIME",
+    }),
+    "TOTALS": frozenset({
+        "SUBTOTAL", "TAX", "TIP", "GRAND_TOTAL", "DISCOUNT", "COUPON",
+    }),
+    "BODY": frozenset({"PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"}),
+    "PAYMENT": frozenset({"PAYMENT_METHOD", "LOYALTY_ID"}),
+}
+
+
+def section_for_labels(labels: Sequence[str] | None) -> str | None:
+    """The receipt section for a word's labels (strips B-/I- NER prefixes)."""
+    if not labels:
+        return None
+    clean = {
+        str(lbl)[2:] if str(lbl)[:2] in ("B-", "I-") else str(lbl)
+        for lbl in labels
+    }
+    for section, names in SECTION_LABELS.items():
+        if clean & names:
+            return section
+    return None
+
+
+def row_section(line: Sequence[GridWord]) -> str | None:
+    """Majority section of a grouped row (ignoring unlabeled words)."""
+    counts: dict[str, int] = {}
+    for word in line:
+        if word.section:
+            counts[word.section] = counts.get(word.section, 0) + 1
+    if not counts:
+        return None
+    return max(counts, key=counts.get)
+
+
+def effective_row_sections(
+    rows: Sequence[Sequence[GridWord]],
+) -> list[str | None]:
+    """Section per row (top->bottom), with the header zone filled positionally.
+
+    Per-word labels are sparse -- a receipt header often has labeled address lines
+    but unlabeled URL / order-number lines. To size the whole header block
+    uniformly (the real Font-A/Font-B switch is positional, not per-token), every
+    UNLABELED row that sits ABOVE the first line-item row is promoted to HEADER.
+    Rows after the first item keep their own label section.
+
+    The body-start boundary is label-INDEPENDENT: a row is an item row if it is
+    labeled BODY/TOTALS/PAYMENT *or* simply carries a price token. So the header
+    zone is found even on a receipt with no labels at all -- the approach never
+    requires a word to be in the label corpus.
+    """
+    base = [row_section(r) for r in rows]
+
+    def is_item_row(i: int) -> bool:
+        if base[i] in ("BODY", "TOTALS", "PAYMENT"):
+            return True
+        return any(is_price_token(w.text) for w in rows[i])
+
+    first_item = next(
+        (i for i in range(len(rows)) if is_item_row(i)), None
+    )
+    if first_item is not None:
+        for i in range(first_item):
+            if base[i] is None:
+                base[i] = "HEADER"
+    return base
 
 
 # A word joins the current row when its box overlaps the row's vertical band by
