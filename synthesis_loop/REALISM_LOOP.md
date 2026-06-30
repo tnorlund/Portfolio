@@ -47,3 +47,9 @@ next item (codex-review the plan first). Merge all landed lanes, then re-render 
 - R6 reflow MERGED (ae67eab): compose-online-catalog vertical pitch (~32px, 0 overlap, integrity-gated) + respace gap floor tightened. 61 tests. CAVEATS->backlog: wide gaps from _build_template_filled_row char_w (Lane A), add_line_item vertical overlap (Lane A).
 - R7 logo MERGED (e5c481c): logo bitmap is wordmark source-of-truth; Costco EWHOLESALE smear + Sprouts clipped sliver gone, Amazon no-regress. Lane B -> #5 texture.
 - R8 item-line WIRING MERGED (f37e850, fixed): NOW marker + SALE sub-line via templates, full-cell gaps (codex VISUAL gate passed). Both major lanes in. -> BATCH measurement.
+
+## R8 BATCH MEASUREMENT (cumulative, /tmp/realism_v3)
+- Deterministic composite 0.643->0.640 (FLAT). vertical_overlap 0.683 UNCHANGED (reflow was compose-only; add/remove still collide). gap_p90 6.06->5.80 (marginal).
+- Opus mean 2.62->2.58 (FLAT). #1 tell ALL 3 re-scores = LAYOUT (space39/align37/column36/right-align21/pitch17): pseudo-justified word spacing + no right-aligned price column.
+- PLATEAU: 8 merges, no realism movement. Content/barcode/logo/flags landed but the DOMINANT layout tell is unfixed (we kept fixing it too narrowly: compose-only).
+- RE-AIM: stop backlog cadence. Single highest-leverage PR = LAYOUT ROOT CAUSE: (1) _respace_visual_line non-uniform (preserve tight gaps, only fix overlaps), (2) right-align price column, (3) extend vertical pitch to add/remove ops. Codex diagnosing (pid 33922) with a rendered example.
