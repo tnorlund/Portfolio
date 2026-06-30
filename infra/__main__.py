@@ -1304,6 +1304,40 @@ mcp_server = McpServerLambda(
 pulumi.export("mcp_server_url", mcp_server.function_url)
 pulumi.export("mcp_server_lambda_arn", mcp_server.lambda_arn)
 
+# Web analytics query layer: Glue + Athena over the CloudFront access logs,
+# read by the analytics_* MCP tools. No new pipeline — just a queryable view
+# of logs that already exist.
+# Glue/Athena names are account-global, and the analytics source is the prod
+# CloudFront logs — so only build this on the prod stack to avoid dev/prod
+# collisions. The MCP tools use a fixed DB name and query via account-level
+# creds, so they work regardless of which stack the caller runs in.
+if pulumi.get_stack() == "prod":
+    from components.web_analytics import WebAnalytics  # noqa: E402
+    from s3_website import cloudfront_logs_bucket  # noqa: E402
+
+    # GA4 second source is optional: the extractor Lambda is only built when
+    # both the service-account key (secret) and property id are configured.
+    #   pulumi config set --secret portfolio:gaServiceAccountKey @key.json
+    #   pulumi config set portfolio:gaPropertyId 542366301
+    _analytics_cfg = pulumi.Config()
+    web_analytics = WebAnalytics(
+        "web-analytics",
+        cloudfront_logs_bucket=cloudfront_logs_bucket.bucket,
+        log_prefix="cloudfront/prod/",
+        ga_service_account_key=_analytics_cfg.get_secret(
+            "gaServiceAccountKey"
+        ),
+        ga_property_id=_analytics_cfg.get("gaPropertyId"),
+    )
+    # Let the MCP Lambda role run Athena/Glue/S3 reads for the analytics tools.
+    aws.iam.RolePolicyAttachment(
+        "receipt-mcp-analytics-read",
+        role=mcp_server.lambda_role_name,
+        policy_arn=web_analytics.read_policy_arn,
+    )
+    pulumi.export("analytics_database", web_analytics.database_name)
+    pulumi.export("analytics_workgroup", web_analytics.workgroup_name)
+
 # Merge Receipt Lambda (for merging receipt fragments into a single receipt)
 # Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
 merge_receipt_lambda = create_merge_receipt_lambda(
