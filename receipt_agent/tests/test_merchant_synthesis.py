@@ -11,9 +11,17 @@ from receipt_agent.agents.label_evaluator.merchant_synthesis import (
     _analyze_receipt,
     _apply_taxable_delta,
     _build_line_item_line,
+    _build_line_item_band,
+    _build_sale_sub_line,
     _build_template_filled_row,
     _build_remove_item_candidate_from_plan,
+    _ensure_amount_word_gaps,
+    _fill_sale_sub_line_text,
+    _render_cell_width,
+    _item_line_template_for_merchant,
     _merchant_item_tax_flag,
+    _merchant_research_slug,
+    _template_word_gap,
     _merchant_online_catalog,
     _truncate_tokens_to_width,
     _normalize_receipt,
@@ -2598,3 +2606,310 @@ def test_space_line_block_to_pitch_repitches_rows_keeping_label_amount_aligned()
     assert lines[1]["words"][0]["bbox"][0] == 850
     # Chain return value sits one pitch below the last placed row's top.
     assert next_top == 700 - 2 * pitch
+
+
+# ---------------------------------------------------------------------------
+# Per-merchant item-line GRAMMAR wiring (markdown marker + sale sub-line).
+# ---------------------------------------------------------------------------
+
+
+def _template(*, marker=None, sub_template=None):
+    """Build a minimal ItemLineTemplate carrying just the marker / sub-line we
+    want to exercise (no export file dependency)."""
+    from receipt_agent.agents.label_evaluator.merchant_research.item_line_grammar import (
+        ItemLineTemplate,
+        MarkdownMarker,
+        SubLine,
+    )
+
+    return ItemLineTemplate(
+        merchant="Test Mart",
+        markdown_marker=MarkdownMarker(
+            present=marker is not None, token=marker, count=1 if marker else 0
+        ),
+        sub_line=SubLine(
+            present=sub_template is not None,
+            template=sub_template,
+            count=1 if sub_template else 0,
+        ),
+    )
+
+
+def test_merchant_research_slug_matches_export_filenames():
+    assert _merchant_research_slug("Amazon Fresh") == "amazon_fresh"
+    assert _merchant_research_slug("Costco Wholesale") == "costco_wholesale"
+    # Apostrophes drop before the split so "Smith's" -> "smiths" (not smith_s).
+    assert _merchant_research_slug("Smith's") == "smiths"
+    assert _merchant_research_slug(None) == ""
+
+
+def test_item_line_template_loads_amazon_marker_and_sub_line():
+    template = _item_line_template_for_merchant("amazon_fresh")
+    assert template is not None
+    assert template.markdown_marker.present is True
+    assert template.markdown_marker.token == "NOW"
+    assert template.sub_line.present is True
+    assert "WAS" in (template.sub_line.template or "")
+
+
+def test_item_line_template_costco_has_no_sub_line():
+    template = _item_line_template_for_merchant("costco_wholesale")
+    assert template is not None
+    assert template.markdown_marker.present is False
+    assert template.sub_line.present is False
+
+
+def test_item_line_template_missing_export_returns_none():
+    assert _item_line_template_for_merchant("") is None
+    assert _item_line_template_for_merchant("definitely_not_a_merchant_xyz") is None
+
+
+def test_template_word_gap_mirrors_min_word_gap():
+    from receipt_agent.agents.label_evaluator.synthesis_reconcile import (
+        _min_word_gap,
+    )
+
+    for h in (6, 18, 20, 40):
+        assert _template_word_gap(h) == max(round(_min_word_gap(h)), 3)
+    # Never collapses below the absolute floor.
+    assert _template_word_gap(0) >= 3
+
+
+def test_build_line_item_line_emits_marker_before_price():
+    receipt = _item_anchor_receipt()
+    line = _build_line_item_line(
+        receipt,
+        _line_item_entry("ORGANIC MILK", True),
+        y_center=400,
+        merchant_name="Amazon Fresh",
+        marker_token="NOW",
+    )
+    texts = [w["text"] for w in line["words"]]
+    price_idx = next(
+        i for i, w in enumerate(line["words"]) if w["labels"] == ["LINE_TOTAL"]
+    )
+    # Marker sits immediately left of the price and is supervision-neutral (O).
+    assert texts[price_idx - 1] == "NOW"
+    assert line["words"][price_idx - 1]["labels"] == []
+    # Marker box ends before the price box begins (no overlap).
+    assert line["words"][price_idx - 1]["bbox"][2] <= line["words"][price_idx]["bbox"][0]
+
+
+def test_build_line_item_line_without_marker_unchanged():
+    receipt = _item_anchor_receipt()
+    line = _build_line_item_line(
+        receipt, _line_item_entry("ORGANIC MILK", True), y_center=400,
+        merchant_name="Amazon Fresh",
+    )
+    assert "NOW" not in [w["text"] for w in line["words"]]
+
+
+def test_fill_sale_sub_line_text_was_exceeds_now():
+    template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
+    text = _fill_sale_sub_line_text(template, Decimal("4.99"))
+    assert text == "SALE 1 $4.99, WAS: $7.49 each"
+    # No sub-line grammar -> nothing rendered.
+    assert _fill_sale_sub_line_text(_template(), Decimal("4.99")) is None
+
+
+def test_build_sale_sub_line_is_all_o_and_on_canvas():
+    template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
+    sub = _build_sale_sub_line(
+        template=template,
+        price=Decimal("4.99"),
+        line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+        y0=200,
+        char_w=9,
+        height=24,
+        x0=90,
+    )
+    assert sub is not None
+    assert all(w["labels"] == [] for w in sub["words"])
+    assert all(0 <= w["bbox"][0] and w["bbox"][2] <= 1000 for w in sub["words"])
+    assert sub["words"][0]["text"] == "SALE"
+
+
+def test_build_sale_sub_line_keeps_one_cell_gap_and_renders_every_token():
+    """Regression: the fixed-pitch renderer snaps each word to the character grid
+    and only guards against overlap, so a sub-cell gap after the right-aligned WAS
+    amount glued the trailing unit word ("$7.49each"). Every inter-token boundary
+    must keep >= one full character cell of clear space, and all tokens (including
+    the WAS value and "each") must render."""
+    template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
+    char_w = 22
+    sub = _build_sale_sub_line(
+        template=template,
+        price=Decimal("4.99"),
+        line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+        y0=200,
+        char_w=char_w,
+        height=24,
+        x0=90,
+    )
+    assert sub is not None
+    assert [w["text"] for w in sub["words"]] == [
+        "SALE",
+        "1",
+        "$4.99,",
+        "WAS:",
+        "$7.49",
+        "each",
+    ]
+    ordered = sorted(sub["words"], key=lambda w: w["bbox"][0])
+    for prev, nxt in zip(ordered, ordered[1:]):
+        assert nxt["bbox"][0] - prev["bbox"][2] >= char_w
+    assert all(w["bbox"][2] <= 1000 for w in sub["words"])
+
+
+def test_build_sale_sub_line_fits_long_value_on_canvas():
+    """A wide sub-line placed near the right edge is shifted left so the WAS value
+    and the trailing "each" stay on canvas instead of reading as truncated."""
+    template = _template(sub_template="SALE {n} {price}, WAS: {price} each")
+    sub = _build_sale_sub_line(
+        template=template,
+        price=Decimal("88.88"),
+        line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+        y0=200,
+        char_w=30,
+        height=24,
+        x0=700,  # verbatim placement would push "each" off the right edge
+    )
+    assert sub is not None
+    assert sub["words"][-1]["text"] == "each"
+    assert all(0 <= w["bbox"][0] and w["bbox"][2] <= 1000 for w in sub["words"])
+
+
+def test_render_cell_width_uses_median_char_advance():
+    receipt = {
+        "lines": [
+            {
+                "words": [
+                    {"text": "ABCD", "bbox": [0, 0, 80, 20]},  # 20 px / char
+                    {"text": "WXYZ", "bbox": [0, 0, 80, 20]},
+                ]
+            }
+        ]
+    }
+    assert _render_cell_width(receipt) == 20
+
+
+def test_ensure_amount_word_gaps_degludes_price_and_flag():
+    """A cloned real row whose tax flag butts against the right-aligned price
+    ("$4.39F") renders glued on the character grid. The de-glue nudges only the
+    token following an amount right by one cell, leaving the already-spaced name
+    column untouched."""
+    line = {
+        "line_id": 20_000,
+        "words": [
+            {"text": "365", "bbox": [17, 640, 84, 664], "labels": ["PRODUCT_NAME"]},
+            {
+                "text": "Whole",
+                "bbox": [91, 640, 200, 664],
+                "labels": ["PRODUCT_NAME"],
+            },
+            {
+                "text": "$4.39",
+                "bbox": [825, 640, 937, 664],
+                "labels": ["LINE_TOTAL"],
+            },
+            {"text": "F", "bbox": [942, 640, 971, 664], "labels": []},
+        ],
+    }
+    name_before = (line["words"][1]["bbox"][0], line["words"][1]["bbox"][2])
+    _ensure_amount_word_gaps([line], cell_w=22)
+    price = next(w for w in line["words"] if w["text"] == "$4.39")
+    flag = next(w for w in line["words"] if w["text"] == "F")
+    assert flag["bbox"][0] - price["bbox"][2] >= 22  # one blank cell after price
+    assert flag["bbox"][2] <= 1000
+    # The spaced name token is not disturbed by the de-glue.
+    assert (
+        line["words"][1]["bbox"][0],
+        line["words"][1]["bbox"][2],
+    ) == name_before
+
+
+def test_build_line_item_band_appends_sub_line_for_amazon_template():
+    receipt = _item_anchor_receipt()
+    template = _template(
+        marker="NOW", sub_template="SALE {n} {price}, WAS: {price} each"
+    )
+    band = _build_line_item_band(
+        receipt,
+        _line_item_entry("ORGANIC MILK", True),
+        y_center=400,
+        merchant_name="Amazon Fresh",
+        template=template,
+        line_step=26,
+    )
+    assert len(band) == 2  # primary + sub-line
+    primary, sub = band
+    assert "NOW" in [w["text"] for w in primary["words"]]
+    assert all(w["labels"] == [] for w in sub["words"])
+    # Sub-line sits BELOW the primary (smaller y in the y-high-is-top model).
+    primary_bottom = min(w["bbox"][1] for w in primary["words"])
+    sub_top = max(w["bbox"][3] for w in sub["words"])
+    assert sub_top <= primary_bottom
+
+
+def test_build_line_item_band_no_sub_line_when_template_absent():
+    receipt = _item_anchor_receipt()
+    band = _build_line_item_band(
+        receipt,
+        _line_item_entry("ORGANIC MILK", True),
+        y_center=400,
+        merchant_name="Costco Wholesale",
+        template=_template(),  # no marker, no sub-line
+        line_step=26,
+    )
+    assert len(band) == 1
+    assert "NOW" not in [w["text"] for w in band[0]["words"]]
+
+
+def test_template_filled_row_emits_marker_and_verifies_clean():
+    geo = {"char_w": 10, "name_x0": 140, "price_x1": 460, "height": 20}
+    template = _template(
+        marker="NOW", sub_template="SALE {n} {price}, WAS: {price} each"
+    )
+    row = _build_template_filled_row(
+        OnlineCatalogEntry("ACME BOLT KIT", Decimal("12.50"), "012345678905"),
+        y0=100,
+        geo=geo,
+        line_id=_SYNTHETIC_LINE_ID_BASE,
+        merchant_name="Amazon Fresh",
+        template=template,
+    )
+    assert row is not None
+    texts = [w["text"] for w in row["words"]]
+    assert "NOW" in texts
+    marker_word = next(w for w in row["words"] if w["text"] == "NOW")
+    assert marker_word["labels"] == []  # markdown marker is O
+    # Verifier accepts the marker (still all_correct) on the primary row.
+    assert _verify_template_row_labels({"lines": [row]})["all_correct"] is True
+
+
+def test_verify_template_row_labels_accepts_all_o_sub_line():
+    geo = {"char_w": 10, "name_x0": 140, "price_x1": 460, "height": 20}
+    template = _template(
+        marker="NOW", sub_template="SALE {n} {price}, WAS: {price} each"
+    )
+    row = _build_template_filled_row(
+        OnlineCatalogEntry("ACME BOLT KIT", Decimal("12.50"), "012345678905"),
+        y0=100,
+        geo=geo,
+        line_id=_SYNTHETIC_LINE_ID_BASE,
+        merchant_name="Amazon Fresh",
+        template=template,
+    )
+    sub = _build_sale_sub_line(
+        template=template,
+        price=Decimal("12.50"),
+        line_id=_SYNTHETIC_LINE_ID_BASE + 1,
+        y0=60,
+        char_w=10,
+        height=20,
+        x0=140,
+    )
+    result = _verify_template_row_labels({"lines": [row, sub]})
+    # The sub-line's $ tokens are expected O (not LINE_TOTAL) and do not break
+    # the primary row's product/price correctness.
+    assert result["all_correct"] is True
