@@ -54,3 +54,8 @@ next item (codex-review the plan first). Merge all landed lanes, then re-render 
 - PLATEAU: 8 merges, no realism movement. Content/barcode/logo/flags landed but the DOMINANT layout tell is unfixed (we kept fixing it too narrowly: compose-only).
 - RE-AIM: stop backlog cadence. Single highest-leverage PR = LAYOUT ROOT CAUSE: (1) _respace_visual_line non-uniform (preserve tight gaps, only fix overlaps), (2) right-align price column, (3) extend vertical pitch to add/remove ops. Codex diagnosing (pid 33922) with a rendered example.
 - R9 tight-gap-contract MERGED (2ab208a): SALE-line floating gaps collapsed to single-space (deglue-only contract, render-time price->flag cursor). composite +0.011 on affected candidates, 96 tests. CAVEAT: dominant target/sprouts gaps are STRUCTURAL name->price (codex: correct), so aggregate move modest. -> full-matrix opus measure to decide if layout converges.
+
+## R9 BATCH (/tmp/realism_v4) — PLATEAU BROKEN
+- Opus mean 2.58 -> 2.71 (+0.13, beyond prior 0.04 wobble = real). Deterministic composite 0.640->0.644 (flat; weights gap_p90 only 0.10). The SALE-line gap fix moved the VISUAL realism. LAYOUT confirmed as the lever.
+- v4 dominant remaining tells: right-aligned PRICE COLUMN (column 96/align 86/right-align 42) = #1; justified-spacing residue (justif 71); 'now'->'HOW' + reversed order 'F HOW $4.99' content bug (HOW 38).
+- DECISION: CONTINUE layout backlog. Next = price-column right-edge anchor (codex #3: real amount-right-edge, not center _label_x_p50). Then vertical pitch on add/remove. Plus fix the now/HOW order bug.
