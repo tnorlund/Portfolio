@@ -335,6 +335,8 @@ def draw_token_chars(
     ink: tuple[int, int, int],
     stroke: int = 0,
     condense: float = 1.0,
+    bitmap_font=None,
+    cap_px: int | None = None,
 ) -> None:
     """Draw each glyph of ``text`` at consecutive grid columns on a baseline.
 
@@ -342,9 +344,28 @@ def draw_token_chars(
     ``start_col``. ``stroke`` thickens glyphs (a double-strike to match heavy
     thermal print); ``condense < 1`` horizontally compresses each glyph (real
     receipt faces are more condensed than off-the-shelf monospace -- the measured
-    "font too wide" gap). With both at their defaults this is the fast direct path.
+    "font too wide" gap). When ``bitmap_font`` is given, glyphs are pasted from a
+    real glyph atlas (the merchant's actual letterforms) instead of a TTF. With
+    everything at its defaults this is the fast direct path.
     """
     if not text:
+        return
+    if bitmap_font is not None:
+        img = getattr(draw, "_image", None)
+        if img is None:
+            return
+        col = start_col
+        for char in text:
+            if char == " ":
+                continue
+            res = bitmap_font.glyph(char, cap_px or spec.font_px)
+            if res is not None:
+                gi, h, off = res
+                x = int(round(spec.grid_left + col * spec.cell_w
+                              + (spec.cell_w - gi.width) / 2.0))
+                y = int(round(baseline_y + off - h))
+                img.paste(Image.new("RGB", gi.size, ink), (x, y), gi)
+            col += 1
         return
     if condense >= 0.999:
         col = start_col
@@ -554,6 +575,8 @@ def draw_grid_line(
     amount_lane: int | None = None,
     stroke: int = 0,
     condense: float = 1.0,
+    bitmap_font=None,
+    cap_px: int | None = None,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
@@ -571,6 +594,8 @@ def draw_grid_line(
             placed.word.ink,
             stroke=stroke,
             condense=condense,
+            bitmap_font=bitmap_font,
+            cap_px=cap_px,
         )
 
 

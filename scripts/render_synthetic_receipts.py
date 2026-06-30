@@ -589,16 +589,30 @@ def section_scale_for_merchant(merchant: str | None) -> dict:
 # PT Mono is the closest free match, condensed ~0.88 and double-struck for the
 # heavy thermal print. Falls back to the default grid font (no shaping).
 _PTMONO = "/System/Library/Fonts/Supplemental/PTMono.ttc"
+# Glyph atlases extracted from the bitMatrix-C2 chart (Costco's actual font),
+# kept local (paid-font derived). Relocate via $BITMATRIX_DIR.
+_BITMATRIX_DIR = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
 _MERCHANT_TYPOGRAPHY = {
-    "Costco Wholesale": {"font_path": _PTMONO, "condense": 0.88, "stroke": 1},
+    # Costco's real font, extracted: bitMatrix-C2 body + bitMatrix-C2-heavy emphasis.
+    "Costco Wholesale": {"bitmap_font": {
+        "regular": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2.glyphs.npz"),
+        "heavy": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2-heavy.glyphs.npz"),
+    }},
 }
 
 
 def merchant_typography(merchant: str | None) -> dict:
-    """{font_path, condense, stroke} for a merchant; {} -> default grid font."""
+    """Per-merchant grid typography; {} -> default grid font.
+
+    Drops a bitmap_font (or font_path) whose assets are missing (e.g. CI without
+    the local atlases) so rendering falls back gracefully.
+    """
     cfg = dict(_MERCHANT_TYPOGRAPHY.get(merchant, {}))
+    bf = cfg.get("bitmap_font")
+    if bf and not os.path.exists(bf.get("regular", "")):
+        cfg.pop("bitmap_font", None)
     if cfg.get("font_path") and not os.path.exists(cfg["font_path"]):
-        cfg.pop("font_path", None)  # not present (e.g. CI) -> default candidate list
+        cfg.pop("font_path", None)
     return cfg
 
 
@@ -662,12 +676,14 @@ def _render_cached_hybrid(
     section_font: dict | None = None,
     condense: float = 1.0,
     stroke: int = 0,
+    bitmap_font: dict | None = None,
 ) -> str:
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
     # without re-running synthesis. Mutates the per-render receipt dict in place.
     clean_for_render(receipt)
     config = RenderConfig(
+        bitmap_font=bitmap_font,
         width=width,
         height=height,
         margin=10,

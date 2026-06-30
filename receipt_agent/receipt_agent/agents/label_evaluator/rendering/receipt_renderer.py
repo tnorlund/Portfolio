@@ -121,6 +121,10 @@ class RenderConfig:
     # double-strike to match heavy thermal print). 1.0 / 0 = no shaping.
     condense: float = 1.0
     stroke: int = 0
+    # Render in a real glyph atlas (the merchant's actual letterforms) instead of
+    # a TTF. Maps {"regular": atlas.npz, "heavy": atlas.npz}; heavy is used for the
+    # emphasis (TOTALS) zone. None -> the TTF grid font.
+    bitmap_font: Mapping[str, str] | None = None
 
 
 def render_receipt(
@@ -227,6 +231,19 @@ def _render_grid(
     sizing = build_grid_spec(profile, inner_w, inner_h, config)
     font = _load_grid_font(sizing.font_px, config)
     advance = glyph_advance(draw, font) * float(config.condense)
+    # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
+    # target cap height (~0.72 of the em); advance comes from the atlas.
+    bmf = bmf_heavy = None
+    cap_px = None
+    if config.bitmap_font:
+        from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
+            BitmapFont,
+        )
+        bmf = BitmapFont(config.bitmap_font["regular"])
+        heavy_path = config.bitmap_font.get("heavy", config.bitmap_font["regular"])
+        bmf_heavy = BitmapFont(heavy_path)
+        cap_px = max(6, int(round(sizing.font_px * 0.72)))
+        advance = bmf.advance(cap_px)
     spec = build_grid_spec(
         profile, inner_w, inner_h, config, char_advance_px=advance
     )
@@ -275,9 +292,11 @@ def _render_grid(
     for line, baseline, sect in zip(rows, baselines, eff_sections):
         sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
         fpath = section_font.get(sect) if sect else None
+        bf_row = (bmf_heavy if sect == "TOTALS" else bmf) if bmf else None
         if sc == 1.0 and not fpath:
             draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
-                           stroke=config.stroke, condense=config.condense)
+                           stroke=config.stroke, condense=config.condense,
+                           bitmap_font=bf_row, cap_px=cap_px)
             continue
         key = (fpath, sc)
         cached = row_cache.get(key)
@@ -296,7 +315,9 @@ def _render_grid(
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
         draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane,
-                       stroke=config.stroke, condense=config.condense)
+                       stroke=config.stroke, condense=config.condense,
+                       bitmap_font=bf_row,
+                       cap_px=int(round(cap_px * sc)) if cap_px else None)
 
 
 def _load_grid_font(

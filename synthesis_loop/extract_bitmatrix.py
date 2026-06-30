@@ -59,14 +59,25 @@ def _trim_borders(g):
 
 
 def _extract_cell(black, y0, y1, c, W):
+    """Return (trimmed glyph, glyph_bottom_y_in_band) or None.
+
+    Removes the full-height vertical CELL BORDER (near either cell edge) BEFORE
+    measuring, so the glyph's real bottom -- not the border's -- sets the baseline.
+    """
     cell_w = W / COLS
     x0, x1 = int(round(c * cell_w)), int(round((c + 1) * cell_w))
-    cell = black[y0:y1, x0:x1]
+    cell = black[y0:y1, x0:x1].copy()
+    bh, bw = cell.shape
+    colsum = cell.sum(axis=0)
+    for x in range(bw):
+        if colsum[x] >= 0.9 * bh and (x < 4 or x > bw - 5):
+            cell[:, x] = 0  # drop edge border column
     ys, xs = np.where(cell)
     if ys.size < 3:
         return None
     g = cell[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.uint8)
-    return _trim_borders(g)
+    g = _trim_borders(g)
+    return g, int(ys.max())  # glyph bottom within the row band (baseline metric)
 
 
 def main() -> int:
@@ -87,26 +98,35 @@ def main() -> int:
     tall = [(y0, y1) for (y0, y1) in bands if (y1 - y0) > 25]
     top = bands[0] if bands else None
     print(f"{name}: {im.size}, {len(bands)} bands, {len(tall)} glyph rows")
-    glyphs = {}
-    # '!' (0x21) -- last column of the top partial row
+    glyphs, offsets = {}, {}
     if top is not None:
-        gl = _extract_cell(black, top[0], top[1], COLS - 1, W)
-        if gl is not None:
-            glyphs["!"] = gl
+        res = _extract_cell(black, top[0], top[1], COLS - 1, W)
+        if res is not None:
+            glyphs["!"], _ = res
     # content rows: row i, col c -> code 34 + i*COLS + c  ('"' .. '~')
     for i, (y0, y1) in enumerate(tall):
+        row = {}
         for c in range(COLS):
             code = 34 + i * COLS + c
             if not (34 <= code <= 126):
                 continue
-            gl = _extract_cell(black, y0, y1, c, W)
-            if gl is not None:
-                glyphs[chr(code)] = gl
+            res = _extract_cell(black, y0, y1, c, W)
+            if res is not None:
+                row[chr(code)] = res  # (glyph, bottom_y)
+        # baseline = median bottom of the CAP letters in this row; every glyph's
+        # offset = how far ITS bottom sits below the baseline (caps 0, hyphen
+        # negative=above, descenders positive=below).
+        cap_bottoms = [b for ch, (_, b) in row.items() if ch.isupper()]
+        baseline = float(np.median(cap_bottoms)) if cap_bottoms else \
+            float(np.median([b for _, (_, b) in row.items()]))
+        for ch, (g, b) in row.items():
+            glyphs[ch] = g
+            offsets[ch] = b - baseline
     print(f"  extracted {len(glyphs)} glyphs: {''.join(sorted(glyphs))}")
 
-    # save as object array (ragged) npz
-    np.savez_compressed(os.path.join(out_dir, f"{name}.glyphs.npz"),
-                        **{f"c{ord(k)}": v for k, v in glyphs.items()})
+    payload = {f"c{ord(k)}": v for k, v in glyphs.items()}
+    payload.update({f"o{ord(k)}": np.int16(v) for k, v in offsets.items()})
+    np.savez_compressed(os.path.join(out_dir, f"{name}.glyphs.npz"), **payload)
 
     # verification contact sheet
     order = sorted(glyphs, key=ord)
