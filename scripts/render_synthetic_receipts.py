@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pickle
 import re
 import sys
 import zlib
@@ -577,6 +578,53 @@ def section_scale_for_merchant(merchant: str | None) -> dict:
     if merchant in _SECTION_SCALE_BY_MERCHANT:
         return _SECTION_SCALE_BY_MERCHANT[merchant]
     return dict(_DEFAULT_SECTION_SCALE)
+
+
+# The glyph atlas + merchant font profile are deterministic per merchant but cost
+# ~20 sequential S3/DynamoDB round-trips to build (the dominant render latency).
+# Cache them to disk so re-renders after a code edit are near-instant. Set
+# RENDER_CACHE_DIR to relocate; pass refresh=True to rebuild.
+_RENDER_CACHE_DIR = os.environ.get("RENDER_CACHE_DIR", "/tmp/render_cache")
+
+
+def _render_cache_path(kind: str, merchant: str | None, n: int) -> str:
+    safe = re.sub(r"[^A-Za-z0-9]+", "_", merchant or "none")
+    return os.path.join(_RENDER_CACHE_DIR, f"{safe}__{kind}__n{n}.pkl")
+
+
+def _cached_build(kind, build, table, merchant, region, max_receipts, refresh):
+    path = _render_cache_path(kind, merchant, max_receipts)
+    if not refresh and os.path.exists(path):
+        try:
+            with open(path, "rb") as fh:
+                return pickle.load(fh)
+        except Exception:
+            pass  # corrupt/stale cache -> rebuild
+    obj = build(table, merchant, region=region, max_receipts=max_receipts)
+    if obj is not None:
+        try:
+            os.makedirs(_RENDER_CACHE_DIR, exist_ok=True)
+            with open(path, "wb") as fh:
+                pickle.dump(obj, fh)
+        except Exception:
+            pass  # caching is best-effort
+    return obj
+
+
+def cached_glyph_atlas(table, merchant, *, region, max_receipts=8, refresh=False):
+    """Disk-cached :func:`build_glyph_atlas_from_dynamo` (per merchant)."""
+    return _cached_build(
+        "atlas", build_glyph_atlas_from_dynamo,
+        table, merchant, region, max_receipts, refresh,
+    )
+
+
+def cached_font_profile(table, merchant, *, region, max_receipts=12, refresh=False):
+    """Disk-cached :func:`build_merchant_font_profile_from_dynamo` (per merchant)."""
+    return _cached_build(
+        "profile", build_merchant_font_profile_from_dynamo,
+        table, merchant, region, max_receipts, refresh,
+    )
 
 
 def _render_cached_hybrid(

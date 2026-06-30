@@ -74,8 +74,8 @@ def main() -> int:
     if ex is None:
         print("no candidate for", op); return 1
 
-    atlas = rsr.build_glyph_atlas_from_dynamo(TABLE, merchant, region=REGION, max_receipts=8)
-    profile = rsr.build_merchant_font_profile_from_dynamo(TABLE, merchant, region=REGION, max_receipts=12)
+    atlas = rsr.cached_glyph_atlas(TABLE, merchant, region=REGION, max_receipts=8)
+    profile = rsr.cached_font_profile(TABLE, merchant, region=REGION, max_receipts=12)
     synth = rsr._synthetic_receipt_dict(ex, TV._id_to_label(bundle))
 
     out_dir = os.path.join(merchant_dir, "_sections")

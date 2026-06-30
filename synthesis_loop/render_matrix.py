@@ -44,11 +44,11 @@ def main():
         print("no target-op candidates")
         return 0
 
-    atlas = rsr.build_glyph_atlas_from_dynamo(TABLE, merchant, region=REGION, max_receipts=8)
+    atlas = rsr.cached_glyph_atlas(TABLE, merchant, region=REGION, max_receipts=8)
     if atlas is None:
         print("no atlas for", merchant)
         return 1
-    profile = rsr.build_merchant_font_profile_from_dynamo(TABLE, merchant, region=REGION, max_receipts=12)
+    profile = rsr.cached_font_profile(TABLE, merchant, region=REGION, max_receipts=12)
     id_to_label = TV._id_to_label(bundle)
     exports = TV._load_exports(receipt_dir)
     import boto3
