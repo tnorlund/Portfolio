@@ -554,6 +554,31 @@ def _composite_paper_texture(image, *, seed: int | None = None):
     return textured.convert(source_mode)
 
 
+# Per-merchant header size relative to the body, from a measured + dual-reviewed
+# (Claude pixel-measurement + codex) study of the real receipts. Real thermal
+# printers shrink the header block (Epson Font A vs Font B); warehouse / natural-
+# grocer formats print the header at body size. NONE use a different per-section
+# typeface (size only), and payment/totals print at body size -- so we only ever
+# set HEADER here. ``{}`` means uniform (no shrink).
+_DEFAULT_SECTION_SCALE = {"HEADER": 0.80}
+_SECTION_SCALE_BY_MERCHANT = {
+    "Amazon Fresh": {"HEADER": 0.78},
+    "Target": {"HEADER": 0.80},
+    "Smith's": {"HEADER": 0.80},
+    "Gelson's Westlake Village": {"HEADER": 0.80},
+    "Costco Wholesale": {},  # measured header ~= body (uniform)
+    "Vons": {},
+    "Sprouts Farmers Market": {},
+}
+
+
+def section_scale_for_merchant(merchant: str | None) -> dict:
+    """Per-merchant header scale; falls back to the measured default (0.80)."""
+    if merchant in _SECTION_SCALE_BY_MERCHANT:
+        return _SECTION_SCALE_BY_MERCHANT[merchant]
+    return dict(_DEFAULT_SECTION_SCALE)
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,

@@ -58,7 +58,10 @@ def main():
     for op, (i, ex) in picked.items():
         synth = rsr._synthetic_receipt_dict(ex, id_to_label)
         hp = os.path.join(out_dir, f"{op}.hybrid.png")
-        rsr._render_cached_hybrid(synth, atlas, profile=profile, width=W, height=H, path=hp)
+        rsr._render_cached_hybrid(
+            synth, atlas, profile=profile, width=W, height=H, path=hp,
+            section_scale=rsr.section_scale_for_merchant(merchant),
+        )
         # original once per merchant
         base_key = (ex.get("metadata") or {}).get("base_receipt_key", "")
         image_id, _, suffix = base_key.partition("#")
