@@ -135,9 +135,9 @@ def _report_zone(protos, label, out_dir):
     print(f"[{label}] {len(protos)} chars  -> " + "  ".join(f"{n}={s:.3f}" for n, s in ranking[:4]))
     best = ranking[0][0]
     name, stroke = (best[:-5], 1) if best.endswith("+bold") else (best, 0)
-    from glyph_prototype import FONTS
+    from glyph_prototype import _all_font_paths
     from PIL import ImageFont
-    bf = ImageFont.truetype(FONTS[name], GH)
+    bf = ImageFont.truetype(_all_font_paths()[name], GH)
     _sheet(protos, bf, stroke, os.path.join(out_dir, f"proto_{label}.png"),
            f"{label}: top=prototype bottom={best}")
 

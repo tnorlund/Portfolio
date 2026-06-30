@@ -589,15 +589,36 @@ def section_scale_for_merchant(merchant: str | None) -> dict:
 # PT Mono is the closest free match, condensed ~0.88 and double-struck for the
 # heavy thermal print. Falls back to the default grid font (no shaping).
 _PTMONO = "/System/Library/Fonts/Supplemental/PTMono.ttc"
+_VENDORED_FONTS_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "receipt_agent", "receipt_agent",
+    "agents", "label_evaluator", "rendering", "fonts",
+)
+_VT323 = os.path.join(_VENDORED_FONTS_DIR, "VT323-Regular.ttf")   # OFL pixel/dot-matrix
+_B612 = os.path.join(_VENDORED_FONTS_DIR, "B612Mono-Regular.ttf")  # OFL clean sans mono
 # Glyph atlases extracted from the bitMatrix-C2 chart (Costco's actual font),
 # kept local (paid-font derived). Relocate via $BITMATRIX_DIR.
 _BITMATRIX_DIR = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
+
+# Per-merchant grid typography, chosen by the glyph-prototype font matcher against
+# the real receipts (+ measured condense/weight). The free fonts independently
+# converged on the SAME family receiptfont.com names: VT323 (pixel/dot-matrix) for
+# the bitMatrix-D1/pixCrog merchants, PT Mono for the Epson-style bitMatrix-A2.
 _MERCHANT_TYPOGRAPHY = {
     # Costco's real font, extracted: bitMatrix-C2 body + bitMatrix-C2-heavy emphasis.
     "Costco Wholesale": {"bitmap_font": {
         "regular": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2.glyphs.npz"),
         "heavy": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2-heavy.glyphs.npz"),
     }},
+    # receiptfont.com: bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.
+    "Amazon Fresh": {"font_path": _PTMONO, "condense": 0.80, "stroke": 0},
+    # receiptfont.com: bitMatrix-D1 (dot-matrix) -> VT323.
+    "Target": {"font_path": _VT323, "condense": 0.95, "stroke": 0},
+    "Vons": {"font_path": _VT323, "condense": 1.0, "stroke": 0},
+    "Sprouts Farmers Market": {"font_path": _PTMONO, "condense": 0.84, "stroke": 0},
+    # receiptfont.com: pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print.
+    "Smith's": {"font_path": _VT323, "condense": 0.92, "stroke": 1},
+    # not on receiptfont.com (small grocer) -> clean condensed B612 Mono.
+    "Gelson's Westlake Village": {"font_path": _B612, "condense": 0.82, "stroke": 0},
 }
 
 
