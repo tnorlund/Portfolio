@@ -19,11 +19,15 @@ CloudFront standard log field order is fixed by AWS; the column list below
 matches it exactly.
 """
 
+import json
+from pathlib import Path
 from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Input, Output, ResourceOptions
+
+_HANDLER_DIR = str(Path(__file__).resolve().parent / "transform_lambda")
 
 # CloudFront standard access-log columns, in order.
 _CLOUDFRONT_COLUMNS = [
@@ -177,14 +181,161 @@ class WebAnalytics(ComponentResource):
             opts=child,
         )
 
+        # --- Curated, partitioned Parquet table (the ETL output) ---
+        self.curated_bucket = aws.s3.Bucket(f"{name}-curated", opts=child)
+        aws.s3.BucketPublicAccessBlock(
+            f"{name}-curated-pab",
+            bucket=self.curated_bucket.id,
+            block_public_acls=True,
+            block_public_policy=True,
+            ignore_public_acls=True,
+            restrict_public_buckets=True,
+            opts=ResourceOptions(parent=self.curated_bucket),
+        )
+        curated_columns = [
+            ("request_id", "string"),
+            ("ts_utc", "timestamp"),
+            ("request_ip", "string"),
+            ("uri", "string"),
+            ("status", "int"),
+            ("referrer", "string"),
+            ("user_agent", "string"),
+            ("query_decoded", "string"),
+            ("is_beacon", "boolean"),
+            ("event", "string"),
+            ("evt_path", "string"),
+            ("sid", "string"),
+            ("is_warp", "boolean"),
+            ("is_bot", "boolean"),
+            ("edge_location", "string"),
+        ]
+        self.web_events_table = aws.glue.CatalogTable(
+            f"{name}-web-events-table",
+            name="web_events",
+            database_name=self.database.name,
+            table_type="EXTERNAL_TABLE",
+            partition_keys=[
+                aws.glue.CatalogTablePartitionKeyArgs(name="dt", type="string")
+            ],
+            parameters={
+                "EXTERNAL": "TRUE",
+                "classification": "parquet",
+                "parquet.compression": "SNAPPY",
+            },
+            storage_descriptor=aws.glue.CatalogTableStorageDescriptorArgs(
+                location=self.curated_bucket.bucket.apply(
+                    lambda b: f"s3://{b}/web_events/"
+                ),
+                input_format=(
+                    "org.apache.hadoop.hive.ql.io.parquet."
+                    "MapredParquetInputFormat"
+                ),
+                output_format=(
+                    "org.apache.hadoop.hive.ql.io.parquet."
+                    "MapredParquetOutputFormat"
+                ),
+                columns=[
+                    aws.glue.CatalogTableStorageDescriptorColumnArgs(
+                        name=col, type=typ
+                    )
+                    for col, typ in curated_columns
+                ],
+                ser_de_info=aws.glue.CatalogTableStorageDescriptorSerDeInfoArgs(
+                    serialization_library=(
+                        "org.apache.hadoop.hive.ql.io.parquet.serde."
+                        "ParquetHiveSerDe"
+                    ),
+                    parameters={"serialization.format": "1"},
+                ),
+            ),
+            opts=child,
+        )
+
+        # --- Transform Lambda (incremental, idempotent per-day rebuild) ---
+        transform_role = aws.iam.Role(
+            f"{name}-transform-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=child,
+        )
+        aws.iam.RolePolicyAttachment(
+            f"{name}-transform-basic",
+            role=transform_role.name,
+            policy_arn=(
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
+            ),
+            opts=ResourceOptions(parent=transform_role),
+        )
+        aws.iam.RolePolicy(
+            f"{name}-transform-policy",
+            role=transform_role.id,
+            policy=Output.all(
+                bucket_name,
+                self.results_bucket.arn,
+                self.curated_bucket.arn,
+            ).apply(lambda a: _transform_policy_json(a[0], a[1], a[2])),
+            opts=ResourceOptions(parent=transform_role),
+        )
+        self.transform_lambda = aws.lambda_.Function(
+            f"{name}-transform",
+            runtime="python3.12",
+            handler="handler.handler",
+            code=pulumi.FileArchive(_HANDLER_DIR),
+            role=transform_role.arn,
+            timeout=600,
+            memory_size=256,
+            environment=aws.lambda_.FunctionEnvironmentArgs(
+                variables={
+                    "ANALYTICS_DB": database_name,
+                    "ANALYTICS_WORKGROUP": database_name,
+                    "CURATED_BUCKET": self.curated_bucket.bucket,
+                    "CURATED_PREFIX": "web_events/",
+                },
+            ),
+            opts=child,
+        )
+        # Daily schedule (logs are low-latency; one daily pass + the
+        # yesterday/today default keeps partitions fresh and idempotent).
+        schedule = aws.cloudwatch.EventRule(
+            f"{name}-transform-schedule",
+            schedule_expression="cron(30 9 * * ? *)",  # 09:30 UTC ~ 02:30 PT
+            opts=child,
+        )
+        aws.cloudwatch.EventTarget(
+            f"{name}-transform-target",
+            rule=schedule.name,
+            arn=self.transform_lambda.arn,
+            opts=ResourceOptions(parent=schedule),
+        )
+        aws.lambda_.Permission(
+            f"{name}-transform-perm",
+            action="lambda:InvokeFunction",
+            function=self.transform_lambda.name,
+            principal="events.amazonaws.com",
+            source_arn=schedule.arn,
+            opts=ResourceOptions(parent=self.transform_lambda),
+        )
+
         # --- Read-only IAM policy (attach to MCP Lambda role) ---
         self.read_policy = aws.iam.Policy(
             f"{name}-read-policy",
             policy=Output.all(
                 bucket_name,
                 self.results_bucket.arn,
+                self.curated_bucket.arn,
             ).apply(
-                lambda args: _policy_json(args[0], args[1])
+                lambda args: _policy_json(args[0], args[1], args[2])
             ),
             opts=child,
         )
@@ -202,9 +353,9 @@ class WebAnalytics(ComponentResource):
         )
 
 
-def _policy_json(logs_bucket: str, results_bucket_arn: str) -> str:
-    import json
-
+def _policy_json(
+    logs_bucket: str, results_bucket_arn: str, curated_bucket_arn: str
+) -> str:
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -235,12 +386,14 @@ def _policy_json(logs_bucket: str, results_bucket_arn: str) -> str:
                     "Resource": "*",
                 },
                 {
-                    "Sid": "ReadLogs",
+                    "Sid": "ReadLogsAndCurated",
                     "Effect": "Allow",
                     "Action": ["s3:GetObject", "s3:ListBucket"],
                     "Resource": [
                         f"arn:aws:s3:::{logs_bucket}",
                         f"arn:aws:s3:::{logs_bucket}/*",
+                        curated_bucket_arn,
+                        f"{curated_bucket_arn}/*",
                     ],
                 },
                 {
@@ -253,6 +406,76 @@ def _policy_json(logs_bucket: str, results_bucket_arn: str) -> str:
                         "s3:GetBucketLocation",
                     ],
                     "Resource": [
+                        results_bucket_arn,
+                        f"{results_bucket_arn}/*",
+                    ],
+                },
+            ],
+        }
+    )
+
+
+def _transform_policy_json(
+    logs_bucket: str, results_bucket_arn: str, curated_bucket_arn: str
+) -> str:
+    """Permissions for the transform Lambda: read raw logs, manage the curated
+    table + its partitions, write curated Parquet, run Athena."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "Athena",
+                    "Effect": "Allow",
+                    "Action": [
+                        "athena:StartQueryExecution",
+                        "athena:StopQueryExecution",
+                        "athena:GetQueryExecution",
+                        "athena:GetQueryResults",
+                        "athena:GetWorkGroup",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "GlueReadWritePartitions",
+                    "Effect": "Allow",
+                    "Action": [
+                        "glue:GetDatabase",
+                        "glue:GetDatabases",
+                        "glue:GetTable",
+                        "glue:GetTables",
+                        "glue:GetPartition",
+                        "glue:GetPartitions",
+                        "glue:CreatePartition",
+                        "glue:BatchCreatePartition",
+                        "glue:UpdatePartition",
+                        "glue:DeletePartition",
+                        "glue:BatchDeletePartition",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "ReadLogs",
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject", "s3:ListBucket"],
+                    "Resource": [
+                        f"arn:aws:s3:::{logs_bucket}",
+                        f"arn:aws:s3:::{logs_bucket}/*",
+                    ],
+                },
+                {
+                    "Sid": "WriteCuratedAndResults",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation",
+                    ],
+                    "Resource": [
+                        curated_bucket_arn,
+                        f"{curated_bucket_arn}/*",
                         results_bucket_arn,
                         f"{results_bucket_arn}/*",
                     ],

@@ -3001,11 +3001,6 @@ ANALYTICS_DB = "portfolio_analytics"
 ANALYTICS_WORKGROUP = "portfolio_analytics"
 ANALYTICS_REGION = "us-east-1"
 
-_ANALYTICS_BOT_RE = (
-    "bot|crawl|spider|slurp|curl|python-requests|go-http|headless|wget|"
-    "monitor|preview|scan|http.?client|java/|okhttp|axios|node-fetch|libwww|"
-    "facebookexternal|meta-external|petalbot|ahrefs|semrush|dataforseo"
-)
 
 
 def _analytics_check_date(d: str) -> str:
@@ -3061,36 +3056,23 @@ def _athena_run(sql: str, max_wait: int = 90) -> list:
 
 
 def _analytics_base_cte(start_date: str, end_date: str) -> str:
-    """Shared CTE: parse beacon, classify WARP/bot, bucket to PT day."""
+    """Shared CTE over the curated web_events table (already parsed/classified
+    by the transform Lambda). Partition-pruned by the UTC `dt` column; widened a
+    day on each side so PT-day bucketing at the edges stays correct.
+    """
     s = _analytics_check_date(start_date)
     e = _analytics_check_date(end_date)
-    pt = (
-        "(cast(concat(cast(date as varchar),' ',time) as timestamp) "
-        "AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles'"
-    )
+    pt = "(ts_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles'"
     return f"""
-WITH raw AS (
-  SELECT date, time, request_ip, uri, status,
-         url_decode(url_decode(query_string)) AS q,
-         lower(url_decode(url_decode(user_agent))) AS ua,
-         url_decode(url_decode(referrer)) AS ref
-  FROM {ANALYTICS_DB}.cloudfront_logs_prod
-  WHERE date BETWEEN date_add('day', -1, DATE '{s}')
-                 AND date_add('day',  1, DATE '{e}')
-),
-base AS (
+WITH base AS (
   SELECT
     date_format({pt}, '%Y-%m-%d') AS pt_date,
     date_format({pt}, '%Y-%m-%d %H:%i:%s') AS pt_time,
-    request_ip, uri, status, ref,
-    (uri = '/analytics/pixel.txt') AS is_beacon,
-    regexp_extract(q, 'event=([^&]+)', 1) AS event,
-    regexp_extract(q, 'path=([^&]+)', 1) AS evt_path,
-    regexp_extract(q, 'sid=([^&]+)', 1) AS sid,
-    regexp_like(request_ip, '^(104\\.28\\.|2a09:bac)') AS is_warp,
-    (regexp_like(ua, '{_ANALYTICS_BOT_RE}')
-       OR regexp_like(request_ip, '^185\\.177\\.72\\.')) AS is_bot
-  FROM raw
+    request_ip, uri, status, referrer AS ref,
+    is_beacon, event, evt_path, sid, is_warp, is_bot
+  FROM {ANALYTICS_DB}.web_events
+  WHERE dt BETWEEN date_format(date_add('day', -1, DATE '{s}'), '%Y-%m-%d')
+              AND date_format(date_add('day',  1, DATE '{e}'), '%Y-%m-%d')
 )"""
 
 
