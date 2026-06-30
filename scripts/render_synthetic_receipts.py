@@ -49,6 +49,9 @@ from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
 from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
     receipt_graphics,
 )
+from receipt_agent.agents.label_evaluator.rendering.content_clean import (  # noqa: E402
+    clean_for_render,
+)
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -639,6 +642,10 @@ def _render_cached_hybrid(
     section_scale: dict | None = None,
     section_font: dict | None = None,
 ) -> str:
+    # Render-time content repair (EMV/auth strings, totals) on the synthetic
+    # tokens just before drawing -- fixes the dominant remaining realism tell
+    # without re-running synthesis. Mutates the per-render receipt dict in place.
+    clean_for_render(receipt)
     config = RenderConfig(
         width=width,
         height=height,
