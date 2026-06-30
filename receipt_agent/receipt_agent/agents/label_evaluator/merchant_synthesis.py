@@ -297,6 +297,63 @@ def _merchant_online_catalog(
 # recognizes a rendered marker without importing the research module.
 _MARKDOWN_MARKER_RE = re.compile(r"^n[o0]w$", re.IGNORECASE)
 
+# ---------------------------------------------------------------------------
+# Canonical item-line GRAMMAR protection across the reconcile text-clean pass.
+#
+# The rendered markdown marker ("now") and sale sub-line keyword ("SALE") are
+# clean, canonical synthetic tokens, but they are supervision-neutral ('O') copy
+# and ``synthesis_text_clean.clean_token_text`` vocab-repairs O-labeled words.
+# Because "now"/"sale" are edit-distance 1 from common receipt vocabulary
+# ("how"/"sales"), that pass mis-"repairs" them (now->how, SALE->SALES), baking
+# OCR-shaped noise back into the ground truth. We restore the two KNOWN phrases
+# AFTER reconcile, gated on the SAME structural signatures the grammar detects
+# them on (marker adjacent to a price / tax flag; sale keyword leading a
+# "... WAS ..." sub-line), so unrelated words -- the survey "how", a "Sales tax"
+# line, a card "SALE" -- are left untouched.
+_GRAMMAR_PRICE_TOKEN_RE = re.compile(r"^\$?\d+\.\d{2}")
+# now/how OCR variants of the single "now" sale marker.
+_MARKER_NOISE_RE = re.compile(r"^[hn][o0]w$", re.IGNORECASE)
+# SALE/SAVE/SALES/SAVES OCR variants of the sub-line's leading sale keyword.
+_SALE_NOISE_RE = re.compile(r"^sa[lv]es?$", re.IGNORECASE)
+# Single/double-char tax-flag codes a transplanted marker can sit immediately
+# right of ("<flag> now ..."); mirrors item_line_grammar.FLAG_ALPHABET.
+_GRAMMAR_FLAG_TOKENS = frozenset(
+    {"A", "B", "E", "F", "N", "P", "S", "T", "X", "NF", "NT"}
+)
+
+
+def _restore_canonical_grammar_tokens(
+    tokens: list[str], ner_tags: list[str]
+) -> list[str]:
+    """Restore the canonical markdown marker / sale sub-line keyword after the
+    reconcile text-clean pass has mis-"repaired" them (now->how, SALE->SALES).
+
+    Pure over ``tokens`` (tags/bboxes untouched); returns the corrected token
+    list. Only O-labeled tokens matching a marker/sale signature are restored.
+    """
+    out = list(tokens)
+    n = len(out)
+    for i, tok in enumerate(out):
+        if (ner_tags[i] if i < len(ner_tags) else "O") != "O":
+            continue
+        text = str(tok)
+        if _MARKER_NOISE_RE.match(text):
+            nxt = str(out[i + 1]) if i + 1 < n else ""
+            prev = str(out[i - 1]).upper() if i > 0 else ""
+            # Marker sits immediately LEFT of the price, or (transplanted rows)
+            # immediately RIGHT of a tax flag: "now $4.99" / "F now".
+            if _GRAMMAR_PRICE_TOKEN_RE.match(nxt) or prev in _GRAMMAR_FLAG_TOKENS:
+                out[i] = "now"
+        elif _SALE_NOISE_RE.match(text):
+            # Sale keyword leading a "... WAS ..." sub-line (the same SALE...WAS
+            # signature the grammar detects the sub-line on).
+            if any(
+                str(out[j]).upper().startswith("WAS")
+                for j in range(i + 1, min(n, i + 5))
+            ):
+                out[i] = "SALE"
+    return out
+
 
 def _merchant_research_slug(merchant_name: str | None) -> str:
     """Slug a merchant name to its merchant-research export key (``amazon_fresh``,
@@ -3105,23 +3162,35 @@ def _build_template_filled_row(
     words: list[dict[str, Any]] = []
 
     price_text = f"${_format_money(entry.price)}"
-    price_x0 = geo["price_x1"] - len(price_text) * char_w
+    price_x1 = geo["price_x1"]
+    price_x0 = price_x1 - len(price_text) * char_w
     marker_token = (
         template.markdown_marker.token
         if (template is not None and template.markdown_marker.present)
         else None
     )
+    flag_token = _merchant_item_tax_flag(merchant_name, entry.taxable) or "<A>"
     if marker_token:
-        # The sale marker sits in its own slot immediately left of the price.
+        # Marked-down row: render "<name> <marker> <price> <flag>" -- the sale
+        # marker ("now") sits immediately LEFT of the price and the tax flag
+        # immediately RIGHT of it (trailing), mirroring a real Amazon
+        # "now $4.99 F" row. (The prior layout emitted flag -> marker -> price.)
         marker_w = max(1, len(marker_token)) * char_w
         marker_x1 = price_x0 - gap
         marker_x0 = marker_x1 - marker_w
-        flag_x1 = marker_x0 - gap
+        flag_w = max(1, len(flag_token)) * char_w
+        # Trailing flag, right of the price; clamp to the canvas without ever
+        # inverting the box (keep a positive width even if the price column hugs
+        # the right edge).
+        flag_x1 = min(1000, price_x1 + gap + flag_w)
+        flag_x0 = flag_x1 - flag_w
+        name_limit = marker_x0 - gap
     else:
+        # Plain row: the flag keeps its conventional slot just LEFT of the price.
         marker_x0 = marker_x1 = None
         flag_x1 = price_x0 - gap
-    flag_x0 = flag_x1 - 3 * char_w
-    name_limit = flag_x0 - gap
+        flag_x0 = flag_x1 - 3 * char_w
+        name_limit = flag_x0 - gap
 
     word_id = 1
     upc = str(entry.upc or "")
@@ -3164,37 +3233,35 @@ def _build_template_filled_row(
         product_name_words += 1
     if product_name_words <= 0:
         return None
-    flag_token = _merchant_item_tax_flag(merchant_name, entry.taxable) or "<A>"
-    words.append(
-        {
-            "text": flag_token,
-            "bbox": [flag_x0, y0, flag_x1, y1],
+    flag_word = {
+        "text": flag_token,
+        "bbox": [flag_x0, y0, flag_x1, y1],
+        "labels": [],
+        "line_id": line_id,
+        "word_id": word_id,
+    }
+    price_word = {
+        "text": price_text,
+        "bbox": [price_x0, y0, price_x1, y1],
+        "labels": ["LINE_TOTAL"],
+        "line_id": line_id,
+        "word_id": word_id + 1,
+    }
+    if marker_token:
+        # Order: marker -> price -> flag (marker left of price, flag trailing).
+        marker_word = {
+            "text": marker_token,
+            "bbox": [marker_x0, y0, marker_x1, y1],
             "labels": [],
             "line_id": line_id,
             "word_id": word_id,
         }
-    )
-    word_id += 1
-    if marker_token:
-        words.append(
-            {
-                "text": marker_token,
-                "bbox": [marker_x0, y0, marker_x1, y1],
-                "labels": [],
-                "line_id": line_id,
-                "word_id": word_id,
-            }
-        )
-        word_id += 1
-    words.append(
-        {
-            "text": price_text,
-            "bbox": [price_x0, y0, geo["price_x1"], y1],
-            "labels": ["LINE_TOTAL"],
-            "line_id": line_id,
-            "word_id": word_id,
-        }
-    )
+        price_word["word_id"] = word_id + 1
+        flag_word["word_id"] = word_id + 2
+        words.extend([marker_word, price_word, flag_word])
+    else:
+        # Order: flag -> price (flag in its conventional pre-price slot).
+        words.extend([flag_word, price_word])
     return {"line_id": line_id, "y": y0 / 1000, "words": words}
 
 
@@ -3261,13 +3328,13 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
                 correct += int(got == "O")
             continue
         row_count += 1
-        # The flag column always sits immediately before the price (LINE_TOTAL)
-        # in a composed row, so locate it positionally — that covers both the
-        # neutral "<A>" placeholder and a known merchant's real flag token. Fall
-        # back to the "<A>" text match if no price word is present. A markdown
-        # marker ("NOW"), when present, sits between the flag and the price, so it
-        # takes the slot just left of the price and the flag shifts one left; both
-        # remain supervision-neutral (O).
+        # Locate the flag column positionally — that covers both the neutral
+        # "<A>" placeholder and a known merchant's real flag token. On a plain row
+        # the flag sits immediately BEFORE the price (LINE_TOTAL). On a marked-down
+        # row a markdown marker ("now") sits immediately LEFT of the price and the
+        # flag is TRAILING (immediately right of the price): "<name> now $X.XX F".
+        # The marker and flag both remain supervision-neutral (O). Fall back to the
+        # "<A>" text match if no price word is present.
         price_index = next(
             (
                 index
@@ -3287,7 +3354,9 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
         ):
             marker_index = price_index - 1
         if marker_index is not None:
-            flag_index = price_index - 2 if price_index - 2 >= 0 else None
+            flag_index = (
+                price_index + 1 if price_index + 1 < len(words) else None
+            )
         elif price_index is not None and price_index > 0:
             flag_index = price_index - 1
         else:
@@ -6912,6 +6981,10 @@ def _flatten_lines(
     tokens, bboxes, tags = reconcile_candidate(
         tokens, bboxes, tags, merchant_name=merchant_name
     )
+    # Restore the canonical item-line grammar copy ("now" marker, "SALE"
+    # sub-line) that the reconcile text-clean pass mis-"repairs" (now->how,
+    # SALE->SALES) -- these are clean synthetic phrases, not OCR to scrub.
+    tokens = _restore_canonical_grammar_tokens(tokens, tags)
     return tokens, bboxes, tags
 
 

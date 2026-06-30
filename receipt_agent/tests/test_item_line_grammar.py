@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from receipt_agent.agents.label_evaluator.merchant_research.item_line_grammar import (
     ItemLineTemplate,
+    _canonicalize_marker_token,
+    _canonicalize_subline_template,
     _templatize,
     extract_item_line_template,
 )
@@ -106,12 +108,13 @@ def test_amazon_like_grammar():
     assert t.tax_flag.trailing_count == 2
     assert t.tax_flag.leading_count == 0
 
-    # markdown marker
+    # markdown marker: the verbatim "NOW" OCR token is canonicalized to "now".
     assert t.markdown_marker.present
-    assert t.markdown_marker.token == "NOW"
+    assert t.markdown_marker.token == "now"
 
-    # sub-line templated
+    # sub-line templated and snapped to the canonical "SALE 1@ ..." clean phrase.
     assert t.sub_line.present
+    assert t.sub_line.template == "SALE {n}@ {price}, WAS: {price} each"
     assert "WAS" in (t.sub_line.template or "")
     assert "{price}" in (t.sub_line.template or "")
 
@@ -345,3 +348,53 @@ def test_templatize_replaces_numbers_and_prices():
     out = _templatize("SALE 1@ $4.39, WAS: $5.49 each")
     assert "$4.39" not in out and "5.49" not in out
     assert "{price}" in out and "WAS" in out
+
+
+# ---------------------------------------------------------------------------
+# Canonicalization of the verbatim marker / sub-line OCR copy.
+# ---------------------------------------------------------------------------
+
+
+def test_canonicalize_marker_token_maps_ocr_variants_to_now():
+    # Every casing / OCR-misread variant of the "now" marker -> lowercase "now".
+    for variant in ("NOW", "now", "Now", "HOW", "How", "how", "N0W", "H0W"):
+        assert _canonicalize_marker_token(variant) == "now"
+    # A genuinely different marker token survives untouched; empty stays empty.
+    assert _canonicalize_marker_token("SALE") == "SALE"
+    assert _canonicalize_marker_token(None) is None
+
+
+def test_canonicalize_subline_template_snaps_to_canonical_phrase():
+    canonical = "SALE {n}@ {price}, WAS: {price} each"
+    # The "1@" form is preserved, and noisy variants snap to the canonical phrase.
+    assert _canonicalize_subline_template(canonical) == canonical
+    assert (
+        _canonicalize_subline_template("SALE {n} {price}, WAS: {price} each")
+        == canonical
+    )
+    assert (
+        _canonicalize_subline_template("SAVE {n} {price}, WAS: {price} each")
+        == canonical
+    )
+    assert (
+        _canonicalize_subline_template("SALES {n} {price} WAS {price} each")
+        == canonical
+    )
+    # No SALE/SAVE...WAS shape -> left untouched; empty stays empty.
+    assert _canonicalize_subline_template("PROMO {price}") == "PROMO {price}"
+    assert _canonicalize_subline_template(None) is None
+
+
+def test_extract_canonicalizes_noisy_marker_and_subline():
+    # An export whose real OCR read the marker as "HOW" and the sub-line keyword
+    # as "SAVE" still yields the clean canonical forms (not the OCR noise).
+    export = _amazon_export()
+    for w in export["receipt_words"]:
+        if w["text"] == "NOW":
+            w["text"] = "HOW"  # OCR misread of the sale marker
+    for ln in export["receipt_lines"]:
+        if ln["text"].startswith("SALE"):
+            ln["text"] = ln["text"].replace("SALE", "SAVE", 1)
+    t = extract_item_line_template(export)
+    assert t.markdown_marker.token == "now"
+    assert t.sub_line.template == "SALE {n}@ {price}, WAS: {price} each"

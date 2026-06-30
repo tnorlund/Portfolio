@@ -18,6 +18,7 @@ from receipt_agent.agents.label_evaluator.merchant_synthesis import (
     _ensure_amount_word_gaps,
     _fill_sale_sub_line_text,
     _render_cell_width,
+    _restore_canonical_grammar_tokens,
     _item_line_template_for_merchant,
     _merchant_item_tax_flag,
     _merchant_research_slug,
@@ -2711,8 +2712,11 @@ def test_item_line_template_loads_amazon_marker_and_sub_line():
     template = _item_line_template_for_merchant("amazon_fresh")
     assert template is not None
     assert template.markdown_marker.present is True
-    assert template.markdown_marker.token == "NOW"
+    # Verbatim OCR "NOW" is canonicalized to lowercase "now".
+    assert template.markdown_marker.token == "now"
     assert template.sub_line.present is True
+    # Sub-line template snapped to the canonical "SALE 1@ ..." clean phrase.
+    assert template.sub_line.template == "SALE {n}@ {price}, WAS: {price} each"
     assert "WAS" in (template.sub_line.template or "")
 
 
@@ -2766,6 +2770,69 @@ def test_build_line_item_line_without_marker_unchanged():
         merchant_name="Amazon Fresh",
     )
     assert "NOW" not in [w["text"] for w in line["words"]]
+
+
+def test_template_filled_row_marker_left_of_price_flag_trailing():
+    """A marked-down composed row renders "<name> now $X.XX F": the markdown
+    marker sits immediately LEFT of the price and the tax flag immediately RIGHT
+    of it (trailing), NOT the old flag -> marker -> price order."""
+    geo = {"char_w": 10, "name_x0": 150, "price_x1": 900, "height": 20}
+    row = _build_template_filled_row(
+        OnlineCatalogEntry("ACME WIDGET", Decimal("4.99"), "012345678905"),
+        y0=500,
+        geo=geo,
+        line_id=20_000,
+        merchant_name="Amazon Fresh",
+        template=_template(
+            marker="now", sub_template="SALE {n}@ {price}, WAS: {price} each"
+        ),
+    )
+    assert row is not None
+    words = row["words"]
+    texts = [w["text"] for w in words]
+    price_idx = next(
+        i for i, w in enumerate(words) if w["labels"] == ["LINE_TOTAL"]
+    )
+    # Token ORDER: ... marker, price, flag (marker immediately before the price;
+    # flag is the final, trailing token).
+    assert texts[price_idx - 1] == "now"
+    assert words[price_idx - 1]["labels"] == []  # marker is supervision-neutral
+    assert price_idx == len(words) - 2  # exactly one token (the flag) follows
+    flag_word = words[-1]
+    assert flag_word["text"] in {"F", "T"}  # Amazon's real tax-class flag
+    assert flag_word["labels"] == []
+    # Geometry: marker box ends before the price; flag box starts after the price.
+    assert words[price_idx - 1]["bbox"][2] <= words[price_idx]["bbox"][0]
+    assert flag_word["bbox"][0] >= words[price_idx]["bbox"][2]
+    # Supervision is still exactly what we assigned.
+    assert _verify_template_row_labels({"lines": [row]})["all_correct"] is True
+
+
+def test_restore_canonical_grammar_tokens_undoes_clean_pass_misrepair():
+    """The reconcile text-clean pass mis-"repairs" the clean synthetic grammar
+    copy (now->how, SALE->SALES); the restore pass puts the canonical phrases
+    back while leaving unrelated words (survey "how", "Sales tax", a card "SALE")
+    untouched."""
+    tokens = [
+        "MILK", "how", "$4.99", "F",           # marked-down item row
+        "SALES", "1@", "$4.99,", "WAS:", "$7.49", "each",  # sale sub-line
+        "F", "how", "SALES", "20", "$2.69", "WAS:", "$8.99",  # transplant row
+        "Sales", "tax:", "$0.00",              # legit "Sales tax" summary line
+        "VOID", "SALES", "REF#:",              # legit card "SALE" (no WAS near)
+        "tell", "us", "how", "we", "did.",     # survey copy
+    ]
+    tags = ["B-PRODUCT_NAME"] + ["O"] * (len(tokens) - 1)
+    out = _restore_canonical_grammar_tokens(tokens, tags)
+    # Markers restored: "how" before a price, and "how" after a tax flag -> "now".
+    assert out[1] == "now"
+    assert out[11] == "now"
+    # Sale sub-line keyword restored to "SALE" (both have a following WAS).
+    assert out[4] == "SALE"
+    assert out[12] == "SALE"
+    # Untouched: "Sales tax", "VOID SALES" (no WAS), and the survey "how".
+    assert out[17] == "Sales"
+    assert out[21] == "SALES"  # "VOID SALES REF#:" (no WAS) untouched
+    assert out[-3] == "how"  # "tell us how we did"
 
 
 def test_fill_sale_sub_line_text_was_exceeds_now():

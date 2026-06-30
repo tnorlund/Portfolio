@@ -110,15 +110,77 @@ FLAG_MIN_COLUMN_ROWS = 2
 # from the name column, and a column's own jitter is well under it.
 FLAG_COLUMN_TOL = 0.04
 _EPS = 1e-6
-# Markdown / "sale now" marker tokens (OCR is noisy: NOW / now / nOW ...).
-_MARKER_RE = re.compile(r"^n[o0]w$", re.IGNORECASE)
+# Markdown / "sale now" marker tokens. OCR is noisy: the leading 'n' is also
+# read as 'h' (NOW -> HOW) and the 'o' as '0', so we admit the h/0 variants and
+# canonicalize the survivor to "now" (see _canonicalize_marker_token). Gating to
+# a product row's pre-price slot keeps a stray "HOW" (e.g. survey copy) out.
+_MARKER_RE = re.compile(r"^[hn][o0]w$", re.IGNORECASE)
 # Truncation markers OCR emits for clipped names ("..." or a clipped "..").
 _TRUNC_RE = re.compile(r"\.{2,}$")
-# Sub-line signature: a SALE ... WAS ... row beneath a discounted item.
-_SUBLINE_RE = re.compile(r"\bSALE\b.*\bWAS\b", re.IGNORECASE)
+# Sub-line signature: a SALE ... WAS ... row beneath a discounted item. OCR
+# reads the leading "SALE" as SAVE/SALES/SAVES, so admit those variants; the
+# captured template is canonicalized to "SALE 1@ ..." (_canonicalize_subline_template).
+_SUBLINE_RE = re.compile(r"\bsa[lv]es?\b.*\bwas\b", re.IGNORECASE)
 
 _PRICE_TOKEN_RE = re.compile(r"\$?\d+\.\d{2}")
 _INT_TOKEN_RE = re.compile(r"\b\d+\b")
+
+# ---------------------------------------------------------------------------
+# Canonical clean forms for the two known receipt phrases this extractor reads
+# VERBATIM off real receipts.
+#
+# The markdown marker and the sale sub-line template are lifted straight from a
+# real receipt's OCR tokens, so they carry that OCR's noise: the "now" marker is
+# read as NOW / Now / HOW / N0W, and the "SALE 1@ ..." sub-line drifts to
+# SAVE / SALES and loses the "1@" quantity form. Downstream these tokens render
+# as supervision-neutral ('O') decorative copy that is NOT corrected by the
+# synthesis text-clean pass (and in fact gets mis-"repaired" by it, e.g.
+# now->how, SALE->SALES, because "now"/"sale" are edit-distance 1 from common
+# receipt-vocabulary words). They are KNOWN, fixed phrases, so we snap the
+# extracted text to its canonical clean form HERE, at the source -- a generic
+# phrase canonicalization (a tiny variant->canon map / fuzzy match), not
+# per-merchant hardcoding. A merchant that genuinely prints neither phrase keeps
+# them absent (the present=False default below).
+_CANONICAL_MARKER_TOKEN = "now"
+# OCR/casing variants of the single "now" sale marker (now/NOW/Now/HOW/N0W/H0W).
+_MARKER_CANON_RE = re.compile(r"^[hn][o0]w$", re.IGNORECASE)
+
+_CANONICAL_SUBLINE_TEMPLATE = "SALE {n}@ {price}, WAS: {price} each"
+# The sub-line's leading sale keyword as OCR variants: SALE / SAVE / SALES / SAVES.
+_SUBLINE_SALE_RE = re.compile(r"\bsa[lv]es?\b", re.IGNORECASE)
+_WAS_RE = re.compile(r"\bwas\b", re.IGNORECASE)
+
+
+def _canonicalize_marker_token(token: str | None) -> str | None:
+    """Snap an extracted markdown-marker token to the canonical clean ``now``.
+
+    The marker is the single known receipt word "now"; OCR reads it as NOW / Now /
+    HOW / N0W. Map any such variant to lowercase ``now`` and leave a genuinely
+    different token untouched so a real, non-"now" marker survives unchanged.
+    """
+    if not token:
+        return token
+    return (
+        _CANONICAL_MARKER_TOKEN
+        if _MARKER_CANON_RE.match(token.strip())
+        else token
+    )
+
+
+def _canonicalize_subline_template(template: str | None) -> str | None:
+    """Snap an extracted sale sub-line template to the canonical clean phrase.
+
+    Real receipts print ``SALE 1@ $x, WAS: $y each``; the verbatim extraction
+    drifts (SALE->SAVE/SALES OCR misread, dropped "@" after the quantity, loose
+    spacing). When the extracted template still carries a SALE/SAVE...WAS shape --
+    the same signature the sub-line is detected on -- we snap it to the canonical
+    form; otherwise (no recognizable shape) we leave it untouched.
+    """
+    if not template:
+        return template
+    if _SUBLINE_SALE_RE.search(template) and _WAS_RE.search(template):
+        return _CANONICAL_SUBLINE_TEMPLATE
+    return template
 
 
 # ---------------------------------------------------------------------------
@@ -501,16 +563,20 @@ def extract_item_line_template(
     else:
         flag_col_x = -1.0
 
-    # markdown marker
+    # markdown marker. The chosen token is read verbatim off real receipts and
+    # carries OCR noise (NOW/HOW casing/misreads), so snap it to canonical "now".
     if marker_rows:
-        token = marker_counter.most_common(1)[0][0]
+        token = _canonicalize_marker_token(marker_counter.most_common(1)[0][0])
         tmpl.markdown_marker = MarkdownMarker(
             present=True, token=token, count=marker_rows
         )
 
-    # sub-line
+    # sub-line. The chosen template is also verbatim OCR copy (SALE->SAVE/SALES,
+    # dropped "1@" form), so snap it to the canonical "SALE 1@ ..., WAS: ... each".
     if subline_examples:
-        template = subline_templates.most_common(1)[0][0]
+        template = _canonicalize_subline_template(
+            subline_templates.most_common(1)[0][0]
+        )
         tmpl.sub_line = SubLine(
             present=True,
             template=template,
