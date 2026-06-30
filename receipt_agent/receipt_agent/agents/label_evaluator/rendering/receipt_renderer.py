@@ -33,11 +33,12 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridWord,
+    amount_lane_end,
+    assign_row_baselines,
     build_grid_spec,
     draw_grid_line,
     glyph_advance,
     group_words_into_grid_lines,
-    line_baseline,
 )
 
 # Vendored fixed-pitch thermal face for the grid path (Px437 IBM VGA 8x16,
@@ -203,7 +204,10 @@ def _render_grid(
     # "1" => 1-bit (no anti-aliasing): glyphs render as hard on/off dots, which
     # is what a thermal/dot-matrix head actually lays down.
     draw.fontmode = "1"
-    ascent, _descent = font.getmetrics()
+    ascent, descent = font.getmetrics()
+    # Minimum baseline-to-baseline pitch: one glyph height. Below this, rows from
+    # tightly-packed source lines (dense summary blocks) collide vertically.
+    min_pitch = float(ascent + descent)
 
     grid_words: list[GridWord] = []
     for word in words:
@@ -226,9 +230,11 @@ def _render_grid(
             )
         )
 
-    for line in group_words_into_grid_lines(grid_words, spec.cell_h):
-        baseline = line_baseline(line, ascent)
-        draw_grid_line(draw, line, baseline, spec, font)
+    rows = group_words_into_grid_lines(grid_words, spec.cell_h)
+    amount_lane = amount_lane_end(rows, spec)
+    baselines = assign_row_baselines(rows, ascent, min_pitch)
+    for line, baseline in zip(rows, baselines):
+        draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane)
 
 
 def _load_grid_font(

@@ -326,3 +326,40 @@ def test_grid_summary_rows_do_not_fuse_target_floor():
     assert report["row_merge_count"] == 0, (rows, report)
     # The three $8.07 amounts share one right-edge column.
     assert report["amount_col_spread"] <= 1, report
+
+
+def test_amount_lane_aligns_jittered_prices():
+    """Prices whose source right edges jitter a few px snap to one column."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=7.0, cell_h=15.0, font_px=14, grid_left=10.0)
+    ink = (0, 0, 0)
+    # Two rows, amounts whose right edges differ by ~2 cells of source jitter.
+    r1 = [rg.GridWord(left=820, top=100, right=900, bottom=118, text="$4.39", ink=ink)]
+    r2 = [rg.GridWord(left=805, top=130, right=886, bottom=148, text="$12.99", ink=ink)]
+    lane = rg.amount_lane_end([r1, r2], spec)
+    ends = []
+    for row in (r1, r2):
+        for p in rg.plan_grid_line(row, spec, amount_lane=lane):
+            if p.is_price:
+                ends.append(p.end_col)
+    # Both amounts end on the same column after lane snapping.
+    assert max(ends) - min(ends) == 0, ends
+
+
+def test_assign_row_baselines_decramps_only_tight_rows():
+    """Cramped rows get pushed to min_pitch; well-spaced rows are untouched."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    ink = (0, 0, 0)
+    def row(top):
+        return [rg.GridWord(left=10, top=top, right=80, bottom=top + 18,
+                            text="X", ink=ink)]
+    # rows at baselines that would be 6, 6, 40 apart (first two cramped).
+    rows = [row(0), row(6), row(46)]
+    ascent = 14
+    bases = rg.assign_row_baselines(rows, ascent, min_pitch=20.0)
+    # First two were 6 apart -> pushed to >= 20; the third (already 40 below the
+    # 2nd's natural base) keeps its own baseline (no propagated drift).
+    assert bases[1] - bases[0] >= 20.0
+    assert bases[2] == 46 + ascent  # untouched

@@ -298,8 +298,40 @@ class PlacedToken:
         return self.start_col + self.cells
 
 
+# A price token whose own right-edge column lands within this many cells of the
+# shared amount lane is snapped to the lane (so the decimal points line up).
+# Prices further left than this (unit prices, qty columns, coupon columns) keep
+# their own column so we don't collapse a legitimately multi-column receipt.
+_AMOUNT_LANE_TOL_CELLS = 4
+
+
+def amount_lane_end(
+    rows: Sequence[Sequence[GridWord]], spec: GridSpec
+) -> int | None:
+    """The shared right-edge column for the receipt's main amount column.
+
+    Real receipts right-align every line total / summary amount to one column so
+    the decimal points stack. The synthesizer's source boxes jitter that edge a
+    few px line to line; rendered, the column wanders. We take the rightmost
+    cluster of price-token right edges (within ``_AMOUNT_LANE_TOL_CELLS`` of the
+    rightmost) and return its median column. ``None`` when there are no prices.
+    """
+    ends: list[int] = []
+    for row in rows:
+        for word in row:
+            if is_price_token(word.text):
+                ends.append(round((word.right - spec.grid_left) / spec.cell_w))
+    if not ends:
+        return None
+    rightmost = max(ends)
+    cluster = [e for e in ends if rightmost - e <= _AMOUNT_LANE_TOL_CELLS]
+    return int(round(median(cluster)))
+
+
 def plan_grid_line(
-    line: Sequence[GridWord], spec: GridSpec
+    line: Sequence[GridWord],
+    spec: GridSpec,
+    amount_lane: int | None = None,
 ) -> list[PlacedToken]:
     """Resolve every word of one visual row to a grid column (no drawing).
 
@@ -311,17 +343,25 @@ def plan_grid_line(
     renders visibly separated. This is the de-glue contract: the separation lives
     in the render-time cursor advance, so the SOURCE bbox no longer has to carry a
     bloated full-cell gap after every price (the old wide-spacing tell).
+
+    When ``amount_lane`` is given, a price whose right edge falls within
+    ``_AMOUNT_LANE_TOL_CELLS`` of the lane is snapped so its right edge sits on
+    the lane -- giving one straight decimal column across the receipt.
     """
     placed: list[PlacedToken] = []
     cursor_col = None
     for word in line:
         price = is_price_token(word.text)
         start = token_start_col(word.text, word.left, word.right, spec)
-        # Price tokens keep their right-anchored column; only LEFT-aligned tokens
-        # are nudged off the running cursor.
+        cells = drawn_cell_count(word.text)
+        # Snap a near-lane price's right edge onto the shared amount column.
+        if price and amount_lane is not None:
+            if abs((start + cells) - amount_lane) <= _AMOUNT_LANE_TOL_CELLS:
+                start = amount_lane - cells
+        # Price tokens keep their (possibly lane-snapped) column; only LEFT-aligned
+        # tokens are nudged off the running cursor.
         if not price and cursor_col is not None:
             start = max(start, cursor_col + 1)
-        cells = drawn_cell_count(word.text)
         placed.append(
             PlacedToken(word=word, start_col=start, cells=cells, is_price=price)
         )
@@ -337,13 +377,14 @@ def draw_grid_line(
     baseline_y: float,
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
+    amount_lane: int | None = None,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
     Pure execution of :func:`plan_grid_line`: each planned token's glyphs are
     drawn at its resolved column on the shared baseline.
     """
-    for placed in plan_grid_line(line, spec):
+    for placed in plan_grid_line(line, spec, amount_lane=amount_lane):
         draw_token_chars(
             draw,
             placed.word.text,
@@ -364,6 +405,34 @@ def line_baseline(line: Sequence[GridWord], ascent: int) -> float:
     """
     top = median(word.top for word in line)
     return top + ascent
+
+
+def assign_row_baselines(
+    rows: Sequence[Sequence[GridWord]],
+    ascent: int,
+    min_pitch: float,
+) -> list[float]:
+    """Baseline per row (top -> bottom) with a minimum inter-row pitch floor.
+
+    Each row's natural baseline is ``line_baseline``. When the synthesizer packs
+    summary lines closer than one glyph-height (e.g. SUBTOTAL / TAX / TOTAL at
+    ~0.6 cell pitch), consecutive baselines would overlap vertically and the
+    glyphs collide. We walk top to bottom and push any row that sits less than
+    ``min_pitch`` below its predecessor down to exactly ``prev + min_pitch``.
+
+    This only moves CRAMPED rows: a row already >= ``min_pitch`` below its
+    predecessor is untouched, so the push never propagates past a normal gap and
+    there is no global downward drift.
+    """
+    baselines: list[float] = []
+    prev = None
+    for row in rows:
+        base = line_baseline(row, ascent)
+        if prev is not None and base - prev < min_pitch:
+            base = prev + min_pitch
+        baselines.append(base)
+        prev = base
+    return baselines
 
 
 def _positive(value: Any, fallback: float) -> float:
