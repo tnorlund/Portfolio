@@ -61,6 +61,7 @@ def main():
         rsr._render_cached_hybrid(
             synth, atlas, profile=profile, width=W, height=H, path=hp,
             section_scale=rsr.section_scale_for_merchant(merchant),
+            **rsr.merchant_typography(merchant),
         )
         # original once per merchant
         base_key = (ex.get("metadata") or {}).get("base_receipt_key", "")

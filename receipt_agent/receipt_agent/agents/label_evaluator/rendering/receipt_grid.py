@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from statistics import median
 from typing import Any, Sequence
 
-from PIL import ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 # A right-aligned amount token (optional currency/sign, 2-decimal tail, optional
 # trailing sign/tax flag). These share a right edge in a price column, so we snap
@@ -333,24 +333,49 @@ def draw_token_chars(
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
     ink: tuple[int, int, int],
+    stroke: int = 0,
+    condense: float = 1.0,
 ) -> None:
     """Draw each glyph of ``text`` at consecutive grid columns on a baseline.
 
     Each drawn glyph lands at the next consecutive column starting at
-    ``start_col``. Because ``cell_w`` is the font's own advance, glyphs sit flush
-    (dense, no stray letter-spacing). Spaces are skipped and do NOT consume a
-    column, so the rendered span equals ``drawn_cell_count(text)`` -- matching the
-    cell count :func:`token_start_col` backs off for a right-anchored price. Drawn
-    with ``anchor="ls"`` (left / baseline) so every line shares one baseline.
+    ``start_col``. ``stroke`` thickens glyphs (a double-strike to match heavy
+    thermal print); ``condense < 1`` horizontally compresses each glyph (real
+    receipt faces are more condensed than off-the-shelf monospace -- the measured
+    "font too wide" gap). With both at their defaults this is the fast direct path.
     """
     if not text:
         return
+    if condense >= 0.999:
+        col = start_col
+        for char in text:
+            if char == " ":
+                continue
+            x = spec.grid_left + col * spec.cell_w
+            draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls",
+                      stroke_width=stroke, stroke_fill=ink)
+            col += 1
+        return
+    # Condensed path: render each glyph to a buffer, scale its width, paste.
+    img = getattr(draw, "_image", None)
+    if img is None:
+        return
+    ascent, descent = font.getmetrics()
+    natural = spec.cell_w / max(condense, 0.05)
+    bw = max(2, int(round(natural)) + 2 * stroke + 2)
+    bh = ascent + descent + 2 * stroke + 2
     col = start_col
     for char in text:
         if char == " ":
             continue
-        x = spec.grid_left + col * spec.cell_w
-        draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls")
+        buf = Image.new("L", (bw, bh), 0)
+        ImageDraw.Draw(buf).text((stroke + 1, ascent + stroke), char, font=font,
+                                 fill=255, anchor="ls", stroke_width=stroke,
+                                 stroke_fill=255)
+        buf = buf.resize((max(1, int(round(bw * condense))), bh))
+        x = int(round(spec.grid_left + col * spec.cell_w))
+        y = int(round(baseline_y - ascent - stroke))
+        img.paste(Image.new("RGB", buf.size, ink), (x, y), buf)
         col += 1
 
 
@@ -527,6 +552,8 @@ def draw_grid_line(
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
     amount_lane: int | None = None,
+    stroke: int = 0,
+    condense: float = 1.0,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
@@ -542,6 +569,8 @@ def draw_grid_line(
             spec,
             font,
             placed.word.ink,
+            stroke=stroke,
+            condense=condense,
         )
 
 

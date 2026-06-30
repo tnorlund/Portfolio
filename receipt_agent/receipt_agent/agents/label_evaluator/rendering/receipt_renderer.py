@@ -115,6 +115,12 @@ class RenderConfig:
     # whole receipt uses one size/font.
     section_scale: Mapping[str, float] | None = None
     section_font: Mapping[str, str] | None = None
+    # Per-merchant grid-font shaping (measured against the real receipts):
+    # ``condense`` horizontally compresses every glyph (real faces are more
+    # condensed than off-the-shelf monospace); ``stroke`` thickens them (a
+    # double-strike to match heavy thermal print). 1.0 / 0 = no shaping.
+    condense: float = 1.0
+    stroke: int = 0
 
 
 def render_receipt(
@@ -220,7 +226,7 @@ def _render_grid(
     # (avoids the wide letter-spacing a spacing-inflated profile char_width gives).
     sizing = build_grid_spec(profile, inner_w, inner_h, config)
     font = _load_grid_font(sizing.font_px, config)
-    advance = glyph_advance(draw, font)
+    advance = glyph_advance(draw, font) * float(config.condense)
     spec = build_grid_spec(
         profile, inner_w, inner_h, config, char_advance_px=advance
     )
@@ -270,7 +276,8 @@ def _render_grid(
         sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
         fpath = section_font.get(sect) if sect else None
         if sc == 1.0 and not fpath:
-            draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane)
+            draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
+                           stroke=config.stroke, condense=config.condense)
             continue
         key = (fpath, sc)
         cached = row_cache.get(key)
@@ -278,7 +285,7 @@ def _render_grid(
             row_font_px = max(6, int(round(sizing.font_px * sc)))
             row_cfg = config if not fpath else replace(config, font_path=fpath)
             row_font = _load_grid_font(row_font_px, row_cfg)
-            row_adv = glyph_advance(draw, row_font)
+            row_adv = glyph_advance(draw, row_font) * float(config.condense)
             row_spec = GridSpec(
                 cell_w=row_adv, cell_h=spec.cell_h,
                 font_px=row_font_px, grid_left=spec.grid_left,
@@ -288,7 +295,8 @@ def _render_grid(
         row_spec, row_font = cached
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
-        draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane)
+        draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane,
+                       stroke=config.stroke, condense=config.condense)
 
 
 def _load_grid_font(

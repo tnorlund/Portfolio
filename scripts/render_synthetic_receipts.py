@@ -583,6 +583,25 @@ def section_scale_for_merchant(merchant: str | None) -> dict:
     return dict(_DEFAULT_SECTION_SCALE)
 
 
+# Per-merchant grid typography, chosen by the glyph-prototype font matcher against
+# the real receipts (font_path) + the measured "font too wide" / weight gaps
+# (condense, stroke). Costco's real face is bitMatrix-C2 (a paid thermal font);
+# PT Mono is the closest free match, condensed ~0.88 and double-struck for the
+# heavy thermal print. Falls back to the default grid font (no shaping).
+_PTMONO = "/System/Library/Fonts/Supplemental/PTMono.ttc"
+_MERCHANT_TYPOGRAPHY = {
+    "Costco Wholesale": {"font_path": _PTMONO, "condense": 0.88, "stroke": 1},
+}
+
+
+def merchant_typography(merchant: str | None) -> dict:
+    """{font_path, condense, stroke} for a merchant; {} -> default grid font."""
+    cfg = dict(_MERCHANT_TYPOGRAPHY.get(merchant, {}))
+    if cfg.get("font_path") and not os.path.exists(cfg["font_path"]):
+        cfg.pop("font_path", None)  # not present (e.g. CI) -> default candidate list
+    return cfg
+
+
 # The glyph atlas + merchant font profile are deterministic per merchant but cost
 # ~20 sequential S3/DynamoDB round-trips to build (the dominant render latency).
 # Cache them to disk so re-renders after a code edit are near-instant. Set
@@ -641,6 +660,8 @@ def _render_cached_hybrid(
     font_path: str | None = None,
     section_scale: dict | None = None,
     section_font: dict | None = None,
+    condense: float = 1.0,
+    stroke: int = 0,
 ) -> str:
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
@@ -655,6 +676,8 @@ def _render_cached_hybrid(
         background=(250, 249, 245),
         section_scale=section_scale,
         section_font=section_font,
+        condense=condense,
+        stroke=stroke,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps
