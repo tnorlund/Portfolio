@@ -3025,7 +3025,7 @@ def _analytics_check_date(d: str) -> str:
     return d
 
 
-def _athena_run(sql: str, max_wait: int = 90) -> list:
+def _athena_run(sql: str, max_wait: int = 90, max_rows: int = 5000) -> list:
     """Run a query in the analytics workgroup; return rows as list[dict]."""
     import time
 
@@ -3048,6 +3048,7 @@ def _athena_run(sql: str, max_wait: int = 90) -> list:
         time.sleep(1.0)
         waited += 1.0
         if waited > max_wait:
+            ath.stop_query_execution(QueryExecutionId=qid)
             raise TimeoutError(f"Athena query timed out after {max_wait}s")
     if state != "SUCCEEDED":
         raise RuntimeError(status.get("StateChangeReason", "query failed"))
@@ -3063,6 +3064,8 @@ def _athena_run(sql: str, max_wait: int = 90) -> list:
                 header = vals
                 continue
             rows.append(dict(zip(header, vals)))
+        if len(rows) >= max_rows:
+            break
         token = resp.get("NextToken")
         if not token:
             break
@@ -3166,14 +3169,14 @@ async def analytics_top_impl(
             extra = "AND is_beacon AND event = 'page_view' AND evt_path <> ''"
         elif dimension == "referrer":
             col = "ref"
-            extra = "AND ref <> '' AND ref NOT LIKE '%tylernorlund%'"
+            extra = "AND ref <> '' AND ref <> '-' AND ref NOT LIKE '%tylernorlund%'"
         elif dimension == "ip":
             col = "request_ip"
             extra = ""
         else:
             return {"error": "dimension must be one of: page, referrer, ip"}
         sql = _analytics_base_cte(s, e) + f"""
-SELECT {col} AS value, count(*) AS hits, count(DISTINCT sid) AS sessions
+SELECT {col} AS value, count(*) AS hits, count(DISTINCT IF(sid <> '', sid, NULL)) AS sessions
 FROM base
 WHERE pt_date BETWEEN '{s}' AND '{e}' {extra} {flt}
 GROUP BY {col}
@@ -3201,7 +3204,8 @@ SELECT pt_time, uri, status, ref,
   is_warp, is_bot
 FROM base
 WHERE request_ip = '{ip}' AND pt_date BETWEEN '{s}' AND '{e}'
-  AND uri NOT LIKE '/_next/static/%'
+  AND uri NOT LIKE '/_next/%' AND uri NOT LIKE '/assets/%'
+  AND NOT regexp_like(uri, '[.](js|css|woff2?|png|jpe?g|svg|ico|avif|webp|map)$')
 ORDER BY pt_time
 LIMIT 300
 """

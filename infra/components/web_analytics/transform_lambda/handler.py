@@ -60,8 +60,12 @@ def _run(sql: str) -> str:
 
 
 def _insert_sql(dt: str) -> str:
+    # CloudFront percent-encodes log fields once; the beacon query string's
+    # nested param values were url-encoded by the client too, so only it needs a
+    # second decode. Single-decode referrer/user_agent to avoid corrupting
+    # values that legitimately contain percent sequences.
     qd = "url_decode(url_decode(query_string))"
-    ua = "lower(url_decode(url_decode(user_agent)))"
+    ua = "lower(url_decode(user_agent))"
     return f"""
 INSERT INTO {DB}.web_events
 WITH src AS (
@@ -80,7 +84,7 @@ SELECT
   request_ip,
   uri,
   status,
-  url_decode(url_decode(referrer)) AS referrer,
+  url_decode(referrer) AS referrer,
   {ua} AS user_agent,
   {qd} AS query_decoded,
   (uri = '/analytics/pixel.txt') AS is_beacon,
