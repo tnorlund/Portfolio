@@ -893,6 +893,98 @@ using get_receipt or get_receipt_image_url.""",
             },
         ),
         Tool(
+            name="analytics_traffic",
+            description="""Per-day production web traffic (CloudFront logs via Athena).
+
+One row per day (Pacific time): total requests, outside-human requests (bots
+AND your own Cloudflare WARP traffic excluded), WARP requests, bot/crawler
+requests, distinct human sessions, and human pageviews.
+
+Use for "how much real traffic did the site get" over a range. Dates are
+YYYY-MM-DD, inclusive, in America/Los_Angeles.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT, inclusive)"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT, inclusive)"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="analytics_sessions",
+            description="""Reconstructed visitor sessions from the analytics beacon (real JS browsers).
+
+Each row is one session (grouped by beacon session id): first/last seen (PT),
+client IP, distinct pages, pageview/scroll/reader-summary counts, total beacon
+hits. By default excludes bots and your own WARP traffic, so what remains is
+real outside humans. Ordered by activity.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
+                    "humans_only": {"type": "boolean", "default": True, "description": "Exclude bots + WARP (default true)"},
+                    "limit": {"type": "integer", "default": 50, "description": "Max sessions to return"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="analytics_top",
+            description="""Top values for a dimension over a date range (CloudFront logs via Athena).
+
+dimension: 'page' (most-viewed pages from page_view beacons), 'referrer'
+(external referrers, self-referrals excluded), or 'ip' (busiest client IPs).
+Returns value + hit count + distinct sessions. Bots + WARP excluded by default.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dimension": {"type": "string", "enum": ["page", "referrer", "ip"], "description": "What to rank"},
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
+                    "limit": {"type": "integer", "default": 15, "description": "Max rows"},
+                    "humans_only": {"type": "boolean", "default": True, "description": "Exclude bots + WARP (default true)"},
+                },
+                "required": ["dimension", "start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="analytics_ip",
+            description="""All meaningful requests from a single client IP over a date range.
+
+Page-level timeline (static assets excluded): PT time, uri, status, referrer,
+parsed beacon event/path, plus is_warp/is_bot flags. Use after analytics_top or
+analytics_sessions to inspect one visitor. Org/geo is NOT included here — look
+that up separately (e.g. an IP-info service).""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ip": {"type": "string", "description": "Client IP (v4 or v6)"},
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
+                },
+                "required": ["ip", "start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="analytics_query",
+            description="""Run a read-only Athena SQL query against the analytics database.
+
+Escape hatch for ad-hoc analysis. Only a single SELECT/WITH statement (no
+DDL/DML, no multiple statements). Table: portfolio_analytics.cloudfront_logs_prod
+(raw CloudFront access logs; the analytics beacon is uri='/analytics/pixel.txt'
+with event/sid/path in the url-encoded query_string). Prefer the other
+analytics_* tools; use this only when they don't fit.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "sql": {"type": "string", "description": "A single read-only SELECT/WITH query"},
+                },
+                "required": ["sql"],
+            },
+        ),
+        Tool(
             name="list_training_jobs",
             description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
 
@@ -1149,6 +1241,34 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_label_distribution":
             result = await get_label_distribution_impl(dynamo_client)
+        elif name == "analytics_traffic":
+            result = await analytics_traffic_impl(
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+            )
+        elif name == "analytics_sessions":
+            result = await analytics_sessions_impl(
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+                humans_only=arguments.get("humans_only", True),
+                limit=arguments.get("limit", 50),
+            )
+        elif name == "analytics_top":
+            result = await analytics_top_impl(
+                dimension=arguments["dimension"],
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+                limit=arguments.get("limit", 15),
+                humans_only=arguments.get("humans_only", True),
+            )
+        elif name == "analytics_ip":
+            result = await analytics_ip_impl(
+                ip=arguments["ip"],
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+            )
+        elif name == "analytics_query":
+            result = await analytics_query_impl(sql=arguments["sql"])
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -2869,6 +2989,257 @@ async def delete_receipt_impl(
     except Exception as e:
         logger.exception("Error deleting receipt")
         return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Web analytics — Athena over CloudFront access logs.
+# Glue table + workgroup are created by infra/components/web_analytics.
+# All beacon parsing / WARP+bot classification / PT bucketing lives here in
+# SQL so the logic stays version-controlled rather than in a Glue view.
+# ---------------------------------------------------------------------------
+ANALYTICS_DB = "portfolio_analytics"
+ANALYTICS_WORKGROUP = "portfolio_analytics"
+ANALYTICS_REGION = "us-east-1"
+
+_ANALYTICS_BOT_RE = (
+    "bot|crawl|spider|slurp|curl|python-requests|go-http|headless|wget|"
+    "monitor|preview|scan|http.?client|java/|okhttp|axios|node-fetch|libwww|"
+    "facebookexternal|meta-external|petalbot|ahrefs|semrush|dataforseo"
+)
+
+
+def _analytics_check_date(d: str) -> str:
+    import re
+
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", d or ""):
+        raise ValueError(f"date must be YYYY-MM-DD, got {d!r}")
+    return d
+
+
+def _athena_run(sql: str, max_wait: int = 90) -> list:
+    """Run a query in the analytics workgroup; return rows as list[dict]."""
+    import time
+
+    import boto3
+
+    ath = boto3.client("athena", region_name=ANALYTICS_REGION)
+    qid = ath.start_query_execution(
+        QueryString=sql,
+        QueryExecutionContext={"Database": ANALYTICS_DB},
+        WorkGroup=ANALYTICS_WORKGROUP,
+    )["QueryExecutionId"]
+    waited = 0.0
+    while True:
+        status = ath.get_query_execution(QueryExecutionId=qid)[
+            "QueryExecution"
+        ]["Status"]
+        state = status["State"]
+        if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
+            break
+        time.sleep(1.0)
+        waited += 1.0
+        if waited > max_wait:
+            raise TimeoutError(f"Athena query timed out after {max_wait}s")
+    if state != "SUCCEEDED":
+        raise RuntimeError(status.get("StateChangeReason", "query failed"))
+    rows, header, token = [], None, None
+    while True:
+        kwargs = {"QueryExecutionId": qid, "MaxResults": 1000}
+        if token:
+            kwargs["NextToken"] = token
+        resp = ath.get_query_results(**kwargs)
+        for row in resp["ResultSet"]["Rows"]:
+            vals = [cell.get("VarCharValue") for cell in row["Data"]]
+            if header is None:
+                header = vals
+                continue
+            rows.append(dict(zip(header, vals)))
+        token = resp.get("NextToken")
+        if not token:
+            break
+    return rows
+
+
+def _analytics_base_cte(start_date: str, end_date: str) -> str:
+    """Shared CTE: parse beacon, classify WARP/bot, bucket to PT day."""
+    s = _analytics_check_date(start_date)
+    e = _analytics_check_date(end_date)
+    pt = (
+        "(cast(concat(cast(date as varchar),' ',time) as timestamp) "
+        "AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles'"
+    )
+    return f"""
+WITH raw AS (
+  SELECT date, time, request_ip, uri, status,
+         url_decode(url_decode(query_string)) AS q,
+         lower(url_decode(url_decode(user_agent))) AS ua,
+         url_decode(url_decode(referrer)) AS ref
+  FROM {ANALYTICS_DB}.cloudfront_logs_prod
+  WHERE date BETWEEN date_add('day', -1, DATE '{s}')
+                 AND date_add('day',  1, DATE '{e}')
+),
+base AS (
+  SELECT
+    date_format({pt}, '%Y-%m-%d') AS pt_date,
+    date_format({pt}, '%Y-%m-%d %H:%i:%s') AS pt_time,
+    request_ip, uri, status, ref,
+    (uri = '/analytics/pixel.txt') AS is_beacon,
+    regexp_extract(q, 'event=([^&]+)', 1) AS event,
+    regexp_extract(q, 'path=([^&]+)', 1) AS evt_path,
+    regexp_extract(q, 'sid=([^&]+)', 1) AS sid,
+    regexp_like(request_ip, '^(104\\.28\\.|2a09:bac)') AS is_warp,
+    (regexp_like(ua, '{_ANALYTICS_BOT_RE}')
+       OR regexp_like(request_ip, '^185\\.177\\.72\\.')) AS is_bot
+  FROM raw
+)"""
+
+
+async def analytics_traffic_impl(start_date: str, end_date: str) -> dict:
+    try:
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        sql = _analytics_base_cte(s, e) + f"""
+SELECT pt_date,
+  count(*) AS requests_total,
+  count_if(NOT is_bot AND NOT is_warp) AS requests_outside_human,
+  count_if(is_warp) AS requests_warp,
+  count_if(is_bot) AS requests_bot,
+  count(DISTINCT IF(is_beacon AND NOT is_bot AND NOT is_warp, sid, NULL)) AS human_sessions,
+  count_if(is_beacon AND event = 'page_view' AND NOT is_bot AND NOT is_warp) AS human_pageviews
+FROM base
+WHERE pt_date BETWEEN '{s}' AND '{e}'
+GROUP BY pt_date
+ORDER BY pt_date
+"""
+        return {
+            "start": s,
+            "end": e,
+            "timezone": "America/Los_Angeles",
+            "days": _athena_run(sql),
+        }
+    except Exception as exc:
+        logger.exception("analytics_traffic failed")
+        return {"error": str(exc)}
+
+
+async def analytics_sessions_impl(
+    start_date, end_date, humans_only=True, limit=50
+) -> dict:
+    try:
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        limit = max(1, min(int(limit), 500))
+        flt = "AND NOT is_bot AND NOT is_warp" if humans_only else ""
+        sql = _analytics_base_cte(s, e) + f"""
+SELECT sid,
+  min(pt_time) AS first_seen,
+  max(pt_time) AS last_seen,
+  arbitrary(request_ip) AS ip,
+  array_join(array_agg(DISTINCT evt_path) FILTER (WHERE evt_path <> ''), ', ') AS pages,
+  count_if(event = 'page_view') AS pageviews,
+  count_if(event = 'scroll_depth') AS scroll_events,
+  count_if(event = 'reader_summary') AS reader_summaries,
+  count(*) AS beacons
+FROM base
+WHERE is_beacon AND sid <> '' AND pt_date BETWEEN '{s}' AND '{e}' {flt}
+GROUP BY sid
+ORDER BY beacons DESC
+LIMIT {limit}
+"""
+        return {
+            "start": s,
+            "end": e,
+            "humans_only": humans_only,
+            "sessions": _athena_run(sql),
+        }
+    except Exception as exc:
+        logger.exception("analytics_sessions failed")
+        return {"error": str(exc)}
+
+
+async def analytics_top_impl(
+    dimension, start_date, end_date, limit=15, humans_only=True
+) -> dict:
+    try:
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        limit = max(1, min(int(limit), 200))
+        flt = "AND NOT is_bot AND NOT is_warp" if humans_only else ""
+        if dimension == "page":
+            col = "evt_path"
+            extra = "AND is_beacon AND event = 'page_view' AND evt_path <> ''"
+        elif dimension == "referrer":
+            col = "ref"
+            extra = "AND ref <> '' AND ref NOT LIKE '%tylernorlund%'"
+        elif dimension == "ip":
+            col = "request_ip"
+            extra = ""
+        else:
+            return {"error": "dimension must be one of: page, referrer, ip"}
+        sql = _analytics_base_cte(s, e) + f"""
+SELECT {col} AS value, count(*) AS hits, count(DISTINCT sid) AS sessions
+FROM base
+WHERE pt_date BETWEEN '{s}' AND '{e}' {extra} {flt}
+GROUP BY {col}
+ORDER BY hits DESC
+LIMIT {limit}
+"""
+        return {"dimension": dimension, "start": s, "end": e, "top": _athena_run(sql)}
+    except Exception as exc:
+        logger.exception("analytics_top failed")
+        return {"error": str(exc)}
+
+
+async def analytics_ip_impl(ip, start_date, end_date) -> dict:
+    try:
+        import re
+
+        if not re.match(r"^[0-9a-fA-F:.]+$", ip or ""):
+            return {"error": f"invalid ip: {ip!r}"}
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        sql = _analytics_base_cte(s, e) + f"""
+SELECT pt_time, uri, status, ref,
+  IF(is_beacon, event, NULL) AS event,
+  IF(is_beacon, evt_path, NULL) AS evt_path,
+  is_warp, is_bot
+FROM base
+WHERE request_ip = '{ip}' AND pt_date BETWEEN '{s}' AND '{e}'
+  AND uri NOT LIKE '/_next/static/%'
+ORDER BY pt_time
+LIMIT 300
+"""
+        return {
+            "ip": ip,
+            "start": s,
+            "end": e,
+            "note": "org/geo not included; look up separately",
+            "requests": _athena_run(sql),
+        }
+    except Exception as exc:
+        logger.exception("analytics_ip failed")
+        return {"error": str(exc)}
+
+
+async def analytics_query_impl(sql: str) -> dict:
+    try:
+        import re
+
+        stmt = (sql or "").strip().rstrip(";").strip()
+        low = stmt.lower()
+        if not (low.startswith("select") or low.startswith("with")):
+            return {"error": "only read-only SELECT/WITH queries are allowed"}
+        if ";" in stmt:
+            return {"error": "only a single statement is allowed"}
+        if re.search(
+            r"\b(insert|update|delete|drop|create|alter|msck|grant|revoke|unload|truncate)\b",
+            low,
+        ):
+            return {"error": "write/DDL keywords are not allowed"}
+        return {"rows": _athena_run(stmt), "sql": stmt}
+    except Exception as exc:
+        logger.exception("analytics_query failed")
+        return {"error": str(exc)}
 
 
 async def list_training_jobs_impl(
