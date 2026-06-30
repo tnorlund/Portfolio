@@ -999,6 +999,28 @@ analytics_* tools; use this only when they don't fit.""",
             },
         ),
         Tool(
+            name="analytics_lookup_ip",
+            description="""Look up org / geo / network type for one or more IPs (live).
+
+Returns country, region, city, ISP, org, ASN, and proxy/hosting/mobile flags
+per IP via a public IP-info service. Use to identify WHO a visitor is — e.g. a
+company office (org = "LangChain, Inc") vs a datacenter/bot (hosting=true) —
+after analytics_sessions / analytics_top / analytics_ip surface an IP.
+
+Best-effort third-party data; `org` comes from the IP registry. Up to 100 IPs.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ips": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "1-100 client IPs (v4 or v6) to resolve",
+                    },
+                },
+                "required": ["ips"],
+            },
+        ),
+        Tool(
             name="list_training_jobs",
             description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
 
@@ -1283,6 +1305,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "analytics_query":
             result = await analytics_query_impl(sql=arguments["sql"])
+        elif name == "analytics_lookup_ip":
+            result = await analytics_lookup_ip_impl(ips=arguments["ips"])
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -3239,6 +3263,53 @@ async def analytics_query_impl(sql: str) -> dict:
         return {"rows": _athena_run(stmt), "sql": stmt}
     except Exception as exc:
         logger.exception("analytics_query failed")
+        return {"error": str(exc)}
+
+
+async def analytics_lookup_ip_impl(ips) -> dict:
+    """Resolve org/geo/network-type for IPs via a public IP-info service."""
+    try:
+        import json as _json
+        import re
+        import urllib.request
+
+        if not isinstance(ips, list) or not ips:
+            return {"error": "ips must be a non-empty list"}
+        clean = [i for i in ips if re.match(r"^[0-9a-fA-F:.]+$", i or "")][:100]
+        if not clean:
+            return {"error": "no valid IPs provided"}
+        fields = (
+            "query,country,regionName,city,isp,org,as,mobile,proxy,hosting,"
+            "status,message"
+        )
+        body = _json.dumps(
+            [{"query": ip, "fields": fields} for ip in clean]
+        ).encode()
+        req = urllib.request.Request(
+            "http://ip-api.com/batch",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = _json.load(resp)
+        results = [
+            {
+                "ip": g.get("query"),
+                "country": g.get("country"),
+                "region": g.get("regionName"),
+                "city": g.get("city"),
+                "isp": g.get("isp"),
+                "org": g.get("org"),
+                "asn": g.get("as"),
+                "mobile": g.get("mobile"),
+                "proxy": g.get("proxy"),
+                "hosting": g.get("hosting"),
+            }
+            for g in data
+        ]
+        return {"results": results}
+    except Exception as exc:
+        logger.exception("analytics_lookup_ip failed")
         return {"error": str(exc)}
 
 

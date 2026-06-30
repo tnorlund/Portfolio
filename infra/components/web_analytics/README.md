@@ -67,6 +67,7 @@ IaC.
 | `analytics_sessions(start, end, humans_only)` | reconstructed beacon sessions (pages, scroll, reader-summaries) |
 | `analytics_top(dimension, start, end)` | top `page` / `referrer` / `ip` |
 | `analytics_ip(ip, start, end)` | full page-level timeline for one IP |
+| `analytics_lookup_ip(ips)` | live org / geo / network-type (hosting/proxy) for IPs — who a visitor is |
 | `analytics_query(sql)` | read-only SELECT/WITH escape hatch |
 
 ## Classification rules (in the tool SQL)
@@ -77,9 +78,11 @@ IaC.
 - **Human session:** an analytics-beacon (`/analytics/pixel.txt`) session id,
   excluding WARP + bots
 
-> Note: IP-level geo/org (e.g. "this IP is LangChain") is **not** in the SQL —
-> the `analytics_ip` tool returns the raw activity; org/geo is a separate
-> external lookup. Datacenter/residential-bot beacons that fake a browser UA can
+> Note: IP-level geo/org (e.g. "this IP is LangChain") is intentionally **not**
+> a materialized column — at this volume it's freshest on demand. Use the
+> `analytics_lookup_ip` tool (live IP-info lookup) to resolve org / geo /
+> hosting flags for IPs surfaced by the other tools.
+> Datacenter/residential-bot beacons that fake a browser UA can
 > still slip into `human_sessions`; treat that count as an upper bound and
 > confirm individual IPs with `analytics_ip` + an IP-info service.
 
