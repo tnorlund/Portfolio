@@ -177,6 +177,13 @@ def _logo_crop(arr, words, wordmark):
           or str(w.get("text", "")).strip().upper() in wordmark]
     if not mn:
         return None
+    # The wordmark may also appear in body/footer text (e.g. "VONS.com", taglines)
+    # which would stretch the bbox down the whole receipt. The LOGO is the topmost
+    # cluster -> keep only tokens within one line-band of the highest match.
+    def _cy(w):
+        return (1 - (w["top_left"]["y"] + w["bottom_right"]["y"]) / 2) * H
+    top_cy = min(_cy(w) for w in mn)
+    mn = [w for w in mn if _cy(w) <= top_cy + 0.06 * H]
     tops, bottoms, lefts, rights = [], [], [], []
     for w in mn:
         tl, br = w["top_left"], w["bottom_right"]
@@ -192,27 +199,36 @@ def _logo_crop(arr, words, wordmark):
     return crop if crop.shape[0] >= 20 and crop.shape[1] >= 60 else None
 
 
-def main() -> int:
-    if len(sys.argv) < 3:
-        print(__doc__)
-        return 2
-    merchant, out_dir = sys.argv[1], sys.argv[2]
-    maxr = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-    os.makedirs(out_dir, exist_ok=True)
-    wordmark = _WORDMARK.get(merchant, ())
+# --- fast collection: shared clients, thread-pool the S3/Dynamo I/O, disk-cache
+# the small grayscale logo crop so re-tuning align/vote never re-hits S3.
+CACHE_DIR = os.environ.get("LOGO_CACHE", "/tmp/logo_cache")
+CACHE_VER = "v1"   # bump when _logo_crop / cropping logic changes
 
+
+def _cache_path(merchant, iid, rid):
+    slug = merchant.replace(" ", "_").replace("'", "").lower()
+    d = os.path.join(CACHE_DIR, CACHE_VER, slug)
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, f"{iid}_{rid}.npy")
+
+
+def _collect_crops(merchant, targets, wordmark):
+    """Grayscale logo crops for all targets: parallel + cached. Returns [uint8 array]."""
+    import concurrent.futures as cf
+
+    import boto3
     from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_upload.font_analysis import load_raw_image_from_s3
 
-    client = DynamoClient(table_name=TABLE, region=REGION)
-    places, _ = client.get_receipt_places_by_merchant(merchant)
-    targets = [(str(p.image_id), int(p.receipt_id)) for p in places]
-    if maxr:
-        targets = targets[:maxr]
-    print(f"{merchant}: {len(targets)} receipts", flush=True)
+    client = DynamoClient(table_name=TABLE, region=REGION)  # boto3 client is thread-safe
+    s3 = boto3.client("s3")                                 # ONE shared client, reused
 
-    tights = []
-    for iid, rid in targets:
+    def _one(iid, rid):
+        p = _cache_path(merchant, iid, rid)
+        if os.path.exists(p):
+            a = np.load(p)
+            return None if a.size == 0 else a               # cached (incl. negative)
+        crop = None
         try:
             d = client.get_image_details(iid)
             words = [{"text": w.text, "labels": [], "top_left": w.top_left,
@@ -224,19 +240,48 @@ def main() -> int:
                 if lab.get((ww.line_id, ww.word_id)):
                     w["labels"] = [lab[(ww.line_id, ww.word_id)]]
             rec = next((c for c in d.receipts if c.receipt_id == rid), None)
-            if rec is None:
-                continue
-            raw = load_raw_image_from_s3(rec).convert("L")
+            if rec is not None:
+                raw = load_raw_image_from_s3(rec, s3_client=s3).convert("L")
+                crop = _logo_crop(np.asarray(raw), words, wordmark)
         except Exception:  # noqa: BLE001
-            continue
-        crop = _logo_crop(np.asarray(raw), words, wordmark)
-        if crop is None:
-            continue
-        t = _clean_tight(crop)
-        if t is not None:
-            tights.append(t)
-        if len(tights) % 10 == 0 and tights:
-            print(f"  ...{len(tights)} crops", flush=True)
+            crop = None
+        np.save(p, crop if crop is not None else np.empty(0, np.uint8))
+        return crop
+
+    crops, done = [], 0
+    workers = int(os.environ.get("LOGO_WORKERS", "16"))
+    with cf.ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_one, iid, rid): (iid, rid) for iid, rid in targets}
+        for f in cf.as_completed(futs):
+            done += 1
+            c = f.result()
+            if c is not None:
+                crops.append(c)
+            if done % 25 == 0:
+                print(f"  ...{done}/{len(targets)} fetched, {len(crops)} crops", flush=True)
+    return crops
+
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        print(__doc__)
+        return 2
+    merchant, out_dir = sys.argv[1], sys.argv[2]
+    maxr = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    os.makedirs(out_dir, exist_ok=True)
+    wordmark = _WORDMARK.get(merchant, ())
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+
+    client = DynamoClient(table_name=TABLE, region=REGION)
+    places, _ = client.get_receipt_places_by_merchant(merchant)
+    targets = [(str(p.image_id), int(p.receipt_id)) for p in places]
+    if maxr:
+        targets = targets[:maxr]
+    print(f"{merchant}: {len(targets)} receipts", flush=True)
+
+    crops = _collect_crops(merchant, targets, wordmark)
+    tights = [t for t in (_clean_tight(c) for c in crops) if t is not None]
 
     if len(tights) < 3:
         print(f"too few logo captures ({len(tights)})")
@@ -265,8 +310,10 @@ def main() -> int:
             rejected += 1
     print(f"aligned: kept {kept}, rejected {rejected} (IoU<{KEEP_IOU})", flush=True)
     if len(aligned) < 3:
-        print("too few aligned; lower KEEP_IOU")
-        return 1
+        # Low-count merchant (few receipts / missing S3): no stable vote -> fall
+        # back to the single sharpest reference capture (already cleaned).
+        print(f"too few aligned ({len(aligned)}); single-best fallback", flush=True)
+        aligned = [ref]
 
     stack = np.stack(aligned)
     frac = stack.mean(axis=0)                 # vote fraction 0..1 (soft, anti-aliased)
