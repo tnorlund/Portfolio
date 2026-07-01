@@ -87,12 +87,27 @@ class ReceiptBarcode(TextGeometryEntity):
             "GSI3SK": {"S": "BARCODE"},
         }
 
+    def gsi4_key(self) -> dict[str, Any]:
+        """GSI4 key: the single-query receipt-details access pattern.
+
+        Shares GSI4PK with the receipt's other entities; the ``6_BARCODE``
+        prefix orders barcodes after Receipt/Place/Line/Word/Label/Summary
+        (0..5) so ``get_receipt_details`` returns them alongside the receipt.
+        """
+        return {
+            "GSI4PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI4SK": {"S": f"6_BARCODE#{self.barcode_id:05d}"},
+        }
+
     def to_item(self) -> dict[str, Any]:
         """Convert the ReceiptBarcode to a DynamoDB item."""
         return {
             **self.key,
             "TYPE": {"S": "RECEIPT_BARCODE"},
             **self.gsi3_key(),
+            **self.gsi4_key(),
             **self._get_geometry_fields(),
             "symbology": {"S": self.symbology},
         }

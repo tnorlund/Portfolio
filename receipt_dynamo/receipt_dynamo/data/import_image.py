@@ -13,6 +13,7 @@ from receipt_dynamo.entities import (
     OCRJob,
     OCRRoutingDecision,
     Receipt,
+    ReceiptBarcode,
     ReceiptLetter,
     ReceiptLine,
     ReceiptPlace,
@@ -85,6 +86,10 @@ def import_image(table_name: str, json_path: str) -> None:
             ReceiptPlace(**_parse_datetimes(item, ["timestamp"]))
             for item in data.get("receipt_places", [])
         ],
+        "receipt_barcodes": [
+            ReceiptBarcode(**item)
+            for item in data.get("receipt_barcodes", [])
+        ],
         "ocr_jobs": [
             OCRJob(**_parse_datetimes(item, ["created_at", "updated_at"]))
             for item in data.get("ocr_jobs", [])
@@ -134,6 +139,10 @@ def import_image(table_name: str, json_path: str) -> None:
     if entities["receipt_places"]:
         # type: ignore[arg-type]
         dynamo_client.add_receipt_places(entities["receipt_places"])
+
+    if entities["receipt_barcodes"]:
+        # type: ignore[arg-type]
+        dynamo_client.add_receipt_barcodes(entities["receipt_barcodes"])
 
     if entities["ocr_jobs"]:
         # type: ignore[arg-type]

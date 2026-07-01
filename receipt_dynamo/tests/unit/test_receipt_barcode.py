@@ -46,6 +46,8 @@ def test_receipt_barcode_key_and_type(receipt_barcode_fixture):
     assert item["TYPE"]["S"] == "RECEIPT_BARCODE"
     assert item["GSI3PK"]["S"] == f"IMAGE#{IMAGE_ID}#RECEIPT#00001"
     assert item["GSI3SK"]["S"] == "BARCODE"
+    assert item["GSI4PK"]["S"] == f"IMAGE#{IMAGE_ID}#RECEIPT#00001"
+    assert item["GSI4SK"]["S"] == "6_BARCODE#00000"
     assert item["symbology"]["S"] == "Code128"
     assert item["text"]["S"] == "030141189531070"
 
