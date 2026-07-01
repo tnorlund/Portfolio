@@ -30,6 +30,20 @@ _PRICE_TRAILING_DOT = re.compile(r"^(\$?\d{1,3}(?:,\d{3})*\.\d{2})\.$")
 # those are legitimate printed tax RATES (``9.75000``, ``8.37500``).
 _AMOUNT_3DEC = re.compile(r"^([-+]?\$?\d{1,3}(?:,\d{3})*)\.(\d{3})([-+]?[A-Z]?)$")
 
+# Date / time tokens. A printed transaction line is ``<date> <time> ...`` so the
+# token right before a HH:MM time is the date; a valid date is MM/DD/YYYY with a
+# real month/day (``0/20/2025`` and the slashless ``1072072025`` are OCR garbles).
+_TIME_TOKEN = re.compile(r"^\d{1,2}:\d{2}$")
+_DATE_MDY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$")
+
+
+def _valid_date(text: str) -> bool:
+    m = _DATE_MDY.match(text)
+    if not m:
+        return False
+    mo, da = int(m.group(1)), int(m.group(2))
+    return 1 <= mo <= 12 and 1 <= da <= 31
+
 # Context-free single-token repairs that are essentially never legitimate text.
 _TOKEN_FIX = {
     "Seg#": "Seq#",
@@ -102,12 +116,65 @@ def fix_currency_decimals(words: list[dict]) -> int:
     return n
 
 
+def canonicalize_dates(words: list[dict]) -> int:
+    """Repair garbled transaction-date tokens to the receipt's canonical date.
+
+    A base receipt often OCRs the same printed date cleanly in one spot
+    (``10/20/2025``) but garbled in others (``1072072025``, ``0/20/2025``). Every
+    printed occurrence is the SAME transaction date, so we pick the most common
+    valid MM/DD/YYYY and replace the garbled ones. Context gate: only a date-shaped
+    token (has a ``/`` or is a >=6-digit run) sitting immediately before a HH:MM
+    time is touched, so store/register numbers are never rewritten. Returns #fixed.
+    """
+    from collections import Counter
+
+    valid = [str(w.get("text") or "") for w in words
+             if _valid_date(str(w.get("text") or ""))]
+    if not valid:
+        return 0
+    canonical = Counter(valid).most_common(1)[0][0]
+    n = 0
+    for i, w in enumerate(words):
+        t = str(w.get("text") or "")
+        nxt = str(words[i + 1].get("text") or "") if i + 1 < len(words) else ""
+        if not _TIME_TOKEN.match(nxt):
+            continue
+        date_shaped = ("/" in t) or (t.isdigit() and len(t) >= 6)
+        if date_shaped and not _valid_date(t) and t != canonical:
+            w["text"] = canonical
+            n += 1
+    return n
+
+
+def fix_items_sold_separator(words: list[dict]) -> int:
+    """``... ITEMS SOLD * 4`` -> ``... ITEMS SOLD = 4`` (Costco prints ``=``).
+
+    Only a lone ``*`` immediately after ``SOLD`` is converted, so the ``****``
+    masking runs elsewhere are untouched. Returns #fixed.
+    """
+    n = 0
+    for i, w in enumerate(words):
+        t = str(w.get("text") or "")
+        prev = str(words[i - 1].get("text") or "") if i > 0 else ""
+        if t == "*" and prev.upper() == "SOLD":
+            w["text"] = "="
+            n += 1
+    return n
+
+
 def clean_for_render(receipt: Mapping[str, Any]) -> dict:
     """Apply all render-time content repairs to ``receipt`` (mutates word dicts).
 
-    Returns a small report ``{auth_fixed, totals_fixed}`` for logging/tests.
+    Returns a small report ``{auth_fixed, totals_fixed, dates_fixed, seps_fixed}``.
     """
     words = list(_iter_word_dicts(receipt))
     auth_fixed = canonicalize_auth_tokens(words)
     totals_fixed = fix_currency_decimals(words)
-    return {"auth_fixed": auth_fixed, "totals_fixed": totals_fixed}
+    dates_fixed = canonicalize_dates(words)
+    seps_fixed = fix_items_sold_separator(words)
+    return {
+        "auth_fixed": auth_fixed,
+        "totals_fixed": totals_fixed,
+        "dates_fixed": dates_fixed,
+        "seps_fixed": seps_fixed,
+    }
