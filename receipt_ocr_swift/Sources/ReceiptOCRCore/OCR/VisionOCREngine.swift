@@ -283,6 +283,12 @@ private func detectBarcodesSync(from imageURL: URL) -> [Barcode] {
     return detectBarcodesSync(from: cgImage)
 }
 
+/// Public barcode-only entry point (no OCR / classification / warp), for the
+/// backfill's fast per-image detection.
+public func detectBarcodes(at imageURL: URL) -> [Barcode] {
+    return detectBarcodesSync(from: imageURL)
+}
+
 private func performOCRSync(from imageURL: URL) throws -> [Line] {
     guard let nsImage = NSImage(contentsOf: imageURL) else { return [] }
     guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
