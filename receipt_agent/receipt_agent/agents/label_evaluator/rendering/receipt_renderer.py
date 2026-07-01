@@ -29,6 +29,10 @@ from typing import Any, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
 
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US,
+    date_core,
+)
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
@@ -260,7 +264,7 @@ def _is_final_total(
     return not any(tok in t for tok in exclude)
 
 
-_DATE_LED = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4}$")
+_DATE_LED = re.compile(f"^{date_core(US)}$")
 
 
 def _draw_dash_row(draw, x0: float, x1: float, baseline_y: float, spec, font,

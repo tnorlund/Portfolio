@@ -20,21 +20,34 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US as _NF,
+    date_core as _date_core,
+    fraction as _fraction,
+    integer_part as _integer_part,
+)
+
 # A hex Application IDentifier as printed in the EMV block, e.g. A0000000980840.
 _AID_HEX = re.compile(r"^A?[0-9A-F]{8,}$")
 # A bare currency amount, optionally with a trailing stray period from OCR.
-_PRICE_TRAILING_DOT = re.compile(r"^(\$?\d{1,3}(?:,\d{3})*\.\d{2})\.$")
+_PRICE_TRAILING_DOT = re.compile(
+    f"^({_NF.currency}?{_integer_part(_NF)}{_fraction(_NF)})\\.$"
+)
 
 # A currency amount with exactly THREE decimals -- a near-certain OCR/synth error
 # on a 2-decimal price (e.g. ``19.981``). FOUR+ decimals are left alone because
-# those are legitimate printed tax RATES (``9.75000``, ``8.37500``).
-_AMOUNT_3DEC = re.compile(r"^([-+]?\$?\d{1,3}(?:,\d{3})*)\.(\d{3})([-+]?[A-Z]?)$")
+# those are legitimate printed tax RATES (``9.75000``, ``8.37500``). The 3 is the
+# error signature, not the locale fraction width, so it stays literal.
+_AMOUNT_3DEC = re.compile(
+    f"^([-+]?{_NF.currency}?{_integer_part(_NF)}){_NF.decimal}(\\d{{3}})"
+    f"([-+]?{_NF.tax_flag}?)$"
+)
 
 # Date / time tokens. A printed transaction line is ``<date> <time> ...`` so the
 # token right before a HH:MM time is the date; a valid date is MM/DD/YYYY with a
 # real month/day (``0/20/2025`` and the slashless ``1072072025`` are OCR garbles).
 _TIME_TOKEN = re.compile(r"^\d{1,2}:\d{2}$")
-_DATE_MDY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$")
+_DATE_MDY = re.compile(f"^{_date_core(_NF, groups=True)}$")
 
 
 def _valid_date(text: str) -> bool:

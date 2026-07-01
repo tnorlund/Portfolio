@@ -28,6 +28,12 @@ from __future__ import annotations
 import os
 import re
 import sys
+
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US as _NF,
+    fraction as _fraction,
+    integer_part as _integer_part,
+)
 from collections import Counter
 from dataclasses import dataclass, field
 from statistics import median
@@ -76,7 +82,10 @@ _EPSILON = 1e-9
 # optional thousands separators, and an optional trailing single-letter tax flag
 # (e.g. "1.99", "$12.00", "1,299.00", "3.49 T"). Receipts right-align these in a
 # dedicated column, which is what we want to measure.
-_PRICE_TOKEN = re.compile(r"^\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})\$?[A-Z]?$")
+_PRICE_TOKEN = re.compile(
+    f"^{_NF.currency}?{_integer_part(_NF)}(?:{_fraction(_NF)})"
+    f"{_NF.currency}?{_NF.tax_flag}?$"
+)
 
 
 @dataclass(frozen=True)

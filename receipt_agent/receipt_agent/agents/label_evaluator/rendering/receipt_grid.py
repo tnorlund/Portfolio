@@ -26,6 +26,13 @@ coordinate helpers and font loader so the two paths stay consistent.
 from __future__ import annotations
 
 import re
+
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US as _NF,
+    date_core as _date_core,
+    fraction as _fraction,
+    integer_part as _integer_part,
+)
 from dataclasses import dataclass
 from statistics import median
 from typing import Any, Sequence
@@ -39,7 +46,8 @@ from PIL import Image, ImageDraw, ImageFont
 # of digits (``1000``, ``1234``); without the bare-``\d+`` alternative an
 # uncommaed large amount falls through to left-snap and breaks the column.
 _PRICE_TOKEN = re.compile(
-    r"^[-+]?\$?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}[-+]?[A-Z]?$"
+    f"^[-+]?{_NF.currency}?{_integer_part(_NF, allow_bare=True)}"
+    f"{_fraction(_NF)}[-+]?{_NF.tax_flag}?$"
 )
 
 # Hard floor/ceiling on the body font, independent of any per-merchant noise.
@@ -144,7 +152,7 @@ def is_price_token(text: str) -> bool:
 # A transaction-date token: MM/DD/YYYY (real) or a slashless all-digit run the
 # synthesizer sometimes emits for the same field (e.g. "1072072025"). Length >= 8
 # so store/register numbers ("117", "705") never match.
-_DATE_TOKEN = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4}$|^\d{8,}$")
+_DATE_TOKEN = re.compile(f"^{_date_core(_NF)}$|^\\d{{8,}}$")
 
 
 def _is_date_token(text: str) -> bool:
