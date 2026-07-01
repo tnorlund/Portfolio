@@ -41,6 +41,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
+    is_price_token,
     section_for_labels,
 )
 
@@ -140,6 +141,11 @@ class RenderConfig:
     # OF ITEMS SOLD" line (Costco boxes that date, but not the identical date under
     # AMOUNT). Only the leading date token of that one row is boxed.
     reverse_date_after_items: bool = False
+    # Center display lines (address block, headings, footer) on the paper midline.
+    # A line with no price token and substantial, roughly-symmetric side margins in
+    # the SOURCE is a centered line; our condensed font is narrower than the source
+    # text, so without re-centering it drifts left. Body/amount lines are untouched.
+    center_display_lines: bool = True
 
 
 def render_receipt(
@@ -321,6 +327,25 @@ def _render_grid(
     # The big bottom "Items Sold:" date line inherits that phrase's scale.
     items_sold_scale = next((sc for pat, sc in heading_rules if "ITEMS SOLD:" in pat),
                             None)
+    # Centering geometry (paper content span in pixels).
+    content_left = float(config.margin)
+    content_right = float(config.width - config.margin)
+    content_cw = max(1.0, content_right - content_left)
+
+    def _center_target(line):
+        """Paper-center x for a centered display line (no price, symmetric source
+        margins), else None -> the line keeps its source-column placement."""
+        if not config.center_display_lines:
+            return None
+        if any(is_price_token(w.text) for w in line):
+            return None
+        ll = min(w.left for w in line)
+        lr = max(w.right for w in line)
+        lm, rm = ll - content_left, content_right - lr
+        if (lm > 0.08 * content_cw and rm > 0.08 * content_cw
+                and abs(lm - rm) < 0.18 * content_cw):
+            return content_left + content_cw / 2.0
+        return None
     eff_sections = effective_row_sections(rows)
     row_cache: dict[tuple, tuple] = {}
     prev_text = ""
@@ -341,6 +366,7 @@ def _render_grid(
         is_date_row = (bool(config.reverse_date_after_items)
                        and "NUMBER OF ITEMS SOLD" in prev_text)
         prev_text = row_text
+        center_to = _center_target(line)
         fpath = section_font.get(sect) if sect else None
         if is_heading:
             sc = float(hscale)
@@ -353,7 +379,7 @@ def _render_grid(
                            stroke=config.stroke, condense=config.condense,
                            bitmap_font=bf_row, cap_px=cap_px,
                            reverse_price=is_total, reverse_date=is_date_row,
-                           background=config.background)
+                           background=config.background, center_to=center_to)
             continue
         key = (fpath, sc, is_heading)
         cached = row_cache.get(key)
@@ -383,7 +409,7 @@ def _render_grid(
                        stroke=config.stroke, condense=config.condense,
                        bitmap_font=bf_row, cap_px=cp,
                        reverse_price=is_total, reverse_date=is_date_row,
-                       background=config.background)
+                       background=config.background, center_to=center_to)
 
 
 def _load_grid_font(

@@ -590,6 +590,7 @@ def draw_grid_line(
     reverse_price: bool = False,
     reverse_date: bool = False,
     background: tuple[int, int, int] = (255, 255, 255),
+    center_to: float | None = None,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
@@ -597,9 +598,19 @@ def draw_grid_line(
     drawn at its resolved column on the shared baseline. Reverse-video (paper glyphs
     on a solid black box) is Costco's treatment for the grand-TOTAL amount
     (``reverse_price``) and the transaction date after the item count
-    (``reverse_date`` -> the leading date token of the row).
+    (``reverse_date`` -> the leading date token of the row). When ``center_to`` (a
+    target center x in px) is given, the whole planned row is shifted so its drawn
+    span is centered there -- for centered display lines (address, headings, footer)
+    whose condensed rendered width is narrower than the source and would drift left.
     """
     placed_row = plan_grid_line(line, spec, amount_lane=amount_lane)
+    if center_to is not None and placed_row:
+        span_l = spec.grid_left + min(p.start_col for p in placed_row) * spec.cell_w
+        span_r = spec.grid_left + max(p.end_col for p in placed_row) * spec.cell_w
+        shift = int(round((center_to - (span_l + span_r) / 2.0) / spec.cell_w))
+        if shift:
+            for p in placed_row:
+                p.start_col += shift
     for i, placed in enumerate(placed_row):
         ink = placed.word.ink
         # price -> box extends LEFT into the amount lane; date -> tight box.

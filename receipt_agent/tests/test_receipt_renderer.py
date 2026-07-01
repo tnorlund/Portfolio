@@ -304,6 +304,30 @@ def test_reverse_price_boxes_amount_and_paints_glyphs_paper():
     assert by_text["TOTAL"] == ink    # label unaffected
 
 
+def test_center_to_recenters_a_left_placed_line():
+    """center_to shifts a whole planned row so its drawn span centers there."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=10.0, cell_h=15.0, font_px=14, grid_left=0.0)
+    word = rg.GridWord(left=0.0, top=0.0, right=40.0, bottom=15.0, text="HELLO",
+                       ink=(0, 0, 0))
+    drawn: list[tuple[str, int]] = []
+    orig = rg.draw_token_chars
+    try:
+        rg.draw_token_chars = lambda draw, text, start_col, *a, **k: drawn.append(
+            (text, start_col)
+        )
+        rg.draw_grid_line(draw=None, line=[word], baseline_y=10.0, spec=spec,
+                          font=None, center_to=200.0)
+    finally:
+        rg.draw_token_chars = orig
+
+    start = drawn[0][1]
+    cells = rg.drawn_cell_count("HELLO")
+    drawn_center = (start + cells / 2.0) * 10.0
+    assert abs(drawn_center - 200.0) <= 10.0  # centered within one cell of target
+
+
 # Real Target summary cluster (0-1000 space, y high-is-top) -- the v5 floor case
 # where the renderer fused three printed lines into one row ("NV TAX 8.37500 ...
 # TOTAL"). Each printed line keeps its own source_line id.
