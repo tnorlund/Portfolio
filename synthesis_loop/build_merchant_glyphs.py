@@ -106,24 +106,32 @@ def _vote(samples):
             out.append(np.roll(s, _clamp(tgt - p, -MAX_SHIFT * 2, MAX_SHIFT * 2), 1))
         return out
 
-    def _one(stack):
+    def _cands(stack):
+        """Candidate consensus prob-maps for one registration: the FULL-inlier
+        mean (max denoising, good for stable glyphs) and a TIGHT-cluster mean of
+        just the most mutually-consistent inliers (keeps diagonal strokes crisp --
+        averaging every slightly-slanted W turns it to mush)."""
         ref = np.mean(stack, axis=0) >= 0.5
         ious = np.array([_iou(a, ref) for a in stack])
         thr = max(0.25, float(np.median(ious)) * 0.5)
-        inl = [a for a, i in zip(stack, ious) if i >= thr] or stack
-        return np.mean(inl, axis=0), len(inl)
+        idx = [i for i, v in enumerate(ious) if v >= thr] or list(range(len(stack)))
+        order = sorted(idx, key=lambda i: -ious[i])
+        k = max(MIN_SAMPLES, len(order) // 2)
+        full = np.mean([stack[i] for i in idx], axis=0)
+        tight = np.mean([stack[i] for i in order[:k]], axis=0)
+        return [full, tight]
 
-    # Try LEFT-edge and CENTER registration; keep whichever votes SHARPER (fewest
-    # ambiguous mid-probability pixels). Left wins on stem letters (E/F/L), center
-    # on symmetric ones; neither rescues an inherently jittery diagonal.
-    cands = [_one(_shifted(samples, k)) for k in ("left", "center")]
-    # Sharpness = agreement mass: prefer the registration whose consensus pixels
-    # are decisive (near 0/1) rather than fuzzy. Use mean squared deviation from
-    # 0.5 over ink-ish pixels -- higher = crisper.
+    # Crispness = decisiveness of consensus pixels (mean squared deviation from
+    # 0.5 over ink-ish pixels); higher = less fuzzy. Pick the crispest candidate
+    # across {left, center} x {full, tight}.
     def crisp(p):
         m = p[p > 0.15]
         return float(np.mean((m - 0.5) ** 2)) if m.size else 0.0
-    prob, n = max(cands, key=lambda c: crisp(c[0]))
+
+    cands = []
+    for key in ("left", "center"):
+        cands += _cands(_shifted(samples, key))
+    prob = max(cands, key=crisp)
     return _median3(prob >= VOTE), len(samples)
 
 
