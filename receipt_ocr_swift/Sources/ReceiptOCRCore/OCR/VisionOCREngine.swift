@@ -583,6 +583,7 @@ public struct VisionOCREngine: OCREngineProtocol {
 
                                 // Run OCR on warped image (REFINEMENT)
                                 var receiptLines = try performOCRSync(from: receipt.warpedImage)
+                                let receiptBarcodes = detectBarcodesSync(from: receipt.warpedImage)
 
                                 // Perform NL extraction on receipt lines (phone, address, date, etc.)
                                 var receiptAggregatedText = ""
@@ -621,7 +622,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                                     from: receipt,
                                     s3Key: receiptFileName,
                                     lines: receiptLines,
-                                    layoutlmPredictions: layoutlmPredictions
+                                    layoutlmPredictions: layoutlmPredictions,
+                                    barcodes: receiptBarcodes.isEmpty ? nil : receiptBarcodes
                                 )
                                 outputs.append(output)
                             } catch {
@@ -808,6 +810,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                         do {
                             try saveImageToPNG(receipt.warpedImage, to: receiptURL)
                             var receiptLines = try performOCRSync(from: receipt.warpedImage)
+                            let receiptBarcodes = detectBarcodesSync(from: receipt.warpedImage)
 
                             var receiptAggregatedText = ""
                             var receiptWordMappings: [WordMapping] = []
@@ -843,7 +846,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                                 from: receipt,
                                 s3Key: receiptFileName,
                                 lines: receiptLines,
-                                layoutlmPredictions: layoutlmPredictions
+                                layoutlmPredictions: layoutlmPredictions,
+                                barcodes: receiptBarcodes.isEmpty ? nil : receiptBarcodes
                             )
                             outputs.append(output)
                         } catch {
