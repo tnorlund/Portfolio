@@ -622,12 +622,21 @@ _MERCHANT_TYPOGRAPHY = {
 }
 
 
-# Canonical merchant logos (averaged + cleaned across all the merchant's receipts
-# by logo_prototype.py) -- a denoised wordmark that overrides the smeared single-
-# receipt atlas capture. Black-on-white PNG; converted to ink-as-alpha for the
-# overlay (which segments ink by alpha). Kept local under $BITMATRIX_DIR.
+# Canonical merchant logos: the wordmark built by logo_master.py via ALIGN +
+# MEDIAN across all the merchant's receipts (phase-correlate + majority vote), a
+# denoised master that overrides the smeared single-receipt atlas capture. Black-
+# on-white PNG; converted to ink-as-alpha for the overlay (which segments ink by
+# alpha). Kept local under $BITMATRIX_DIR.
 _MERCHANT_LOGO = {
     "Costco Wholesale": os.path.join(_BITMATRIX_DIR, "costco_logo.png"),
+    "Vons": os.path.join(_BITMATRIX_DIR, "vons_logo.png"),
+    "Sprouts Farmers Market": os.path.join(_BITMATRIX_DIR, "sprouts_logo.png"),
+    "Amazon Fresh": os.path.join(_BITMATRIX_DIR, "amazon_fresh_logo.png"),
+    "Gelson's Westlake Village": os.path.join(_BITMATRIX_DIR, "gelsons_logo.png"),
+    "Smith's": os.path.join(_BITMATRIX_DIR, "smiths_logo.png"),
+    # Target intentionally omitted: its thermal receipts print no wordmark logo
+    # (top of receipt is the store address; the bullseye is not printed), so the
+    # header renders as text. The only OCR'd "Target" token is the footer tagline.
 }
 
 

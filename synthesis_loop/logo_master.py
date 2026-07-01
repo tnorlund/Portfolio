@@ -202,7 +202,30 @@ def _logo_crop(arr, words, wordmark):
 # --- fast collection: shared clients, thread-pool the S3/Dynamo I/O, disk-cache
 # the small grayscale logo crop so re-tuning align/vote never re-hits S3.
 CACHE_DIR = os.environ.get("LOGO_CACHE", "/tmp/logo_cache")
-CACHE_VER = "v1"   # bump when _logo_crop / cropping logic changes
+CACHE_VER = "v2"   # bump when _logo_crop / cropping / image-source logic changes
+
+
+def _load_receipt_gray(rec, s3):
+    """Grayscale receipt image, trying multiple S3 locations. The raw upload key
+    often 404s (cleaned up); the CDN copy under assets/ is reliable, so prefer it.
+    Coords are normalized, so any variant works. Returns a PIL 'L' image or None."""
+    from io import BytesIO
+
+    from PIL import Image
+    attempts = [
+        (rec.cdn_s3_bucket, rec.cdn_s3_key),            # reliable processed copy
+        (rec.raw_s3_bucket, rec.raw_s3_key),            # original upload (may 404)
+        (rec.cdn_s3_bucket, getattr(rec, "cdn_medium_s3_key", None)),  # smaller fallback
+    ]
+    for bucket, key in attempts:
+        if not bucket or not key:
+            continue
+        try:
+            body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+            return Image.open(BytesIO(body)).convert("L")
+        except Exception:  # noqa: BLE001
+            continue
+    return None
 
 
 def _cache_path(merchant, iid, rid):
@@ -218,7 +241,6 @@ def _collect_crops(merchant, targets, wordmark):
 
     import boto3
     from receipt_dynamo.data.dynamo_client import DynamoClient
-    from receipt_upload.font_analysis import load_raw_image_from_s3
 
     client = DynamoClient(table_name=TABLE, region=REGION)  # boto3 client is thread-safe
     s3 = boto3.client("s3")                                 # ONE shared client, reused
@@ -241,8 +263,9 @@ def _collect_crops(merchant, targets, wordmark):
                     w["labels"] = [lab[(ww.line_id, ww.word_id)]]
             rec = next((c for c in d.receipts if c.receipt_id == rid), None)
             if rec is not None:
-                raw = load_raw_image_from_s3(rec, s3_client=s3).convert("L")
-                crop = _logo_crop(np.asarray(raw), words, wordmark)
+                raw = _load_receipt_gray(rec, s3)
+                if raw is not None:
+                    crop = _logo_crop(np.asarray(raw), words, wordmark)
         except Exception:  # noqa: BLE001
             crop = None
         np.save(p, crop if crop is not None else np.empty(0, np.uint8))
