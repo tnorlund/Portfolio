@@ -685,6 +685,9 @@ _MERCHANT_TYPOGRAPHY = {
         "reverse_total": True,
         "reverse_date_after_items": True,
         "dashed_separators": True,
+        # Measured against the real OCR: bitMatrix's widest-letter advance reads
+        # ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57).
+        "condense": 0.93,
     },
     # receiptfont.com: bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.
     "Amazon Fresh": {"font_path": _PTMONO, "condense": 0.80, "stroke": 0},

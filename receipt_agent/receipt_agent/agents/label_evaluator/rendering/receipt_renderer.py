@@ -300,7 +300,10 @@ def _render_grid(
         heavy_path = config.bitmap_font.get("heavy", config.bitmap_font["regular"])
         bmf_heavy = BitmapFont(heavy_path)
         cap_px = max(6, int(round(sizing.font_px * 0.72)))
-        advance = bmf.advance(cap_px)
+        # Apply the merchant condense to the bitmap advance too (the TTF path
+        # already does): real thermal faces pack glyphs tighter than the atlas's
+        # widest-letter + gap estimate, so an un-condensed advance reads too airy.
+        advance = bmf.advance(cap_px) * float(config.condense)
     spec = build_grid_spec(
         profile, inner_w, inner_h, config, char_advance_px=advance
     )
@@ -308,9 +311,15 @@ def _render_grid(
     # is what a thermal/dot-matrix head actually lays down.
     draw.fontmode = "1"
     ascent, descent = font.getmetrics()
-    # Minimum baseline-to-baseline pitch: one glyph height. Below this, rows from
-    # tightly-packed source lines (dense summary blocks) collide vertically.
-    min_pitch = float(ascent + descent)
+    # Minimum baseline-to-baseline pitch. This is a FLOOR that only pushes apart
+    # rows the source packed tighter than a glyph; the true spacing still comes
+    # from the OCR row positions. ``ascent + descent`` (the font's full line box,
+    # ~1.5x cap height) was clobbering that -- real thermal receipts pack lines at
+    # only ~1.08x the glyph height, so every row was forced ~30% too loose. Tie
+    # the floor to the cap height instead (caps have no descender, so 1.12x clears
+    # them) and let the OCR positions carry the real, tighter pitch.
+    cap_h = float(cap_px) if cap_px else 0.72 * float(sizing.font_px)
+    min_pitch = cap_h * 1.12
 
     grid_words: list[GridWord] = []
     for word in words:
