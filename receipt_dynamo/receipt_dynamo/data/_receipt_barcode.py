@@ -71,9 +71,7 @@ class _ReceiptBarcode(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("delete_receipt_barcode")
-    def delete_receipt_barcode(
-        self, receipt_barcode: ReceiptBarcode
-    ) -> None:
+    def delete_receipt_barcode(self, receipt_barcode: ReceiptBarcode) -> None:
         """Deletes a single ReceiptBarcode."""
         if receipt_barcode is None:
             raise EntityValidationError("receipt_barcode cannot be None")

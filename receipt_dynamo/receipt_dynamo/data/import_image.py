@@ -87,8 +87,7 @@ def import_image(table_name: str, json_path: str) -> None:
             for item in data.get("receipt_places", [])
         ],
         "receipt_barcodes": [
-            ReceiptBarcode(**item)
-            for item in data.get("receipt_barcodes", [])
+            ReceiptBarcode(**item) for item in data.get("receipt_barcodes", [])
         ],
         "ocr_jobs": [
             OCRJob(**_parse_datetimes(item, ["created_at", "updated_at"]))
