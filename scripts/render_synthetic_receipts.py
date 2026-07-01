@@ -184,9 +184,16 @@ def _cached_token_receipt_dict(example: dict) -> dict:
     return {"words": words}
 
 
-# Coordinate (of a 0..1000 space) that the right edge of a right-aligned price
-# token is anchored to, so the price column does not collapse into the item name.
-_PRICE_COLUMN_RIGHT = 905.0
+# Cached line-only renderer layout, in the 0..1000 coordinate space. These are
+# GENERIC estimates for the width-less line/token examples (no OCR word widths to
+# measure), NOT per-merchant geometry -- the hybrid/grid path measures real
+# pitch/advance/price-column from the font profile instead.
+_PRICE_COLUMN_RIGHT = 905.0   # right edge the price column is anchored to
+_LINE_ROW_PITCH = 16.0        # vertical step between synthesized line rows
+_LINE_CHAR_WIDTH = 12.0       # width estimate per character (no measured widths)
+_LINE_WORD_GAP = 8.0          # horizontal gap between words
+_LINE_LOGO_MIN_WIDTH = 220.0  # floor width for a single-token logo line
+_LINE_MAX_WIDTH = 900.0       # content width the row is scaled to fit within
 # Trailing price/amount tokens: optional leading currency / sign, a decimal
 # amount with two fractional digits, optional trailing sign (e.g. "1.99-").
 _PRICE_TOKEN_RE = re.compile(r"^[-+]?\$?\d{1,3}(?:,\d{3})*\.\d{2}[-+]?$")
@@ -207,20 +214,20 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         if not text:
             continue
         words = text.split()
-        y = float(line.get("y") or (940 - index * 16))
+        y = float(line.get("y") or (940 - index * _LINE_ROW_PITCH))
         labels = list(line.get("labels") or [])
         is_logo_line = any(_label_name(label) == "MERCHANT_NAME" for label in labels)
         # Cached line-only examples do not carry OCR word widths, so give the
         # renderer enough horizontal room to avoid shrinking every line to the
         # minimum font size.
-        width_units = [max(18.0, len(word) * 12.0) for word in words]
+        width_units = [max(18.0, len(word) * _LINE_CHAR_WIDTH) for word in words]
         if is_logo_line and len(words) == 1:
-            width_units = [max(width_units[0], 220.0)]
-        total_width = sum(width_units) + max(0, len(words) - 1) * 8.0
-        if total_width > 900:
-            factor = 900 / total_width
+            width_units = [max(width_units[0], _LINE_LOGO_MIN_WIDTH)]
+        total_width = sum(width_units) + max(0, len(words) - 1) * _LINE_WORD_GAP
+        if total_width > _LINE_MAX_WIDTH:
+            factor = _LINE_MAX_WIDTH / total_width
             width_units = [width * factor for width in width_units]
-            total_width = 900
+            total_width = _LINE_MAX_WIDTH
         if is_logo_line:
             x = 500 - total_width / 2
         else:
@@ -249,7 +256,7 @@ def _cached_line_receipt_dict(example: dict) -> dict:
                 ]
             else:
                 bbox = [x, y - half_height, x + width, y + half_height]
-                x += width + 8
+                x += width + _LINE_WORD_GAP
             rendered_words.append(
                 {
                     "text": word,
@@ -563,11 +570,19 @@ def _cached_receipt_dict(example: dict) -> dict:
     return _cached_line_receipt_dict(example)
 
 
+# Cached-example canvas sizes (W, H), selected from the example's own metadata
+# (candidate_id). These are format sizes for the line/token synthetic examples,
+# not per-merchant geometry -- the hybrid/grid path sizes itself from the
+# receipt's true aspect instead.
+_CANVAS_ADDRESS_LINE = (560, 1280)
+_CANVAS_DEFAULT = (576, 1176)
+
+
 def _cached_output_size(example: dict) -> tuple[int, int]:
     candidate_id = str(example.get("candidate_id") or "")
     if "address-line" in candidate_id or "hard_negative" in candidate_id:
-        return (560, 1280)
-    return (576, 1176)
+        return _CANVAS_ADDRESS_LINE
+    return _CANVAS_DEFAULT
 
 
 def _smooth_luma_field(rng, height, width, scale, amp):
