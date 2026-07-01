@@ -924,22 +924,38 @@ def _render_cached_hybrid(
             logo_image, depicts_subtitle = canon_logo, True
         else:
             logo_image, depicts_subtitle = _trim_clipped_subtitle(atlas.logo)
-        logo_line = _cached_logo_line(receipt)
-        if logo_line:
-            if depicts_subtitle:
-                # Logo shows the whole wordmark: suppress brand + subtitle text
-                # and size the logo to the full wordmark region.
-                wordmark = _logo_wordmark_words(receipt)
-                if wordmark:
-                    wordmark_words, logo_bbox = wordmark
-                    render_input = _receipt_drop_words(receipt, wordmark_words)
-            else:
-                # Logo shows only the brand line: suppress just that line and let
-                # the subtitle render as clean text in the row below it.
-                logo_bbox = _union_bbox(
-                    [w["bbox"] for w in logo_line if w.get("bbox")]
-                )
-                render_input = _receipt_drop_words(receipt, logo_line)
+        # Merchants whose wordmark is a pure graphic (no MERCHANT_NAME OCR text,
+        # e.g. The Home Depot) anchor the logo off a configured slogan phrase.
+        anchor_cfg = get_merchant_profile(
+            receipt.get("merchant_name")).get("logo_anchor") or {}
+        placed = None
+        if anchor_cfg.get("phrases") and logo_image is not None:
+            placed = _phrase_logo_placement(
+                receipt, anchor_cfg["phrases"], config=config,
+                logo=logo_image, coord_max=1000.0,
+                extend_left=anchor_cfg.get("extend_left", True),
+            )
+        if placed is not None:
+            drop_words, logo_bbox = placed
+            render_input = _receipt_drop_words(receipt, drop_words)
+        else:
+            logo_line = _cached_logo_line(receipt)
+            if logo_line:
+                if depicts_subtitle:
+                    # Logo shows the whole wordmark: suppress brand + subtitle
+                    # text and size the logo to the full wordmark region.
+                    wordmark = _logo_wordmark_words(receipt)
+                    if wordmark:
+                        wordmark_words, logo_bbox = wordmark
+                        render_input = _receipt_drop_words(
+                            receipt, wordmark_words)
+                else:
+                    # Logo shows only the brand line: suppress just that line and
+                    # let the subtitle render as clean text in the row below it.
+                    logo_bbox = _union_bbox(
+                        [w["bbox"] for w in logo_line if w.get("bbox")]
+                    )
+                    render_input = _receipt_drop_words(receipt, logo_line)
     image = render_receipt(
         render_input,
         profile=profile,
@@ -1214,6 +1230,11 @@ def _overlay_inbody_barcodes(
     ib = {**_INBODY_BARCODE_DEFAULTS,
           **(graphics_for_merchant(receipt.get("merchant_name")).get(
               "inbody_barcode") or {})}
+    # A profile may disable the in-body transaction barcode (max_count 0) for
+    # merchants that print the transaction number as plain text, not a barcode
+    # (e.g. The Home Depot; its only barcode is the footer).
+    if ib.get("max_count", 0) <= 0:
+        return []
     px = []
     for w in words:
         l, t, r, b = _to_pixel_box(
@@ -1402,6 +1423,69 @@ def _cached_logo_line(receipt: dict) -> list[dict] | None:
     if not candidates:
         return None
     return max(candidates, key=lambda item: (item[0], item[1]))[2]
+
+
+def _receipt_lines(receipt: dict) -> list[list[dict]]:
+    """Group the receipt's words into rendered lines (shared with logo-line
+    detection): use explicit ``lines`` if present, else band words by y."""
+    lines = receipt.get("lines")
+    if lines:
+        return [
+            [w for w in line.get("words", []) if w.get("bbox")] for line in lines
+        ]
+    grouped: dict[int, list[dict]] = {}
+    for word in receipt.get("words") or []:
+        bbox = word.get("bbox")
+        if not bbox:
+            continue
+        y = round((float(bbox[1]) + float(bbox[3])) / 20) * 10
+        grouped.setdefault(int(y), []).append(word)
+    return list(grouped.values())
+
+
+def _phrase_logo_placement(receipt, phrases, *, config, logo, coord_max,
+                           extend_left=True):
+    """Place a top-of-receipt logo lockup that has NO ``MERCHANT_NAME`` anchor.
+
+    Some merchants print the wordmark as a pure graphic (no OCR text) beside a
+    slogan (e.g. The Home Depot's tilted square + "How doers get more done."). The
+    ``MERCHANT_NAME``/brand logo-line detection finds nothing, so we anchor off
+    the slogan instead: any line whose alphanumeric-normalized text contains one
+    of the profile ``phrases`` is part of the lockup. Those words are suppressed
+    (the logo depicts them) and the logo is sized to a band matching its own pixel
+    aspect ratio, optionally extended left to the margin to cover the graphic mark
+    that sits left of the slogan. Returns (drop_words, bbox) or ``None``.
+    """
+    norm = [_normalize_phrase(p) for p in phrases if p]
+    if not norm:
+        return None
+    drop, boxes = [], []
+    for words in _receipt_lines(receipt):
+        text = _normalize_phrase(" ".join(str(w.get("text") or "") for w in words))
+        if not text or not any(p in text for p in norm):
+            continue
+        drop.extend(words)
+        boxes.extend(w["bbox"] for w in words if w.get("bbox"))
+    band = _union_bbox(boxes)
+    if band is None:
+        return None
+    bx0, bx1 = min(band[0], band[2]), max(band[0], band[2])
+    by0, by1 = min(band[1], band[3]), max(band[1], band[3])
+    if extend_left:
+        bx0 = 0.0
+    # Size the band to the logo's pixel aspect so the wordmark fills its footprint
+    # exactly (no over-wide white-out erasing neighbouring rows).
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    aspect = logo.width / max(1, logo.height)
+    w_px = (bx1 - bx0) / coord_max * inner_w
+    h_coords = (w_px / max(1e-6, aspect)) / max(1, inner_h) * coord_max
+    yc = (by0 + by1) / 2.0
+    return drop, [bx0, yc - h_coords / 2.0, bx1, yc + h_coords / 2.0]
+
+
+def _normalize_phrase(text: str) -> str:
+    return "".join(ch for ch in str(text).upper() if ch.isalnum())
 
 
 def _flatten_receipt_words(receipt: dict) -> list[dict]:

@@ -35,6 +35,14 @@
       "section_scale": { "HEADER": 0.80 },
       "typography": { "font": "VT323", "condense": 0.95, "stroke": 0 }
     },
+    "The Home Depot": {
+      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH, built by synthesis_loop/build_homedepot_logo.py from a clean brand SVG (all 17 real receipts use this slogan, not the older 'More saving. More doing.'). Body font: data-driven glyph font shredded (consistent italic slant + photographed-receipt warp defeats the averaging/registration; queued for the codex glyph loop), so fall back to PTMONO for now. condense/section_scale calibrated from real-vs-synth.",
+      "section_scale": { "HEADER": 0.80 },
+      "typography": { "font": "PTMONO", "condense": 0.82, "stroke": 0 },
+      "logo": "homedepot_logo.png",
+      "logo_anchor": { "phrases": ["HOWDOERS", "GETMOREDONE"], "extend_left": true },
+      "graphics": { "inbody_barcode": { "max_count": 0 } }
+    },
     "Vons": {
       "_comment": "receiptfont.com bitMatrix-D1 (dot-matrix) -> VT323.",
       "section_scale": {},
