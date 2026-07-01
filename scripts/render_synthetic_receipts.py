@@ -1346,7 +1346,19 @@ def _logo_wordmark_words(receipt: dict) -> tuple[list[dict], list[float]] | None
         return None
     cluster = list(logo_line)
     cluster_ids = {id(word) for word in cluster}
-    line_h = max(1.0, band[3] - band[1])
+    # OCR bboxes may be bottom-origin (y0 > y1), so read spans via min/max rather
+    # than assuming [1] is the top -- a raw ``band[3] - band[1]`` goes negative on
+    # inverted coords and collapses the contiguity gap, leaking the subtitle
+    # (e.g. COSTCO's WHOLESALE) as double-printed text under the logo.
+    def _yspan(b):
+        return min(float(b[1]), float(b[3])), max(float(b[1]), float(b[3]))
+
+    def _xspan(b):
+        return min(float(b[0]), float(b[2])), max(float(b[0]), float(b[2]))
+
+    by0, by1 = _yspan(band)
+    bx0, bx1 = _xspan(band)
+    line_h = max(1.0, by1 - by0)
     # Only rows immediately adjacent to the brand line (within one line height)
     # count as the logo's subtitle, so far-away MERCHANT_NAME tokens (e.g. a
     # footer ".com" wordmark) are not absorbed.
@@ -1367,23 +1379,20 @@ def _logo_wordmark_words(receipt: dict) -> tuple[list[dict], list[float]] | None
         for word in candidates:
             if id(word) in cluster_ids:
                 continue
-            x0, y0, x1, y1 = (float(v) for v in word["bbox"][:4])
+            wx0, wx1 = _xspan(word["bbox"])
+            wy0, wy1 = _yspan(word["bbox"])
             # Vertical contiguity with the current wordmark band.
-            if y0 > band[3] + gap or y1 < band[1] - gap:
+            if wy0 > by1 + gap or wy1 < by0 - gap:
                 continue
             # Must sit in the same horizontal column as the wordmark.
-            if x1 <= band[0] or x0 >= band[2]:
+            if wx1 <= bx0 or wx0 >= bx1:
                 continue
             cluster.append(word)
             cluster_ids.add(id(word))
-            band = [
-                min(band[0], x0),
-                min(band[1], y0),
-                max(band[2], x1),
-                max(band[3], y1),
-            ]
+            by0, by1 = min(by0, wy0), max(by1, wy1)
+            bx0, bx1 = min(bx0, wx0), max(bx1, wx1)
             changed = True
-    return cluster, band
+    return cluster, [bx0, by0, bx1, by1]
 
 
 def _receipt_drop_words(receipt: dict, drop: list[dict]) -> dict:
