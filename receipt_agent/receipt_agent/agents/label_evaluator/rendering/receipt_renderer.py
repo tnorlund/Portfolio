@@ -134,6 +134,10 @@ class RenderConfig:
     # Costco prints it. Only the price token on the "TOTAL" row (not SUBTOTAL / the
     # "TOTAL NUMBER OF ITEMS" line) is boxed.
     reverse_total: bool = False
+    # Reverse-video the transaction date on the row directly after the "TOTAL NUMBER
+    # OF ITEMS SOLD" line (Costco boxes that date, but not the identical date under
+    # AMOUNT). Only the leading date token of that one row is boxed.
+    reverse_date_after_items: bool = False
 
 
 def render_receipt(
@@ -308,6 +312,7 @@ def _render_grid(
     headings = tuple(h.upper() for h in (config.display_headings or ()))
     eff_sections = effective_row_sections(rows)
     row_cache: dict[tuple, tuple] = {}
+    prev_text = ""
     for line, baseline, sect in zip(rows, baselines, eff_sections):
         row_text = " ".join(w.text for w in line).upper()
         # A display heading (e.g. SELF-CHECKOUT) renders heavy + enlarged; the
@@ -315,6 +320,10 @@ def _render_grid(
         # are body weight -- only the heading and the reverse-video total stand out).
         is_heading = bool(headings) and any(h in row_text for h in headings)
         is_total = bool(config.reverse_total) and _is_final_total(row_text)
+        # The date on the row right after "TOTAL NUMBER OF ITEMS SOLD" is boxed.
+        is_date_row = (bool(config.reverse_date_after_items)
+                       and "NUMBER OF ITEMS SOLD" in prev_text)
+        prev_text = row_text
         fpath = section_font.get(sect) if sect else None
         if is_heading:
             sc = float(config.heading_scale or 1.0)
@@ -326,7 +335,8 @@ def _render_grid(
             draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
                            stroke=config.stroke, condense=config.condense,
                            bitmap_font=bf_row, cap_px=cap_px,
-                           reverse_price=is_total, background=config.background)
+                           reverse_price=is_total, reverse_date=is_date_row,
+                           background=config.background)
             continue
         key = (fpath, sc, is_heading)
         cached = row_cache.get(key)
@@ -355,7 +365,8 @@ def _render_grid(
         draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane,
                        stroke=config.stroke, condense=config.condense,
                        bitmap_font=bf_row, cap_px=cp,
-                       reverse_price=is_total, background=config.background)
+                       reverse_price=is_total, reverse_date=is_date_row,
+                       background=config.background)
 
 
 def _load_grid_font(

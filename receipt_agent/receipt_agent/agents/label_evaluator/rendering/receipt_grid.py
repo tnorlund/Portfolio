@@ -138,6 +138,16 @@ def is_price_token(text: str) -> bool:
     return bool(_PRICE_TOKEN.match(str(text or "").strip().replace(" ", "")))
 
 
+# A transaction-date token: MM/DD/YYYY (real) or a slashless all-digit run the
+# synthesizer sometimes emits for the same field (e.g. "1072072025"). Length >= 8
+# so store/register numbers ("117", "705") never match.
+_DATE_TOKEN = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4}$|^\d{8,}$")
+
+
+def _is_date_token(text: str) -> bool:
+    return bool(_DATE_TOKEN.match(str(text or "").strip()))
+
+
 def drawn_cell_count(text: str) -> int:
     """Number of grid cells a token actually occupies = its non-space glyphs.
 
@@ -578,29 +588,37 @@ def draw_grid_line(
     bitmap_font=None,
     cap_px: int | None = None,
     reverse_price: bool = False,
+    reverse_date: bool = False,
     background: tuple[int, int, int] = (255, 255, 255),
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
     Pure execution of :func:`plan_grid_line`: each planned token's glyphs are
-    drawn at its resolved column on the shared baseline. When ``reverse_price`` is
-    set, price tokens are drawn reverse-video (paper-colour glyphs on a solid black
-    box) -- Costco's grand-TOTAL treatment.
+    drawn at its resolved column on the shared baseline. Reverse-video (paper glyphs
+    on a solid black box) is Costco's treatment for the grand-TOTAL amount
+    (``reverse_price``) and the transaction date after the item count
+    (``reverse_date`` -> the leading date token of the row).
     """
-    for placed in plan_grid_line(line, spec, amount_lane=amount_lane):
+    placed_row = plan_grid_line(line, spec, amount_lane=amount_lane)
+    for i, placed in enumerate(placed_row):
         ink = placed.word.ink
-        if reverse_price and placed.is_price:
+        # price -> box extends LEFT into the amount lane; date -> tight box.
+        rev_price = reverse_price and placed.is_price
+        rev_date = reverse_date and i == 0 and _is_date_token(placed.draw_text)
+        if rev_price or rev_date:
             img = getattr(draw, "_image", None)
             if img is not None:
-                # Box: taller/wider than the glyphs, extending left of the amount
-                # (real Costco boxes a chunk of the amount lane, not just the digits).
                 if cap_px:
                     top_ext, bot_ext = cap_px * 1.15, cap_px * 0.30
                 else:
                     ascent, descent = font.getmetrics()
                     top_ext, bot_ext = float(ascent), float(descent)
-                x0 = int(round(spec.grid_left + (placed.start_col - 4) * spec.cell_w))
-                x1 = int(round(spec.grid_left + (placed.end_col + 1) * spec.cell_w))
+                if rev_date:
+                    x0 = int(round(spec.grid_left + (placed.start_col - 0.4) * spec.cell_w))
+                    x1 = int(round(spec.grid_left + (placed.end_col + 0.4) * spec.cell_w))
+                else:
+                    x0 = int(round(spec.grid_left + (placed.start_col - 4) * spec.cell_w))
+                    x1 = int(round(spec.grid_left + (placed.end_col + 1) * spec.cell_w))
                 x0 = max(int(spec.grid_left), x0)
                 y0 = int(round(baseline_y - top_ext))
                 y1 = int(round(baseline_y + bot_ext))

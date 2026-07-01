@@ -615,6 +615,7 @@ _MERCHANT_TYPOGRAPHY = {
         "display_headings": ("SELF-CHECKOUT", "SELF CHECKOUT"),
         "heading_scale": 1.7,
         "reverse_total": True,
+        "reverse_date_after_items": True,
     },
     # receiptfont.com: bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.
     "Amazon Fresh": {"font_path": _PTMONO, "condense": 0.80, "stroke": 0},
@@ -739,6 +740,7 @@ def _render_cached_hybrid(
     display_headings: tuple = (),
     heading_scale: float = 1.0,
     reverse_total: bool = False,
+    reverse_date_after_items: bool = False,
 ) -> str:
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
@@ -759,6 +761,7 @@ def _render_cached_hybrid(
         display_headings=display_headings,
         heading_scale=heading_scale,
         reverse_total=reverse_total,
+        reverse_date_after_items=reverse_date_after_items,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps
