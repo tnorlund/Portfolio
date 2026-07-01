@@ -263,6 +263,66 @@ def test_sprouts_logo_subtitle_draws_inside_overlay():
     assert image.tobytes() != before.tobytes()
 
 
+def test_sprouts_header_repair_clones_missing_top_store_hours():
+    module = _load_module()
+
+    def line_words(text, line_id, y, x=100):
+        words = []
+        cursor = x
+        for word_id, token in enumerate(text.split(), start=1):
+            width = max(20, len(token) * 9)
+            words.append({
+                "text": token,
+                "line_id": line_id,
+                "word_id": word_id,
+                "bbox": [cursor, y + 5, cursor + width, y - 5],
+                "labels": [],
+            })
+            cursor += width + 8
+        return words
+
+    receipt = {
+        "merchant_name": "Sprouts Farmers Market",
+        "words": (
+            line_words("SPROUTS", 1, 983, x=420)
+            + line_words("1012 WESTLAKE BLVD.", 3, 944, x=260)
+            + line_words("WESTLAKE, CA 91361", 4, 927, x=270)
+            + line_words("(805)917-4200", 5, 915, x=330)
+            + line_words("09/04/2025", 11, 871, x=80)
+            + line_words("1012 WESTLAKE BLVD.", 36, 608, x=260)
+            + line_words("WESTLAKE, CA 91361", 37, 593, x=270)
+            + line_words("(805)917-4200", 39, 582, x=330)
+            + line_words("Store Hours MON-SUN 7AM-10PM", 40, 565, x=210)
+        ),
+    }
+
+    repaired = module._repair_missing_top_header_lines(receipt)
+    lines = module._group_cached_words_by_line(repaired["words"])
+    store_hours_centers = [
+        module._line_center_y(line)
+        for line in lines
+        if module._line_text_from_cached_words(line)
+        == "Store Hours MON-SUN 7AM-10PM"
+    ]
+
+    assert len(store_hours_centers) == 2
+    assert 890 <= max(store_hours_centers) <= 905
+
+
+def test_1d_barcode_fit_uses_visible_ink_box():
+    module = _load_module()
+    from PIL import Image, ImageDraw
+
+    tile = Image.new("L", (90, 50), 250)
+    ImageDraw.Draw(tile).rectangle([12, 14, 78, 31], fill=20)
+
+    fitted = module._fit_1d_barcode_tile_to_box(tile, 42, 27)
+    ink = fitted.point(lambda p: 255 if p < 128 else 0)
+
+    assert fitted.size == (42, 27)
+    assert ink.getbbox() == (0, 0, 42, 27)
+
+
 def test_costco_anchors_come_from_profile():
     # PR-2: the phrase anchors that used to be hardcoded in receipt_renderer.py
     # now flow from the merchant profile through merchant_typography().

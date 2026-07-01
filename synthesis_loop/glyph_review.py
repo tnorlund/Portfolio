@@ -17,6 +17,7 @@ DYNAMODB_TABLE_NAME, AWS_REGION, BITMATRIX_DIR, FONT_LIB, PORTFOLIO_ENV=dev.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -167,9 +168,30 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
     cv.save(out_png)
     _save_zoom_crops(out_png)
     if real is not None:
-        _print_metric_summary(real.resize((wt, ht)), syn, words)
+        real_for_metrics = real.resize((wt, ht))
+        _print_metric_summary(real_for_metrics, syn, words)
+        _save_line_scorecard(real_for_metrics, syn, words, out_png)
     print(f"{merchant} {image_id}:{receipt_id} -> {out_png}")
     return 0
+
+
+def _save_line_scorecard(real, syn, words, out_png: str) -> None:
+    from receipt_line_scorecard import score_receipt_images, _write_markdown
+
+    report = score_receipt_images(real, syn, words)
+    stem = os.path.splitext(out_png)[0]
+    json_path = f"{stem}.scorecard.json"
+    md_path = f"{stem}.scorecard.md"
+    with open(json_path, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    _write_markdown(report, md_path)
+    counts = report["summary"]["severity_counts"]
+    print(
+        "scorecard "
+        f"blockers={counts.get('BLOCKER', 0)} minors={counts.get('MINOR', 0)} "
+        f"-> {json_path} {md_path}"
+    )
 
 
 def _metric_box(

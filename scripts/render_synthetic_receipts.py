@@ -374,6 +374,154 @@ def _drop_duplicate_header_words(words: list[dict], hp: dict) -> list[dict]:
     return [word for word in words if id(word) not in drop_ids]
 
 
+def _repair_missing_top_header_lines(receipt: dict) -> dict:
+    """Clone OCR-missed header lines from a later duplicate header block.
+
+    Some Sprouts photos visibly print the store-hours line in the top header, but
+    OCR only captures that same line in the repeated lower address block. When a
+    merchant profile identifies duplicate header lines, use the lower complete
+    block to fill missing exact header markers in the top block. This is still
+    data-driven: the cloned text and x-geometry come from Dynamo OCR, while the
+    y-position is transferred by matching a shared header anchor such as the
+    phone line.
+    """
+    hp = _header_profile_for(receipt.get("merchant_name"))
+    if not hp["dedup"]:
+        return receipt
+    words = list(receipt.get("words") or [])
+    if not words:
+        return receipt
+
+    line_infos = []
+    for line in _group_cached_words_by_line(words):
+        text = _compact_line_text(line)
+        line_infos.append({
+            "words": line,
+            "text": text,
+            "center": _line_center_y(line),
+            "is_header": _is_header_line(text, hp),
+        })
+    try:
+        first_header = next(
+            index for index, info in enumerate(line_infos) if info["is_header"]
+        )
+    except StopIteration:
+        return receipt
+
+    top_end = first_header
+    while top_end + 1 < len(line_infos) and line_infos[top_end + 1]["is_header"]:
+        top_end += 1
+    top_block = line_infos[first_header:top_end + 1]
+    top_texts = {info["text"] for info in top_block}
+    exact_markers = set(hp.get("exact") or ())
+    missing = [
+        marker for marker in exact_markers
+        if marker not in top_texts
+        and any(info["text"] == marker for info in line_infos[top_end + 1:])
+    ]
+    if not missing:
+        return receipt
+
+    additions: list[dict] = []
+    for marker in missing:
+        source_index = next(
+            index for index, info in enumerate(line_infos[top_end + 1:], top_end + 1)
+            if info["text"] == marker
+        )
+        source = line_infos[source_index]
+        anchor = None
+        for candidate in reversed(line_infos[top_end + 1:source_index]):
+            if candidate["is_header"] and candidate["text"] in top_texts:
+                anchor = candidate
+                break
+        target_center = None
+        if anchor is not None:
+            target_anchor = next(
+                info for info in top_block if info["text"] == anchor["text"]
+            )
+            target_center = (
+                float(target_anchor["center"])
+                + float(source["center"])
+                - float(anchor["center"])
+            )
+        if target_center is None:
+            centers = [float(info["center"]) for info in top_block]
+            gaps = [
+                abs(a - b)
+                for a, b in zip(sorted(centers, reverse=True), sorted(centers, reverse=True)[1:])
+            ]
+            pitch = sorted(gaps)[len(gaps) // 2] if gaps else 16.0
+            target_center = min(centers) - pitch
+        shift = float(target_center) - float(source["center"])
+        source_box = _union_bbox([
+            word["bbox"] for word in source["words"] if word.get("bbox")
+        ])
+        source_cx = (
+            (float(source_box[0]) + float(source_box[2])) / 2.0
+            if source_box is not None else 0.0
+        )
+        source_span = (
+            max(1e-6, float(source_box[2]) - float(source_box[0]))
+            if source_box is not None else 1.0
+        )
+        x_scale = 1.0
+        if anchor is not None:
+            target_anchor = next(
+                info for info in top_block if info["text"] == anchor["text"]
+            )
+            source_anchor_box = _union_bbox([
+                word["bbox"] for word in anchor["words"] if word.get("bbox")
+            ])
+            target_anchor_box = _union_bbox([
+                word["bbox"] for word in target_anchor["words"] if word.get("bbox")
+            ])
+            if source_anchor_box is not None and target_anchor_box is not None:
+                source_anchor_span = max(
+                    1e-6, float(source_anchor_box[2]) - float(source_anchor_box[0])
+                )
+                target_anchor_span = max(
+                    1e-6, float(target_anchor_box[2]) - float(target_anchor_box[0])
+                )
+                x_scale = target_anchor_span / source_anchor_span
+        top_spans = []
+        for info in top_block:
+            if info["text"].startswith(hp["brand"]):
+                continue
+            box = _union_bbox([
+                word["bbox"] for word in info["words"] if word.get("bbox")
+            ])
+            if box is not None:
+                top_spans.append(float(box[2]) - float(box[0]))
+        if top_spans:
+            max_target_span = max(top_spans) * 1.15
+            x_scale = min(x_scale, max_target_span / source_span)
+        for word in source["words"]:
+            bbox = list(word.get("bbox") or [])
+            if len(bbox) < 4:
+                continue
+            try:
+                x0, y0, x1, y1 = (float(value) for value in bbox[:4])
+            except (TypeError, ValueError):
+                continue
+            clone = dict(word)
+            clone["bbox"] = [
+                source_cx + (x0 - source_cx) * x_scale,
+                y0 + shift,
+                source_cx + (x1 - source_cx) * x_scale,
+                y1 + shift,
+            ]
+            clone["line_id"] = f"header-clone-{word.get('line_id', '')}"
+            clone["word_id"] = f"header-clone-{word.get('word_id', '')}"
+            clone["_synthetic_source"] = "duplicate_header_repair"
+            additions.append(clone)
+
+    if not additions:
+        return receipt
+    repaired = dict(receipt)
+    repaired["words"] = words + additions
+    return repaired
+
+
 def _compact_line_text(line_words: list[dict]) -> str:
     text = "".join(str(word.get("text") or "") for word in line_words)
     return _compact_text(text)
@@ -870,6 +1018,7 @@ def _render_cached_hybrid(
     ocr_cap_height_ratio: float = 0.72,
     ink: tuple[int, int, int] | list[int] | None = None,
 ) -> str:
+    receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
     # without re-running synthesis. Mutates the per-render receipt dict in place.
@@ -1270,6 +1419,29 @@ def _paste_graphic_tile(image, tile, x: int, y: int) -> None:
     image.paste(tile.convert("RGBA"), (int(x), int(y)))
 
 
+def _fit_1d_barcode_tile_to_box(tile, w_px: int, h_px: int):
+    """Resize the visible 1D barcode ink to the requested geometry.
+
+    ``python-barcode`` returns an image with quiet-zone/paper padding. That is
+    correct for standalone barcode generation, but detected receipt barcode
+    boxes usually bound the printed bars themselves. Crop to dark ink before the
+    final resize so the bar height comes from Dynamo/OCR geometry instead of the
+    library's internal page margins.
+    """
+    from PIL import Image
+
+    w_px = max(1, int(w_px))
+    h_px = max(1, int(h_px))
+    gray = tile.convert("L")
+    ink_mask = gray.point(lambda p: 255 if p < 230 else 0)
+    ink_box = ink_mask.getbbox()
+    if ink_box is not None:
+        gray = gray.crop(ink_box)
+    if gray.size != (w_px, h_px):
+        gray = gray.resize((w_px, h_px), Image.NEAREST)
+    return gray
+
+
 def _hri_digits(text: str) -> str | None:
     """The digit string if ``text`` is a long human-readable barcode caption."""
     digits = re.sub(r"[^0-9]", "", str(text or ""))
@@ -1404,6 +1576,7 @@ def _overlay_detected_codes(
                 h,
                 with_hri=False,
             )
+            tile = _fit_1d_barcode_tile_to_box(tile, w, h)
             x, y = int(left), int(top)
         _paste_graphic_tile(image, tile, x, y)
         bands.append((float(top), float(bottom)))
@@ -1500,6 +1673,7 @@ def _overlay_inbody_barcodes(
         tile = receipt_graphics.render_barcode_tile(
             payload, ib["symbology"], bar_w, bar_h, with_hri=False
         )
+        tile = _fit_1d_barcode_tile_to_box(tile, bar_w, bar_h)
         y_top = int(top - 6 - bar_h)
         _paste_graphic_tile(image, tile, int(cx - bar_w / 2), y_top)
         stamped_bands.append((float(y_top), float(top - 6)))
