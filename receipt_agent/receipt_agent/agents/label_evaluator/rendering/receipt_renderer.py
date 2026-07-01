@@ -125,10 +125,12 @@ class RenderConfig:
     # a TTF. Maps {"regular": atlas.npz, "heavy": atlas.npz}; heavy is used for
     # display headings (see ``display_headings``). None -> the TTF grid font.
     bitmap_font: Mapping[str, str] | None = None
-    # Display-heading treatment: a row whose (uppercased) text contains any of
-    # these substrings renders in the HEAVY font at ``heading_scale`` size (e.g.
-    # Costco's large bold "SELF-CHECKOUT"). Empty -> no heading emphasis.
-    display_headings: tuple[str, ...] = ()
+    # Display-heading treatment: a row whose (uppercased) text contains one of
+    # these substrings renders in the HEAVY font, enlarged. Either a tuple of
+    # substrings (all use ``heading_scale``) or a mapping {substring: scale} for
+    # per-phrase sizes (Costco: SELF-CHECKOUT 1.7, THANK YOU 1.4, ITEMS SOLD: 1.8).
+    # Empty -> no heading emphasis.
+    display_headings: tuple[str, ...] | Mapping[str, float] = ()
     heading_scale: float = 1.0
     # Reverse-video the final TOTAL amount (white glyphs on a solid black box), as
     # Costco prints it. Only the price token on the "TOTAL" row (not SUBTOTAL / the
@@ -309,16 +311,31 @@ def _render_grid(
     # PAYMENT) drop the lane since they carry no price column.
     section_scale = config.section_scale or {}
     section_font = config.section_font or {}
-    headings = tuple(h.upper() for h in (config.display_headings or ()))
+    # Normalize headings to (substring, scale) rules.
+    raw_head = config.display_headings or ()
+    if hasattr(raw_head, "items"):
+        heading_rules = [(k.upper(), float(v)) for k, v in raw_head.items()]
+    else:
+        heading_rules = [(str(h).upper(), float(config.heading_scale or 1.0))
+                         for h in raw_head]
+    # The big bottom "Items Sold:" date line inherits that phrase's scale.
+    items_sold_scale = next((sc for pat, sc in heading_rules if "ITEMS SOLD:" in pat),
+                            None)
     eff_sections = effective_row_sections(rows)
     row_cache: dict[tuple, tuple] = {}
     prev_text = ""
     for line, baseline, sect in zip(rows, baselines, eff_sections):
         row_text = " ".join(w.text for w in line).upper()
-        # A display heading (e.g. SELF-CHECKOUT) renders heavy + enlarged; the
-        # heavy face is NOT applied to the whole TOTALS zone (real Costco totals
-        # are body weight -- only the heading and the reverse-video total stand out).
-        is_heading = bool(headings) and any(h in row_text for h in headings)
+        # A display heading (e.g. SELF-CHECKOUT, THANK YOU, ITEMS SOLD:) renders
+        # heavy + enlarged; the heavy face is NOT applied to the whole TOTALS zone
+        # (real Costco totals are body weight -- only headings, the reverse-video
+        # total, and the bottom block stand out).
+        hscale = next((sc for pat, sc in heading_rules if pat in row_text), None)
+        # Bottom date line: the big date right after "Items Sold:" (distinct from
+        # the reverse-video date after "TOTAL NUMBER OF ITEMS SOLD").
+        if hscale is None and items_sold_scale is not None and "ITEMS SOLD:" in prev_text:
+            hscale = items_sold_scale
+        is_heading = hscale is not None
         is_total = bool(config.reverse_total) and _is_final_total(row_text)
         # The date on the row right after "TOTAL NUMBER OF ITEMS SOLD" is boxed.
         is_date_row = (bool(config.reverse_date_after_items)
@@ -326,7 +343,7 @@ def _render_grid(
         prev_text = row_text
         fpath = section_font.get(sect) if sect else None
         if is_heading:
-            sc = float(config.heading_scale or 1.0)
+            sc = float(hscale)
             bf_row = bmf_heavy if bmf else None
         else:
             sc = float(section_scale.get(sect, 1.0)) if sect else 1.0

@@ -612,8 +612,16 @@ _MERCHANT_TYPOGRAPHY = {
             "regular": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2.glyphs.npz"),
             "heavy": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2-heavy.glyphs.npz"),
         },
-        "display_headings": ("SELF-CHECKOUT", "SELF CHECKOUT"),
-        "heading_scale": 1.7,
+        # Large bold display lines (real Costco prints these much bigger than body):
+        # the SELF-CHECKOUT heading, the Thank-You footer, and the biggest of all --
+        # the bottom "Items Sold:" line (+ the date row after it inherits its scale).
+        "display_headings": {
+            "SELF-CHECKOUT": 1.7,
+            "SELF CHECKOUT": 1.7,
+            "THANK YOU": 1.4,
+            "PLEASE COME AGAIN": 1.4,
+            "ITEMS SOLD:": 1.8,
+        },
         "reverse_total": True,
         "reverse_date_after_items": True,
     },
