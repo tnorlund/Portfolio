@@ -17,6 +17,9 @@
         "reverse_total": true,
         "reverse_date_after_items": true,
         "dashed_separators": true,
+        "heading_bleed_phrase": "ITEMS SOLD:",
+        "reverse_date_anchor": "NUMBER OF ITEMS SOLD",
+        "dash_after_amount_date": true,
         "condense": 0.93
       },
       "logo": "costco_logo.png"

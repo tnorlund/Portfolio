@@ -151,6 +151,17 @@ class RenderConfig:
     # Draw dashed section separators the OCR drops (Costco prints a dashed rule
     # after the grand TOTAL and after the AMOUNT-block transaction-date line).
     dashed_separators: bool = False
+    # Phrase anchors that key structural treatments (grand-total detection, the
+    # boxed date after the item count, the enlarged-heading bleed, the dashed rule
+    # under the AMOUNT-block date, the reverse-video-box left extension). Defaults
+    # are generic / off; a merchant profile supplies its own wording so no merchant
+    # phrase is hardcoded in the renderer. (see docs/…-generalization.md, PR-2)
+    total_include_tokens: tuple[str, ...] = ("TOTAL",)
+    total_exclude_tokens: tuple[str, ...] = ("SUBTOTAL", "NUMBER")
+    heading_bleed_phrase: str | None = None
+    reverse_date_anchor: str | None = None
+    dash_after_amount_date: bool = False
+    reverse_box_lane_cells: int = 4
 
 
 def render_receipt(
@@ -235,13 +246,18 @@ def render_receipt(
     return image
 
 
-def _is_final_total(row_text: str) -> bool:
+def _is_final_total(
+    row_text: str,
+    include: tuple[str, ...] = ("TOTAL",),
+    exclude: tuple[str, ...] = ("SUBTOTAL", "NUMBER"),
+) -> bool:
     """True for the grand-TOTAL row (Costco reverse-videos its amount), but not
-    SUBTOTAL nor the "TOTAL NUMBER OF ITEMS SOLD" line."""
+    SUBTOTAL nor the "TOTAL NUMBER OF ITEMS SOLD" line. The include/exclude token
+    sets come from the merchant profile (defaults match Costco's wording)."""
     t = row_text.upper()
-    if "TOTAL" not in t:
+    if not all(tok in t for tok in include):
         return False
-    return "SUBTOTAL" not in t and "NUMBER" not in t
+    return not any(tok in t for tok in exclude)
 
 
 _DATE_LED = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4}$")
@@ -359,9 +375,13 @@ def _render_grid(
     else:
         heading_rules = [(str(h).upper(), float(config.heading_scale or 1.0))
                          for h in raw_head]
-    # The big bottom "Items Sold:" date line inherits that phrase's scale.
-    items_sold_scale = next((sc for pat, sc in heading_rules if "ITEMS SOLD:" in pat),
-                            None)
+    # The big bottom item-count date line inherits its heading phrase's scale
+    # (Costco's "ITEMS SOLD:"); the anchor phrase comes from the merchant profile.
+    _bleed = config.heading_bleed_phrase
+    items_sold_scale = (
+        next((sc for pat, sc in heading_rules if _bleed in pat), None)
+        if _bleed else None
+    )
 
     # Scale-aware pitch floor: the gap before an enlarged display row must clear
     # its own glyphs, so seed the floor from each row's heading scale (else two
@@ -372,7 +392,7 @@ def _render_grid(
         t = _row_texts_pitch[k]
         hs = next((sc for pat, sc in heading_rules if pat in t), None)
         if (hs is None and items_sold_scale is not None and k > 0
-                and "ITEMS SOLD:" in _row_texts_pitch[k - 1]):
+                and _bleed and _bleed in _row_texts_pitch[k - 1]):
             hs = items_sold_scale
         return float(hs) if hs else 1.0
 
@@ -411,7 +431,15 @@ def _render_grid(
         for k, t in enumerate(row_texts):
             prevt = row_texts[k - 1] if k > 0 else ""
             first = t.split()[0] if t.split() else ""
-            if _is_final_total(t) or ("AMOUNT" in prevt and _DATE_LED.match(first)):
+            is_total_row = _is_final_total(
+                t, config.total_include_tokens, config.total_exclude_tokens
+            )
+            is_amount_date = (
+                config.dash_after_amount_date
+                and "AMOUNT" in prevt
+                and _DATE_LED.match(first)
+            )
+            if is_total_row or is_amount_date:
                 dash_after_rows.add(k)
     # The OCR drops the dashed rule, so no blank line exists for it -- reserve one
     # line below each anchor by pushing the following rows down, and place the rule
@@ -437,13 +465,18 @@ def _render_grid(
         hscale = next((sc for pat, sc in heading_rules if pat in row_text), None)
         # Bottom date line: the big date right after "Items Sold:" (distinct from
         # the reverse-video date after "TOTAL NUMBER OF ITEMS SOLD").
-        if hscale is None and items_sold_scale is not None and "ITEMS SOLD:" in prev_text:
+        if (hscale is None and items_sold_scale is not None
+                and _bleed and _bleed in prev_text):
             hscale = items_sold_scale
         is_heading = hscale is not None
-        is_total = bool(config.reverse_total) and _is_final_total(row_text)
-        # The date on the row right after "TOTAL NUMBER OF ITEMS SOLD" is boxed.
+        is_total = bool(config.reverse_total) and _is_final_total(
+            row_text, config.total_include_tokens, config.total_exclude_tokens
+        )
+        # The date on the row right after the item-count line is boxed (anchor
+        # phrase from the merchant profile, e.g. Costco's "NUMBER OF ITEMS SOLD").
         is_date_row = (bool(config.reverse_date_after_items)
-                       and "NUMBER OF ITEMS SOLD" in prev_text)
+                       and bool(config.reverse_date_anchor)
+                       and config.reverse_date_anchor in prev_text)
         prev_text = row_text
         center_to = _center_target(line)
         fpath = section_font.get(sect) if sect else None
@@ -458,7 +491,8 @@ def _render_grid(
                            stroke=config.stroke, condense=config.condense,
                            bitmap_font=bf_row, cap_px=cap_px,
                            reverse_price=is_total, reverse_date=is_date_row,
-                           background=config.background, center_to=center_to)
+                           background=config.background, center_to=center_to,
+                           price_box_extend_cells=config.reverse_box_lane_cells)
             continue
         key = (fpath, sc, is_heading)
         cached = row_cache.get(key)
@@ -488,7 +522,8 @@ def _render_grid(
                        stroke=config.stroke, condense=config.condense,
                        bitmap_font=bf_row, cap_px=cp,
                        reverse_price=is_total, reverse_date=is_date_row,
-                       background=config.background, center_to=center_to)
+                       background=config.background, center_to=center_to,
+                       price_box_extend_cells=config.reverse_box_lane_cells)
 
     # Dashed section rules, printed as a run of real ``-`` glyphs in the reserved
     # gap below each anchor row. Use the merchant's bitmap face when it carries a

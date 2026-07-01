@@ -602,6 +602,7 @@ def draw_grid_line(
     reverse_date: bool = False,
     background: tuple[int, int, int] = (255, 255, 255),
     center_to: float | None = None,
+    price_box_extend_cells: int = 4,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
@@ -639,7 +640,7 @@ def draw_grid_line(
                     x0 = int(round(spec.grid_left + (placed.start_col - 0.4) * spec.cell_w))
                     x1 = int(round(spec.grid_left + (placed.end_col + 0.4) * spec.cell_w))
                 else:
-                    x0 = int(round(spec.grid_left + (placed.start_col - 4) * spec.cell_w))
+                    x0 = int(round(spec.grid_left + (placed.start_col - price_box_extend_cells) * spec.cell_w))
                     x1 = int(round(spec.grid_left + (placed.end_col + 1) * spec.cell_w))
                 x0 = max(int(spec.grid_left), x0)
                 y0 = int(round(baseline_y - top_ext))

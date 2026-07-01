@@ -13,11 +13,39 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     RenderConfig,
     _condense_factor,
     _detect_coord_max,
+    _is_final_total,
     _to_pixel_box,
     render_real_vs_synthetic,
     render_receipt,
     save_receipt_png,
 )
+
+
+def test_is_final_total_defaults_match_costco_wording():
+    # Default include/exclude reproduce the former hardcoded heuristic.
+    assert _is_final_total("**** TOTAL 44.46") is True
+    assert _is_final_total("SUBTOTAL 44.46") is False
+    assert _is_final_total("TOTAL NUMBER OF ITEMS SOLD = 4") is False
+
+
+def test_is_final_total_is_configurable_per_merchant():
+    # A merchant whose grand total says "BALANCE DUE" and whose exclusions differ.
+    assert _is_final_total(
+        "BALANCE DUE 9.99", include=("BALANCE",), exclude=("SUB",)
+    ) is True
+    assert _is_final_total(
+        "SUB BALANCE 1.00", include=("BALANCE",), exclude=("SUB",)
+    ) is False
+
+
+def test_render_config_anchor_defaults_are_generic():
+    # Defaults are off so no merchant phrase is baked into the renderer.
+    cfg = RenderConfig()
+    assert cfg.heading_bleed_phrase is None
+    assert cfg.reverse_date_anchor is None
+    assert cfg.dash_after_amount_date is False
+    assert cfg.total_include_tokens == ("TOTAL",)
+    assert cfg.reverse_box_lane_cells == 4
 
 
 def _word(text, x0, y0, x1, y1, labels=None):

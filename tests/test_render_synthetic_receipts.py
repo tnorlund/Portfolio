@@ -236,3 +236,15 @@ def test_costco_profile_treatments_preserved():
 def test_unknown_merchant_typography_empty():
     module = _load_module()
     assert module.merchant_typography("No Such Store") == {}
+
+
+def test_costco_anchors_come_from_profile():
+    # PR-2: the phrase anchors that used to be hardcoded in receipt_renderer.py
+    # now flow from the merchant profile through merchant_typography().
+    module = _load_module()
+    typo = module.merchant_typography("Costco Wholesale")
+    assert typo["heading_bleed_phrase"] == "ITEMS SOLD:"
+    assert typo["reverse_date_anchor"] == "NUMBER OF ITEMS SOLD"
+    assert typo["dash_after_amount_date"] is True
+    # A merchant with no anchors gets none (generic renderer defaults apply).
+    assert "reverse_date_anchor" not in module.merchant_typography("Target")

@@ -799,6 +799,9 @@ def _render_cached_hybrid(
     reverse_total: bool = False,
     reverse_date_after_items: bool = False,
     dashed_separators: bool = False,
+    heading_bleed_phrase: str | None = None,
+    reverse_date_anchor: str | None = None,
+    dash_after_amount_date: bool = False,
 ) -> str:
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
@@ -821,6 +824,9 @@ def _render_cached_hybrid(
         reverse_total=reverse_total,
         reverse_date_after_items=reverse_date_after_items,
         dashed_separators=dashed_separators,
+        heading_bleed_phrase=heading_bleed_phrase,
+        reverse_date_anchor=reverse_date_anchor,
+        dash_after_amount_date=dash_after_amount_date,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps.
