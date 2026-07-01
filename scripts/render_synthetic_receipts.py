@@ -903,8 +903,12 @@ def _render_cached_hybrid(
         bbox=logo_bbox,
         logo_image=logo_image,
     )
-    _overlay_inbody_barcodes(image, receipt, config=config, coord_max=1000.0)
-    _overlay_qr_and_barcode(image, receipt, config=config, coord_max=1000.0)
+    stamped_bands = _overlay_inbody_barcodes(
+        image, receipt, config=config, coord_max=1000.0
+    )
+    _overlay_qr_and_barcode(
+        image, receipt, config=config, coord_max=1000.0, reserved=stamped_bands
+    )
     # Deterministic per-output seed so re-rendering the same file is stable.
     texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
     image = _composite_paper_texture(image, seed=texture_seed)
@@ -1115,13 +1119,15 @@ def _hri_digits(text: str) -> str | None:
 
 def _overlay_inbody_barcodes(
     image, receipt: dict, *, config: RenderConfig, coord_max: float
-) -> int:
+) -> list[tuple[float, float]]:
     """Stamp Code-128 bars above in-body transaction-number lines (the HRI digits).
 
     Real receipts print the long transaction number AS a barcode; our text render
     shows only the digits. For each long-numeric line with genuine blank space
     directly above it, paste a bar tile in that gap (never over existing text).
-    Returns the number stamped.
+    Returns the stamped ``(y_top, y_bottom)`` pixel bands so the footer QR/barcode
+    pass can treat them as occupied and not stack a second barcode in the same gap
+    (real Costco has exactly one transaction barcode here, not two).
     """
     inner_w = config.width - 2 * config.margin
     inner_h = config.height - 2 * config.margin
@@ -1139,7 +1145,7 @@ def _overlay_inbody_barcodes(
             inner_w=inner_w, inner_h=inner_h,
         )
         px.append((w, min(t, b), max(t, b), min(l, r), max(l, r)))
-    stamped = 0
+    stamped_bands: list[tuple[float, float]] = []
     for i, (w, top, bot, left, right) in enumerate(px):
         digits = _hri_digits(w.get("text"))
         if digits is None:
@@ -1157,15 +1163,17 @@ def _overlay_inbody_barcodes(
         tile = receipt_graphics.render_barcode_tile(
             digits[:24], "code128", bar_w, bar_h, with_hri=False
         )
-        _paste_graphic_tile(image, tile, int(cx - bar_w / 2), int(top - 6 - bar_h))
-        stamped += 1
-        if stamped >= 2:
+        y_top = int(top - 6 - bar_h)
+        _paste_graphic_tile(image, tile, int(cx - bar_w / 2), y_top)
+        stamped_bands.append((float(y_top), float(top - 6)))
+        if len(stamped_bands) >= 2:
             break
-    return stamped
+    return stamped_bands
 
 
 def _overlay_qr_and_barcode(
-    image, receipt: dict, *, config: RenderConfig, coord_max: float
+    image, receipt: dict, *, config: RenderConfig, coord_max: float,
+    reserved: list[tuple[float, float]] | None = None,
 ) -> None:
     """Stamp a REAL QR symbol and a REAL 1D barcode in the blank footer region.
 
@@ -1177,6 +1185,12 @@ def _overlay_qr_and_barcode(
     symbology is chosen per merchant; the human-readable caption is omitted to
     match real receipt footers (the spurious digits were a realism tell).
     """
+    # If the receipt already prints its transaction number as an in-body barcode
+    # (Costco et al.), a footer QR/barcode block is redundant and real prints omit
+    # it -- stamping one anyway drops a stray barcode into whatever blank band
+    # exists (e.g. up by the header). Skip the footer graphic in that case.
+    if reserved:
+        return
     boxes = _iter_receipt_bboxes(receipt)
     if not boxes:
         return
@@ -1196,6 +1210,10 @@ def _overlay_qr_and_barcode(
             inner_h=inner_h,
         )
         intervals.append((min(t, b), max(t, b)))
+    # Treat already-stamped in-body barcode bands as occupied so we don't stack a
+    # redundant second barcode in the same gap.
+    for r0, r1 in (reserved or []):
+        intervals.append((min(r0, r1), max(r0, r1)))
     intervals.sort()
     merged: list[list[float]] = []
     for s, e in intervals:
