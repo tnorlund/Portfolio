@@ -248,3 +248,23 @@ def test_costco_anchors_come_from_profile():
     assert typo["dash_after_amount_date"] is True
     # A merchant with no anchors gets none (generic renderer defaults apply).
     assert "reverse_date_anchor" not in module.merchant_typography("Target")
+
+
+def test_graphics_for_merchant_merges_profile_over_substring_default():
+    # PR-3: substring default retained; a profile graphics block overrides it.
+    module = _load_module()
+    # Costco: no graphics block -> substring default (code128, qr, no HRI).
+    gfx = module.graphics_for_merchant("Costco Wholesale")
+    assert gfx["barcode_kind"] == "code128"
+    assert gfx["qr"] is True
+    # Substring rule still classifies the grocers as UPC-A.
+    assert module.graphics_for_merchant("Vons")["barcode_kind"] == "upca"
+
+
+def test_inbody_barcode_defaults_match_prior_constants():
+    module = _load_module()
+    d = module._INBODY_BARCODE_DEFAULTS
+    assert d["symbology"] == "code128"
+    assert d["max_count"] == 2
+    assert d["min_gap_px"] == 34
+    assert d["bar_h_px"] == 30

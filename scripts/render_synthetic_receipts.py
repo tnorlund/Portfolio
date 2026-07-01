@@ -1108,6 +1108,27 @@ def _hri_digits(text: str) -> str | None:
     return None
 
 
+# In-body transaction barcode geometry (stamped above a long-numeric HRI line).
+# A merchant profile's graphics.inbody_barcode block overrides any of these.
+_INBODY_BARCODE_DEFAULTS = {
+    "symbology": "code128",
+    "max_count": 2,
+    "min_gap_px": 34,
+    "bar_h_px": 30,
+    "max_digits": 24,
+}
+
+
+def graphics_for_merchant(merchant: str | None) -> dict:
+    """Merchant graphics choices: the substring-default profile from
+    receipt_graphics (barcode symbology / QR), overlaid with any explicit
+    ``graphics`` block in the merchant registry so a profile can pin
+    barcode_kind / barcode_with_hri / qr and add an inbody_barcode override."""
+    base = dict(receipt_graphics.graphics_profile_for_merchant(merchant))
+    base.update(get_merchant_profile(merchant).get("graphics", {}) or {})
+    return base
+
+
 def _overlay_inbody_barcodes(
     image, receipt: dict, *, config: RenderConfig, coord_max: float
 ) -> list[tuple[float, float]]:
@@ -1129,6 +1150,9 @@ def _overlay_inbody_barcodes(
     words = [w for w in all_words if w.get("bbox")]
     if not words:
         return 0
+    ib = {**_INBODY_BARCODE_DEFAULTS,
+          **(graphics_for_merchant(receipt.get("merchant_name")).get(
+              "inbody_barcode") or {})}
     px = []
     for w in words:
         l, t, r, b = _to_pixel_box(
@@ -1146,18 +1170,18 @@ def _overlay_inbody_barcodes(
                  if j != i and pb <= top + 2]
         nearest = max(above) if above else float(config.margin)
         space = top - nearest
-        if space < 34:
+        if space < ib["min_gap_px"]:
             continue
-        bar_h = int(min(30, space - 8))
+        bar_h = int(min(ib["bar_h_px"], space - 8))
         bar_w = int(min(inner_w * 0.7, max(right - left, inner_w * 0.4) * 1.3))
         cx = (left + right) / 2.0
         tile = receipt_graphics.render_barcode_tile(
-            digits[:24], "code128", bar_w, bar_h, with_hri=False
+            digits[:ib["max_digits"]], ib["symbology"], bar_w, bar_h, with_hri=False
         )
         y_top = int(top - 6 - bar_h)
         _paste_graphic_tile(image, tile, int(cx - bar_w / 2), y_top)
         stamped_bands.append((float(y_top), float(top - 6)))
-        if len(stamped_bands) >= 2:
+        if len(stamped_bands) >= ib["max_count"]:
             break
     return stamped_bands
 
@@ -1242,9 +1266,7 @@ def _overlay_qr_and_barcode(
     qr_size = min(120, int(inner_w * 0.32))
     block_full = qr_size + gap + bar_h
 
-    gfx = receipt_graphics.graphics_profile_for_merchant(
-        receipt.get("merchant_name")
-    )
+    gfx = graphics_for_merchant(receipt.get("merchant_name"))
     kind = gfx["barcode_kind"]
     with_hri = gfx["barcode_with_hri"]
     barcode_tile = receipt_graphics.render_barcode_tile(
