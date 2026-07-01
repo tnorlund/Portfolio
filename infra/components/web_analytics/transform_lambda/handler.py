@@ -112,11 +112,20 @@ def _enrich_ips(dts: list, deadline: float) -> int:
     except _s3.exceptions.NoSuchKey:
         pass
 
-    new_ips = [ip for ip in seen if ip not in existing][:MAX_NEW_IPS]
+    pending = [ip for ip in seen if ip not in existing]
+    new_ips = pending[:MAX_NEW_IPS]
+    # "complete" tracks whether we resolved every pending IP this run. If not
+    # (cap truncation, rate/deadline stop, or a failed batch), the caller
+    # defers the rebuild so partial geo never drives classification; retries
+    # converge because each resolved IP is cached.
+    complete = len(new_ips) == len(pending)
     fields = (
         "query,country,regionName,city,isp,org,as,mobile,proxy,hosting,status"
     )
     for i in range(0, len(new_ips), 100):
+        if time.time() >= deadline:
+            complete = False
+            break
         batch = new_ips[i:i + 100]
         payload = json.dumps(
             [{"query": ip, "fields": fields} for ip in batch]
@@ -127,10 +136,11 @@ def _enrich_ips(dts: list, deadline: float) -> int:
             headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.load(resp)
         except Exception:  # pylint: disable=broad-except
-            continue  # best-effort; unresolved IPs simply stay un-enriched
+            complete = False  # unresolved this run; a retry re-attempts it
+            continue
         for g in data:
             ip = g.get("query")
             if not ip:
@@ -147,7 +157,8 @@ def _enrich_ips(dts: list, deadline: float) -> int:
                 "proxy": bool(g.get("proxy")),
                 "mobile": bool(g.get("mobile")),
             }
-        time.sleep(1.0)  # be gentle with the IP-info rate limit
+        # ip-api's batch endpoint allows ~15 requests/min; stay under it.
+        time.sleep(4.0)
 
     body_out = (
         "\n".join(json.dumps(existing[ip]) for ip in sorted(existing)) + "\n"
@@ -158,7 +169,7 @@ def _enrich_ips(dts: list, deadline: float) -> int:
         Body=body_out.encode(),
         ContentType="application/x-ndjson",
     )
-    return len(new_ips)
+    return len(new_ips), complete
 
 
 def _insert_sql(dt: str) -> str:
@@ -272,7 +283,14 @@ def handler(event, context):
     targets = _target_dates(event)
     # Enrich newly-seen IPs first so the rebuild can classify hosting/bot and
     # materialize org/geo by joining ip_geo.
-    new_ips = _enrich_ips(targets, deadline)
+    new_ips, enrich_complete = _enrich_ips(targets, deadline)
+    if not enrich_complete:
+        # Don't rebuild with partial geo (unresolved IPs would misclassify as
+        # non-hosting); fail so the invocation retries and finishes enrichment.
+        raise RuntimeError(
+            f"IP enrichment incomplete ({new_ips} resolved this run); "
+            "deferring partition rebuild for retry"
+        )
     rebuilt = []
     for dt in targets:
         if time.time() >= deadline:
