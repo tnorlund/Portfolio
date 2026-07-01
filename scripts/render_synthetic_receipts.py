@@ -592,6 +592,17 @@ def _composite_paper_texture(image, *, seed: int | None = None, strength: float 
     vignette = (1.0 - 0.07 * s * (radial * radial))[:, :, None]
     rgb *= vignette
 
+    # Scanner-bed cyan cast on the left/right paper edges: on a real scan the outer
+    # ~9% of each side reads cyan (the red channel drops ~24 while green/blue hold),
+    # fading to neutral toward the center. Measured off the real Costco scan.
+    if s > 0:
+        xn = np.linspace(0.0, 1.0, width, dtype=np.float32)
+        d = np.minimum(xn, 1.0 - xn)                       # 0 at edges -> 0.5 center
+        ew = np.clip(1.0 - d / 0.09, 0.0, 1.0)[None, :]    # 1 at edges -> 0 inward
+        rgb[..., 0] -= 26.0 * s * ew
+        rgb[..., 1] -= 5.0 * s * ew
+        rgb[..., 2] -= 3.0 * s * ew
+
     rgb = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
     textured = Image.fromarray(rgb, mode="RGB")
 
