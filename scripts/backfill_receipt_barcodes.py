@@ -37,6 +37,9 @@ import boto3
 from receipt_dynamo import DynamoClient, ReceiptBarcode
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
+# C0 control characters + DEL, stripped from barcode payload ends (Vision
+# prepends a mode/ECI control byte to some QR/byte-mode payloads).
+_CTRL_CHARS = "".join(chr(i) for i in range(0x20)) + "\x7f"
 DEFAULT_BINARY = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "receipt_ocr_swift/.build/debug/receipt-ocr",
@@ -75,7 +78,7 @@ def barcode_from_swift(image_id, receipt_id, idx, data) -> ReceiptBarcode | None
             receipt_id=receipt_id,
             barcode_id=idx,
             symbology=str(symbology),
-            text=data.get("payload") or "",
+            text=(data.get("payload") or "").strip(_CTRL_CHARS),
             bounding_box=bbox,
             top_left=tl,
             top_right=tr,
@@ -130,10 +133,13 @@ def iter_receipts(client, limit, merchant):
             if k in seen:
                 continue
             seen.add(k)
-            details = client.get_image_details(str(p.image_id))
-            for r in details.receipts:
-                if r.receipt_id == int(p.receipt_id):
-                    yield r
+            # get_receipt avoids get_image_details, which scans the whole image
+            # partition and throws if any sibling item is malformed (missing
+            # TYPE) -- a pre-existing data issue that must not abort the backfill.
+            try:
+                yield client.get_receipt(str(p.image_id), int(p.receipt_id))
+            except Exception as exc:  # noqa: BLE001
+                print(f"  skip {k}: {type(exc).__name__}", file=sys.stderr)
             if limit and len(seen) >= limit:
                 return
         return
@@ -180,29 +186,34 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as workdir:
         for receipt in iter_receipts(client, args.limit, args.merchant):
             stats["receipts"] += 1
-            raw = detect_on_crop(args.binary, s3, receipt, workdir)
-            if raw is None:
-                stats["no_crop"] += 1
-                continue
-            barcodes = []
-            for idx, d in enumerate(raw):
-                bc = barcode_from_swift(
-                    str(receipt.image_id), int(receipt.receipt_id), idx, d
-                )
-                if bc is not None:
-                    barcodes.append(bc)
-                    symbologies[bc.symbology] += 1
-            if barcodes:
-                stats["with_barcode"] += 1
-                stats["total_barcodes"] += len(barcodes)
-                if any(b.payload for b in barcodes):
-                    stats["decoded"] += 1
-            if args.apply:
-                client.delete_receipt_barcodes_from_receipt(
-                    str(receipt.image_id), int(receipt.receipt_id)
-                )
+            try:
+                raw = detect_on_crop(args.binary, s3, receipt, workdir)
+                if raw is None:
+                    stats["no_crop"] += 1
+                    continue
+                barcodes = []
+                for idx, d in enumerate(raw):
+                    bc = barcode_from_swift(
+                        str(receipt.image_id), int(receipt.receipt_id), idx, d
+                    )
+                    if bc is not None:
+                        barcodes.append(bc)
+                        symbologies[bc.symbology] += 1
                 if barcodes:
-                    client.add_receipt_barcodes(barcodes)
+                    stats["with_barcode"] += 1
+                    stats["total_barcodes"] += len(barcodes)
+                    if any(b.payload for b in barcodes):
+                        stats["decoded"] += 1
+                if args.apply:
+                    client.delete_receipt_barcodes_from_receipt(
+                        str(receipt.image_id), int(receipt.receipt_id)
+                    )
+                    if barcodes:
+                        client.add_receipt_barcodes(barcodes)
+            except Exception as exc:  # noqa: BLE001
+                stats["errors"] += 1
+                print(f"  error on {receipt.image_id} r{receipt.receipt_id}: "
+                      f"{type(exc).__name__}: {exc}", file=sys.stderr)
             if stats["receipts"] % 25 == 0:
                 print(f"  ...{stats['receipts']} receipts, "
                       f"{stats['decoded']} decoded", flush=True)
@@ -211,6 +222,7 @@ def main() -> int:
     print("\n===== BACKFILL REPORT =====")
     print(f"  receipts scanned:   {stats['receipts']}")
     print(f"  crop unavailable:   {stats['no_crop']}")
+    print(f"  errors (skipped):   {stats['errors']}")
     print(f"  with >=1 barcode:   {stats['with_barcode']} "
           f"({100 * stats['with_barcode'] // n}%)")
     print(f"  with decoded:       {stats['decoded']} "

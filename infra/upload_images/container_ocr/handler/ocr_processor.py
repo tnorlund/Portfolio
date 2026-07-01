@@ -59,6 +59,10 @@ from .metrics import emf_metrics
 
 logger = logging.getLogger(__name__)
 
+# C0 control characters + DEL, stripped from barcode payload ends (Vision
+# prepends a mode/ECI control byte to some QR/byte-mode payloads).
+_BARCODE_CTRL_CHARS = "".join(chr(i) for i in range(0x20)) + "\x7f"
+
 
 @dataclass
 class OCRData:
@@ -1570,6 +1574,9 @@ class OCRProcessor:
             confidence = min(
                 1.0, max(0.01, float(data.get("confidence") or 1.0))
             )
+            # Vision prepends a mode/ECI control byte to some payloads (e.g. QR
+            # byte-mode: "\x1ahttps://..."); strip leading/trailing C0 controls.
+            payload = (data.get("payload") or "").strip(_BARCODE_CTRL_CHARS)
             try:
                 barcodes.append(
                     ReceiptBarcode(
@@ -1577,7 +1584,7 @@ class OCRProcessor:
                         receipt_id=receipt_id,
                         barcode_id=idx,
                         symbology=str(symbology),
-                        text=data.get("payload") or "",
+                        text=payload,
                         bounding_box=bbox,
                         top_left=top_left,
                         top_right=top_right,
