@@ -25,6 +25,7 @@ import math
 import os
 import re
 from dataclasses import dataclass, replace
+from statistics import median
 from typing import Any, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
@@ -42,8 +43,10 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     amount_lane_end,
     assign_row_baselines,
     build_grid_spec,
+    drawn_cell_count,
     draw_grid_line,
     draw_token_chars,
+    draw_text_run,
     effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
@@ -166,6 +169,19 @@ class RenderConfig:
     reverse_date_anchor: str | None = None
     dash_after_amount_date: bool = False
     reverse_box_lane_cells: int = 4
+    # Hybrid layout: keep fixed grid for tabular/price rows, but render centered
+    # headers and prose/footer rows as measured text runs anchored by visible ink.
+    mixed_layout: bool = False
+    bitmap_cap_ratio: float = 0.72
+    bitmap_thin: float = 0.0
+    ink: tuple[int, int, int] | None = None
+    # Data-built atlases can be sized directly from the receipt's OCR geometry:
+    # median word-box height -> cap height, and median word width-per-char ->
+    # cell advance. This is intentionally enabled by mixed-layout merchants, not
+    # global defaults, so chart-derived Costco remains governed by its invariant
+    # profile/atlas sizing.
+    ocr_font_sizing: bool = False
+    ocr_cap_height_ratio: float = 0.72
 
 
 def render_receipt(
@@ -269,7 +285,7 @@ _DATE_LED = re.compile(f"^{date_core(US)}$")
 
 def _draw_dash_row(draw, x0: float, x1: float, baseline_y: float, spec, font,
                    *, ink, stroke=0, condense=1.0, bitmap_font=None,
-                   cap_px=None) -> None:
+                   cap_px=None, bitmap_thin: float = 0.0) -> None:
     """A thermal separator rule printed as a run of actual ``-`` glyphs.
 
     Costco prints its section separators as a full-width row of the dash
@@ -283,7 +299,85 @@ def _draw_dash_row(draw, x0: float, x1: float, baseline_y: float, spec, font,
         return
     draw_token_chars(draw, "-" * n, start_col, baseline_y, spec, font, ink,
                      stroke=stroke, condense=condense, bitmap_font=bitmap_font,
-                     cap_px=cap_px)
+                     cap_px=cap_px, bitmap_thin=bitmap_thin)
+
+
+def _is_asterisk_rule(row_text: str) -> bool:
+    chars = [ch for ch in row_text if not ch.isspace()]
+    if len(chars) < 3 or any(ch.isalnum() for ch in chars):
+        return False
+    return chars.count("*") / len(chars) >= 0.75
+
+
+def _ocr_grid_metrics(
+    grid_words: Sequence[GridWord],
+    sizing: GridSpec,
+    config: RenderConfig,
+) -> tuple[int | None, float | None]:
+    """Derive bitmap cap height and cell advance from the receipt's OCR boxes."""
+    if not (config.ocr_font_sizing or config.mixed_layout):
+        return None, None
+    heights: list[float] = []
+    box_advances: list[float] = []
+    metric_words: list[GridWord] = []
+    for word in grid_words:
+        text = str(word.text or "").strip()
+        glyphs = text.replace(" ", "")
+        if len(glyphs) < 2:
+            continue
+        if _is_asterisk_rule(text) or not any(ch.isalnum() for ch in glyphs):
+            continue
+        digits = sum(ch.isdigit() for ch in glyphs)
+        if digits >= 14 and digits >= 0.8 * len(glyphs):
+            continue
+        height = float(word.bottom - word.top)
+        width = float(word.right - word.left)
+        if not (math.isfinite(height) and math.isfinite(width)):
+            continue
+        if height <= 0 or width <= 0:
+            continue
+        # Keep ordinary OCR text boxes; drop logo-sized outliers and tiny noise.
+        if height < sizing.font_px * 0.55 or height > sizing.font_px * 2.2:
+            continue
+        heights.append(height)
+        # Word bboxes usually include loose left/right OCR padding. Keep this as
+        # a fallback, but discount roughly half a cell so it does not over-space
+        # a single-word row.
+        box_advances.append(width / max(1.0, len(glyphs) + 0.5))
+        metric_words.append(word)
+
+    if len(heights) < 10 or len(box_advances) < 10:
+        return None, None
+
+    cap_ratio = max(0.65, min(0.95, float(config.ocr_cap_height_ratio)))
+    base_cap = max(6, int(round(sizing.font_px * float(config.bitmap_cap_ratio))))
+    measured_cap = int(round(median(heights) * cap_ratio))
+    cap_px = max(int(round(base_cap * 0.9)), measured_cap)
+    cap_px = min(max(6, int(config.max_font_px)), cap_px)
+
+    start_pitches: list[float] = []
+    rows = group_words_into_grid_lines(metric_words, sizing.cell_h)
+    for row in rows:
+        ordered = sorted(row, key=lambda w: w.left)
+        for left_word, right_word in zip(ordered, ordered[1:]):
+            cells = drawn_cell_count(left_word.text) + 1
+            if cells < 3:
+                continue
+            pitch = (right_word.left - left_word.left) / cells
+            # Keep normal one-space word starts; drop far table columns and tiny
+            # price/tax-flag joins. This recovers the printer pitch without using
+            # per-word OCR padding.
+            if sizing.font_px * 0.35 <= pitch <= sizing.font_px * 0.80:
+                start_pitches.append(pitch)
+
+    if len(start_pitches) >= 8:
+        measured_advance = float(median(start_pitches))
+    else:
+        measured_advance = float(median(box_advances))
+    min_advance = sizing.font_px * 0.48
+    max_advance = sizing.font_px * 0.62
+    advance_px = max(min_advance, min(max_advance, measured_advance))
+    return cap_px, advance_px
 
 
 def _render_grid(
@@ -308,39 +402,6 @@ def _render_grid(
     sizing = build_grid_spec(profile, inner_w, inner_h, config)
     font = _load_grid_font(sizing.font_px, config)
     advance = glyph_advance(draw, font) * float(config.condense)
-    # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
-    # target cap height (~0.72 of the em); advance comes from the atlas.
-    bmf = bmf_heavy = None
-    cap_px = None
-    if config.bitmap_font:
-        from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
-            BitmapFont,
-        )
-        bmf = BitmapFont(config.bitmap_font["regular"])
-        heavy_path = config.bitmap_font.get("heavy", config.bitmap_font["regular"])
-        bmf_heavy = BitmapFont(heavy_path)
-        cap_px = max(6, int(round(sizing.font_px * 0.72)))
-        # Apply the merchant condense to the bitmap advance too (the TTF path
-        # already does): real thermal faces pack glyphs tighter than the atlas's
-        # widest-letter + gap estimate, so an un-condensed advance reads too airy.
-        advance = bmf.advance(cap_px) * float(config.condense)
-    spec = build_grid_spec(
-        profile, inner_w, inner_h, config, char_advance_px=advance
-    )
-    # "1" => 1-bit (no anti-aliasing): glyphs render as hard on/off dots, which
-    # is what a thermal/dot-matrix head actually lays down.
-    draw.fontmode = "1"
-    ascent, descent = font.getmetrics()
-    # Minimum baseline-to-baseline pitch. This is a FLOOR that only pushes apart
-    # rows the source packed tighter than a glyph; the true spacing still comes
-    # from the OCR row positions. ``ascent + descent`` (the font's full line box,
-    # ~1.5x cap height) was clobbering that -- real thermal receipts pack lines at
-    # only ~1.08x the glyph height, so every row was forced ~30% too loose. Tie
-    # the floor to the cap height instead (caps have no descender, so 1.12x clears
-    # them) and let the OCR positions carry the real, tighter pitch.
-    cap_h = float(cap_px) if cap_px else 0.72 * float(sizing.font_px)
-    min_pitch = cap_h * 1.12
-
     grid_words: list[GridWord] = []
     for word in words:
         bbox = word.get("bbox")
@@ -359,9 +420,53 @@ def _render_grid(
                 bottom=bottom,
                 text=text,
                 ink=_ink_for(word, config),
+                source_line=_source_line_id(word),
                 section=section_for_labels(word.get("labels")),
             )
         )
+    # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
+    # target cap height (~0.72 of the em); advance comes from the atlas.
+    bmf = bmf_heavy = None
+    cap_px = None
+    if config.bitmap_font:
+        from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
+            BitmapFont,
+        )
+        bitmap_thin = max(0.0, min(0.9, float(config.bitmap_thin or 0.0)))
+        bmf = BitmapFont(config.bitmap_font["regular"], thin=bitmap_thin)
+        heavy_path = config.bitmap_font.get("heavy", config.bitmap_font["regular"])
+        bmf_heavy = BitmapFont(heavy_path, thin=bitmap_thin)
+        cap_ratio = max(0.5, min(1.0, float(config.bitmap_cap_ratio)))
+        cap_px = max(6, int(round(sizing.font_px * cap_ratio)))
+        ocr_cap, ocr_advance = _ocr_grid_metrics(grid_words, sizing, config)
+        if ocr_cap is not None:
+            cap_px = ocr_cap
+        # Apply the merchant condense to the bitmap advance too (the TTF path
+        # already does): real thermal faces pack glyphs tighter than the atlas's
+        # widest-letter + gap estimate, so an un-condensed advance reads too airy.
+        advance = bmf.advance(cap_px) * float(config.condense)
+        if ocr_advance is not None:
+            advance = ocr_advance
+    spec = build_grid_spec(
+        profile, inner_w, inner_h, config, char_advance_px=advance
+    )
+    # "1" => 1-bit (no anti-aliasing): glyphs render as hard on/off dots, which
+    # is what a thermal/dot-matrix head actually lays down.
+    draw.fontmode = "1"
+    ascent, descent = font.getmetrics()
+    # Minimum baseline-to-baseline pitch. This is a FLOOR that only pushes apart
+    # rows the source packed tighter than a glyph; the true spacing still comes
+    # from the OCR row positions. ``ascent + descent`` (the font's full line box,
+    # ~1.5x cap height) was clobbering that -- real thermal receipts pack lines at
+    # only ~1.08x the glyph height, so every row was forced ~30% too loose. Tie
+    # the floor to the cap height instead (caps have no descender, so 1.12x clears
+    # them) and let the OCR positions carry the real, tighter pitch.
+    cap_h = (
+        float(cap_px)
+        if cap_px
+        else float(config.bitmap_cap_ratio) * float(sizing.font_px)
+    )
+    min_pitch = cap_h * 1.12
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
     amount_lane = amount_lane_end(rows, spec)
@@ -425,6 +530,41 @@ def _render_grid(
                 and abs(lm - rm) < 0.18 * content_cw):
             return content_left + content_cw / 2.0
         return None
+
+    def _run_layout(line, center_to):
+        """Return (text, anchor, x, target_w) for measured display/prose rows."""
+        if not config.mixed_layout:
+            return None
+        if any(is_price_token(w.text) for w in line):
+            return None
+        text = " ".join(w.text for w in line if str(w.text).strip())
+        if not text:
+            return None
+        upper = text.upper()
+        payment_markers = (
+            "ENTRY", "CARD", "PURCHASE", "AUTH", "AID", "TVR", "IAD",
+            "TC:", "MID", "TID", "SEQ", "ISSUER", "ARC", "TSI", "MODE:",
+            "TOTAL:", "BALANCE", "CREDIT", "DEBIT",
+        )
+        if any(marker in upper for marker in payment_markers):
+            return None
+        ordered = sorted(line, key=lambda w: w.left)
+        has_column_gap = any(
+            (b.left - a.right) / max(spec.cell_w, 1.0) > 4.0
+            for a, b in zip(ordered, ordered[1:])
+        )
+        if has_column_gap:
+            return None
+        target_w = max(w.right for w in line) - min(w.left for w in line)
+        if center_to is not None:
+            return text, "center", center_to, target_w
+        # Prose/footer rows are not tabular: preserve word gaps and align the
+        # final ink mask to the observed left edge instead of snapping each token
+        # to the global cell grid.
+        if len(line) >= 3 and len(text.replace(" ", "")) >= 18:
+            return text, "left", min(w.left for w in line), target_w
+        return None
+
     eff_sections = effective_row_sections(rows)
     # Rows after which Costco prints a dashed rule (dropped by OCR): the grand
     # TOTAL, and the AMOUNT-block transaction-date line (the date row whose prior
@@ -490,10 +630,37 @@ def _render_grid(
         else:
             sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
             bf_row = bmf
+        if _is_asterisk_rule(row_text):
+            n = int(content_cw / spec.cell_w)
+            draw_token_chars(
+                draw,
+                "*" * max(3, n),
+                0,
+                baseline,
+                spec,
+                font,
+                line[0].ink,
+                stroke=config.stroke,
+                condense=config.condense,
+                bitmap_font=bf_row,
+                cap_px=cap_px,
+                bitmap_thin=config.bitmap_thin,
+            )
+            continue
         if sc == 1.0 and not fpath:
+            run = _run_layout(line, center_to)
+            if run is not None:
+                text, anchor, x, target_w = run
+                draw_text_run(draw, text, x, baseline, spec, font, line[0].ink,
+                              anchor=anchor, stroke=config.stroke,
+                              condense=config.condense, bitmap_font=bf_row,
+                              cap_px=cap_px, target_width=target_w,
+                              bitmap_thin=config.bitmap_thin)
+                continue
             draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
                            stroke=config.stroke, condense=config.condense,
                            bitmap_font=bf_row, cap_px=cap_px,
+                           bitmap_thin=config.bitmap_thin,
                            reverse_price=is_total, reverse_date=is_date_row,
                            background=config.background, center_to=center_to,
                            price_box_extend_cells=config.reverse_box_lane_cells)
@@ -508,7 +675,7 @@ def _render_grid(
                 # Bitmap pitch comes from the atlas advance at the scaled cap, NOT
                 # the TTF advance (the two differ -> mis-spaced enlarged rows).
                 row_cap = max(6, int(round((cap_px or row_font_px) * sc)))
-                row_adv = bf_row.advance(row_cap)
+                row_adv = bf_row.advance(row_cap) * float(config.condense)
             else:
                 row_cap = None
                 row_adv = glyph_advance(draw, row_font) * float(config.condense)
@@ -522,9 +689,19 @@ def _render_grid(
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
         cp = row_cap if row_cap else (int(round(cap_px * sc)) if cap_px else None)
+        run = _run_layout(line, center_to)
+        if run is not None:
+            text, anchor, x, target_w = run
+            draw_text_run(draw, text, x, baseline, row_spec, row_font, line[0].ink,
+                          anchor=anchor, stroke=config.stroke,
+                          condense=config.condense, bitmap_font=bf_row,
+                          cap_px=cp, target_width=target_w,
+                          bitmap_thin=config.bitmap_thin)
+            continue
         draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane,
                        stroke=config.stroke, condense=config.condense,
                        bitmap_font=bf_row, cap_px=cp,
+                       bitmap_thin=config.bitmap_thin,
                        reverse_price=is_total, reverse_date=is_date_row,
                        background=config.background, center_to=center_to,
                        price_box_extend_cells=config.reverse_box_lane_cells)
@@ -535,9 +712,9 @@ def _render_grid(
     dash_bmf = bmf if (bmf is not None and bmf.has("-")) else None
     for y in dash_ys:
         _draw_dash_row(draw, content_left, content_right, y, spec, font,
-                       ink=_DEFAULT_INK, stroke=config.stroke,
+                       ink=_ink_for({}, config), stroke=config.stroke,
                        condense=config.condense, bitmap_font=dash_bmf,
-                       cap_px=cap_px)
+                       cap_px=cap_px, bitmap_thin=config.bitmap_thin)
 
 
 def _load_grid_font(
@@ -611,10 +788,26 @@ def _iter_words(receipt: Mapping[str, Any]) -> list[Mapping[str, Any]]:
         return [word for word in flat if isinstance(word, Mapping)]
     words: list[Mapping[str, Any]] = []
     for line in receipt.get("lines", []) or []:
+        line_id = line.get("line_id")
         for word in line.get("words", []) or []:
             if isinstance(word, Mapping):
-                words.append(word)
+                if line_id is not None and "line_id" not in word:
+                    item = dict(word)
+                    item["line_id"] = line_id
+                    words.append(item)
+                else:
+                    words.append(word)
     return words
+
+
+def _source_line_id(word: Mapping[str, Any]) -> int | None:
+    value = word.get("source_line", word.get("line_id"))
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _detect_coord_max(words: Sequence[Mapping[str, Any]]) -> float:
@@ -758,6 +951,14 @@ def _ink_for(
     word: Mapping[str, Any], config: RenderConfig
 ) -> tuple[int, int, int]:
     if not config.color_by_label:
+        custom = getattr(config, "ink", None)
+        if custom is not None:
+            try:
+                values = tuple(max(0, min(255, int(v))) for v in custom[:3])
+            except (TypeError, ValueError):
+                values = ()
+            if len(values) == 3:
+                return values
         return _DEFAULT_INK
     for label in word.get("labels") or []:
         color = _LABEL_COLORS.get(_strip_bio(label))

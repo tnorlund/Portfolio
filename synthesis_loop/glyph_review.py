@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -86,22 +87,52 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
     ss = rsr.section_scale_for_merchant(merchant)
     typ = rsr.merchant_typography(merchant)
 
-    d = c.get_image_details(image_id)
-    rec = next(r for r in d.receipts if r.receipt_id == receipt_id)
+    d = None
+    rec = None
+    for _ in range(3):
+        d = c.get_image_details(image_id)
+        rec = next(
+            (r for r in d.receipts if str(r.receipt_id) == str(receipt_id)),
+            None,
+        )
+        if rec is not None:
+            break
+        time.sleep(0.5)
+    if d is None or rec is None:
+        found = [] if d is None else [r.receipt_id for r in d.receipts]
+        raise RuntimeError(
+            f"receipt {receipt_id} not found for image {image_id}; found {found}"
+        )
     ws = [w for w in d.receipt_words if w.receipt_id == receipt_id]
     lbl = {(l.line_id, l.word_id): l.label
            for l in d.receipt_word_labels if l.receipt_id == receipt_id}
     words = [{
         "text": w.text,
+        "line_id": w.line_id,
+        "word_id": w.word_id,
         "bbox": [w.top_left["x"] * 1000, w.top_left["y"] * 1000,
                  w.bottom_right["x"] * 1000, w.bottom_right["y"] * 1000],
         "labels": ([lbl[(w.line_id, w.word_id)]]
                    if lbl.get((w.line_id, w.word_id)) not in (None, "O") else []),
     } for w in ws]
+    barcodes = []
+    if hasattr(c, "list_receipt_barcodes_from_receipt"):
+        try:
+            for b in c.list_receipt_barcodes_from_receipt(image_id, receipt_id):
+                barcodes.append({
+                    "text": getattr(b, "text", "") or "",
+                    "symbology": getattr(b, "symbology", ""),
+                    "top_left": getattr(b, "top_left", None),
+                    "bottom_right": getattr(b, "bottom_right", None),
+                    "confidence": getattr(b, "confidence", None),
+                })
+        except Exception:  # noqa: BLE001
+            barcodes = []
     wt = 760
     ht = int(round(wt * rec.height / rec.width))
     tmp = out_png + ".syn.png"
-    rsr._render_cached_hybrid({"words": words, "merchant_name": merchant}, atlas,
+    rsr._render_cached_hybrid({"words": words, "barcodes": barcodes,
+                               "merchant_name": merchant}, atlas,
                               profile=prof, width=wt, height=ht, path=tmp,
                               section_scale=ss, **typ)
     syn = Image.open(tmp).convert("RGB")
@@ -134,8 +165,153 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
         dd.text((x, 12), t, fill=(200, 0, 0), font=lab)
         x += wd + 20
     cv.save(out_png)
+    _save_zoom_crops(out_png)
+    if real is not None:
+        _print_metric_summary(real.resize((wt, ht)), syn, words)
     print(f"{merchant} {image_id}:{receipt_id} -> {out_png}")
     return 0
+
+
+def _metric_box(
+    bbox, width: int, height: int, *, pad: bool = True
+) -> tuple[int, int, int, int] | None:
+    try:
+        x0, y0, x1, y1 = (float(v) for v in bbox[:4])
+    except (TypeError, ValueError):
+        return None
+    left = int(round(min(x0, x1) / 1000.0 * width))
+    right = int(round(max(x0, x1) / 1000.0 * width))
+    top = int(round((1.0 - max(y0, y1) / 1000.0) * height))
+    bottom = int(round((1.0 - min(y0, y1) / 1000.0) * height))
+    if right <= left or bottom <= top:
+        return None
+    if not pad:
+        return (max(0, left), max(0, top), min(width, right), min(height, bottom))
+    pad_x = max(2, int(round((right - left) * 0.12)))
+    pad_y = max(2, int(round((bottom - top) * 0.20)))
+    return (
+        max(0, left - pad_x),
+        max(0, top - pad_y),
+        min(width, right + pad_x),
+        min(height, bottom + pad_y),
+    )
+
+
+def _ink_metrics(image, words) -> dict[str, float]:
+    heights: list[float] = []
+    widths: list[float] = []
+    densities: list[float] = []
+    gray_image = image.convert("L")
+    width, height = gray_image.size
+    for word in words:
+        text = str(word.get("text") or "").strip()
+        glyphs = text.replace(" ", "")
+        if len(glyphs) < 2 or not any(ch.isalnum() for ch in glyphs):
+            continue
+        digits = sum(ch.isdigit() for ch in glyphs)
+        if digits >= 14 and digits >= 0.8 * len(glyphs):
+            continue
+        box = _metric_box(word.get("bbox") or (), width, height)
+        if box is None:
+            continue
+        crop = gray_image.crop(box)
+        arr = np.asarray(crop)
+        paper = float(np.median(arr))
+        threshold = max(0.0, min(230.0, paper - 22.0))
+        ink = arr < threshold
+        if int(ink.sum()) < 8:
+            continue
+        ys, xs = np.where(ink)
+        heights.append(float(ys.max() - ys.min() + 1))
+        widths.append(float(xs.max() - xs.min() + 1) / len(glyphs))
+        densities.append(float(ink.mean()))
+    if not heights:
+        return {}
+    return {
+        "h_med": float(np.median(heights)),
+        "wpc_med": float(np.median(widths)),
+        "density_med": float(np.median(densities)),
+    }
+
+
+def _ocr_pitch_metrics(words, width: int, height: int) -> dict[str, float]:
+    by_line: dict[object, list[dict]] = {}
+    for word in words:
+        line_id = word.get("line_id")
+        if line_id is None:
+            continue
+        by_line.setdefault(line_id, []).append(word)
+    pitches: list[float] = []
+    for row in by_line.values():
+        placed = []
+        for word in row:
+            box = _metric_box(word.get("bbox") or (), width, height, pad=False)
+            text = str(word.get("text") or "").strip()
+            if box is None or not text:
+                continue
+            placed.append((box[0], text))
+        placed.sort()
+        for (left_a, text_a), (left_b, _text_b) in zip(placed, placed[1:]):
+            cells = len(text_a.replace(" ", "")) + 1
+            if cells < 3:
+                continue
+            pitch = (left_b - left_a) / cells
+            if 8.0 <= pitch <= 26.0:
+                pitches.append(float(pitch))
+    if not pitches:
+        return {}
+    return {"pitch_med": float(np.median(pitches)), "pitch_n": float(len(pitches))}
+
+
+def _print_metric_summary(real, syn, words) -> None:
+    real_m = _ink_metrics(real, words)
+    syn_m = _ink_metrics(syn, words)
+    pitch = _ocr_pitch_metrics(words, syn.width, syn.height)
+    if not real_m or not syn_m:
+        return
+    h_ratio = syn_m["h_med"] / max(1.0, real_m["h_med"])
+    d_ratio = syn_m["density_med"] / max(1e-6, real_m["density_med"])
+    print(
+        "metrics "
+        f"ocr_pitch_med={pitch.get('pitch_med', 0.0):.2f} "
+        f"real_h_med={real_m['h_med']:.2f} synth_h_med={syn_m['h_med']:.2f} "
+        f"h_ratio={h_ratio:.3f} "
+        f"real_wpc_med={real_m['wpc_med']:.2f} synth_wpc_med={syn_m['wpc_med']:.2f} "
+        f"real_density={real_m['density_med']:.3f} "
+        f"synth_density={syn_m['density_med']:.3f} density_ratio={d_ratio:.3f}"
+    )
+
+
+def _save_zoom_crops(out_png: str) -> None:
+    im = Image.open(out_png).convert("RGB")
+    top = 34
+    body_h = max(1, im.height - top)
+    regions = {
+        "header": (0, top, im.width, top + int(body_h * 0.22)),
+        "body": (
+            0,
+            top + int(body_h * 0.38),
+            im.width,
+            top + int(body_h * 0.58),
+        ),
+        "codes": (
+            0,
+            top + int(body_h * 0.62),
+            im.width,
+            top + int(body_h * 0.82),
+        ),
+        "footer": (
+            0,
+            top + int(body_h * 0.78),
+            im.width,
+            im.height,
+        ),
+    }
+    stem = os.path.splitext(out_png)[0]
+    for name, box in regions.items():
+        crop = im.crop(box)
+        crop = crop.resize((crop.width * 2, crop.height * 2), Image.NEAREST)
+        crop.save(f"{stem}.zoom_{name}.png")
 
 
 def main() -> int:

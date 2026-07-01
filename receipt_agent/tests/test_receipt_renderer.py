@@ -356,6 +356,215 @@ def test_center_to_recenters_a_left_placed_line():
     assert abs(drawn_center - 200.0) <= 10.0  # centered within one cell of target
 
 
+def test_nonprice_right_segments_anchor_to_source_right_edge():
+    """Payment/header right columns are right-justified even when not prices."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=10.0, cell_h=15.0, font_px=14, grid_left=0.0)
+    ink = (0, 0, 0)
+    left = rg.GridWord(left=0.0, top=0.0, right=40.0, bottom=15.0,
+                       text="CARD", ink=ink)
+    right = rg.GridWord(left=300.0, top=0.0, right=420.0, bottom=15.0,
+                        text="5061", ink=ink)
+
+    drawn: list[tuple[str, float]] = []
+    orig = rg.draw_token_chars
+    try:
+        rg.draw_token_chars = lambda draw, text, start_col, *a, **k: drawn.append(
+            (text, start_col)
+        )
+        rg.draw_grid_line(draw=None, line=[left, right], baseline_y=10.0,
+                          spec=spec, font=None)
+    finally:
+        rg.draw_token_chars = orig
+
+    starts = dict(drawn)
+    assert starts["5061"] == 38.0
+
+
+def test_amount_currency_prefix_before_price_is_not_truncated():
+    """A token like USD$ belongs to the right-aligned amount, not description."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=10.0, cell_h=15.0, font_px=14, grid_left=0.0)
+    ink = (0, 0, 0)
+    row = [
+        rg.GridWord(left=20.0, top=0.0, right=80.0, bottom=15.0,
+                    text="Total:", ink=ink),
+        rg.GridWord(left=550.0, top=0.0, right=620.0, bottom=15.0,
+                    text="USD$", ink=ink),
+        rg.GridWord(left=650.0, top=0.0, right=720.0, bottom=15.0,
+                    text="48.34", ink=ink),
+    ]
+
+    placed = rg.plan_grid_line(row, spec, amount_lane=72)
+    by_text = {p.word.text: p for p in placed}
+
+    assert by_text["USD$"].text == "USD$"
+    assert by_text["USD$"].end_col + 1 == by_text["48.34"].start_col
+
+
+def test_text_runs_can_expand_to_observed_row_span():
+    """Mixed-layout rows recover prose/header spacing from the OCR row width."""
+    from PIL import ImageDraw, ImageFont
+
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        _GRID_FONT_PATH,
+    )
+
+    font = ImageFont.truetype(_GRID_FONT_PATH, 14)
+    spec = rg.GridSpec(cell_w=8.0, cell_h=16.0, font_px=14, grid_left=0.0)
+
+    def ink_width(target_width=None):
+        img = Image.new("RGB", (260, 90), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        rg.draw_text_run(
+            draw,
+            "A A A A",
+            10,
+            55,
+            spec,
+            font,
+            (0, 0, 0),
+            target_width=target_width,
+        )
+        bbox = img.convert("L").point(lambda px: 255 if px < 128 else 0).getbbox()
+        assert bbox is not None
+        return bbox[2] - bbox[0]
+
+    natural = ink_width()
+    expanded = ink_width(120)
+
+    assert expanded > natural * 1.2
+
+
+def test_ocr_grid_metrics_uses_word_start_pitch_over_padded_box_width():
+    """OCR box width is padded; adjacent word starts recover the real pitch."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        _ocr_grid_metrics,
+    )
+
+    ink = (0, 0, 0)
+    spec = rg.GridSpec(cell_w=20.0, cell_h=34.0, font_px=30, grid_left=0.0)
+    words = []
+    for i in range(12):
+        top = i * 45.0
+        # "AB" has an intentionally padded 58px OCR box, but the next word starts
+        # exactly three printer cells later: two letters plus one inter-word gap.
+        words.extend([
+            rg.GridWord(10.0, top, 68.0, top + 40.0, "AB", ink),
+            rg.GridWord(61.0, top, 119.0, top + 40.0, "CD", ink),
+        ])
+    words.extend([
+        rg.GridWord(10.0, 600.0, 140.0, 640.0, "1234567890123456", ink),
+        rg.GridWord(10.0, 650.0, 140.0, 690.0, "***", ink),
+    ])
+    cfg = RenderConfig(
+        mixed_layout=True,
+        bitmap_cap_ratio=0.77,
+        ocr_cap_height_ratio=0.74,
+        max_font_px=64,
+    )
+
+    cap_px, advance_px = _ocr_grid_metrics(words, spec, cfg)
+
+    assert cap_px == 30
+    assert abs(advance_px - 17.0) < 0.01
+
+
+def test_mixed_layout_uses_runs_only_for_display_rows(monkeypatch):
+    """Mixed layout should not collapse multi-column transaction rows."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_renderer as rr
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_run(draw, text, *args, **kwargs):
+        calls.append(("run", text))
+
+    def fake_grid(draw, line, *args, **kwargs):
+        calls.append(("grid", " ".join(w.text for w in line)))
+
+    monkeypatch.setattr(rr, "draw_text_run", fake_run)
+    monkeypatch.setattr(rr, "draw_grid_line", fake_grid)
+
+    cfg = RenderConfig(width=300, height=600, grid_mode=True, mixed_layout=True)
+    render_receipt(
+        {
+            "lines": [
+                {"words": [_word("HELLO", 390, 900, 610, 930)]},
+                {
+                    "words": [
+                        _word("CARD", 80, 850, 180, 880),
+                        _word("Entry", 620, 850, 900, 880),
+                    ]
+                },
+            ]
+        },
+        config=cfg,
+        coord_max=1000.0,
+    )
+
+    assert ("run", "HELLO") in calls
+    assert ("grid", "CARD Entry") in calls
+
+
+def test_asterisk_separator_rows_render_as_full_rules(monkeypatch):
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+    from receipt_agent.agents.label_evaluator.rendering import receipt_renderer as rr
+
+    calls: list[tuple[str, float]] = []
+
+    def fake_chars(draw, text, start_col, *args, **kwargs):
+        calls.append((text, start_col))
+
+    monkeypatch.setattr(rr, "draw_token_chars", fake_chars)
+    monkeypatch.setattr(rg, "draw_token_chars", fake_chars)
+    monkeypatch.setattr(rr, "draw_grid_line", lambda *a, **k: None)
+
+    cfg = RenderConfig(width=300, height=600, grid_mode=True)
+    render_receipt(
+        {"lines": [{"words": [_word("****", 80, 900, 130, 920),
+                              _word("***", 850, 900, 910, 920)]}]},
+        config=cfg,
+        coord_max=1000.0,
+    )
+
+    assert calls
+    assert calls[0][0].count("*") > 10
+    assert calls[0][1] == 0
+
+
+def test_source_lines_split_overlapping_header_bands():
+    """Line ids prevent tall address boxes from merging adjacent header rows."""
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    ink = (0, 0, 0)
+    spec = rg.GridSpec(cell_w=10.0, cell_h=30.0, font_px=24, grid_left=0.0)
+    words = [
+        # Address rows overlap vertically, but their centers differ by more than
+        # the row tolerance. The source line ids should keep them separate.
+        rg.GridWord(100, 100, 150, 150, "1012", ink, source_line=3),
+        rg.GridWord(155, 100, 260, 150, "WESTLAKE", ink, source_line=3),
+        rg.GridWord(265, 100, 325, 150, "BLVD.", ink, source_line=3),
+        rg.GridWord(120, 130, 250, 180, "WESTLAKE,", ink, source_line=4),
+        rg.GridWord(255, 130, 285, 180, "CA", ink, source_line=4),
+        rg.GridWord(290, 130, 350, 180, "91361", ink, source_line=4),
+        # Same visual row split by OCR into two source lines: centers are close,
+        # so the line ids must not stop the merge.
+        rg.GridWord(100, 250, 220, 280, "09/04/2025", ink, source_line=7),
+        rg.GridWord(500, 252, 620, 282, "17:55:27", ink, source_line=11),
+    ]
+
+    rows = rg.group_words_into_grid_lines(words, spec.cell_h)
+    texts = [" ".join(word.text for word in row) for row in rows]
+
+    assert "1012 WESTLAKE BLVD." in texts
+    assert "WESTLAKE, CA 91361" in texts
+    assert "09/04/2025 17:55:27" in texts
+
+
 # Real Target summary cluster (0-1000 space, y high-is-top) -- the v5 floor case
 # where the renderer fused three printed lines into one row ("NV TAX 8.37500 ...
 # TOTAL"). Each printed line keeps its own source_line id.
