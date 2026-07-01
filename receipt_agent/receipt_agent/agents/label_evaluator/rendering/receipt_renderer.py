@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
 
@@ -38,6 +39,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     assign_row_baselines,
     build_grid_spec,
     draw_grid_line,
+    draw_token_chars,
     effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
@@ -146,6 +148,9 @@ class RenderConfig:
     # the SOURCE is a centered line; our condensed font is narrower than the source
     # text, so without re-centering it drifts left. Body/amount lines are untouched.
     center_display_lines: bool = True
+    # Draw dashed section separators the OCR drops (Costco prints a dashed rule
+    # after the grand TOTAL and after the AMOUNT-block transaction-date line).
+    dashed_separators: bool = False
 
 
 def render_receipt(
@@ -237,6 +242,28 @@ def _is_final_total(row_text: str) -> bool:
     if "TOTAL" not in t:
         return False
     return "SUBTOTAL" not in t and "NUMBER" not in t
+
+
+_DATE_LED = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4}$")
+
+
+def _draw_dash_row(draw, x0: float, x1: float, baseline_y: float, spec, font,
+                   *, ink, stroke=0, condense=1.0, bitmap_font=None,
+                   cap_px=None) -> None:
+    """A thermal separator rule printed as a run of actual ``-`` glyphs.
+
+    Costco prints its section separators as a full-width row of the dash
+    character in the same monospace face as the body (dropped by OCR). Rendering
+    them through :func:`draw_token_chars` -- rather than a drawn line -- gives the
+    real letterform (bitmap atlas), condense, stroke and ink of the body text, so
+    the rule reads as printed dashes instead of a clean vector line."""
+    start_col = int(round((x0 - spec.grid_left) / spec.cell_w))
+    n = int((x1 - x0) / spec.cell_w)
+    if n <= 0:
+        return
+    draw_token_chars(draw, "-" * n, start_col, baseline_y, spec, font, ink,
+                     stroke=stroke, condense=condense, bitmap_font=bitmap_font,
+                     cap_px=cap_px)
 
 
 def _render_grid(
@@ -347,6 +374,30 @@ def _render_grid(
             return content_left + content_cw / 2.0
         return None
     eff_sections = effective_row_sections(rows)
+    # Rows after which Costco prints a dashed rule (dropped by OCR): the grand
+    # TOTAL, and the AMOUNT-block transaction-date line (the date row whose prior
+    # row is the "AMOUNT:" line).
+    row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
+    dash_after_rows: set[int] = set()
+    if config.dashed_separators:
+        for k, t in enumerate(row_texts):
+            prevt = row_texts[k - 1] if k > 0 else ""
+            first = t.split()[0] if t.split() else ""
+            if _is_final_total(t) or ("AMOUNT" in prevt and _DATE_LED.match(first)):
+                dash_after_rows.add(k)
+    # The OCR drops the dashed rule, so no blank line exists for it -- reserve one
+    # line below each anchor by pushing the following rows down, and place the rule
+    # in the created gap (else it overprints the next row).
+    dash_ys: list[float] = []
+    if dash_after_rows:
+        pitch = float(min_pitch)
+        adjusted, shift = [], 0.0
+        for k, b in enumerate(baselines):
+            adjusted.append(b + shift)
+            if k in dash_after_rows:
+                dash_ys.append(adjusted[k] + pitch * 0.9)
+                shift += pitch
+        baselines = adjusted
     row_cache: dict[tuple, tuple] = {}
     prev_text = ""
     for line, baseline, sect in zip(rows, baselines, eff_sections):
@@ -410,6 +461,16 @@ def _render_grid(
                        bitmap_font=bf_row, cap_px=cp,
                        reverse_price=is_total, reverse_date=is_date_row,
                        background=config.background, center_to=center_to)
+
+    # Dashed section rules, printed as a run of real ``-`` glyphs in the reserved
+    # gap below each anchor row. Use the merchant's bitmap face when it carries a
+    # dash glyph, else the body TTF (which always has one).
+    dash_bmf = bmf if (bmf is not None and bmf.has("-")) else None
+    for y in dash_ys:
+        _draw_dash_row(draw, content_left, content_right, y, spec, font,
+                       ink=_DEFAULT_INK, stroke=config.stroke,
+                       condense=config.condense, bitmap_font=dash_bmf,
+                       cap_px=cap_px)
 
 
 def _load_grid_font(

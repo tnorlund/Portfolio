@@ -56,13 +56,34 @@ def main():
     exports = TV._load_exports(receipt_dir)
     import boto3
     s3 = boto3.client("s3", region_name=REGION)
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+    dyn = DynamoClient(table_name=TABLE, region=REGION)
+
+    def _height_for(ex):
+        """Canvas height at the base receipt's TRUE aspect. Normalized 0-1000 coords
+        discard the receipt's real proportions, so a fixed height compresses/stretches
+        the vertical spacing; derive it from the receipt's own width/height."""
+        base = (ex.get("metadata") or {}).get("base_receipt_key", "")
+        iid, _, suf = base.partition("#")
+        try:
+            rid = int(suf)
+        except ValueError:
+            return H
+        try:
+            det = dyn.get_image_details(iid)
+            rec = next((r for r in det.receipts if r.receipt_id == rid), None)
+            if rec and rec.width:
+                return int(round(W * rec.height / rec.width))
+        except Exception:  # noqa: BLE001
+            pass
+        return H
 
     orig_done = False
     for op, (i, ex) in picked.items():
         synth = rsr._synthetic_receipt_dict(ex, id_to_label)
         hp = os.path.join(out_dir, f"{op}.hybrid.png")
         rsr._render_cached_hybrid(
-            synth, atlas, profile=profile, width=W, height=H, path=hp,
+            synth, atlas, profile=profile, width=W, height=_height_for(ex), path=hp,
             section_scale=rsr.section_scale_for_merchant(merchant),
             **rsr.merchant_typography(merchant),
         )
