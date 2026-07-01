@@ -524,35 +524,83 @@ def _cached_output_size(example: dict) -> tuple[int, int]:
     return (576, 1176)
 
 
-def _composite_paper_texture(image, *, seed: int | None = None):
-    """Composite subtle thermal-paper grain + edge vignette onto a render.
+def _smooth_luma_field(rng, height, width, scale, amp):
+    """A low-frequency [-amp, amp] field: small random grid upsampled (BICUBIC).
 
-    Adds low-amplitude per-pixel luminance Gaussian noise (a few grey levels)
-    plus a very faint radial vignette so the paper reads as fine-grained
-    off-white instead of a dead-flat single-color fill. Returns a new image in
-    the same mode as the input.
+    Models slowly-varying luminance -- uneven heat/paper coating (blotches) or,
+    with a 1-column grid, horizontal print-head banding.
     """
     import numpy as np
     from PIL import Image
 
+    gh = max(2, height // scale)
+    gw = max(1, width // scale)
+    small = rng.normal(0.0, 1.0, (gh, gw)).astype(np.float32)
+    lo, hi = float(small.min()), float(small.max())
+    norm = (small - lo) / (hi - lo + 1e-6)
+    img = Image.fromarray((norm * 255.0).astype(np.uint8)).resize(
+        (width, height), Image.BICUBIC)
+    return (np.asarray(img).astype(np.float32) / 255.0 - 0.5) * 2.0 * amp
+
+
+def _composite_paper_texture(image, *, seed: int | None = None, strength: float | None = None):
+    """Composite thermal-paper realism onto a clean render.
+
+    Layers (all bounded, applied AFTER layout so they never hide a layout bug):
+    slight ink-bleed blur, low-frequency heat/paper blotching, horizontal
+    print-head banding, a top-to-bottom thermal fade, fine grain, an edge
+    vignette, and a fractional-degree skew with paper-colour fill (the scan tilt).
+    ``strength`` (env ``RECEIPT_PAPER_STRENGTH``, default 1.0) scales the effect.
+    """
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    if strength is None:
+        try:
+            strength = float(os.environ.get("RECEIPT_PAPER_STRENGTH", "1.0"))
+        except ValueError:
+            strength = 1.0
+    s = max(0.0, float(strength))
     source_mode = image.mode
-    rgb = np.asarray(image.convert("RGB")).astype(np.float32)
+    base = image.convert("RGB")
+    # Ink bleed: thermal dots spread slightly -- soften the razor-digital edges.
+    if s > 0:
+        base = base.filter(ImageFilter.GaussianBlur(0.6 * min(s, 1.5)))
+    rgb = np.asarray(base).astype(np.float32)
     height, width, _ = rgb.shape
     rng = np.random.default_rng(seed)
 
-    # Fine luminance grain (same delta on R/G/B so it stays neutral/grey).
-    grain = rng.normal(0.0, 3.0, size=(height, width, 1)).astype(np.float32)
+    if s > 0:
+        # Low-frequency heat/paper blotching + horizontal print-head banding + a
+        # gentle top->bottom fade: multiply luminance by their combined field.
+        blotch = _smooth_luma_field(rng, height, width, scale=48, amp=0.05 * s)
+        band = _smooth_luma_field(rng, height, 1, scale=16, amp=0.035 * s)
+        band = np.repeat(band[:, :1], width, axis=1)
+        ys = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
+        fade = 1.0 - 0.05 * s * ys  # slightly lighter toward the tail
+        lum = (1.0 + blotch + band) * fade
+        rgb *= lum[:, :, None]
+
+    # Fine grain (neutral: same delta on R/G/B).
+    grain = rng.normal(0.0, 4.5 * s, size=(height, width, 1)).astype(np.float32)
     rgb += grain
 
-    # Faint vignette: very slightly darker toward the edges/corners.
+    # Edge vignette: darker toward the paper edges/corners.
     ys = np.linspace(-1.0, 1.0, height, dtype=np.float32)[:, None]
     xs = np.linspace(-1.0, 1.0, width, dtype=np.float32)[None, :]
     radial = np.sqrt(xs * xs + ys * ys) / np.sqrt(2.0)
-    vignette = (1.0 - 0.045 * (radial * radial))[:, :, None]
+    vignette = (1.0 - 0.07 * s * (radial * radial))[:, :, None]
     rgb *= vignette
 
     rgb = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
     textured = Image.fromarray(rgb, mode="RGB")
+
+    # Scan tilt: a fractional-degree rotation, paper-colour fill on the corners.
+    if s > 0:
+        angle = float(rng.uniform(-0.8, 0.8)) * min(s, 1.5)
+        fill = tuple(int(v) for v in np.asarray(image.convert("RGB"))[0, 0])
+        textured = textured.rotate(angle, resample=Image.BICUBIC, fillcolor=fill)
+
     if source_mode == "RGB":
         return textured
     return textured.convert(source_mode)
