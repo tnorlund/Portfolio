@@ -58,8 +58,15 @@ def _snapshot(repo: str, snap: str) -> list:
     for metric, path in (("views", "views"), ("clones", "clones")):
         try:
             data = _get(f"/repos/{repo}/traffic/{path}")
-        except urllib.error.HTTPError:
-            continue
+        except urllib.error.HTTPError as ex:
+            # 404 = repo has no traffic data / not found: an expected absence.
+            # 401/403 (bad/expired/under-permissioned token, rate limit) and
+            # 5xx are operational failures — raise so the scheduled run fails
+            # loudly and retries, rather than silently returning zero rows and
+            # losing the 14-day window forever.
+            if ex.code == 404:
+                continue
+            raise
         for d in data.get(metric, []):
             # 'YYYY-MM-DDT..' -> 'YYYY-MM-DD'
             day = d.get("timestamp", "")[:10]
@@ -80,14 +87,26 @@ def _snapshot(repo: str, snap: str) -> list:
     ):
         try:
             data = _get(f"/repos/{repo}/traffic/{path}")
-        except urllib.error.HTTPError:
-            continue
+        except urllib.error.HTTPError as ex:
+            if ex.code == 404:
+                continue
+            raise
         for d in data:
             rows.append({
                 "repo": repo, "metric": metric,
                 "item": d.get(name_key, ""),
                 "cnt": int(d.get("count", 0)),
                 "uniques": int(d.get("uniques", 0)),
+                "event_day": "", "snapshot_date": snap,
+            })
+        # An empty list after a previously non-empty snapshot must be visible,
+        # or analytics_github's max(snapshot_date) keeps reporting stale rows
+        # as the latest. Write a sentinel (item='') so this snapshot exists;
+        # the reader filters item<>'' so it surfaces as "no referrers/paths".
+        if not data:
+            rows.append({
+                "repo": repo, "metric": metric, "item": "",
+                "cnt": 0, "uniques": 0,
                 "event_day": "", "snapshot_date": snap,
             })
     return rows

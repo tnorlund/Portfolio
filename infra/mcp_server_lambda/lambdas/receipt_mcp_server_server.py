@@ -3421,6 +3421,7 @@ SELECT g.repo, g.metric, g.item, g.cnt, g.uniques, g.snapshot_date
 FROM {ANALYTICS_DB}.github_traffic g
 JOIN latest l
   ON g.repo = l.repo AND g.metric = l.metric AND g.snapshot_date = l.snap
+WHERE g.item <> ''
 ORDER BY g.metric, g.cnt DESC
 """
         agg = _athena_run(agg_sql)

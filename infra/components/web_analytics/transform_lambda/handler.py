@@ -52,7 +52,9 @@ _DC_RE = (
     "hosting|datacenter|data center|colocation|\\bcolo\\b|\\bvps\\b|"
     "dedicated server|leaseweb|\\bovh\\b|hetzner|digitalocean|linode|"
     "vultr|contabo|\\bm247\\b|scaleway|choopa|quadranet|psychz|zenlayer|"
-    "gcore|\\baws\\b|\\bec2\\b|ultahost|sprious|moack|versatel"
+    "gcore|\\baws\\b|\\bec2\\b|amazon|google llc|googleusercontent|\\bgcp\\b|"
+    "azure|microsoft corp|oracle cloud|alibaba|tencent|ultahost|sprious|"
+    "moack|versatel"
 )
 
 _athena = boto3.client("athena", region_name=REGION)
