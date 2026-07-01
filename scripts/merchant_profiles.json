@@ -42,9 +42,17 @@
       "logo": "vons_logo.png"
     },
     "Sprouts Farmers Market": {
+      "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
       "section_scale": {},
       "typography": { "font": "PTMONO", "condense": 0.84, "stroke": 0 },
-      "logo": "sprouts_logo.png"
+      "logo": "sprouts_logo.png",
+      "header": {
+        "reflow_sections": true,
+        "header_dedup": true,
+        "header_exact": ["FARMERSMARKET", "8059174200", "STOREHOURSMONSUN7AM10PM"],
+        "header_contains": ["WESTLAKE"],
+        "body_section_anchors": ["PRODUCE", "DAIRY", "GROCERY"]
+      }
     },
     "Smith's": {
       "_comment": "receiptfont.com pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print (stroke 1).",

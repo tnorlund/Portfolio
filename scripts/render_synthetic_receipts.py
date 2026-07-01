@@ -127,7 +127,37 @@ def _synthetic_receipt_dict(example: dict, id_to_label: dict[int, str]) -> dict:
     return receipt
 
 
+# Header lines that despite starting with the brand token are NOT part of the
+# store header block (feedback/survey/dot-com/gift-card footers).
+_HEADER_BRAND_EXCLUDE = ("FEEDBACK", "COM", "GIFT")
+
+
+def _header_profile_for(merchant: str | None) -> dict:
+    """Header-handling profile for a merchant: whether the cached OCR repeats the
+    store header (``dedup``) and interleaves department sections that need
+    reordering (``reflow``), plus the phrases that identify header lines and the
+    body-section anchors. The brand token is derived from the merchant name so no
+    merchant string is hardcoded. Empty/absent -> no dedup/reflow (the default for
+    merchants whose cached OCR is already clean)."""
+    h = get_merchant_profile(merchant).get("header", {}) or {}
+    first = (merchant or "").split()
+    return {
+        "brand": _compact_text(first[0]) if first else "",
+        # exact = whole-(compacted-)line markers (a standalone FARMERS MARKET /
+        # phone / hours line); contains = substring markers (a street the address
+        # lines share, e.g. WESTLAKE). The split preserves that "FARMERS MARKET
+        # SAVINGS!" is NOT a header line while "1012 WESTLAKE BLVD." is.
+        "exact": {str(m).upper() for m in h.get("header_exact", [])},
+        "contains": [str(m).upper() for m in h.get("header_contains", [])],
+        "body_anchors": set(h.get("body_section_anchors", [])),
+        "reflow": bool(h.get("reflow_sections")),
+        "dedup": bool(h.get("header_dedup")),
+    }
+
+
 def _cached_token_receipt_dict(example: dict) -> dict:
+    merchant = example.get("merchant_name")
+    hp = _header_profile_for(merchant)
     words = []
     for token, bbox, tag in zip(
         example.get("tokens") or [],
@@ -145,9 +175,12 @@ def _cached_token_receipt_dict(example: dict) -> dict:
                 "labels": [label] if label and label != "O" else [],
             }
         )
-    words = _drop_duplicate_sprouts_header_words(words)
-    if any("SPROUTS" in _compact_line_text(line) for line in _group_cached_words_by_line(words)):
-        return _line_receipt_from_cached_token_words(words)
+    words = _drop_duplicate_header_words(words, hp)
+    if hp["reflow"] and hp["brand"] and any(
+        hp["brand"] in _compact_line_text(line)
+        for line in _group_cached_words_by_line(words)
+    ):
+        return _line_receipt_from_cached_token_words(words, merchant)
     return {"words": words}
 
 
@@ -164,9 +197,10 @@ def _is_price_token(token: str) -> bool:
 
 
 def _cached_line_receipt_dict(example: dict) -> dict:
+    hp = _header_profile_for(example.get("merchant_name"))
     lines = []
-    source_lines = _order_cached_sprouts_lines(
-        _drop_duplicate_sprouts_header_lines(example)
+    source_lines = _order_cached_lines(
+        _drop_duplicate_header_lines(example, hp), hp
     )
     for index, line in enumerate(source_lines):
         text = str(line.get("text") or "").strip()
@@ -241,13 +275,15 @@ def _normalize_bbox(bbox: list[float] | tuple[float, ...]) -> list[float] | None
     return [left, bottom, right, top]
 
 
-def _drop_duplicate_sprouts_header_lines(example: dict) -> list[dict]:
-    """Keep one Sprouts header/address block in cached line-only renders."""
+def _drop_duplicate_header_lines(example: dict, hp: dict) -> list[dict]:
+    """Keep one store header/address block in cached line-only renders."""
+    if not hp["dedup"]:
+        return list(example.get("lines") or [])
     seen: set[str] = set()
     kept = []
     for line in example.get("lines") or []:
         text = _compact_text(str(line.get("text") or ""))
-        if _is_sprouts_header_line(text):
+        if _is_header_line(text, hp):
             if text in seen:
                 continue
             seen.add(text)
@@ -255,8 +291,10 @@ def _drop_duplicate_sprouts_header_lines(example: dict) -> list[dict]:
     return kept
 
 
-def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
-    if not any("SPROUTS" in _compact_text(line.get("text") or "") for line in lines):
+def _order_cached_lines(lines: list[dict], hp: dict) -> list[dict]:
+    if not (hp["reflow"] and hp["brand"] and any(
+        hp["brand"] in _compact_text(line.get("text") or "") for line in lines
+    )):
         return lines
 
     sections: dict[str, list[dict]] = {
@@ -266,7 +304,7 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
         "footer": [],
     }
     for line in lines:
-        sections[_sprouts_text_section(_compact_text(line.get("text") or ""))].append(line)
+        sections[_text_section(_compact_text(line.get("text") or ""), hp)].append(line)
 
     ordered = []
     for name in ("header", "body", "payment", "footer"):
@@ -294,8 +332,10 @@ def _order_cached_sprouts_lines(lines: list[dict]) -> list[dict]:
     return positioned
 
 
-def _drop_duplicate_sprouts_header_words(words: list[dict]) -> list[dict]:
-    """Remove repeated Sprouts header/address blocks from cached examples."""
+def _drop_duplicate_header_words(words: list[dict], hp: dict) -> list[dict]:
+    """Remove repeated store header/address blocks from cached examples."""
+    if not hp["dedup"]:
+        return words
     line_groups: dict[int, list[dict]] = {}
     for word in words:
         bbox = word.get("bbox")
@@ -307,7 +347,7 @@ def _drop_duplicate_sprouts_header_words(words: list[dict]) -> list[dict]:
     product_y = None
     for y, line_words in line_groups.items():
         text = _compact_line_text(line_words)
-        if text in {"PRODUCE", "DAIRY", "GROCERY"}:
+        if text in hp["body_anchors"]:
             product_y = max(product_y or y, y)
 
     seen: set[str] = set()
@@ -317,7 +357,7 @@ def _drop_duplicate_sprouts_header_words(words: list[dict]) -> list[dict]:
         text = _compact_line_text(line_words)
         if product_y is not None and y <= product_y:
             continue
-        if not _is_sprouts_header_line(text):
+        if not _is_header_line(text, hp):
             continue
         if text in seen:
             drop_ids.update(id(word) for word in line_words)
@@ -343,21 +383,25 @@ def _label_name(label: str) -> str:
     return text
 
 
-def _is_sprouts_header_line(text: str) -> bool:
-    is_brand_line = text.startswith("SPROUTS") and not any(
-        marker in text for marker in ("FEEDBACK", "COM", "GIFT")
+def _is_header_line(text: str, hp: dict) -> bool:
+    """True for a store header/address line: the brand wordmark (minus footer
+    false-positives) or one of the merchant's configured header markers."""
+    brand = hp["brand"]
+    is_brand_line = bool(brand) and text.startswith(brand) and not any(
+        marker in text for marker in _HEADER_BRAND_EXCLUDE
     )
     return (
         is_brand_line
-        or text in {"FARMERSMARKET"}
-        or "WESTLAKE" in text
-        or text in {"8059174200", "STOREHOURSMONSUN7AM10PM"}
+        or text in hp["exact"]
+        or any(marker in text for marker in hp["contains"])
     )
 
 
-def _line_receipt_from_cached_token_words(words: list[dict]) -> dict:
+def _line_receipt_from_cached_token_words(
+    words: list[dict], merchant: str | None
+) -> dict:
     """Convert cached token boxes into a legible public line-render receipt."""
-    ordered = _ordered_sprouts_token_lines(words)
+    ordered = _ordered_token_lines(words, _header_profile_for(merchant))
     if not ordered:
         return {"words": words}
 
@@ -385,10 +429,12 @@ def _line_receipt_from_cached_token_words(words: list[dict]) -> dict:
         if text:
             lines.append({"y": y, "text": text, "labels": labels})
             y -= spacing
-    return _cached_line_receipt_dict({"lines": lines})
+    return _cached_line_receipt_dict({"lines": lines, "merchant_name": merchant})
 
 
-def _ordered_sprouts_token_lines(words: list[dict]) -> list[tuple[list[dict], bool]]:
+def _ordered_token_lines(
+    words: list[dict], hp: dict
+) -> list[tuple[list[dict], bool]]:
     lines = _group_cached_words_by_line(words)
     if not lines:
         return []
@@ -399,7 +445,7 @@ def _ordered_sprouts_token_lines(words: list[dict]) -> list[tuple[list[dict], bo
         "footer": [],
     }
     for line in sorted(lines, key=_line_center_y, reverse=True):
-        sections[_sprouts_token_section(line)].append(line)
+        sections[_token_section(line, hp)].append(line)
 
     ordered: list[tuple[list[dict], bool]] = []
     for name in ("header", "body", "payment", "footer"):
@@ -437,13 +483,13 @@ def _line_center_y(line: list[dict]) -> float:
     return sum((float(word["bbox"][1]) + float(word["bbox"][3])) / 2 for word in line) / len(line)
 
 
-def _sprouts_token_section(line: list[dict]) -> str:
+def _token_section(line: list[dict], hp: dict) -> str:
     text = _compact_line_text(line)
-    return _sprouts_text_section(text)
+    return _text_section(text, hp)
 
 
-def _sprouts_text_section(text: str) -> str:
-    if _is_sprouts_header_line(text):
+def _text_section(text: str, hp: dict) -> str:
+    if _is_header_line(text, hp):
         return "header"
     if any(token in text for token in (
         "FEEDBACK",
@@ -1516,6 +1562,9 @@ def _render_cached_synthetic_examples(args: argparse.Namespace) -> int:
     ):
         source_path = os.path.join(args.cached_synthetic_dir, path)
         example = json.load(open(source_path, encoding="utf-8"))
+        # The batch merchant is authoritative; make it available to the receipt
+        # builders (header dedup/reflow keys off the merchant profile).
+        example.setdefault("merchant_name", args.merchant)
         receipt = _cached_receipt_dict(example)
         width, height = _cached_output_size(example)
         out_name = f"{os.path.splitext(path)[0]}.png"

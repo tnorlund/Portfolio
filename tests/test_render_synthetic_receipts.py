@@ -34,6 +34,7 @@ def test_cached_line_render_keeps_one_sprouts_header_and_orders_sections():
 
     receipt = module._cached_line_receipt_dict(
         {
+            "merchant_name": "Sprouts Farmers Market",
             "lines": [
                 {
                     "y": 983.5,
@@ -65,6 +66,7 @@ def test_cached_line_render_deduplicates_combined_sprouts_brand_line():
 
     receipt = module._cached_line_receipt_dict(
         {
+            "merchant_name": "Sprouts Farmers Market",
             "lines": [
                 {"y": 983.5, "text": "SPROUTS FARMERS MARKET", "labels": ["MERCHANT_NAME"]},
                 {"y": 943.2, "text": "1012 WESTLAKE BLVD.", "labels": []},
@@ -87,6 +89,7 @@ def test_cached_line_render_keeps_split_totals_with_payment_section():
 
     receipt = module._cached_line_receipt_dict(
         {
+            "merchant_name": "Sprouts Farmers Market",
             "lines": [
                 {"y": 983.5, "text": "SPROUTS", "labels": ["MERCHANT_NAME"]},
                 {"y": 940.0, "text": "PRODUCE", "labels": []},
@@ -108,6 +111,7 @@ def test_cached_token_render_does_not_classify_chips_as_payment():
     module = _load_module()
 
     example = {
+        "merchant_name": "Sprouts Farmers Market",
         "tokens": [
             "SPROUTS",
             "1012",
@@ -268,3 +272,20 @@ def test_inbody_barcode_defaults_match_prior_constants():
     assert d["max_count"] == 2
     assert d["min_gap_px"] == 34
     assert d["bar_h_px"] == 30
+
+
+def test_header_profile_derives_brand_and_reflow_from_registry():
+    # PR-5: reflow/dedup + brand token come from the merchant profile, not text.
+    module = _load_module()
+    sp = module._header_profile_for("Sprouts Farmers Market")
+    assert sp["brand"] == "SPROUTS"
+    assert sp["reflow"] is True and sp["dedup"] is True
+    assert "PRODUCE" in sp["body_anchors"]
+    assert "WESTLAKE" in sp["contains"]
+    assert "FARMERSMARKET" in sp["exact"]
+    # A merchant with no header block does not reflow (generic default).
+    costco = module._header_profile_for("Costco Wholesale")
+    assert costco["reflow"] is False and costco["dedup"] is False
+    # "FARMERS MARKET SAVINGS!" is a footer promo, not a header line (exact match).
+    assert module._is_header_line("FARMERSMARKETSAVINGS", sp) is False
+    assert module._is_header_line("FARMERSMARKET", sp) is True
