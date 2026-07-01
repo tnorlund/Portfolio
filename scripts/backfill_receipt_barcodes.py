@@ -103,19 +103,26 @@ def detect_on_crop(binary, s3, receipt, workdir) -> list[dict] | None:
         return None
     img_path = os.path.join(workdir, "crop.png")
     out_dir = os.path.join(workdir, "out")
+    out_json = os.path.join(out_dir, "crop.json")
+    # Clear any prior receipt's output so a failed/crashed detection can never
+    # be misread as this receipt's barcodes (the temp paths are reused).
+    try:
+        os.remove(out_json)
+    except FileNotFoundError:
+        pass
     try:
         with open(img_path, "wb") as fh:
             fh.write(s3.get_object(Bucket=bkt, Key=key)["Body"].read())
     except Exception:  # noqa: BLE001
         return None
     try:
-        subprocess.run(
+        result = subprocess.run(
             [binary, "--detect-barcodes-only", img_path,
              "--output-dir", out_dir],
             capture_output=True, timeout=60, check=False,
         )
-        out_json = os.path.join(out_dir, "crop.json")
-        if not os.path.exists(out_json):
+        # Only trust output from a clean exit that produced a fresh file.
+        if result.returncode != 0 or not os.path.exists(out_json):
             return None
         with open(out_json, encoding="utf-8") as fh:
             return json.load(fh).get("barcodes") or []
