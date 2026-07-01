@@ -1035,6 +1035,24 @@ can mean bot leakage. Dates YYYY-MM-DD, inclusive (Pacific).""",
             },
         ),
         Tool(
+            name="analytics_github",
+            description="""GitHub repo traffic: daily views/clones + top referrers/paths.
+
+Snapshotted daily from the GitHub Traffic API, whose native window is only the
+last 14 days — this tool reads the accumulated history. Use it to explain
+GitHub-sourced site visits (referrers) and to see repo interest over time.
+Daily views/uniques are the human signal; clones are mostly CI/bot noise.
+Referrers/paths reflect the most recent 14-day snapshot. Dates YYYY-MM-DD.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
             name="list_training_jobs",
             description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
 
@@ -1326,6 +1344,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "analytics_reconcile":
             result = await analytics_reconcile_impl(
+                start_date=arguments["start_date"],
+                end_date=arguments["end_date"],
+            )
+        elif name == "analytics_github":
+            result = await analytics_github_impl(
                 start_date=arguments["start_date"],
                 end_date=arguments["end_date"],
             )
@@ -3367,6 +3390,54 @@ ORDER BY 1
         }
     except Exception as exc:
         logger.exception("analytics_reconcile failed")
+        return {"error": str(exc)}
+
+
+async def analytics_github_impl(start_date: str, end_date: str) -> dict:
+    """GitHub repo traffic (snapshotted past the API's 14-day window)."""
+    try:
+        s = _analytics_check_date(start_date)
+        e = _analytics_check_date(end_date)
+        daily_sql = f"""
+SELECT event_day AS dt, repo,
+  sum(IF(metric = 'views', cnt, 0)) AS views,
+  sum(IF(metric = 'views', uniques, 0)) AS view_uniques,
+  sum(IF(metric = 'clones', cnt, 0)) AS clones,
+  sum(IF(metric = 'clones', uniques, 0)) AS clone_uniques
+FROM {ANALYTICS_DB}.github_traffic
+WHERE metric IN ('views', 'clones') AND event_day BETWEEN '{s}' AND '{e}'
+GROUP BY event_day, repo
+ORDER BY event_day
+"""
+        # Referrers/paths are 14-day aggregates; show the most recent snapshot.
+        agg_sql = f"""
+WITH latest AS (
+  SELECT repo, metric, max(snapshot_date) AS snap
+  FROM {ANALYTICS_DB}.github_traffic
+  WHERE metric IN ('referrer', 'path')
+  GROUP BY repo, metric
+)
+SELECT g.repo, g.metric, g.item, g.cnt, g.uniques, g.snapshot_date
+FROM {ANALYTICS_DB}.github_traffic g
+JOIN latest l
+  ON g.repo = l.repo AND g.metric = l.metric AND g.snapshot_date = l.snap
+ORDER BY g.metric, g.cnt DESC
+"""
+        agg = _athena_run(agg_sql)
+        return {
+            "start": s,
+            "end": e,
+            "note": (
+                "Clones are mostly CI/bot noise; referrers + views are the "
+                "human-traffic signal. Referrers/paths reflect the latest "
+                "14-day snapshot."
+            ),
+            "daily": _athena_run(daily_sql),
+            "referrers": [r for r in agg if r.get("metric") == "referrer"],
+            "paths": [r for r in agg if r.get("metric") == "path"],
+        }
+    except Exception as exc:
+        logger.exception("analytics_github failed")
         return {"error": str(exc)}
 
 

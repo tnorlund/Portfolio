@@ -76,7 +76,29 @@ IaC.
 | `analytics_ip(ip, start, end)` | full page-level timeline for one IP |
 | `analytics_ga(start, end)` | daily GA4 metrics (sessions/users/pageviews/engaged) |
 | `analytics_reconcile(start, end)` | GA4 vs first-party beacon, per day (reveals adblock gap / bot leakage) |
+| `analytics_github(start, end)` | GitHub repo traffic: daily views/clones + top referrers/paths (snapshotted past the API's 14-day window) |
 | `analytics_query(sql)` | read-only SELECT/WITH escape hatch |
+
+## GitHub traffic (optional)
+
+A scheduled **zip Lambda** (`github_extract_lambda/`, stdlib + boto3 only) pulls
+the GitHub Traffic API daily and merges it into the `github_traffic` Glue table
+(NDJSON). The API only exposes a **14-day rolling window**, so daily snapshots
+are the only way to keep history: daily views/clones are keyed on the event day
+(latest reading wins, older days preserved), and referrer/path aggregates are
+kept per snapshot so trends are visible over time. Read via `analytics_github`.
+Only built when a token is configured:
+
+```
+pulumi config set --secret portfolio:githubTrafficToken <PAT>
+pulumi config set portfolio:githubTrafficRepos tnorlund/Portfolio
+```
+
+The token is a **fine-grained PAT** with **Administration: read** on the target
+repos (or a classic token with `repo`). Clones are mostly CI/bot noise; the
+referrers + views are the human signal (e.g. explains GitHub-sourced site
+visits). Backfill/first run: `aws lambda invoke --function-name
+<web-analytics-gh-extract> /dev/stdout`.
 
 ## GA4 second source (optional)
 
@@ -104,12 +126,23 @@ side by side per day — beacon > GA usually means adblock loss.
   excluding WARP + bots
 
 > Note: IP org/geo/hosting is now a **materialized column** on `web_events`
-> (enriched once per IP into `ip_geo`), and `is_bot` folds in the `hosting`
-> flag — so `analytics_sessions` returns org/city/country/is_hosting directly
-> and `human_sessions` excludes datacenter beacons without any client-side
-> lookup. Residual gap: residential-ISP bots (e.g. some mobile crawler farms)
-> aren't flagged `hosting`, so a small number can still register as human —
-> inspect with `analytics_top('country'/'org')` if a spike looks off.
+> (enriched once per IP into `ip_geo`), and both `is_hosting` and `is_bot` fold
+> in a **datacenter signal** — so `analytics_sessions` returns
+> org/city/country/is_hosting directly and `human_sessions` excludes datacenter
+> beacons without any client-side lookup.
+>
+> **Datacenter signal (`_DC_RE` in the transform):** ip-api's `hosting` flag
+> alone misses headless-browser scanners that run the beacon (real browser UA,
+> `hosting=false`), so a client counts as non-residential if ip-api's `hosting`
+> **or** `proxy` flag is set, **or** the network owner (org/isp/asn) matches a
+> conservative list of known datacenter/cloud/proxy providers. Residential ISPs
+> (Cox, Comcast, Spectrum, TalkTalk) and company names never match, so real
+> visitors stay human. Residual gap: a hosting reseller announced from a
+> residential ASN (e.g. a "Software LLC" org on a Cox ASN) can still slip
+> through — inspect with `analytics_top('country'/'org')` if a spike looks off.
+> After changing the rule, **backfill** so history reclassifies:
+> `aws lambda invoke --function-name <web-analytics-transform>
+> --payload '{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}' /dev/stdout`.
 
 ## Deployment
 

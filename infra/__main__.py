@@ -1319,6 +1319,10 @@ if pulumi.get_stack() == "prod":
     # both the service-account key (secret) and property id are configured.
     #   pulumi config set --secret portfolio:gaServiceAccountKey @key.json
     #   pulumi config set portfolio:gaPropertyId 542366301
+    # GitHub traffic snapshotter is optional too (14-day API window, so daily
+    # snapshots build durable history):
+    #   pulumi config set --secret portfolio:githubTrafficToken <PAT>
+    #   pulumi config set portfolio:githubTrafficRepos tnorlund/Portfolio
     _analytics_cfg = pulumi.Config()
     web_analytics = WebAnalytics(
         "web-analytics",
@@ -1328,6 +1332,8 @@ if pulumi.get_stack() == "prod":
             "gaServiceAccountKey"
         ),
         ga_property_id=_analytics_cfg.get("gaPropertyId"),
+        github_token=_analytics_cfg.get_secret("githubTrafficToken"),
+        github_repos=_analytics_cfg.get("githubTrafficRepos"),
     )
     # Let the MCP Lambda role run Athena/Glue/S3 reads for the analytics tools.
     aws.iam.RolePolicyAttachment(

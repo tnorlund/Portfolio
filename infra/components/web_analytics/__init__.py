@@ -28,6 +28,9 @@ import pulumi_aws as aws
 from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 _HANDLER_DIR = str(Path(__file__).resolve().parent / "transform_lambda")
+_GH_HANDLER_DIR = str(
+    Path(__file__).resolve().parent / "github_extract_lambda"
+)
 
 # Short aliases for verbose pulumi_aws Args classes (keeps lines <= 79 cols).
 _SerDeInfo = aws.glue.CatalogTableStorageDescriptorSerDeInfoArgs
@@ -86,6 +89,8 @@ class WebAnalytics(ComponentResource):
         results_expiration_days: int = 30,
         ga_service_account_key: Optional[Input[str]] = None,
         ga_property_id: Optional[str] = None,
+        github_token: Optional[Input[str]] = None,
+        github_repos: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__("portfolio:analytics:WebAnalytics", name, None, opts)
@@ -428,6 +433,126 @@ class WebAnalytics(ComponentResource):
             opts=child,
         )
 
+        # --- GitHub traffic (referrers/paths/views/clones, snapshotted) ---
+        # GitHub's traffic API is a 14-day rolling window; the extractor
+        # snapshots it daily and merges into this NDJSON so history survives.
+        github_columns = [
+            ("repo", "string"),
+            ("metric", "string"),        # views|clones|referrer|path
+            ("item", "string"),          # event day (views/clones) or name
+            ("cnt", "bigint"),
+            ("uniques", "bigint"),
+            ("event_day", "string"),     # set for views/clones timeseries
+            ("snapshot_date", "string"),
+        ]
+        self.github_traffic_table = aws.glue.CatalogTable(
+            f"{name}-github-traffic-table",
+            name="github_traffic",
+            database_name=self.database.name,
+            table_type="EXTERNAL_TABLE",
+            parameters={"EXTERNAL": "TRUE", "classification": "json"},
+            storage_descriptor=aws.glue.CatalogTableStorageDescriptorArgs(
+                location=self.curated_bucket.bucket.apply(
+                    lambda b: f"s3://{b}/github_traffic/"
+                ),
+                input_format="org.apache.hadoop.mapred.TextInputFormat",
+                output_format=(
+                    "org.apache.hadoop.hive.ql.io."
+                    "HiveIgnoreKeyTextOutputFormat"
+                ),
+                columns=[
+                    aws.glue.CatalogTableStorageDescriptorColumnArgs(
+                        name=col, type=typ
+                    )
+                    for col, typ in github_columns
+                ],
+                ser_de_info=_SerDeInfo(
+                    serialization_library=(
+                        "org.openx.data.jsonserde.JsonSerDe"
+                    ),
+                    parameters={"ignore.malformed.json": "true"},
+                ),
+            ),
+            opts=child,
+        )
+
+        # GitHub traffic extractor — plain zip Lambda (stdlib + boto3 only).
+        # Only built when a token is configured.
+        if github_token is not None:
+            gh_role = aws.iam.Role(
+                f"{name}-gh-role",
+                assume_role_policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    }
+                ),
+                opts=child,
+            )
+            aws.iam.RolePolicyAttachment(
+                f"{name}-gh-basic",
+                role=gh_role.name,
+                policy_arn=(
+                    "arn:aws:iam::aws:policy/service-role/"
+                    "AWSLambdaBasicExecutionRole"
+                ),
+                opts=ResourceOptions(parent=gh_role),
+            )
+            aws.iam.RolePolicy(
+                f"{name}-gh-policy",
+                role=gh_role.id,
+                policy=self.curated_bucket.arn.apply(_github_policy_json),
+                opts=ResourceOptions(parent=gh_role),
+            )
+            self.github_lambda = aws.lambda_.Function(
+                f"{name}-gh-extract",
+                runtime="python3.12",
+                handler="handler.handler",
+                code=pulumi.FileArchive(_GH_HANDLER_DIR),
+                role=gh_role.arn,
+                timeout=120,
+                memory_size=256,
+                # Serialize: the read-merge-write of github_traffic must not
+                # race between the scheduled run and a manual backfill.
+                reserved_concurrent_executions=1,
+                environment=aws.lambda_.FunctionEnvironmentArgs(
+                    variables={
+                        "GITHUB_TOKEN": github_token,
+                        "GITHUB_REPOS": github_repos or "tnorlund/Portfolio",
+                        "CURATED_BUCKET": self.curated_bucket.bucket,
+                        "GH_PREFIX": "github_traffic/",
+                    },
+                ),
+                opts=child,
+            )
+            gh_sched = aws.cloudwatch.EventRule(
+                f"{name}-gh-schedule",
+                schedule_expression="cron(15 9 * * ? *)",
+                opts=child,
+            )
+            aws.cloudwatch.EventTarget(
+                f"{name}-gh-target",
+                rule=gh_sched.name,
+                arn=self.github_lambda.arn,
+                opts=ResourceOptions(parent=gh_sched),
+            )
+            aws.lambda_.Permission(
+                f"{name}-gh-perm",
+                action="lambda:InvokeFunction",
+                function=self.github_lambda.name,
+                principal="events.amazonaws.com",
+                source_arn=gh_sched.arn,
+                opts=ResourceOptions(parent=self.github_lambda),
+            )
+
         # GA4 extractor — container Lambda (deps too heavy for a zip). Only
         # built when a service-account key + property id are configured.
         if ga_service_account_key is not None and ga_property_id:
@@ -713,6 +838,30 @@ def _ga_policy_json(curated_bucket_arn: str) -> str:
             "Statement": [
                 {
                     "Sid": "WriteGaDaily",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:PutObject",
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                    ],
+                    "Resource": [
+                        curated_bucket_arn,
+                        f"{curated_bucket_arn}/*",
+                    ],
+                }
+            ],
+        }
+    )
+
+
+def _github_policy_json(curated_bucket_arn: str) -> str:
+    """Permissions for the GitHub extractor Lambda: write github_traffic."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "WriteGithubTraffic",
                     "Effect": "Allow",
                     "Action": [
                         "s3:PutObject",
