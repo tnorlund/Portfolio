@@ -20,7 +20,10 @@ import thermal_variants as TV  # noqa: E402
 
 TABLE = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-W, H = 460, 1100
+# Default matches a real Costco scan's aspect (~0.35) at a crisper width than the
+# legacy 460. Override with RENDER_W / RENDER_H.
+W = int(os.environ.get("RENDER_W", "760"))
+H = int(os.environ.get("RENDER_H", "2160"))
 # operations that produce visible synthetic CONTENT (skip hard_negative -- it's deliberately fake)
 TARGET_OPS = ["add_line_item", "replace_field", "compose_online_catalog",
               "compose_store_header", "remove_line_item"]
