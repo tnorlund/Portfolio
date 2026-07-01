@@ -60,7 +60,14 @@ class BitmapFont:
         scale = cap_px / self.cap_h
         h = max(1, int(round(g.shape[0] * scale)))
         w = max(1, int(round(g.shape[1] * scale)))
-        im = Image.fromarray((np.clip(g, 0, 1) * 255).astype(np.uint8)).resize((w, h))
+        # NEAREST, not the default bicubic: bitMatrix is a hard bitmap face, and
+        # scaling an enlarged heading (SELF-CHECKOUT, TOTAL) with a smoothing
+        # filter rounds its square dot-matrix strokes into a generic bold blob --
+        # losing the very letterform that identifies the font. Nearest keeps the
+        # crisp blocky pixels; the paper-texture pass adds thermal bleed on top.
+        im = Image.fromarray(
+            (np.clip(g, 0, 1) * 255).astype(np.uint8)
+        ).resize((w, h), Image.NEAREST)
         off = int(round(self.offsets.get(src, 0) * scale))
         self._cache[key] = (im, h, off)
         return self._cache[key]
