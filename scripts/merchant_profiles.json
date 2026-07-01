@@ -44,7 +44,12 @@
     "Sprouts Farmers Market": {
       "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
       "section_scale": {},
-      "typography": { "font": "PTMONO", "condense": 0.84, "stroke": 0 },
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": { "regular": "sprouts.glyphs.npz", "heavy": "sprouts.glyphs.npz" },
+        "condense": 0.92,
+        "stroke": 0
+      },
       "logo": "sprouts_logo.png",
       "header": {
         "reflow_sections": true,

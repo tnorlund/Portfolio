@@ -386,6 +386,12 @@ def draw_token_chars(
                               + (spec.cell_w - gi.width) / 2.0))
                 y = int(round(baseline_y + off - h))
                 img.paste(Image.new("RGB", gi.size, ink), (x, y), gi)
+            elif font is not None:
+                # A data-built atlas may lack a rare glyph (e.g. 'j'/'z'); fall
+                # back to the TTF face so it renders instead of dropping out.
+                # (Chart atlases like Costco's are complete, so this never fires.)
+                x = spec.grid_left + col * spec.cell_w
+                draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls")
             col += 1
         return
     if condense >= 0.999:
