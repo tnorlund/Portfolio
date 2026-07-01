@@ -32,7 +32,8 @@ _CAP_REF = set("ABDEFGHKLMNPRSTUVXZ0123456789")
 # Characters we build glyphs for (printable ASCII minus space).
 _TARGET = set(chr(c) for c in range(33, 127))
 
-REF_CAP = 40          # stored cap height in px (BitmapFont rescales at render)
+REF_CAP = 60          # stored cap height in px (BitmapFont rescales at render).
+                      # Higher = more pixels for x-height lowercase to average.
 CANVAS_H = REF_CAP * 3
 CANVAS_W = REF_CAP * 2
 CANVAS_BASE = int(REF_CAP * 2.3)   # baseline row inside the accumulation canvas
@@ -81,6 +82,87 @@ def _median3(mask):
     return np.asarray(im) > 127
 
 
+def _close(mask, r=1):
+    """Morphological close (dilate then erode): bridges small stroke gaps from
+    averaging jitter without fattening the letterform."""
+    im = Image.fromarray((mask.astype(np.uint8)) * 255)
+    im = im.filter(ImageFilter.MaxFilter(2 * r + 1)).filter(ImageFilter.MinFilter(2 * r + 1))
+    return np.asarray(im) > 127
+
+
+def _keep_components(mask, min_frac=0.03):
+    """Drop connected components smaller than ``min_frac`` of total ink (floating
+    specks / detached noise) while keeping every real stroke. 4-connectivity."""
+    from collections import deque
+    H, W = mask.shape
+    lbl = np.zeros((H, W), np.int32)
+    sizes = {}
+    nxt = 0
+    for i in range(H):
+        for j in range(W):
+            if mask[i, j] and lbl[i, j] == 0:
+                nxt += 1
+                q = deque([(i, j)])
+                lbl[i, j] = nxt
+                sz = 0
+                while q:
+                    y, x = q.popleft()
+                    sz += 1
+                    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < H and 0 <= nx < W and mask[ny, nx] and lbl[ny, nx] == 0:
+                            lbl[ny, nx] = nxt
+                            q.append((ny, nx))
+                sizes[nxt] = sz
+    if not sizes:
+        return mask
+    total = int(mask.sum())
+    keep = [k for k, v in sizes.items() if v >= max(4, int(min_frac * total))]
+    return np.isin(lbl, keep)
+
+
+def _clean(binm):
+    """Stroke-preserving cleanup: bridge gaps, drop specks, light median."""
+    return _median3(_keep_components(_close(binm)))
+
+
+def _ncomp(mask):
+    """Number of 4-connected ink components (a well-formed glyph is 1-2; a
+    shattered one is many -- used to auto-drop unsalvageable low-data glyphs)."""
+    from collections import deque
+    H, W = mask.shape
+    seen = np.zeros((H, W), bool)
+    n = 0
+    for i in range(H):
+        for j in range(W):
+            if mask[i, j] and not seen[i, j]:
+                n += 1
+                q = deque([(i, j)])
+                seen[i, j] = True
+                while q:
+                    y, x = q.popleft()
+                    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < H and 0 <= nx < W and mask[ny, nx] and not seen[ny, nx]:
+                            seen[ny, nx] = True
+                            q.append((ny, nx))
+    return n
+
+
+# Glyphs that legitimately have multiple ink pieces (don't drop them for it).
+_MULTIPART = set("i j = : ; % ! \" ? _".split()) | {'"'}
+
+
+def _too_broken(ch, binm):
+    """True if a glyph is shattered enough to be unsalvageable from data -> drop
+    it so the clean TTF face renders it instead."""
+    ink = int(binm.sum())
+    if ink < 24:
+        return True
+    limit = 3 if ch in _MULTIPART else 2
+    return _ncomp(binm) > limit
+
+
 def _vote(samples):
     """Phase-align a char's samples to their consensus, reject IoU outliers,
     then majority-vote a clean binary glyph. Returns (glyph_bool, n_inliers).
@@ -89,7 +171,7 @@ def _vote(samples):
     and phase-correlation/IoU is unstable on a handful of pixels."""
     if float(np.median([s.sum() for s in samples])) < SMALL_INK:
         prob = np.mean(samples, axis=0)
-        return _median3(prob >= 0.35), len(samples)
+        return _clean(prob >= 0.35), len(samples)
 
     def _shifted(stack, key):
         """Horizontally register each sample by its ink LEFT edge or CENTER."""
@@ -132,19 +214,25 @@ def _vote(samples):
     for key in ("left", "center"):
         cands += _cands(_shifted(samples, key))
     prob = max(cands, key=crisp)
-    return _median3(prob >= VOTE), len(samples)
+    return _clean(prob >= VOTE), len(samples)
 
 
-def _collect(merchant, max_receipts):
+def _collect(merchants, max_receipts):
     from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_upload.font_analysis import load_raw_image_from_s3
 
     client = DynamoClient(table_name=TABLE, region=REGION)
-    places, _ = client.get_receipt_places_by_merchant(merchant)
-    targets = [(str(p.image_id), int(p.receipt_id)) for p in places]
-    if max_receipts:
-        targets = targets[:max_receipts]
-    print(f"{merchant}: {len(targets)} receipts", flush=True)
+    # Pool receipts across every merchant that shares this font family (e.g.
+    # bitMatrix-C1 across Target / Smith's / Vons) -- more samples per character
+    # means cleaner averaging, especially for the diagonal glyphs.
+    targets = []
+    for m in merchants:
+        places, _ = client.get_receipt_places_by_merchant(m)
+        got = [(str(p.image_id), int(p.receipt_id)) for p in places]
+        if max_receipts:
+            got = got[:max_receipts]
+        print(f"{m}: {len(got)} receipts", flush=True)
+        targets.extend(got)
 
     # per char: keep individual baseline+center placed sample canvases (bool),
     # capped, so we can phase-align + outlier-reject + vote in main().
@@ -222,6 +310,9 @@ def main() -> int:
         print(__doc__)
         return 2
     merchant, out_dir, name = sys.argv[1], sys.argv[2], sys.argv[3]
+    # A ';'-separated merchant list pools receipts of merchants that share a font
+    # family into one atlas (e.g. "Target;Smith's;Vons" -> bitMatrix-C1).
+    merchants = [m.strip() for m in merchant.split(";") if m.strip()]
     max_receipts = int(sys.argv[4]) if len(sys.argv) > 4 else 0
     os.makedirs(out_dir, exist_ok=True)
     # Cache the (slow, S3-bound) collected samples so vote-parameter tuning is
@@ -232,7 +323,7 @@ def main() -> int:
         samples = {chr(int(k)): [z[k][i] for i in range(z[k].shape[0])] for k in z.files}
         print(f"loaded cached samples from {cache}")
     else:
-        samples = _collect(merchant, max_receipts)
+        samples = _collect(merchants, max_receipts)
         np.savez_compressed(cache, **{str(ord(ch)): np.array(s, bool)
                                       for ch, s in samples.items() if s})
         print(f"cached samples -> {cache}")
@@ -247,7 +338,7 @@ def main() -> int:
             dropped.append(ch)
             continue
         bb = _ink_bbox(binm)
-        if bb is None:
+        if bb is None or _too_broken(ch, binm):
             dropped.append(ch)
             continue
         iy0, iy1, ix0, ix1 = bb
