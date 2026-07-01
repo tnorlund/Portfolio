@@ -179,3 +179,60 @@ def test_cached_token_render_does_not_classify_chips_as_payment():
     assert payment_line in texts
     assert texts.index(product_line) < texts.index(payment_line)
     assert texts.index(payment_line) < texts.index("feedback!")
+
+
+# --- Merchant profile registry (PR-1 generalization) -----------------------
+# These lock the data-driven registry to the exact behavior of the former
+# hardcoded dicts, so future generalization PRs can't silently drift the config
+# layer. Asset-independent: they only assert values that don't depend on the
+# local $BITMATRIX_DIR atlases/logos being present.
+
+def test_registry_has_known_merchants():
+    module = _load_module()
+    profiles = module.load_merchant_profiles()
+    assert set(profiles) == {
+        "Costco Wholesale", "Amazon Fresh", "Target", "Vons",
+        "Sprouts Farmers Market", "Smith's", "Gelson's Westlake Village",
+    }
+
+
+def test_section_scale_defaults_and_overrides():
+    module = _load_module()
+    assert module.section_scale_for_merchant("Costco Wholesale") == {}
+    assert module.section_scale_for_merchant("Amazon Fresh") == {"HEADER": 0.78}
+    # Unknown merchant -> measured default, not empty.
+    assert module.section_scale_for_merchant("No Such Store") == {"HEADER": 0.80}
+
+
+def test_font_token_resolves_to_bundled_path():
+    module = _load_module()
+    # Target uses VT323 (bundled/OFL, always present) and no logo.
+    typo = module.merchant_typography("Target")
+    assert typo["font_path"] == module._VT323
+    assert typo["condense"] == 0.95 and typo["stroke"] == 0
+    assert "bitmap_font" not in typo
+
+
+def test_typography_never_leaks_comment_keys():
+    module = _load_module()
+    for merchant in module.load_merchant_profiles():
+        assert not any(k.startswith("_") for k in module.merchant_typography(merchant))
+
+
+def test_costco_profile_treatments_preserved():
+    module = _load_module()
+    typo = module.get_merchant_profile("Costco Wholesale")["typography"]
+    assert typo["reverse_total"] is True
+    assert typo["reverse_date_after_items"] is True
+    assert typo["dashed_separators"] is True
+    assert typo["condense"] == 0.93
+    # display_headings phrases + order (first-match wins in the renderer).
+    assert list(typo["display_headings"]) == [
+        "SELF-CHECKOUT", "SELF CHECKOUT", "THANK YOU",
+        "PLEASE COME AGAIN", "ITEMS SOLD:",
+    ]
+
+
+def test_unknown_merchant_typography_empty():
+    module = _load_module()
+    assert module.merchant_typography("No Such Store") == {}

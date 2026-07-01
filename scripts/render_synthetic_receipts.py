@@ -618,36 +618,26 @@ def _composite_paper_texture(image, *, seed: int | None = None, strength: float 
     return textured.convert(source_mode)
 
 
-# Per-merchant header size relative to the body, from a measured + dual-reviewed
-# (Claude pixel-measurement + codex) study of the real receipts. Real thermal
-# printers shrink the header block (Epson Font A vs Font B); warehouse / natural-
-# grocer formats print the header at body size. NONE use a different per-section
-# typeface (size only), and payment/totals print at body size -- so we only ever
-# set HEADER here. ``{}`` means uniform (no shrink).
+# ---------------------------------------------------------------------------
+# Per-merchant render profiles (data-driven registry).
+#
+# All per-merchant configuration lives in ``merchant_profiles.json`` (keyed by
+# exact merchant_name), NOT in code, so onboarding a merchant is a data edit.
+# See docs/synthetic-receipt-rendering-generalization.md. The helpers below read
+# that registry; their signatures and return shapes are unchanged, so callers
+# (render_matrix, _render_cached_hybrid) are untouched.
+# ---------------------------------------------------------------------------
+
+# Header size relative to body when a profile omits section_scale (measured +
+# dual-reviewed study of the real receipts; Epson Font A/B shrink). ``{}`` in a
+# profile means uniform (no shrink); an absent profile uses this default.
 _DEFAULT_SECTION_SCALE = {"HEADER": 0.80}
-_SECTION_SCALE_BY_MERCHANT = {
-    "Amazon Fresh": {"HEADER": 0.78},
-    "Target": {"HEADER": 0.80},
-    "Smith's": {"HEADER": 0.80},
-    "Gelson's Westlake Village": {"HEADER": 0.80},
-    "Costco Wholesale": {},  # measured header ~= body (uniform)
-    "Vons": {},
-    "Sprouts Farmers Market": {},
-}
 
-
-def section_scale_for_merchant(merchant: str | None) -> dict:
-    """Per-merchant header scale; falls back to the measured default (0.80)."""
-    if merchant in _SECTION_SCALE_BY_MERCHANT:
-        return _SECTION_SCALE_BY_MERCHANT[merchant]
-    return dict(_DEFAULT_SECTION_SCALE)
-
-
-# Per-merchant grid typography, chosen by the glyph-prototype font matcher against
-# the real receipts (font_path) + the measured "font too wide" / weight gaps
-# (condense, stroke). Costco's real face is bitMatrix-C2 (a paid thermal font);
-# PT Mono is the closest free match, condensed ~0.88 and double-struck for the
-# heavy thermal print. Falls back to the default grid font (no shaping).
+# Bundled font faces the glyph-prototype matcher converged on (receiptfont.com
+# families): VT323 (pixel/dot-matrix, bitMatrix-D1/pixCrog), PT Mono (Epson-style
+# bitMatrix-A2), B612 Mono (clean condensed sans). A profile's typography.font is
+# one of these tokens; the loader resolves it to the path so profiles carry no
+# machine-specific paths.
 _PTMONO = "/System/Library/Fonts/Supplemental/PTMono.ttc"
 _VENDORED_FONTS_DIR = os.path.join(
     os.path.dirname(__file__), "..", "receipt_agent", "receipt_agent",
@@ -655,74 +645,51 @@ _VENDORED_FONTS_DIR = os.path.join(
 )
 _VT323 = os.path.join(_VENDORED_FONTS_DIR, "VT323-Regular.ttf")   # OFL pixel/dot-matrix
 _B612 = os.path.join(_VENDORED_FONTS_DIR, "B612Mono-Regular.ttf")  # OFL clean sans mono
-# Glyph atlases extracted from the bitMatrix-C2 chart (Costco's actual font),
+_FONT_TOKENS = {"PTMONO": _PTMONO, "VT323": _VT323, "B612": _B612}
+# Glyph atlases + logo PNGs (bitMatrix-C2 chart derived / logo_master medians),
 # kept local (paid-font derived). Relocate via $BITMATRIX_DIR.
 _BITMATRIX_DIR = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
 
-# Per-merchant grid typography, chosen by the glyph-prototype font matcher against
-# the real receipts (+ measured condense/weight). The free fonts independently
-# converged on the SAME family receiptfont.com names: VT323 (pixel/dot-matrix) for
-# the bitMatrix-D1/pixCrog merchants, PT Mono for the Epson-style bitMatrix-A2.
-_MERCHANT_TYPOGRAPHY = {
-    # Costco's real font, extracted: bitMatrix-C2 body + bitMatrix-C2-heavy heading.
-    # SELF-CHECKOUT prints as a large bold heading; the grand TOTAL amount prints
-    # reverse-video (white on a black box). Both are Costco-specific treatments.
-    "Costco Wholesale": {
-        "bitmap_font": {
-            "regular": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2.glyphs.npz"),
-            "heavy": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2-heavy.glyphs.npz"),
-        },
-        # Large bold display lines (real Costco prints these much bigger than body):
-        # the SELF-CHECKOUT heading, the Thank-You footer, and the biggest of all --
-        # the bottom "Items Sold:" line (+ the date row after it inherits its scale).
-        "display_headings": {
-            "SELF-CHECKOUT": 1.7,
-            "SELF CHECKOUT": 1.7,
-            "THANK YOU": 1.4,
-            "PLEASE COME AGAIN": 1.4,
-            "ITEMS SOLD:": 1.8,
-        },
-        "reverse_total": True,
-        "reverse_date_after_items": True,
-        "dashed_separators": True,
-        # Measured against the real OCR: bitMatrix's widest-letter advance reads
-        # ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57).
-        "condense": 0.93,
-    },
-    # receiptfont.com: bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.
-    "Amazon Fresh": {"font_path": _PTMONO, "condense": 0.80, "stroke": 0},
-    # receiptfont.com: bitMatrix-D1 (dot-matrix) -> VT323.
-    "Target": {"font_path": _VT323, "condense": 0.95, "stroke": 0},
-    "Vons": {"font_path": _VT323, "condense": 1.0, "stroke": 0},
-    "Sprouts Farmers Market": {"font_path": _PTMONO, "condense": 0.84, "stroke": 0},
-    # receiptfont.com: pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print.
-    "Smith's": {"font_path": _VT323, "condense": 0.92, "stroke": 1},
-    # not on receiptfont.com (small grocer) -> clean condensed B612 Mono.
-    "Gelson's Westlake Village": {"font_path": _B612, "condense": 0.82, "stroke": 0},
-}
+_MERCHANT_PROFILES_PATH = os.path.join(
+    os.path.dirname(__file__), "merchant_profiles.json"
+)
+_MERCHANT_PROFILES_CACHE: dict | None = None
 
 
-# Canonical merchant logos: the wordmark built by logo_master.py via ALIGN +
-# MEDIAN across all the merchant's receipts (phase-correlate + majority vote), a
-# denoised master that overrides the smeared single-receipt atlas capture. Black-
-# on-white PNG; converted to ink-as-alpha for the overlay (which segments ink by
-# alpha). Kept local under $BITMATRIX_DIR.
-_MERCHANT_LOGO = {
-    "Costco Wholesale": os.path.join(_BITMATRIX_DIR, "costco_logo.png"),
-    "Vons": os.path.join(_BITMATRIX_DIR, "vons_logo.png"),
-    "Sprouts Farmers Market": os.path.join(_BITMATRIX_DIR, "sprouts_logo.png"),
-    "Amazon Fresh": os.path.join(_BITMATRIX_DIR, "amazon_fresh_logo.png"),
-    "Gelson's Westlake Village": os.path.join(_BITMATRIX_DIR, "gelsons_logo.png"),
-    "Smith's": os.path.join(_BITMATRIX_DIR, "smiths_logo.png"),
-    # Target intentionally omitted: its thermal receipts print no wordmark logo
-    # (top of receipt is the store address; the bullseye is not printed), so the
-    # header renders as text. The only OCR'd "Target" token is the footer tagline.
-}
+def load_merchant_profiles(refresh: bool = False) -> dict:
+    """Load and cache the merchant profile registry (``merchant_profiles.json``)."""
+    global _MERCHANT_PROFILES_CACHE
+    if _MERCHANT_PROFILES_CACHE is None or refresh:
+        with open(_MERCHANT_PROFILES_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        _MERCHANT_PROFILES_CACHE = data.get("profiles", {}) or {}
+    return _MERCHANT_PROFILES_CACHE
+
+
+def get_merchant_profile(merchant: str | None) -> dict:
+    """The registry record for ``merchant`` (exact match), or ``{}`` if absent."""
+    return load_merchant_profiles().get(merchant or "", {})
+
+
+def section_scale_for_merchant(merchant: str | None) -> dict:
+    """Per-merchant header scale; falls back to the measured default (0.80)."""
+    profile = get_merchant_profile(merchant)
+    if "section_scale" in profile:
+        return dict(profile["section_scale"])
+    return dict(_DEFAULT_SECTION_SCALE)
 
 
 def _merchant_logo(merchant: str | None):
-    """Canonical logo for a merchant as RGBA (alpha = ink), or None."""
-    path = _MERCHANT_LOGO.get(merchant or "")
+    """Canonical logo for a merchant as RGBA (alpha = ink), or None.
+
+    The logo master (logo_master.py) is a phase-correlated + majority-vote median
+    across the merchant's receipts, stored as a black-on-white PNG under
+    $BITMATRIX_DIR; here it becomes ink-as-alpha for the overlay. An absent
+    ``logo`` field (e.g. Target, whose thermal receipts print no wordmark) or a
+    missing file renders the header as text.
+    """
+    fname = get_merchant_profile(merchant).get("logo")
+    path = os.path.join(_BITMATRIX_DIR, fname) if fname else None
     if not path or not os.path.exists(path):
         return None
     import numpy as np
@@ -734,12 +701,30 @@ def _merchant_logo(merchant: str | None):
 
 
 def merchant_typography(merchant: str | None) -> dict:
-    """Per-merchant grid typography; {} -> default grid font.
+    """Per-merchant grid typography kwargs; {} -> default grid font.
 
-    Drops a bitmap_font (or font_path) whose assets are missing (e.g. CI without
-    the local atlases) so rendering falls back gracefully.
+    Resolves the profile's ``typography`` block: the ``font`` token -> a bundled
+    font path, ``bitmap_font`` filenames -> $BITMATRIX_DIR paths, and copies the
+    remaining shaping/treatment keys (condense, stroke, display_headings,
+    reverse_*, dashed_separators) through verbatim. Drops a bitmap_font/font_path
+    whose assets are missing (e.g. CI without the local atlases) so rendering
+    falls back gracefully.
     """
-    cfg = dict(_MERCHANT_TYPOGRAPHY.get(merchant, {}))
+    typo = get_merchant_profile(merchant).get("typography", {})
+    cfg: dict = {}
+    for key, val in typo.items():
+        if key.startswith("_"):
+            continue  # provenance/_comment
+        if key == "font":
+            path = _FONT_TOKENS.get(val)
+            if path:
+                cfg["font_path"] = path
+        elif key == "bitmap_font":
+            cfg["bitmap_font"] = {
+                k: os.path.join(_BITMATRIX_DIR, v) for k, v in val.items()
+            }
+        else:
+            cfg[key] = val
     bf = cfg.get("bitmap_font")
     if bf and not os.path.exists(bf.get("regular", "")):
         cfg.pop("bitmap_font", None)
