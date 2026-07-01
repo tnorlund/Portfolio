@@ -577,13 +577,35 @@ def draw_grid_line(
     condense: float = 1.0,
     bitmap_font=None,
     cap_px: int | None = None,
+    reverse_price: bool = False,
+    background: tuple[int, int, int] = (255, 255, 255),
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
     Pure execution of :func:`plan_grid_line`: each planned token's glyphs are
-    drawn at its resolved column on the shared baseline.
+    drawn at its resolved column on the shared baseline. When ``reverse_price`` is
+    set, price tokens are drawn reverse-video (paper-colour glyphs on a solid black
+    box) -- Costco's grand-TOTAL treatment.
     """
     for placed in plan_grid_line(line, spec, amount_lane=amount_lane):
+        ink = placed.word.ink
+        if reverse_price and placed.is_price:
+            img = getattr(draw, "_image", None)
+            if img is not None:
+                # Box: taller/wider than the glyphs, extending left of the amount
+                # (real Costco boxes a chunk of the amount lane, not just the digits).
+                if cap_px:
+                    top_ext, bot_ext = cap_px * 1.15, cap_px * 0.30
+                else:
+                    ascent, descent = font.getmetrics()
+                    top_ext, bot_ext = float(ascent), float(descent)
+                x0 = int(round(spec.grid_left + (placed.start_col - 4) * spec.cell_w))
+                x1 = int(round(spec.grid_left + (placed.end_col + 1) * spec.cell_w))
+                x0 = max(int(spec.grid_left), x0)
+                y0 = int(round(baseline_y - top_ext))
+                y1 = int(round(baseline_y + bot_ext))
+                draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0))
+                ink = background
         draw_token_chars(
             draw,
             placed.draw_text,
@@ -591,7 +613,7 @@ def draw_grid_line(
             baseline_y,
             spec,
             font,
-            placed.word.ink,
+            ink,
             stroke=stroke,
             condense=condense,
             bitmap_font=bitmap_font,

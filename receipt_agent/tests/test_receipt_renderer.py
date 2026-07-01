@@ -256,6 +256,54 @@ def test_draw_grid_line_separates_flag_after_right_anchored_price():
     assert starts["F"] >= price_end + 1
 
 
+def test_is_final_total_classification():
+    """Reverse-video only the grand-TOTAL row, not SUBTOTAL / item-count lines."""
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        _is_final_total,
+    )
+
+    assert _is_final_total("**** TOTAL 28.02")
+    assert _is_final_total("TOTAL 44.46")
+    assert not _is_final_total("SUBTOTAL 28.02")
+    assert not _is_final_total("TOTAL NUMBER OF ITEMS SOLD = 2")
+    assert not _is_final_total("EFT/Debit 28.02")
+
+
+def test_reverse_price_boxes_amount_and_paints_glyphs_paper():
+    """reverse_price draws a black box and renders the price glyphs in the paper
+    colour (Costco grand-TOTAL treatment); the label token is untouched."""
+    from PIL import Image, ImageDraw
+
+    from receipt_agent.agents.label_evaluator.rendering import receipt_grid as rg
+
+    spec = rg.GridSpec(cell_w=7.0, cell_h=15.0, font_px=14, grid_left=10.0)
+    ink, bg = (0, 0, 0), (250, 249, 245)
+    label = rg.GridWord(left=40.0, top=100.0, right=140.0, bottom=120.0, text="TOTAL", ink=ink)
+    price = rg.GridWord(left=820.0, top=100.0, right=900.0, bottom=120.0, text="$4.39", ink=ink)
+
+    img = Image.new("RGB", (960, 200), bg)
+    draw = ImageDraw.Draw(img)
+    rects: list = []
+    draw.rectangle = lambda xy, *a, **k: rects.append((tuple(xy), k.get("fill")))
+    drawn: list[tuple[str, tuple]] = []
+    orig = rg.draw_token_chars
+    try:
+        rg.draw_token_chars = lambda draw, text, start_col, baseline, spec, font, ink, **k: drawn.append(
+            (text, ink)
+        )
+        rg.draw_grid_line(
+            draw=draw, line=[label, price], baseline_y=115.0, spec=spec,
+            font=None, amount_lane=127, reverse_price=True, background=bg, cap_px=10,
+        )
+    finally:
+        rg.draw_token_chars = orig
+
+    assert any(fill == (0, 0, 0) for _, fill in rects)  # a black box was drawn
+    by_text = dict(drawn)
+    assert by_text["$4.39"] == bg     # price glyphs in paper colour (reverse video)
+    assert by_text["TOTAL"] == ink    # label unaffected
+
+
 # Real Target summary cluster (0-1000 space, y high-is-top) -- the v5 floor case
 # where the renderer fused three printed lines into one row ("NV TAX 8.37500 ...
 # TOTAL"). Each printed line keeps its own source_line id.

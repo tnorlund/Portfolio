@@ -122,9 +122,18 @@ class RenderConfig:
     condense: float = 1.0
     stroke: int = 0
     # Render in a real glyph atlas (the merchant's actual letterforms) instead of
-    # a TTF. Maps {"regular": atlas.npz, "heavy": atlas.npz}; heavy is used for the
-    # emphasis (TOTALS) zone. None -> the TTF grid font.
+    # a TTF. Maps {"regular": atlas.npz, "heavy": atlas.npz}; heavy is used for
+    # display headings (see ``display_headings``). None -> the TTF grid font.
     bitmap_font: Mapping[str, str] | None = None
+    # Display-heading treatment: a row whose (uppercased) text contains any of
+    # these substrings renders in the HEAVY font at ``heading_scale`` size (e.g.
+    # Costco's large bold "SELF-CHECKOUT"). Empty -> no heading emphasis.
+    display_headings: tuple[str, ...] = ()
+    heading_scale: float = 1.0
+    # Reverse-video the final TOTAL amount (white glyphs on a solid black box), as
+    # Costco prints it. Only the price token on the "TOTAL" row (not SUBTOTAL / the
+    # "TOTAL NUMBER OF ITEMS" line) is boxed.
+    reverse_total: bool = False
 
 
 def render_receipt(
@@ -209,6 +218,15 @@ def render_receipt(
     return image
 
 
+def _is_final_total(row_text: str) -> bool:
+    """True for the grand-TOTAL row (Costco reverse-videos its amount), but not
+    SUBTOTAL nor the "TOTAL NUMBER OF ITEMS SOLD" line."""
+    t = row_text.upper()
+    if "TOTAL" not in t:
+        return False
+    return "SUBTOTAL" not in t and "NUMBER" not in t
+
+
 def _render_grid(
     draw: ImageDraw.ImageDraw,
     words: Sequence[Mapping[str, Any]],
@@ -287,37 +305,57 @@ def _render_grid(
     # PAYMENT) drop the lane since they carry no price column.
     section_scale = config.section_scale or {}
     section_font = config.section_font or {}
+    headings = tuple(h.upper() for h in (config.display_headings or ()))
     eff_sections = effective_row_sections(rows)
-    row_cache: dict[tuple[str | None, float], tuple] = {}
+    row_cache: dict[tuple, tuple] = {}
     for line, baseline, sect in zip(rows, baselines, eff_sections):
-        sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
+        row_text = " ".join(w.text for w in line).upper()
+        # A display heading (e.g. SELF-CHECKOUT) renders heavy + enlarged; the
+        # heavy face is NOT applied to the whole TOTALS zone (real Costco totals
+        # are body weight -- only the heading and the reverse-video total stand out).
+        is_heading = bool(headings) and any(h in row_text for h in headings)
+        is_total = bool(config.reverse_total) and _is_final_total(row_text)
         fpath = section_font.get(sect) if sect else None
-        bf_row = (bmf_heavy if sect == "TOTALS" else bmf) if bmf else None
+        if is_heading:
+            sc = float(config.heading_scale or 1.0)
+            bf_row = bmf_heavy if bmf else None
+        else:
+            sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
+            bf_row = bmf
         if sc == 1.0 and not fpath:
             draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
                            stroke=config.stroke, condense=config.condense,
-                           bitmap_font=bf_row, cap_px=cap_px)
+                           bitmap_font=bf_row, cap_px=cap_px,
+                           reverse_price=is_total, background=config.background)
             continue
-        key = (fpath, sc)
+        key = (fpath, sc, is_heading)
         cached = row_cache.get(key)
         if cached is None:
             row_font_px = max(6, int(round(sizing.font_px * sc)))
             row_cfg = config if not fpath else replace(config, font_path=fpath)
             row_font = _load_grid_font(row_font_px, row_cfg)
-            row_adv = glyph_advance(draw, row_font) * float(config.condense)
+            if bf_row is not None:
+                # Bitmap pitch comes from the atlas advance at the scaled cap, NOT
+                # the TTF advance (the two differ -> mis-spaced enlarged rows).
+                row_cap = max(6, int(round((cap_px or row_font_px) * sc)))
+                row_adv = bf_row.advance(row_cap)
+            else:
+                row_cap = None
+                row_adv = glyph_advance(draw, row_font) * float(config.condense)
             row_spec = GridSpec(
                 cell_w=row_adv, cell_h=spec.cell_h,
                 font_px=row_font_px, grid_left=spec.grid_left,
             )
-            row_cache[key] = (row_spec, row_font)
+            row_cache[key] = (row_spec, row_font, row_cap)
             cached = row_cache[key]
-        row_spec, row_font = cached
+        row_spec, row_font, row_cap = cached
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
+        cp = row_cap if row_cap else (int(round(cap_px * sc)) if cap_px else None)
         draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane,
                        stroke=config.stroke, condense=config.condense,
-                       bitmap_font=bf_row,
-                       cap_px=int(round(cap_px * sc)) if cap_px else None)
+                       bitmap_font=bf_row, cap_px=cp,
+                       reverse_price=is_total, background=config.background)
 
 
 def _load_grid_font(

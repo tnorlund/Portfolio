@@ -604,11 +604,18 @@ _BITMATRIX_DIR = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
 # converged on the SAME family receiptfont.com names: VT323 (pixel/dot-matrix) for
 # the bitMatrix-D1/pixCrog merchants, PT Mono for the Epson-style bitMatrix-A2.
 _MERCHANT_TYPOGRAPHY = {
-    # Costco's real font, extracted: bitMatrix-C2 body + bitMatrix-C2-heavy emphasis.
-    "Costco Wholesale": {"bitmap_font": {
-        "regular": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2.glyphs.npz"),
-        "heavy": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2-heavy.glyphs.npz"),
-    }},
+    # Costco's real font, extracted: bitMatrix-C2 body + bitMatrix-C2-heavy heading.
+    # SELF-CHECKOUT prints as a large bold heading; the grand TOTAL amount prints
+    # reverse-video (white on a black box). Both are Costco-specific treatments.
+    "Costco Wholesale": {
+        "bitmap_font": {
+            "regular": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2.glyphs.npz"),
+            "heavy": os.path.join(_BITMATRIX_DIR, "bitMatrix-C2-heavy.glyphs.npz"),
+        },
+        "display_headings": ("SELF-CHECKOUT", "SELF CHECKOUT"),
+        "heading_scale": 1.7,
+        "reverse_total": True,
+    },
     # receiptfont.com: bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.
     "Amazon Fresh": {"font_path": _PTMONO, "condense": 0.80, "stroke": 0},
     # receiptfont.com: bitMatrix-D1 (dot-matrix) -> VT323.
@@ -729,6 +736,9 @@ def _render_cached_hybrid(
     condense: float = 1.0,
     stroke: int = 0,
     bitmap_font: dict | None = None,
+    display_headings: tuple = (),
+    heading_scale: float = 1.0,
+    reverse_total: bool = False,
 ) -> str:
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
@@ -746,6 +756,9 @@ def _render_cached_hybrid(
         section_font=section_font,
         condense=condense,
         stroke=stroke,
+        display_headings=display_headings,
+        heading_scale=heading_scale,
+        reverse_total=reverse_total,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps
