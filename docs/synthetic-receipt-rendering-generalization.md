@@ -83,11 +83,22 @@ with `header.header_markers` / `body_section_anchors` / `reflow_sections` /
 `header_dedup`; brand token derived from `merchant_name`. Seed Sprouts' row with
 its current literals so its render holds.
 
-### PR-6 — Derive geometry from the font profile *(highest drift)*
-Replace `_PRICE_COLUMN_RIGHT=905`, the 16/20 pitch quanta, and the
-`_cached_output_size` 560×1280 / 576×1176 constants with values from
-`font_profile.py` / example metadata. Gate hard behind the golden images; allow
-a per-field pin if a value drifts.
+### PR-6 — Name the cached-line renderer's magic numbers *(done; derivation deferred)*
+The original intent was to derive `_PRICE_COLUMN_RIGHT=905`, the 16px pitch,
+12u/char and the `_cached_output_size` 560×1280 / 576×1176 constants from
+`font_profile.py`. On inspection this is the wrong move: these live in the
+**width-less line/token fallback renderer** (no OCR widths to measure), so they
+are GENERIC estimates, not per-merchant geometry — the hybrid/grid path already
+measures real geometry from the font profile. Deriving them would drift from the
+tuned values with no merchant-unblocking benefit. So PR-6 instead lifts the
+inline magic numbers into named, documented constants (`_LINE_ROW_PITCH`,
+`_LINE_CHAR_WIDTH`, `_LINE_WORD_GAP`, `_CANVAS_ADDRESS_LINE`, …) — same values,
+byte-identical (word-bbox golden). Actual font-profile derivation is deferred as
+unnecessary.
+
+*(Known follow-up, not blocking: the driver-level `_PRICE_TOKEN_RE` in
+`render_synthetic_receipts.py` is a US price regex that could also build from
+`number_format` (PR-4), but it lives in the scripts module; left as-is.)*
 
 ### PR-7 — *(deferred)* Fitter auto-populates rows
 Only once a second bitmap merchant exists, extend `font_profile.py` to emit
