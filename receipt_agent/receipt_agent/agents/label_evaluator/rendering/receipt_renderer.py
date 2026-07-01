@@ -345,7 +345,6 @@ def _render_grid(
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
     amount_lane = amount_lane_end(rows, spec)
-    baselines = assign_row_baselines(rows, ascent, min_pitch)
 
     # Per-section typography: a row whose section has a scale != 1.0 or a font
     # override is drawn with its own (cached) spec/font. BODY/TOTALS stay at the
@@ -363,6 +362,26 @@ def _render_grid(
     # The big bottom "Items Sold:" date line inherits that phrase's scale.
     items_sold_scale = next((sc for pat, sc in heading_rules if "ITEMS SOLD:" in pat),
                             None)
+
+    # Scale-aware pitch floor: the gap before an enlarged display row must clear
+    # its own glyphs, so seed the floor from each row's heading scale (else two
+    # adjacent big rows collide under the body-sized floor).
+    _row_texts_pitch = [" ".join(w.text for w in ln).upper() for ln in rows]
+
+    def _row_scale(k: int) -> float:
+        t = _row_texts_pitch[k]
+        hs = next((sc for pat, sc in heading_rules if pat in t), None)
+        if (hs is None and items_sold_scale is not None and k > 0
+                and "ITEMS SOLD:" in _row_texts_pitch[k - 1]):
+            hs = items_sold_scale
+        return float(hs) if hs else 1.0
+
+    _scales = [_row_scale(k) for k in range(len(rows))]
+    per_row_pitch = [
+        min_pitch * max(_scales[k], _scales[k - 1] if k > 0 else _scales[k])
+        for k in range(len(rows))
+    ]
+    baselines = assign_row_baselines(rows, ascent, per_row_pitch)
     # Centering geometry (paper content span in pixels).
     content_left = float(config.margin)
     content_right = float(config.width - config.margin)

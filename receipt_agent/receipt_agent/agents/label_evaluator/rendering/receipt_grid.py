@@ -667,7 +667,7 @@ def line_baseline(line: Sequence[GridWord], ascent: int) -> float:
 def assign_row_baselines(
     rows: Sequence[Sequence[GridWord]],
     ascent: int,
-    min_pitch: float,
+    min_pitch: float | Sequence[float],
 ) -> list[float]:
     """Baseline per row (top -> bottom) with a minimum inter-row pitch floor.
 
@@ -680,13 +680,20 @@ def assign_row_baselines(
     This only moves CRAMPED rows: a row already >= ``min_pitch`` below its
     predecessor is untouched, so the push never propagates past a normal gap and
     there is no global downward drift.
+
+    ``min_pitch`` may be a scalar or a per-row sequence (floor to apply BEFORE
+    row k) -- the latter lets enlarged display rows (headings printed 1.4-1.8x)
+    reserve a floor sized to their own glyphs, so two adjacent big rows (e.g.
+    THANK YOU / PLEASE COME AGAIN) don't collide under a body-sized floor.
     """
+    per_row = not isinstance(min_pitch, (int, float))
     baselines: list[float] = []
     prev = None
-    for row in rows:
+    for k, row in enumerate(rows):
+        mp = float(min_pitch[k]) if per_row else float(min_pitch)
         base = line_baseline(row, ascent)
-        if prev is not None and base - prev < min_pitch:
-            base = prev + min_pitch
+        if prev is not None and base - prev < mp:
+            base = prev + mp
         baselines.append(base)
         prev = base
     return baselines
