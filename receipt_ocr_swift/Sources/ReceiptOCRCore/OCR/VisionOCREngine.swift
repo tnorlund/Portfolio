@@ -128,6 +128,35 @@ public struct Line: Codable {
     }
 }
 
+/// A barcode / QR code detected by Vision (VNDetectBarcodesRequest).
+///
+/// Geometry uses the SAME normalized, bottom-left-origin convention as Line/Word
+/// (Vision's native coordinate space), so a barcode box is directly comparable to
+/// the text boxes on the same image. `payload` is the decoded string (nil when the
+/// symbol is located but not decodable); `symbology` is the cleaned Vision
+/// symbology name (e.g. "Code128", "QR", "PDF417", "EAN13").
+public struct Barcode: Codable {
+    public let payload: String?
+    public let symbology: String
+    public let boundingBox: NormalizedRect
+    public let topLeft: CodablePoint
+    public let topRight: CodablePoint
+    public let bottomLeft: CodablePoint
+    public let bottomRight: CodablePoint
+    public let confidence: VNConfidence
+
+    public init(payload: String?, symbology: String, boundingBox: NormalizedRect, topLeft: CodablePoint, topRight: CodablePoint, bottomLeft: CodablePoint, bottomRight: CodablePoint, confidence: VNConfidence) {
+        self.payload = payload
+        self.symbology = symbology
+        self.boundingBox = boundingBox
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomLeft = bottomLeft
+        self.bottomRight = bottomRight
+        self.confidence = confidence
+    }
+}
+
 /// Enhanced OCR result including classification, clustering, and geometry metadata
 private struct ImageResult: Codable {
     let imagePath: String
@@ -135,20 +164,23 @@ private struct ImageResult: Codable {
     let classification: ClassificationResult?
     let clustering: ClusteringResult?
     let receipts: [ReceiptOutput]?
+    let barcodes: [Barcode]?
 
     private enum CodingKeys: String, CodingKey {
         case lines
         case classification
         case clustering
         case receipts
+        case barcodes
     }
 
-    init(imagePath: String, lines: [Line], classification: ClassificationResult? = nil, clustering: ClusteringResult? = nil, receipts: [ReceiptOutput]? = nil) {
+    init(imagePath: String, lines: [Line], classification: ClassificationResult? = nil, clustering: ClusteringResult? = nil, receipts: [ReceiptOutput]? = nil, barcodes: [Barcode]? = nil) {
         self.imagePath = imagePath
         self.lines = lines
         self.classification = classification
         self.clustering = clustering
         self.receipts = receipts
+        self.barcodes = barcodes
     }
 
     init(from decoder: Decoder) throws {
@@ -157,6 +189,7 @@ private struct ImageResult: Codable {
         self.classification = try container.decodeIfPresent(ClassificationResult.self, forKey: .classification)
         self.clustering = try container.decodeIfPresent(ClusteringResult.self, forKey: .clustering)
         self.receipts = try container.decodeIfPresent([ReceiptOutput].self, forKey: .receipts)
+        self.barcodes = try container.decodeIfPresent([Barcode].self, forKey: .barcodes)
         self.imagePath = ""
     }
 
@@ -166,6 +199,7 @@ private struct ImageResult: Codable {
         try container.encodeIfPresent(classification, forKey: .classification)
         try container.encodeIfPresent(clustering, forKey: .clustering)
         try container.encodeIfPresent(receipts, forKey: .receipts)
+        try container.encodeIfPresent(barcodes, forKey: .barcodes)
     }
 }
 
@@ -203,6 +237,50 @@ private func cornerPoints(from rect: CGRect) -> (topLeft: CGPoint, topRight: CGP
         bottomLeft: CGPoint(x: rect.minX, y: rect.minY),
         bottomRight: CGPoint(x: rect.maxX, y: rect.minY)
     )
+}
+
+/// Strip Vision's "VNBarcodeSymbology" prefix so "VNBarcodeSymbologyCode128" -> "Code128".
+private func cleanSymbology(_ raw: String) -> String {
+    let prefix = "VNBarcodeSymbology"
+    return raw.hasPrefix(prefix) ? String(raw.dropFirst(prefix.count)) : raw
+}
+
+/// Detect barcodes / QR codes on a CGImage via VNDetectBarcodesRequest.
+///
+/// Returns barcodes in the same normalized, bottom-left-origin coordinate space as
+/// the text (Vision's native space). Failures are swallowed to empty -- barcode
+/// detection is additive and must never break the OCR pipeline.
+private func detectBarcodesSync(from cgImage: CGImage) -> [Barcode] {
+    let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    let request = VNDetectBarcodesRequest()
+    do {
+        try handler.perform([request])
+    } catch {
+        print("Warning: barcode detection failed: \(error)")
+        return []
+    }
+    guard let observations = request.results else { return [] }
+    return observations.map { obs in
+        Barcode(
+            payload: obs.payloadStringValue,
+            symbology: cleanSymbology(obs.symbology.rawValue),
+            boundingBox: normalizedRect(from: obs.boundingBox),
+            topLeft: codablePoint(from: obs.topLeft),
+            topRight: codablePoint(from: obs.topRight),
+            bottomLeft: codablePoint(from: obs.bottomLeft),
+            bottomRight: codablePoint(from: obs.bottomRight),
+            confidence: obs.confidence
+        )
+    }
+}
+
+/// Load an image from disk and detect barcodes on it (full-image pass).
+private func detectBarcodesSync(from imageURL: URL) -> [Barcode] {
+    guard let nsImage = NSImage(contentsOf: imageURL),
+          let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        return []
+    }
+    return detectBarcodesSync(from: cgImage)
 }
 
 private func performOCRSync(from imageURL: URL) throws -> [Line] {
@@ -432,6 +510,7 @@ public struct VisionOCREngine: OCREngineProtocol {
         var outputs: [URL] = []
         for imageURL in images {
             let ocrLines = try performOCRSync(from: imageURL)
+            let imageBarcodes = detectBarcodesSync(from: imageURL)
             var mutableLines = ocrLines
             var aggregatedText = ""
             var wordMappings: [WordMapping] = []
@@ -563,7 +642,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                 lines: mutableLines,
                 classification: classification,
                 clustering: clustering,
-                receipts: receiptOutputs
+                receipts: receiptOutputs,
+                barcodes: imageBarcodes.isEmpty ? nil : imageBarcodes
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted]
