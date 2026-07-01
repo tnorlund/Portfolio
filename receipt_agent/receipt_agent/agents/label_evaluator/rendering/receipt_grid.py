@@ -516,8 +516,16 @@ def plan_grid_line(
         slot_right = amount_lane
         for i in reversed(price_idxs):
             abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
-            if abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS and i not in anchored and anchored:
-                break  # this price is far left of the stack -> leave it in flow
+            if abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS and i not in anchored:
+                # This price sits far from the lane in the source. If one is
+                # already anchored it's a further-left column -> stop the stack.
+                # If none is, this lone price is an INLINE value (e.g.
+                # "AMOUNT: $44.46", where $44.46 sits right after the label, not
+                # in the right-hand price column) -> leave it in source flow
+                # rather than snapping it out to the decimal lane.
+                if anchored:
+                    break
+                continue
             anchored[i] = slot_right - cell_of[i]
             slot_right = anchored[i] - 1
         if anchored:
