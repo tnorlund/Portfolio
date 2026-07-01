@@ -46,7 +46,10 @@ _PRICE_TOKEN = re.compile(
 # The realism control is the profile geometry; these only stop a degenerate
 # profile from producing an unreadable (<9px) or comically large (>28px) face.
 _GRID_FONT_MIN = 9
-_GRID_FONT_MAX = 28
+# Sanity ceiling only (not the realism control). Generous so it never clamps a
+# legitimate profile-driven size at high canvas resolutions; the per-render
+# ``config.max_font_px`` is the operative ceiling.
+_GRID_FONT_MAX = 64
 
 # Fallback normalized geometry when a merchant profile is missing/degenerate.
 # ~1.2% of receipt width per char and ~1.8% of receipt height per line is a

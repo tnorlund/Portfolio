@@ -592,16 +592,17 @@ def _composite_paper_texture(image, *, seed: int | None = None, strength: float 
     vignette = (1.0 - 0.07 * s * (radial * radial))[:, :, None]
     rgb *= vignette
 
-    # Scanner-bed cyan cast on the left/right paper edges: on a real scan the outer
-    # ~9% of each side reads cyan (the red channel drops ~24 while green/blue hold),
-    # fading to neutral toward the center. Measured off the real Costco scan.
+    # Scanner-bed cyan BARS down the left/right edges: on a real scan the outer
+    # ~6% of each side is a solid cyan band (red channel ~24 below green/blue), with
+    # a quick transition to white -- a bar, not a gradient. Measured off the scan.
     if s > 0:
+        bar_w, soft = 0.06, 0.025
         xn = np.linspace(0.0, 1.0, width, dtype=np.float32)
-        d = np.minimum(xn, 1.0 - xn)                       # 0 at edges -> 0.5 center
-        ew = np.clip(1.0 - d / 0.09, 0.0, 1.0)[None, :]    # 1 at edges -> 0 inward
-        rgb[..., 0] -= 26.0 * s * ew
-        rgb[..., 1] -= 5.0 * s * ew
-        rgb[..., 2] -= 3.0 * s * ew
+        d = np.minimum(xn, 1.0 - xn)                          # 0 at edges -> 0.5 center
+        ew = np.clip((bar_w + soft - d) / soft, 0.0, 1.0)[None, :]  # flat 1 in bar
+        rgb[..., 0] -= 24.0 * s * ew
+        rgb[..., 1] -= 2.0 * s * ew
+        rgb[..., 2] -= 4.0 * s * ew
 
     rgb = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
     textured = Image.fromarray(rgb, mode="RGB")
@@ -831,11 +832,12 @@ def _render_cached_hybrid(
         reverse_date_after_items=reverse_date_after_items,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
-        # geometry is the realism control; min/max_font_px are only sanity clamps
-        # (9px readability floor / 28px ceiling), not the per-token shrink that
-        # used to make totals tiny and misaligned.
+        # geometry is the realism control; min/max_font_px are only sanity clamps.
+        # The ceiling scales with canvas height so the profile-driven size keeps
+        # the real text-to-receipt ratio (~1.5%) at any resolution -- a fixed 28px
+        # ceiling shrank the text (and loosened spacing) once the canvas grew.
         min_font_px=9,
-        max_font_px=28,
+        max_font_px=max(28, int(height / 45)),
         grid_mode=True,
         # Optional body-font override. None -> the grid-font candidate list
         # (Andale -> vendored B612 -> legacy). The grid recalibrates cell_w / row
