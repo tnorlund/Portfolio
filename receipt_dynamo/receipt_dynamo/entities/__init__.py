@@ -162,6 +162,10 @@ from receipt_dynamo.entities.receipt_validation_summary import (  # noqa: F401
     ReceiptValidationSummary,
     item_to_receipt_validation_summary,
 )
+from receipt_dynamo.entities.receipt_barcode import (  # noqa: F401
+    ReceiptBarcode,
+    item_to_receipt_barcode,
+)
 from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: F401
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
@@ -248,6 +252,7 @@ __all__ = [
     "QueueJob",
     "Receipt",
     "ReceiptAnalysis",
+    "ReceiptBarcode",
     "ReceiptChatGPTValidation",
     "ReceiptBundle",
     "ReceiptBundlePage",
@@ -301,6 +306,7 @@ __all__ = [
     "item_to_queue",
     "item_to_queue_job",
     "item_to_receipt",
+    "item_to_receipt_barcode",
     "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_summary_record",
     "item_to_receipt_field",
