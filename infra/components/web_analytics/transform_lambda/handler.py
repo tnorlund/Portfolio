@@ -16,8 +16,10 @@ late-delivered logs) or ``{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}`` to
 backfill a range.
 """
 
+import json
 import os
 import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import boto3
@@ -26,7 +28,11 @@ DB = os.environ.get("ANALYTICS_DB", "portfolio_analytics")
 WORKGROUP = os.environ.get("ANALYTICS_WORKGROUP", "portfolio_analytics")
 CURATED_BUCKET = os.environ["CURATED_BUCKET"]
 CURATED_PREFIX = os.environ.get("CURATED_PREFIX", "web_events/")
+IP_GEO_KEY = os.environ.get("IP_GEO_KEY", "ip_geo/data.json")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
+_WARP_RE = "^(104\\.28\\.|2a09:bac)"
+# Safety cap so a huge backfill can't hammer the IP-info service in one run.
+MAX_NEW_IPS = int(os.environ.get("GEO_MAX_NEW_IPS", "2000"))
 
 # Keep in sync with the MCP analytics tools' classification.
 _BOT_RE = (
@@ -62,6 +68,114 @@ def _run(sql: str, deadline: float) -> str:
             f"Athena {status['State']}: {status.get('StateChangeReason')}"
         )
     return qid
+
+
+def _query_rows(sql: str, deadline: float) -> list:
+    qid = _run(sql, deadline)
+    rows, token = [], None
+    while True:
+        kwargs = {"QueryExecutionId": qid, "MaxResults": 1000}
+        if token:
+            kwargs["NextToken"] = token
+        resp = _athena.get_query_results(**kwargs)
+        for row in resp["ResultSet"]["Rows"]:
+            rows.append([c.get("VarCharValue") for c in row["Data"]])
+        token = resp.get("NextToken")
+        if not token:
+            break
+    return rows[1:]  # drop header row
+
+
+def _enrich_ips(dts: list, deadline: float) -> int:
+    """Resolve org/geo/hosting for newly-seen (non-WARP) IPs and upsert the
+    ip_geo NDJSON. Each IP is looked up once and cached; web_events joins it.
+    """
+    likes = " OR ".join(f"\"$path\" LIKE '%.{dt}-%'" for dt in dts)
+    # Anti-join against ip_geo and LIMIT in Athena so the Lambda only fetches
+    # up to the cap of *new* (uncached) IPs — never the full distinct set,
+    # which could OOM a small Lambda on a backfill or bot spike.
+    rows = _query_rows(
+        f"SELECT d.ip FROM ("
+        f" SELECT DISTINCT request_ip AS ip FROM {DB}.cloudfront_logs_prod"
+        f" WHERE ({likes}) AND NOT regexp_like(request_ip, '{_WARP_RE}')"
+        f") d LEFT JOIN {DB}.ip_geo g ON d.ip = g.ip"
+        f" WHERE g.ip IS NULL LIMIT {MAX_NEW_IPS + 1}",
+        deadline,
+    )
+    new_candidates = [r[0] for r in rows if r and r[0]]
+    # More than the cap came back → truncated; mark incomplete so the caller
+    # defers the rebuild (retries resume, each resolved IP is cached).
+    complete = len(new_candidates) <= MAX_NEW_IPS
+    new_ips = new_candidates[:MAX_NEW_IPS]
+
+    existing = {}
+    try:
+        body = (
+            _s3.get_object(Bucket=CURATED_BUCKET, Key=IP_GEO_KEY)["Body"]
+            .read()
+            .decode()
+        )
+        for line in body.splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                existing[rec["ip"]] = rec
+    except _s3.exceptions.NoSuchKey:
+        pass
+    fields = (
+        "query,country,regionName,city,isp,org,as,mobile,proxy,hosting,status"
+    )
+    for i in range(0, len(new_ips), 100):
+        if time.time() >= deadline:
+            complete = False
+            break
+        batch = new_ips[i:i + 100]
+        payload = json.dumps(
+            [{"query": ip, "fields": fields} for ip in batch]
+        ).encode()
+        req = urllib.request.Request(
+            "http://ip-api.com/batch",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.load(resp)
+        except Exception:  # pylint: disable=broad-except
+            complete = False  # unresolved this run; a retry re-attempts it
+            continue
+        for g in data:
+            ip = g.get("query")
+            if not ip:
+                continue
+            existing[ip] = {
+                "ip": ip,
+                "country": g.get("country"),
+                "region": g.get("regionName"),
+                "city": g.get("city"),
+                "isp": g.get("isp"),
+                "org": g.get("org"),
+                "asn": g.get("as"),
+                "hosting": bool(g.get("hosting")),
+                "proxy": bool(g.get("proxy")),
+                "mobile": bool(g.get("mobile")),
+            }
+        # ip-api's batch endpoint allows ~15 requests/min; stay under it.
+        time.sleep(4.0)
+
+    # Zero bytes (not a blank line) when empty, so the JSON SerDe never trips
+    # over an empty record on the LEFT JOIN.
+    body_out = (
+        "\n".join(json.dumps(existing[ip]) for ip in sorted(existing)) + "\n"
+        if existing
+        else ""
+    )
+    _s3.put_object(
+        Bucket=CURATED_BUCKET,
+        Key=IP_GEO_KEY,
+        Body=body_out.encode(),
+        ContentType="application/x-ndjson",
+    )
+    return len(new_ips), complete
 
 
 def _insert_sql(dt: str) -> str:
@@ -104,12 +218,19 @@ SELECT
   {beacon_param('path')} AS evt_path,
   {beacon_param('sid')} AS sid,
   _eid AS eid,
-  regexp_like(request_ip, '^(104\\.28\\.|2a09:bac)') AS is_warp,
+  regexp_like(request_ip, '{_WARP_RE}') AS is_warp,
   (regexp_like({ua}, '{_BOT_RE}')
-     OR regexp_like(request_ip, '^185\\.177\\.72\\.')) AS is_bot,
+     OR regexp_like(request_ip, '^185\\.177\\.72\\.')
+     OR COALESCE(g.hosting, false)) AS is_bot,
   location AS edge_location,
+  g.country AS country,
+  g.city AS city,
+  g.org AS org,
+  g.asn AS asn,
+  COALESCE(g.hosting, false) AS is_hosting,
   cast(date as varchar) AS dt
 FROM dedup
+LEFT JOIN {DB}.ip_geo g ON dedup.request_ip = g.ip
 """
 
 
@@ -166,6 +287,16 @@ def handler(event, context):
     )
     deadline = time.time() + max(0.0, remaining_ms / 1000.0 - 15)
     targets = _target_dates(event)
+    # Enrich newly-seen IPs first so the rebuild can classify hosting/bot and
+    # materialize org/geo by joining ip_geo.
+    new_ips, enrich_complete = _enrich_ips(targets, deadline)
+    if not enrich_complete:
+        # Don't rebuild with partial geo (unresolved IPs would misclassify as
+        # non-hosting); fail so the invocation retries and finishes enrichment.
+        raise RuntimeError(
+            f"IP enrichment incomplete ({new_ips} resolved this run); "
+            "deferring partition rebuild for retry"
+        )
     rebuilt = []
     for dt in targets:
         if time.time() >= deadline:
@@ -178,4 +309,4 @@ def handler(event, context):
         raise RuntimeError(
             f"Deadline reached: rebuilt {rebuilt}, skipped {skipped}"
         )
-    return {"rebuilt_partitions": rebuilt}
+    return {"rebuilt_partitions": rebuilt, "ips_enriched": new_ips}

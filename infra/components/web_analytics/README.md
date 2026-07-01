@@ -43,6 +43,13 @@ SERVE       analytics_* MCP tools SELECT from web_events (partition-pruned)
 - **Dedups** on `request_id` (CloudFront can re-deliver lines).
 - Partition is the **UTC** log date; the serve layer buckets to PT and widens
   the scan ±1 day so PT-day edges are correct.
+- **IP enrichment:** before each rebuild the transform resolves any newly-seen
+  (non-WARP) IP via an IP-info service, caching org/geo/hosting/proxy in the
+  `ip_geo` table (each IP looked up once). The rebuild LEFT JOINs `ip_geo` to
+  materialize `org` / `city` / `country` / `is_hosting` on `web_events` and to
+  fold **`hosting` into `is_bot`** — so datacenter beacons (Azure, Hetzner, AWS)
+  that fake a browser UA no longer leak into human counts. `human_sessions` is
+  now trustworthy without any client-side join.
 
 ### Backfill (after first deploy)
 ```
@@ -64,10 +71,9 @@ IaC.
 | Tool | Purpose |
 |---|---|
 | `analytics_traffic(start, end)` | per-PT-day requests, outside-human vs WARP vs bot, human sessions/pageviews |
-| `analytics_sessions(start, end, humans_only)` | reconstructed beacon sessions (pages, scroll, reader-summaries) |
-| `analytics_top(dimension, start, end)` | top `page` / `referrer` / `ip` |
+| `analytics_sessions(start, end, humans_only)` | reconstructed beacon sessions with **org / city / country / is_hosting** inline (pages, scroll, reader-summaries) |
+| `analytics_top(dimension, start, end)` | top `page` / `referrer` / `ip` / `country` / `org` |
 | `analytics_ip(ip, start, end)` | full page-level timeline for one IP |
-| `analytics_lookup_ip(ips)` | live org / geo / network-type (hosting/proxy) for IPs — who a visitor is |
 | `analytics_ga(start, end)` | daily GA4 metrics (sessions/users/pageviews/engaged) |
 | `analytics_reconcile(start, end)` | GA4 vs first-party beacon, per day (reveals adblock gap / bot leakage) |
 | `analytics_query(sql)` | read-only SELECT/WITH escape hatch |
@@ -97,13 +103,13 @@ side by side per day — beacon > GA usually means adblock loss.
 - **Human session:** an analytics-beacon (`/analytics/pixel.txt`) session id,
   excluding WARP + bots
 
-> Note: IP-level geo/org (e.g. "this IP is LangChain") is intentionally **not**
-> a materialized column — at this volume it's freshest on demand. Use the
-> `analytics_lookup_ip` tool (live IP-info lookup) to resolve org / geo /
-> hosting flags for IPs surfaced by the other tools.
-> Datacenter/residential-bot beacons that fake a browser UA can
-> still slip into `human_sessions`; treat that count as an upper bound and
-> confirm individual IPs with `analytics_ip` + an IP-info service.
+> Note: IP org/geo/hosting is now a **materialized column** on `web_events`
+> (enriched once per IP into `ip_geo`), and `is_bot` folds in the `hosting`
+> flag — so `analytics_sessions` returns org/city/country/is_hosting directly
+> and `human_sessions` excludes datacenter beacons without any client-side
+> lookup. Residual gap: residential-ISP bots (e.g. some mobile crawler farms)
+> aren't flagged `hosting`, so a small number can still register as human —
+> inspect with `analytics_top('country'/'org')` if a spike looks off.
 
 ## Deployment
 
