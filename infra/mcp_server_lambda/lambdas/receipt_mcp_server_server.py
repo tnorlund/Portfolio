@@ -954,7 +954,7 @@ Returns value + hit count + distinct sessions. Bots + WARP excluded by default."
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "dimension": {"type": "string", "enum": ["page", "referrer", "ip"], "description": "What to rank"},
+                    "dimension": {"type": "string", "enum": ["page", "referrer", "ip", "country", "org"], "description": "What to rank"},
                     "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
                     "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
                     "limit": {"type": "integer", "default": 15, "description": "Max rows"},
@@ -996,28 +996,6 @@ analytics_* tools; use this only when they don't fit.""",
                     "sql": {"type": "string", "description": "A single read-only SELECT/WITH query"},
                 },
                 "required": ["sql"],
-            },
-        ),
-        Tool(
-            name="analytics_lookup_ip",
-            description="""Look up org / geo / network type for one or more IPs (live).
-
-Returns country, region, city, ISP, org, ASN, and proxy/hosting/mobile flags
-per IP via a public IP-info service. Use to identify WHO a visitor is — e.g. a
-company office (org = "LangChain, Inc") vs a datacenter/bot (hosting=true) —
-after analytics_sessions / analytics_top / analytics_ip surface an IP.
-
-Best-effort third-party data; `org` comes from the IP registry. Up to 100 IPs.""",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "ips": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "1-100 client IPs (v4 or v6) to resolve",
-                    },
-                },
-                "required": ["ips"],
             },
         ),
         Tool(
@@ -1341,8 +1319,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "analytics_query":
             result = await analytics_query_impl(sql=arguments["sql"])
-        elif name == "analytics_lookup_ip":
-            result = await analytics_lookup_ip_impl(ips=arguments["ips"])
         elif name == "analytics_ga":
             result = await analytics_ga_impl(
                 start_date=arguments["start_date"],
@@ -3160,7 +3136,8 @@ WITH base AS (
     date_format({pt}, '%Y-%m-%d') AS pt_date,
     date_format({pt}, '%Y-%m-%d %H:%i:%s') AS pt_time,
     request_ip, uri, status, referrer AS ref,
-    is_beacon, event, evt_path, sid, is_warp, is_bot
+    is_beacon, event, evt_path, sid, is_warp, is_bot,
+    org, city, country, is_hosting
   FROM {ANALYTICS_DB}.web_events
   WHERE dt BETWEEN date_format(date_add('day', -1, DATE '{s}'), '%Y-%m-%d')
               AND date_format(date_add('day',  1, DATE '{e}'), '%Y-%m-%d')
@@ -3208,6 +3185,10 @@ SELECT sid,
   min(pt_time) AS first_seen,
   max(pt_time) AS last_seen,
   arbitrary(request_ip) AS ip,
+  arbitrary(org) AS org,
+  arbitrary(city) AS city,
+  arbitrary(country) AS country,
+  bool_or(is_hosting) AS is_hosting,
   array_join(array_agg(DISTINCT evt_path) FILTER (WHERE evt_path <> ''), ', ') AS pages,
   count_if(event = 'page_view') AS pageviews,
   count_if(event = 'scroll_depth') AS scroll_events,
@@ -3247,8 +3228,14 @@ async def analytics_top_impl(
         elif dimension == "ip":
             col = "request_ip"
             extra = ""
+        elif dimension == "country":
+            col = "country"
+            extra = "AND country IS NOT NULL"
+        elif dimension == "org":
+            col = "org"
+            extra = "AND org IS NOT NULL"
         else:
-            return {"error": "dimension must be one of: page, referrer, ip"}
+            return {"error": "dimension must be: page, referrer, ip, country, org"}
         sql = _analytics_base_cte(s, e) + f"""
 SELECT {col} AS value, count(*) AS hits, count(DISTINCT IF(sid <> '', sid, NULL)) AS sessions
 FROM base
@@ -3313,53 +3300,6 @@ async def analytics_query_impl(sql: str) -> dict:
         return {"rows": _athena_run(stmt), "sql": stmt}
     except Exception as exc:
         logger.exception("analytics_query failed")
-        return {"error": str(exc)}
-
-
-async def analytics_lookup_ip_impl(ips) -> dict:
-    """Resolve org/geo/network-type for IPs via a public IP-info service."""
-    try:
-        import json as _json
-        import re
-        import urllib.request
-
-        if not isinstance(ips, list) or not ips:
-            return {"error": "ips must be a non-empty list"}
-        clean = [i for i in ips if re.match(r"^[0-9a-fA-F:.]+$", i or "")][:100]
-        if not clean:
-            return {"error": "no valid IPs provided"}
-        fields = (
-            "query,country,regionName,city,isp,org,as,mobile,proxy,hosting,"
-            "status,message"
-        )
-        body = _json.dumps(
-            [{"query": ip, "fields": fields} for ip in clean]
-        ).encode()
-        req = urllib.request.Request(
-            "http://ip-api.com/batch",
-            data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = _json.load(resp)
-        results = [
-            {
-                "ip": g.get("query"),
-                "country": g.get("country"),
-                "region": g.get("regionName"),
-                "city": g.get("city"),
-                "isp": g.get("isp"),
-                "org": g.get("org"),
-                "asn": g.get("as"),
-                "mobile": g.get("mobile"),
-                "proxy": g.get("proxy"),
-                "hosting": g.get("hosting"),
-            }
-            for g in data
-        ]
-        return {"results": results}
-    except Exception as exc:
-        logger.exception("analytics_lookup_ip failed")
         return {"error": str(exc)}
 
 

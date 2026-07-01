@@ -216,6 +216,11 @@ class WebAnalytics(ComponentResource):
             ("is_warp", "boolean"),
             ("is_bot", "boolean"),
             ("edge_location", "string"),
+            ("country", "string"),
+            ("city", "string"),
+            ("org", "string"),
+            ("asn", "string"),
+            ("is_hosting", "boolean"),
         ]
         self.web_events_table = aws.glue.CatalogTable(
             f"{name}-web-events-table",
@@ -368,6 +373,49 @@ class WebAnalytics(ComponentResource):
                         name=col, type=typ
                     )
                     for col, typ in ga_columns
+                ],
+                ser_de_info=_SerDeInfo(
+                    serialization_library=(
+                        "org.openx.data.jsonserde.JsonSerDe"
+                    ),
+                ),
+            ),
+            opts=child,
+        )
+
+        # --- IP geo/ASN/hosting dimension (NDJSON, upserted by transform) ---
+        ip_geo_columns = [
+            ("ip", "string"),
+            ("country", "string"),
+            ("region", "string"),
+            ("city", "string"),
+            ("isp", "string"),
+            ("org", "string"),
+            ("asn", "string"),
+            ("hosting", "boolean"),
+            ("proxy", "boolean"),
+            ("mobile", "boolean"),
+        ]
+        self.ip_geo_table = aws.glue.CatalogTable(
+            f"{name}-ip-geo-table",
+            name="ip_geo",
+            database_name=self.database.name,
+            table_type="EXTERNAL_TABLE",
+            parameters={"EXTERNAL": "TRUE", "classification": "json"},
+            storage_descriptor=aws.glue.CatalogTableStorageDescriptorArgs(
+                location=self.curated_bucket.bucket.apply(
+                    lambda b: f"s3://{b}/ip_geo/"
+                ),
+                input_format="org.apache.hadoop.mapred.TextInputFormat",
+                output_format=(
+                    "org.apache.hadoop.hive.ql.io."
+                    "HiveIgnoreKeyTextOutputFormat"
+                ),
+                columns=[
+                    aws.glue.CatalogTableStorageDescriptorColumnArgs(
+                        name=col, type=typ
+                    )
+                    for col, typ in ip_geo_columns
                 ],
                 ser_de_info=_SerDeInfo(
                     serialization_library=(
