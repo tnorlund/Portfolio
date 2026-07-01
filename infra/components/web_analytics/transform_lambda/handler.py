@@ -91,12 +91,22 @@ def _enrich_ips(dts: list, deadline: float) -> int:
     ip_geo NDJSON. Each IP is looked up once and cached; web_events joins it.
     """
     likes = " OR ".join(f"\"$path\" LIKE '%.{dt}-%'" for dt in dts)
+    # Anti-join against ip_geo and LIMIT in Athena so the Lambda only fetches
+    # up to the cap of *new* (uncached) IPs — never the full distinct set,
+    # which could OOM a small Lambda on a backfill or bot spike.
     rows = _query_rows(
-        f"SELECT DISTINCT request_ip FROM {DB}.cloudfront_logs_prod "
-        f"WHERE ({likes}) AND NOT regexp_like(request_ip, '{_WARP_RE}')",
+        f"SELECT d.ip FROM ("
+        f" SELECT DISTINCT request_ip AS ip FROM {DB}.cloudfront_logs_prod"
+        f" WHERE ({likes}) AND NOT regexp_like(request_ip, '{_WARP_RE}')"
+        f") d LEFT JOIN {DB}.ip_geo g ON d.ip = g.ip"
+        f" WHERE g.ip IS NULL LIMIT {MAX_NEW_IPS + 1}",
         deadline,
     )
-    seen = {r[0] for r in rows if r and r[0]}
+    new_candidates = [r[0] for r in rows if r and r[0]]
+    # More than the cap came back → truncated; mark incomplete so the caller
+    # defers the rebuild (retries resume, each resolved IP is cached).
+    complete = len(new_candidates) <= MAX_NEW_IPS
+    new_ips = new_candidates[:MAX_NEW_IPS]
 
     existing = {}
     try:
@@ -111,14 +121,6 @@ def _enrich_ips(dts: list, deadline: float) -> int:
                 existing[rec["ip"]] = rec
     except _s3.exceptions.NoSuchKey:
         pass
-
-    pending = [ip for ip in seen if ip not in existing]
-    new_ips = pending[:MAX_NEW_IPS]
-    # "complete" tracks whether we resolved every pending IP this run. If not
-    # (cap truncation, rate/deadline stop, or a failed batch), the caller
-    # defers the rebuild so partial geo never drives classification; retries
-    # converge because each resolved IP is cached.
-    complete = len(new_ips) == len(pending)
     fields = (
         "query,country,regionName,city,isp,org,as,mobile,proxy,hosting,status"
     )
@@ -160,8 +162,12 @@ def _enrich_ips(dts: list, deadline: float) -> int:
         # ip-api's batch endpoint allows ~15 requests/min; stay under it.
         time.sleep(4.0)
 
+    # Zero bytes (not a blank line) when empty, so the JSON SerDe never trips
+    # over an empty record on the LEFT JOIN.
     body_out = (
         "\n".join(json.dumps(existing[ip]) for ip in sorted(existing)) + "\n"
+        if existing
+        else ""
     )
     _s3.put_object(
         Bucket=CURATED_BUCKET,

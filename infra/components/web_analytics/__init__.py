@@ -378,6 +378,7 @@ class WebAnalytics(ComponentResource):
                     serialization_library=(
                         "org.openx.data.jsonserde.JsonSerDe"
                     ),
+                    parameters={"ignore.malformed.json": "true"},
                 ),
             ),
             opts=child,
@@ -421,6 +422,7 @@ class WebAnalytics(ComponentResource):
                     serialization_library=(
                         "org.openx.data.jsonserde.JsonSerDe"
                     ),
+                    parameters={"ignore.malformed.json": "true"},
                 ),
             ),
             opts=child,
