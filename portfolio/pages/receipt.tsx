@@ -445,11 +445,12 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         The model is only as good as its training data, and labeled receipts
-        are expensive. So I grow the dataset synthetically: take one real
+        are expensive. So I grow the dataset synthetically: take a real
         receipt, add or remove items with a grammar learned from the
         merchant&apos;s other receipts, recompute the math, and render a new
-        photorealistic receipt. Because each variant is generated from labeled
-        positions, its labels come for free.
+        photorealistic receipt. Each variant is generated from a real
+        receipt&apos;s labeled positions, so its labels come for free. The
+        figure below discloses which receipt each example came from.
       </p>
 
       <FigureBoundary intrinsicSize="760px">
