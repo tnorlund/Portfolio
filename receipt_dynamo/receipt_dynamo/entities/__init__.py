@@ -75,6 +75,10 @@ from receipt_dynamo.entities.label_metadata import (  # noqa: F401
 )
 from receipt_dynamo.entities.letter import Letter, item_to_letter  # noqa: F401
 from receipt_dynamo.entities.line import Line, item_to_line  # noqa: F401
+from receipt_dynamo.entities.merchant_catalog_item import (  # noqa: F401
+    MerchantCatalogItem,
+    item_to_merchant_catalog_item,
+)
 from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: F401
 from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
@@ -237,6 +241,7 @@ __all__ = [
     "JobResource",
     "JobStatus",
     "LabelCountCache",
+    "MerchantCatalogItem",
     "LabelHygieneResult",
     "LabelMetadata",
     "Letter",
@@ -291,6 +296,7 @@ __all__ = [
     "item_to_job_resource",
     "item_to_job_status",
     "item_to_label_count_cache",
+    "item_to_merchant_catalog_item",
     "item_to_label_hygiene_result",
     "item_to_label_metadata",
     "item_to_letter",
