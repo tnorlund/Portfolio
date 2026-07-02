@@ -26,7 +26,10 @@ cp /tmp/gridfix/sprouts_font2/sprouts.glyphs.npz /tmp/bitmatrix/sprouts.glyphs.n
 "$PY" synthesis_loop/glyph_review.py receipt "Sprouts Farmers Market" 00ded398-af6f-4a49-86f7-c79ccb554e48 2 /tmp/gridfix/review_recB.png
 ```
 
-Then OPEN and actually look at `review_sheet.png` and the two receipt PNGs.
+Receipt mode also writes deterministic line scorecards next to each PNG:
+`review_recA.scorecard.md/json` and `review_recB.scorecard.md/json`.
+Then OPEN and actually look at `review_sheet.png`, the zoom crops, the two
+receipt PNGs, and the scorecard markdown.
 
 ## What to judge — every character, one at a time
 
@@ -60,8 +63,10 @@ and low-sample punctuation `% & @ " # $ !`.
 1. A table: `char | GOOD/MARGINAL/BROKEN | defect`.
 2. The dominant failure pattern this round and the ONE algorithmic change most
    likely to fix the most glyphs (tell codex what to try).
-3. A spacing verdict (OK / too tight / too airy / baseline drift) with direction.
-4. A clear GO / NO-GO: are we done?
+3. A line-scorecard verdict: which BLOCKER/MINOR rows are real visual defects,
+   which are false positives, and any obvious false negatives from the crops.
+4. A spacing verdict (OK / too tight / too airy / baseline drift) with direction.
+5. A clear GO / NO-GO: are we done?
 
 ## Sign-off criteria (say DONE only when all hold)
 

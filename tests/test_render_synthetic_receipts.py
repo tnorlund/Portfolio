@@ -195,7 +195,7 @@ def test_registry_has_known_merchants():
     module = _load_module()
     profiles = module.load_merchant_profiles()
     assert set(profiles) == {
-        "Costco Wholesale", "Amazon Fresh", "Target", "Vons",
+        "Costco Wholesale", "Amazon Fresh", "Target", "The Home Depot", "Vons",
         "Sprouts Farmers Market", "Smith's", "Gelson's Westlake Village",
     }
 
@@ -242,6 +242,87 @@ def test_unknown_merchant_typography_empty():
     assert module.merchant_typography("No Such Store") == {}
 
 
+def test_sprouts_logo_reserves_missing_subtitle_band():
+    module = _load_module()
+    profile = module.get_merchant_profile("Sprouts Farmers Market")
+    assert profile["logo_reserve_subtitle"] is True
+    assert profile["logo_subtitle"] == "FARMERS MARKET"
+
+    bbox = module._reserve_logo_subtitle_bbox([100, 900, 500, 950])
+    assert bbox == [100.0, 875.0, 500.0, 950.0]
+
+
+def test_sprouts_logo_subtitle_draws_inside_overlay():
+    module = _load_module()
+    from PIL import Image
+
+    image = Image.new("RGBA", (320, 120), (250, 249, 245, 255))
+    before = image.copy()
+    module._draw_logo_subtitle(image, "FARMERS MARKET", 20, 50, 300, 108)
+
+    assert image.tobytes() != before.tobytes()
+
+
+def test_sprouts_header_repair_clones_missing_top_store_hours():
+    module = _load_module()
+
+    def line_words(text, line_id, y, x=100):
+        words = []
+        cursor = x
+        for word_id, token in enumerate(text.split(), start=1):
+            width = max(20, len(token) * 9)
+            words.append({
+                "text": token,
+                "line_id": line_id,
+                "word_id": word_id,
+                "bbox": [cursor, y + 5, cursor + width, y - 5],
+                "labels": [],
+            })
+            cursor += width + 8
+        return words
+
+    receipt = {
+        "merchant_name": "Sprouts Farmers Market",
+        "words": (
+            line_words("SPROUTS", 1, 983, x=420)
+            + line_words("1012 WESTLAKE BLVD.", 3, 944, x=260)
+            + line_words("WESTLAKE, CA 91361", 4, 927, x=270)
+            + line_words("(805)917-4200", 5, 915, x=330)
+            + line_words("09/04/2025", 11, 871, x=80)
+            + line_words("1012 WESTLAKE BLVD.", 36, 608, x=260)
+            + line_words("WESTLAKE, CA 91361", 37, 593, x=270)
+            + line_words("(805)917-4200", 39, 582, x=330)
+            + line_words("Store Hours MON-SUN 7AM-10PM", 40, 565, x=210)
+        ),
+    }
+
+    repaired = module._repair_missing_top_header_lines(receipt)
+    lines = module._group_cached_words_by_line(repaired["words"])
+    store_hours_centers = [
+        module._line_center_y(line)
+        for line in lines
+        if module._line_text_from_cached_words(line)
+        == "Store Hours MON-SUN 7AM-10PM"
+    ]
+
+    assert len(store_hours_centers) == 2
+    assert 890 <= max(store_hours_centers) <= 905
+
+
+def test_1d_barcode_fit_uses_visible_ink_box():
+    module = _load_module()
+    from PIL import Image, ImageDraw
+
+    tile = Image.new("L", (90, 50), 250)
+    ImageDraw.Draw(tile).rectangle([12, 14, 78, 31], fill=20)
+
+    fitted = module._fit_1d_barcode_tile_to_box(tile, 42, 27)
+    ink = fitted.point(lambda p: 255 if p < 128 else 0)
+
+    assert fitted.size == (42, 27)
+    assert ink.getbbox() == (0, 0, 42, 27)
+
+
 def test_costco_anchors_come_from_profile():
     # PR-2: the phrase anchors that used to be hardcoded in receipt_renderer.py
     # now flow from the merchant profile through merchant_typography().
@@ -265,13 +346,66 @@ def test_graphics_for_merchant_merges_profile_over_substring_default():
     assert module.graphics_for_merchant("Vons")["barcode_kind"] == "upca"
 
 
-def test_inbody_barcode_defaults_match_prior_constants():
+def test_detected_barcode_boxes_drive_graphic_overlay(monkeypatch):
+    module = _load_module()
+    from PIL import Image
+
+    calls = []
+
+    def fake_qr(data, size, seed=0):
+        calls.append(("qr", data, size))
+        return Image.new("L", (size, size), 0)
+
+    def fake_barcode(data, kind, w, h, with_hri=False):
+        calls.append(("barcode", data, kind, w, h, with_hri))
+        return Image.new("L", (w, h), 0)
+
+    monkeypatch.setattr(module.receipt_graphics, "render_qr_tile", fake_qr)
+    monkeypatch.setattr(
+        module.receipt_graphics, "render_barcode_tile", fake_barcode
+    )
+
+    image = Image.new("RGBA", (300, 700), (250, 249, 245, 255))
+    receipt = {
+        "merchant_name": "Sprouts Farmers Market",
+        "words": [{"text": "TOTAL", "bbox": [100, 900, 180, 920]}],
+        "barcodes": [
+            {
+                "text": "https://example.test/r/1",
+                "symbology": "QR",
+                "bbox": [0.25, 0.72, 0.45, 0.52],
+            },
+            {
+                "text": "123456789012",
+                "symbology": "Code128",
+                "bbox": [100, 300, 250, 340],
+            },
+        ],
+    }
+    bands = module._overlay_detected_codes(
+        image, receipt, config=module.RenderConfig(width=300, height=700, margin=10),
+        coord_max=1000.0,
+    )
+
+    assert calls[0] == ("qr", "https://example.test/r/1", 56)
+    assert calls[1] == ("barcode", "123456789012", "code128", 42, 27, False)
+    assert len(bands) == 2
+
+
+def test_inbody_barcode_defaults_match_sprouts_fallback_geometry():
     module = _load_module()
     d = module._INBODY_BARCODE_DEFAULTS
     assert d["symbology"] == "code128"
     assert d["max_count"] == 2
     assert d["min_gap_px"] == 34
-    assert d["bar_h_px"] == 30
+    assert d["bar_h_px"] == 84
+    assert d["bar_w_frac"] == 0.60
+
+
+def test_inbody_code128_fallback_uses_dense_visual_payload():
+    module = _load_module()
+    assert module._visual_barcode_payload("1234567", "code128") == "12-34-56-7"
+    assert module._visual_barcode_payload("1234567", "upca") == "1234567"
 
 
 def test_header_profile_derives_brand_and_reflow_from_registry():

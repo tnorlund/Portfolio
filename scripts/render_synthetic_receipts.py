@@ -374,6 +374,154 @@ def _drop_duplicate_header_words(words: list[dict], hp: dict) -> list[dict]:
     return [word for word in words if id(word) not in drop_ids]
 
 
+def _repair_missing_top_header_lines(receipt: dict) -> dict:
+    """Clone OCR-missed header lines from a later duplicate header block.
+
+    Some Sprouts photos visibly print the store-hours line in the top header, but
+    OCR only captures that same line in the repeated lower address block. When a
+    merchant profile identifies duplicate header lines, use the lower complete
+    block to fill missing exact header markers in the top block. This is still
+    data-driven: the cloned text and x-geometry come from Dynamo OCR, while the
+    y-position is transferred by matching a shared header anchor such as the
+    phone line.
+    """
+    hp = _header_profile_for(receipt.get("merchant_name"))
+    if not hp["dedup"]:
+        return receipt
+    words = list(receipt.get("words") or [])
+    if not words:
+        return receipt
+
+    line_infos = []
+    for line in _group_cached_words_by_line(words):
+        text = _compact_line_text(line)
+        line_infos.append({
+            "words": line,
+            "text": text,
+            "center": _line_center_y(line),
+            "is_header": _is_header_line(text, hp),
+        })
+    try:
+        first_header = next(
+            index for index, info in enumerate(line_infos) if info["is_header"]
+        )
+    except StopIteration:
+        return receipt
+
+    top_end = first_header
+    while top_end + 1 < len(line_infos) and line_infos[top_end + 1]["is_header"]:
+        top_end += 1
+    top_block = line_infos[first_header:top_end + 1]
+    top_texts = {info["text"] for info in top_block}
+    exact_markers = set(hp.get("exact") or ())
+    missing = [
+        marker for marker in exact_markers
+        if marker not in top_texts
+        and any(info["text"] == marker for info in line_infos[top_end + 1:])
+    ]
+    if not missing:
+        return receipt
+
+    additions: list[dict] = []
+    for marker in missing:
+        source_index = next(
+            index for index, info in enumerate(line_infos[top_end + 1:], top_end + 1)
+            if info["text"] == marker
+        )
+        source = line_infos[source_index]
+        anchor = None
+        for candidate in reversed(line_infos[top_end + 1:source_index]):
+            if candidate["is_header"] and candidate["text"] in top_texts:
+                anchor = candidate
+                break
+        target_center = None
+        if anchor is not None:
+            target_anchor = next(
+                info for info in top_block if info["text"] == anchor["text"]
+            )
+            target_center = (
+                float(target_anchor["center"])
+                + float(source["center"])
+                - float(anchor["center"])
+            )
+        if target_center is None:
+            centers = [float(info["center"]) for info in top_block]
+            gaps = [
+                abs(a - b)
+                for a, b in zip(sorted(centers, reverse=True), sorted(centers, reverse=True)[1:])
+            ]
+            pitch = sorted(gaps)[len(gaps) // 2] if gaps else 16.0
+            target_center = min(centers) - pitch
+        shift = float(target_center) - float(source["center"])
+        source_box = _union_bbox([
+            word["bbox"] for word in source["words"] if word.get("bbox")
+        ])
+        source_cx = (
+            (float(source_box[0]) + float(source_box[2])) / 2.0
+            if source_box is not None else 0.0
+        )
+        source_span = (
+            max(1e-6, float(source_box[2]) - float(source_box[0]))
+            if source_box is not None else 1.0
+        )
+        x_scale = 1.0
+        if anchor is not None:
+            target_anchor = next(
+                info for info in top_block if info["text"] == anchor["text"]
+            )
+            source_anchor_box = _union_bbox([
+                word["bbox"] for word in anchor["words"] if word.get("bbox")
+            ])
+            target_anchor_box = _union_bbox([
+                word["bbox"] for word in target_anchor["words"] if word.get("bbox")
+            ])
+            if source_anchor_box is not None and target_anchor_box is not None:
+                source_anchor_span = max(
+                    1e-6, float(source_anchor_box[2]) - float(source_anchor_box[0])
+                )
+                target_anchor_span = max(
+                    1e-6, float(target_anchor_box[2]) - float(target_anchor_box[0])
+                )
+                x_scale = target_anchor_span / source_anchor_span
+        top_spans = []
+        for info in top_block:
+            if info["text"].startswith(hp["brand"]):
+                continue
+            box = _union_bbox([
+                word["bbox"] for word in info["words"] if word.get("bbox")
+            ])
+            if box is not None:
+                top_spans.append(float(box[2]) - float(box[0]))
+        if top_spans:
+            max_target_span = max(top_spans) * 1.15
+            x_scale = min(x_scale, max_target_span / source_span)
+        for word in source["words"]:
+            bbox = list(word.get("bbox") or [])
+            if len(bbox) < 4:
+                continue
+            try:
+                x0, y0, x1, y1 = (float(value) for value in bbox[:4])
+            except (TypeError, ValueError):
+                continue
+            clone = dict(word)
+            clone["bbox"] = [
+                source_cx + (x0 - source_cx) * x_scale,
+                y0 + shift,
+                source_cx + (x1 - source_cx) * x_scale,
+                y1 + shift,
+            ]
+            clone["line_id"] = f"header-clone-{word.get('line_id', '')}"
+            clone["word_id"] = f"header-clone-{word.get('word_id', '')}"
+            clone["_synthetic_source"] = "duplicate_header_repair"
+            additions.append(clone)
+
+    if not additions:
+        return receipt
+    repaired = dict(receipt)
+    repaired["words"] = words + additions
+    return repaired
+
+
 def _compact_line_text(line_words: list[dict]) -> str:
     text = "".join(str(word.get("text") or "") for word in line_words)
     return _compact_text(text)
@@ -863,7 +1011,14 @@ def _render_cached_hybrid(
     heading_bleed_phrase: str | None = None,
     reverse_date_anchor: str | None = None,
     dash_after_amount_date: bool = False,
+    mixed_layout: bool = False,
+    bitmap_cap_ratio: float = 0.72,
+    bitmap_thin: float = 0.0,
+    ocr_font_sizing: bool = False,
+    ocr_cap_height_ratio: float = 0.72,
+    ink: tuple[int, int, int] | list[int] | None = None,
 ) -> str:
+    receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
     # without re-running synthesis. Mutates the per-render receipt dict in place.
@@ -888,6 +1043,12 @@ def _render_cached_hybrid(
         heading_bleed_phrase=heading_bleed_phrase,
         reverse_date_anchor=reverse_date_anchor,
         dash_after_amount_date=dash_after_amount_date,
+        mixed_layout=mixed_layout,
+        bitmap_cap_ratio=bitmap_cap_ratio,
+        bitmap_thin=bitmap_thin,
+        ocr_font_sizing=ocr_font_sizing,
+        ocr_cap_height_ratio=ocr_cap_height_ratio,
+        ink=ink,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps.
@@ -914,6 +1075,7 @@ def _render_cached_hybrid(
     render_input = receipt
     logo_bbox = None
     logo_image = None
+    logo_subtitle = None
     # Prefer the canonical (averaged-across-receipts) logo over the smeared atlas
     # capture; it is the full wordmark, so treat it as depicting the subtitle.
     canon_logo = _merchant_logo(receipt.get("merchant_name"))
@@ -947,15 +1109,46 @@ def _render_cached_hybrid(
                     wordmark = _logo_wordmark_words(receipt)
                     if wordmark:
                         wordmark_words, logo_bbox = wordmark
+                        if (
+                            get_merchant_profile(
+                                receipt.get("merchant_name")
+                            ).get("logo_reserve_subtitle")
+                            and len(wordmark_words) == len(logo_line)
+                        ):
+                            logo_bbox = _reserve_logo_subtitle_bbox(logo_bbox)
                         render_input = _receipt_drop_words(
                             receipt, wordmark_words)
                 else:
-                    # Logo shows only the brand line: suppress just that line and
-                    # let the subtitle render as clean text in the row below it.
-                    logo_bbox = _union_bbox(
-                        [w["bbox"] for w in logo_line if w.get("bbox")]
-                    )
-                    render_input = _receipt_drop_words(receipt, logo_line)
+                    # Logo shows only the brand line. For merchants whose
+                    # subtitle is part of the wordmark (Sprouts' FARMERS
+                    # MARKET), synthesize the subtitle inside the logo overlay
+                    # instead of routing it through receipt text layout.
+                    merchant_profile = get_merchant_profile(
+                        receipt.get("merchant_name"))
+                    subtitle = merchant_profile.get("logo_subtitle")
+                    wordmark = _logo_wordmark_words(receipt)
+                    if subtitle:
+                        wordmark_words, logo_bbox = (
+                            wordmark if wordmark is not None else (
+                                logo_line,
+                                _union_bbox([
+                                    w["bbox"] for w in logo_line
+                                    if w.get("bbox")
+                                ]),
+                            )
+                        )
+                        if (wordmark is None
+                                or len(wordmark_words) == len(logo_line)):
+                            logo_bbox = _reserve_logo_subtitle_bbox(logo_bbox)
+                        logo_subtitle = str(subtitle)
+                        render_input = _receipt_drop_words(
+                            receipt, wordmark_words)
+                    else:
+                        logo_bbox = _union_bbox(
+                            [w["bbox"] for w in logo_line if w.get("bbox")]
+                        )
+                        render_input = _receipt_drop_words(
+                            receipt, logo_line)
     image = render_receipt(
         render_input,
         profile=profile,
@@ -970,10 +1163,15 @@ def _render_cached_hybrid(
         coord_max=1000.0,
         bbox=logo_bbox,
         logo_image=logo_image,
+        subtitle_text=logo_subtitle,
     )
-    stamped_bands = _overlay_inbody_barcodes(
+    stamped_bands = _overlay_detected_codes(
         image, receipt, config=config, coord_max=1000.0
     )
+    if not stamped_bands:
+        stamped_bands = _overlay_inbody_barcodes(
+            image, receipt, config=config, coord_max=1000.0
+        )
     _overlay_qr_and_barcode(
         image, receipt, config=config, coord_max=1000.0, reserved=stamped_bands
     )
@@ -985,6 +1183,14 @@ def _render_cached_hybrid(
     return path
 
 
+def _reserve_logo_subtitle_bbox(bbox: list[float]) -> list[float]:
+    """Reserve a subtitle band when OCR only saw the top logo word."""
+    x0, y0, x1, y1 = bbox
+    low, high = sorted((float(y0), float(y1)))
+    height = max(1.0, high - low)
+    return [float(x0), max(0.0, low - height * 0.50), float(x1), high]
+
+
 def _overlay_cached_logo(
     image,
     receipt: dict,
@@ -994,6 +1200,7 @@ def _overlay_cached_logo(
     coord_max: float,
     bbox: list[float] | None = None,
     logo_image=None,
+    subtitle_text: str | None = None,
 ) -> None:
     # ``logo_image`` (e.g. a clipped-subtitle-trimmed copy) overrides the atlas
     # bitmap when supplied.
@@ -1022,7 +1229,8 @@ def _overlay_cached_logo(
     )
     box_w = max(1, right - left)
     box_h = max(1, bottom - top)
-    scale = min(box_w / logo.width, box_h / logo.height)
+    brand_h = box_h * (0.70 if subtitle_text else 1.0)
+    scale = min(box_w / logo.width, brand_h / logo.height)
     if scale <= 0:
         return
     size = (max(1, int(logo.width * scale)), max(1, int(logo.height * scale)))
@@ -1030,7 +1238,7 @@ def _overlay_cached_logo(
     # the faint light-gray crop straight off the aged paper photo.
     scaled = _darken_logo(logo).resize(size)
     x = int(left + (box_w - size[0]) / 2)
-    y = int(top + (box_h - size[1]) / 2)
+    y = int(top + (brand_h - size[1]) / 2)
     from PIL import ImageDraw
 
     draw = ImageDraw.Draw(image)
@@ -1040,6 +1248,63 @@ def _overlay_cached_logo(
         fill=config.background + (255,),
     )
     image.alpha_composite(scaled, (max(0, x), max(0, y)))
+    if subtitle_text:
+        _draw_logo_subtitle(
+            image,
+            subtitle_text,
+            left,
+            top + brand_h * 0.78,
+            right,
+            bottom,
+        )
+
+
+_LOGO_SUBTITLE_FONTS = (
+    "/System/Library/Fonts/Supplemental/Georgia.ttf",
+    "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+    "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+)
+
+
+def _draw_logo_subtitle(image, text: str, left: float, top: float, right: float, bottom: float) -> None:
+    from PIL import Image, ImageDraw, ImageFont
+
+    label = str(text or "").strip().upper()
+    if not label:
+        return
+    max_w = max(1, int((right - left) * 0.72))
+    max_h = max(1, int(bottom - top))
+    font = None
+    for size in range(max_h, 5, -1):
+        for path in _LOGO_SUBTITLE_FONTS:
+            if not os.path.exists(path):
+                continue
+            try:
+                candidate = ImageFont.truetype(path, size)
+            except OSError:
+                continue
+            bbox = candidate.getbbox(label)
+            if bbox[2] - bbox[0] <= max_w and bbox[3] - bbox[1] <= max_h:
+                font = candidate
+                break
+        if font is not None:
+            break
+    if font is None:
+        font = ImageFont.load_default()
+    bbox = font.getbbox(label)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    pad = 4
+    mask = Image.new("L", (text_w + 2 * pad, text_h + 2 * pad), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.text((pad - bbox[0], pad - bbox[1]), label, font=font, fill=255)
+    mask = mask.point(lambda value: int(round(value * 0.84)))
+    ink = Image.new("RGBA", mask.size, (38, 36, 34, 0))
+    ink.putalpha(mask)
+    x = int((left + right - mask.width) / 2.0)
+    y = int(top + max(0.0, (bottom - top - mask.height) / 2.0))
+    image.alpha_composite(ink, (max(0, x), max(0, y)))
 
 
 def _darken_logo(logo):
@@ -1175,6 +1440,29 @@ def _paste_graphic_tile(image, tile, x: int, y: int) -> None:
     image.paste(tile.convert("RGBA"), (int(x), int(y)))
 
 
+def _fit_1d_barcode_tile_to_box(tile, w_px: int, h_px: int):
+    """Resize the visible 1D barcode ink to the requested geometry.
+
+    ``python-barcode`` returns an image with quiet-zone/paper padding. That is
+    correct for standalone barcode generation, but detected receipt barcode
+    boxes usually bound the printed bars themselves. Crop to dark ink before the
+    final resize so the bar height comes from Dynamo/OCR geometry instead of the
+    library's internal page margins.
+    """
+    from PIL import Image
+
+    w_px = max(1, int(w_px))
+    h_px = max(1, int(h_px))
+    gray = tile.convert("L")
+    ink_mask = gray.point(lambda p: 255 if p < 230 else 0)
+    ink_box = ink_mask.getbbox()
+    if ink_box is not None:
+        gray = gray.crop(ink_box)
+    if gray.size != (w_px, h_px):
+        gray = gray.resize((w_px, h_px), Image.NEAREST)
+    return gray
+
+
 def _hri_digits(text: str) -> str | None:
     """The digit string if ``text`` is a long human-readable barcode caption."""
     digits = re.sub(r"[^0-9]", "", str(text or ""))
@@ -1185,15 +1473,162 @@ def _hri_digits(text: str) -> str | None:
     return None
 
 
+def _detected_codes(receipt: dict) -> list:
+    for key in ("barcodes", "receipt_barcodes", "codes"):
+        value = receipt.get(key)
+        if isinstance(value, list) and value:
+            return value
+    return []
+
+
+def _field(obj, name: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _code_bbox(code, coord_max: float) -> list[float] | None:
+    bbox = _field(code, "bbox")
+    if bbox is None:
+        bbox = _field(code, "bounding_box")
+    if isinstance(bbox, dict):
+        try:
+            x = float(bbox["x"])
+            y = float(bbox["y"])
+            w = float(bbox["width"])
+            h = float(bbox["height"])
+        except (KeyError, TypeError, ValueError):
+            bbox = None
+        else:
+            bbox = [x, y, x + w, y + h]
+    if bbox is None:
+        tl = _field(code, "top_left")
+        br = _field(code, "bottom_right")
+        if isinstance(tl, dict) and isinstance(br, dict):
+            try:
+                bbox = [
+                    float(tl["x"]), float(tl["y"]),
+                    float(br["x"]), float(br["y"]),
+                ]
+            except (KeyError, TypeError, ValueError):
+                return None
+    if not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
+        return None
+    try:
+        out = [float(v) for v in bbox[:4]]
+    except (TypeError, ValueError):
+        return None
+    if max(abs(v) for v in out) <= 1.5:
+        out = [v * coord_max for v in out]
+    return out
+
+
+def _code_payload(code, fallback: str) -> str:
+    for name in ("payload", "text", "data", "value"):
+        value = _field(code, name)
+        if value:
+            return str(value)
+    return fallback
+
+
+def _code_symbology(code) -> str:
+    return str(_field(code, "symbology", "") or "").lower()
+
+
+def _code_is_qr(code) -> bool:
+    sym = _code_symbology(code)
+    return "qr" in sym or "aztec" in sym or "datamatrix" in sym
+
+
+def _barcode_kind_for_code(code, merchant: str | None) -> str:
+    sym = _code_symbology(code)
+    if "upc" in sym or "ean" in sym:
+        return "upca"
+    if "code128" in sym or "code_128" in sym:
+        return "code128"
+    return graphics_for_merchant(merchant)["barcode_kind"]
+
+
+def _overlay_detected_codes(
+    image, receipt: dict, *, config: RenderConfig, coord_max: float
+) -> list[tuple[float, float]]:
+    """Paste generated codes into OCR-detected boxes from PR #1028.
+
+    The OCR barcode entity gives us the geometry real receipts used. When present
+    that is better than choosing the largest blank band heuristically.
+    """
+    codes = _detected_codes(receipt)
+    if not codes:
+        return []
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    boxes = _iter_receipt_bboxes(receipt)
+    seed = zlib.crc32(("".join(str(b) for b in boxes[:8])).encode("utf-8"))
+    bands: list[tuple[float, float]] = []
+    for index, code in enumerate(codes):
+        bbox = _code_bbox(code, coord_max)
+        if bbox is None:
+            continue
+        left, top, right, bottom = _to_pixel_box(
+            bbox, coord_max=coord_max, margin=config.margin,
+            inner_w=inner_w, inner_h=inner_h,
+        )
+        left, right = sorted((left, right))
+        top, bottom = sorted((top, bottom))
+        w = max(1, int(right - left))
+        h = max(1, int(bottom - top))
+        if w < 20 or h < 20:
+            continue
+        if _code_is_qr(code):
+            size = min(w, h)
+            tile = receipt_graphics.render_qr_tile(
+                _code_payload(code, _qr_payload(receipt, seed ^ index)),
+                size,
+                seed ^ index,
+            )
+            x = int(left + (w - size) / 2)
+            y = int(top + (h - size) / 2)
+        else:
+            kind = _barcode_kind_for_code(code, receipt.get("merchant_name"))
+            tile = receipt_graphics.render_barcode_tile(
+                _code_payload(code, _barcode_payload(kind, seed ^ index)),
+                kind,
+                w,
+                h,
+                with_hri=False,
+            )
+            tile = _fit_1d_barcode_tile_to_box(tile, w, h)
+            x, y = int(left), int(top)
+        _paste_graphic_tile(image, tile, x, y)
+        bands.append((float(top), float(bottom)))
+    return bands
+
+
 # In-body transaction barcode geometry (stamped above a long-numeric HRI line).
 # A merchant profile's graphics.inbody_barcode block overrides any of these.
 _INBODY_BARCODE_DEFAULTS = {
     "symbology": "code128",
     "max_count": 2,
     "min_gap_px": 34,
-    "bar_h_px": 30,
+    "bar_h_px": 84,
+    "bar_w_frac": 0.60,
     "max_digits": 24,
 }
+
+
+def _visual_barcode_payload(digits: str, symbology: str) -> str:
+    """Fallback-only payload shaping for barcode density.
+
+    Detected PR #1028 barcode entities render their real payload unchanged. The
+    in-body fallback only sees the printed HRI digits, and python-barcode encodes
+    all-numeric Code128 very compactly (Code C), which makes bars too coarse when
+    stretched to a receipt-sized box. Pair separators keep a valid Code128 symbol
+    while producing the finer module density seen on the Sprouts receipt.
+    """
+    if str(symbology).lower() != "code128":
+        return digits
+    pairs = [digits[i:i + 2] for i in range(0, len(digits), 2)]
+    return "-".join(pair for pair in pairs if pair)
 
 
 def graphics_for_merchant(merchant: str | None) -> dict:
@@ -1255,11 +1690,16 @@ def _overlay_inbody_barcodes(
         if space < ib["min_gap_px"]:
             continue
         bar_h = int(min(ib["bar_h_px"], space - 8))
-        bar_w = int(min(inner_w * 0.7, max(right - left, inner_w * 0.4) * 1.3))
+        bar_w = int(min(
+            inner_w * 0.72,
+            max((right - left) * 1.30, inner_w * float(ib["bar_w_frac"])),
+        ))
         cx = (left + right) / 2.0
+        payload = _visual_barcode_payload(digits[:ib["max_digits"]], ib["symbology"])
         tile = receipt_graphics.render_barcode_tile(
-            digits[:ib["max_digits"]], ib["symbology"], bar_w, bar_h, with_hri=False
+            payload, ib["symbology"], bar_w, bar_h, with_hri=False
         )
+        tile = _fit_1d_barcode_tile_to_box(tile, bar_w, bar_h)
         y_top = int(top - 6 - bar_h)
         _paste_graphic_tile(image, tile, int(cx - bar_w / 2), y_top)
         stamped_bands.append((float(y_top), float(top - 6)))

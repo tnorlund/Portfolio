@@ -55,10 +55,18 @@
       "typography": {
         "font": "PTMONO",
         "bitmap_font": { "regular": "sprouts.glyphs.npz", "heavy": "sprouts.glyphs.npz" },
-        "condense": 0.92,
+        "condense": 0.895,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.77,
+        "bitmap_thin": 0.45,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.74,
+        "ink": [38, 36, 34],
         "stroke": 0
       },
       "logo": "sprouts_logo.png",
+      "logo_reserve_subtitle": true,
+      "logo_subtitle": "FARMERS MARKET",
       "header": {
         "reflow_sections": true,
         "header_dedup": true,

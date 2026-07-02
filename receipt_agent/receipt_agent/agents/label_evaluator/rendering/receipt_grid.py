@@ -39,6 +39,11 @@ from typing import Any, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
 
+from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
+    preserve_top_arc,
+    thin_ink_mask,
+)
+
 # A right-aligned amount token (optional currency/sign, 2-decimal tail, optional
 # trailing sign/tax flag). These share a right edge in a price column, so we snap
 # their RIGHT edge to the grid; everything else snaps its left edge.
@@ -318,7 +323,18 @@ def group_words_into_grid_lines(
         frac = (overlap / shorter) if shorter > 0 else 0.0
         band_center = (band_top + band_bottom) / 2.0
         center_close = abs(word.center_y - band_center) <= center_tol
-        if frac >= _ROW_OVERLAP_FRAC or center_close:
+        current_sources = {
+            item.source_line for item in current if item.source_line is not None
+        }
+        source_conflict = (
+            word.source_line is not None
+            and bool(current_sources)
+            and word.source_line not in current_sources
+        )
+        # Tall OCR boxes can make adjacent compact header rows overlap. Let a
+        # source line break an overlap-only merge, while still merging true
+        # same-row left/right OCR splits when their centers are close.
+        if center_close or (frac >= _ROW_OVERLAP_FRAC and not source_conflict):
             current.append(word)
         else:
             lines.append(sorted(current, key=lambda w: w.left))
@@ -349,7 +365,7 @@ def token_start_col(
 def draw_token_chars(
     draw: ImageDraw.ImageDraw,
     text: str,
-    start_col: int,
+    start_col: float,
     baseline_y: float,
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
@@ -358,6 +374,8 @@ def draw_token_chars(
     condense: float = 1.0,
     bitmap_font=None,
     cap_px: int | None = None,
+    right_edge_col: float | None = None,
+    bitmap_thin: float = 0.0,
 ) -> None:
     """Draw each glyph of ``text`` at consecutive grid columns on a baseline.
 
@@ -375,7 +393,63 @@ def draw_token_chars(
         img = getattr(draw, "_image", None)
         if img is None:
             return
+
+        def _draw_ttf_fallback(char: str, col: float, x_extra: float = 0.0) -> None:
+            """Draw a missing atlas glyph with TTF metrics matched to the grid."""
+            if font is None:
+                return
+            ascent, descent = font.getmetrics()
+            pad = max(2, stroke + 2)
+            try:
+                raw_w = int(round(draw.textlength(char, font=font)))
+            except (TypeError, ValueError):
+                box = font.getbbox(char)
+                raw_w = int(round(box[2] - box[0]))
+            bw = max(raw_w + 2 * pad + 4, int(round(spec.cell_w * 2.5)), 8)
+            bh = max(ascent + descent + 2 * pad + 4, 8)
+            base = pad + ascent
+            buf = Image.new("L", (bw, bh), 0)
+            ImageDraw.Draw(buf).text((pad, base), char, font=font, fill=255,
+                                     anchor="ls", stroke_width=stroke,
+                                     stroke_fill=255)
+            bb = buf.getbbox()
+            if bb is None:
+                return
+            off = bb[3] - base
+            glyph = buf.crop(bb)
+            if condense < 0.999:
+                glyph = glyph.resize(
+                    (max(1, int(round(glyph.width * condense))), glyph.height),
+                    Image.Resampling.NEAREST,
+                )
+            if (char.isupper() or char.isdigit() or char == "$") and cap_px:
+                target_h = max(1, int(round(cap_px)))
+                if glyph.height > 0 and abs(glyph.height - target_h) > 1:
+                    scale = target_h / glyph.height
+                    glyph = glyph.resize(
+                        (max(1, int(round(glyph.width * scale))), target_h),
+                        Image.Resampling.NEAREST,
+                    )
+            max_w = max(1, int(round(spec.cell_w * 0.96)))
+            if glyph.width > max_w:
+                glyph = glyph.resize((max_w, glyph.height), Image.Resampling.NEAREST)
+            glyph = glyph.point(lambda value: 255 if value >= 160 else 0)
+            glyph = thin_ink_mask(
+                glyph, bitmap_thin, preserve_top=preserve_top_arc(char)
+            )
+            x = int(round(spec.grid_left + col * spec.cell_w
+                          + (spec.cell_w - glyph.width) / 2.0 + x_extra))
+            y = int(round(baseline_y + off - glyph.height))
+            img.paste(Image.new("RGB", glyph.size, ink), (x, y), glyph)
+
         col = start_col
+        right_shift = 0.0
+        if right_edge_col is not None:
+            last = next((c for c in reversed(text) if c != " "), "")
+            if last:
+                last_res = bitmap_font.glyph(last, cap_px or spec.font_px)
+                if last_res is not None:
+                    right_shift = (spec.cell_w - last_res[0].width) / 2.0
         for char in text:
             if char == " ":
                 continue
@@ -383,15 +457,15 @@ def draw_token_chars(
             if res is not None:
                 gi, h, off = res
                 x = int(round(spec.grid_left + col * spec.cell_w
-                              + (spec.cell_w - gi.width) / 2.0))
+                              + (spec.cell_w - gi.width) / 2.0
+                              + right_shift))
                 y = int(round(baseline_y + off - h))
                 img.paste(Image.new("RGB", gi.size, ink), (x, y), gi)
             elif font is not None:
                 # A data-built atlas may lack a rare glyph (e.g. 'j'/'z'); fall
                 # back to the TTF face so it renders instead of dropping out.
                 # (Chart atlases like Costco's are complete, so this never fires.)
-                x = spec.grid_left + col * spec.cell_w
-                draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls")
+                _draw_ttf_fallback(char, col, right_shift)
             col += 1
         return
     if condense >= 0.999:
@@ -427,6 +501,127 @@ def draw_token_chars(
         col += 1
 
 
+def draw_text_run(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    anchor_x: float,
+    baseline_y: float,
+    spec: GridSpec,
+    font: ImageFont.FreeTypeFont,
+    ink: tuple[int, int, int],
+    *,
+    anchor: str = "left",
+    stroke: int = 0,
+    condense: float = 1.0,
+    bitmap_font=None,
+    cap_px: int | None = None,
+    target_width: float | None = None,
+    bitmap_thin: float = 0.0,
+) -> None:
+    """Render a whole text row, then align by its visible ink bounds.
+
+    Grid rendering is right for tabular rows, but centered headers and footer
+    prose should be centered/left-aligned by the ink they actually print. This
+    routine preserves the same glyph source and measured advance as grid rows,
+    while treating spaces as real run gaps and placing the final mask by ink bbox.
+    """
+    if not text:
+        return
+    img = getattr(draw, "_image", None)
+    if img is None:
+        return
+
+    ascent, descent = font.getmetrics()
+    base_advance = max(1.0, float(spec.cell_w))
+    advance = base_advance
+    if target_width and target_width > 0:
+        # Mixed-layout rows are anchored by their observed OCR ink span, not the
+        # table grid. Use that span to recover row pitch while keeping glyph
+        # shapes unscaled; a modest cap prevents noisy word boxes from turning
+        # normal receipt prose into display-style letterspacing.
+        wanted = float(target_width) / max(1.0, len(text.rstrip()) - 0.5)
+        advance = max(base_advance, min(base_advance * 1.28, wanted))
+    pad = max(4, int(round(advance * 2)))
+    width = max(8, int(round(advance * (len(text) + 2))) + 2 * pad)
+    height = max(ascent + descent + 2 * pad, int(round((cap_px or spec.font_px) * 3)))
+    baseline = min(height - pad, max(pad + ascent, int(round(height * 0.68))))
+    mask = Image.new("L", (width, height), 0)
+    pen = float(pad)
+
+    def _ttf_mask(ch: str) -> tuple[Image.Image, int] | None:
+        gpad = max(2, stroke + 2)
+        try:
+            raw_w = int(round(draw.textlength(ch, font=font)))
+        except (TypeError, ValueError):
+            box = font.getbbox(ch)
+            raw_w = int(round(box[2] - box[0]))
+        gw = max(raw_w + 2 * gpad + 4, int(round(advance * 2.5)), 8)
+        gh = max(ascent + descent + 2 * gpad + 4, 8)
+        base = gpad + ascent
+        buf = Image.new("L", (gw, gh), 0)
+        ImageDraw.Draw(buf).text((gpad, base), ch, font=font, fill=255,
+                                 anchor="ls", stroke_width=stroke,
+                                 stroke_fill=255)
+        bb = buf.getbbox()
+        if bb is None:
+            return None
+        off = bb[3] - base
+        glyph = buf.crop(bb)
+        if condense < 0.999:
+            glyph = glyph.resize(
+                (max(1, int(round(glyph.width * condense))), glyph.height),
+                Image.Resampling.NEAREST,
+            )
+        if (ch.isupper() or ch.isdigit() or ch == "$") and cap_px:
+            target_h = max(1, int(round(cap_px)))
+            if glyph.height > 0 and abs(glyph.height - target_h) > 1:
+                scale = target_h / glyph.height
+                glyph = glyph.resize(
+                    (max(1, int(round(glyph.width * scale))), target_h),
+                    Image.Resampling.NEAREST,
+                )
+        max_w = max(1, int(round(advance * 0.96)))
+        if glyph.width > max_w:
+            glyph = glyph.resize((max_w, glyph.height), Image.Resampling.NEAREST)
+        glyph = glyph.point(lambda value: 255 if value >= 160 else 0)
+        glyph = thin_ink_mask(
+            glyph, bitmap_thin, preserve_top=preserve_top_arc(ch)
+        )
+        return glyph, off
+
+    for ch in text:
+        if ch == " ":
+            pen += advance
+            continue
+        res = bitmap_font.glyph(ch, cap_px or spec.font_px) if bitmap_font else None
+        if res is not None:
+            glyph, h, off = res
+            x = int(round(pen + (advance - glyph.width) / 2.0))
+            y = int(round(baseline + off - h))
+            mask.paste(glyph, (x, y), glyph)
+        else:
+            fb = _ttf_mask(ch)
+            if fb is not None:
+                glyph, off = fb
+                x = int(round(pen + (advance - glyph.width) / 2.0))
+                y = int(round(baseline + off - glyph.height))
+                mask.paste(glyph, (x, y), glyph)
+        pen += advance
+
+    bb = mask.getbbox()
+    if bb is None:
+        return
+    crop = mask.crop(bb)
+    if anchor == "center":
+        x = int(round(anchor_x - crop.width / 2.0))
+    elif anchor == "right":
+        x = int(round(anchor_x - crop.width))
+    else:
+        x = int(round(anchor_x))
+    y = int(round(baseline_y + bb[1] - baseline))
+    img.paste(Image.new("RGB", crop.size, ink), (x, y), crop)
+
+
 @dataclass
 class PlacedToken:
     """A word with its resolved grid column (the output of the planner).
@@ -439,7 +634,7 @@ class PlacedToken:
     """
 
     word: GridWord
-    start_col: int
+    start_col: float
     cells: int
     is_price: bool
     # The text actually drawn -- equals the word text unless a long description was
@@ -460,6 +655,15 @@ class PlacedToken:
 # Prices further left than this (unit prices, qty columns, coupon columns) keep
 # their own column so we don't collapse a legitimately multi-column receipt.
 _AMOUNT_LANE_TOL_CELLS = 4
+_RIGHT_SEGMENT_GAP_CELLS = 4.0
+
+
+def _is_amount_prefix_token(text: str) -> bool:
+    """Short currency/unit prefix printed immediately before an amount."""
+    token = str(text or "").strip().upper().replace(" ", "")
+    if token in {"$", "US$", "USD", "USD$"}:
+        return True
+    return token.endswith("$") and len(token) <= 4 and any(ch.isalpha() for ch in token)
 
 
 def amount_lane_end(
@@ -552,8 +756,15 @@ def plan_grid_line(
         price = is_p[i]
         cells = cell_of[i]
         text = word.text
+        amount_prefix = (
+            not price
+            and i + 1 in anchored
+            and _is_amount_prefix_token(word.text)
+        )
         if i in anchored:
             start = anchored[i]
+        elif amount_prefix:
+            start = anchored[i + 1] - cells - 1
         else:
             absolute = token_start_col(word.text, word.left, word.right, spec)
             if cursor_col is None:
@@ -574,6 +785,7 @@ def plan_grid_line(
             if (
                 leftmost_price_start is not None
                 and not price
+                and not amount_prefix
                 and (not price_idxs or i < price_idxs[0])
             ):
                 avail = leftmost_price_start - 1 - start
@@ -601,6 +813,45 @@ def _truncate_to_cells(text: str, avail: int) -> tuple[str, int]:
     return glyphs[:avail], avail
 
 
+def _right_align_source_segments(
+    placed_row: Sequence[PlacedToken],
+    spec: GridSpec,
+) -> None:
+    """Right-anchor non-price column segments split by a large source gap.
+
+    Payment/header rows often have left labels plus a right-justified value or
+    phrase. Those values are not prices, so the price lane cannot help; anchoring
+    them by their source left edge leaves short rendered text ending too far left
+    inside its OCR box. Split on real column gaps and align each later segment's
+    rendered right edge to the segment's observed source right edge.
+    """
+    if len(placed_row) < 2:
+        return
+    breaks = [0]
+    for i, (prev, cur) in enumerate(zip(placed_row, placed_row[1:]), start=1):
+        gap = (cur.word.left - prev.word.right) / max(spec.cell_w, 1.0)
+        if gap > _RIGHT_SEGMENT_GAP_CELLS:
+            breaks.append(i)
+    if len(breaks) == 1:
+        return
+    breaks.append(len(placed_row))
+    prev_end = max(p.end_col for p in placed_row[:breaks[1]])
+    for start_i, end_i in zip(breaks[1:-1], breaks[2:]):
+        segment = placed_row[start_i:end_i]
+        if not segment or any(p.is_price for p in segment):
+            continue
+        source_right = max(p.word.right for p in segment)
+        rendered_right = spec.grid_left + max(p.end_col for p in segment) * spec.cell_w
+        shift = (source_right - rendered_right) / spec.cell_w
+        min_start = min(p.start_col for p in segment)
+        if min_start + shift <= prev_end:
+            shift = prev_end + 1 - min_start
+        if abs(shift) > 1e-6:
+            for placed in segment:
+                placed.start_col += shift
+        prev_end = max(prev_end, max(p.end_col for p in segment))
+
+
 def draw_grid_line(
     draw: ImageDraw.ImageDraw,
     line: Sequence[GridWord],
@@ -612,6 +863,7 @@ def draw_grid_line(
     condense: float = 1.0,
     bitmap_font=None,
     cap_px: int | None = None,
+    bitmap_thin: float = 0.0,
     reverse_price: bool = False,
     reverse_date: bool = False,
     background: tuple[int, int, int] = (255, 255, 255),
@@ -630,11 +882,13 @@ def draw_grid_line(
     whose condensed rendered width is narrower than the source and would drift left.
     """
     placed_row = plan_grid_line(line, spec, amount_lane=amount_lane)
+    if center_to is None and placed_row:
+        _right_align_source_segments(placed_row, spec)
     if center_to is not None and placed_row:
         span_l = spec.grid_left + min(p.start_col for p in placed_row) * spec.cell_w
         span_r = spec.grid_left + max(p.end_col for p in placed_row) * spec.cell_w
-        shift = int(round((center_to - (span_l + span_r) / 2.0) / spec.cell_w))
-        if shift:
+        shift = (center_to - (span_l + span_r) / 2.0) / spec.cell_w
+        if abs(shift) > 1e-6:
             for p in placed_row:
                 p.start_col += shift
     for i, placed in enumerate(placed_row):
@@ -673,6 +927,8 @@ def draw_grid_line(
             condense=condense,
             bitmap_font=bitmap_font,
             cap_px=cap_px,
+            right_edge_col=placed.end_col if placed.is_price else None,
+            bitmap_thin=bitmap_thin,
         )
 
 

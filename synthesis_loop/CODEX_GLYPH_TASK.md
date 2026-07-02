@@ -152,6 +152,11 @@ render with `_render_cached_hybrid(rec, atlas, profile, width=760,
 height=round(760*rec.height/rec.width), section_scale=..., **merchant_typography("Sprouts Farmers Market"))`.
 Good same-content receipts to eyeball: `04ebdb8a-…` r1, `00ded398-…` r2.
 
+`synthesis_loop/glyph_review.py receipt ...` now writes deterministic
+`*.scorecard.json` and `*.scorecard.md` files next to the comparison PNG. Use
+those as the quantitative gate for font size, word density, price right-edge
+alignment, colon spacing, mid-line anchor drift, and barcode caption sizing.
+
 ## Methodology (do this, per letter)
 
 1. Rebuild the atlas + the review sheet + one on-receipt render.
@@ -182,7 +187,8 @@ Good same-content receipts to eyeball: `04ebdb8a-…` r1, `00ded398-…` r2.
 1. `sprouts.glyphs.npz` regenerated.
 2. `glyph_review.png` (labeled per-glyph sheet).
 3. An on-receipt REAL-vs-SYNTH comparison PNG.
-4. A short per-letter verdict table (GOOD/MARGINAL/BROKEN + defect) and what you
+4. The receipt `*.scorecard.md/json` outputs and a short note on every BLOCKER.
+5. A short per-letter verdict table (GOOD/MARGINAL/BROKEN + defect) and what you
    changed in the algorithm.
 
 Success = the per-letter reviewer signs off that every character on a real

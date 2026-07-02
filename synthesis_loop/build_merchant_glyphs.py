@@ -44,6 +44,22 @@ VOTE = 0.45           # ink if >= this fraction of ALIGNED inliers are ink
 SMALL_INK = 130       # glyphs with fewer ink px skip alignment (dots/commas are
                       # position-stable; IoU/phase-corr is unstable for them)
 
+# Some glyphs have enough samples, but their data-built consensus is worse than
+# the renderer's clean TTF fallback at receipt scale.
+FALLBACK_CHARS = set("!\"#%&*:3@BCHGMOWhagilpqtw")
+# Lowercase x samples collapse into a star/noisy blob; uppercase X is clean and
+# receipt-scale lowercase x mostly appears as an x-marker ("x5"). Alias it
+# explicitly so review sheets reflect what the renderer will draw.
+ALIAS_GLYPHS = {"x": "X"}
+
+# These classes have a crisp real sample cluster, but averaging slight diagonal
+# or descender variation shreds the stroke. Use the central real exemplar.
+EXEMPLAR_CHARS = set("!#%JKNVgq")
+
+# Legitimately multi-part glyphs keep their dots, counters, and punctuation
+# pieces. Other glyphs get tiny isolated components removed after voting.
+MULTIPART_CHARS = set("!?:;.,%#@$&*+-=/\\[](){}\"'ij")
+
 
 def _ink_bbox(mask):
     ys, xs = np.where(mask)
@@ -163,30 +179,96 @@ def _too_broken(ch, binm):
     return _ncomp(binm) > limit
 
 
-def _vote(samples):
+def _shifted(stack, key):
+    """Horizontally register each sample by its ink LEFT edge or CENTER."""
+    out, pos = [], []
+    for s in stack:
+        xs = np.where(s.any(axis=0))[0]
+        if xs.size == 0:
+            pos.append(0)
+        else:
+            pos.append(int(xs.min()) if key == "left"
+                       else int((xs.min() + xs.max()) / 2))
+    tgt = int(np.median(pos))
+    for s, p in zip(stack, pos):
+        out.append(np.roll(s, _clamp(tgt - p, -MAX_SHIFT * 2, MAX_SHIFT * 2), 1))
+    return out
+
+
+def _drop_small_components(mask, ch):
+    """Remove isolated OCR speckles from normal letters without deleting dots."""
+    if mask is None or ch in MULTIPART_CHARS:
+        return mask
+    bb = _ink_bbox(mask)
+    if bb is None:
+        return mask
+    iy0, iy1, ix0, ix1 = bb
+    crop = mask[iy0:iy1 + 1, ix0:ix1 + 1]
+    seen = np.zeros_like(crop, bool)
+    comps = []
+    h, w = crop.shape
+    for y, x in zip(*np.where(crop)):
+        if seen[y, x]:
+            continue
+        stack = [(int(y), int(x))]
+        seen[y, x] = True
+        pts = []
+        while stack:
+            cy, cx = stack.pop()
+            pts.append((cy, cx))
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = cy + dy, cx + dx
+                    if (0 <= ny < h and 0 <= nx < w and crop[ny, nx]
+                            and not seen[ny, nx]):
+                        seen[ny, nx] = True
+                        stack.append((ny, nx))
+        comps.append(pts)
+    if not comps:
+        return mask
+    largest = max(len(c) for c in comps)
+    keep = np.zeros_like(crop, bool)
+    for pts in comps:
+        if len(pts) >= max(6, int(largest * 0.08)):
+            for y, x in pts:
+                keep[y, x] = True
+    out = mask.copy()
+    out[iy0:iy1 + 1, ix0:ix1 + 1] = keep
+    return out
+
+
+def _best_exemplar(samples, ch):
+    """Pick the most central real sample for glyphs that average poorly."""
+    best = None
+    for key in ("left", "center"):
+        stack = _shifted(samples, key)
+        ref = np.mean(stack, axis=0) >= VOTE
+        ious = np.array([_iou(_drop_small_components(s, ch), ref) for s in stack])
+        order = sorted(range(len(stack)), key=lambda i: -ious[i])[:60]
+        peers = [_drop_small_components(stack[i], ch) for i in order[:32]]
+        for i in order:
+            m = _drop_small_components(stack[i], ch)
+            vals = [_iou(m, p) for p in peers]
+            score = float(np.mean(vals)) if vals else float(ious[i])
+            if best is None or score > best[0]:
+                best = (score, m)
+    return best[1] if best is not None else None
+
+
+def _vote(samples, ch):
     """Phase-align a char's samples to their consensus, reject IoU outliers,
     then majority-vote a clean binary glyph. Returns (glyph_bool, n_inliers).
 
     Small glyphs (dots, commas) skip alignment/IoU -- they are placed by baseline
     and phase-correlation/IoU is unstable on a handful of pixels."""
+    if ch in EXEMPLAR_CHARS:
+        return _best_exemplar(samples, ch), len(samples)
+
     if float(np.median([s.sum() for s in samples])) < SMALL_INK:
         prob = np.mean(samples, axis=0)
-        return _clean(prob >= 0.35), len(samples)
-
-    def _shifted(stack, key):
-        """Horizontally register each sample by its ink LEFT edge or CENTER."""
-        out, pos = [], []
-        for s in stack:
-            xs = np.where(s.any(axis=0))[0]
-            if xs.size == 0:
-                pos.append(0)
-            else:
-                pos.append(int(xs.min()) if key == "left"
-                           else int((xs.min() + xs.max()) / 2))
-        tgt = int(np.median(pos))
-        for s, p in zip(stack, pos):
-            out.append(np.roll(s, _clamp(tgt - p, -MAX_SHIFT * 2, MAX_SHIFT * 2), 1))
-        return out
+        return _drop_small_components(_clean(prob >= 0.35), ch), len(samples)
 
     def _cands(stack):
         """Candidate consensus prob-maps for one registration: the FULL-inlier
@@ -214,7 +296,7 @@ def _vote(samples):
     for key in ("left", "center"):
         cands += _cands(_shifted(samples, key))
     prob = max(cands, key=crisp)
-    return _clean(prob >= VOTE), len(samples)
+    return _drop_small_components(_clean(prob >= VOTE), ch), len(samples)
 
 
 def _collect(merchants, max_receipts):
@@ -328,12 +410,17 @@ def main() -> int:
                                       for ch, s in samples.items() if s})
         print(f"cached samples -> {cache}")
 
-    glyphs, offsets, dropped = {}, {}, []
+    glyphs, offsets, dropped, forced_fallback = {}, {}, [], []
     for ch, samps in samples.items():
+        if ch in ALIAS_GLYPHS:
+            continue
+        if ch in FALLBACK_CHARS:
+            forced_fallback.append(ch)
+            continue
         if len(samps) < MIN_SAMPLES:
             dropped.append(ch)
             continue
-        binm, n = _vote(samps)
+        binm, n = _vote(samps, ch)
         if binm is None or n < MIN_SAMPLES:
             dropped.append(ch)
             continue
@@ -344,7 +431,14 @@ def main() -> int:
         iy0, iy1, ix0, ix1 = bb
         glyphs[ch] = binm[iy0:iy1 + 1, ix0:ix1 + 1].astype(np.uint8)
         offsets[ch] = int(iy1 - CANVAS_BASE)     # glyph bottom minus baseline
+    for ch, src in ALIAS_GLYPHS.items():
+        if src in glyphs:
+            glyphs[ch] = glyphs[src].copy()
+            offsets[ch] = offsets[src]
     print(f"built {len(glyphs)} glyphs: {''.join(sorted(glyphs))}")
+    if forced_fallback:
+        print("forced fallback (broken/noisy consensus): "
+              f"{''.join(sorted(forced_fallback))}")
     if dropped:
         print(f"dropped (too few samples -> TTF fallback): {''.join(sorted(dropped))}")
 
