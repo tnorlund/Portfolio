@@ -35,7 +35,8 @@ if [[ ! -d "$WORKTREE" ]]; then
   git -C "$PORTFOLIO_ROOT" worktree add "$WORKTREE" "$BRANCH"
 else
   git -C "$WORKTREE" checkout "$BRANCH"
-  git -C "$WORKTREE" pull --ff-only origin "$BRANCH" || true
+  git -C "$WORKTREE" pull --ff-only origin "$BRANCH" \
+    || echo "WARNING: fast-forward pull failed; worktree may be stale/diverged from origin/$BRANCH."
 fi
 [[ -f "$WORKTREE/docs/SYNTH_SHOWCASE_TASK.md" ]] || { echo "FATAL: task doc missing on branch"; exit 1; }
 [[ -f "$PRIMER" ]] || { echo "FATAL: primer missing at $PRIMER"; exit 1; }
