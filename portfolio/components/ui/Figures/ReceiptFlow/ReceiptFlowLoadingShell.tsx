@@ -11,7 +11,8 @@ export type ReceiptFlowLoadingVariant =
   | "layoutlm"
   | "health"
   | "timeline"
-  | "qa";
+  | "qa"
+  | "synthetic";
 
 export const DEFAULT_LAYOUT_VARS = {
   "--rf-queue-width": "120px",

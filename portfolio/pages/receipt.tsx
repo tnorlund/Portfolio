@@ -12,6 +12,7 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
+  AugmentationShowcase,
   AWSFlowDiagram,
   CICDLoop,
   CodeBuildDiagram,
@@ -439,6 +440,21 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary intrinsicSize="720px">
         <ClientOnly>
           <LayoutLMInferenceVisualization />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        The model is only as good as its training data, and labeled receipts
+        are expensive. So I grow the dataset synthetically: take one real
+        receipt, add or remove items with a grammar learned from the
+        merchant&apos;s other receipts, recompute the math, and render a new
+        photorealistic receipt. Because each variant is generated from labeled
+        positions, its labels come for free.
+      </p>
+
+      <FigureBoundary intrinsicSize="760px">
+        <ClientOnly>
+          <AugmentationShowcase />
         </ClientOnly>
       </FigureBoundary>
 

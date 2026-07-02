@@ -153,3 +153,10 @@ export const BetweenReceiptVisualization = dynamic(
     loading: () => loadingShell("between"),
   }
 );
+export const AugmentationShowcase = dynamic(
+  () => import("./AugmentationShowcase"),
+  {
+    ssr: false,
+    loading: () => loadingShell("within"),
+  }
+);
