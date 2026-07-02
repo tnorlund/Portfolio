@@ -6,6 +6,7 @@ import {
   familyColors,
   familyOf,
   findHighlightIndices,
+  pickScrollTarget,
   ShowcaseLabelFile,
   toCssRect,
 } from "./labelGeometry";
@@ -102,6 +103,43 @@ describe("real showcase label files", () => {
     expect(tokens.every((t) => t.includes("7.99"))).toBe(true);
     // The removed item must NOT be highlighted (it is absent from the render).
     expect(tokens).not.toContain("SOUR");
+  });
+});
+
+describe("pickScrollTarget", () => {
+  test("prefers the injected item over the summary total for adds", () => {
+    const variant = showcaseVariants.find(
+      (v) => v.id === "add_line_item_1",
+    )!;
+    const file = loadLabels(variant.id);
+    const boxes = buildLabelBoxes(file);
+    const indices = findHighlightIndices(file, {
+      operation: variant.operation,
+      itemWords: variant.itemWords,
+      newTotal: variant.newTotal,
+    });
+    const target = pickScrollTarget(boxes, indices, variant.itemWords);
+    expect(target?.token).toBe("LIMES");
+  });
+
+  test("falls back to the recomputed total for removes", () => {
+    const variant = showcaseVariants.find(
+      (v) => v.id === "remove_line_item_2",
+    )!;
+    const file = loadLabels(variant.id);
+    const boxes = buildLabelBoxes(file);
+    const indices = findHighlightIndices(file, {
+      operation: variant.operation,
+      itemWords: variant.itemWords,
+      newTotal: variant.newTotal,
+    });
+    const target = pickScrollTarget(boxes, indices, variant.itemWords);
+    expect(target).not.toBeNull();
+    expect(target!.token).toContain("7.99");
+  });
+
+  test("returns null with no highlights", () => {
+    expect(pickScrollTarget([], [], [])).toBeNull();
   });
 });
 

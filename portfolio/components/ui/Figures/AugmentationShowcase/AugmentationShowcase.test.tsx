@@ -44,7 +44,7 @@ describe("AugmentationShowcase", () => {
       screen.getByRole("img", { name: /Real receipt/ }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("generated-counter")).toHaveTextContent(
-      "Labeled training examples generated: 0 / 3",
+      "Labeled training examples generated: 0 / 2",
     );
     expect(
       screen.getByRole("button", { name: "Original" }),
@@ -71,7 +71,7 @@ describe("AugmentationShowcase", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("$30.58")).toBeInTheDocument();
     expect(screen.getByTestId("generated-counter")).toHaveTextContent(
-      "1 / 3",
+      "1 / 2",
     );
 
     // The injected line + recomputed total pulse once labels arrive.
@@ -95,13 +95,26 @@ describe("AugmentationShowcase", () => {
     fireEvent.click(add);
 
     expect(screen.getByTestId("generated-counter")).toHaveTextContent(
-      "1 / 3",
+      "1 / 2",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "− SOUR CREAM" }));
-    fireEvent.click(screen.getByRole("button", { name: "− CAGE" }));
     expect(screen.getByTestId("generated-counter")).toHaveTextContent(
-      "3 / 3",
+      "2 / 2",
+    );
+  });
+
+  test("each variant discloses which real receipt it was generated from", async () => {
+    render(<AugmentationShowcase />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ LIMES" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("provenance")).toHaveTextContent("37333eb8"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "− SOUR CREAM" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("provenance")).toHaveTextContent("00ded398"),
     );
   });
 

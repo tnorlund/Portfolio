@@ -126,6 +126,32 @@ export const findHighlightIndices = (
 };
 
 /**
+ * The box the viewport should scroll to when an operation is applied: the
+ * actual changed line, not just any highlight. Prefers boxes matching the
+ * injected item's words (the GRAND_TOTAL highlights include a summary copy
+ * that sits far from the edit); among candidates picks the spatially topmost.
+ */
+export const pickScrollTarget = (
+  boxes: LabelBox[],
+  highlightIndices: number[],
+  itemWords: string[],
+): LabelBox | null => {
+  const highlightSet = new Set(highlightIndices);
+  const highlighted = boxes.filter((box) => highlightSet.has(box.index));
+  if (highlighted.length === 0) {
+    return null;
+  }
+  const itemSet = new Set(itemWords.map((w) => w.toUpperCase()));
+  const itemBoxes = highlighted.filter((box) =>
+    itemSet.has(box.token.toUpperCase()),
+  );
+  const pool = itemBoxes.length > 0 ? itemBoxes : highlighted;
+  return pool.reduce((best, box) =>
+    box.rect.top < best.rect.top ? box : best,
+  );
+};
+
+/**
  * Stable color per label family: fixed hues for the families that carry the
  * story, palette fallback (by first-appearance order) for the rest.
  */

@@ -171,6 +171,19 @@
   opacity: 0.55;
 }
 
+.provenance {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.65;
+}
+
+.provenance code {
+  font-size: 0.74rem;
+  background: rgba(var(--text-color-rgb), 0.08);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
 .stats {
   display: flex;
   gap: 1.25rem;

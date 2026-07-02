@@ -33,17 +33,6 @@
    "caption": "Removed SOUR CREAM (DAIRY) total 10.78 -> 7.99",
    "labeled_tokens": 44,
    "tokens": 178
-  },
-  {
-   "variant": "remove_line_item_5",
-   "png": "remove_line_item_5.webp",
-   "labeled_png": "remove_line_item_5.labeled.webp",
-   "operation": "remove_line_item",
-   "old_total": "23.78",
-   "new_total": "17.99",
-   "caption": "Removed CAGE (UNCATEGORIZED) total 23.78 -> 17.99",
-   "labeled_tokens": 44,
-   "tokens": 179
   }
  ]
 }

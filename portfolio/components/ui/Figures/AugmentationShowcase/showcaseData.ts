@@ -68,19 +68,6 @@ export const showcaseVariants: ShowcaseVariant[] = [
     labeledTokens: 44,
     tokens: 178,
   },
-  {
-    id: "remove_line_item_5",
-    operation: "remove_line_item",
-    controlLabel: "− CAGE",
-    caption: "Removed CAGE, total 23.78 → 17.99.",
-    itemWords: ["CAGE"],
-    oldTotal: "23.78",
-    newTotal: "17.99",
-    width: 520,
-    height: 1669,
-    labeledTokens: 44,
-    tokens: 179,
-  },
 ];
 
 export const generatedVariantCount = showcaseVariants.filter(

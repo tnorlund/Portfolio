@@ -11,6 +11,7 @@ import {
   familiesIn,
   familyColors,
   findHighlightIndices,
+  pickScrollTarget,
   ShowcaseLabelFile,
 } from "./labelGeometry";
 import {
@@ -25,11 +26,12 @@ import styles from "./AugmentationShowcase.module.css";
 /**
  * "Growing the training set" — interactive augmentation showcase.
  *
- * One real Sprouts receipt front-and-center; operation buttons swap in
+ * A real Sprouts receipt front-and-center; operation buttons swap in
  * engine-generated variants (add/remove line items with recomputed totals),
  * a labels toggle overlays the ground-truth token boxes drawn live from each
- * variant's labels.json, and a counter tracks how many perfectly-labeled
- * training examples the one receipt has produced.
+ * variant's labels.json, and a counter tracks the perfectly-labeled training
+ * examples explored. Each variant discloses which real receipt it was
+ * generated from (the variants do not all share the displayed base).
  */
 
 const OPERATION_NAMES: Record<string, string> = {
@@ -212,17 +214,19 @@ const AugmentationShowcase: React.FC = () => {
     ) {
       return;
     }
-    const first = buildLabelBoxes(activeLabels).find((box) =>
-      highlightIndices.includes(box.index),
+    const targetBox = pickScrollTarget(
+      buildLabelBoxes(activeLabels),
+      highlightIndices,
+      activeVariant.itemWords,
     );
-    if (!first) {
+    if (!targetBox) {
       return;
     }
     const target =
-      (first.rect.top / 100) * viewport.scrollHeight -
+      (targetBox.rect.top / 100) * viewport.scrollHeight -
       viewport.clientHeight / 2;
     viewport.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
-  }, [highlightIndices, activeLabels]);
+  }, [highlightIndices, activeLabels, activeVariant.itemWords]);
 
   const handleSelect = useCallback((variant: ShowcaseVariant) => {
     setActiveId(variant.id);
@@ -245,7 +249,7 @@ const AugmentationShowcase: React.FC = () => {
       <header className={styles.header}>
         <span className={styles.eyebrow}>Synthetic augmentation</span>
         <h3 className={styles.headline}>
-          1 real receipt → {generatedVariantCount} new labeled examples
+          Real receipts in. Labeled training examples out.
         </h3>
         <p className={styles.counter} data-testid="generated-counter">
           Labeled training examples generated: {generatedSoFar} /{" "}
@@ -308,6 +312,18 @@ const AugmentationShowcase: React.FC = () => {
                   ${activeVariant.oldTotal}
                 </span>{" "}
                 → <strong>${activeVariant.newTotal}</strong>
+              </p>
+            ) : null}
+            {activeLabels?.metadata?.base_receipt_key ? (
+              <p
+                className={styles.provenance}
+                data-testid="provenance"
+              >
+                Generated from real receipt{" "}
+                <code>
+                  {activeLabels.metadata.base_receipt_key.slice(0, 8)}…
+                  {activeLabels.metadata.base_receipt_key.split("#")[1] ?? ""}
+                </code>
               </p>
             ) : null}
             <dl className={styles.stats}>
