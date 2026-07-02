@@ -10,6 +10,12 @@
 
 import { LABEL_COLORS } from "../labelStyles";
 
+export interface RenderGeometry {
+  width: number;
+  height: number;
+  margin: number;
+}
+
 export interface ShowcaseLabelFile {
   tokens: string[];
   bboxes: number[][];
@@ -19,6 +25,7 @@ export interface ShowcaseLabelFile {
   metadata?: {
     operation?: string;
     base_receipt_key?: string;
+    render?: RenderGeometry;
   };
 }
 
@@ -45,7 +52,7 @@ export const familyOf = (tag: string): string | null => {
   return tag.replace(/^[BI]-/, "");
 };
 
-/** LayoutLM 0-1000 y-up box -> CSS percent rect (y-down). */
+/** LayoutLM 0-1000 y-up box -> CSS percent rect (y-down), full-image span. */
 export const toCssRect = (bbox: number[]): CssRect => {
   const [x0, y0, x1, y1] = bbox;
   return {
@@ -56,8 +63,33 @@ export const toCssRect = (bbox: number[]): CssRect => {
   };
 };
 
-/** One positioned box per labeled (non-O) token. */
+/**
+ * Margin-aware variant: the photorealistic renderer maps label space into an
+ * INNER box (`_to_pixel_box(margin=10, inner_w=W-2m, inner_h=H-2m)`), so
+ * overlays that assume the full image drift by the margin. When a labels file
+ * carries `metadata.render {width,height,margin}`, use this transform.
+ */
+export const toCssRectInner = (
+  bbox: number[],
+  render: RenderGeometry,
+): CssRect => {
+  const [x0, y0, x1, y1] = bbox;
+  const { width: W, height: H, margin: m } = render;
+  const innerW = W - 2 * m;
+  const innerH = H - 2 * m;
+  const leftPx = m + (x0 / 1000) * innerW;
+  const topPx = m + (1 - y1 / 1000) * innerH;
+  return {
+    left: (leftPx / W) * 100,
+    top: (topPx / H) * 100,
+    width: (((x1 - x0) / 1000) * innerW * 100) / W,
+    height: (((y1 - y0) / 1000) * innerH * 100) / H,
+  };
+};
+
+/** One positioned box per labeled (non-O) token (margin-aware when known). */
 export const buildLabelBoxes = (file: ShowcaseLabelFile): LabelBox[] => {
+  const render = file.metadata?.render;
   const boxes: LabelBox[] = [];
   file.tokens.forEach((token, index) => {
     const family = familyOf(file.ner_tags[index]);
@@ -65,7 +97,12 @@ export const buildLabelBoxes = (file: ShowcaseLabelFile): LabelBox[] => {
     if (!family || !bbox || bbox.length !== 4) {
       return;
     }
-    boxes.push({ index, token, family, rect: toCssRect(bbox) });
+    boxes.push({
+      index,
+      token,
+      family,
+      rect: render ? toCssRectInner(bbox, render) : toCssRect(bbox),
+    });
   });
   return boxes;
 };

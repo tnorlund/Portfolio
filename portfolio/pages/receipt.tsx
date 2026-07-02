@@ -13,6 +13,7 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AugmentationShowcase,
+  SynthesisPrintReveal,
   AWSFlowDiagram,
   CICDLoop,
   CodeBuildDiagram,
@@ -451,6 +452,17 @@ M1LK 2%           1    $4.4g`}</code>
         photorealistic receipt. Each variant is generated from a real
         receipt&apos;s labeled positions, so its labels come for free. The
         figure below discloses which receipt each example came from.
+      </p>
+
+      <FigureBoundary intrinsicSize="780px">
+        <ClientOnly>
+          <SynthesisPrintReveal />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        The same engine also edits real receipts, and every edit stays
+        perfectly labeled:
       </p>
 
       <FigureBoundary intrinsicSize="760px">
