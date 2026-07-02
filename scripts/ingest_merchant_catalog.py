@@ -95,6 +95,73 @@ SECTION_KEYWORDS = {
     "WELLNESS",
 }
 _PRICE_RE = re.compile(r"-?\d+\.\d{2}")
+# Receipt lines that carry a price but are NOT products -- payments, tax,
+# totals, coupons/credits, tender. The canonical builder parses these out; the
+# generic miner is naive, so it needs this stoplist or it injects fake products
+# (e.g. "CREDIT", "TAX") into the catalog. Matched on letters-only uppercase.
+NON_PRODUCT = {
+    "CREDIT",
+    "CREDITCARD",
+    "DEBIT",
+    "DEBITCARD",
+    "CASH",
+    "CHANGE",
+    "CHANGEDUE",
+    "TENDER",
+    "TENDERED",
+    "VISA",
+    "MASTERCARD",
+    "MC",
+    "AMEX",
+    "DISCOVER",
+    "PAYMENT",
+    "TIP",
+    "TAX",
+    "SALESTAX",
+    "TX",
+    "STATETAX",
+    "SUBTOTAL",
+    "SUBTTL",
+    "TOTAL",
+    "TOTALSALE",
+    "GRANDTOTAL",
+    "NETSALES",
+    "BALANCE",
+    "BALANCEDUE",
+    "AMOUNT",
+    "AMOUNTDUE",
+    "AMTDUE",
+    "DUE",
+    "COUPON",
+    "COUPONS",
+    "SAVINGS",
+    "TOTALSAVINGS",
+    "YOUSAVED",
+    "SAVED",
+    "DISCOUNT",
+    "MEMBER",
+    "LOYALTY",
+    "REWARD",
+    "REWARDS",
+    "REFUND",
+    "RETURN",
+    "VOID",
+    "ROUNDING",
+    "GROSS",
+    "SUBTOT",
+    "PURCHASE",
+    "CRV",
+    "DEPOSIT",
+    "BOTTLEDEPOSIT",
+    "BAGFEE",
+    "BAG",
+}
+
+
+def _is_non_product(text: str) -> bool:
+    """True for priced-but-not-a-product lines (tax, totals, tender, credit)."""
+    key = re.sub(r"[^A-Z]", "", text.upper())
+    return len(key) < 2 or key in NON_PRODUCT
 
 
 def resolve_table() -> str:
@@ -174,7 +241,8 @@ def mine_observed(
                 names.append((y, x, str(w.text)))
             elif lb in PRICE_LABELS:
                 pr = _price_str(str(w.text))
-                if pr is not None:
+                # negative line totals are markdowns/credits, not products
+                if pr is not None and not pr.startswith("-"):
                     prices.append((y, x, h, pr))
             elif str(w.text).upper().strip(":") in SECTION_KEYWORDS:
                 sections.append((y, str(w.text).upper().strip(":")))
@@ -190,6 +258,8 @@ def mine_observed(
             product_text = " ".join(n[2] for n in band).strip()
             if not product_text or _PRICE_RE.search(product_text):
                 continue  # skip rows where the "name" is itself numeric
+            if _is_non_product(product_text):
+                continue  # payments, tax, totals, coupons -- not products
             # section = the nearest section-header row (orientation-free: items
             # cluster right under their header, so nearest-by-y-distance is a
             # robust heuristic without knowing the y sign convention).
@@ -228,7 +298,7 @@ def mine_observed_canonical(
     mine_observed (with a ``taxable`` key).
     """
     receipts_data = build_receipt_structure(
-        client, merchant_name, limit=limit_receipts or 200
+        client, merchant_name, limit=limit_receipts or 500
     )
     analyses = [
         a
@@ -255,6 +325,45 @@ def mine_observed_canonical(
             "taxable": bool(d.get("taxable", False)),
         }
     return obs
+
+
+def _merge_observed(
+    primary: dict[str, dict], secondary: dict[str, dict]
+) -> dict[str, dict]:
+    """Merge two observed dicts into one.
+
+    ``primary`` is authoritative -- the canonical ``_build_item_catalog`` output
+    with real per-item ``taxable`` and parsed section ``category`` -- but its
+    arithmetic gate drops most receipts. ``secondary`` (the generic y-row miner
+    over ALL receipts) backfills every product line the gate dropped. On overlap
+    primary wins taxable/category; counts and provenance keys are unioned.
+    """
+    out: dict[str, dict] = {k: dict(v) for k, v in secondary.items()}
+    for norm, rec in primary.items():
+        if norm in out:
+            base = out[norm]
+            keys = list(
+                dict.fromkeys(
+                    (rec.get("keys") or []) + (base.get("keys") or [])
+                )
+            )
+            out[norm] = {
+                "product_text": rec["product_text"],
+                "prices": rec.get("prices") or base.get("prices", []),
+                "count": max(
+                    int(rec.get("count", 0)), int(base.get("count", 0))
+                ),
+                "keys": keys[:5],
+                "category": (
+                    rec["category"]
+                    if rec.get("category", "UNCATEGORIZED") != "UNCATEGORIZED"
+                    else base.get("category", "UNCATEGORIZED")
+                ),
+                "taxable": bool(rec.get("taxable", False)),
+            }
+        else:
+            out[norm] = dict(rec)
+    return out
 
 
 def build_catalog(
@@ -317,6 +426,11 @@ def main() -> int:
     ap.add_argument("--merchant", help="One merchant (default: all curated)")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--limit-receipts", type=int, default=None)
+    ap.add_argument(
+        "--dump",
+        metavar="PATH",
+        help="Write every catalog item (JSON) here for inspection",
+    )
     args = ap.parse_args()
 
     table = resolve_table()
@@ -336,10 +450,18 @@ def main() -> int:
         # builder so the persisted catalog == the engine's catalog; others use
         # the generic label miner.
         if _HAS_PARAMETERIZATION and is_sprouts_merchant(merchant):
-            observed = mine_observed_canonical(
+            # Canonical builder = authoritative taxable/category but its
+            # arithmetic gate keeps only clean receipts; the generic y-row miner
+            # sweeps ALL receipts to backfill everything the gate dropped.
+            canonical = mine_observed_canonical(
                 client, merchant, args.limit_receipts
             )
-            miner = "canonical(_build_item_catalog)"
+            generic = mine_observed(client, merchant, args.limit_receipts)
+            observed = _merge_observed(canonical, generic)
+            miner = (
+                f"canonical+generic (canon={len(canonical)}, "
+                f"generic={len(generic)})"
+            )
         else:
             observed = mine_observed(client, merchant, args.limit_receipts)
             miner = "generic"
@@ -355,6 +477,27 @@ def main() -> int:
                 f"    {it.category:12} {it.product_text[:34]:34} "
                 f"${it.price:>7}  x{it.observed_count} [{it.source}]"
             )
+        if args.dump:
+            with open(args.dump, "w", encoding="utf-8") as fh:
+                json.dump(
+                    [
+                        {
+                            "product_text": it.product_text,
+                            "price": it.price,
+                            "category": it.category,
+                            "taxable": it.taxable,
+                            "source": it.source,
+                            "observed_count": it.observed_count,
+                        }
+                        for it in sorted(
+                            items,
+                            key=lambda x: (x.category, -x.observed_count),
+                        )
+                    ],
+                    fh,
+                    indent=2,
+                )
+            print(f"  dumped {len(items)} items -> {args.dump}")
         if args.apply:
             client.delete_merchant_catalog(merchant)
             client.add_merchant_catalog_items(items)
