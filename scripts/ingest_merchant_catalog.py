@@ -22,6 +22,7 @@ Usage:
   python scripts/ingest_merchant_catalog.py [--merchant "Sprouts Farmers Market"] \
       [--apply] [--limit-receipts N]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,6 +39,31 @@ from receipt_dynamo.entities.merchant_catalog_item import (
     slugify_merchant,
 )
 
+# Canonical per-merchant extractors (the SAME code the synthesis/augmentation
+# engine uses). When importable, a parameterized merchant (Sprouts) is mined via
+# its own catalog builder so the persisted catalog IS the engine's catalog --
+# real per-item taxable + parsed section categories -- instead of the generic
+# label miner below. Falls back to the generic miner if receipt_agent's
+# parameterization isn't on the path.
+try:
+    from receipt_agent.agents.label_evaluator.pattern_discovery import (
+        build_receipt_structure,
+    )
+    from receipt_agent.agents.label_evaluator.sprouts_parameterization import (
+        _analyze_arithmetic_receipt,
+        _build_item_catalog,
+        _normalize_receipt,
+        is_sprouts_merchant,
+    )
+
+    _HAS_PARAMETERIZATION = True
+except ImportError:
+    _HAS_PARAMETERIZATION = False
+
+    def is_sprouts_merchant(_name: str | None) -> bool:  # type: ignore
+        return False
+
+
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 CATALOG_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data", "online_catalogs"
@@ -50,9 +76,23 @@ MERCHANT_NAMES = {
     "target": "Target",
 }
 SECTION_KEYWORDS = {
-    "PRODUCE", "DAIRY", "GROCERY", "BAKERY", "MEAT", "SEAFOOD", "FROZEN",
-    "DELI", "BULK", "VITAMINS", "BODY", "HOUSEHOLD", "BEVERAGES", "SNACKS",
-    "PANTRY", "REFRIGERATED", "WELLNESS",
+    "PRODUCE",
+    "DAIRY",
+    "GROCERY",
+    "BAKERY",
+    "MEAT",
+    "SEAFOOD",
+    "FROZEN",
+    "DELI",
+    "BULK",
+    "VITAMINS",
+    "BODY",
+    "HOUSEHOLD",
+    "BEVERAGES",
+    "SNACKS",
+    "PANTRY",
+    "REFRIGERATED",
+    "WELLNESS",
 }
 _PRICE_RE = re.compile(r"-?\d+\.\d{2}")
 
@@ -138,9 +178,12 @@ def mine_observed(
                     prices.append((y, x, h, pr))
             elif str(w.text).upper().strip(":") in SECTION_KEYWORDS:
                 sections.append((y, str(w.text).upper().strip(":")))
-        for (py, px, ph, pr) in prices:
-            band = [n for n in names if abs(n[0] - py) < max(0.006, ph * 0.8)
-                    and n[1] < px]
+        for py, px, ph, pr in prices:
+            band = [
+                n
+                for n in names
+                if abs(n[0] - py) < max(0.006, ph * 0.8) and n[1] < px
+            ]
             if not band:
                 continue
             band.sort(key=lambda n: n[1])
@@ -156,8 +199,13 @@ def mine_observed(
             norm = normalize_product_text(product_text)
             rec = obs.setdefault(
                 norm,
-                {"product_text": product_text, "prices": [], "count": 0,
-                 "keys": [], "category": cat},
+                {
+                    "product_text": product_text,
+                    "prices": [],
+                    "count": 0,
+                    "keys": [],
+                    "category": cat,
+                },
             )
             rec["prices"].append(pr)
             rec["count"] += 1
@@ -166,6 +214,46 @@ def mine_observed(
                 rec["keys"].append(rk)
             if rec["category"] == "UNCATEGORIZED" and cat != "UNCATEGORIZED":
                 rec["category"] = cat
+    return obs
+
+
+def mine_observed_canonical(
+    client: DynamoClient, merchant_name: str, limit_receipts: int | None
+) -> dict[str, dict]:
+    """Observed items via the engine's own catalog builder (_build_item_catalog).
+
+    Uses the exact loader + analysis + item-catalog code the augmentation engine
+    uses, so the persisted catalog matches what the engine would build: real
+    per-item ``taxable`` and parsed section ``category``. Same return shape as
+    mine_observed (with a ``taxable`` key).
+    """
+    receipts_data = build_receipt_structure(
+        client, merchant_name, limit=limit_receipts or 200
+    )
+    analyses = [
+        a
+        for a in (
+            _analyze_arithmetic_receipt(_normalize_receipt(r))
+            for r in receipts_data
+        )
+        if a
+    ]
+    obs: dict[str, dict] = {}
+    for entry in _build_item_catalog(analyses):
+        d = entry.to_dict()
+        text = str(d.get("product_text") or "").strip()
+        price = _price_str(str(d.get("line_total") or ""))
+        if not text or price is None:
+            continue
+        norm = normalize_product_text(text)
+        obs[norm] = {
+            "product_text": text,
+            "prices": [price],
+            "count": int(d.get("observed_count") or 0),
+            "keys": list(d.get("source_receipt_keys") or [])[:5],
+            "category": d.get("category") or "UNCATEGORIZED",
+            "taxable": bool(d.get("taxable", False)),
+        }
     return obs
 
 
@@ -181,9 +269,13 @@ def build_catalog(
             continue
         norm = normalize_product_text(name)
         merged[norm] = MerchantCatalogItem(
-            merchant_name=merchant_name, product_text=name, price=str(price),
-            category="UNCATEGORIZED", taxable=bool(e.get("taxable", False)),
-            source="online_catalog", observed_count=0,
+            merchant_name=merchant_name,
+            product_text=name,
+            price=str(price),
+            category="UNCATEGORIZED",
+            taxable=bool(e.get("taxable", False)),
+            source="online_catalog",
+            observed_count=0,
             upc=(e.get("upc") or None),
         )
     # observed, merging by normalized name
@@ -192,19 +284,29 @@ def build_catalog(
         if norm in merged:
             base = merged[norm]
             merged[norm] = MerchantCatalogItem(
-                merchant_name=merchant_name, product_text=base.product_text,
-                price=base.price, category=(
-                    rec["category"] if rec["category"] != "UNCATEGORIZED"
+                merchant_name=merchant_name,
+                product_text=base.product_text,
+                price=base.price,
+                category=(
+                    rec["category"]
+                    if rec["category"] != "UNCATEGORIZED"
                     else base.category
-                ), taxable=base.taxable, source="merged",
-                observed_count=rec["count"], upc=base.upc,
+                ),
+                taxable=base.taxable,
+                source="merged",
+                observed_count=rec["count"],
+                upc=base.upc,
                 source_receipt_keys=rec["keys"][:5],
             )
         else:
             merged[norm] = MerchantCatalogItem(
-                merchant_name=merchant_name, product_text=rec["product_text"],
-                price=mode_price, category=rec["category"], taxable=False,
-                source="observed", observed_count=rec["count"],
+                merchant_name=merchant_name,
+                product_text=rec["product_text"],
+                price=mode_price,
+                category=rec["category"],
+                taxable=bool(rec.get("taxable", False)),
+                source="observed",
+                observed_count=rec["count"],
                 source_receipt_keys=rec["keys"][:5],
             )
     return list(merged.values())
@@ -220,32 +322,49 @@ def main() -> int:
     table = resolve_table()
     client = DynamoClient(table_name=table, region=REGION)
     merchants = (
-        [args.merchant] if args.merchant
-        else list(MERCHANT_NAMES.values())
+        [args.merchant] if args.merchant else list(MERCHANT_NAMES.values())
     )
-    print(f"[{'APPLY' if args.apply else 'DRY-RUN'}] table={table} "
-          f"merchants={merchants}")
+    print(
+        f"[{'APPLY' if args.apply else 'DRY-RUN'}] table={table} "
+        f"merchants={merchants}"
+    )
 
     grand = 0
     for merchant in merchants:
         curated = load_curated(merchant)
-        observed = mine_observed(client, merchant, args.limit_receipts)
+        # Parameterized merchants (Sprouts) mine via the engine's own catalog
+        # builder so the persisted catalog == the engine's catalog; others use
+        # the generic label miner.
+        if _HAS_PARAMETERIZATION and is_sprouts_merchant(merchant):
+            observed = mine_observed_canonical(
+                client, merchant, args.limit_receipts
+            )
+            miner = "canonical(_build_item_catalog)"
+        else:
+            observed = mine_observed(client, merchant, args.limit_receipts)
+            miner = "generic"
         items = build_catalog(merchant, curated, observed)
         by_src = collections.Counter(i.source for i in items)
         print(f"\n=== {merchant} ===")
-        print(f"  curated={len(curated)} observed={len(observed)} "
-              f"-> catalog={len(items)}  by_source={dict(by_src)}")
+        print(
+            f"  miner={miner} curated={len(curated)} observed={len(observed)} "
+            f"-> catalog={len(items)}  by_source={dict(by_src)}"
+        )
         for it in sorted(items, key=lambda x: -x.observed_count)[:8]:
-            print(f"    {it.category:12} {it.product_text[:34]:34} "
-                  f"${it.price:>7}  x{it.observed_count} [{it.source}]")
+            print(
+                f"    {it.category:12} {it.product_text[:34]:34} "
+                f"${it.price:>7}  x{it.observed_count} [{it.source}]"
+            )
         if args.apply:
             client.delete_merchant_catalog(merchant)
             client.add_merchant_catalog_items(items)
             print(f"  written: {len(items)} items")
         grand += len(items)
 
-    print(f"\nTOTAL catalog items: {grand} "
-          f"({'written' if args.apply else 'DRY-RUN'})")
+    print(
+        f"\nTOTAL catalog items: {grand} "
+        f"({'written' if args.apply else 'DRY-RUN'})"
+    )
     return 0
 
 
