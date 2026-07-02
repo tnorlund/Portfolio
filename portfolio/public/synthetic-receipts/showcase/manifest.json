@@ -1,0 +1,49 @@
+{
+ "merchant": "Sprouts Farmers Market",
+ "variants": [
+  {
+   "variant": "base",
+   "png": "base.webp",
+   "labeled_png": "base.labeled.webp",
+   "operation": "base_real_receipt",
+   "old_total": null,
+   "new_total": null,
+   "caption": "Real Sprouts base receipt 00ded398-af6f-4a49-86f7-c79ccb554e48#00002",
+   "labeled_tokens": 47,
+   "tokens": 181
+  },
+  {
+   "variant": "add_line_item_1",
+   "png": "add_line_item_1.webp",
+   "labeled_png": "add_line_item_1.labeled.webp",
+   "operation": "add_line_item",
+   "old_total": "29.08",
+   "new_total": "30.58",
+   "caption": "Added LIMES (PRODUCE) total 29.08 -> 30.58",
+   "labeled_tokens": 61,
+   "tokens": 203
+  },
+  {
+   "variant": "remove_line_item_2",
+   "png": "remove_line_item_2.webp",
+   "labeled_png": "remove_line_item_2.labeled.webp",
+   "operation": "remove_line_item",
+   "old_total": "10.78",
+   "new_total": "7.99",
+   "caption": "Removed SOUR CREAM (DAIRY) total 10.78 -> 7.99",
+   "labeled_tokens": 44,
+   "tokens": 178
+  },
+  {
+   "variant": "remove_line_item_5",
+   "png": "remove_line_item_5.webp",
+   "labeled_png": "remove_line_item_5.labeled.webp",
+   "operation": "remove_line_item",
+   "old_total": "23.78",
+   "new_total": "17.99",
+   "caption": "Removed CAGE (UNCATEGORIZED) total 23.78 -> 17.99",
+   "labeled_tokens": 44,
+   "tokens": 179
+  }
+ ]
+}

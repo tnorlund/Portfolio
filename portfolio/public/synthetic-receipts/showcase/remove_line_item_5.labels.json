@@ -1,0 +1,2549 @@
+{
+  "candidate_id": "sprouts-arithmetic-2-remove-line-item-06e54f95-6c95-4567-9fe4-6d5803e8c04d-00003",
+  "recipe_id": "sprouts-arithmetic-remove_line_item",
+  "merchant_name": "Sprouts Farmers Market",
+  "tokens": [
+    "SPROUTS",
+    "FARMERS",
+    "MARKET",
+    "1012",
+    "WESTLAKE",
+    "BLVD.",
+    "WESTLAKE,",
+    "CA",
+    "91361",
+    "(805)",
+    "917-4200",
+    "Store",
+    "Hours",
+    "MON-SUN",
+    "7AM",
+    "10PM",
+    "14:18:24",
+    "09/09/2025",
+    "US",
+    "DEBIT",
+    "Entry",
+    "Method:",
+    "Cntctless",
+    "CARD",
+    "#:",
+    "XXXXXXXXXXXX3931",
+    "-",
+    "APPROVED",
+    "PURCHASE",
+    "AUTH",
+    "CODE:",
+    "395942",
+    "Issuer-PIN",
+    "Verified",
+    "Mode:",
+    "A0000000980840",
+    "AID:",
+    "0000000000",
+    "TVR:",
+    "IAD:",
+    "1F42016EA0000000001003027300000",
+    "000400000000000000000000",
+    "00000000",
+    "0000",
+    "TSI:",
+    "00",
+    "ARC:",
+    "53901074E506DB4A",
+    "TC:",
+    "001",
+    "SEQ:",
+    "326682",
+    "TID:",
+    "910664",
+    "MID:",
+    "USD$",
+    "17.99",
+    "Total:",
+    "1012",
+    "WESTLAKE",
+    "BLVD.",
+    "(805)",
+    "917-4200",
+    "Store",
+    "Hours",
+    "MON-SUN",
+    "7AM-10PM",
+    "FREE",
+    "17.99",
+    "RAW",
+    "WHOLE",
+    "MILK",
+    "DUE",
+    "BALANCE",
+    "BALANCE",
+    "17.99",
+    "78",
+    "$23",
+    "Auth#",
+    "395942",
+    "Ref#",
+    "326682",
+    "CHANGE",
+    "3.60",
+    "********",
+    "****",
+    "KXX*",
+    "99022003216812521417",
+    "We",
+    "need",
+    "your",
+    "feedback!",
+    "Take",
+    "a",
+    "quick",
+    "survey",
+    "&",
+    "enter",
+    "for",
+    "the",
+    "chan",
+    "WIN",
+    "a",
+    "$250",
+    "Sprouts",
+    "to",
+    "gift",
+    "card.",
+    "Go",
+    "to:",
+    "SproutsFeedback.com",
+    "*5",
+    "Winners",
+    "Monthly*",
+    "******",
+    "*********************",
+    "Cashier:",
+    "SSCO",
+    "32",
+    "Store:",
+    "220",
+    "POS:032",
+    "Transaction:",
+    "1681",
+    "Tuesday,",
+    "September",
+    "9,",
+    "2025",
+    "02:17",
+    "PM",
+    "Save",
+    "money,",
+    "save",
+    "paper",
+    "-",
+    "sign",
+    "up",
+    "to",
+    "receive",
+    "our",
+    "weekly",
+    "ad",
+    "by",
+    "email",
+    "at",
+    "Sprouts.com",
+    "Please",
+    "keep",
+    "your",
+    "original",
+    "receipt,",
+    "th",
+    "type",
+    "of",
+    "credit",
+    "given",
+    "is",
+    "determined",
+    "by",
+    "the",
+    "method",
+    "of",
+    "payment",
+    "used.",
+    "ID",
+    "is",
+    "required",
+    "for",
+    "returns",
+    "without",
+    "a",
+    "receipt.",
+    "Limits",
+    "apply",
+    "to",
+    "returns",
+    "without",
+    "a",
+    "receipt."
+  ],
+  "bboxes": [
+    [
+      267,
+      970,
+      817,
+      1000
+    ],
+    [
+      296,
+      953,
+      550,
+      969
+    ],
+    [
+      556,
+      953,
+      792,
+      969
+    ],
+    [
+      304,
+      935,
+      416,
+      951
+    ],
+    [
+      422,
+      935,
+      633,
+      950
+    ],
+    [
+      639,
+      935,
+      771,
+      951
+    ],
+    [
+      325,
+      921,
+      554,
+      937
+    ],
+    [
+      560,
+      921,
+      630,
+      937
+    ],
+    [
+      637,
+      921,
+      767,
+      937
+    ],
+    [
+      379,
+      909,
+      496,
+      922
+    ],
+    [
+      501,
+      909,
+      696,
+      922
+    ],
+    [
+      204,
+      894,
+      342,
+      908
+    ],
+    [
+      348,
+      894,
+      486,
+      908
+    ],
+    [
+      492,
+      894,
+      687,
+      908
+    ],
+    [
+      692,
+      894,
+      779,
+      908
+    ],
+    [
+      784,
+      894,
+      896,
+      908
+    ],
+    [
+      787,
+      865,
+      996,
+      878
+    ],
+    [
+      8,
+      863,
+      259,
+      878
+    ],
+    [
+      8,
+      851,
+      70,
+      864
+    ],
+    [
+      75,
+      851,
+      204,
+      864
+    ],
+    [
+      446,
+      848,
+      579,
+      864
+    ],
+    [
+      585,
+      848,
+      757,
+      864
+    ],
+    [
+      763,
+      848,
+      996,
+      864
+    ],
+    [
+      8,
+      835,
+      121,
+      848
+    ],
+    [
+      126,
+      835,
+      184,
+      849
+    ],
+    [
+      596,
+      835,
+      996,
+      848
+    ],
+    [
+      421,
+      821,
+      467,
+      834
+    ],
+    [
+      472,
+      821,
+      671,
+      834
+    ],
+    [
+      8,
+      820,
+      209,
+      834
+    ],
+    [
+      8,
+      806,
+      125,
+      820
+    ],
+    [
+      130,
+      807,
+      251,
+      820
+    ],
+    [
+      257,
+      806,
+      404,
+      820
+    ],
+    [
+      521,
+      777,
+      782,
+      790
+    ],
+    [
+      787,
+      777,
+      996,
+      790
+    ],
+    [
+      0,
+      776,
+      134,
+      790
+    ],
+    [
+      642,
+      762,
+      996,
+      775
+    ],
+    [
+      8,
+      761,
+      108,
+      774
+    ],
+    [
+      738,
+      748,
+      996,
+      761
+    ],
+    [
+      8,
+      747,
+      112,
+      760
+    ],
+    [
+      0,
+      732,
+      121,
+      746
+    ],
+    [
+      229,
+      732,
+      996,
+      745
+    ],
+    [
+      8,
+      718,
+      596,
+      731
+    ],
+    [
+      617,
+      718,
+      817,
+      731
+    ],
+    [
+      887,
+      704,
+      996,
+      717
+    ],
+    [
+      8,
+      703,
+      108,
+      716
+    ],
+    [
+      933,
+      690,
+      996,
+      703
+    ],
+    [
+      0,
+      688,
+      108,
+      701
+    ],
+    [
+      592,
+      674,
+      996,
+      688
+    ],
+    [
+      0,
+      674,
+      83,
+      687
+    ],
+    [
+      592,
+      660,
+      684,
+      673
+    ],
+    [
+      689,
+      660,
+      807,
+      673
+    ],
+    [
+      812,
+      660,
+      962,
+      673
+    ],
+    [
+      392,
+      660,
+      500,
+      673
+    ],
+    [
+      154,
+      660,
+      304,
+      673
+    ],
+    [
+      500,
+      660,
+      648,
+      673
+    ],
+    [
+      737,
+      628,
+      849,
+      644
+    ],
+    [
+      941,
+      629,
+      996,
+      645
+    ],
+    [
+      0,
+      630,
+      154,
+      643
+    ],
+    [
+      300,
+      600,
+      415,
+      614
+    ],
+    [
+      421,
+      600,
+      633,
+      614
+    ],
+    [
+      639,
+      600,
+      762,
+      614
+    ],
+    [
+      374,
+      569,
+      494,
+      587
+    ],
+    [
+      494,
+      568,
+      702,
+      589
+    ],
+    [
+      197,
+      553,
+      340,
+      575
+    ],
+    [
+      341,
+      553,
+      484,
+      575
+    ],
+    [
+      484,
+      552,
+      682,
+      576
+    ],
+    [
+      682,
+      552,
+      902,
+      577
+    ],
+    [
+      147,
+      514,
+      269,
+      532
+    ],
+    [
+      790,
+      499,
+      916,
+      517
+    ],
+    [
+      29,
+      499,
+      117,
+      517
+    ],
+    [
+      118,
+      498,
+      264,
+      518
+    ],
+    [
+      265,
+      498,
+      384,
+      517
+    ],
+    [
+      316,
+      471,
+      408,
+      488
+    ],
+    [
+      126,
+      468,
+      316,
+      489
+    ],
+    [
+      126,
+      469,
+      316,
+      490
+    ],
+    [
+      866,
+      470,
+      921,
+      488
+    ],
+    [
+      854,
+      459,
+      918,
+      472
+    ],
+    [
+      762,
+      457,
+      844,
+      473
+    ],
+    [
+      150,
+      428,
+      294,
+      443
+    ],
+    [
+      299,
+      428,
+      462,
+      443
+    ],
+    [
+      542,
+      428,
+      686,
+      443
+    ],
+    [
+      691,
+      428,
+      842,
+      443
+    ],
+    [
+      129,
+      415,
+      283,
+      428
+    ],
+    [
+      817,
+      413,
+      912,
+      428
+    ],
+    [
+      454,
+      388,
+      642,
+      396
+    ],
+    [
+      8,
+      388,
+      104,
+      396
+    ],
+    [
+      883,
+      388,
+      983,
+      396
+    ],
+    [
+      375,
+      315,
+      712,
+      323
+    ],
+    [
+      4,
+      297,
+      70,
+      310
+    ],
+    [
+      75,
+      297,
+      193,
+      310
+    ],
+    [
+      198,
+      297,
+      316,
+      310
+    ],
+    [
+      321,
+      297,
+      542,
+      310
+    ],
+    [
+      0,
+      282,
+      115,
+      296
+    ],
+    [
+      121,
+      282,
+      166,
+      296
+    ],
+    [
+      172,
+      282,
+      316,
+      296
+    ],
+    [
+      321,
+      282,
+      482,
+      296
+    ],
+    [
+      488,
+      282,
+      534,
+      296
+    ],
+    [
+      539,
+      282,
+      677,
+      296
+    ],
+    [
+      683,
+      282,
+      780,
+      296
+    ],
+    [
+      786,
+      282,
+      878,
+      296
+    ],
+    [
+      884,
+      282,
+      987,
+      296
+    ],
+    [
+      75,
+      267,
+      166,
+      282
+    ],
+    [
+      172,
+      267,
+      212,
+      282
+    ],
+    [
+      218,
+      267,
+      333,
+      282
+    ],
+    [
+      339,
+      267,
+      534,
+      282
+    ],
+    [
+      500,
+      267,
+      569,
+      282
+    ],
+    [
+      539,
+      267,
+      654,
+      282
+    ],
+    [
+      660,
+      267,
+      798,
+      282
+    ],
+    [
+      803,
+      267,
+      872,
+      282
+    ],
+    [
+      878,
+      267,
+      958,
+      282
+    ],
+    [
+      0,
+      253,
+      475,
+      267
+    ],
+    [
+      0,
+      239,
+      67,
+      253
+    ],
+    [
+      72,
+      238,
+      263,
+      253
+    ],
+    [
+      268,
+      237,
+      471,
+      252
+    ],
+    [
+      829,
+      227,
+      983,
+      235
+    ],
+    [
+      4,
+      227,
+      517,
+      235
+    ],
+    [
+      4,
+      194,
+      199,
+      209
+    ],
+    [
+      205,
+      194,
+      314,
+      209
+    ],
+    [
+      319,
+      194,
+      405,
+      209
+    ],
+    [
+      411,
+      194,
+      583,
+      209
+    ],
+    [
+      589,
+      194,
+      671,
+      209
+    ],
+    [
+      4,
+      179,
+      193,
+      193
+    ],
+    [
+      199,
+      179,
+      491,
+      193
+    ],
+    [
+      497,
+      179,
+      596,
+      193
+    ],
+    [
+      0,
+      162,
+      212,
+      179
+    ],
+    [
+      218,
+      162,
+      457,
+      179
+    ],
+    [
+      464,
+      162,
+      525,
+      179
+    ],
+    [
+      532,
+      162,
+      655,
+      179
+    ],
+    [
+      662,
+      162,
+      798,
+      179
+    ],
+    [
+      805,
+      162,
+      867,
+      179
+    ],
+    [
+      249,
+      150,
+      358,
+      164
+    ],
+    [
+      363,
+      149,
+      522,
+      164
+    ],
+    [
+      521,
+      150,
+      656,
+      162
+    ],
+    [
+      661,
+      150,
+      805,
+      162
+    ],
+    [
+      810,
+      150,
+      842,
+      162
+    ],
+    [
+      150,
+      135,
+      262,
+      150
+    ],
+    [
+      268,
+      135,
+      336,
+      150
+    ],
+    [
+      342,
+      135,
+      411,
+      150
+    ],
+    [
+      417,
+      135,
+      603,
+      150
+    ],
+    [
+      609,
+      135,
+      696,
+      150
+    ],
+    [
+      702,
+      135,
+      876,
+      150
+    ],
+    [
+      882,
+      135,
+      937,
+      150
+    ],
+    [
+      246,
+      121,
+      309,
+      135
+    ],
+    [
+      315,
+      121,
+      458,
+      135
+    ],
+    [
+      464,
+      121,
+      533,
+      135
+    ],
+    [
+      538,
+      121,
+      817,
+      135
+    ],
+    [
+      79,
+      92,
+      238,
+      109
+    ],
+    [
+      244,
+      92,
+      359,
+      108
+    ],
+    [
+      365,
+      91,
+      480,
+      108
+    ],
+    [
+      486,
+      90,
+      696,
+      107
+    ],
+    [
+      702,
+      89,
+      919,
+      106
+    ],
+    [
+      924,
+      89,
+      996,
+      105
+    ],
+    [
+      79,
+      76,
+      191,
+      92
+    ],
+    [
+      197,
+      76,
+      259,
+      92
+    ],
+    [
+      266,
+      76,
+      433,
+      92
+    ],
+    [
+      439,
+      76,
+      582,
+      92
+    ],
+    [
+      588,
+      76,
+      650,
+      92
+    ],
+    [
+      656,
+      76,
+      917,
+      92
+    ],
+    [
+      923,
+      76,
+      983,
+      92
+    ],
+    [
+      200,
+      62,
+      286,
+      76
+    ],
+    [
+      292,
+      62,
+      458,
+      76
+    ],
+    [
+      464,
+      62,
+      533,
+      76
+    ],
+    [
+      538,
+      62,
+      728,
+      76
+    ],
+    [
+      733,
+      62,
+      858,
+      76
+    ],
+    [
+      104,
+      49,
+      171,
+      62
+    ],
+    [
+      176,
+      49,
+      237,
+      62
+    ],
+    [
+      242,
+      49,
+      462,
+      62
+    ],
+    [
+      468,
+      49,
+      555,
+      62
+    ],
+    [
+      560,
+      49,
+      749,
+      62
+    ],
+    [
+      754,
+      49,
+      949,
+      62
+    ],
+    [
+      954,
+      49,
+      983,
+      62
+    ],
+    [
+      149,
+      31,
+      356,
+      48
+    ],
+    [
+      361,
+      33,
+      531,
+      49
+    ],
+    [
+      537,
+      33,
+      676,
+      49
+    ],
+    [
+      682,
+      34,
+      749,
+      49
+    ],
+    [
+      754,
+      34,
+      938,
+      50
+    ],
+    [
+      321,
+      19,
+      505,
+      34
+    ],
+    [
+      511,
+      19,
+      551,
+      33
+    ],
+    [
+      557,
+      19,
+      758,
+      34
+    ]
+  ],
+  "ner_tags": [
+    "B-MERCHANT_NAME",
+    "B-MERCHANT_NAME",
+    "I-MERCHANT_NAME",
+    "B-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "B-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "O",
+    "B-PHONE_NUMBER",
+    "B-WEBSITE",
+    "B-STORE_HOURS",
+    "I-STORE_HOURS",
+    "I-STORE_HOURS",
+    "I-STORE_HOURS",
+    "B-TIME",
+    "B-DATE",
+    "B-ADDRESS_LINE",
+    "B-PAYMENT_METHOD",
+    "O",
+    "O",
+    "O",
+    "B-PAYMENT_METHOD",
+    "O",
+    "B-PAYMENT_METHOD",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-PHONE_NUMBER",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "I-ADDRESS_LINE",
+    "O",
+    "B-PHONE_NUMBER",
+    "B-WEBSITE",
+    "B-STORE_HOURS",
+    "I-STORE_HOURS",
+    "I-STORE_HOURS",
+    "O",
+    "B-LINE_TOTAL",
+    "B-PRODUCT_NAME",
+    "I-PRODUCT_NAME",
+    "I-PRODUCT_NAME",
+    "O",
+    "O",
+    "O",
+    "B-GRAND_TOTAL",
+    "B-PAYMENT_METHOD",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-COUPON",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-PAYMENT_METHOD",
+    "I-PAYMENT_METHOD",
+    "O",
+    "O",
+    "B-WEBSITE",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-TIME",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-WEBSITE",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "B-ADDRESS_LINE",
+    "O",
+    "O",
+    "B-PAYMENT_METHOD",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O",
+    "O"
+  ],
+  "receipt_key": "synthetic-sprouts-arithmetic-2-remove-line-item-06e54f95-6c95-4567-9fe4-6d5803e8c04d-00003#00001",
+  "image_id": "synthetic-sprouts-arithmetic-2-remove-line-item-06e54f95-6c95-4567-9fe4-6d5803e8c04d-00003",
+  "train_only": true,
+  "metadata": {
+    "source": "sprouts_arithmetic_geometry",
+    "parameterization_version": "sprouts-v1",
+    "base_receipt_key": "06e54f95-6c95-4567-9fe4-6d5803e8c04d#00003",
+    "operation": "remove_line_item",
+    "train_only_reason": "Arithmetic synthetic examples must not enter validation.",
+    "removed_item": {
+      "product_text": "CAGE",
+      "line_total": "5.79",
+      "category": "UNCATEGORIZED",
+      "taxable": false
+    },
+    "old_grand_total": "23.78",
+    "new_grand_total": "17.99",
+    "old_subtotal": "23.78",
+    "new_subtotal": "17.99",
+    "tax_delta": "0.00",
+    "arithmetic_reconciliation": {
+      "summary_update_policy": "non_taxable_item_delta",
+      "old_subtotal": "23.78",
+      "new_subtotal": "17.99",
+      "old_grand_total": "23.78",
+      "new_grand_total": "17.99",
+      "subtotal_delta": "-5.79",
+      "grand_total_delta": "-5.79",
+      "tax_delta": "0.00",
+      "tax_policy": "left unchanged because synthesized item is non-taxable",
+      "updated_summary_labels": {
+        "subtotal": 0,
+        "grand_total": 1,
+        "payment_or_balance": 1
+      }
+    },
+    "structure_similarity": {
+      "score": 0.59,
+      "nearest_real_receipt_key": "0ddc3f90-086c-41cb-b6e7-978639766f22#00001",
+      "components": {
+        "category_sequence": 0.0,
+        "category_set": 0.0,
+        "item_count": 1.0,
+        "token_count": 0.989,
+        "price_column": 0.954,
+        "line_step": 1.0
+      },
+      "candidate_signature": {
+        "token_count": 179,
+        "line_count": 74,
+        "line_item_count": 1,
+        "category_sequence": [],
+        "line_step": 26,
+        "line_total_x_p50": 853.0
+      },
+      "nearest_signature": {
+        "token_count": 177,
+        "line_count": 75,
+        "line_item_count": 1,
+        "category_sequence": [
+          "DAIRY"
+        ],
+        "line_step": 26,
+        "line_total_x_p50": 864.5
+      },
+      "real_baseline_comparison": {
+        "baseline_receipt_count": 9,
+        "baseline_pair_count": 36,
+        "candidate_score": 0.59,
+        "baseline_min": 0.434,
+        "within_real_score_range": true,
+        "delta_from_min": 0.156,
+        "baseline_avg": 0.582,
+        "delta_from_avg": 0.008,
+        "baseline_max": 0.88
+      },
+      "shape_deltas": {
+        "token_count_delta": 2,
+        "line_count_delta": -1,
+        "line_item_count_delta": 0,
+        "line_step_delta": 0.0,
+        "line_total_x_delta": -11.5
+      },
+      "match_summary": {
+        "matched_components": [
+          "item_count",
+          "line_step",
+          "price_column",
+          "token_count"
+        ],
+        "weak_components": [
+          "category_sequence",
+          "category_set"
+        ],
+        "shape_checks": [
+          "line_count_close",
+          "line_item_count_close",
+          "token_count_close",
+          "price_column_aligned",
+          "line_spacing_close"
+        ]
+      }
+    },
+    "balancing_strategy": "remove one non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
+    "layout_integrity": {
+      "schema_version": "synthetic-layout-integrity-v1",
+      "score": 1.0,
+      "passed": true,
+      "line_count": 74,
+      "word_count": 179,
+      "overlap_pair_count": 4,
+      "synthetic_overlap_pair_count": 0,
+      "base_overlap_pair_count": 4,
+      "edit_introduced_overlap_pair_count": 0,
+      "out_of_bounds_word_count": 0,
+      "invalid_word_box_count": 0,
+      "line_order_valid": true,
+      "line_inversion_count": 0,
+      "overlap_examples": [
+        {
+          "left_text": "001",
+          "right_text": "MID:",
+          "left_line_id": 34,
+          "right_line_id": 23
+        },
+        {
+          "left_text": "BALANCE",
+          "right_text": "BALANCE",
+          "left_line_id": 46,
+          "right_line_id": 46
+        },
+        {
+          "left_text": "Sprouts",
+          "right_text": "to",
+          "left_line_id": 61,
+          "right_line_id": 61
+        },
+        {
+          "left_text": "to",
+          "right_text": "gift",
+          "left_line_id": 61,
+          "right_line_id": 61
+        }
+      ],
+      "out_of_bounds_examples": [],
+      "invalid_word_examples": []
+    },
+    "candidate_quality": {
+      "schema_version": "synthetic-candidate-quality-v1",
+      "score": 0.813,
+      "high_fidelity": false,
+      "components": {
+        "arithmetic_reconciliation": 0.9,
+        "layout_integrity": 1.0,
+        "removed_item_safe": 1.0,
+        "structure_component_pass_rate": 0.6,
+        "structure_similarity": 0.59,
+        "token_budget": 1.0
+      },
+      "structure_gate": {
+        "min_structure_similarity": 0.6,
+        "structure_similarity_passed": false,
+        "component_thresholds": {
+          "price_column": 0.75,
+          "line_step": 0.45,
+          "category_sequence": 0.4,
+          "category_set": 0.4,
+          "token_count": 0.35
+        },
+        "passed_components": [
+          "price_column",
+          "line_step",
+          "token_count"
+        ],
+        "failed_components": {
+          "category_sequence": {
+            "value": 0.0,
+            "threshold": 0.4
+          },
+          "category_set": {
+            "value": 0.0,
+            "threshold": 0.4
+          }
+        },
+        "missing_components": [],
+        "pass_rate": 0.6,
+        "passed": false
+      },
+      "selection_policy": "Prefer merchant-local candidates with strong nearest-real structure, cross-receipt grounding for item additions, arithmetic reconciliation for total-changing edits, and stable geometry for field replacements."
+    },
+    "synthetic_receipt_preview": {
+      "coordinate_system": "normalized_receipt_0_1000_y_high_is_top",
+      "line_count": 74,
+      "token_count": 179,
+      "truncated": true,
+      "text": "SPROUTS\nFARMERS MARKET\n1012 WESTLAKE BLVD.\nWESTLAKE, CA 91361\n(805) 917-4200\nStore Hours MON-SUN 7AM 10PM\n14:18:24\n09/09/2025\nUS DEBIT\nEntry Method: Cntctless\nCARD #:\nXXXXXXXXXXXX3931\n- APPROVED\nPURCHASE\nAUTH CODE: 395942\nIssuer-PIN Verified\nMode:\nA0000000980840\nAID:\n0000000000\nTVR:\nIAD:\n1F42016EA0000000001003027300000\n000400000000000000000000\n00000000\n0000\nTSI:\n00\nARC:\n53901074E506DB4A\nTC:\n001 SEQ: 326682\nTID:\n910664 MID:\nUSD$ 17.99\nTotal:\n1012 WESTLAKE BLVD.\n(805) 917-4200\nStore Hours MON-SUN 7AM-10PM\nFREE\n17.99\nRAW WHOLE MILK\nDUE\nBALANCE BALANCE 17.99\n78\n$23\nAuth# 395942\nRef# 326682",
+      "lines": [
+        {
+          "line_number": 1,
+          "line_id": 1,
+          "y": 0.985,
+          "text": "SPROUTS",
+          "labels": [
+            "MERCHANT_NAME"
+          ],
+          "role": "header",
+          "bbox": [
+            267,
+            970,
+            817,
+            1000
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 2,
+          "line_id": 2,
+          "y": 0.961,
+          "text": "FARMERS MARKET",
+          "labels": [
+            "MERCHANT_NAME"
+          ],
+          "role": "header",
+          "bbox": [
+            296,
+            953,
+            792,
+            969
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 3,
+          "line_id": 3,
+          "y": 0.943,
+          "text": "1012 WESTLAKE BLVD.",
+          "labels": [
+            "ADDRESS_LINE"
+          ],
+          "role": "header",
+          "bbox": [
+            304,
+            935,
+            771,
+            951
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 4,
+          "line_id": 4,
+          "y": 0.929,
+          "text": "WESTLAKE, CA 91361",
+          "labels": [
+            "ADDRESS_LINE"
+          ],
+          "role": "header",
+          "bbox": [
+            325,
+            921,
+            767,
+            937
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 5,
+          "line_id": 5,
+          "y": 0.9155,
+          "text": "(805) 917-4200",
+          "labels": [
+            "PHONE_NUMBER"
+          ],
+          "role": "header",
+          "bbox": [
+            379,
+            909,
+            696,
+            922
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 6,
+          "line_id": 6,
+          "y": 0.901,
+          "text": "Store Hours MON-SUN 7AM 10PM",
+          "labels": [
+            "STORE_HOURS",
+            "WEBSITE"
+          ],
+          "role": "header",
+          "bbox": [
+            204,
+            894,
+            896,
+            908
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 7,
+          "line_id": 12,
+          "y": 0.8715,
+          "text": "14:18:24",
+          "labels": [
+            "TIME"
+          ],
+          "role": "header",
+          "bbox": [
+            787,
+            865,
+            996,
+            878
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 8,
+          "line_id": 7,
+          "y": 0.8705,
+          "text": "09/09/2025",
+          "labels": [
+            "DATE"
+          ],
+          "role": "header",
+          "bbox": [
+            8,
+            863,
+            259,
+            878
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 9,
+          "line_id": 8,
+          "y": 0.8575,
+          "text": "US DEBIT",
+          "labels": [
+            "ADDRESS_LINE",
+            "PAYMENT_METHOD"
+          ],
+          "role": "header",
+          "bbox": [
+            8,
+            851,
+            204,
+            864
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 10,
+          "line_id": 13,
+          "y": 0.856,
+          "text": "Entry Method: Cntctless",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            446,
+            848,
+            996,
+            864
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 11,
+          "line_id": 9,
+          "y": 0.8417,
+          "text": "CARD #:",
+          "labels": [
+            "PAYMENT_METHOD"
+          ],
+          "role": "context",
+          "bbox": [
+            8,
+            835,
+            184,
+            849
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 12,
+          "line_id": 14,
+          "y": 0.8415,
+          "text": "XXXXXXXXXXXX3931",
+          "labels": [
+            "PAYMENT_METHOD"
+          ],
+          "role": "context",
+          "bbox": [
+            596,
+            835,
+            996,
+            848
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 13,
+          "line_id": 15,
+          "y": 0.8275,
+          "text": "- APPROVED",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            421,
+            821,
+            671,
+            834
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 14,
+          "line_id": 10,
+          "y": 0.827,
+          "text": "PURCHASE",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            8,
+            820,
+            209,
+            834
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 15,
+          "line_id": 11,
+          "y": 0.813,
+          "text": "AUTH CODE: 395942",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            8,
+            806,
+            404,
+            820
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 16,
+          "line_id": 24,
+          "y": 0.7835,
+          "text": "Issuer-PIN Verified",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            521,
+            777,
+            996,
+            790
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 17,
+          "line_id": 16,
+          "y": 0.783,
+          "text": "Mode:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            0,
+            776,
+            134,
+            790
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 18,
+          "line_id": 25,
+          "y": 0.7685,
+          "text": "A0000000980840",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            642,
+            762,
+            996,
+            775
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 19,
+          "line_id": 17,
+          "y": 0.7675,
+          "text": "AID:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            8,
+            761,
+            108,
+            774
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 20,
+          "line_id": 26,
+          "y": 0.7545,
+          "text": "0000000000",
+          "labels": [
+            "PHONE_NUMBER"
+          ],
+          "role": "header",
+          "bbox": [
+            738,
+            748,
+            996,
+            761
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 21,
+          "line_id": 18,
+          "y": 0.7535,
+          "text": "TVR:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            8,
+            747,
+            112,
+            760
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 22,
+          "line_id": 19,
+          "y": 0.739,
+          "text": "IAD:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            0,
+            732,
+            121,
+            746
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 23,
+          "line_id": 27,
+          "y": 0.7385,
+          "text": "1F42016EA0000000001003027300000",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            229,
+            732,
+            996,
+            745
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 24,
+          "line_id": 28,
+          "y": 0.7245,
+          "text": "000400000000000000000000",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            8,
+            718,
+            596,
+            731
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 25,
+          "line_id": 29,
+          "y": 0.7245,
+          "text": "00000000",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            617,
+            718,
+            817,
+            731
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 26,
+          "line_id": 31,
+          "y": 0.7105,
+          "text": "0000",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            887,
+            704,
+            996,
+            717
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 27,
+          "line_id": 20,
+          "y": 0.7095,
+          "text": "TSI:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            8,
+            703,
+            108,
+            716
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 28,
+          "line_id": 32,
+          "y": 0.6965,
+          "text": "00",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            933,
+            690,
+            996,
+            703
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 29,
+          "line_id": 21,
+          "y": 0.6945,
+          "text": "ARC:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            0,
+            688,
+            108,
+            701
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 30,
+          "line_id": 33,
+          "y": 0.681,
+          "text": "53901074E506DB4A",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            592,
+            674,
+            996,
+            688
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 31,
+          "line_id": 22,
+          "y": 0.6805,
+          "text": "TC:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            0,
+            674,
+            83,
+            687
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 32,
+          "line_id": 34,
+          "y": 0.6665,
+          "text": "001 SEQ: 326682",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            592,
+            660,
+            962,
+            673
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 33,
+          "line_id": 30,
+          "y": 0.6665,
+          "text": "TID:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            392,
+            660,
+            500,
+            673
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 34,
+          "line_id": 23,
+          "y": 0.6665,
+          "text": "910664 MID:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            154,
+            660,
+            648,
+            673
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 35,
+          "line_id": 36,
+          "y": 0.6365,
+          "text": "USD$ 17.99",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            737,
+            628,
+            996,
+            645
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 36,
+          "line_id": 35,
+          "y": 0.6365,
+          "text": "Total:",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            0,
+            630,
+            154,
+            643
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 37,
+          "line_id": 37,
+          "y": 0.607,
+          "text": "1012 WESTLAKE BLVD.",
+          "labels": [
+            "ADDRESS_LINE"
+          ],
+          "role": "header",
+          "bbox": [
+            300,
+            600,
+            762,
+            614
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 38,
+          "line_id": 39,
+          "y": 0.5782,
+          "text": "(805) 917-4200",
+          "labels": [
+            "PHONE_NUMBER"
+          ],
+          "role": "header",
+          "bbox": [
+            374,
+            568,
+            702,
+            589
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 39,
+          "line_id": 40,
+          "y": 0.564,
+          "text": "Store Hours MON-SUN 7AM-10PM",
+          "labels": [
+            "STORE_HOURS",
+            "WEBSITE"
+          ],
+          "role": "header",
+          "bbox": [
+            197,
+            552,
+            902,
+            577
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 40,
+          "line_id": 41,
+          "y": 0.523,
+          "text": "FREE",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            147,
+            514,
+            269,
+            532
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 41,
+          "line_id": 45,
+          "y": 0.508,
+          "text": "17.99",
+          "labels": [
+            "LINE_TOTAL"
+          ],
+          "role": "line_item",
+          "bbox": [
+            790,
+            499,
+            916,
+            517
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 42,
+          "line_id": 43,
+          "y": 0.508,
+          "text": "RAW WHOLE MILK",
+          "labels": [
+            "PRODUCT_NAME"
+          ],
+          "role": "line_item",
+          "bbox": [
+            29,
+            498,
+            384,
+            518
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 43,
+          "line_id": 47,
+          "y": 0.4795,
+          "text": "DUE",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            316,
+            471,
+            408,
+            488
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 44,
+          "line_id": 46,
+          "y": 0.479,
+          "text": "BALANCE BALANCE 17.99",
+          "labels": [
+            "GRAND_TOTAL"
+          ],
+          "role": "summary",
+          "bbox": [
+            126,
+            468,
+            921,
+            490
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 45,
+          "line_id": 48,
+          "y": 0.4655,
+          "text": "78",
+          "labels": [
+            "PAYMENT_METHOD"
+          ],
+          "role": "context",
+          "bbox": [
+            854,
+            459,
+            918,
+            472
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 46,
+          "line_id": 49,
+          "y": 0.465,
+          "text": "$23",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            762,
+            457,
+            844,
+            473
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 47,
+          "line_id": 51,
+          "y": 0.4355,
+          "text": "Auth# 395942",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            150,
+            428,
+            462,
+            443
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        },
+        {
+          "line_number": 48,
+          "line_id": 52,
+          "y": 0.4355,
+          "text": "Ref# 326682",
+          "labels": [],
+          "role": "context",
+          "bbox": [
+            542,
+            428,
+            842,
+            443
+          ],
+          "synthetic_insert": false,
+          "modified_labels": []
+        }
+      ]
+    },
+    "synthesis_accuracy_evidence": {
+      "operation": "remove_line_item",
+      "checks": [
+        "train_only_real_validation_policy",
+        "merchant_local_geometry",
+        "nearest_real_structure_similarity",
+        "layout_integrity_checked",
+        "no_overlapping_or_out_of_bounds_boxes",
+        "non_taxable_arithmetic_reconciled",
+        "removed_item_non_taxable"
+      ],
+      "changed_text": "CAGE",
+      "category": "UNCATEGORIZED",
+      "old_grand_total": "23.78",
+      "new_grand_total": "17.99",
+      "tax_delta": "0.00",
+      "layout_integrity": {
+        "score": 1.0,
+        "passed": true,
+        "line_count": 74,
+        "word_count": 179,
+        "overlap_pair_count": 4,
+        "out_of_bounds_word_count": 0,
+        "invalid_word_box_count": 0,
+        "line_order_valid": true,
+        "overlap_examples": [
+          {
+            "left_text": "001",
+            "right_text": "MID:",
+            "left_line_id": 34,
+            "right_line_id": 23
+          },
+          {
+            "left_text": "BALANCE",
+            "right_text": "BALANCE",
+            "left_line_id": 46,
+            "right_line_id": 46
+          },
+          {
+            "left_text": "Sprouts",
+            "right_text": "to",
+            "left_line_id": 61,
+            "right_line_id": 61
+          }
+        ]
+      },
+      "structure_similarity": {
+        "score": 0.59,
+        "nearest_real_receipt_key": "0ddc3f90-086c-41cb-b6e7-978639766f22#00001",
+        "components": {
+          "category_sequence": 0.0,
+          "category_set": 0.0,
+          "item_count": 1.0,
+          "token_count": 0.989,
+          "price_column": 0.954,
+          "line_step": 1.0
+        },
+        "shape_deltas": {
+          "token_count_delta": 2,
+          "line_count_delta": -1,
+          "line_item_count_delta": 0,
+          "line_step_delta": 0.0,
+          "line_total_x_delta": -11.5
+        },
+        "match_summary": {
+          "matched_components": [
+            "item_count",
+            "line_step",
+            "price_column",
+            "token_count"
+          ],
+          "weak_components": [
+            "category_sequence",
+            "category_set"
+          ],
+          "shape_checks": [
+            "line_count_close",
+            "line_item_count_close",
+            "token_count_close",
+            "price_column_aligned",
+            "line_spacing_close"
+          ]
+        },
+        "real_baseline_comparison": {
+          "baseline_receipt_count": 9,
+          "baseline_pair_count": 36,
+          "candidate_score": 0.59,
+          "baseline_min": 0.434,
+          "within_real_score_range": true,
+          "delta_from_min": 0.156,
+          "baseline_avg": 0.582,
+          "delta_from_avg": 0.008,
+          "baseline_max": 0.88
+        }
+      },
+      "removal_context": null
+    }
+  }
+}

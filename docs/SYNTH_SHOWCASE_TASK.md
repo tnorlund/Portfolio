@@ -1,60 +1,59 @@
-# Task: "How we synthesize receipts" portfolio showcase (frontend only)
+# Task: "Growing the training set" — synthetic receipt augmentation showcase (frontend only)
 
-Build a polished portfolio section that demonstrates our **synthetic receipt
-generation** — how a real receipt's OCR is turned into a pixel-faithful synthetic
-one for training-data augmentation. This is a **frontend-only** task: the images
-are already generated and committed; you display and explain them. **Do not run
-or touch any Python / synthesis code, AWS, or glyph atlases.**
+Build a polished, interactive portfolio piece that demonstrates how we **expand the
+receipt training dataset** by generating new, *perfectly-labeled* receipts from real
+ones. **Frontend-only:** all images are pre-generated and committed. Do NOT run or
+touch Python/synthesis code, AWS, or glyph atlases.
 
-## What's already here
+## The one-line story
 
-Pre-generated real-vs-synth proof images (committed) in
-`portfolio/public/synthetic-receipts/showcase/`:
+> A receipt-labeling model needs lots of *labeled* receipts. We take one real
+> receipt, mutate its contents with a grammar learned from the merchant's other
+> receipts (add/remove items, recompute the math), and render a photorealistic
+> **new** receipt — and because we generate from labeled positions, **every one is
+> already perfectly labeled.** One real receipt → many labeled training examples,
+> covering baskets the real data never had.
 
-| Merchant | Real-vs-synth (side-by-side canvas) | Synth only |
-|---|---|---|
-| Sprouts Farmers Market | `sprouts_real_vs_synth.png` | `sprouts_synth.png` |
-| The Home Depot | `homedepot_real_vs_synth.png` | `homedepot_synth.png` |
-| Costco Wholesale | `costco_real_vs_synth.png` | `costco_synth.png` |
+## Assets (committed) — `portfolio/public/synthetic-receipts/showcase/`
 
-Each `_real_vs_synth.png` shows the REAL receipt crop (left) next to our SYNTHESIZED
-render (right). Use whichever assets suit your layout (the side-by-side canvases are
-the most convincing proof; the synth-only images are for a cleaner custom layout).
+Four Sprouts variants, each with a photorealistic render + a ground-truth label
+overlay (WebP), plus `<variant>.labels.json` (the exact `tokens`/`bboxes`/`ner_tags`)
+and `manifest.json` (operation, old→new total, caption, token counts):
 
-Prior art already on this branch: `portfolio/components/ui/Figures/SyntheticReceiptImages/`
-(from PR #1017) — a React component for showing synthetic receipt images. **Build on
-it or supersede it** with something cleaner; your call.
+| Variant | `.webp` (render) | `.labeled.webp` (label overlay) | Operation |
+|---|---|---|---|
+| `base` | real Sprouts base receipt | boxes + legend | — |
+| `add_line_item_1` | **Added LIMES (PRODUCE) → total 29.08 → 30.58** | | add item |
+| `remove_line_item_2` | **Removed SOUR CREAM (DAIRY) → 10.78 → 7.99** | | remove item |
+| `remove_line_item_5` | **Removed CAGE → 23.78 → 17.99** | | remove item |
 
-## The story to tell (real content for the copy)
+The renders are the real photorealistic thermal output (glyph atlas + logo + paper
+texture); the injected/removed line and the recomputed totals are visible in the
+receipt body and BALANCE DUE. The `.labeled` overlays color boxes per label family
+(MERCHANT_NAME, ADDRESS_LINE, DATE, TIME, PRODUCT_NAME, QUANTITY, UNIT_PRICE,
+LINE_TOTAL, GRAND_TOTAL, PAYMENT_METHOD, …) with a legend.
 
-1. **Real receipts → OCR.** Apple Vision OCR gives every word's text + bounding box
-   (and, recently, barcodes/QR). That's the ground-truth layout of a real receipt.
-2. **Per-merchant fonts.** Each merchant prints in a specific thermal font. We build
-   a **per-merchant glyph atlas** — for data-rich merchants (Sprouts) from their own
-   receipts; for others (Costco) from the real bitMatrix font chart. Logos/wordmarks
-   are reconstructed too (Home Depot's tilted-square lockup, Sprouts' FARMERS MARKET).
-3. **Grid render.** A fixed-cell renderer places each character in its real position
-   using the merchant's font, pastes the logo, and composites thermal-paper texture —
-   producing a synthetic receipt that matches the real one's layout but whose **content
-   is controllable** (swap items, amounts, dates) for augmenting the training set.
-4. **Result.** The synthesized receipts (right side of each pair) are visually
-   indistinguishable in layout/typography from the real ones — that's the point.
+Prior art on this branch: `portfolio/components/ui/Figures/SyntheticReceiptImages/`
+(from PR #1017) — reuse or supersede.
 
-## What to build
+## What to build (the "cool visualization")
 
-- A responsive showcase section (extend the receipt page, `portfolio/pages/receipt.tsx`,
-  or a dedicated section/route — match the site's existing design system, dark/light, etc.).
-- Per-merchant real-vs-synth presentation — a toggle/slider/tabs between merchants, and
-  ideally a real↔synth compare interaction (side-by-side, or an overlay/slider).
-- The explanation above, written for a technical-but-general portfolio audience.
-- Accessible, performant (lazy-load images; they're large — optimize if needed).
+- A single receipt front-and-center (start on `base`).
+- **Operation controls** — buttons/tabs: *Add item · Remove item · Reveal labels*
+  (and stepping between the remove variants). Clicking swaps to that variant's image.
+- Each operation shows a **caption** ("Added LIMES · total 29.08 → 30.58") and, ideally,
+  a subtle highlight of the changed line + the changed total.
+- **Reveal labels** toggle → cross-fades to the `.labeled` overlay (or draws boxes from
+  `<variant>.labels.json` yourself for crisper, themable boxes — your call).
+- A **running counter**: "labeled training examples generated: N", and a headline like
+  *"1 real receipt → N labeled examples."*
+- Responsive, accessible, lazy-loaded, matches the site's design system (dark/light).
 
 ## Constraints & done criteria
 
-- **Frontend only.** Everything runs under `portfolio/` with Node. Setup: `cd portfolio && npm ci`.
-- Don't modify Python packages, synthesis code, or CI for those.
-- `cd portfolio && npm run lint && npm test` (and typecheck) pass; add a component test.
-- Keep the bundle reasonable; don't ship 3 MB PNGs unoptimized.
+- **Frontend only** — everything under `portfolio/`, Node. Setup: `cd portfolio && npm ci`.
+- Don't modify Python packages / synthesis / their CI.
+- `cd portfolio && npm run lint && npm test` + typecheck pass; add a component test.
 - Open a PR when done; run the `@codex review` loop and address findings.
 
 ## Cloud environment (Fable session)
@@ -68,4 +67,4 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"/portfolio
 npm ci
 ```
 
-No AWS key, no Python, Network = Trusted (npm registry). That's all it needs.
+No AWS, no Python, Network = Trusted (npm registry). That's all it needs.
