@@ -144,15 +144,15 @@ describe("pickScrollTarget", () => {
 });
 
 describe("familyColors", () => {
-  test("assigns stable colors and falls back for unknown families", () => {
+  test("uses the shared palette and falls back for unknown families", () => {
     const colors = familyColors([
       "PRODUCT_NAME",
       "SOMETHING_NEW",
       "GRAND_TOTAL",
     ]);
-    expect(colors.PRODUCT_NAME).toBe("#43A047");
-    expect(colors.GRAND_TOTAL).toBe("#E53935");
-    expect(colors.SOMETHING_NEW).toMatch(/^#/);
+    expect(colors.PRODUCT_NAME).toBe("var(--color-purple)");
+    expect(colors.GRAND_TOTAL).toBe("var(--color-green)");
+    expect(colors.SOMETHING_NEW).toMatch(/^var\(--color-/);
   });
 });
 
@@ -188,7 +188,7 @@ describe("showcaseData stays in sync with the committed manifest", () => {
       const families = familiesIn(file);
       const colors = familyColors(families);
       families.forEach((family) =>
-        expect(colors[family]).toMatch(/^#[0-9A-Fa-f]{6}$/),
+        expect(colors[family]).toMatch(/^(var\(--color-|color-mix\()/),
       );
     });
   });

@@ -8,6 +8,8 @@
  * CSS percentages flips y.
  */
 
+import { LABEL_COLORS } from "../labelStyles";
+
 export interface ShowcaseLabelFile {
   tokens: string[];
   bboxes: number[][];
@@ -152,29 +154,17 @@ export const pickScrollTarget = (
 };
 
 /**
- * Stable color per label family: fixed hues for the families that carry the
- * story, palette fallback (by first-appearance order) for the rest.
+ * Stable color per label family: the shared receipt-visualization palette
+ * (same one LayoutLMBatchVisualization uses), with a theme-var fallback
+ * cycle (by first-appearance order) for families the palette doesn't name.
  */
-const FIXED_FAMILY_COLORS: Record<string, string> = {
-  PRODUCT_NAME: "#43A047",
-  LINE_TOTAL: "#1E88E5",
-  GRAND_TOTAL: "#E53935",
-  UNIT_PRICE: "#00ACC1",
-  QUANTITY: "#7CB342",
-  MERCHANT_NAME: "#8E24AA",
-  ADDRESS_LINE: "#FB8C00",
-  DATE: "#FDD835",
-  TIME: "#F4B400",
-  PAYMENT_METHOD: "#5E35B1",
-};
-
 const FALLBACK_PALETTE = [
-  "#26A69A",
-  "#EC407A",
-  "#78909C",
-  "#9CCC65",
-  "#FF7043",
-  "#5C6BC0",
+  "var(--color-cyan)",
+  "var(--color-pink)",
+  "var(--color-orange)",
+  "var(--color-purple)",
+  "var(--color-teal)",
+  "var(--color-blue)",
 ];
 
 export const familyColors = (
@@ -184,7 +174,7 @@ export const familyColors = (
   let fallbackIdx = 0;
   families.forEach((family) => {
     colors[family] =
-      FIXED_FAMILY_COLORS[family] ??
+      LABEL_COLORS[family] ??
       FALLBACK_PALETTE[fallbackIdx++ % FALLBACK_PALETTE.length];
   });
   return colors;

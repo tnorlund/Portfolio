@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { useInView } from "react-intersection-observer";
+import { ENTITY_DISPLAY_NAMES } from "../labelStyles";
 import {
   buildLabelBoxes,
   familiesIn,
@@ -90,7 +91,12 @@ const LabelOverlay: React.FC<LabelOverlayProps> = ({
   );
 
   return (
-    <div className={styles.overlay} aria-hidden="true">
+    <svg
+      className={styles.overlay}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
       {boxes.map((box) => {
         const isHighlight = highlights.has(box.index);
         if (!showLabels && !isHighlight) {
@@ -98,26 +104,27 @@ const LabelOverlay: React.FC<LabelOverlayProps> = ({
         }
         const color = colors[box.family];
         return (
-          <div
+          <rect
             key={box.index}
             data-testid={isHighlight ? "highlight-box" : "label-box"}
             data-family={box.family}
-            className={
-              isHighlight ? styles.highlightBox : styles.labelBox
-            }
-            style={{
-              left: `${box.rect.left}%`,
-              top: `${box.rect.top}%`,
-              width: `${box.rect.width}%`,
-              height: `${box.rect.height}%`,
-              borderColor: color,
-              backgroundColor: showLabels ? `${color}22` : undefined,
-            }}
-            title={`${box.token} — ${box.family}`}
-          />
+            data-token={box.token}
+            className={isHighlight ? styles.highlightBox : styles.labelBox}
+            x={box.rect.left}
+            y={box.rect.top}
+            width={box.rect.width}
+            height={box.rect.height}
+            fill={color}
+            fillOpacity={showLabels ? 0.3 : 0}
+            stroke={color}
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          >
+            <title>{`${box.token} — ${box.family}`}</title>
+          </rect>
         );
       })}
-    </div>
+    </svg>
   );
 };
 
@@ -137,7 +144,7 @@ const Legend: React.FC<LegendProps> = ({ labelFile }) => {
             className={styles.legendSwatch}
             style={{ backgroundColor: colors[family] }}
           />
-          {family}
+          {ENTITY_DISPLAY_NAMES[family] ?? family}
         </li>
       ))}
     </ul>

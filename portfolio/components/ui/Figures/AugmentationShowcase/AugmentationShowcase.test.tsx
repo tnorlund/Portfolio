@@ -82,8 +82,8 @@ describe("AugmentationShowcase", () => {
     );
     const highlighted = screen
       .getAllByTestId("highlight-box")
-      .map((el) => el.getAttribute("title"));
-    expect(highlighted.some((t) => t?.includes("LIMES"))).toBe(true);
+      .map((el) => el.getAttribute("data-token"));
+    expect(highlighted).toContain("LIMES");
   });
 
   test("revisiting a variant does not double-count", () => {
@@ -128,7 +128,7 @@ describe("AugmentationShowcase", () => {
       expect(screen.getAllByTestId("label-box").length).toBeGreaterThan(0),
     );
     expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("MERCHANT_NAME")).toBeInTheDocument();
+    expect(screen.getByText("Merchant")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide labels" }));
     expect(screen.queryAllByTestId("label-box")).toHaveLength(0);
