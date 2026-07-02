@@ -87,6 +87,10 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
     prof = rsr.cached_font_profile(table, merchant, region=region, max_receipts=12)
     ss = rsr.section_scale_for_merchant(merchant)
     typ = rsr.merchant_typography(merchant)
+    if "bitmap_font" in typ and "bitmap_thin" not in typ:
+        typ["bitmap_thin"] = rsr.resolve_bitmap_thin(
+            table, merchant, region=region, atlas=atlas, profile=prof,
+            section_scale=ss, typography=typ)
 
     d = None
     rec = None

@@ -58,7 +58,6 @@
         "condense": 0.895,
         "mixed_layout": true,
         "bitmap_cap_ratio": 0.795,
-        "bitmap_thin": 0.25,
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.76,
         "ink": [38, 36, 34],

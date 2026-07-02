@@ -989,6 +989,104 @@ def cached_font_profile(table, merchant, *, region, max_receipts=12, refresh=Fal
     )
 
 
+def resolve_bitmap_thin(table, merchant, *, region, atlas, profile,
+                        section_scale=None, typography=None, refresh=False):
+    """Derived-by-default glyph erosion (see synthesis_loop/ink_calibration).
+
+    ``bitmap_thin`` is not a per-merchant opinion: the right value is whatever
+    makes a re-render of a REAL receipt match that receipt's measured ink
+    density. An explicit ``bitmap_thin`` in the merchant profile still wins;
+    otherwise render one real receipt at candidate erosions, compare per-word
+    ink density against the real scan (scorecard measurers), and bisect.
+    Disk-cached like the atlas/profile builds. Calibration renders run under
+    the CALLER's ``RECEIPT_PAPER_STRENGTH`` — the texture's ink-bleed blur
+    materially fattens thresholded strokes, so calibrating texture-off would
+    solve the wrong equation. Run it under the same strength you render with.
+    The derived value is the median over a few sample receipts (real scans
+    vary in ink darkness).
+    """
+    typography = dict(typography or {})
+    if "bitmap_thin" in typography:
+        return float(typography["bitmap_thin"])
+    path = _render_cache_path("inkthin", merchant, 1)
+    if not refresh and os.path.exists(path):
+        try:
+            with open(path, "rb") as fh:
+                return pickle.load(fh)
+        except Exception:
+            pass  # corrupt/stale cache -> rebuild
+
+    import tempfile
+
+    from PIL import Image
+
+    loop_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "synthesis_loop"
+    )
+    if loop_dir not in sys.path:
+        sys.path.insert(0, loop_dir)
+    from ink_calibration import derive_bitmap_thin  # noqa: E402
+    from receipt_line_scorecard import _load_words_and_real  # noqa: E402
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
+
+    from statistics import median
+
+    client = DynamoClient(table_name=table, region=region)
+    places, _ = client.get_receipt_places_by_merchant(merchant)
+    samples = []
+    seen = set()
+    for place in places:
+        key = (str(place.image_id), int(place.receipt_id))
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            real, words = _load_words_and_real(merchant, key[0], key[1])
+        except Exception:  # noqa: BLE001
+            continue
+        if len(words) >= 40:
+            samples.append((real, words))
+        if len(samples) >= 3 or len(seen) >= 10:
+            break
+    if not samples:
+        return 0.0
+
+    thins = []
+    for real, words in samples:
+        wt = 760
+        # True aspect is mandatory: normalized coords discard proportions.
+        ht = max(1, int(round(wt * real.height / real.width)))
+        receipt = {
+            "words": [dict(word, labels=[]) for word in words],
+            "merchant_name": merchant,
+        }
+
+        def render(thin, receipt=receipt, wt=wt, ht=ht):
+            typo = dict(typography)
+            typo["bitmap_thin"] = float(thin)
+            fd, out = tempfile.mkstemp(suffix=".png")
+            os.close(fd)
+            _render_cached_hybrid(
+                receipt, atlas, profile=profile, width=wt, height=ht,
+                path=out, section_scale=section_scale, **typo)
+            img = Image.open(out).convert("RGB")
+            os.unlink(out)
+            return img
+
+        derived = derive_bitmap_thin(render, real, words)
+        if derived is not None:
+            thins.append(float(derived[0]))
+    thin = float(median(thins)) if thins else 0.0
+    try:
+        os.makedirs(_RENDER_CACHE_DIR, exist_ok=True)
+        with open(path, "wb") as fh:
+            pickle.dump(thin, fh)
+    except Exception:
+        pass  # caching is best-effort
+    return thin
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
