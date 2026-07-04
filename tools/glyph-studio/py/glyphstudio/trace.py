@@ -24,6 +24,8 @@ from .paths import extract_paths
 from .samples import (
     canvas_geometry,
     consensus,
+    consensus_soft,
+    soft_stroke_width,
     list_codepoints,
     load_stack,
     stroke_width_px,
@@ -49,7 +51,9 @@ def trace_char(stack: np.ndarray, codepoint: int) -> tuple[dict | None, float]:
         return None, 0.0
     big = upsample(mask, UPSAMPLE)
     skel = zhang_suen(big)
-    width_px = stroke_width_px(big, skel)
+    # Width from SOFT ink mass (threshold-free), not binary pixel counts.
+    frac = consensus_soft(stack)
+    width_px = soft_stroke_width(frac, skel, upsample_factor=UPSAMPLE)
     skel = prune_spurs(skel, min_len=max(2.0, 0.6 * width_px))
     if not skel.any():
         return None, 0.0
@@ -129,7 +133,7 @@ def trace_char(stack: np.ndarray, codepoint: int) -> tuple[dict | None, float]:
         "codepoint": codepoint,
         "provenance": "traced",
         "trace": {
-            "corpus": "sprouts.samples.npz",
+            "corpus": os.environ.get("GLYPH_CORPUS_NAME", "sprouts.samples.npz"),
             "samples": int(len(stack)),
             "consensusHash": hashlib.sha1(mask.tobytes()).hexdigest()[:12],
             "date": datetime.date.today().isoformat(),

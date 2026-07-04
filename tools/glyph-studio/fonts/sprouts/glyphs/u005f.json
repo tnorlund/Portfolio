@@ -4,12 +4,12 @@
  "codepoint": 95,
  "provenance": "traced",
  "trace": {
-  "corpus": "sprouts.samples.npz",
-  "samples": 6,
-  "consensusHash": "02c46d552d54",
+  "corpus": "sprouts_demo/sprouts.samples.npz",
+  "samples": 7,
+  "consensusHash": "8a157fcec4c4",
   "date": "2026-07-03"
  },
- "width": 256.4,
+ "width": 346.0,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -17,13 +17,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 65.7,
-     "y": 116.7,
+     "x": 259.7,
+     "y": 941.4,
      "type": "corner"
     },
     {
-     "x": 65.7,
-     "y": 15.7,
+     "x": 270.8,
+     "y": 941.4,
      "type": "corner"
     }
    ]
@@ -32,13 +32,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 165.7,
-     "y": 116.7,
+     "x": 181.9,
+     "y": 641.4,
      "type": "corner"
     },
     {
-     "x": 174.0,
-     "y": 15.7,
+     "x": 198.6,
+     "y": 641.4,
      "type": "corner"
     }
    ]
@@ -47,13 +47,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 215.7,
-     "y": 116.7,
+     "x": 226.3,
+     "y": 388.9,
      "type": "corner"
     },
     {
-     "x": 215.7,
-     "y": 15.7,
+     "x": 237.5,
+     "y": 388.9,
      "type": "corner"
     }
    ]
@@ -62,13 +62,36 @@
    "closed": false,
    "nodes": [
     {
-     "x": 15.7,
-     "y": 15.7,
+     "x": 287.5,
+     "y": 58.6,
+     "type": "corner",
+     "hOut": {
+      "x": 251.8,
+      "y": 72.2
+     }
+    },
+    {
+     "x": 170.8,
+     "y": 58.6,
+     "type": "corner",
+     "hIn": {
+      "x": 201.3,
+      "y": 92.2
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 58.6,
+     "y": 58.6,
      "type": "corner"
     },
     {
-     "x": 65.7,
-     "y": 15.7,
+     "x": 58.6,
+     "y": 58.6,
      "type": "corner"
     }
    ]
@@ -77,44 +100,22 @@
    "closed": false,
    "nodes": [
     {
-     "x": 240.7,
-     "y": 15.7,
-     "type": "corner"
+     "x": 58.6,
+     "y": 58.6,
+     "type": "corner",
+     "hOut": {
+      "x": 93.0,
+      "y": 81.1
+     }
     },
     {
-     "x": 215.7,
-     "y": 15.7,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 65.7,
-     "y": 15.7,
-     "type": "corner"
-    },
-    {
-     "x": 174.0,
-     "y": 15.7,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 215.7,
-     "y": 15.7,
-     "type": "corner"
-    },
-    {
-     "x": 174.0,
-     "y": 15.7,
-     "type": "corner"
+     "x": 170.8,
+     "y": 58.6,
+     "type": "corner",
+     "hIn": {
+      "x": 136.2,
+      "y": 65.4
+     }
     }
    ]
   }

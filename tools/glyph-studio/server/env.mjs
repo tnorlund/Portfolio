@@ -14,7 +14,7 @@ export const PYTHON =
   path.join(os.homedir(), "Portfolio", ".venv", "bin", "python");
 
 export const SAMPLES = {
-  sprouts: "/tmp/gridfix/sprouts_font2/sprouts.samples.npz",
+  sprouts: "/tmp/gridfix/sprouts_demo/sprouts.samples.npz",
 };
 
 export const PY_ENV = {

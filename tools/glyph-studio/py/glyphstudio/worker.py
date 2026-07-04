@@ -20,15 +20,21 @@ import numpy as np
 from PIL import Image
 
 from .raster import rasterize_glyph
-from .samples import canvas_geometry, consensus, load_stack
+from .samples import canvas_geometry, consensus, consensus_soft, load_stack
 
 
 def _png_b64(arr: np.ndarray) -> str:
-    """Binary/uint8 mask -> black-ink transparent PNG, base64."""
-    mask = (arr > 0).astype(np.uint8)
-    h, w = mask.shape
+    """Mask -> black-ink transparent PNG, base64.
+
+    Accepts binary {0,1} OR soft float 0..1 maps — alpha carries the soft
+    ink fraction so onion-skins show real stroke-weight gradients.
+    """
+    a = arr.astype(float)
+    if a.max() > 1.0:
+        a = a / 255.0
+    h, w = a.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    rgba[..., 3] = mask * 255
+    rgba[..., 3] = np.clip(a * 255.0, 0, 255).astype(np.uint8)
     buf = io.BytesIO()
     Image.fromarray(rgba, "RGBA").save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
@@ -54,11 +60,14 @@ def op_sample_png(req: dict) -> dict:
     if mode == "index":
         i = max(0, min(len(stack) - 1, int(req.get("i", 0))))
         mask = stack[i]
-    else:
+    elif mode == "binary":
         mask = consensus(stack)
+    else:
+        # soft fraction map: no strict binarization for LOOKING at glyphs
+        mask = consensus_soft(stack)
     ref_cap, baseline_row = canvas_geometry(stack.shape[1])
     return {
-        "png_b64": _png_b64(mask.astype(np.uint8)),
+        "png_b64": _png_b64(mask),
         "w": int(mask.shape[1]),
         "h": int(mask.shape[0]),
         "refCap": int(ref_cap),

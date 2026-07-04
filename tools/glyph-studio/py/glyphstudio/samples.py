@@ -102,6 +102,31 @@ def upsample(mask: np.ndarray, factor: int = 3) -> np.ndarray:
     return np.repeat(np.repeat(mask, factor, axis=0), factor, axis=1)
 
 
+def consensus_soft(stack: np.ndarray) -> np.ndarray:
+    """Fraction-of-samples-inked map (float 0..1) — the UN-thresholded view.
+
+    Strict binarization discards stroke-weight and edge-softness information;
+    analysis (stroke width, onion-skins) should read this soft map and only
+    the topology extraction (thinning) needs a binary mask.
+    """
+    return stack.mean(axis=0)
+
+
+def soft_stroke_width(frac: np.ndarray, skeleton: np.ndarray,
+                      upsample_factor: int = 1) -> float:
+    """Stroke width from SOFT ink mass / skeleton length.
+
+    Post-threshold pixel counts inflate or deflate with the threshold choice;
+    the fraction map's total mass is threshold-free, so width estimates stay
+    faithful to how dark the real prints actually are.
+    """
+    length = float(skeleton.sum())
+    if length <= 0:
+        return 0.0
+    mass = float(frac.sum()) * (upsample_factor ** 2)
+    return mass / length
+
+
 def stroke_width_px(mask: np.ndarray, skeleton: np.ndarray) -> float:
     """Mean stroke width = ink area / skeleton length."""
     length = float(skeleton.sum())
