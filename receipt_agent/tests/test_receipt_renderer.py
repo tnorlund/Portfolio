@@ -401,7 +401,10 @@ def test_amount_currency_prefix_before_price_is_not_truncated():
     by_text = {p.word.text: p for p in placed}
 
     assert by_text["USD$"].text == "USD$"
-    assert by_text["USD$"].end_col + 1 == by_text["48.34"].start_col
+    # The prefix right-aligns to its own source right edge (620px / 10 = 62)
+    # and never overlaps the price that follows it.
+    assert by_text["USD$"].end_col == 62
+    assert by_text["USD$"].end_col < by_text["48.34"].start_col
 
 
 def test_text_runs_can_expand_to_observed_row_span():

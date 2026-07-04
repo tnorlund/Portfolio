@@ -655,6 +655,10 @@ class PlacedToken:
 # Prices further left than this (unit prices, qty columns, coupon columns) keep
 # their own column so we don't collapse a legitimately multi-column receipt.
 _AMOUNT_LANE_TOL_CELLS = 4
+# Within the lane tolerance, snap only genuine jitter; a price whose source
+# column sits further out than this keeps its own column (receipts really do
+# carry a second, further-right amount column: "Total: USD$ 10.78" vs items).
+_AMOUNT_LANE_SNAP_CELLS = 2
 _RIGHT_SEGMENT_GAP_CELLS = 4.0
 
 
@@ -744,7 +748,13 @@ def plan_grid_line(
                 if anchored:
                     break
                 continue
-            anchored[i] = slot_right - cell_of[i]
+            if abs(abs_end - slot_right) <= _AMOUNT_LANE_SNAP_CELLS:
+                # decimal-column jitter: unify onto the lane
+                anchored[i] = slot_right - cell_of[i]
+            else:
+                # genuinely offset column (e.g. the Total row's amount sits
+                # right of the item lane): keep the SOURCE column
+                anchored[i] = abs_end - cell_of[i]
             slot_right = anchored[i] - 1
         if anchored:
             leftmost_price_start = min(anchored.values())
@@ -764,7 +774,10 @@ def plan_grid_line(
         if i in anchored:
             start = anchored[i]
         elif amount_prefix:
-            start = anchored[i + 1] - cells - 1
+            # Right-align the prefix ("USD$", "AMOUNT:") to its own source
+            # right edge, capped so it stays clear of the price it prefixes.
+            src_end = round((word.right - spec.grid_left) / spec.cell_w)
+            start = min(src_end, anchored[i + 1] - 1) - cells
         else:
             absolute = token_start_col(word.text, word.left, word.right, spec)
             if cursor_col is None:
