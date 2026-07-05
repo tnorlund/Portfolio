@@ -19,81 +19,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 486.7,
-     "y": 853.1,
-     "type": "corner",
-     "hOut": {
-      "x": 486.7,
-      "y": 853.1
-     }
-    },
-    {
-     "x": 486.7,
-     "y": 853.1,
-     "type": "corner",
-     "hIn": {
-      "x": 486.7,
-      "y": 853.1
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 486.7,
-     "y": 853.1,
-     "type": "corner"
-    },
-    {
-     "x": 463.0,
-     "y": 802.8,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 463.0,
-     "y": 802.8,
-     "type": "corner"
-    },
-    {
-     "x": 463.0,
-     "y": 802.8,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 463.0,
-     "y": 802.8,
-     "type": "corner"
-    },
-    {
-     "x": 434.3,
-     "y": 747.2,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 434.3,
-     "y": 747.2,
+     "x": 328.7,
+     "y": 657.5,
      "type": "corner"
     },
     {
      "x": 395.4,
-     "y": 650.0,
+     "y": 657.5,
      "type": "corner"
     }
    ]
@@ -103,57 +35,12 @@
    "nodes": [
     {
      "x": 395.4,
-     "y": 650.0,
+     "y": 657.5,
      "type": "corner"
     },
     {
-     "x": 379.8,
-     "y": 650.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 379.8,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 353.7,
-     "y": 650.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 353.7,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 353.7,
-     "y": 650.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 353.7,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 328.7,
-     "y": 650.0,
+     "x": 486.7,
+     "y": 853.1,
      "type": "corner"
     }
    ]
@@ -163,307 +50,21 @@
    "nodes": [
     {
      "x": 328.7,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 303.7,
-     "y": 508.3,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 303.7,
-     "y": 508.3,
-     "type": "corner"
-    },
-    {
-     "x": 303.7,
-     "y": 508.3,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 303.7,
-     "y": 508.3,
-     "type": "corner"
-    },
-    {
-     "x": 287.1,
-     "y": 497.2,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 287.1,
-     "y": 497.2,
-     "type": "corner"
-    },
-    {
-     "x": 287.1,
-     "y": 497.2,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 287.1,
-     "y": 497.2,
-     "type": "corner"
-    },
-    {
-     "x": 273.2,
-     "y": 469.4,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 273.2,
-     "y": 469.4,
-     "type": "corner"
-    },
-    {
-     "x": 253.7,
-     "y": 400.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 253.7,
-     "y": 400.0,
-     "type": "corner"
-    },
-    {
-     "x": 237.1,
-     "y": 358.3,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 237.1,
-     "y": 358.3,
-     "type": "corner"
-    },
-    {
-     "x": 237.1,
-     "y": 358.3,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 237.1,
-     "y": 358.3,
-     "type": "corner"
-    },
-    {
-     "x": 213.4,
-     "y": 334.7,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 213.4,
-     "y": 334.7,
+     "y": 657.5,
      "type": "corner",
      "hOut": {
-      "x": 213.4,
-      "y": 334.7
+      "x": 287.6119156227806,
+      "y": 424.6
      }
     },
     {
-     "x": 213.4,
-     "y": 334.7,
+     "x": 50.0,
+     "y": 42.5,
      "type": "corner",
      "hIn": {
-      "x": 213.4,
-      "y": 334.7
+      "x": 142.63997560514582,
+      "y": 255.4
      }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 213.4,
-     "y": 334.7,
-     "type": "corner"
-    },
-    {
-     "x": 213.4,
-     "y": 334.7,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 213.4,
-     "y": 334.7,
-     "type": "corner"
-    },
-    {
-     "x": 192.2,
-     "y": 296.8,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 192.2,
-     "y": 296.8,
-     "type": "corner"
-    },
-    {
-     "x": 192.2,
-     "y": 296.8,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 192.2,
-     "y": 296.8,
-     "type": "corner",
-     "hOut": {
-      "x": 171.3,
-      "y": 279.0
-     }
-    },
-    {
-     "x": 149.4,
-     "y": 232.4,
-     "type": "corner",
-     "hIn": {
-      "x": 164.6,
-      "y": 256.1
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 149.4,
-     "y": 232.4,
-     "type": "corner",
-     "hOut": {
-      "x": 149.4,
-      "y": 232.4
-     }
-    },
-    {
-     "x": 149.4,
-     "y": 232.4,
-     "type": "corner",
-     "hIn": {
-      "x": 149.4,
-      "y": 232.4
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 149.4,
-     "y": 232.4,
-     "type": "corner"
-    },
-    {
-     "x": 96.6,
-     "y": 157.1,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 96.6,
-     "y": 157.1,
-     "type": "corner"
-    },
-    {
-     "x": 50.0,
-     "y": 50.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 50.0,
-     "y": 50.0,
-     "type": "corner"
-    },
-    {
-     "x": 50.0,
-     "y": 50.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 50.0,
-     "y": 50.0,
-     "type": "corner"
-    },
-    {
-     "x": 50.0,
-     "y": 50.0,
-     "type": "corner"
     }
    ]
   }

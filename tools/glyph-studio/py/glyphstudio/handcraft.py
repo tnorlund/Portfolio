@@ -136,6 +136,41 @@ def specs(W: float) -> dict:
                   node(M, 300),
               ]},
               circle(M, 60, 40, 40)],
+        "O": [circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0)],
+        "Q": [circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0),
+              line((M + 60, 300), (Rt + 20, BASE - 20))],
+        "U": [{"closed": False, "nodes": [
+                  node(L, CAP),
+                  node(L, 300, h_out=(L, 120)),
+                  node(M, BASE, h_in=(M - 130, BASE), h_out=(M + 130, BASE), smooth=True),
+                  node(Rt, 300, h_in=(Rt, 120)),
+                  node(Rt, CAP),
+              ]}],
+        "R": [line((L, BASE), (L, CAP)),
+              {"closed": False, "nodes": [
+                  node(L, CAP),
+                  node(Rt - 30, 870, h_in=(Rt - 30, CAP), smooth=True),
+                  node(Rt - 30, 640, h_out=(Rt - 30, 530)),
+                  node(L, 510),
+              ]},
+              line((L + 60, 510), (Rt, BASE))],
+        "&": [{"closed": False, "nodes": [
+                  node(Rt, 100),
+                  node(L + 110, 700, h_in=(M + 40, 380)),
+                  node(M - 60, CAP, h_in=(L + 60, 930), h_out=(M + 60, CAP + 20), smooth=True),
+                  node(M + 90, 720, h_in=(M + 120, 850)),
+                  node(L, 300, h_in=(M - 60, 520)),
+                  node(M - 40, BASE, h_in=(L, 90), h_out=(M + 60, BASE - 10), smooth=True),
+                  node(Rt - 30, 280, h_in=(Rt - 90, 90)),
+              ]}],
+        "S": [{"closed": False, "nodes": [
+                  node(Rt - 40, 790, h_in=(Rt - 60, 900)),
+                  node(M, CAP, h_in=(M + 130, CAP), h_out=(M - 130, CAP), smooth=True),
+                  node(L, 740, h_in=(L, 860), h_out=(L, 620), smooth=True),
+                  node(Rt, 300, h_in=(Rt, 440), h_out=(Rt, 180), smooth=True),
+                  node(M, BASE, h_in=(M + 130, BASE), h_out=(M - 130, BASE), smooth=True),
+                  node(L + 40, 210, h_in=(L + 60, 100)),
+              ]}],
         "o": [circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0)],
         "e": [circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0),
               line((L - 10, 390), (Rt + 10, 390))],
@@ -184,7 +219,8 @@ DEFAULT_W = {"K": 560, "M": 640, "N": 580, "V": 580, "W": 660, "X": 560,
              "Y": 560, "v": 500, "w": 620, "x": 500, "y": 500, "z": 480,
              "k": 520, "%": 620, "#": 560, '"': 320, "^": 460, "`": 220,
              ";": 220, "?": 460, "{": 340, "}": 340,
-             "o": 500, "e": 500, "a": 500, "u": 500, "h": 520, "i": 220}
+             "o": 500, "e": 500, "a": 500, "u": 500, "h": 520, "i": 220,
+             "O": 580, "Q": 600, "U": 560, "R": 560, "&": 620, "S": 540}
 
 
 def main(argv=None) -> int:
