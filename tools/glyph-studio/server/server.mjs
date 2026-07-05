@@ -1,23 +1,21 @@
 // Glyph Studio local server: font-source file API + python bridge.
 // Zero-dep node:http. All writes confined to fonts/ and .out/.
+// Core IO/compile logic lives in lib.mjs, shared with the MCP server (mcp.mjs).
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-  BITMATRIX_DIR,
-  FONTS_DIR,
-  OUT_DIR,
-  PORT,
-  PYTHON,
-  PY_ENV,
-  SAMPLES,
-  STUDIO_ROOT,
-  WORKTREE,
-} from "./env.mjs";
+import { OUT_DIR, PORT, PYTHON, PY_ENV, SAMPLES, STUDIO_ROOT } from "./env.mjs";
 import { call as pyCall } from "./pyworker.mjs";
+import {
+  atomicWrite,
+  compileFont,
+  fontPaths,
+  getFont,
+  reviewFont,
+} from "./lib.mjs";
 
 const execFileP = promisify(execFile);
 
@@ -33,97 +31,6 @@ const readBody = (req) =>
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
-
-function fontPaths(name) {
-  if (!/^[a-z0-9_-]+$/.test(name)) throw new Error("bad font name");
-  const dir = path.join(FONTS_DIR, name);
-  return {
-    dir,
-    font: path.join(dir, "font.json"),
-    glyphs: path.join(dir, "glyphs"),
-    traced: path.join(dir, "_traced"),
-  };
-}
-
-async function atomicWrite(file, content) {
-  const tmp = file + ".tmp";
-  await fsp.mkdir(path.dirname(file), { recursive: true });
-  await fsp.writeFile(tmp, content);
-  await fsp.rename(tmp, file);
-}
-
-async function getFont(name) {
-  const p = fontPaths(name);
-  const font = JSON.parse(await fsp.readFile(p.font, "utf-8"));
-  const glyphs = {};
-  for (const f of await fsp.readdir(p.glyphs)) {
-    if (!f.endsWith(".json")) continue;
-    const g = JSON.parse(await fsp.readFile(path.join(p.glyphs, f), "utf-8"));
-    glyphs[g.codepoint] = g;
-  }
-  let traced = [];
-  try {
-    traced = (await fsp.readdir(p.traced))
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => parseInt(f.slice(1, 5), 16));
-  } catch {}
-  return { font, glyphs, traced };
-}
-
-async function compileFont(name) {
-  const npz = path.join(OUT_DIR, `${name}-studio.glyphs.npz`);
-  const sheet = path.join(OUT_DIR, `${name}-studio.sheet.png`);
-  const { stdout } = await execFileP(
-    PYTHON,
-    ["-m", "glyphstudio.compile", fontPaths(name).dir, npz, "--sheet", sheet],
-    { cwd: path.join(STUDIO_ROOT, "py"), env: PY_ENV, timeout: 180000 },
-  );
-  const atlas = await pyCall("atlas_json", { npz }, { timeoutMs: 60000 });
-  return { log: stdout, npz, sheet: `/files/${name}-studio.sheet.png`,
-           glyphs: atlas.glyphs };
-}
-
-async function reviewFont(name, review) {
-  const npz = path.join(OUT_DIR, `${name}-studio.glyphs.npz`);
-  if (!fs.existsSync(npz)) throw new Error("compile first");
-  // BITMATRIX_DIR overlay: symlink everything, drop our npz over the profile's
-  const overlay = path.join(OUT_DIR, "bitmatrix-overlay");
-  await fsp.rm(overlay, { recursive: true, force: true });
-  await fsp.mkdir(overlay, { recursive: true });
-  for (const f of await fsp.readdir(BITMATRIX_DIR)) {
-    await fsp.symlink(path.join(BITMATRIX_DIR, f), path.join(overlay, f))
-      .catch(() => {});
-  }
-  const target = path.join(overlay, `${name}.glyphs.npz`);
-  await fsp.rm(target, { force: true });
-  await fsp.copyFile(npz, target);
-
-  const out = path.join(OUT_DIR, `${name}-review.png`);
-  const { merchant, imageId, receiptId } = review;
-  const { stdout } = await execFileP(
-    PYTHON,
-    [
-      path.join(WORKTREE, "synthesis_loop", "glyph_review.py"),
-      "receipt", merchant, imageId, String(receiptId), out,
-    ],
-    {
-      cwd: WORKTREE,
-      env: { ...PY_ENV, BITMATRIX_DIR: overlay },
-      timeout: 300000,
-    },
-  );
-  let scorecard = null;
-  const scorePath = out.replace(/\.png$/, ".scorecard.json");
-  try {
-    scorecard = JSON.parse(await fsp.readFile(scorePath, "utf-8"));
-  } catch {}
-  return {
-    log: stdout,
-    png: `/files/${name}-review.png`,
-    summary: scorecard?.summary ?? null,
-    failures: scorecard?.failures ?? [],
-  };
-}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);

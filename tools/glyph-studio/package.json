@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "node server/server.mjs & vite --config app/vite.config.ts; kill %1",
     "server": "node server/server.mjs",
+    "mcp": "node server/mcp.mjs",
     "app": "vite --config app/vite.config.ts",
     "test": "vitest run --config app/vite.config.ts",
     "typecheck": "tsc -p app/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

@@ -58,3 +58,44 @@ changes. To publish for real, back up and copy the npz into `$BITMATRIX_DIR`
 - Deliver solid strokes; ink density is applied downstream (`bitmap_thin`,
   auto-derived). Generated npz/PNGs live in `.out/` (gitignored); the JSON
   sources are the committable truth.
+
+## MCP server
+
+`server/mcp.mjs` is a stdio Model Context Protocol server — a sibling entry
+point to the HTTP server over the same core (`server/lib.mjs`). It gives an
+agent the trace/render/compile/review loop as tools, with rendered PNGs coming
+back as image blocks the model can see. Run it standalone with `npm run mcp`.
+
+Tools: `list_glyphs`, `get_glyph`, `render_glyph` (fast inner loop — renders an
+unsaved candidate), `view_samples`, `set_glyph` (validate-then-write, refuses to
+clobber a hand-`edited` glyph without `force`), `compile_font`, `review_font`,
+`simplify_glyphs`, `font_audit`.
+
+Register with Claude Code (user scope, since this repo differs from most
+sessions):
+
+```bash
+claude mcp add --scope user --transport stdio glyph-studio \
+  -- node /Users/tnorlund/Portfolio_grid_discipline/tools/glyph-studio/server/mcp.mjs
+```
+
+Or project-scope `.mcp.json` at the repo root (needs one-time interactive
+approval; `compile`/`review` exceed the default tool timeout, so raise it):
+
+```json
+{
+  "mcpServers": {
+    "glyph-studio": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/tools/glyph-studio/server/mcp.mjs"],
+      "env": {},
+      "timeout": 600000
+    }
+  }
+}
+```
+
+Tools surface as `mcp__glyph-studio__<tool>`. Notes: never write to stdout from
+`mcp.mjs` (it is the JSON-RPC channel — diagnostics go to stderr). Smoke test:
+`node test/mcp-smoke.mjs`.
