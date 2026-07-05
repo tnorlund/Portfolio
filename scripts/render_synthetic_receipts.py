@@ -932,6 +932,14 @@ def merchant_typography(merchant: str | None) -> dict:
             cfg["bitmap_font"] = {
                 k: os.path.join(_BITMATRIX_DIR, v) for k, v in val.items()
             }
+        elif key == "stylemap":
+            # Measured per-section style rules (Glyph Studio fleet); the JSON
+            # is published into $BITMATRIX_DIR like the atlases. Dropped
+            # gracefully when absent so CI renders keep working.
+            sm_path = os.path.join(_BITMATRIX_DIR, val)
+            if os.path.exists(sm_path):
+                with open(sm_path, encoding="utf-8") as fh:
+                    cfg["stylemap"] = json.load(fh)
         else:
             cfg[key] = val
     bf = cfg.get("bitmap_font")
@@ -1110,6 +1118,7 @@ def _render_cached_hybrid(
     reverse_date_anchor: str | None = None,
     dash_after_amount_date: bool = False,
     mixed_layout: bool = False,
+    stylemap: dict | None = None,
     bitmap_cap_ratio: float = 0.72,
     bitmap_thin: float = 0.0,
     ocr_font_sizing: bool = False,
@@ -1142,6 +1151,7 @@ def _render_cached_hybrid(
         reverse_date_anchor=reverse_date_anchor,
         dash_after_amount_date=dash_after_amount_date,
         mixed_layout=mixed_layout,
+        stylemap=stylemap,
         bitmap_cap_ratio=bitmap_cap_ratio,
         bitmap_thin=bitmap_thin,
         ocr_font_sizing=ocr_font_sizing,

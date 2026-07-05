@@ -37,6 +37,9 @@ from receipt_agent.agents.label_evaluator.rendering.number_format import (
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
+from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
+    row_style,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
     GridWord,
@@ -124,6 +127,8 @@ class RenderConfig:
     # BODY/TOTALS stay at scale 1.0 so they share the amount column. None = the
     # whole receipt uses one size/font.
     section_scale: Mapping[str, float] | None = None
+    # Measured per-section style rules (Glyph Studio stylemap); None = off.
+    stylemap: Mapping[str, Any] | None = None
     section_font: Mapping[str, str] | None = None
     # Per-merchant grid-font shaping (measured against the real receipts):
     # ``condense`` horizontally compresses every glyph (real faces are more
@@ -630,6 +635,14 @@ def _render_grid(
         else:
             sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
             bf_row = bmf
+        # Measured stylemap pass (no-op when config.stylemap is None): size
+        # scale multiplies the row cap; bold double-strikes; underline draws
+        # a rule under the row. Headings keep their own treatment.
+        sm_style = None
+        if config.stylemap is not None and not is_heading:
+            sm_style = row_style(config.stylemap, row_text, seed=str(baseline))
+            if sm_style["scale"] != 1.0:
+                sc = sc * sm_style["scale"]
         if _is_asterisk_rule(row_text):
             n = int(content_cw / spec.cell_w)
             draw_token_chars(
@@ -647,7 +660,8 @@ def _render_grid(
                 bitmap_thin=config.bitmap_thin,
             )
             continue
-        if sc == 1.0 and not fpath:
+        sm_extra = bool(sm_style and (sm_style["bold"] or sm_style["underline"]))
+        if sc == 1.0 and not fpath and not sm_extra:
             run = _run_layout(line, center_to)
             if run is not None:
                 text, anchor, x, target_w = run
@@ -689,22 +703,38 @@ def _render_grid(
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
         cp = row_cap if row_cap else (int(round(cap_px * sc)) if cap_px else None)
+        sm_bold = bool(sm_style and sm_style["bold"])
+        sm_underline = bool(sm_style and sm_style["underline"])
         run = _run_layout(line, center_to)
         if run is not None:
             text, anchor, x, target_w = run
-            draw_text_run(draw, text, x, baseline, row_spec, row_font, line[0].ink,
-                          anchor=anchor, stroke=config.stroke,
-                          condense=config.condense, bitmap_font=bf_row,
-                          cap_px=cp, target_width=target_w,
-                          bitmap_thin=config.bitmap_thin)
-            continue
-        draw_grid_line(draw, line, baseline, row_spec, row_font, amount_lane=lane,
-                       stroke=config.stroke, condense=config.condense,
-                       bitmap_font=bf_row, cap_px=cp,
-                       bitmap_thin=config.bitmap_thin,
-                       reverse_price=is_total, reverse_date=is_date_row,
-                       background=config.background, center_to=center_to,
-                       price_box_extend_cells=config.reverse_box_lane_cells)
+            for dx in ((0, 1) if sm_bold else (0,)):
+                draw_text_run(draw, text, x + dx, baseline, row_spec, row_font,
+                              line[0].ink,
+                              anchor=anchor, stroke=config.stroke,
+                              condense=config.condense, bitmap_font=bf_row,
+                              cap_px=cp, target_width=target_w,
+                              bitmap_thin=config.bitmap_thin)
+        else:
+            for dx in ((0, 1) if sm_bold else (0,)):
+                draw_grid_line(draw, line, baseline, row_spec, row_font,
+                               amount_lane=lane,
+                               stroke=config.stroke, condense=config.condense,
+                               bitmap_font=bf_row, cap_px=cp,
+                               bitmap_thin=config.bitmap_thin,
+                               reverse_price=is_total, reverse_date=is_date_row,
+                               background=config.background, center_to=center_to,
+                               price_box_extend_cells=config.reverse_box_lane_cells,
+                               x_shift_px=dx)
+        if sm_underline:
+            # Measured underline rule: hugs the baseline like the real prints
+            # (the fleet probe found rules INSIDE the OCR boxes' bottom edge).
+            ul_left = int(round(min(w.left for w in line)))
+            ul_right = int(round(max(w.right for w in line)))
+            ul_h = max(1, int(round((cp or spec.font_px) * 0.07)))
+            ul_y = int(round(baseline + max(2, ul_h)))
+            draw.rectangle([ul_left, ul_y, ul_right, ul_y + ul_h - 1],
+                           fill=line[0].ink)
 
     # Dashed section rules, printed as a run of real ``-`` glyphs in the reserved
     # gap below each anchor row. Use the merchant's bitmap face when it carries a

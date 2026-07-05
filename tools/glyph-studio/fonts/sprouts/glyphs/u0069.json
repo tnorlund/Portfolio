@@ -5,7 +5,9 @@
  "provenance": "edited",
  "width": 583.3,
  "baselineNudgePx": 0,
- "overrides": {},
+ "overrides": {
+  "weight": 0.87
+ },
  "strokes": [
   {
    "closed": true,

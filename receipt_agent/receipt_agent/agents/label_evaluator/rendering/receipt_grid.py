@@ -376,6 +376,7 @@ def draw_token_chars(
     cap_px: int | None = None,
     right_edge_col: float | None = None,
     bitmap_thin: float = 0.0,
+    x_shift_px: int = 0,
 ) -> None:
     """Draw each glyph of ``text`` at consecutive grid columns on a baseline.
 
@@ -458,14 +459,14 @@ def draw_token_chars(
                 gi, h, off = res
                 x = int(round(spec.grid_left + col * spec.cell_w
                               + (spec.cell_w - gi.width) / 2.0
-                              + right_shift))
+                              + right_shift + x_shift_px))
                 y = int(round(baseline_y + off - h))
                 img.paste(Image.new("RGB", gi.size, ink), (x, y), gi)
             elif font is not None:
                 # A data-built atlas may lack a rare glyph (e.g. 'j'/'z'); fall
                 # back to the TTF face so it renders instead of dropping out.
                 # (Chart atlases like Costco's are complete, so this never fires.)
-                _draw_ttf_fallback(char, col, right_shift)
+                _draw_ttf_fallback(char, col, right_shift + x_shift_px)
             col += 1
         return
     if condense >= 0.999:
@@ -473,7 +474,7 @@ def draw_token_chars(
         for char in text:
             if char == " ":
                 continue
-            x = spec.grid_left + col * spec.cell_w
+            x = spec.grid_left + col * spec.cell_w + x_shift_px
             draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls",
                       stroke_width=stroke, stroke_fill=ink)
             col += 1
@@ -495,7 +496,7 @@ def draw_token_chars(
                                  fill=255, anchor="ls", stroke_width=stroke,
                                  stroke_fill=255)
         buf = buf.resize((max(1, int(round(bw * condense))), bh))
-        x = int(round(spec.grid_left + col * spec.cell_w))
+        x = int(round(spec.grid_left + col * spec.cell_w + x_shift_px))
         y = int(round(baseline_y - ascent - stroke))
         img.paste(Image.new("RGB", buf.size, ink), (x, y), buf)
         col += 1
@@ -882,6 +883,7 @@ def draw_grid_line(
     background: tuple[int, int, int] = (255, 255, 255),
     center_to: float | None = None,
     price_box_extend_cells: int = 4,
+    x_shift_px: int = 0,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
@@ -942,6 +944,7 @@ def draw_grid_line(
             cap_px=cap_px,
             right_edge_col=placed.end_col if placed.is_price else None,
             bitmap_thin=bitmap_thin,
+            x_shift_px=x_shift_px,
         )
 
 

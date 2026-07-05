@@ -54,6 +54,7 @@
       "section_scale": {},
       "typography": {
         "font": "PTMONO",
+        "stylemap": "sprouts.stylemap.json",
         "bitmap_font": { "regular": "sprouts.glyphs.npz", "heavy": "sprouts.glyphs.npz" },
         "condense": 0.895,
         "mixed_layout": true,

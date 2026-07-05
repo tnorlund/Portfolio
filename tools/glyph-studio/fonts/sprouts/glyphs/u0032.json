@@ -11,7 +11,9 @@
  },
  "width": 549.8,
  "baselineNudgePx": 0,
- "overrides": {},
+ "overrides": {
+  "weight": 1.2
+ },
  "strokes": [
   {
    "closed": false,
