@@ -46,3 +46,17 @@ source. The bootstrap trace produced:
 
 The receipt-scale proof asset is checked in at
 `receipt_logo/receipt_logo/assets/merchant_logos/sprouts_receipt_header.svg`.
+
+
+## Integration note (2026-07-06)
+
+The supported surfaces are the **python package + CLI**. The standalone
+python MCP server (`mcp_server.py`) requires the `mcp` package, which is
+deliberately NOT in the repo venv (dependency pins) — treat it as optional.
+The sanctioned MCP surface is the existing **glyph-studio server**
+(`tools/glyph-studio/server/mcp.mjs`), which shells this package's CLI and
+needs no new python dependencies; `list_logos` / `vectorize_logo` land there
+once this package merges.
+
+Assets: `sprouts_farmers_market` (raster-traced) and `costco_wholesale`
+(authored vector source, `source_kind: "vector"` — no vectorization pass).
