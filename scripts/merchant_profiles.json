@@ -75,14 +75,20 @@
       }
     },
     "Vons": {
-      "_comment": "receiptfont.com bitMatrix-D1 (dot-matrix) -> VT323.",
-      "section_scale": {},
+      "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
+      "logo": "vons_logo.png",
       "typography": {
-        "font": "VT323",
-        "condense": 1.0,
-        "stroke": 0
-      },
-      "logo": "vons_logo.png"
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "vons.glyphs.npz",
+          "heavy": "vons-heavy.glyphs.npz"
+        },
+        "condense": 0.895,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.649
+      }
     },
     "Sprouts Farmers Market": {
       "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
@@ -150,19 +156,6 @@
         "stroke": 0
       },
       "logo": "gelsons_logo.png"
-    }
-  },
-  "Vons": {
-    "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
-    "logo": "vons_logo.png",
-    "typography": {
-      "font": "PTMONO",
-      "bitmap_font": {
-        "regular": "vons.glyphs.npz",
-        "heavy": "vons-heavy.glyphs.npz"
-      },
-      "condense": 0.96,
-      "ocr_font_sizing": true
     }
   }
 }

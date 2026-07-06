@@ -60,7 +60,17 @@ _COSTCO_RULES = [
         r"AUTH|CASH|CHANGE", re.I)),
     ("footer", re.compile(r"OP#|Name:|Whse:|Trm:|Trn:|thank you", re.I)),
 ]
-_MERCHANT_RULES = {"sprouts": _RULES, "costco": _COSTCO_RULES}
+_VONS_RULES = [
+    ("store_header", re.compile(r"VONS|Safeway|Store\s?#|Main Street", re.I)),
+    ("savings", re.compile(r"SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings", re.I)),
+    ("section_header", re.compile(r"^(GROCERY|PRODUCE|MEAT|SEAFOOD|DELI|BAKERY|DAIRY|FROZEN|LIQUOR|GEN MERCHANDISE|REFRIG/FROZEN)\b", re.I)),
+    ("total_line", re.compile(r"^\**\s*BALANCE\b|^TOTAL\b", re.I)),
+    ("summary", re.compile(r"SUBTOTAL|^TAX\b|CHANGE\b|CASH\b|CREDIT\b", re.I)),
+    ("payment", re.compile(r"REF:|AUTH:|APPROVED|XXXX|DEBIT|VISA|MASTERCARD|EFT|PAYMENT AMOUNT", re.I)),
+    ("points", re.compile(r"POINTS|REWARDS|GAS REWARD|fuel", re.I)),
+    ("footer", re.compile(r"Thank You|vons\.com|Your Cashier|survey|TWICE THE DIFFERENCE", re.I)),
+]
+_MERCHANT_RULES = {"sprouts": _RULES, "costco": _COSTCO_RULES, "vons": _VONS_RULES}
 
 
 def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
