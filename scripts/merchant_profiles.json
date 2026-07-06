@@ -25,7 +25,14 @@
         "dash_after_amount_date": true,
         "condense": 0.93
       },
-      "logo": "costco_logo.png"
+      "logo": "bitMatrix-C2_logo.png",
+      "logo_anchor": {
+        "phrases": [
+          "EWHOLESALE",
+          "WHOLESALE"
+        ],
+        "extend_left": false
+      }
     },
     "Amazon Fresh": {
       "_comment": "receiptfont.com bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.",
@@ -89,6 +96,13 @@
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.649,
         "stylemap": "vons.stylemap.json"
+      },
+      "logo_anchor": {
+        "phrases": [
+          "VONS.",
+          "VONS"
+        ],
+        "extend_left": false
       }
     },
     "Sprouts Farmers Market": {

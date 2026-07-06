@@ -2071,6 +2071,13 @@ def _phrase_logo_placement(receipt, phrases, *, config, logo, coord_max,
         text = _normalize_phrase(" ".join(str(w.get("text") or "") for w in words))
         if not text or not any(p in text for p in norm):
             continue
+        # This anchors a TOP-of-receipt lockup; short brand phrases ("VONS")
+        # also match footer URLs / body mentions, which unions a bogus
+        # mid-receipt band and drops body words. Only accept header lines.
+        ys = [v for w in words if w.get("bbox")
+              for v in (w["bbox"][1], w["bbox"][3])]
+        if ys and (sum(ys) / len(ys)) < 780.0:
+            continue
         drop.extend(words)
         boxes.extend(w["bbox"] for w in words if w.get("bbox"))
     band = _union_bbox(boxes)
