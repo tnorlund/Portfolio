@@ -1,0 +1,59 @@
+{
+  "merchant_slug": "sprouts_farmers_market",
+  "source_filename": "Sprouts_Farmers_Market_Logo.png",
+  "source_dimensions": {
+    "width": 1800,
+    "height": 468
+  },
+  "visible_pixel_count": 259194,
+  "palette": [
+    "#2a783a",
+    "#6bbd45"
+  ],
+  "assets": {
+    "color_svg": "sprouts_farmers_market.svg",
+    "receipt_header_svg": "sprouts_receipt_header.svg"
+  },
+  "layers": [
+    {
+      "fill": "#2a783a",
+      "rgb": [
+        42,
+        120,
+        58
+      ],
+      "pixel_count": 172321,
+      "path_count": 13,
+      "point_count": 406,
+      "signed_area": 172826.5
+    },
+    {
+      "fill": "#6bbd45",
+      "rgb": [
+        107,
+        189,
+        69
+      ],
+      "pixel_count": 86873,
+      "path_count": 21,
+      "point_count": 487,
+      "signed_area": 87168.5
+    }
+  ],
+  "receipt_scale_observation": {
+    "source": "local synthetic Sprouts receipt fixture used during bootstrap",
+    "tokens": [
+      "SPROUTS",
+      "FARMERS",
+      "MARKET"
+    ],
+    "bounds": [
+      283,
+      745,
+      813,
+      777
+    ],
+    "width": 530,
+    "height": 32
+  }
+}
