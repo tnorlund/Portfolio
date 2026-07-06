@@ -909,6 +909,55 @@ def _merchant_logo(merchant: str | None):
     return Image.fromarray(rgba, "RGBA")
 
 
+def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
+    """Resolve a font artifact to $BITMATRIX_DIR, fetching from the
+    MerchantFont pointer (Dynamo -> S3) on a local-cache miss.
+
+    Glyph sources live in git; compiled artifacts are published to S3 with a
+    Dynamo pointer per (merchant, face). The local dir is only a cache, so a
+    fresh machine (mini, Lambda, CI) renders without any manual publish
+    ritual. Never raises: on any fetch failure the original local path is
+    returned and the renderer's existing missing-file behavior applies.
+    """
+    local = os.path.join(_BITMATRIX_DIR, filename)
+    if os.path.exists(local):
+        return local
+    try:
+        import hashlib
+
+        import boto3
+
+        from receipt_dynamo import DynamoClient
+
+        table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+        client = DynamoClient(table)
+        if face == "stylemap":
+            ptr = client.get_merchant_font(merchant, "regular")
+            bucket = ptr.s3_bucket if ptr else None
+            key = getattr(ptr, "stylemap_s3_key", None) if ptr else None
+            want_hash = None
+        else:
+            ptr = client.get_merchant_font(merchant, face)
+            bucket = ptr.s3_bucket if ptr else None
+            key = ptr.s3_key if ptr else None
+            want_hash = ptr.content_hash if ptr else None
+        if not bucket or not key:
+            return local
+        os.makedirs(_BITMATRIX_DIR, exist_ok=True)
+        tmp = local + ".fetch"
+        boto3.client("s3").download_file(bucket, key, tmp)
+        if want_hash:
+            h = hashlib.sha256(open(tmp, "rb").read()).hexdigest()
+            if h != want_hash:
+                os.remove(tmp)
+                return local
+        os.replace(tmp, local)
+        print(f"[merchant-font] fetched {face} for {merchant!r} -> {local}")
+    except Exception:
+        return local
+    return local
+
+
 def merchant_typography(merchant: str | None) -> dict:
     """Per-merchant grid typography kwargs; {} -> default grid font.
 
@@ -930,13 +979,14 @@ def merchant_typography(merchant: str | None) -> dict:
                 cfg["font_path"] = path
         elif key == "bitmap_font":
             cfg["bitmap_font"] = {
-                k: os.path.join(_BITMATRIX_DIR, v) for k, v in val.items()
+                k: _ensure_font_cached(v, merchant, face=k)
+                for k, v in val.items()
             }
         elif key == "stylemap":
             # Measured per-section style rules (Glyph Studio fleet); the JSON
             # is published into $BITMATRIX_DIR like the atlases. Dropped
             # gracefully when absent so CI renders keep working.
-            sm_path = os.path.join(_BITMATRIX_DIR, val)
+            sm_path = _ensure_font_cached(val, merchant, face="stylemap")
             if os.path.exists(sm_path):
                 with open(sm_path, encoding="utf-8") as fh:
                     cfg["stylemap"] = json.load(fh)
