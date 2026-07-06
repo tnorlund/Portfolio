@@ -74,7 +74,10 @@ export const toCssRectInner = (
   render: RenderGeometry,
 ): CssRect => {
   const [x0, y0, x1, y1] = bbox;
-  const { width: W, height: H, margin: m } = render;
+  // margin is absent on re-rendered-real-receipt label files; the render
+  // convention is margin-10 but a missing value must degrade, not NaN.
+  const { width: W, height: H } = render;
+  const m = render.margin ?? 0;
   const innerW = W - 2 * m;
   const innerH = H - 2 * m;
   const leftPx = m + (x0 / 1000) * innerW;
@@ -97,12 +100,13 @@ export const buildLabelBoxes = (file: ShowcaseLabelFile): LabelBox[] => {
     if (!family || !bbox || bbox.length !== 4) {
       return;
     }
-    boxes.push({
-      index,
-      token,
-      family,
-      rect: render ? toCssRectInner(bbox, render) : toCssRect(bbox),
-    });
+    const rect = render ? toCssRectInner(bbox, render) : toCssRect(bbox);
+    if (
+      ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)
+    ) {
+      return;
+    }
+    boxes.push({ index, token, family, rect });
   });
   return boxes;
 };

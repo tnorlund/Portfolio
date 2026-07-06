@@ -4,5 +4,12 @@
  "weightDefault": 1.0,
  "weightBold": 1.33,
  "hero": "S",
- "samples": 140
+ "samples": 140,
+ "cloudGeom": {
+  "imageW": 177,
+  "imageH": 216,
+  "baselineFromBottomPx": 15.0,
+  "capHeightPx": 180,
+  "inkCenterXPx": 91.5
+ }
 }

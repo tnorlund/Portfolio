@@ -5,7 +5,9 @@ import { GlyphSkeleton } from "./geometry";
 import { ActView } from "./Acts";
 import {
   ACT_COUNT,
+  ACT_DWELL_MS,
   ACTS,
+  AUTOPLAY_IDLE_RESUME_MS,
   composeStepsSrc,
   ComposeSteps,
   DEFAULT_MERCHANT,
@@ -24,13 +26,16 @@ import {
 import styles from "./SynthesisPipeline.module.css";
 
 /**
- * SynthesisPipeline — one scroll-driven figure telling how a labeled receipt
- * that never existed gets made end to end: letterforms mined from real prints,
- * style measured from real receipts, content composed, printed, and labeled.
+ * SynthesisPipeline — one figure telling how a labeled receipt that never
+ * existed gets made end to end: letterforms mined from real prints, style
+ * measured from real receipts, content composed, printed, and labeled.
  *
- * A single sticky stage renders whichever act the scroll position selects; a
- * merchant toggle (Sprouts <-> Costco) swaps every act's asset root. Under
- * prefers-reduced-motion the acts render as a static, fully-resolved stack.
+ * The act sequence AUTO-PLAYS in place when the figure scrolls into view (no
+ * scroll-through track). The act dots double as navigation; any manual
+ * interaction (dot, merchant toggle, weight slider) pauses autoplay, which
+ * resumes after a short idle. A merchant toggle (Sprouts <-> Costco) swaps
+ * every act's asset root. Under prefers-reduced-motion the acts render as a
+ * static, fully-resolved stack.
  */
 
 const usePrefersReducedMotion = (): boolean => {
@@ -48,36 +53,41 @@ const usePrefersReducedMotion = (): boolean => {
   return reduced;
 };
 
-interface ScrollState {
+export interface AutoplayState {
   activeAct: number;
   actProgress: number;
 }
 
 /**
- * Derive the active act + intra-act progress from how far a sticky scroller
- * has been scrolled through. Pure so the mapping is unit-testable.
+ * Advance the autoplay clock by `dtMs`. `dwellMs` is the current act's dwell;
+ * progress rolls over into the next act (wrapping) when it passes 1. Pure so
+ * the timeline math is unit-testable without a running rAF loop.
  */
-export const scrollStateFor = (
-  rect: { top: number; height: number },
-  viewportHeight: number,
+export const advanceAutoplay = (
+  activeAct: number,
+  actProgress: number,
+  dtMs: number,
+  dwellMs: number,
   actCount: number,
-): ScrollState => {
-  const distance = rect.height - viewportHeight;
-  if (distance <= 0) {
-    return { activeAct: 0, actProgress: 0 };
+): AutoplayState => {
+  if (dwellMs <= 0 || actCount <= 0) {
+    return { activeAct, actProgress: 1 };
   }
-  const scrolled = Math.min(Math.max(-rect.top, 0), distance);
-  const global = scrolled / distance;
-  const actFloat = global * actCount;
-  const activeAct = Math.min(actCount - 1, Math.max(0, Math.floor(actFloat)));
-  const actProgress = Math.min(1, Math.max(0, actFloat - activeAct));
-  return { activeAct, actProgress };
+  let progress = actProgress + dtMs / dwellMs;
+  let act = activeAct;
+  while (progress >= 1) {
+    progress -= 1;
+    act = (act + 1) % actCount;
+  }
+  if (progress < 0) {
+    progress = 0;
+  }
+  return { activeAct: act, actProgress: progress };
 };
 
 const SynthesisPipeline: React.FC = () => {
   const { ref: inViewRef, inView } = useInView({
-    rootMargin: "200px 0px",
-    triggerOnce: true,
+    threshold: 0.4,
     fallbackInView: true,
   });
   const reducedMotion = usePrefersReducedMotion();
@@ -87,13 +97,24 @@ const SynthesisPipeline: React.FC = () => {
   const [assetsByMerchant, setAssetsByMerchant] = useState<
     Record<Merchant, MerchantAssets>
   >({ sprouts: EMPTY_ASSETS, costco: EMPTY_ASSETS });
-  const [scroll, setScroll] = useState<ScrollState>({
-    activeAct: 0,
-    actProgress: 0,
-  });
 
-  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [activeAct, setActiveAct] = useState(0);
+  const [actProgress, setActProgress] = useState(0);
+  const [paused, setPaused] = useState(false);
+
   const loadedRef = useRef<Set<Merchant>>(new Set());
+  const actRef = useRef(0);
+  const progRef = useRef(0);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Mirror render state into refs so the rAF loop can resume from wherever the
+  // timeline currently is (after a pause, a jump, or scrolling back in).
+  useEffect(() => {
+    actRef.current = activeAct;
+  }, [activeAct]);
+  useEffect(() => {
+    progRef.current = actProgress;
+  }, [actProgress]);
 
   // Load the JSON assets for a merchant once, when the figure is near view.
   useEffect(() => {
@@ -129,50 +150,85 @@ const SynthesisPipeline: React.FC = () => {
     };
   }, [inView, merchant]);
 
-  // Track scroll -> active act + progress (rAF-throttled). Skipped entirely
-  // under reduced motion, where every act renders resolved.
+  const playing = inView && !paused && !reducedMotion;
+
+  // Autoplay clock: while playing, advance the active act's progress each
+  // frame, wrapping to the next act. Cancels (and preserves position via refs)
+  // when playing stops — out of view, paused, or reduced motion.
   useEffect(() => {
-    if (reducedMotion) {
+    if (!playing) {
       return;
     }
-    let frame = 0;
-    const measure = () => {
-      frame = 0;
-      const el = scrollerRef.current;
-      if (!el) {
-        return;
-      }
-      const rect = el.getBoundingClientRect();
-      setScroll(
-        scrollStateFor(
-          { top: rect.top, height: rect.height },
-          window.innerHeight,
-          ACT_COUNT,
-        ),
-      );
+    let raf = 0;
+    let last = performance.now();
+    let act = actRef.current;
+    let prog = progRef.current;
+    const tick = (ts: number) => {
+      const dt = ts - last;
+      last = ts;
+      const dwell = ACT_DWELL_MS[ACTS[act].id];
+      const next = advanceAutoplay(act, prog, dt, dwell, ACT_COUNT);
+      act = next.activeAct;
+      prog = next.actProgress;
+      actRef.current = act;
+      progRef.current = prog;
+      setActiveAct(act);
+      setActProgress(prog);
+      raf = requestAnimationFrame(tick);
     };
-    const onScroll = () => {
-      if (frame === 0) {
-        frame = window.requestAnimationFrame(measure);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
+  useEffect(
+    () => () => {
+      if (resumeTimer.current) {
+        clearTimeout(resumeTimer.current);
       }
-    };
-    measure();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
-      }
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [reducedMotion]);
+    },
+    [],
+  );
+
+  // Any manual interaction pauses autoplay, then schedules a resume.
+  const pauseForInteraction = useCallback(() => {
+    setPaused(true);
+    if (resumeTimer.current) {
+      clearTimeout(resumeTimer.current);
+    }
+    resumeTimer.current = setTimeout(() => {
+      setPaused(false);
+    }, AUTOPLAY_IDLE_RESUME_MS);
+  }, []);
+
+  const handleMerchant = useCallback(
+    (m: Merchant) => {
+      setMerchant(m);
+      pauseForInteraction();
+    },
+    [pauseForInteraction],
+  );
+
+  const handleWeight = useCallback(
+    (w: number) => {
+      setDotWeight(w);
+      pauseForInteraction();
+    },
+    [pauseForInteraction],
+  );
+
+  const jumpToAct = useCallback(
+    (index: number) => {
+      setActiveAct(index);
+      setActProgress(1); // show the act resolved while paused
+      actRef.current = index;
+      progRef.current = 1;
+      pauseForInteraction();
+    },
+    [pauseForInteraction],
+  );
 
   const assets = assetsByMerchant[merchant];
-
-  const handleWeight = useCallback((w: number) => setDotWeight(w), []);
-
-  const activeMeta = ACTS[scroll.activeAct] ?? ACTS[0];
+  const activeMeta = ACTS[activeAct] ?? ACTS[0];
 
   const toggle = (
     <div className={styles.toggle} role="group" aria-label="Merchant">
@@ -182,7 +238,7 @@ const SynthesisPipeline: React.FC = () => {
           type="button"
           className={styles.toggleButton}
           aria-pressed={m === merchant}
-          onClick={() => setMerchant(m)}
+          onClick={() => handleMerchant(m)}
           data-testid={`merchant-${m}`}
         >
           {MERCHANT_LABELS[m]}
@@ -191,7 +247,7 @@ const SynthesisPipeline: React.FC = () => {
     </div>
   );
 
-  const actProps = (index: number, progress: number, active: boolean) => ({
+  const actProps = (progress: number, active: boolean) => ({
     merchant,
     assets,
     progress,
@@ -201,7 +257,7 @@ const SynthesisPipeline: React.FC = () => {
     onWeightChange: handleWeight,
   });
 
-  // ---- Reduced motion / no-scroll: static resolved stack ----
+  // ---- Reduced motion: static resolved stack ----
   if (reducedMotion) {
     return (
       <div
@@ -233,7 +289,7 @@ const SynthesisPipeline: React.FC = () => {
               </div>
               <div className={`${styles.stage} ${styles.staticStage}`}>
                 <div className={styles.actWrap}>
-                  <ActView actId={meta.id} {...actProps(meta.index, 1, true)} />
+                  <ActView actId={meta.id} {...actProps(1, true)} />
                 </div>
               </div>
               <p className={styles.caption}>{meta.caption}</p>
@@ -244,62 +300,54 @@ const SynthesisPipeline: React.FC = () => {
     );
   }
 
-  // ---- Scroll-driven sticky stage ----
+  // ---- In-place autoplay ----
   return (
     <div
       ref={inViewRef}
       id="synthesis-pipeline"
       data-testid="synthesis-pipeline"
-      data-mode="scroll"
+      data-mode="autoplay"
+      data-paused={paused || undefined}
       className={styles.container}
     >
-      <div
-        ref={scrollerRef}
-        className={styles.scroller}
-        style={{ height: `${ACT_COUNT * 95}vh` }}
-      >
-        <div className={styles.sticky}>
-          <div className={styles.topBar}>
-            <div className={styles.heading}>
-              <span className={styles.eyebrow} data-testid="act-eyebrow">
-                {activeMeta.eyebrow}
-              </span>
-              <h3 className={styles.headline} data-testid="act-headline">
-                {activeMeta.headline}
-              </h3>
-            </div>
-            {toggle}
-          </div>
+      <div className={styles.topBar}>
+        <div className={styles.heading}>
+          <span className={styles.eyebrow} data-testid="act-eyebrow">
+            {activeMeta.eyebrow}
+          </span>
+          <h3 className={styles.headline} data-testid="act-headline">
+            {activeMeta.headline}
+          </h3>
+        </div>
+        {toggle}
+      </div>
 
-          <div className={styles.stage}>
-            <div key={activeMeta.id} className={styles.actWrap}>
-              <ActView
-                actId={activeMeta.id}
-                {...actProps(
-                  scroll.activeAct,
-                  scroll.actProgress,
-                  true,
-                )}
-              />
-            </div>
-          </div>
-
-          <p className={styles.caption} data-testid="act-caption">
-            {activeMeta.caption}
-          </p>
-
-          <ol className={styles.progress} aria-hidden="true">
-            {ACTS.map((meta) => (
-              <li
-                key={meta.id}
-                className={styles.progressDot}
-                data-active={meta.index === scroll.activeAct}
-                data-done={meta.index < scroll.activeAct}
-              />
-            ))}
-          </ol>
+      <div className={`${styles.stage} ${styles.interactiveStage}`}>
+        <div key={activeMeta.id} className={styles.actWrap}>
+          <ActView actId={activeMeta.id} {...actProps(actProgress, true)} />
         </div>
       </div>
+
+      <p className={styles.caption} data-testid="act-caption">
+        {activeMeta.caption}
+      </p>
+
+      <ol className={styles.progress} aria-label="Pipeline acts">
+        {ACTS.map((meta) => (
+          <li key={meta.id} className={styles.progressItem}>
+            <button
+              type="button"
+              className={styles.progressDot}
+              data-active={meta.index === activeAct}
+              data-done={meta.index < activeAct}
+              aria-pressed={meta.index === activeAct}
+              aria-label={meta.eyebrow}
+              onClick={() => jumpToAct(meta.index)}
+              data-testid={`act-dot-${meta.id}`}
+            />
+          </li>
+        ))}
+      </ol>
     </div>
   );
 };

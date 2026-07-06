@@ -2,30 +2,41 @@ import fs from "fs";
 import path from "path";
 import {
   CAP_UNITS,
+  CloudGeom,
+  cloudScale,
   cubicPoint,
   flattenSegment,
   flattenStroke,
   flipY,
   glyphAnchors,
+  glyphAnchorsCloud,
   glyphDotPoints,
+  glyphDotPointsCloud,
   GlyphSkeleton,
+  mapToCloud,
   nodeCount,
   polylineLength,
   resampleByArcLength,
   segmentsToPathD,
   skeletonPathDs,
+  skeletonPathDsCloud,
   skeletonSegments,
   skeletonViewBox,
   strokeSegments,
 } from "./geometry";
 
-const SKELETON_PATH = path.join(
+const PIPELINE_DIR = path.join(
   __dirname,
-  "../../../../public/synthetic-receipts/pipeline/sprouts/char_skeleton.json",
+  "../../../../public/synthetic-receipts/pipeline",
 );
+const SKELETON_PATH = path.join(PIPELINE_DIR, "sprouts/char_skeleton.json");
+const DOT_PARAMS_PATH = path.join(PIPELINE_DIR, "sprouts/dot_params.json");
 
 const loadSprouts = (): GlyphSkeleton =>
   JSON.parse(fs.readFileSync(SKELETON_PATH, "utf-8")) as GlyphSkeleton;
+
+const loadCloudGeom = (): CloudGeom =>
+  JSON.parse(fs.readFileSync(DOT_PARAMS_PATH, "utf-8")).cloudGeom as CloudGeom;
 
 describe("flipY", () => {
   test("baseline (y=0) maps to the bottom of the cap box", () => {
@@ -267,5 +278,60 @@ describe("skeletonViewBox / glyphAnchors / nodeCount", () => {
   test("skeletonSegments yields one segment list per stroke", () => {
     const skeleton = loadSprouts();
     expect(skeletonSegments(skeleton)).toHaveLength(skeleton.strokes.length);
+  });
+});
+
+describe("cloud-pixel mapping", () => {
+  const cloud = loadCloudGeom();
+  const glyphWidth = loadSprouts().width ?? CAP_UNITS;
+
+  test("cloudScale is capHeightPx / 1000", () => {
+    expect(cloudScale(cloud)).toBeCloseTo(cloud.capHeightPx / 1000, 6);
+  });
+
+  test("baseline (y=0) maps just above the image bottom", () => {
+    const p = mapToCloud({ x: glyphWidth / 2, y: 0 }, cloud, glyphWidth);
+    expect(p.y).toBeCloseTo(cloud.imageH - cloud.baselineFromBottomPx, 6);
+    // x at the glyph's horizontal center lands on the measured ink center.
+    expect(p.x).toBeCloseTo(cloud.inkCenterXPx, 6);
+  });
+
+  test("cap height (y=1000) maps capHeightPx above the baseline", () => {
+    const p = mapToCloud({ x: glyphWidth / 2, y: CAP_UNITS }, cloud, glyphWidth);
+    expect(p.y).toBeCloseTo(
+      cloud.imageH - cloud.baselineFromBottomPx - cloud.capHeightPx,
+      6,
+    );
+  });
+
+  test("every mapped anchor + dot lands inside the cloud image box", () => {
+    const skeleton = loadSprouts();
+    const { anchors } = glyphAnchorsCloud(skeleton, cloud);
+    const dots = glyphDotPointsCloud(skeleton, cloud, 55);
+    [...anchors, ...dots].forEach((pt) => {
+      expect(pt.x).toBeGreaterThanOrEqual(0);
+      expect(pt.x).toBeLessThanOrEqual(cloud.imageW);
+      expect(pt.y).toBeGreaterThanOrEqual(0);
+      expect(pt.y).toBeLessThanOrEqual(cloud.imageH);
+    });
+  });
+
+  test("cloud path strings are deterministic, one per stroke", () => {
+    const skeleton = loadSprouts();
+    const a = skeletonPathDsCloud(skeleton, cloud);
+    const b = skeletonPathDsCloud(skeleton, cloud);
+    expect(a).toEqual(b);
+    expect(a).toHaveLength(skeleton.strokes.length);
+    expect(a[0].startsWith("M ")).toBe(true);
+  });
+
+  test("cloud dots preserve cap-unit density (step converted by scale)", () => {
+    const skeleton = loadSprouts();
+    // The pixel step is stepUnits * scale, so the dot COUNT matches the
+    // cap-space resample — density is preserved, only the space changes.
+    const capSpace = glyphDotPoints(skeleton, 55);
+    const cloudSpace = glyphDotPointsCloud(skeleton, cloud, 55);
+    expect(Math.abs(cloudSpace.length - capSpace.length)).toBeLessThanOrEqual(1);
+    expect(cloudSpace.length).toBeGreaterThan(5);
   });
 });

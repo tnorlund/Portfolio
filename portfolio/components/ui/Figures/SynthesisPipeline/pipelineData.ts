@@ -8,7 +8,7 @@
  * the spec'd paths and the acts degrade gracefully when a file is missing.
  */
 
-import { GlyphSkeleton } from "./geometry";
+import { CloudGeom, GlyphSkeleton } from "./geometry";
 import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
 
 export type Merchant = "sprouts" | "costco";
@@ -79,6 +79,8 @@ export interface DotParams {
   weightBold: number;
   hero: string;
   samples: number;
+  /** Cloud PNG pixel geometry for act-3/4 alignment (added incrementally). */
+  cloudGeom?: CloudGeom;
 }
 
 export const DEFAULT_DOT_PARAMS: DotParams = {
@@ -251,6 +253,25 @@ export const ACTS: ActMeta[] = [
 ];
 
 export const ACT_COUNT = ACTS.length;
+
+/**
+ * Per-act autoplay dwell (ms) — how long each act takes to animate through
+ * before advancing. Longer for the acts that reveal a lot (font cascade, the
+ * final print + labels), shorter for the quick establishing shots.
+ */
+export const ACT_DWELL_MS: Record<ActId, number> = {
+  raw: 4000,
+  character: 5000,
+  penpath: 5500,
+  thermal: 5500,
+  font: 5000,
+  style: 5000,
+  compose: 5500,
+  labels: 6000,
+};
+
+/** How long autoplay stays paused after a manual interaction, then resumes. */
+export const AUTOPLAY_IDLE_RESUME_MS = 10000;
 
 /**
  * The measured-weight callout for act 4, per merchant (spec copy). Shown when

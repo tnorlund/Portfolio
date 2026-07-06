@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import fs from "fs";
 import path from "path";
-import SynthesisPipeline, { scrollStateFor } from ".";
-import { ACT_COUNT } from "./pipelineData";
+import SynthesisPipeline, { advanceAutoplay } from ".";
+import { ACT_COUNT, ACTS } from "./pipelineData";
 
 jest.mock("react-intersection-observer", () => ({
   useInView: () => ({ ref: jest.fn(), inView: true }),
@@ -36,6 +36,13 @@ let matchMediaReduced = false;
 
 beforeEach(() => {
   global.fetch = mockFetch();
+  // Stub rAF so the autoplay clock never advances on its own during tests —
+  // the timeline math is verified separately via advanceAutoplay(). Component
+  // tests then assert deterministic state (opening act, manual navigation).
+  jest
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation(() => 0 as unknown as number);
+  jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: (query: string) => ({
@@ -64,49 +71,41 @@ const flushAssets = async () => {
   });
 };
 
-describe("scrollStateFor (pure mapping)", () => {
-  test("no scrollable distance pins to the first act", () => {
-    expect(scrollStateFor({ top: 0, height: 500 }, 900, ACT_COUNT)).toEqual({
-      activeAct: 0,
-      actProgress: 0,
-    });
+describe("advanceAutoplay (pure timeline math)", () => {
+  test("advancing within a dwell increments progress, same act", () => {
+    const s = advanceAutoplay(2, 0.2, 1000, 5000, ACT_COUNT);
+    expect(s.activeAct).toBe(2);
+    expect(s.actProgress).toBeCloseTo(0.4, 5);
   });
 
-  test("top of the scroller is act 0 at progress 0", () => {
-    const distance = ACT_COUNT * 1000 - 1000;
-    const s = scrollStateFor(
-      { top: 0, height: ACT_COUNT * 1000 },
-      1000,
-      ACT_COUNT,
-    );
+  test("crossing the dwell rolls into the next act with the remainder", () => {
+    // 0.8 + 4000/5000 = 1.6 -> next act at 0.6
+    const s = advanceAutoplay(2, 0.8, 4000, 5000, ACT_COUNT);
+    expect(s.activeAct).toBe(3);
+    expect(s.actProgress).toBeCloseTo(0.6, 5);
+  });
+
+  test("the last act wraps back to the first", () => {
+    const s = advanceAutoplay(ACT_COUNT - 1, 0.9, 1000, 5000, ACT_COUNT);
     expect(s.activeAct).toBe(0);
-    expect(s.actProgress).toBeCloseTo(0, 5);
-    expect(distance).toBeGreaterThan(0);
+    expect(s.actProgress).toBeCloseTo(0.1, 5);
   });
 
-  test("fully scrolled clamps to the last act", () => {
-    const height = ACT_COUNT * 1000;
-    const distance = height - 1000;
-    const s = scrollStateFor({ top: -distance, height }, 1000, ACT_COUNT);
-    expect(s.activeAct).toBe(ACT_COUNT - 1);
-    expect(s.actProgress).toBeCloseTo(1, 5);
-  });
-
-  test("halfway through the scroll lands mid-timeline", () => {
-    const height = ACT_COUNT * 1000;
-    const distance = height - 1000;
-    const s = scrollStateFor({ top: -distance / 2, height }, 1000, ACT_COUNT);
-    expect(s.activeAct).toBe(Math.floor(ACT_COUNT / 2));
+  test("a non-positive dwell resolves the act immediately", () => {
+    const s = advanceAutoplay(1, 0.3, 16, 0, ACT_COUNT);
+    expect(s).toEqual({ activeAct: 1, actProgress: 1 });
   });
 });
 
-describe("SynthesisPipeline (scroll mode)", () => {
-  test("renders the scroll-driven stage with both merchant toggles", async () => {
+describe("SynthesisPipeline (autoplay mode)", () => {
+  test("renders the in-place autoplay stage with both merchant toggles", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
     const figure = screen.getByTestId("synthesis-pipeline");
-    expect(figure).toHaveAttribute("data-mode", "scroll");
+    expect(figure).toHaveAttribute("data-mode", "autoplay");
+    // No scroll-through track: the sticky scroller is gone.
+    expect(figure.querySelector('[style*="vh"]')).toBeNull();
     expect(screen.getByTestId("merchant-sprouts")).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -115,16 +114,37 @@ describe("SynthesisPipeline (scroll mode)", () => {
       "aria-pressed",
       "false",
     );
-    // First act on load is the raw-material fan.
+    // Autoplay opens on the raw-material fan.
     expect(screen.getByTestId("act-raw")).toBeInTheDocument();
   });
 
-  test("merchant toggle switches asset root and persists selection", async () => {
+  test("act dots navigate and pause autoplay", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    const costcoScan = screen.getAllByAltText(/sprouts receipt scan/i);
-    expect(costcoScan.length).toBeGreaterThan(0);
+    const figure = screen.getByTestId("synthesis-pipeline");
+    expect(figure).not.toHaveAttribute("data-paused");
+
+    // Jump to the final act via its dot.
+    fireEvent.click(screen.getByTestId("act-dot-labels"));
+    await flushAssets();
+
+    const labelsMeta = ACTS[ACT_COUNT - 1];
+    expect(screen.getByTestId("act-headline")).toHaveTextContent(
+      labelsMeta.headline,
+    );
+    expect(screen.getByTestId("act-labels")).toBeInTheDocument();
+    // Manual navigation pauses autoplay.
+    expect(figure).toHaveAttribute("data-paused");
+  });
+
+  test("merchant toggle switches asset root, persists, and pauses", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    expect(screen.getAllByAltText(/sprouts receipt scan/i).length).toBeGreaterThan(
+      0,
+    );
 
     fireEvent.click(screen.getByTestId("merchant-costco"));
     await flushAssets();
@@ -132,6 +152,9 @@ describe("SynthesisPipeline (scroll mode)", () => {
     expect(screen.getByTestId("merchant-costco")).toHaveAttribute(
       "aria-pressed",
       "true",
+    );
+    expect(screen.getByTestId("synthesis-pipeline")).toHaveAttribute(
+      "data-paused",
     );
     // Act-1 thumbnails now point at the costco root.
     await waitFor(() =>

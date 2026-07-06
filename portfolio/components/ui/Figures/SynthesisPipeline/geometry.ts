@@ -71,18 +71,18 @@ export const flipY = (pt: Point, capUnits: number = CAP_UNITS): Point => ({
 });
 
 /**
- * Build the SVG segments for one stroke, already flipped into y-down space.
- * A segment is cubic when either endpoint contributes a handle.
+ * Build one stroke's segments, mapping every anchor + handle through `tf`.
+ * A segment is cubic when either endpoint contributes a handle. The transform
+ * decides the target space (y-flip for SVG, cloud-pixel mapping for act 3/4).
  */
-export const strokeSegments = (
+const buildSegments = (
   stroke: SkeletonStroke,
-  capUnits: number = CAP_UNITS,
+  tf: (pt: Point) => Point,
 ): PathSegment[] => {
   const nodes = stroke.nodes ?? [];
   if (nodes.length < 2) {
     return [];
   }
-  const flip = (pt: Point) => flipY(pt, capUnits);
   const segments: PathSegment[] = [];
 
   const pairs: Array<[SkeletonNode, SkeletonNode]> = [];
@@ -94,15 +94,15 @@ export const strokeSegments = (
   }
 
   pairs.forEach(([a, b]) => {
-    const p0 = flip(a);
-    const p1 = flip(b);
+    const p0 = tf(a);
+    const p1 = tf(b);
     const hasCurve = Boolean(a.hOut || b.hIn);
     if (hasCurve) {
       segments.push({
         type: "C",
         p0,
-        c1: flip(a.hOut ?? a),
-        c2: flip(b.hIn ?? b),
+        c1: tf(a.hOut ?? a),
+        c2: tf(b.hIn ?? b),
         p1,
       });
     } else {
@@ -111,6 +111,15 @@ export const strokeSegments = (
   });
   return segments;
 };
+
+/**
+ * Build the SVG segments for one stroke, already flipped into y-down space.
+ * A segment is cubic when either endpoint contributes a handle.
+ */
+export const strokeSegments = (
+  stroke: SkeletonStroke,
+  capUnits: number = CAP_UNITS,
+): PathSegment[] => buildSegments(stroke, (pt) => flipY(pt, capUnits));
 
 /** All SVG segments for every stroke in a skeleton. */
 export const skeletonSegments = (
@@ -342,3 +351,107 @@ export const nodeCount = (skeleton: GlyphSkeleton): number =>
     (sum, stroke) => sum + (stroke.nodes?.length ?? 0),
     0,
   );
+
+/* ==================================================================== */
+/* Cloud-pixel alignment                                                 */
+/*                                                                       */
+/* The consensus cloud PNG has its own pixel geometry (measured in       */
+/* dot_params.cloudGeom). To overlay the skeleton on the cloud without   */
+/* drift, map cap-unit coordinates straight into cloud-pixel space and   */
+/* draw both in the same box. This mapping already performs the y-flip.  */
+/* ==================================================================== */
+
+export interface CloudGeom {
+  imageW: number;
+  imageH: number;
+  baselineFromBottomPx: number;
+  capHeightPx: number;
+  inkCenterXPx: number;
+}
+
+/** Cloud pixels per cap unit. */
+export const cloudScale = (cloud: CloudGeom): number =>
+  cloud.capHeightPx / CAP_UNITS;
+
+const glyphWidthOf = (skeleton: GlyphSkeleton): number =>
+  skeleton.width && skeleton.width > 0 ? skeleton.width : CAP_UNITS;
+
+/**
+ * Map a cap-unit point (y-up, baseline 0) into the cloud PNG's pixel space:
+ *   x_px = inkCenterXPx + (x - glyphWidth/2) · scale
+ *   y_px = imageH - baselineFromBottomPx - y · scale
+ */
+export const mapToCloud = (
+  pt: Point,
+  cloud: CloudGeom,
+  glyphWidth: number,
+): Point => {
+  const s = cloudScale(cloud);
+  return {
+    x: cloud.inkCenterXPx + (pt.x - glyphWidth / 2) * s,
+    y: cloud.imageH - cloud.baselineFromBottomPx - pt.y * s,
+  };
+};
+
+/** Segments per stroke, mapped into cloud-pixel space. */
+export const skeletonSegmentsCloud = (
+  skeleton: GlyphSkeleton,
+  cloud: CloudGeom,
+): PathSegment[][] => {
+  const gw = glyphWidthOf(skeleton);
+  return (skeleton.strokes ?? []).map((stroke) =>
+    buildSegments(stroke, (pt) => mapToCloud(pt, cloud, gw)),
+  );
+};
+
+/** One SVG `d` string per stroke, in cloud-pixel space. */
+export const skeletonPathDsCloud = (
+  skeleton: GlyphSkeleton,
+  cloud: CloudGeom,
+): string[] => skeletonSegmentsCloud(skeleton, cloud).map(segmentsToPathD);
+
+/** Anchor dots + handle lines, in cloud-pixel space. */
+export const glyphAnchorsCloud = (
+  skeleton: GlyphSkeleton,
+  cloud: CloudGeom,
+): GlyphAnchors => {
+  const gw = glyphWidthOf(skeleton);
+  const anchors: Point[] = [];
+  const handles: Array<{ from: Point; to: Point }> = [];
+  (skeleton.strokes ?? []).forEach((stroke) => {
+    (stroke.nodes ?? []).forEach((node) => {
+      const anchor = mapToCloud(node, cloud, gw);
+      anchors.push(anchor);
+      if (node.hIn) {
+        handles.push({ from: anchor, to: mapToCloud(node.hIn, cloud, gw) });
+      }
+      if (node.hOut) {
+        handles.push({ from: anchor, to: mapToCloud(node.hOut, cloud, gw) });
+      }
+    });
+  });
+  return { anchors, handles };
+};
+
+/**
+ * Arc-length-even dot centers in cloud-pixel space. `stepUnits` is the spacing
+ * in cap units (so density matches the act-3 skeleton); it is converted to
+ * pixels via the cloud scale.
+ */
+export const glyphDotPointsCloud = (
+  skeleton: GlyphSkeleton,
+  cloud: CloudGeom,
+  stepUnits: number,
+  samplesPerSeg: number = 40,
+): Point[] => {
+  const stepPx = stepUnits * cloudScale(cloud);
+  const points: Point[] = [];
+  skeletonSegmentsCloud(skeleton, cloud).forEach((segments) => {
+    if (segments.length === 0) {
+      return;
+    }
+    const polyline = flattenStroke(segments, samplesPerSeg);
+    resampleByArcLength(polyline, stepPx).forEach((p) => points.push(p));
+  });
+  return points;
+};

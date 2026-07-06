@@ -7,10 +7,14 @@ import {
 } from "../AugmentationShowcase/labelGeometry";
 import { ENTITY_DISPLAY_NAMES } from "../labelStyles";
 import {
+  cloudScale,
   glyphAnchors,
+  glyphAnchorsCloud,
   glyphDotPoints,
+  glyphDotPointsCloud,
   nodeCount,
   skeletonPathDs,
+  skeletonPathDsCloud,
   skeletonViewBox,
 } from "./geometry";
 import {
@@ -177,20 +181,47 @@ const PenPathAct: React.FC<ActProps> = ({
   progress,
   reducedMotion,
 }) => {
-  const { skeleton } = assets;
+  const { skeleton, dotParams } = assets;
+  const cloud = dotParams?.cloudGeom ?? null;
   const p = reducedMotion ? 1 : progress;
 
+  // When cloudGeom is present, map the skeleton straight into the cloud PNG's
+  // pixel box and draw both in the same viewBox so they can't drift. Without
+  // it (e.g. a merchant whose cloudGeom hasn't been measured yet), fall back
+  // to a self-fitted view box.
   const geom = useMemo(() => {
     if (!skeleton) {
       return null;
     }
+    if (cloud) {
+      const w = cloud.capHeightPx;
+      return {
+        paths: skeletonPathDsCloud(skeleton, cloud),
+        anchors: glyphAnchorsCloud(skeleton, cloud),
+        nodes: nodeCount(skeleton),
+        viewBox: { minX: 0, minY: 0, width: cloud.imageW, height: cloud.imageH },
+        aspect: `${cloud.imageW} / ${cloud.imageH}`,
+        stroke: w * 0.05,
+        anchorR: w * 0.05,
+        handleW: w * 0.014,
+        handleR: w * 0.03,
+        preserve: "none" as const,
+      };
+    }
+    const vb = skeletonViewBox(skeleton);
     return {
       paths: skeletonPathDs(skeleton),
-      viewBox: skeletonViewBox(skeleton),
       anchors: glyphAnchors(skeleton),
       nodes: nodeCount(skeleton),
+      viewBox: vb,
+      aspect: `${vb.width} / ${vb.height}`,
+      stroke: 26,
+      anchorR: 14,
+      handleW: 5,
+      handleR: 9,
+      preserve: "xMidYMid meet" as const,
     };
-  }, [skeleton]);
+  }, [skeleton, cloud]);
 
   if (!geom) {
     return (
@@ -205,18 +236,22 @@ const PenPathAct: React.FC<ActProps> = ({
   const { minX, minY, width, height } = geom.viewBox;
 
   return (
-    <div className={styles.penStage} data-testid="act-penpath">
+    <div
+      className={styles.penStage}
+      style={{ aspectRatio: geom.aspect }}
+      data-testid="act-penpath"
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={charCloudSrc(merchant)}
         alt=""
         aria-hidden="true"
-        className={styles.penCloud}
+        className={styles.penCloudFill}
       />
       <svg
         className={styles.penSvg}
         viewBox={`${minX} ${minY} ${width} ${height}`}
-        preserveAspectRatio="xMidYMid meet"
+        preserveAspectRatio={geom.preserve}
         aria-hidden="true"
       >
         {geom.paths.map((d, i) => (
@@ -226,6 +261,7 @@ const PenPathAct: React.FC<ActProps> = ({
             className={styles.penPath}
             pathLength={1}
             data-testid="pen-path"
+            strokeWidth={geom.stroke}
             strokeDasharray={1}
             strokeDashoffset={1 - draw}
           />
@@ -239,8 +275,14 @@ const PenPathAct: React.FC<ActProps> = ({
                 y1={h.from.y}
                 x2={h.to.x}
                 y2={h.to.y}
+                strokeWidth={geom.handleW}
               />
-              <circle className={styles.handleDot} cx={h.to.x} cy={h.to.y} r={9} />
+              <circle
+                className={styles.handleDot}
+                cx={h.to.x}
+                cy={h.to.y}
+                r={geom.handleR}
+              />
             </g>
           ))}
           {geom.anchors.anchors.map((a, i) => (
@@ -249,7 +291,8 @@ const PenPathAct: React.FC<ActProps> = ({
               className={styles.anchorDot}
               cx={a.x}
               cy={a.y}
-              r={14}
+              r={geom.anchorR}
+              strokeWidth={geom.handleW}
               data-testid="anchor-dot"
             />
           ))}
@@ -264,7 +307,7 @@ const PenPathAct: React.FC<ActProps> = ({
 /* Act 4 — Thermal print + weight                                        */
 /* ==================================================================== */
 
-const CANVAS_PX = 220;
+const THERMAL_STEP_UNITS = 55; // cap-unit arc-length between dot stamps
 
 const ThermalAct: React.FC<ActProps> = ({
   merchant,
@@ -276,21 +319,40 @@ const ThermalAct: React.FC<ActProps> = ({
   onWeightChange,
 }) => {
   const { skeleton, dotParams } = assets;
+  const cloud = dotParams?.cloudGeom ?? null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Same cap-unit -> cloud-pixel mapping as act 3, so the printed glyph is the
+  // exact same shape and size. Falls back to a fitted box without cloudGeom.
   const dots = useMemo(() => {
     if (!skeleton) {
       return null;
     }
-    const step = 55; // cap-unit arc-length between stamps
+    if (cloud) {
+      return {
+        points: glyphDotPointsCloud(skeleton, cloud, THERMAL_STEP_UNITS),
+        boxW: cloud.imageW,
+        boxH: cloud.imageH,
+        minX: 0,
+        minY: 0,
+        pxPerUnit: cloudScale(cloud),
+      };
+    }
+    const vb = skeletonViewBox(skeleton);
+    const pxPerUnit = 1; // fitted view box is already in cap units
     return {
-      points: glyphDotPoints(skeleton, step),
-      viewBox: skeletonViewBox(skeleton),
+      points: glyphDotPoints(skeleton, THERMAL_STEP_UNITS),
+      boxW: vb.width,
+      boxH: vb.height,
+      minX: vb.minX,
+      minY: vb.minY,
+      pxPerUnit,
     };
-  }, [skeleton]);
+  }, [skeleton, cloud]);
 
   const params: DotParams | null = dotParams;
   const p = reducedMotion ? 1 : progress;
+  const aspect = dots ? `${dots.boxW} / ${dots.boxH}` : "1 / 1";
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -303,31 +365,31 @@ const ThermalAct: React.FC<ActProps> = ({
     }
     const dpr =
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-    canvas.width = CANVAS_PX * dpr;
-    canvas.height = CANVAS_PX * dpr;
+    // Render at the glyph box's own resolution; CSS scales it to fit.
+    canvas.width = Math.round(dots.boxW * dpr);
+    canvas.height = Math.round(dots.boxH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, CANVAS_PX, CANVAS_PX);
+    ctx.clearRect(0, 0, dots.boxW, dots.boxH);
 
-    const { viewBox, points } = dots;
-    const scale = CANVAS_PX / Math.max(viewBox.width, viewBox.height);
-    const offsetX = (CANVAS_PX - viewBox.width * scale) / 2;
-    const offsetY = (CANVAS_PX - viewBox.height * scale) / 2;
-    const pxPerUnit = scale;
     // dotSize is a diameter in cap units; radius scales with the live weight.
-    const radius = (params.dotSize / 2) * dotWeight * pxPerUnit;
+    const radius = (params.dotSize / 2) * dotWeight * dots.pxPerUnit;
 
     const reveal = active && !reducedMotion ? p : 1;
-    const count = Math.max(1, Math.round(points.length * reveal));
+    const count = Math.max(1, Math.round(dots.points.length * reveal));
 
     ctx.fillStyle =
       getComputedStyle(canvas).getPropertyValue("--text-color").trim() ||
       "#222";
-    for (let i = 0; i < count && i < points.length; i += 1) {
-      const pt = points[i];
-      const cx = offsetX + (pt.x - viewBox.minX) * scale;
-      const cy = offsetY + (pt.y - viewBox.minY) * scale;
+    for (let i = 0; i < count && i < dots.points.length; i += 1) {
+      const pt = dots.points[i];
       ctx.beginPath();
-      ctx.arc(cx, cy, Math.max(0.5, radius), 0, Math.PI * 2);
+      ctx.arc(
+        pt.x - dots.minX,
+        pt.y - dots.minY,
+        Math.max(0.5, radius),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
     }
   }, [dots, params, dotWeight, p, active, reducedMotion]);
@@ -341,7 +403,7 @@ const ThermalAct: React.FC<ActProps> = ({
           <canvas
             ref={canvasRef}
             className={styles.thermalCanvas}
-            style={{ width: CANVAS_PX, height: CANVAS_PX }}
+            style={{ aspectRatio: aspect }}
             data-testid="thermal-canvas"
             aria-label={`Thermal dots for ${merchant} at weight ${dotWeight.toFixed(2)}`}
           />
