@@ -134,6 +134,9 @@ def main() -> int:
                          "compiling from sources (chart-derived atlases)")
     ap.add_argument("--heavy-npz", default=None,
                     help="prebuilt heavy npz to publish alongside --npz")
+    ap.add_argument("--logo", default=None,
+                    help="canonical logo master PNG to vault + cache "
+                         "(cache name <base>_logo.png; profile 'logo' field)")
     ap.add_argument("--atlas-name", default=None,
                     help="local cache filename base (default <font dir name>)")
     args = ap.parse_args()
@@ -163,6 +166,14 @@ def main() -> int:
             faces = dict.fromkeys(prebuilt, None)
         elif not args.skip_heavy:
             faces["heavy"] = _heavy_variant_dir(args.font_dir, tmp)
+
+        logo_key = None
+        if args.logo:
+            logo_key = f"merchant_fonts/{slug}/logo-{_sha256(args.logo)[:8]}.png"
+            s3.upload_file(args.logo, args.bucket, logo_key)
+            logo_cache = os.path.join(cache_dir, f"{base}_logo.png")
+            shutil.copy(args.logo, logo_cache)
+            print(f"logo -> s3://{args.bucket}/{logo_key} + cache {logo_cache}")
 
         stylemap_local = os.path.join(args.font_dir, "stylemap.json")
         stylemap_key = None
@@ -197,6 +208,7 @@ def main() -> int:
                 pitch_check=report["pitch_check"],
                 glyph_count=int(report["glyph_count"]),
                 stylemap_s3_key=stylemap_key if face == "regular" else None,
+                logo_s3_key=logo_key if face == "regular" else None,
                 cache_filename=cache_filename,
             )
             client.add_merchant_font(item)

@@ -898,7 +898,7 @@ def _merchant_logo(merchant: str | None):
     missing file renders the header as text.
     """
     fname = get_merchant_profile(merchant).get("logo")
-    path = os.path.join(_BITMATRIX_DIR, fname) if fname else None
+    path = _ensure_font_cached(fname, merchant, face="logo") if fname else None
     if not path or not os.path.exists(path):
         return None
     import numpy as np
@@ -931,10 +931,11 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
 
         table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
         client = DynamoClient(table)
-        if face == "stylemap":
+        if face in ("stylemap", "logo"):
             ptr = client.get_merchant_font(merchant, "regular")
             bucket = ptr.s3_bucket if ptr else None
-            key = getattr(ptr, "stylemap_s3_key", None) if ptr else None
+            attr = "stylemap_s3_key" if face == "stylemap" else "logo_s3_key"
+            key = getattr(ptr, attr, None) if ptr else None
             want_hash = None
         else:
             ptr = client.get_merchant_font(merchant, face)

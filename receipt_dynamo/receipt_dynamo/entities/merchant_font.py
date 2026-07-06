@@ -78,6 +78,9 @@ class MerchantFont(DynamoDBEntity):
     pitch_check: str
     glyph_count: int
     stylemap_s3_key: str | None = None
+    # Canonical merchant logo master (black-on-white PNG) in S3; carried on
+    # the regular face like the stylemap.
+    logo_s3_key: str | None = None
     # Local cache filename this artifact serves (e.g. "sprouts.glyphs.npz").
     # Resolvers MUST match it before fetching: a merchant can have multiple
     # atlases (Costco's chart-derived production font vs a studio build) and
@@ -141,6 +144,11 @@ class MerchantFont(DynamoDBEntity):
         ):
             raise ValueError("cache_filename must be a string or None")
 
+        if self.logo_s3_key is not None and not isinstance(
+            self.logo_s3_key, str
+        ):
+            raise ValueError("logo_s3_key must be a string or None")
+
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
     def key(self) -> dict[str, Any]:
@@ -171,6 +179,11 @@ class MerchantFont(DynamoDBEntity):
             "cache_filename": (
                 {"S": self.cache_filename}
                 if self.cache_filename
+                else {"NULL": True}
+            ),
+            "logo_s3_key": (
+                {"S": self.logo_s3_key}
+                if self.logo_s3_key
                 else {"NULL": True}
             ),
             "stylemap_s3_key": (
@@ -242,6 +255,7 @@ class MerchantFont(DynamoDBEntity):
                 glyph_count=int(item["glyph_count"]["N"]),
                 stylemap_s3_key=item.get("stylemap_s3_key", {}).get("S"),
                 cache_filename=item.get("cache_filename", {}).get("S"),
+                logo_s3_key=item.get("logo_s3_key", {}).get("S"),
             )
         except (KeyError, IndexError, ValueError) as e:
             raise ValueError(
