@@ -12,8 +12,7 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
-  AugmentationShowcase,
-  SynthesisPrintReveal,
+  SynthesisPipeline,
   AWSFlowDiagram,
   CICDLoop,
   CodeBuildDiagram,
@@ -454,20 +453,9 @@ M1LK 2%           1    $4.4g`}</code>
         figure below discloses which receipt each example came from.
       </p>
 
-      <FigureBoundary intrinsicSize="780px">
+      <FigureBoundary intrinsicSize="720px">
         <ClientOnly>
-          <SynthesisPrintReveal />
-        </ClientOnly>
-      </FigureBoundary>
-
-      <p>
-        The same engine also edits real receipts, and every edit stays
-        perfectly labeled:
-      </p>
-
-      <FigureBoundary intrinsicSize="760px">
-        <ClientOnly>
-          <AugmentationShowcase />
+          <SynthesisPipeline />
         </ClientOnly>
       </FigureBoundary>
 

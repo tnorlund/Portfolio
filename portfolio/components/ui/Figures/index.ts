@@ -167,3 +167,10 @@ export const AugmentationShowcase = dynamic(
     loading: () => loadingShell("within"),
   }
 );
+export const SynthesisPipeline = dynamic(
+  () => import("./SynthesisPipeline"),
+  {
+    ssr: false,
+    loading: () => loadingShell("within"),
+  }
+);
