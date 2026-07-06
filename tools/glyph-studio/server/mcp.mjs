@@ -779,7 +779,76 @@ server.registerTool(
 
 // ---------------------------------------------------------------------------
 async function main() {
-  const transport = new StdioServerTransport();
+  
+// ---- receipt_logo integration (PR #1033 package; degrades gracefully until merged)
+const LOGO_PKG = path.join(STUDIO_ROOT, "..", "..", "receipt_logo");
+const LOGO_ASSETS = path.join(LOGO_PKG, "receipt_logo", "assets", "merchant_logos");
+
+server.registerTool(
+  "list_logos",
+  {
+    title: "List merchant logo path assets",
+    description:
+      "Merchant logo SVG assets managed by the receipt_logo package (PNG-to-SVG vectorized or authored vector sources), with their manifests (palette, dimensions, path counts).",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const entries = await fsp.readdir(LOGO_ASSETS).catch(() => null);
+      if (!entries)
+        return errResult(
+          "receipt_logo package not present in this worktree (lands with PR #1033)",
+        );
+      const manifests = [];
+      for (const f of entries.filter((e) => e.endsWith(".manifest.json"))) {
+        manifests.push(JSON.parse(await fsp.readFile(path.join(LOGO_ASSETS, f), "utf8")));
+      }
+      const text = manifests
+        .map((m) => `${m.merchant_slug}: ${m.assets.color_svg} palette=${(m.palette || []).join(",")}`)
+        .join("\n");
+      return {
+        content: [{ type: "text", text: text || "no logo assets" }],
+        structuredContent: { logos: manifests },
+      };
+    } catch (e) {
+      return errResult(e.message);
+    }
+  },
+);
+
+server.registerTool(
+  "vectorize_logo",
+  {
+    title: "Vectorize a merchant logo PNG to SVG paths",
+    description:
+      "Run the receipt_logo deterministic PNG-to-SVG vectorizer on an image file and write the SVG + manifest into the package's assets. Authored vector sources (SVGs) should be copied in directly instead.",
+    inputSchema: {
+      image_path: z.string(),
+      merchant_slug: z.string().regex(/^[a-z0-9_]+$/),
+    },
+  },
+  async ({ image_path, merchant_slug }) => {
+    try {
+      const cliOk = await fsp.stat(path.join(LOGO_PKG, "receipt_logo", "cli.py")).catch(() => null);
+      if (!cliOk)
+        return errResult(
+          "receipt_logo package not present in this worktree (lands with PR #1033)",
+        );
+      const { stdout, stderr } = await execFileP(
+        PYTHON,
+        ["-m", "receipt_logo.cli", "vectorize", image_path, "--merchant-slug", merchant_slug],
+        { cwd: LOGO_PKG, env: PY_ENV, timeout: 120000 },
+      );
+      return {
+        content: [{ type: "text", text: (stdout || stderr || "done").slice(0, 4000) }],
+      };
+    } catch (e) {
+      return errResult(e.message);
+    }
+  },
+);
+
+const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("glyph-studio MCP server ready (stdio)");
 }
