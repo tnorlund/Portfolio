@@ -87,7 +87,8 @@
         "mixed_layout": true,
         "bitmap_cap_ratio": 0.66,
         "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.649
+        "ocr_cap_height_ratio": 0.649,
+        "stylemap": "vons.stylemap.json"
       }
     },
     "Sprouts Farmers Market": {
