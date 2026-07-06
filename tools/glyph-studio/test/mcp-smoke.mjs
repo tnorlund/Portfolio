@@ -2,6 +2,8 @@
 // Spawns mcp.mjs, drives initialize + tools/list + a set of tools/call, and
 // asserts the round-trips. Exit 0 = pass. Run: node test/mcp-smoke.mjs
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,7 +11,22 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.join(HERE, "..", "server", "mcp.mjs");
 const FONT = "sprouts";
 
-const proc = spawn("node", [SERVER], { stdio: ["pipe", "pipe", "inherit"] });
+// Throwaway dirs so publish_font never touches the real global font/cache dirs.
+const TMP_BITMATRIX = fs.mkdtempSync(path.join(os.tmpdir(), "gs-smoke-bm-"));
+const TMP_RCACHE = fs.mkdtempSync(path.join(os.tmpdir(), "gs-smoke-rc-"));
+// Pre-seed a dummy published npz so the backup-then-replace path is exercised.
+const DUMMY = Buffer.from("dummy-sprouts-npz-placeholder");
+const PUBLISHED = path.join(TMP_BITMATRIX, `${FONT}.glyphs.npz`);
+fs.writeFileSync(PUBLISHED, DUMMY);
+
+const proc = spawn("node", [SERVER], {
+  stdio: ["pipe", "pipe", "inherit"],
+  env: {
+    ...process.env,
+    BITMATRIX_DIR: TMP_BITMATRIX,
+    RENDER_CACHE_DIR: TMP_RCACHE,
+  },
+});
 
 let buf = "";
 const waiters = new Map();
@@ -40,7 +57,7 @@ function rpc(method, params) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`timeout waiting for ${method}`)),
-      120000,
+      300000,
     );
     waiters.set(id, (msg) => {
       clearTimeout(timer);
@@ -81,10 +98,11 @@ async function run() {
   const list = await rpc("tools/list", {});
   const toolNames = (list.result?.tools ?? []).map((t) => t.name).sort();
   const expected = [
-    "compile_font", "font_audit", "get_glyph", "list_glyphs", "render_glyph",
-    "review_font", "set_glyph", "simplify_glyphs", "view_samples",
+    "compare_glyph", "compile_font", "font_audit", "get_glyph", "list_glyphs",
+    "measure_glyph", "publish_font", "render_glyph", "review_font", "set_glyph",
+    "simplify_glyphs", "view_samples",
   ];
-  check(`tools/list has all 9 (${toolNames.length})`, expected.every((n) => toolNames.includes(n)), toolNames.join(","));
+  check(`tools/list has all 12 (${toolNames.length})`, expected.every((n) => toolNames.includes(n)), toolNames.join(","));
 
   // 3. get_glyph "A" -> text + image
   const g = await call("get_glyph", { font: FONT, char: "A" });
@@ -109,9 +127,11 @@ async function run() {
   const vs = await call("view_samples", { font: FONT, char: "A", mode: "median" });
   check("view_samples A has image", hasType(vs, "image"));
 
-  // 8. set_glyph dryRun on a valid loaded glyph (round-trip A) -> validates, no write
+  // 8. set_glyph dryRun on a valid loaded glyph (round-trip A) -> validates, no
+  //    write. The whole sprouts font is now provenance=edited, so force=true is
+  //    required to re-set any glyph; dryRun still writes nothing.
   const glyphA = JSON.parse(blocks(g).find((b) => b.type === "text")?.text ?? "{}");
-  const dry = await call("set_glyph", { font: FONT, char: "A", glyph: glyphA, dryRun: true });
+  const dry = await call("set_glyph", { font: FONT, char: "A", glyph: glyphA, dryRun: true, force: true });
   check("set_glyph dryRun validates (not error)", !dry.result?.isError, JSON.stringify(blocks(dry)[0]));
   check("set_glyph dryRun did not write", dry.result?.structuredContent?.written === false);
 
@@ -126,8 +146,39 @@ async function run() {
   const bad = await call("set_glyph", { font: FONT, char: "A", glyph: { version: 1, char: "A", codepoint: 65, provenance: "traced", strokes: [] }, dryRun: true });
   check("set_glyph rejects empty strokes", bad.result?.isError === true, blocks(bad)[0]?.text);
 
+  // 11. measure_glyph "A" -> available:true with ink_bbox
+  const ms = await call("measure_glyph", { font: FONT, char: "A" });
+  const measurement = ms.result?.structuredContent;
+  check("measure_glyph A available:true", measurement?.available === true, JSON.stringify(measurement));
+  check("measure_glyph A has ink_bbox", !!measurement?.ink_bbox && "y_top" in measurement.ink_bbox);
+
+  // 12. compare_glyph "A" -> image block
+  const cmp = await call("compare_glyph", { font: FONT, chars: "A" });
+  check("compare_glyph A has image", hasType(cmp, "image"), blocks(cmp)[0]?.text);
+
+  // 13. view_samples grid mode "A" -> image
+  const grid = await call("view_samples", { font: FONT, char: "A", mode: "grid" });
+  check("view_samples grid A has image", hasType(grid, "image"), blocks(grid)[0]?.text);
+
+  // 14. publish_font against the throwaway BITMATRIX_DIR: backup appears and the
+  //     published npz is replaced by the freshly compiled one.
+  const pub = await call("publish_font", { font: FONT });
+  check("publish_font not an error", !pub.result?.isError, JSON.stringify(blocks(pub)[0]));
+  const bmFiles = fs.readdirSync(TMP_BITMATRIX);
+  const backupFile = bmFiles.find((f) => f.startsWith(`${FONT}.glyphs.npz.bak-`));
+  check("publish_font created a backup", !!backupFile, bmFiles.join(","));
+  if (backupFile) {
+    const backupBytes = fs.readFileSync(path.join(TMP_BITMATRIX, backupFile));
+    check("backup holds the prior dummy bytes", backupBytes.equals(DUMMY));
+  }
+  const publishedBytes = fs.readFileSync(PUBLISHED);
+  check("publish_font replaced the dummy npz", !publishedBytes.equals(DUMMY) && publishedBytes.length > DUMMY.length, `len=${publishedBytes.length}`);
+  check("publish_font structuredContent reports the path", pub.result?.structuredContent?.published === PUBLISHED, pub.result?.structuredContent?.published);
+
   proc.stdin.end();
   proc.kill();
+  fs.rmSync(TMP_BITMATRIX, { recursive: true, force: true });
+  fs.rmSync(TMP_RCACHE, { recursive: true, force: true });
 
   console.error(`\n${failures === 0 ? "PASS" : "FAIL"}: ${failures} failure(s)`);
   process.exit(failures === 0 ? 0 : 1);

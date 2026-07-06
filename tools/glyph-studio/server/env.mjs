@@ -40,4 +40,9 @@ export const PY_ENV = {
 };
 
 export const BITMATRIX_DIR = process.env.BITMATRIX_DIR || "/tmp/bitmatrix";
+// Where the receipt renderer caches per-merchant ink/atlas pickles. publish_font
+// clears the *inkthin* pickles here so a fresh font takes effect. Overridable so
+// tests stay hermetic (default is the real global cache).
+export const RENDER_CACHE_DIR =
+  process.env.RENDER_CACHE_DIR || "/tmp/render_cache";
 export const PORT = Number(process.env.GLYPH_STUDIO_PORT || 5177);

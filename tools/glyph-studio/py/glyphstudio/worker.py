@@ -7,6 +7,7 @@ Ops:
   raster_glyph  {glyph, params, refCap}         -> {png_b64, w, h, off}
   sample_png    {samples, codepoint, mode, i}   -> {png_b64, w, h,
                                                     refCap, baselineRow, n}
+  measure_char  {samples, char, threshold}      -> measure.measure_char(...)
   atlas_json    {npz}                           -> {glyphs: {cp: {w,h,off,bits_b64}}}
 """
 from __future__ import annotations
@@ -19,6 +20,7 @@ import sys
 import numpy as np
 from PIL import Image
 
+from .measure import measure_char
 from .raster import rasterize_glyph
 from .samples import canvas_geometry, consensus, consensus_soft, load_stack
 
@@ -52,6 +54,25 @@ def op_raster_glyph(req: dict) -> dict:
     }
 
 
+def _grid_montage(stack: np.ndarray) -> np.ndarray:
+    """Montage the first up-to-9 individual samples in a 3x3 grid with 2px
+    white gutters, so a reviewer sees several real prints at once.
+
+    Samples in a stack share one canvas shape, so the per-tile pad-to-common
+    -size is a no-op here; the layout stays general anyway.
+    """
+    n = min(9, len(stack))
+    th, tw = int(stack.shape[1]), int(stack.shape[2])
+    gut = 2
+    grid = np.zeros((3 * th + 2 * gut, 3 * tw + 2 * gut), dtype=float)
+    for k in range(n):
+        r, c = divmod(k, 3)
+        y0 = r * (th + gut)
+        x0 = c * (tw + gut)
+        grid[y0:y0 + th, x0:x0 + tw] = stack[k].astype(float)
+    return grid
+
+
 def op_sample_png(req: dict) -> dict:
     stack = load_stack(req["samples"], int(req["codepoint"]))
     if stack is None or len(stack) == 0:
@@ -62,6 +83,8 @@ def op_sample_png(req: dict) -> dict:
         mask = stack[i]
     elif mode == "binary":
         mask = consensus(stack)
+    elif mode == "grid":
+        mask = _grid_montage(stack)
     else:
         # soft fraction map: no strict binarization for LOOKING at glyphs
         mask = consensus_soft(stack)
@@ -74,6 +97,12 @@ def op_sample_png(req: dict) -> dict:
         "baselineRow": int(baseline_row),
         "n": int(len(stack)),
     }
+
+
+def op_measure_char(req: dict) -> dict:
+    return measure_char(
+        req["samples"], req["char"], float(req.get("threshold", 0.45))
+    )
 
 
 def op_atlas_json(req: dict) -> dict:
@@ -98,6 +127,7 @@ def op_atlas_json(req: dict) -> dict:
 OPS = {
     "raster_glyph": op_raster_glyph,
     "sample_png": op_sample_png,
+    "measure_char": op_measure_char,
     "atlas_json": op_atlas_json,
     "ping": lambda req: {"pong": True},
 }

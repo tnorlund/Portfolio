@@ -67,9 +67,15 @@ agent the trace/render/compile/review loop as tools, with rendered PNGs coming
 back as image blocks the model can see. Run it standalone with `npm run mcp`.
 
 Tools: `list_glyphs`, `get_glyph`, `render_glyph` (fast inner loop — renders an
-unsaved candidate), `view_samples`, `set_glyph` (validate-then-write, refuses to
-clobber a hand-`edited` glyph without `force`), `compile_font`, `review_font`,
-`simplify_glyphs`, `font_audit`.
+unsaved candidate), `view_samples` (corpus modes: `median`/`binary`/`index`/`grid`
+— `grid` montages the first up-to-9 real prints 3x3), `measure_glyph` (numeric
+consensus geometry: ink bbox, spans, crossbars, stems, stroke width, holes),
+`compare_glyph` (batch `[soft consensus | compiled | overlay]` strip — the
+confirmation arbiter view), `set_glyph` (validate-then-write, refuses to clobber a
+hand-`edited` glyph without `force`), `compile_font`, `review_font`,
+`simplify_glyphs`, `font_audit`, `publish_font` (compile + full-coverage gate,
+timestamped backup, symlink-safe copy into `$BITMATRIX_DIR`, and *inkthin*
+render-cache clear/seed).
 
 Register with Claude Code (user scope, since this repo differs from most
 sessions):

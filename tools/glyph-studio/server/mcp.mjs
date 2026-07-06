@@ -21,6 +21,9 @@ import {
   PYTHON,
   PY_ENV,
   STUDIO_ROOT,
+  OUT_DIR,
+  BITMATRIX_DIR,
+  RENDER_CACHE_DIR,
   fontPaths,
   glyphFile,
   getFont,
@@ -40,6 +43,15 @@ const errResult = (msg) => ({
   isError: true,
 });
 const imgBlock = (b64) => ({ type: "image", data: b64, mimeType: "image/png" });
+
+// YYYYMMDD-HHMMSS (local) — matches the existing $BITMATRIX_DIR backup naming.
+const tsStamp = (d = new Date()) => {
+  const p = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+  );
+};
 
 // ---- glyph structural schema (mirrors py/glyphstudio/schema.py) -----------
 const Pt = z.object({ x: z.number(), y: z.number() }).passthrough();
@@ -258,11 +270,11 @@ server.registerTool(
   {
     title: "View traced sample consensus",
     description:
-      "Render the real-letterform corpus for a char: median (soft consensus), binary (thresholded consensus), or index (a single sample i). Compare a candidate against the ground-truth ink the tracer saw.",
+      "Render the real-letterform corpus for a char: median (soft consensus), binary (thresholded consensus), index (a single sample i), or grid (the first up-to-9 individual samples montaged 3x3). Compare a candidate against the ground-truth ink the tracer saw.",
     inputSchema: {
       font: z.string(),
       char: z.string().min(1),
-      mode: z.enum(["median", "binary", "index"]).default("median"),
+      mode: z.enum(["median", "binary", "index", "grid"]).default("median"),
       i: z.number().int().optional(),
     },
   },
@@ -550,6 +562,214 @@ server.registerTool(
           { type: "text", text: `Anatomy for ${rows.length} glyphs in "${font}"\n${text}` },
         ],
         structuredContent: { font, count: rows.length, glyphs: rows },
+      };
+    } catch (e) {
+      return errResult(e.message);
+    }
+  },
+);
+
+server.registerTool(
+  "measure_glyph",
+  {
+    title: "Measure real-print consensus geometry",
+    description:
+      "Numerically measure a char's real-print consensus (the numbers an author places centerlines from): ink bbox in cap units, per-height ink spans, horizontal crossbars, vertical stems, stroke width, and hole count. Fast (persistent worker). Returns {available:false} when the corpus lacks the char.",
+    inputSchema: {
+      font: z.string(),
+      char: z.string().min(1),
+      threshold: z.number().default(0.45),
+    },
+  },
+  async ({ font, char, threshold }) => {
+    try {
+      const samples = SAMPLES[font];
+      if (!samples) return errResult(`no sample corpus configured for "${font}"`);
+      const r = await pyCall("measure_char", { samples, char, threshold });
+      // strip the worker envelope (id/ok) — keep just the measurement
+      const { id, ok, ...measurement } = r;
+      if (!measurement.available) {
+        return {
+          content: [
+            { type: "text", text: `char "${char}" not in "${font}" corpus (available:false)` },
+          ],
+          structuredContent: measurement,
+        };
+      }
+      const bb = measurement.ink_bbox || {};
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `measure "${char}" (${font}, ${measurement.samples} samples, threshold=${threshold})\n` +
+              `ink_bbox: y ${bb.y_bottom}..${bb.y_top}, x ${bb.x_left}..${bb.x_right} (cap units)\n` +
+              `stroke_width=${measurement.stroke_width_units ?? "?"}u  bars=${(measurement.horizontal_bars || []).length}  stems=${(measurement.vertical_stems || []).length}  holes=${measurement.holes}`,
+          },
+        ],
+        structuredContent: measurement,
+      };
+    } catch (e) {
+      return errResult(e.message);
+    }
+  },
+);
+
+server.registerTool(
+  "compare_glyph",
+  {
+    title: "Compare compiled glyphs vs consensus",
+    description:
+      "The confirmation arbiter view: run the batch compare CLI over one or more chars and return the magnified strip PNG. Each row is [soft consensus | compiled | overlay] so misalignment and weight mismatch read instantly against the real prints.",
+    inputSchema: { font: z.string(), chars: z.string().min(1) },
+  },
+  async ({ font, chars }) => {
+    try {
+      const samples = SAMPLES[font];
+      if (!samples) return errResult(`no sample corpus configured for "${font}"`);
+      const out = path.join(OUT_DIR, `mcp-compare-${tsStamp()}.png`);
+      // execFile (no shell) — `chars` may hold shell-special characters; passed
+      // through as a single argv element, so no quoting/escaping is needed.
+      const { stdout } = await execFileP(
+        PYTHON,
+        [
+          "-m",
+          "glyphstudio.compare",
+          samples,
+          fontPaths(font).dir,
+          out,
+          "--chars",
+          chars,
+          "--scale",
+          "2",
+        ],
+        {
+          cwd: path.join(STUDIO_ROOT, "py"),
+          env: PY_ENV,
+          timeout: 180000,
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      );
+      const b64 = await pngFileToB64(out, 1000);
+      return {
+        content: [
+          imgBlock(b64),
+          {
+            type: "text",
+            text: `compare "${chars}" — columns [soft consensus | compiled | overlay]\n${stdout.trim()}`,
+          },
+        ],
+      };
+    } catch (e) {
+      const detail = e.stderr?.toString?.() || e.message;
+      return errResult(`compare failed: ${detail}`);
+    }
+  },
+);
+
+server.registerTool(
+  "publish_font",
+  {
+    title: "Publish font to the global BITMATRIX_DIR",
+    description:
+      "Encode the publish ritual: compile (abort unless every source glyph makes it into the atlas), timestamp-backup the existing $BITMATRIX_DIR/<font>.glyphs.npz, remove it first if it is a symlink (macOS cp writes THROUGH symlinks — this once corrupted the global dir), copy the fresh .out npz over, then clear the *inkthin* render-cache pickles (optionally seeding thinSeed) so the new font takes effect. Slow (compiles).",
+    inputSchema: {
+      font: z.string(),
+      thinSeed: z.number().optional(),
+    },
+  },
+  async ({ font, thinSeed }) => {
+    try {
+      // (a) compile + full-coverage gate: every source glyph must land in the
+      //     atlas (an empty raster drops a glyph — refuse to publish that).
+      const { glyphs: sourceGlyphs } = await getFont(font);
+      const sourceCount = Object.keys(sourceGlyphs).length;
+      const r = await compileFont(font);
+      const compiledCount = Object.keys(r.glyphs || {}).length;
+      if (compiledCount < sourceCount) {
+        return errResult(
+          `coverage not full: only ${compiledCount}/${sourceCount} source glyphs compiled ` +
+            `(some produced empty rasters) — aborting publish.\n${r.log.trim()}`,
+        );
+      }
+
+      const target = path.join(BITMATRIX_DIR, `${font}.glyphs.npz`);
+      await fsp.mkdir(BITMATRIX_DIR, { recursive: true });
+
+      // (b) timestamped backup of the current published npz (follows a symlink
+      //     to capture the real bytes) before we touch anything.
+      let backup = null;
+      if (fs.existsSync(target)) {
+        backup = `${target}.bak-${tsStamp()}`;
+        await fsp.copyFile(target, backup);
+      }
+
+      // (c) if the target is a SYMLINK, remove it first — macOS cp/copyFile
+      //     writes THROUGH a symlink into whatever it points at.
+      let removedSymlink = false;
+      try {
+        const st = await fsp.lstat(target);
+        if (st.isSymbolicLink()) {
+          await fsp.rm(target, { force: true });
+          removedSymlink = true;
+        }
+      } catch {}
+
+      // (d) copy the fresh compiled npz over the target
+      await fsp.copyFile(r.npz, target);
+
+      // (e) clear the *inkthin* render-cache pickles so the new font is picked
+      //     up, then optionally seed a fixed thin value.
+      const cleared = [];
+      try {
+        for (const f of await fsp.readdir(RENDER_CACHE_DIR)) {
+          if (f.includes("inkthin")) {
+            await fsp.rm(path.join(RENDER_CACHE_DIR, f), { force: true });
+            cleared.push(f);
+          }
+        }
+      } catch {}
+      let seedWritten = null;
+      if (typeof thinSeed === "number") {
+        await fsp.mkdir(RENDER_CACHE_DIR, { recursive: true });
+        // TODO: the pickle filename derives from the merchant; only Sprouts is
+        // wired today. Generalize when a second merchant ships.
+        const seedFile = path.join(
+          RENDER_CACHE_DIR,
+          "Sprouts_Farmers_Market__inkthin__n1.pkl",
+        );
+        await execFileP(
+          PYTHON,
+          [
+            "-c",
+            "import sys, pickle; pickle.dump(float(sys.argv[2]), open(sys.argv[1], 'wb'))",
+            seedFile,
+            String(thinSeed),
+          ],
+          { env: PY_ENV, timeout: 30000 },
+        );
+        seedWritten = { path: seedFile, value: thinSeed };
+      }
+
+      const lines = [
+        `Published "${font}": ${compiledCount}/${sourceCount} glyphs -> ${target}`,
+        backup ? `backup: ${backup}` : "(no prior file to back up)",
+        removedSymlink ? "(removed symlink before copy)" : null,
+        `cache cleared: ${cleared.join(", ") || "-"}`,
+        seedWritten ? `thinSeed=${thinSeed} written to ${seedWritten.path}` : null,
+      ].filter(Boolean);
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: {
+          font,
+          published: target,
+          npzSource: r.npz,
+          backup,
+          removedSymlink,
+          compiledCount,
+          sourceCount,
+          cache: { cleared, seedWritten },
+        },
       };
     } catch (e) {
       return errResult(e.message);
