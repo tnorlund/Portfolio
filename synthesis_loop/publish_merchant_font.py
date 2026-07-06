@@ -67,8 +67,13 @@ def _git_commit(font_dir: str) -> str:
         return "unknown"
 
 
-def _compile(font_dir: str, out_npz: str) -> dict:
-    """Compile via glyphstudio and enforce the self-checks."""
+def _compile(font_dir: str, out_npz: str, enforce_pitch: bool = True) -> dict:
+    """Compile via glyphstudio and enforce the self-checks.
+
+    The pitch guard applies to the REGULAR face only: heavy faces compile
+    wider by design (fatter ink -> wider bitmaps -> higher advance), exactly
+    like Costco's chart heavy (0.645 vs regular 0.613).
+    """
     from glyphstudio.compile import compile_font  # noqa: PLC0415
     from glyphstudio.schema import load_font  # noqa: PLC0415
 
@@ -87,7 +92,7 @@ def _compile(font_dir: str, out_npz: str) -> dict:
         pitch_check = f"{got:.3f} vs {target:.3f} " + (
             "OK" if drift <= 0.02 else "DRIFT"
         )
-        if drift > 0.02:
+        if drift > 0.02 and enforce_pitch:
             raise SystemExit(
                 f"pitch guard failed ({pitch_check}) -- refusing to publish; "
                 "glyph width edits moved global spacing"
@@ -191,7 +196,7 @@ def main() -> int:
                 report = _prebuilt_report(npz)
             else:
                 npz = os.path.join(tmp, f"{face}.npz")
-                report = _compile(fdir, npz)
+                report = _compile(fdir, npz, enforce_pitch=(face == "regular"))
             digest = _sha256(npz)
             key = f"merchant_fonts/{slug}/{face}-{digest[:12]}.npz"
             s3.upload_file(npz, args.bucket, key)

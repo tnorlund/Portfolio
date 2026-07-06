@@ -1,0 +1,77 @@
+{
+ "version": 1,
+ "char": "Y",
+ "codepoint": 89,
+ "provenance": "edited",
+ "trace": {
+  "corpus": "vons-studio.samples.npz",
+  "samples": 103,
+  "date": "2026-07-06"
+ },
+ "width": 507.9,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50,
+     "y": 915,
+     "type": "corner",
+     "hOut": {
+      "x": 50,
+      "y": 810
+     }
+    },
+    {
+     "x": 245,
+     "y": 570,
+     "type": "corner",
+     "hIn": {
+      "x": 145,
+      "y": 690
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 445,
+     "y": 915,
+     "type": "corner",
+     "hOut": {
+      "x": 445,
+      "y": 810
+     }
+    },
+    {
+     "x": 245,
+     "y": 570,
+     "type": "corner",
+     "hIn": {
+      "x": 345,
+      "y": 690
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 245,
+     "y": 570,
+     "type": "corner"
+    },
+    {
+     "x": 245,
+     "y": 70,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

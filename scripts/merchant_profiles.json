@@ -6,7 +6,10 @@
       "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform).",
       "section_scale": {},
       "typography": {
-        "bitmap_font": { "regular": "bitMatrix-C2.glyphs.npz", "heavy": "bitMatrix-C2-heavy.glyphs.npz" },
+        "bitmap_font": {
+          "regular": "bitMatrix-C2.glyphs.npz",
+          "heavy": "bitMatrix-C2-heavy.glyphs.npz"
+        },
         "display_headings": {
           "SELF-CHECKOUT": 1.7,
           "SELF CHECKOUT": 1.7,
@@ -26,27 +29,59 @@
     },
     "Amazon Fresh": {
       "_comment": "receiptfont.com bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.",
-      "section_scale": { "HEADER": 0.78 },
-      "typography": { "font": "PTMONO", "condense": 0.80, "stroke": 0 },
+      "section_scale": {
+        "HEADER": 0.78
+      },
+      "typography": {
+        "font": "PTMONO",
+        "condense": 0.8,
+        "stroke": 0
+      },
       "logo": "amazon_fresh_logo.png"
     },
     "Target": {
       "_comment": "receiptfont.com bitMatrix-D1 (dot-matrix) -> VT323. Logo omitted: Target thermal receipts print no wordmark (header is the store address; the bullseye is not printed).",
-      "section_scale": { "HEADER": 0.80 },
-      "typography": { "font": "VT323", "condense": 0.95, "stroke": 0 }
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "VT323",
+        "condense": 0.95,
+        "stroke": 0
+      }
     },
     "The Home Depot": {
       "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH, built by synthesis_loop/build_homedepot_logo.py from a clean brand SVG (all 17 real receipts use this slogan, not the older 'More saving. More doing.'). Body font: data-driven glyph font shredded (consistent italic slant + photographed-receipt warp defeats the averaging/registration; queued for the codex glyph loop), so fall back to PTMONO for now. condense/section_scale calibrated from real-vs-synth.",
-      "section_scale": { "HEADER": 0.80 },
-      "typography": { "font": "PTMONO", "condense": 0.82, "stroke": 0 },
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "PTMONO",
+        "condense": 0.82,
+        "stroke": 0
+      },
       "logo": "homedepot_logo.png",
-      "logo_anchor": { "phrases": ["HOWDOERS", "GETMOREDONE"], "extend_left": true },
-      "graphics": { "inbody_barcode": { "max_count": 0 } }
+      "logo_anchor": {
+        "phrases": [
+          "HOWDOERS",
+          "GETMOREDONE"
+        ],
+        "extend_left": true
+      },
+      "graphics": {
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
     },
     "Vons": {
       "_comment": "receiptfont.com bitMatrix-D1 (dot-matrix) -> VT323.",
       "section_scale": {},
-      "typography": { "font": "VT323", "condense": 1.0, "stroke": 0 },
+      "typography": {
+        "font": "VT323",
+        "condense": 1.0,
+        "stroke": 0
+      },
       "logo": "vons_logo.png"
     },
     "Sprouts Farmers Market": {
@@ -55,13 +90,20 @@
       "typography": {
         "font": "PTMONO",
         "stylemap": "sprouts.stylemap.json",
-        "bitmap_font": { "regular": "sprouts.glyphs.npz", "heavy": "sprouts-heavy.glyphs.npz" },
+        "bitmap_font": {
+          "regular": "sprouts.glyphs.npz",
+          "heavy": "sprouts-heavy.glyphs.npz"
+        },
         "condense": 0.895,
         "mixed_layout": true,
         "bitmap_cap_ratio": 0.795,
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.76,
-        "ink": [38, 36, 34],
+        "ink": [
+          38,
+          36,
+          34
+        ],
         "stroke": 0
       },
       "logo": "sprouts_logo.png",
@@ -70,22 +112,57 @@
       "header": {
         "reflow_sections": true,
         "header_dedup": true,
-        "header_exact": ["FARMERSMARKET", "8059174200", "STOREHOURSMONSUN7AM10PM"],
-        "header_contains": ["WESTLAKE"],
-        "body_section_anchors": ["PRODUCE", "DAIRY", "GROCERY"]
+        "header_exact": [
+          "FARMERSMARKET",
+          "8059174200",
+          "STOREHOURSMONSUN7AM10PM"
+        ],
+        "header_contains": [
+          "WESTLAKE"
+        ],
+        "body_section_anchors": [
+          "PRODUCE",
+          "DAIRY",
+          "GROCERY"
+        ]
       }
     },
     "Smith's": {
       "_comment": "receiptfont.com pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print (stroke 1).",
-      "section_scale": { "HEADER": 0.80 },
-      "typography": { "font": "VT323", "condense": 0.92, "stroke": 1 },
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "VT323",
+        "condense": 0.92,
+        "stroke": 1
+      },
       "logo": "smiths_logo.png"
     },
     "Gelson's Westlake Village": {
       "_comment": "not on receiptfont.com (small grocer) -> clean condensed B612 Mono.",
-      "section_scale": { "HEADER": 0.80 },
-      "typography": { "font": "B612", "condense": 0.82, "stroke": 0 },
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "B612",
+        "condense": 0.82,
+        "stroke": 0
+      },
       "logo": "gelsons_logo.png"
+    }
+  },
+  "Vons": {
+    "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
+    "logo": "vons_logo.png",
+    "typography": {
+      "font": "PTMONO",
+      "bitmap_font": {
+        "regular": "vons.glyphs.npz",
+        "heavy": "vons-heavy.glyphs.npz"
+      },
+      "condense": 0.96,
+      "ocr_font_sizing": true
     }
   }
 }
