@@ -78,6 +78,11 @@ class MerchantFont(DynamoDBEntity):
     pitch_check: str
     glyph_count: int
     stylemap_s3_key: str | None = None
+    # Local cache filename this artifact serves (e.g. "sprouts.glyphs.npz").
+    # Resolvers MUST match it before fetching: a merchant can have multiple
+    # atlases (Costco's chart-derived production font vs a studio build) and
+    # a pointer must never masquerade as a file it isn't.
+    cache_filename: str | None = None
 
     # ────────────────────────── validation ────────────────────────────
     def __post_init__(self) -> None:
@@ -131,6 +136,11 @@ class MerchantFont(DynamoDBEntity):
         ):
             raise ValueError("stylemap_s3_key must be a string or None")
 
+        if self.cache_filename is not None and not isinstance(
+            self.cache_filename, str
+        ):
+            raise ValueError("cache_filename must be a string or None")
+
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
     def key(self) -> dict[str, Any]:
@@ -158,6 +168,11 @@ class MerchantFont(DynamoDBEntity):
             "advance_ratio": {"N": str(self.advance_ratio)},
             "pitch_check": {"S": self.pitch_check},
             "glyph_count": {"N": str(self.glyph_count)},
+            "cache_filename": (
+                {"S": self.cache_filename}
+                if self.cache_filename
+                else {"NULL": True}
+            ),
             "stylemap_s3_key": (
                 {"S": self.stylemap_s3_key}
                 if self.stylemap_s3_key
@@ -226,6 +241,7 @@ class MerchantFont(DynamoDBEntity):
                 pitch_check=item["pitch_check"]["S"],
                 glyph_count=int(item["glyph_count"]["N"]),
                 stylemap_s3_key=item.get("stylemap_s3_key", {}).get("S"),
+                cache_filename=item.get("cache_filename", {}).get("S"),
             )
         except (KeyError, IndexError, ValueError) as e:
             raise ValueError(

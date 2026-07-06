@@ -144,6 +144,8 @@ def main() -> int:
             print(f"stylemap -> s3://{args.bucket}/{stylemap_key}")
 
         for face, fdir in faces.items():
+            suffix = ".glyphs.npz" if face == "regular" else "-heavy.glyphs.npz"
+            cache_filename = f"{base}{suffix}"
             npz = os.path.join(tmp, f"{face}.npz")
             report = _compile(fdir, npz)
             digest = _sha256(npz)
@@ -162,11 +164,11 @@ def main() -> int:
                 pitch_check=report["pitch_check"],
                 glyph_count=int(report["glyph_count"]),
                 stylemap_s3_key=stylemap_key if face == "regular" else None,
+                cache_filename=cache_filename,
             )
             client.add_merchant_font(item)
             # refresh the local cache under the profile's filenames
-            suffix = ".glyphs.npz" if face == "regular" else "-heavy.glyphs.npz"
-            local = os.path.join(cache_dir, f"{base}{suffix}")
+            local = os.path.join(cache_dir, cache_filename)
             if os.path.exists(local):
                 shutil.copy(local, local + f".bak-{now.replace(':', '')}")
             if os.path.islink(local):

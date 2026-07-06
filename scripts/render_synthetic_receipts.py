@@ -943,6 +943,14 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
             want_hash = ptr.content_hash if ptr else None
         if not bucket or not key:
             return local
+        # A pointer may only satisfy the exact filename it was published as
+        # (a merchant can have several atlases; never let a studio build
+        # masquerade as e.g. Costco's chart-derived production font).
+        want_name = getattr(ptr, "cache_filename", None)
+        if want_name and want_name != filename and face != "stylemap":
+            return local
+        if not want_name and face != "stylemap":
+            return local
         os.makedirs(_BITMATRIX_DIR, exist_ok=True)
         tmp = local + ".fetch"
         boto3.client("s3").download_file(bucket, key, tmp)
