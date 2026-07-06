@@ -1,24 +1,28 @@
 /**
  * Static description of the SynthesisPipeline assets and copy.
  *
- * Every act reads from a per-merchant asset root under
- * `public/synthetic-receipts/pipeline/<merchant>/`. The merchant toggle
- * (Sprouts <-> Costco) swaps that root and nothing else — the same machine,
- * two stores. Some assets are generated incrementally; helpers here point at
- * the spec'd paths and the acts degrade gracefully when a file is missing.
+ * Acts 1-8 run a single merchant (Sprouts) end to end, reading from
+ * `public/synthetic-receipts/pipeline/sprouts/`. The closing finale act fans
+ * out to every merchant's printed receipt to make the generalization point.
+ * Some assets are generated incrementally; helpers here point at the spec'd
+ * paths and the acts degrade gracefully when a file is missing.
  */
 
 import { CloudGeom, GlyphSkeleton } from "./geometry";
 import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
 
-export type Merchant = "sprouts" | "costco";
+export type Merchant = "sprouts" | "costco" | "vons";
 
-export const MERCHANTS: Merchant[] = ["sprouts", "costco"];
-export const DEFAULT_MERCHANT: Merchant = "sprouts";
+/** Every merchant the finale fans out to, in card order. */
+export const MERCHANTS: Merchant[] = ["sprouts", "costco", "vons"];
+
+/** The single merchant acts 1-8 are built from. */
+export const PIPELINE_MERCHANT: Merchant = "sprouts";
 
 export const MERCHANT_LABELS: Record<Merchant, string> = {
   sprouts: "Sprouts",
   costco: "Costco",
+  vons: "Vons",
 };
 
 export const PIPELINE_BASE = "/synthetic-receipts/pipeline";
@@ -170,7 +174,8 @@ export type ActId =
   | "font"
   | "style"
   | "compose"
-  | "labels";
+  | "labels"
+  | "finale";
 
 export interface ActMeta {
   id: ActId;
@@ -250,6 +255,14 @@ export const ACTS: ActMeta[] = [
     caption:
       "The synthetic receipt prints top to bottom, then its ground-truth label boxes snap on. A labeled training example, with zero manual labels.",
   },
+  {
+    id: "finale",
+    index: 8,
+    eyebrow: "Same machine, every store",
+    headline: "Same machine, three merchants",
+    caption:
+      "The same machine minted all three: fonts, logos, and styles, mined from each merchant's own receipts.",
+  },
 ];
 
 export const ACT_COUNT = ACTS.length;
@@ -268,6 +281,7 @@ export const ACT_DWELL_MS: Record<ActId, number> = {
   style: 5000,
   compose: 5500,
   labels: 6000,
+  finale: 7000,
 };
 
 /** How long autoplay stays paused after a manual interaction, then resumes. */
@@ -280,4 +294,5 @@ export const AUTOPLAY_IDLE_RESUME_MS = 10000;
 export const BOLD_WEIGHT_CALLOUT: Record<Merchant, string> = {
   sprouts: "the measured BALANCE DUE weight",
   costco: "the chart heavy face",
+  vons: "the measured heading weight",
 };

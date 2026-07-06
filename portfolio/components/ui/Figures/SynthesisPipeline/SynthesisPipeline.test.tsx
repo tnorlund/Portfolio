@@ -85,7 +85,7 @@ describe("advanceAutoplay (pure timeline math)", () => {
     expect(s.actProgress).toBeCloseTo(0.6, 5);
   });
 
-  test("the last act wraps back to the first", () => {
+  test("the finale act wraps back to the first", () => {
     const s = advanceAutoplay(ACT_COUNT - 1, 0.9, 1000, 5000, ACT_COUNT);
     expect(s.activeAct).toBe(0);
     expect(s.actProgress).toBeCloseTo(0.1, 5);
@@ -98,7 +98,7 @@ describe("advanceAutoplay (pure timeline math)", () => {
 });
 
 describe("SynthesisPipeline (autoplay mode)", () => {
-  test("renders the in-place autoplay stage with both merchant toggles", async () => {
+  test("renders the in-place autoplay stage with no merchant toggle", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
@@ -106,66 +106,93 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(figure).toHaveAttribute("data-mode", "autoplay");
     // No scroll-through track: the sticky scroller is gone.
     expect(figure.querySelector('[style*="vh"]')).toBeNull();
-    expect(screen.getByTestId("merchant-sprouts")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByTestId("merchant-costco")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    // The merchant toggle was removed — the figure is single-merchant now.
+    expect(screen.queryByTestId("merchant-sprouts")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("merchant-costco")).not.toBeInTheDocument();
     // Autoplay opens on the raw-material fan.
     expect(screen.getByTestId("act-raw")).toBeInTheDocument();
   });
 
-  test("act dots navigate and pause autoplay", async () => {
+  test("there are nine act dots, one per act", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    expect(ACT_COUNT).toBe(9);
+    ACTS.forEach((meta) => {
+      expect(screen.getByTestId(`act-dot-${meta.index}`)).toBeInTheDocument();
+    });
+  });
+
+  test("act dots navigate to the finale and pause autoplay", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
     const figure = screen.getByTestId("synthesis-pipeline");
     expect(figure).not.toHaveAttribute("data-paused");
 
-    // Jump to the final act via its dot.
-    fireEvent.click(screen.getByTestId("act-dot-labels"));
+    // Jump to the final (finale) act via its dot.
+    fireEvent.click(screen.getByTestId("act-dot-8"));
     await flushAssets();
 
-    const labelsMeta = ACTS[ACT_COUNT - 1];
+    const finaleMeta = ACTS[ACT_COUNT - 1];
+    expect(finaleMeta.id).toBe("finale");
     expect(screen.getByTestId("act-headline")).toHaveTextContent(
-      labelsMeta.headline,
+      finaleMeta.headline,
     );
-    expect(screen.getByTestId("act-labels")).toBeInTheDocument();
+    expect(screen.getByTestId("act-finale")).toBeInTheDocument();
     // Manual navigation pauses autoplay.
     expect(figure).toHaveAttribute("data-paused");
   });
+});
 
-  test("merchant toggle switches asset root, persists, and pauses", async () => {
+describe("SynthesisPipeline finale act", () => {
+  test("renders one receipt card per merchant (Sprouts, Costco, Vons)", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    expect(screen.getAllByAltText(/sprouts receipt scan/i).length).toBeGreaterThan(
-      0,
-    );
-
-    fireEvent.click(screen.getByTestId("merchant-costco"));
+    fireEvent.click(screen.getByTestId("act-dot-8"));
     await flushAssets();
 
-    expect(screen.getByTestId("merchant-costco")).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    const cards = screen.getAllByTestId("finale-card");
+    expect(cards).toHaveLength(3);
+    expect(cards.map((c) => c.getAttribute("data-merchant"))).toEqual([
+      "sprouts",
+      "costco",
+      "vons",
+    ]);
+    ["Sprouts", "Costco", "Vons"].forEach((name) =>
+      expect(screen.getByText(name)).toBeInTheDocument(),
     );
-    expect(screen.getByTestId("synthesis-pipeline")).toHaveAttribute(
-      "data-paused",
-    );
-    // Act-1 thumbnails now point at the costco root.
-    await waitFor(() =>
-      expect(
-        screen.getAllByAltText(/costco receipt scan/i).length,
-      ).toBeGreaterThan(0),
-    );
-    // The costco skeleton JSON is fetched (was not loaded initially).
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining("costco/char_skeleton.json"),
-    );
+    // Copy anchor for the generalization beat.
+    expect(
+      screen.getByText(/same machine minted all three/i),
+    ).toBeInTheDocument();
+  });
+
+  test("a receipt image that fails to load degrades to a named fallback", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    fireEvent.click(screen.getByTestId("act-dot-8"));
+    await flushAssets();
+
+    const vonsCard = screen
+      .getAllByTestId("finale-card")
+      .find((c) => c.getAttribute("data-merchant") === "vons")!;
+    const img = vonsCard.querySelector<HTMLImageElement>(
+      '[data-testid="finale-image"]',
+    )!;
+    expect(img).toBeInTheDocument();
+
+    // Simulate the asset 404'ing (a merchant print may not be generated yet).
+    fireEvent.error(img);
+
+    expect(
+      vonsCard.querySelector('[data-testid="finale-fallback"]'),
+    ).toBeInTheDocument();
+    expect(vonsCard.querySelector('[data-testid="finale-image"]')).toBeNull();
+    // The merchant name still labels the card.
+    expect(screen.getByText("Vons")).toBeInTheDocument();
   });
 });
 
@@ -182,10 +209,13 @@ describe("SynthesisPipeline (reduced motion)", () => {
       "data-mode",
       "static",
     );
-    // All eight acts are present as static sections.
+    // All nine acts are present as static sections, including the finale.
     expect(screen.getByTestId("static-act-raw")).toBeInTheDocument();
     expect(screen.getByTestId("static-act-labels")).toBeInTheDocument();
+    expect(screen.getByTestId("static-act-finale")).toBeInTheDocument();
     expect(screen.getByTestId("act-penpath")).toBeInTheDocument();
+    // The finale fans out to three merchant cards.
+    expect(screen.getAllByTestId("finale-card")).toHaveLength(3);
   });
 
   test("pen-path act draws SVG paths + anchor dots from the real skeleton", async () => {
@@ -232,54 +262,5 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("labels-counter")).toHaveTextContent(
       /zero manual labels/i,
     );
-  });
-
-  test("a merchant without composed/final assets falls back gracefully", async () => {
-    // Simulate the pre-generation state explicitly (all merchants now have
-    // real assets on disk, but the fallback path must keep working for the
-    // next merchant that doesn't yet).
-    const base = mockFetch();
-    global.fetch = jest.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (
-        url.includes("/costco/compose_steps.json") ||
-        url.includes("/costco/final.labels.json")
-      ) {
-        return Promise.resolve({ ok: false } as Response);
-      }
-      return base(input);
-    }) as jest.Mock;
-    render(<SynthesisPipeline />);
-    await flushAssets();
-
-    fireEvent.click(screen.getByTestId("merchant-costco"));
-    await flushAssets();
-
-    await waitFor(() =>
-      expect(
-        screen.getByText(/compose_steps\.json \+ final\.labels\.json/i),
-      ).toBeInTheDocument(),
-    );
-    // No final labels -> the "zero manual labels" counter must not assert.
-    expect(screen.queryByTestId("labels-counter")).not.toBeInTheDocument();
-    // Costco's own measured style still renders.
-    expect(
-      screen.getByText(/white-on-black/i),
-    ).toBeInTheDocument();
-  });
-
-  test("costco with full assets renders compose groups and the labels counter", async () => {
-    render(<SynthesisPipeline />);
-    await flushAssets();
-
-    fireEvent.click(screen.getByTestId("merchant-costco"));
-    await flushAssets();
-
-    await waitFor(() =>
-      expect(screen.getByTestId("labels-counter")).toBeInTheDocument(),
-    );
-    expect(
-      screen.queryByText(/compose_steps\.json \+ final\.labels\.json/i),
-    ).not.toBeInTheDocument();
   });
 });

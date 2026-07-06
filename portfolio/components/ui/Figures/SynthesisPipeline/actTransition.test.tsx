@@ -164,10 +164,10 @@ describe("SynthesisPipeline crossfade (both acts mounted mid-transition)", () =>
     expect(screen.getByTestId("act-layer-raw")).toBeInTheDocument();
     expect(screen.queryByTestId("act-layer-labels")).not.toBeInTheDocument();
 
-    // Jump to the final act: the outgoing (raw) and incoming (labels) layers
-    // overlap during the crossfade window.
+    // Jump to the print+labels act (index 7): the outgoing (raw) and incoming
+    // (labels) layers overlap during the crossfade window.
     act(() => {
-      fireEvent.click(screen.getByTestId("act-dot-labels"));
+      fireEvent.click(screen.getByTestId("act-dot-7"));
     });
     expect(screen.getByTestId("act-layer-raw")).toBeInTheDocument();
     expect(screen.getByTestId("act-layer-labels")).toBeInTheDocument();

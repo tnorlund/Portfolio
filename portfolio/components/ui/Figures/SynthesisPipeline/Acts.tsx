@@ -31,6 +31,8 @@ import {
   fontGlyphSrc,
   finalSrc,
   Merchant,
+  MERCHANTS,
+  MERCHANT_LABELS,
   MerchantAssets,
   realThumbSrc,
   REAL_THUMB_COUNT,
@@ -498,6 +500,11 @@ const FALLBACK_STYLE: Record<Merchant, StyleSection[]> = {
     { name: "self_checkout", display: "Display headings heavy and enlarged" },
     { name: "date_box", display: "Date printed in a box" },
   ],
+  vons: [
+    { name: "club_savings", display: "Club savings called out per line" },
+    { name: "total_line", display: "TOTAL bold and taller" },
+    { name: "coupon", display: "Coupons printed below the total" },
+  ],
 };
 
 /** `section_header` -> `Section header`. */
@@ -759,6 +766,61 @@ const PrintLabelsAct: React.FC<ActProps> = ({
 };
 
 /* ==================================================================== */
+/* Act 9 — Finale: same machine, every store                            */
+/* ==================================================================== */
+
+const FinaleCard: React.FC<{ merchant: Merchant; shown: boolean }> = ({
+  merchant,
+  shown,
+}) => {
+  const [failed, setFailed] = useState(false);
+  return (
+    <figure
+      className={styles.finaleCard}
+      data-shown={shown}
+      data-testid="finale-card"
+      data-merchant={merchant}
+    >
+      <div className={styles.finaleFrame}>
+        {!failed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={finalSrc(merchant)}
+            alt={`Synthetic ${merchant} receipt`}
+            className={styles.finaleImage}
+            loading="lazy"
+            onError={() => setFailed(true)}
+            data-testid="finale-image"
+          />
+        ) : (
+          <div className={styles.finaleFallback} data-testid="finale-fallback">
+            {MERCHANT_LABELS[merchant]} receipt
+          </div>
+        )}
+      </div>
+      <figcaption className={styles.finaleName}>
+        {MERCHANT_LABELS[merchant]}
+      </figcaption>
+    </figure>
+  );
+};
+
+const FinaleAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
+  const p = reducedMotion ? 1 : progress;
+  return (
+    <div className={styles.finaleRow} data-testid="act-finale">
+      {MERCHANTS.map((m, i) => (
+        <FinaleCard
+          key={m}
+          merchant={m}
+          shown={p >= (i / MERCHANTS.length) * 0.75}
+        />
+      ))}
+    </div>
+  );
+};
+
+/* ==================================================================== */
 /* Dispatcher                                                            */
 /* ==================================================================== */
 
@@ -771,6 +833,7 @@ const ACT_COMPONENTS: Record<ActId, React.FC<ActProps>> = {
   style: MeasuredStyleAct,
   compose: ComposeAct,
   labels: PrintLabelsAct,
+  finale: FinaleAct,
 };
 
 export const ActView: React.FC<{ actId: ActId } & ActProps> = ({

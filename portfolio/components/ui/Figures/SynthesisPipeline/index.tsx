@@ -11,15 +11,12 @@ import {
   AUTOPLAY_IDLE_RESUME_MS,
   composeStepsSrc,
   ComposeSteps,
-  DEFAULT_MERCHANT,
   dotParamsSrc,
   DotParams,
   EMPTY_ASSETS,
   finalLabelsSrc,
-  MERCHANT_LABELS,
-  MERCHANTS,
-  Merchant,
   MerchantAssets,
+  PIPELINE_MERCHANT,
   skeletonSrc,
   styleAnnotatedSrc,
   StyleAnnotated,
@@ -31,12 +28,13 @@ import styles from "./SynthesisPipeline.module.css";
  * existed gets made end to end: letterforms mined from real prints, style
  * measured from real receipts, content composed, printed, and labeled.
  *
- * The act sequence AUTO-PLAYS in place when the figure scrolls into view (no
- * scroll-through track). The act dots double as navigation; any manual
- * interaction (dot, merchant toggle, weight slider) pauses autoplay, which
- * resumes after a short idle. A merchant toggle (Sprouts <-> Costco) swaps
- * every act's asset root. Under prefers-reduced-motion the acts render as a
- * static, fully-resolved stack.
+ * Acts 1-8 run a single merchant (Sprouts) end to end; a closing finale act
+ * fans out to every merchant's printed receipt to make the generalization
+ * point. The sequence AUTO-PLAYS in place when the figure scrolls into view
+ * (no scroll-through track). The act dots double as navigation; any manual
+ * interaction (dot, weight slider) pauses autoplay, which resumes after a
+ * short idle. Under prefers-reduced-motion the acts render as a static,
+ * fully-resolved stack.
  */
 
 const usePrefersReducedMotion = (): boolean => {
@@ -93,17 +91,14 @@ const SynthesisPipeline: React.FC = () => {
   });
   const reducedMotion = usePrefersReducedMotion();
 
-  const [merchant, setMerchant] = useState<Merchant>(DEFAULT_MERCHANT);
   const [dotWeight, setDotWeight] = useState(1.0);
-  const [assetsByMerchant, setAssetsByMerchant] = useState<
-    Record<Merchant, MerchantAssets>
-  >({ sprouts: EMPTY_ASSETS, costco: EMPTY_ASSETS });
+  const [assets, setAssets] = useState<MerchantAssets>(EMPTY_ASSETS);
 
   const [activeAct, setActiveAct] = useState(0);
   const [actProgress, setActProgress] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  const loadedRef = useRef<Set<Merchant>>(new Set());
+  const loadedRef = useRef(false);
   const actRef = useRef(0);
   const progRef = useRef(0);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,12 +112,12 @@ const SynthesisPipeline: React.FC = () => {
     progRef.current = actProgress;
   }, [actProgress]);
 
-  // Load the JSON assets for a merchant once, when the figure is near view.
+  // Load the Sprouts JSON assets once, when the figure is near view.
   useEffect(() => {
-    if (!inView || loadedRef.current.has(merchant)) {
+    if (!inView || loadedRef.current) {
       return;
     }
-    loadedRef.current.add(merchant);
+    loadedRef.current = true;
     let cancelled = false;
 
     const fetchJson = <T,>(url: string): Promise<T | null> =>
@@ -131,25 +126,22 @@ const SynthesisPipeline: React.FC = () => {
         .catch(() => null);
 
     Promise.all([
-      fetchJson<GlyphSkeleton>(skeletonSrc(merchant)),
-      fetchJson<DotParams>(dotParamsSrc(merchant)),
-      fetchJson<StyleAnnotated>(styleAnnotatedSrc(merchant)),
-      fetchJson<ComposeSteps>(composeStepsSrc(merchant)),
-      fetchJson<ShowcaseLabelFile>(finalLabelsSrc(merchant)),
+      fetchJson<GlyphSkeleton>(skeletonSrc(PIPELINE_MERCHANT)),
+      fetchJson<DotParams>(dotParamsSrc(PIPELINE_MERCHANT)),
+      fetchJson<StyleAnnotated>(styleAnnotatedSrc(PIPELINE_MERCHANT)),
+      fetchJson<ComposeSteps>(composeStepsSrc(PIPELINE_MERCHANT)),
+      fetchJson<ShowcaseLabelFile>(finalLabelsSrc(PIPELINE_MERCHANT)),
     ]).then(([skeleton, dotParams, style, compose, finalLabels]) => {
       if (cancelled) {
         return;
       }
-      setAssetsByMerchant((prev) => ({
-        ...prev,
-        [merchant]: { skeleton, dotParams, style, compose, finalLabels },
-      }));
+      setAssets({ skeleton, dotParams, style, compose, finalLabels });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [inView, merchant]);
+  }, [inView]);
 
   const playing = inView && !paused && !reducedMotion;
 
@@ -201,14 +193,6 @@ const SynthesisPipeline: React.FC = () => {
     }, AUTOPLAY_IDLE_RESUME_MS);
   }, []);
 
-  const handleMerchant = useCallback(
-    (m: Merchant) => {
-      setMerchant(m);
-      pauseForInteraction();
-    },
-    [pauseForInteraction],
-  );
-
   const handleWeight = useCallback(
     (w: number) => {
       setDotWeight(w);
@@ -233,28 +217,10 @@ const SynthesisPipeline: React.FC = () => {
   // hard-cutting. Instant swap under reduced motion (animate = false).
   const transition = useActTransition(activeAct, !reducedMotion);
 
-  const assets = assetsByMerchant[merchant];
   const activeMeta = ACTS[activeAct] ?? ACTS[0];
 
-  const toggle = (
-    <div className={styles.toggle} role="group" aria-label="Merchant">
-      {MERCHANTS.map((m) => (
-        <button
-          key={m}
-          type="button"
-          className={styles.toggleButton}
-          aria-pressed={m === merchant}
-          onClick={() => handleMerchant(m)}
-          data-testid={`merchant-${m}`}
-        >
-          {MERCHANT_LABELS[m]}
-        </button>
-      ))}
-    </div>
-  );
-
   const actProps = (progress: number, active: boolean) => ({
-    merchant,
+    merchant: PIPELINE_MERCHANT,
     assets,
     progress,
     active,
@@ -280,7 +246,6 @@ const SynthesisPipeline: React.FC = () => {
               Synthesizing a labeled receipt, end to end
             </h3>
           </div>
-          {toggle}
         </div>
         <div className={styles.staticStack}>
           {ACTS.map((meta) => (
@@ -354,7 +319,6 @@ const SynthesisPipeline: React.FC = () => {
             {activeMeta.headline}
           </h3>
         </div>
-        {toggle}
       </div>
 
       <div className={`${styles.stage} ${styles.interactiveStage}`}>
@@ -392,7 +356,7 @@ const SynthesisPipeline: React.FC = () => {
                 aria-pressed={isActive}
                 aria-label={meta.eyebrow}
                 onClick={() => jumpToAct(meta.index)}
-                data-testid={`act-dot-${meta.id}`}
+                data-testid={`act-dot-${meta.index}`}
               />
               {isActive ? (
                 <svg
