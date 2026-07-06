@@ -3,6 +3,7 @@ import { useInView } from "react-intersection-observer";
 import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
 import { GlyphSkeleton } from "./geometry";
 import { ActView } from "./Acts";
+import { useActTransition } from "./actTransition";
 import {
   ACT_COUNT,
   ACT_DWELL_MS,
@@ -227,6 +228,11 @@ const SynthesisPipeline: React.FC = () => {
     [pauseForInteraction],
   );
 
+  // Crossfade machine: keeps the outgoing act mounted alongside the incoming
+  // one for a short window so the stage dissolves between acts instead of
+  // hard-cutting. Instant swap under reduced motion (animate = false).
+  const transition = useActTransition(activeAct, !reducedMotion);
+
   const assets = assetsByMerchant[merchant];
   const activeMeta = ACTS[activeAct] ?? ACTS[0];
 
@@ -300,6 +306,35 @@ const SynthesisPipeline: React.FC = () => {
     );
   }
 
+  // Stage layers: the incoming act (progress-driven, active) plus, during a
+  // crossfade, the outgoing act frozen at its resolved state. They stack and
+  // overlap so one fades out while the other fades in.
+  const stageLayers: Array<{
+    id: string;
+    index: number;
+    phase: "entering" | "active" | "leaving";
+    progress: number;
+    active: boolean;
+  }> = [];
+  if (transition.leaving !== null) {
+    const leavingMeta = ACTS[transition.leaving] ?? ACTS[0];
+    stageLayers.push({
+      id: leavingMeta.id,
+      index: transition.leaving,
+      phase: "leaving",
+      progress: 1,
+      active: false,
+    });
+  }
+  const currentMeta = ACTS[transition.current] ?? ACTS[0];
+  stageLayers.push({
+    id: currentMeta.id,
+    index: transition.current,
+    phase: transition.leaving !== null ? "entering" : "active",
+    progress: actProgress,
+    active: true,
+  });
+
   // ---- In-place autoplay ----
   return (
     <div
@@ -311,7 +346,7 @@ const SynthesisPipeline: React.FC = () => {
       className={styles.container}
     >
       <div className={styles.topBar}>
-        <div className={styles.heading}>
+        <div key={activeMeta.id} className={`${styles.heading} ${styles.headingFade}`}>
           <span className={styles.eyebrow} data-testid="act-eyebrow">
             {activeMeta.eyebrow}
           </span>
@@ -323,30 +358,63 @@ const SynthesisPipeline: React.FC = () => {
       </div>
 
       <div className={`${styles.stage} ${styles.interactiveStage}`}>
-        <div key={activeMeta.id} className={styles.actWrap}>
-          <ActView actId={activeMeta.id} {...actProps(actProgress, true)} />
-        </div>
+        {stageLayers.map((layer) => (
+          <div
+            key={layer.id}
+            className={`${styles.actLayer} ${styles[layer.phase]}`}
+            data-phase={layer.phase}
+            data-testid={`act-layer-${layer.id}`}
+            aria-hidden={layer.phase === "leaving"}
+          >
+            <ActView actId={layer.id as typeof activeMeta.id} {...actProps(layer.progress, layer.active)} />
+          </div>
+        ))}
       </div>
 
-      <p className={styles.caption} data-testid="act-caption">
+      <p
+        key={activeMeta.id}
+        className={`${styles.caption} ${styles.captionFade}`}
+        data-testid="act-caption"
+      >
         {activeMeta.caption}
       </p>
 
       <ol className={styles.progress} aria-label="Pipeline acts">
-        {ACTS.map((meta) => (
-          <li key={meta.id} className={styles.progressItem}>
-            <button
-              type="button"
-              className={styles.progressDot}
-              data-active={meta.index === activeAct}
-              data-done={meta.index < activeAct}
-              aria-pressed={meta.index === activeAct}
-              aria-label={meta.eyebrow}
-              onClick={() => jumpToAct(meta.index)}
-              data-testid={`act-dot-${meta.id}`}
-            />
-          </li>
-        ))}
+        {ACTS.map((meta) => {
+          const isActive = meta.index === activeAct;
+          return (
+            <li key={meta.id} className={styles.progressItem}>
+              <button
+                type="button"
+                className={styles.progressDot}
+                data-active={isActive}
+                data-done={meta.index < activeAct}
+                aria-pressed={isActive}
+                aria-label={meta.eyebrow}
+                onClick={() => jumpToAct(meta.index)}
+                data-testid={`act-dot-${meta.id}`}
+              />
+              {isActive ? (
+                <svg
+                  className={styles.progressRing}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  data-testid="act-progress-ring"
+                >
+                  <circle
+                    className={styles.progressRingFill}
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    pathLength={1}
+                    strokeDasharray={1}
+                    strokeDashoffset={Math.min(1, Math.max(0, 1 - actProgress))}
+                  />
+                </svg>
+              ) : null}
+            </li>
+          );
+        })}
       </ol>
     </div>
   );

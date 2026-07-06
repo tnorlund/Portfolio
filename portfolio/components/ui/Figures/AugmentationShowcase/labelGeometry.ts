@@ -13,7 +13,9 @@ import { LABEL_COLORS } from "../labelStyles";
 export interface RenderGeometry {
   width: number;
   height: number;
-  margin: number;
+  /** Inner-box inset (same units as width/height). Absent means no inset —
+   *  labels span the full image, e.g. Costco's composed final.labels.json. */
+  margin?: number;
 }
 
 export interface ShowcaseLabelFile {

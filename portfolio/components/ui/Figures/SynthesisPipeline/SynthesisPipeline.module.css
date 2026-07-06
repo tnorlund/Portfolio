@@ -105,6 +105,29 @@
   animation: act-in 0.4s ease;
 }
 
+/* Crossfade layers: the incoming and (briefly) outgoing acts are absolutely
+   stacked in the stage so they overlap. Base state is the resting state; the
+   .entering / .leaving modifiers add the motion. */
+.actLayer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+}
+
+.actLayer.entering {
+  z-index: 2;
+  animation: layer-in 0.38s ease both;
+}
+
+.actLayer.leaving {
+  z-index: 1;
+  pointer-events: none;
+  animation: layer-out 0.38s ease both;
+}
+
 .caption {
   margin: 0;
   font-size: 0.95rem;
@@ -114,6 +137,17 @@
   max-width: 40rem;
   align-self: center;
   min-height: 3rem;
+}
+
+/* The heading and caption swap text as the act changes; a short fade softens
+   the change so it reads as part of the same crossfade as the stage. Keyed on
+   the act id in the markup so React remounts the node and replays the fade. */
+.headingFade {
+  animation: text-fade 0.42s ease both;
+}
+
+.captionFade {
+  animation: text-fade 0.42s ease both;
 }
 
 .callout {
@@ -134,7 +168,10 @@
 }
 
 .progressItem {
+  position: relative;
   display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Act dots double as navigation buttons. */
@@ -148,7 +185,7 @@
   cursor: pointer;
   transition:
     background 0.25s ease,
-    transform 0.2s ease;
+    transform 0.25s ease;
 }
 
 .progressDot:hover {
@@ -157,10 +194,38 @@
 
 .progressDot[data-active="true"] {
   background: var(--color-blue);
+  transform: scale(1.18);
+}
+
+.progressDot[data-active="true"]:hover {
+  transform: scale(1.3);
 }
 
 .progressDot[data-done="true"] {
   background: rgba(var(--text-color-rgb), 0.5);
+}
+
+/* Progress ring around the active dot: strokeDashoffset (set inline from act
+   progress) sweeps it clockwise as the autoplay dwell elapses, so the dot
+   telegraphs how long until the next act. */
+.progressRing {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.35rem;
+  height: 1.35rem;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  pointer-events: none;
+  overflow: visible;
+}
+
+.progressRingFill {
+  fill: none;
+  stroke: var(--color-blue);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.85;
+  transition: stroke-dashoffset 0.12s linear;
 }
 
 /* ---- Reduced-motion static stack ------------------------------------ */
@@ -655,6 +720,39 @@
   }
 }
 
+@keyframes layer-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes layer-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes text-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes box-in {
   from {
     opacity: 0;
@@ -692,13 +790,19 @@
 
 @media (prefers-reduced-motion: reduce) {
   .actWrap,
-  .composeSwap {
+  .composeSwap,
+  .actLayer.entering,
+  .actLayer.leaving,
+  .headingFade,
+  .captionFade {
     animation: none;
   }
   .fontCell,
   .composeLine,
   .styleRow,
-  .thumb {
+  .thumb,
+  .progressDot,
+  .progressRingFill {
     transition: none;
   }
 }
