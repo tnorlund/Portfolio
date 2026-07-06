@@ -679,7 +679,7 @@ def _render_grid(
                            background=config.background, center_to=center_to,
                            price_box_extend_cells=config.reverse_box_lane_cells)
             continue
-        key = (fpath, sc, is_heading)
+        key = (fpath, sc, bf_row is bmf_heavy)
         cached = row_cache.get(key)
         if cached is None:
             row_font_px = max(6, int(round(sizing.font_px * sc)))
@@ -705,6 +705,12 @@ def _render_grid(
         cp = row_cap if row_cap else (int(round(cap_px * sc)) if cap_px else None)
         sm_bold = bool(sm_style and sm_style["bold"])
         sm_underline = bool(sm_style and sm_style["underline"])
+        # A genuinely-compiled heavy face beats a 1px double-strike; fall back
+        # to double-strike only when the profile's heavy is the regular file.
+        bfp = config.bitmap_font or {}
+        if sm_bold and bmf_heavy is not None and bfp.get("heavy") != bfp.get("regular"):
+            bf_row = bmf_heavy
+            sm_bold = False
         run = _run_layout(line, center_to)
         if run is not None:
             text, anchor, x, target_w = run

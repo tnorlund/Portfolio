@@ -122,6 +122,16 @@ def main(argv: list[str] | None = None) -> int:
     report = compile_font(args.font_dir, args.out)
     print(f"wrote {args.out}: {report['glyph_count']} glyphs")
     print(f"  cap_h={report['cap_h']:.1f} advance_ratio={report['advance_ratio']:.3f}")
+    _font = load_font(args.font_dir)
+    _target = (_font.get("metrics") or {}).get("pitchRatioTarget")
+    if _target:
+        _condense = float((_font.get("preview") or {}).get("condense", 1.0))
+        _got = report["advance_ratio"] * _condense
+        _drift = abs(_got - _target) / _target
+        _flag = ("OK" if _drift <= 0.02
+                 else "DRIFT>2% -- glyph width edits moved global spacing")
+        print(f"  pitch check: advance*condense={_got:.3f} "
+              f"vs measured {_target:.3f} [{_flag}]")
     print(f"  coverage={report['coverage']}/94 missing: {report['missing'] or '-'}")
     if report["cap_height_deviations"]:
         print(f"  CAP-HEIGHT DEVIATIONS: {report['cap_height_deviations']}")

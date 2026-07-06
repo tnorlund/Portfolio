@@ -6,7 +6,9 @@
   "capHeight": 1000,
   "xHeight": 700,
   "ascender": 1080,
-  "descender": -350
+  "descender": -350,
+  "pitchRatioTarget": 0.545,
+  "pitchRatioNote": "median OCR letter pitch / cap across 40 Sprouts receipts (p25 0.513, p75 0.556); renderer pitch = advance_ratio x condense must stay within 2%"
  },
  "params": {
   "dot": {
