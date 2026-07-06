@@ -2,13 +2,7 @@
  "version": 1,
  "char": "F",
  "codepoint": 70,
- "provenance": "traced",
- "trace": {
-  "corpus": "sprouts_demo/sprouts.samples.npz",
-  "samples": 140,
-  "consensusHash": "baabee4c6be4",
-  "date": "2026-07-03"
- },
+ "provenance": "edited",
  "width": 524.9,
  "baselineNudgePx": 0,
  "overrides": {
@@ -19,13 +13,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 481.9,
-     "y": 525.0,
+     "x": 83,
+     "y": 100,
      "type": "corner"
     },
     {
-     "x": 127.7,
-     "y": 525.0,
+     "x": 83,
+     "y": 950,
      "type": "corner"
     }
    ]
@@ -34,13 +28,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 43.0,
-     "y": 427.8,
+     "x": 83,
+     "y": 950,
      "type": "corner"
     },
     {
-     "x": 124.9,
-     "y": 427.8,
+     "x": 483,
+     "y": 950,
      "type": "corner"
     }
    ]
@@ -49,91 +43,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 43.0,
-     "y": 394.4,
+     "x": 83,
+     "y": 525,
      "type": "corner"
     },
     {
-     "x": 124.9,
-     "y": 394.4,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 187.4,
-     "y": 640.0,
-     "type": "corner"
-    },
-    {
-     "x": 116.6,
-     "y": 640.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 54.1,
-     "y": 572.2,
-     "type": "corner"
-    },
-    {
-     "x": 113.8,
-     "y": 572.2,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 129.1,
-     "y": 940.0,
-     "type": "corner"
-    },
-    {
-     "x": 481.9,
-     "y": 940.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 90.8,
-     "y": 60.0,
-     "type": "corner",
-     "hOut": {
-      "x": 148.7864567147957,
-      "y": 248.9
-     }
-    },
-    {
-     "x": 125.94664441585567,
-     "y": 757.5961928909633,
-     "type": "corner",
-     "hIn": {
-      "x": 73.04407486066458,
-      "y": 638.7903653909281
-     }
-    },
-    {
-     "x": 113.2,
-     "y": 770.8399066690192,
-     "type": "corner"
-    },
-    {
-     "x": 113.2,
-     "y": 940.0,
+     "x": 417,
+     "y": 525,
      "type": "corner"
     }
    ]

@@ -2,87 +2,24 @@
  "version": 1,
  "char": "n",
  "codepoint": 110,
- "provenance": "traced",
- "trace": {
-  "corpus": "sprouts_demo/sprouts.samples.npz",
-  "samples": 140,
-  "consensusHash": "1994fd204ac9",
-  "date": "2026-07-03"
- },
- "width": 632.0,
+ "provenance": "edited",
+ "width": 632,
  "baselineNudgePx": 0,
- "overrides": {},
+ "overrides": {
+  "weight": 0.88
+ },
  "strokes": [
   {
    "closed": false,
    "nodes": [
     {
-     "x": 566.0,
-     "y": 50.0,
-     "type": "corner",
-     "hOut": {
-      "x": 551.7708265856973,
-      "y": 246.8
-     }
+     "x": 90,
+     "y": 50,
+     "type": "corner"
     },
     {
-     "x": 518.8,
-     "y": 650.0,
-     "type": "corner",
-     "hIn": {
-      "x": 587.2495529798432,
-      "y": 460.4
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 249.3,
-     "y": 561.1,
-     "type": "corner",
-     "hOut": {
-      "x": 206.66585568164092,
-      "y": 568.4971260677188
-     }
-    },
-    {
-     "x": 179.5,
-     "y": 650.0,
-     "type": "corner",
-     "hIn": {
-      "x": 188.45373578921777,
-      "y": 612.3
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 518.8,
-     "y": 650.0,
-     "type": "corner",
-     "hOut": {
-      "x": 426.66503804453765,
-      "y": 633.9
-     }
-    },
-    {
-     "x": 154.51244209194502,
-     "y": 650.0,
-     "type": "corner",
-     "hIn": {
-      "x": 273.45334877921186,
-      "y": 697.2
-     }
-    },
-    {
-     "x": 111.30000000000004,
-     "y": 650.0,
+     "x": 90,
+     "y": 650,
      "type": "corner"
     }
    ]
@@ -91,22 +28,40 @@
    "closed": false,
    "nodes": [
     {
-     "x": 111.3,
-     "y": 650.0,
+     "x": 90,
+     "y": 420,
      "type": "corner",
      "hOut": {
-      "x": 42.430233534963634,
-      "y": 494.3
+      "x": 90,
+      "y": 547
      }
     },
     {
-     "x": 50.5,
-     "y": 132.1,
+     "x": 315,
+     "y": 650,
+     "type": "smooth",
+     "hIn": {
+      "x": 191,
+      "y": 650
+     },
+     "hOut": {
+      "x": 439,
+      "y": 650
+     }
+    },
+    {
+     "x": 540,
+     "y": 420,
      "type": "corner",
      "hIn": {
-      "x": 155.4794223034387,
-      "y": 261.9967170914144
+      "x": 540,
+      "y": 547
      }
+    },
+    {
+     "x": 540,
+     "y": 50,
+     "type": "corner"
     }
    ]
   }

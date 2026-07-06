@@ -2,13 +2,7 @@
  "version": 1,
  "char": "!",
  "codepoint": 33,
- "provenance": "traced",
- "trace": {
-  "corpus": "sprouts_demo/sprouts.samples.npz",
-  "samples": 63,
-  "consensusHash": "e77cfe1c720e",
-  "date": "2026-07-03"
- },
+ "provenance": "edited",
  "width": 490.5,
  "baselineNudgePx": 0,
  "overrides": {},
@@ -17,46 +11,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 286.9,
-     "y": 283.3,
+     "x": 325,
+     "y": 833,
      "type": "corner"
     },
     {
-     "x": 253.790264095241,
-     "y": 408.7638472560744,
-     "type": "corner",
-     "hOut": {
-      "x": 246.45409571152857,
-      "y": 436.1240179222782
-     }
-    },
-    {
-     "x": 370.3,
-     "y": 950.0,
-     "type": "corner",
-     "hIn": {
-      "x": 371.1791084135224,
-      "y": 839.2
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 79.6,
-     "y": 267.9,
-     "type": "corner"
-    },
-    {
-     "x": 79.6,
-     "y": 242.27902894603267,
-     "type": "corner"
-    },
-    {
-     "x": 164.7,
-     "y": 125.0,
+     "x": 245,
+     "y": 410,
      "type": "corner"
     }
    ]
@@ -65,93 +26,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 42.5,
-     "y": 816.7,
+     "x": 235,
+     "y": 240,
      "type": "corner"
     },
     {
-     "x": 59.2,
-     "y": 650.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 170.3,
-     "y": 461.1,
-     "type": "corner"
-    },
-    {
-     "x": 232.09318412955105,
-     "y": 446.08129663250776,
-     "type": "corner"
-    },
-    {
-     "x": 247.7,
-     "y": 407.6,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 431.4,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 343.9,
-     "y": 650.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 448.0,
-     "y": 777.8,
-     "type": "corner"
-    },
-    {
-     "x": 365.6,
-     "y": 787.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 240.6,
-     "y": 135.2,
-     "type": "corner"
-    },
-    {
-     "x": 164.7,
-     "y": 125.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 247.7,
-     "y": 407.6,
-     "type": "corner"
-    },
-    {
-     "x": 199.6,
-     "y": 376.2,
+     "x": 235,
+     "y": 226,
      "type": "corner"
     }
    ]

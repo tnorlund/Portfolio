@@ -2,13 +2,7 @@
  "version": 1,
  "char": ":",
  "codepoint": 58,
- "provenance": "traced",
- "trace": {
-  "corpus": "sprouts_demo/sprouts.samples.npz",
-  "samples": 140,
-  "consensusHash": "1bb17c414fa8",
-  "date": "2026-07-03"
- },
+ "provenance": "edited",
  "width": 380.3,
  "baselineNudgePx": 0,
  "overrides": {
@@ -19,64 +13,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 116.6,
-     "y": 561.1,
-     "type": "corner",
-     "hOut": {
-      "x": 116.6,
-      "y": 544.1
-     }
-    },
-    {
-     "x": 144.4,
-     "y": 522.2,
-     "type": "corner",
-     "hIn": {
-      "x": 133.3,
-      "y": 533.3
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 272.2,
-     "y": 55.5,
+     "x": 295,
+     "y": 573,
      "type": "corner"
     },
     {
-     "x": 305.5,
-     "y": 88.9,
-     "type": "corner",
-     "hOut": {
-      "x": 324.8,
-      "y": 82.5
-     }
-    },
-    {
-     "x": 322.2,
-     "y": 55.5,
-     "type": "corner",
-     "hIn": {
-      "x": 322.2,
-      "y": 67.0
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 55.5,
-     "y": 55.5,
-     "type": "corner"
-    },
-    {
-     "x": 131.5,
-     "y": 55.5,
+     "x": 295,
+     "y": 561,
      "type": "corner"
     }
    ]
@@ -85,88 +28,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 316.6,
-     "y": 644.5,
+     "x": 295,
+     "y": 97,
      "type": "corner"
     },
     {
-     "x": 316.6,
-     "y": 644.5,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 316.6,
-     "y": 644.5,
-     "type": "corner"
-    },
-    {
-     "x": 308.3,
-     "y": 552.8,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 308.3,
-     "y": 552.8,
-     "type": "corner"
-    },
-    {
-     "x": 308.3,
-     "y": 552.8,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 308.3,
-     "y": 552.8,
-     "type": "corner"
-    },
-    {
-     "x": 280.5,
-     "y": 538.9,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 280.5,
-     "y": 538.9,
-     "type": "corner"
-    },
-    {
-     "x": 280.5,
-     "y": 538.9,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 131.5,
-     "y": 55.5,
-     "type": "corner"
-    },
-    {
-     "x": 131.5,
-     "y": 55.5,
+     "x": 295,
+     "y": 85,
      "type": "corner"
     }
    ]

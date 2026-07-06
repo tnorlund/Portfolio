@@ -2,51 +2,65 @@
  "version": 1,
  "char": "m",
  "codepoint": 109,
- "provenance": "traced",
- "trace": {
-  "corpus": "sprouts_demo/sprouts.samples.npz",
-  "samples": 140,
-  "consensusHash": "713168c1d86b",
-  "date": "2026-07-03"
- },
+ "provenance": "edited",
  "width": 583.2,
  "baselineNudgePx": 0,
- "overrides": {},
+ "overrides": {
+  "weight": 0.88
+ },
  "strokes": [
   {
    "closed": false,
    "nodes": [
     {
-     "x": 505.5,
-     "y": 50.0,
+     "x": 40,
+     "y": 50,
+     "type": "corner"
+    },
+    {
+     "x": 40,
+     "y": 650,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 40,
+     "y": 420,
      "type": "corner",
      "hOut": {
-      "x": 505.5,
-      "y": 190.95313848814618
+      "x": 40,
+      "y": 547
      }
     },
     {
-     "x": 445.5,
-     "y": 650.0,
+     "x": 157.5,
+     "y": 650,
+     "type": "smooth",
+     "hIn": {
+      "x": 92,
+      "y": 650
+     },
+     "hOut": {
+      "x": 222,
+      "y": 650
+     }
+    },
+    {
+     "x": 275,
+     "y": 420,
      "type": "corner",
      "hIn": {
-      "x": 586.9616424279169,
-      "y": 559.1296756060764
+      "x": 275,
+      "y": 547
      }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 288.8,
-     "y": 50.0,
-     "type": "corner"
     },
     {
-     "x": 302.0,
-     "y": 650.0,
+     "x": 275,
+     "y": 50,
      "type": "corner"
     }
    ]
@@ -55,52 +69,40 @@
    "closed": false,
    "nodes": [
     {
-     "x": 445.5,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 309.3373100177554,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 269.0036984547827,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 231.37963447848014,
-     "y": 650.0,
-     "type": "corner"
-    },
-    {
-     "x": 144.4,
-     "y": 650.0,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 144.4,
-     "y": 650.0,
+     "x": 275,
+     "y": 420,
      "type": "corner",
      "hOut": {
-      "x": -9.32468888854379,
-      "y": 537.4713158675605
+      "x": 275,
+      "y": 547
      }
     },
     {
-     "x": 50.0,
-     "y": 50.0,
+     "x": 387.5,
+     "y": 650,
+     "type": "smooth",
+     "hIn": {
+      "x": 323,
+      "y": 650
+     },
+     "hOut": {
+      "x": 452,
+      "y": 650
+     }
+    },
+    {
+     "x": 500,
+     "y": 420,
      "type": "corner",
      "hIn": {
-      "x": 51.11784913174166,
-      "y": 222.52138266543602
+      "x": 500,
+      "y": 547
      }
+    },
+    {
+     "x": 500,
+     "y": 50,
+     "type": "corner"
     }
    ]
   }
