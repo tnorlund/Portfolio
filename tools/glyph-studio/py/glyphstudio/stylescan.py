@@ -47,14 +47,30 @@ _RULES = [
 _BARCODE_RE = re.compile(r"^\d{10,}$")
 
 
-def _classify(text: str, has_price: bool) -> str:
+_COSTCO_RULES = [
+    ("self_checkout", re.compile(r"SELF-CHECKOUT|THANK YOU|Please Come Again", re.I)),
+    ("member", re.compile(r"^Member|^\d{12}$|Bottom of Basket|BOB Count", re.I)),
+    ("warehouse_header", re.compile(r"WHOLESALE|Costco|#\s?\d{3,4}", re.I)),
+    ("items_sold", re.compile(r"ITEMS SOLD|TOTAL NUMBER", re.I)),
+    ("total_line", re.compile(r"^\**\s*TOTAL\b", re.I)),
+    ("summary", re.compile(r"SUBTOTAL|^TAX\b|^\s*\d+\s*%\s*TAX", re.I)),
+    ("savings", re.compile(r"INSTANT SAVINGS|/\d+$", re.I)),
+    ("payment", re.compile(
+        r"AID:|Seq#|APPROVED|XXXX|CHIP|Visa|Mastercard|EFT|AMOUNT:|Purchase|"
+        r"AUTH|CASH|CHANGE", re.I)),
+    ("footer", re.compile(r"OP#|Name:|Whse:|Trm:|Trn:|thank you", re.I)),
+]
+_MERCHANT_RULES = {"sprouts": _RULES, "costco": _COSTCO_RULES}
+
+
+def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
     compact = text.strip()
     if _BARCODE_RE.match(compact.replace(" ", "")):
         return "barcode_caption"
     up = compact.upper().strip(":")
-    if up in SECTION_TOKENS:
+    if merchant == "sprouts" and up in SECTION_TOKENS:
         return "section_header"
-    for name, rx in _RULES:
+    for name, rx in _MERCHANT_RULES.get(merchant, _RULES):
         if rx.search(compact):
             return name
     if has_price:
@@ -80,7 +96,7 @@ def _run_widths(mask: np.ndarray) -> list[int]:
     return out
 
 
-def measure(image_id: str, receipt_id: int) -> dict:
+def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     from receipt_line_scorecard import _load_words_and_real
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
@@ -133,11 +149,21 @@ def measure(image_id: str, receipt_id: int) -> dict:
         line.sort(key=lambda w: w["l"])
         text = " ".join(w["text"] for w in line)
         has_price = bool(price_re.search(line[-1]["text"]))
-        section = _classify(text, has_price)
+        section = _classify(text, has_price, merchant)
         lt = min(w["t"] for w in line)
         lb = max(w["b"] for w in line)
         ll = min(w["l"] for w in line)
         lr = max(w["r"] for w in line)
+
+        # Reverse-video detection (Costco's TOTAL/date boxes): the line band
+        # is mostly DARK. Normal text bands run ~10-25% ink.
+        by0, by1 = max(0, int(lt)), min(H, int(lb) + 1)
+        bx0, bx1 = max(0, int(ll)), min(W, int(lr) + 1)
+        reverse_video = 0
+        if by1 - by0 > 3 and bx1 - bx0 > 3:
+            band = gray[by0:by1, bx0:bx1]
+            paper = float(np.percentile(gray, 85))
+            reverse_video = int(float((band < paper - 40).mean()) > 0.55)
 
         # per-letter measurements for this line
         dens, strokes, caps, chars = [], [], [], []
@@ -192,6 +218,7 @@ def measure(image_id: str, receipt_id: int) -> dict:
                     break
 
         out_lines.append({
+                "reverse_video": reverse_video,
             "text": text[:60],
             "section": section,
             "cap_px": round(median(caps), 1) if caps else None,
@@ -234,8 +261,9 @@ def main(argv=None) -> int:
     ap.add_argument("image_id")
     ap.add_argument("receipt_id", type=int)
     ap.add_argument("out")
+    ap.add_argument("--merchant", default="sprouts")
     args = ap.parse_args(argv)
-    result = measure(args.image_id, args.receipt_id)
+    result = measure(args.image_id, args.receipt_id, merchant=args.merchant)
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(result, fh, indent=1)
     n_ul = sum(1 for l in result["lines"] if l["underline"])
@@ -243,7 +271,9 @@ def main(argv=None) -> int:
     for l in result["lines"]:
         tiers[l["tier"]] = tiers.get(l["tier"], 0) + 1
     print(f"{args.image_id}#{args.receipt_id}: {len(result['lines'])} lines, "
-          f"tiers={tiers}, underlined={n_ul} -> {args.out}")
+          f"tiers={tiers}, underlined={n_ul}, "
+          f"reversed={sum(1 for l in result['lines'] if l.get('reverse_video'))}"
+          f" -> {args.out}")
     return 0
 
 
