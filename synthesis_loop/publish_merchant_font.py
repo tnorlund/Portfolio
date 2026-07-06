@@ -106,12 +106,34 @@ def _heavy_variant_dir(font_dir: str, tmp: str) -> str:
     return hdir
 
 
+def _prebuilt_report(npz_path: str) -> dict:
+    """Metrics for a prebuilt atlas (e.g. chart-derived) via BitmapFont."""
+    import numpy as np  # noqa: PLC0415
+    from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (  # noqa: PLC0415,E501
+        BitmapFont,
+    )
+
+    bf = BitmapFont(npz_path)
+    z = np.load(npz_path)
+    return {
+        "glyph_count": sum(1 for k in z.files if k.startswith("c")),
+        "cap_h": float(bf.cap_h),
+        "advance_ratio": float(bf.advance(1.0)),
+        "pitch_check": "prebuilt (no source pitch target)",
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("merchant")
     ap.add_argument("font_dir")
     ap.add_argument("--bucket", default=DEFAULT_BUCKET)
     ap.add_argument("--skip-heavy", action="store_true")
+    ap.add_argument("--npz", default=None,
+                    help="publish this prebuilt regular npz instead of "
+                         "compiling from sources (chart-derived atlases)")
+    ap.add_argument("--heavy-npz", default=None,
+                    help="prebuilt heavy npz to publish alongside --npz")
     ap.add_argument("--atlas-name", default=None,
                     help="local cache filename base (default <font dir name>)")
     args = ap.parse_args()
@@ -130,9 +152,16 @@ def main() -> int:
     commit = _git_commit(args.font_dir)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+    prebuilt = {}
+    if args.npz:
+        prebuilt["regular"] = args.npz
+        if args.heavy_npz:
+            prebuilt["heavy"] = args.heavy_npz
     faces = {"regular": args.font_dir}
     with tempfile.TemporaryDirectory() as tmp:
-        if not args.skip_heavy:
+        if prebuilt:
+            faces = dict.fromkeys(prebuilt, None)
+        elif not args.skip_heavy:
             faces["heavy"] = _heavy_variant_dir(args.font_dir, tmp)
 
         stylemap_local = os.path.join(args.font_dir, "stylemap.json")
@@ -146,8 +175,12 @@ def main() -> int:
         for face, fdir in faces.items():
             suffix = ".glyphs.npz" if face == "regular" else "-heavy.glyphs.npz"
             cache_filename = f"{base}{suffix}"
-            npz = os.path.join(tmp, f"{face}.npz")
-            report = _compile(fdir, npz)
+            if prebuilt:
+                npz = prebuilt[face]
+                report = _prebuilt_report(npz)
+            else:
+                npz = os.path.join(tmp, f"{face}.npz")
+                report = _compile(fdir, npz)
             digest = _sha256(npz)
             key = f"merchant_fonts/{slug}/{face}-{digest[:12]}.npz"
             s3.upload_file(npz, args.bucket, key)
@@ -173,7 +206,8 @@ def main() -> int:
                 shutil.copy(local, local + f".bak-{now.replace(':', '')}")
             if os.path.islink(local):
                 os.unlink(local)
-            shutil.copy(npz, local)
+            if os.path.abspath(npz) != os.path.abspath(local):
+                shutil.copy(npz, local)
             print(f"{face}: {report['glyph_count']} glyphs "
                   f"cap_h={report['cap_h']:.1f} adv={report['advance_ratio']:.3f} "
                   f"pitch[{report['pitch_check']}]")

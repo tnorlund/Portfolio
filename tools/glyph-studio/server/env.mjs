@@ -15,6 +15,7 @@ export const PYTHON =
 
 export const SAMPLES = {
   sprouts: "/tmp/gridfix/sprouts_demo/sprouts.samples.npz",
+  costco: "/tmp/gridfix/costco_studio/costco-studio.samples.npz",
 };
 
 export const PY_ENV = {
