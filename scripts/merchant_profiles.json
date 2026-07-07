@@ -51,14 +51,48 @@
       "logo": "amazon_fresh_logo.png"
     },
     "Target": {
-      "_comment": "receiptfont.com bitMatrix-D1 (dot-matrix) -> VT323. Logo omitted: Target thermal receipts print no wordmark (header is the store address; the bullseye is not printed).",
+      "_comment": "Studio-native Target synthesis pooled from Target, Target Grocery, and Target Summerlin South receipts. Parent Image scans usually include the bullseye; many processed Receipt crops start at the address/barcode, so synthetic rendering reserves a top graphic band and leaves real Dynamo crop/word records untouched.",
+      "aliases": [
+        "Target Grocery",
+        "Target Summerlin South"
+      ],
       "section_scale": {
         "HEADER": 0.8
       },
       "typography": {
-        "font": "VT323",
-        "condense": 0.95,
-        "stroke": 0
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "target.glyphs.npz",
+          "heavy": "target-heavy.glyphs.npz"
+        },
+        "condense": 0.893,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "bitmap_thin": 0.0,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.95,
+        "stylemap": "target.stylemap.json",
+        "pitch_ratio": 0.526,
+        "dash_around_phrases": [
+          "REC#"
+        ]
+      },
+      "logo": "target_logo.png",
+      "logo_anchor": {
+        "top_band": 110,
+        "reserve_threshold": 0.7,
+        "width_frac": 0.2,
+        "top_margin": 8,
+        "bottom_margin": 12
+      },
+      "graphics": {
+        "footer_codes": false,
+        "inbody_barcode": {
+          "symbology": "code128",
+          "max_count": 1,
+          "bar_h_px": 72,
+          "bar_w_frac": 0.68
+        }
       }
     },
     "The Home Depot": {
@@ -80,6 +114,37 @@
         "extend_left": true
       },
       "graphics": {
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
+    },
+    "In-N-Out Burger": {
+      "_comment": "Studio-minted from 15 real receipts. Scans print a thermal text header such as 'IN-N-OUT WESTLAKE VILLAGE', not the full red/yellow restaurant-logo lockup; keep the downloaded brand SVG out of receipt-body rendering so boxes and receipt-level records stay scan-faithful.",
+      "aliases": [
+        "IN-N-OUT",
+        "IN-N-OUT BURGER",
+        "IN-N-OUT WESTLAKE VILLAGE"
+      ],
+      "section_scale": {},
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "innout.glyphs.npz",
+          "heavy": "innout-heavy.glyphs.npz"
+        },
+        "condense": 0.7,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "bitmap_thin": 0.0,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.769,
+        "stylemap": "innout.stylemap.json",
+        "pitch_ratio": 0.508,
+        "condense_glyphs": true
+      },
+      "graphics": {
+        "footer_codes": false,
         "inbody_barcode": {
           "max_count": 0
         }

@@ -179,6 +179,10 @@ class RenderConfig:
     # Rows containing any of these phrases get a dashed rule ABOVE and BELOW
     # (Costco wraps each "Shop Card" tender subtotal in rules; OCR drops them).
     dash_around_phrases: tuple = ()
+    # Opt-in: also horizontally condense bitmap GLYPH IMAGES (not just cell
+    # advance). Merchants calibrated before this knob existed keep the old
+    # behavior; In-N-Out was calibrated with it on.
+    condense_glyphs: bool = False
     reverse_box_lane_cells: int = 4
     # Hybrid layout: keep fixed grid for tabular/price rows, but render centered
     # headers and prose/footer rows as measured text runs anchored by visible ink.
@@ -648,15 +652,19 @@ def _render_grid(
     # row is the "AMOUNT:" line).
     row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
     dash_after_rows: set[int] = set()
-    if config.dashed_separators:
+    # dash_around_phrases works standalone: a merchant may bracket specific
+    # rows (Target's REC# line) without the Costco-style after-TOTAL rule
+    # that dashed_separators switches on.
+    if config.dashed_separators or config.dash_around_phrases:
         for k, t in enumerate(row_texts):
             prevt = row_texts[k - 1] if k > 0 else ""
             first = t.split()[0] if t.split() else ""
-            is_total_row = _is_final_total(
+            is_total_row = config.dashed_separators and _is_final_total(
                 t, config.total_include_tokens, config.total_exclude_tokens
             )
             is_amount_date = (
-                config.dash_after_amount_date
+                config.dashed_separators
+                and config.dash_after_amount_date
                 and "AMOUNT" in prevt
                 and _DATE_LED.match(first)
             )
@@ -742,6 +750,7 @@ def _render_grid(
                 line[0].ink,
                 stroke=config.stroke,
                 condense=config.condense,
+                condense_glyphs=config.condense_glyphs,
                 bitmap_font=bf_row,
                 cap_px=cap_px,
                 bitmap_thin=config.bitmap_thin,
@@ -765,6 +774,7 @@ def _render_grid(
                     anchor=anchor,
                     stroke=config.stroke,
                     condense=config.condense,
+                    condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cap_px,
                     target_width=target_w,
@@ -782,6 +792,7 @@ def _render_grid(
                 amount_lane=amount_lane,
                 stroke=config.stroke,
                 condense=config.condense,
+                condense_glyphs=config.condense_glyphs,
                 bitmap_font=bf_row,
                 cap_px=cap_px,
                 bitmap_thin=config.bitmap_thin,
@@ -852,6 +863,7 @@ def _render_grid(
                     anchor=anchor,
                     stroke=config.stroke,
                     condense=config.condense,
+                    condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cp,
                     target_width=target_w,
@@ -870,6 +882,7 @@ def _render_grid(
                     amount_lane=lane,
                     stroke=config.stroke,
                     condense=config.condense,
+                    condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cp,
                     bitmap_thin=config.bitmap_thin,
@@ -907,6 +920,7 @@ def _render_grid(
             ink=_ink_for({}, config),
             stroke=config.stroke,
             condense=config.condense,
+            condense_glyphs=config.condense_glyphs,
             bitmap_font=dash_bmf,
             cap_px=cap_px,
             bitmap_thin=config.bitmap_thin,

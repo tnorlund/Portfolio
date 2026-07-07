@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Derive ``bitmap_thin`` from measured ink density.
+"""Derive ``bitmap_thin`` from measured ink density — no hand-tuned constant.
 
 The hybrid renderer erodes bitmap glyphs by ``bitmap_thin``. The right amount
-is whatever makes a re-render of a real receipt match that receipt's own
-measured ink density. This module closes that loop with the scorecard's ink
-measurers: render the real receipt's words at a candidate ``thin``, compare
-per-word ink density against the real scan, and bisect.
-"""
+is not a per-merchant opinion: it is whatever makes a re-render of a REAL
+receipt match that receipt's own measured ink density. This module closes that
+loop with the scorecard's ink measurers: render the real receipt's words at a
+candidate ``thin``, compare per-word ink density against the real scan, and
+bisect (density falls monotonically as ``thin`` grows).
 
+Pure functions only — the caller supplies the render closure and the real
+image/words (see ``render_synthetic_receipts.resolve_bitmap_thin`` for the
+cached, Dynamo-backed entry point).
+"""
 from __future__ import annotations
 
 from statistics import median
@@ -28,7 +32,14 @@ def measure_density_ratio(
     synth_margin: int = 10,
     min_words: int = 15,
 ) -> float | None:
-    """Median per-word synthetic/real ink density ratio."""
+    """Median per-word (synth ink density / real ink density).
+
+    Reuses the scorecard's own ``_word_scores`` protocol (crop padding, short
+    and numeric-caption filtering) so calibration is measured IDENTICALLY to
+    the ``density_ratio_median`` the scorecard reports — a home-grown measure
+    here read ~0.2 low because unpadded crops let dense words pollute the
+    paper-percentile threshold.
+    """
     scores = _word_scores(real, synth, words, synth_margin=synth_margin)
     ratios = [s["density_ratio"] for s in scores]
     if len(ratios) < min_words:
@@ -47,7 +58,14 @@ def derive_bitmap_thin(
     max_iters: int = 5,
     synth_margin: int = 10,
 ) -> tuple[float, float] | None:
-    """Solve for ``bitmap_thin`` whose render matches real ink density."""
+    """Solve for the ``bitmap_thin`` whose render matches real ink density.
+
+    Returns ``(thin, density_ratio)`` or None when density can't be measured
+    (too few word matches). Density ratio decreases monotonically with thin,
+    so this is a plain bisection; endpoints are handled first:
+    even ``lo`` erodes too much -> return ``lo`` (can't add ink), and
+    ``hi`` still too dense -> return ``hi``.
+    """
 
     def ratio_at(thin: float) -> float | None:
         return measure_density_ratio(
@@ -76,7 +94,7 @@ def derive_bitmap_thin(
         if abs(ratio_mid - 1.0) <= tol:
             return mid, ratio_mid
         if ratio_mid > 1.0:
-            lo = mid
+            lo = mid  # still too dense -> erode more
         else:
             hi = mid
     return best

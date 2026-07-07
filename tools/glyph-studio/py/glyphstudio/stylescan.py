@@ -209,6 +209,82 @@ _CVS_RULES = [
         ),
     ),
 ]
+_INNOUT_RULES = [
+    (
+        "store_header",
+        re.compile(r"IN-N-OUT|WESTLAKE|VILLAGE|^\s*\d{3}\s*$", re.I),
+    ),
+    (
+        "transaction",
+        re.compile(
+            r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I
+        ),
+    ),
+    ("note", re.compile(r"^NOTE\b|^tes$", re.I)),
+    (
+        "total_line",
+        re.compile(r"Amount Due|AUTH\s+AMT", re.I),
+    ),
+    (
+        "summary",
+        re.compile(r"DRIVE-?Take Out|^TAX\b|Tender\b|Change\b", re.I),
+    ),
+    (
+        "payment",
+        re.compile(
+            r"CHARGE\s+DETAIL|Card Type|Account:|Capture:|Contactless|PIN:|"
+            r"Auth Code|Auth Ref|AID:|Trans\s*#|MasterCard|VISA|\*{4,}",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"THANK YOU|Questions/Comments|Call\s+800|^\d{4}-\d{2}-\d{2}\b",
+            re.I,
+        ),
+    ),
+]
+_TARGET_RULES = [
+    (
+        "store_header",
+        re.compile(
+            r"TARGET|Westlake Village|Las Vegas|Simi Valley|Woodland Hills|"
+            r"Henderson|Grand Canyon|Russell Ranch|Tierra Rejada|Ventura Blvd|"
+            r"\d{3}[- ]\d{3}[- ]?\d{4}",
+            re.I,
+        ),
+    ),
+    (
+        "section_header",
+        re.compile(
+            r"^(GROCERY|HEALTH AND BEAUTY|HOME|KITCHEN|APPAREL|ELECTRONICS|"
+            r"LAUNDRY CLEANING AND CLOSET|PATIO & OUTDOOR DECOR|ENTERTAINMENT-"
+            r"ELECTRONICS)\b",
+            re.I,
+        ),
+    ),
+    ("total_line", re.compile(r"^\s*TOTAL\b|DEBIT TOTAL PAYMENT", re.I)),
+    ("summary", re.compile(r"SUBTOTAL|^T\s*=|^TAX\b|CA TAX|NV TAX", re.I)),
+    (
+        "payment",
+        re.compile(
+            r"AID:|AUTH CODE|MASTERCARD|VISA|DEBIT|CARD ENTRY|APPROVED|"
+            r"\*{4,}|RETURN|Target Circle Card",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"RETURN POLICY|WHEN YOU RETURN|Target Circle|TARGET\.COM|"
+            r"Guest Copy|Survey",
+            re.I,
+        ),
+    ),
+]
+
+
 _WILDFORK_RULES = [
     (
         "store_header",
@@ -247,13 +323,17 @@ _WILDFORK_RULES = [
         ),
     ),
 ]
+
+
 _MERCHANT_RULES = {
     "sprouts": _RULES,
     "costco": _COSTCO_RULES,
     "vons": _VONS_RULES,
     "traderjoes": _TJ_RULES,
     "cvs": _CVS_RULES,
-    "wildfork": _WILDFORK_RULES,
+    "innout": _INNOUT_RULES,
+    "target": _TARGET_RULES,
+                   "wildfork": _WILDFORK_RULES,
 }
 
 

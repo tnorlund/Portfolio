@@ -34,7 +34,49 @@ SECTION_TOKENS = {
     "WINE",
     "BODY",
     "HOUSEHOLD",
+    "HEALTH AND BEAUTY",
+    "HOME",
+    "KITCHEN",
+    "APPAREL",
+    "ELECTRONICS",
+    "ENTERTAINMENT-ELECTRONICS",
+    "LAUNDRY CLEANING AND CLOSET",
+    "PATIO & OUTDOOR DECOR",
 }
+_INNOUT_RULES: list[tuple[str, re.Pattern]] = [
+    (
+        "store_header",
+        re.compile(r"IN-N-OUT", re.I),
+    ),
+    (
+        "transaction",
+        re.compile(
+            r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station",
+            re.I,
+        ),
+    ),
+    ("note", re.compile(r"^NOTE\b|^tes$", re.I)),
+    ("total_line", re.compile(r"Amount Due|AUTH\s+AMT", re.I)),
+    (
+        "summary",
+        re.compile(r"DRIVE-?Take Out|^TAX\b|Tender\b|Change\b", re.I),
+    ),
+    (
+        "payment",
+        re.compile(
+            r"CHARGE\s+DETAIL|Card Type|Account:|Capture:|Contactless|PIN:|"
+            r"Auth Code|Auth Ref|AID:|Trans\s*#|MasterCard|VISA|\*{4,}",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"THANK YOU|Questions/Comments|Call\s+800|^\d{4}-\d{2}-\d{2}\b",
+            re.I,
+        ),
+    ),
+]
 _RULES: list[tuple[str, re.Pattern]] = [
     ("balance_due", re.compile(r"^BALANCE DUE", re.I)),
     ("store_header", re.compile(r"^WF$|^Thousand Oaks CA$", re.I)),
@@ -94,15 +136,27 @@ _RULES: list[tuple[str, re.Pattern]] = [
     ),
 ]
 _BARCODE_RE = re.compile(r"^\d{10,}$")
+_MERCHANT_RULES = {
+    "innout": _INNOUT_RULES,
+}
 
 
-def classify_row(text: str) -> str:
+def _merchant_key(stylemap: Mapping[str, Any] | None) -> str | None:
+    source = (stylemap or {}).get("source") or {}
+    raw = str(source.get("merchant") or "").lower()
+    if raw in _MERCHANT_RULES:
+        return raw
+    return None
+
+
+def classify_row(text: str, merchant: str | None = None) -> str:
     compact = text.strip()
     if _BARCODE_RE.match(compact.replace(" ", "")):
         return "barcode_caption"
     if compact.upper().strip(":") in SECTION_TOKENS:
         return "section_header"
-    for name, rx in _RULES:
+    rules = _MERCHANT_RULES.get((merchant or "").lower(), _RULES)
+    for name, rx in rules:
         if rx.search(compact):
             return name
     return "other"
@@ -123,7 +177,7 @@ def row_style(
     if not stylemap:
         return style
     sections = stylemap.get("sections") or {}
-    section = classify_row(row_text)
+    section = classify_row(row_text, merchant=_merchant_key(stylemap))
     rule = sections.get(section)
     if not rule:
         return style

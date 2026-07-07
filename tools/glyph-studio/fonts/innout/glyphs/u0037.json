@@ -1,0 +1,68 @@
+{
+ "version": 1,
+ "char": "7",
+ "codepoint": 55,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "sprouts.samples.npz",
+  "samples": 83,
+  "consensusHash": "39f728c8cc55",
+  "date": "2026-07-07"
+ },
+ "width": 430.2,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 179.1,
+     "y": 36.5,
+     "type": "corner",
+     "hOut": {
+      "x": 174.40011103716802,
+      "y": 302.7
+     }
+    },
+    {
+     "x": 376.3,
+     "y": 833.3,
+     "type": "corner",
+     "hIn": {
+      "x": 318.83558505858076,
+      "y": 575.4943865655539
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 378.4,
+     "y": 833.3,
+     "type": "corner"
+    },
+    {
+     "x": 378.4,
+     "y": 912.36699352204,
+     "type": "corner",
+     "hOut": {
+      "x": 356.99616878597925,
+      "y": 981.2367426482804
+     }
+    },
+    {
+     "x": 40.2,
+     "y": 963.5,
+     "type": "corner",
+     "hIn": {
+      "x": 104.23257298022367,
+      "y": 949.2
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "source": {
+    "merchant": "innout",
+    "receipts": 15,
+    "scan_dir": "/tmp/gridfix/innout_studio/scans",
+    "lines_measured": 485,
+    "date": "2026-07-07"
+  },
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=22. Header text is body-size and slightly lighter (cap_rel med 1.000, stroke_rel med 0.912). Real scans print text, not the full brand logo."
+    },
+    "transaction": {
+      "sizeScale": 0.95,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.019,
+      "notes": "n=53. Cashier/check/trans block is slightly smaller (cap_rel med 0.952), normal weight."
+    },
+    "note": {
+      "sizeScale": 0.93,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=5. NOTE caption is smaller (cap_rel med 0.930); stroke_rel med 1.103 is below the bold threshold and sample is small."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=51. Item rows are the body baseline (cap_rel med 1.011, stroke_rel med 0.988)."
+    },
+    "summary": {
+      "sizeScale": 1.05,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=45. DRIVE/TAX/Tender/Change rows run a touch larger (cap_rel med 1.059), normal/light stroke."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.034,
+      "notes": "n=29. Amount Due and AUTH AMT are the true heavy rows (stroke_rel med 1.393); render with heavy face."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=115. Card/auth detail block is body-size and slightly light (stroke_rel med 0.971)."
+    },
+    "footer": {
+      "sizeScale": 1.02,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=42. Footer/THANK YOU/date lines are near body size (cap_rel med 1.024); THANK YOU is visually centered but not a distinct face."
+    },
+    "barcode_caption": {
+      "sizeScale": 0.98,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=13. Numeric header captions are near body size (cap_rel med 0.978)."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.009,
+      "notes": "n=110. Body baseline bucket."
+    }
+  }
+}
