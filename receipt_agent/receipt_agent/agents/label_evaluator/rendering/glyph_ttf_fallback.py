@@ -30,6 +30,7 @@ from functools import lru_cache
 from typing import Callable, Mapping, Sequence
 
 from PIL import Image, ImageFilter, ImageFont
+
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     AtlasStyle,
     GlyphAtlas,

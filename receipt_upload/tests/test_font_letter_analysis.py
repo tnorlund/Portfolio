@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image, ImageDraw
+
 from receipt_upload.font_letter_analysis import (
     LetterImageSample,
     build_letter_image_samples,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 from PIL import Image, ImageDraw
+
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )

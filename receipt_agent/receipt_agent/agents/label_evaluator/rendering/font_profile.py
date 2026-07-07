@@ -342,9 +342,8 @@ def build_merchant_font_profile_from_dynamo(
     the download keeps the pass fast. Receipts that fail to load are skipped so
     one bad image does not sink the merchant profile.
     """
-    from receipt_upload.font_analysis import load_raw_image_from_s3
-
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_upload.font_analysis import load_raw_image_from_s3
 
     client = DynamoClient(table_name=table_name, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant_name)

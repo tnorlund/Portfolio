@@ -31,6 +31,7 @@ from statistics import median
 from typing import Any, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
+
 from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
     preserve_top_arc,
     thin_ink_mask,

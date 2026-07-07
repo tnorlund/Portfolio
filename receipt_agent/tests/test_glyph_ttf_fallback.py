@@ -10,6 +10,7 @@ import math
 
 import pytest
 from PIL import Image, ImageDraw
+
 from receipt_agent.agents.label_evaluator.rendering import glyph_ttf_fallback
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     build_glyph_atlas,

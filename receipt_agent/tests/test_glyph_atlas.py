@@ -9,6 +9,7 @@ can be checked without touching Dynamo/S3.
 from __future__ import annotations
 
 from PIL import Image, ImageDraw
+
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     GlyphAtlas,
     _is_promo_text,

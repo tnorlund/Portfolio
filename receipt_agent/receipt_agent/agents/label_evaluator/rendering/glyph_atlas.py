@@ -747,9 +747,8 @@ def build_glyph_atlas_from_dynamo(
     deprecated), loads letters + the raw receipt crop per receipt, and delegates
     to :func:`build_glyph_atlas`. ``max_receipts`` bounds the S3 image pulls.
     """
-    from receipt_upload.font_analysis import load_raw_image_from_s3
-
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_upload.font_analysis import load_raw_image_from_s3
 
     client = DynamoClient(table_name=table_name, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant_name)

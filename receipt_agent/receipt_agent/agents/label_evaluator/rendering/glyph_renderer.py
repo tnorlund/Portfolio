@@ -35,6 +35,7 @@ from statistics import median
 from typing import Any, Callable, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFilter
+
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
