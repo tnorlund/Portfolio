@@ -56,6 +56,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     receipt_letters = details.receipt_letters
     receipt_word_labels = details.receipt_word_labels
     receipt_places = details.receipt_places
+    receipt_barcodes = details.receipt_barcodes
     ocr_jobs = details.ocr_jobs
     ocr_routing_decisions = details.ocr_routing_decisions
 
@@ -76,6 +77,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
             asdict(label) for label in receipt_word_labels
         ],
         "receipt_places": [asdict(place) for place in receipt_places],
+        "receipt_barcodes": [asdict(bc) for bc in receipt_barcodes],
         "ocr_jobs": [asdict(job) for job in ocr_jobs],
         "ocr_routing_decisions": [
             asdict(decision) for decision in ocr_routing_decisions
@@ -112,6 +114,7 @@ def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
         ("receipt_words", "delete_receipt_words"),
         ("receipt_lines", "delete_receipt_lines"),
         ("receipt_places", "delete_receipt_places"),
+        ("receipt_barcodes", "delete_receipt_barcodes"),
         ("receipts", "delete_receipts"),
         ("letters", "delete_letters"),
         ("words", "delete_words"),

@@ -42,6 +42,7 @@ struct ReceiptOCR: AsyncParsableCommand {
     @Option(name: .long, help: "Log level: trace|debug|info|warn|error") var logLevel: String?
     @Option(name: .long, help: "Process a local image file instead of AWS flow") var processLocalImage: String?
     @Option(name: .long, help: "Output directory for local processing JSON") var outputDir: String?
+    @Option(name: .long, help: "Detect ONLY barcodes/QR on a local image (fast; no OCR/warp). Writes {barcodes:[...]} JSON") var detectBarcodesOnly: String?
     @Flag(name: .long, help: "Run continuously until queue is empty") var continuous: Bool = false
     @Option(name: .long, help: "Path to CoreML LayoutLM model bundle for local processing") var layoutlmModel: String?
     @Option(name: .long, help: "S3 bucket containing LayoutLM model bundle for worker mode") var layoutlmModelBucket: String?
@@ -49,6 +50,55 @@ struct ReceiptOCR: AsyncParsableCommand {
     @Option(name: .long, help: "Local cache path for downloaded model (default: .models/layoutlm)") var layoutlmCachePath: String?
 
     mutating func run() async throws {
+        // Barcode-only mode: fast per-image detection for the backfill (no OCR,
+        // classification, or warp). Self-contained; returns before Config.load.
+        if let imagePath = detectBarcodesOnly {
+            guard let outputDir = outputDir else {
+                throw ValidationError("--output-dir is required when using --detect-barcodes-only")
+            }
+            let imageURL = URL(fileURLWithPath: imagePath)
+            let outDirURL = URL(fileURLWithPath: outputDir, isDirectory: true)
+            try FileManager.default.createDirectory(at: outDirURL, withIntermediateDirectories: true)
+            let outURL = outDirURL.appendingPathComponent(
+                imageURL.deletingPathExtension().lastPathComponent + ".json")
+            #if os(macOS)
+            let barcodes = detectBarcodes(at: imageURL)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            try encoder.encode(["barcodes": barcodes]).write(to: outURL)
+            return
+            #else
+            // Barcode detection relies on Vision, which is macOS-only. Emitting an
+            // empty-but-successful result here would let the backfill (which
+            // deletes existing barcodes before re-adding on --apply) wipe real
+            // rows when run from a Linux build/host, so fail loudly instead.
+            FileHandle.standardError.write(Data(
+                "--detect-barcodes-only is only supported on macOS (Vision framework); refusing to emit empty results.\n".utf8))
+            throw ExitCode.failure
+            #endif
+        }
+
+        // Local-image mode is fully self-contained (Vision only) and must NOT
+        // require AWS queue/bucket config -- return before Config.load so it runs
+        // standalone (e.g. for local barcode/OCR testing).
+        if let imagePath = processLocalImage {
+            guard let outputDir = outputDir else {
+                throw ValidationError("--output-dir is required when using --process-local-image")
+            }
+            let imageURL = URL(fileURLWithPath: imagePath)
+            let outURL = URL(fileURLWithPath: outputDir, isDirectory: true)
+            #if os(macOS)
+            let layoutlmBundlePath = layoutlmModel.map { URL(fileURLWithPath: $0) }
+            let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine(layoutLMBundlePath: layoutlmBundlePath)
+            #else
+            let engine: OCREngineProtocol = StubOCREngine()
+            #endif
+            _ = try engine.process(images: [imageURL], outputDirectory: outURL)
+            return
+        }
+
+        // Worker mode: requires full AWS config.
         let config = try Config.load(
             env: env,
             ocrJobQueueURL: ocrJobQueueURL,
@@ -78,49 +128,34 @@ struct ReceiptOCR: AsyncParsableCommand {
         } else {
             effectiveConfig = config
         }
-        if let imagePath = processLocalImage {
-            guard let outputDir = outputDir else {
-                throw ValidationError("--output-dir is required when using --process-local-image")
-            }
-            let imageURL = URL(fileURLWithPath: imagePath)
-            let outURL = URL(fileURLWithPath: outputDir, isDirectory: true)
-            #if os(macOS)
-            let layoutlmBundlePath = layoutlmModel.map { URL(fileURLWithPath: $0) }
-            let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine(layoutLMBundlePath: layoutlmBundlePath)
-            #else
-            let engine: OCREngineProtocol = StubOCREngine()
-            #endif
-            _ = try engine.process(images: [imageURL], outputDirectory: outURL)
-        } else {
-            var cacheLogger = Logger(label: "receipt.ocr.cache")
-            cacheLogger.logLevel = .from(string: effectiveConfig.logLevel)
+        var cacheLogger = Logger(label: "receipt.ocr.cache")
+        cacheLogger.logLevel = .from(string: effectiveConfig.logLevel)
 
-            let worker = try await OCRWorker.make(config: effectiveConfig, stubOCR: stubOCR)
-            if continuous {
-                print("Running continuously until queue is empty...")
-                var batchCount = 0
-                // Purge every 50 batches (~500 receipts) to keep cache bounded
-                let purgeCadence = 50
-                while true {
-                    batchCount += 1
-                    print("Processing batch \(batchCount)...")
-                    let hadMessages = try await worker.processBatch()
-                    if !hadMessages {
-                        print("Queue is empty, stopping.")
-                        break
-                    }
-                    if batchCount % purgeCadence == 0 {
-                        purgeE5RTCache(logger: cacheLogger)
-                    }
-                    // Small delay between batches to avoid tight loops
-                    try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        let worker = try await OCRWorker.make(config: effectiveConfig, stubOCR: stubOCR)
+        if continuous {
+            print("Running continuously until queue is empty...")
+            var batchCount = 0
+            // Purge every 50 batches (~500 receipts) to keep cache bounded
+            let purgeCadence = 50
+            while true {
+                batchCount += 1
+                print("Processing batch \(batchCount)...")
+                let hadMessages = try await worker.processBatch()
+                if !hadMessages {
+                    print("Queue is empty, stopping.")
+                    break
                 }
-                // Final purge before exit
-                purgeE5RTCache(logger: cacheLogger)
-            } else {
-                _ = try await worker.processBatch()
-                purgeE5RTCache(logger: cacheLogger)
+                if batchCount % purgeCadence == 0 {
+                    purgeE5RTCache(logger: cacheLogger)
+                }
+                // Small delay between batches to avoid tight loops
+                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
             }
+            // Final purge before exit
+            purgeE5RTCache(logger: cacheLogger)
+        } else {
+            _ = try await worker.processBatch()
+            purgeE5RTCache(logger: cacheLogger)
         }
     }
 }

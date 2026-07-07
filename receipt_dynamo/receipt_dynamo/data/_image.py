@@ -30,6 +30,7 @@ from receipt_dynamo.entities import (
     item_to_ocr_job,
     item_to_ocr_routing_decision,
     item_to_receipt,
+    item_to_receipt_barcode,
     item_to_receipt_letter,
     item_to_receipt_line,
     item_to_receipt_place,
@@ -115,6 +116,7 @@ class _Image(FlattenedStandardMixin):
         receipt_letters = []
         receipt_word_labels = []
         receipt_places = []
+        receipt_barcodes = []
         ocr_jobs = []
         ocr_routing_decisions = []
 
@@ -154,6 +156,9 @@ class _Image(FlattenedStandardMixin):
             "RECEIPT_PLACE": lambda item: receipt_places.append(
                 item_to_receipt_place(item)
             ),
+            "RECEIPT_BARCODE": lambda item: receipt_barcodes.append(
+                item_to_receipt_barcode(item)
+            ),
             "OCR_JOB": lambda item: ocr_jobs.append(item_to_ocr_job(item)),
             "OCR_ROUTING_DECISION": lambda item: ocr_routing_decisions.append(
                 item_to_ocr_routing_decision(item)
@@ -177,6 +182,7 @@ class _Image(FlattenedStandardMixin):
             receipt_letters=receipt_letters,
             receipt_word_labels=receipt_word_labels,
             receipt_places=receipt_places,
+            receipt_barcodes=receipt_barcodes,
             ocr_jobs=ocr_jobs,
             ocr_routing_decisions=ocr_routing_decisions,
         )

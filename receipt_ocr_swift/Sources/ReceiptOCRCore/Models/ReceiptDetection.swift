@@ -118,6 +118,10 @@ public struct ReceiptOutput: Codable {
     /// LayoutLM predictions for each line (optional, set after inference)
     public var layoutlmPredictions: [LinePrediction]?
 
+    /// Barcodes / QR codes detected on the warped receipt (coords relative to
+    /// the warped crop, matching `lines`).
+    public var barcodes: [Barcode]?
+
     public init(
         clusterId: Int,
         bounds: ReceiptBounds,
@@ -126,7 +130,8 @@ public struct ReceiptOutput: Codable {
         s3Key: String? = nil,
         lineIndices: [Int],
         lines: [Line]? = nil,
-        layoutlmPredictions: [LinePrediction]? = nil
+        layoutlmPredictions: [LinePrediction]? = nil,
+        barcodes: [Barcode]? = nil
     ) {
         self.clusterId = clusterId
         self.bounds = bounds
@@ -136,10 +141,11 @@ public struct ReceiptOutput: Codable {
         self.lineIndices = lineIndices
         self.lines = lines
         self.layoutlmPredictions = layoutlmPredictions
+        self.barcodes = barcodes
     }
 
     /// Create from a ProcessedReceipt
-    public init(from processed: ProcessedReceipt, s3Key: String? = nil, lines: [Line]? = nil, layoutlmPredictions: [LinePrediction]? = nil) {
+    public init(from processed: ProcessedReceipt, s3Key: String? = nil, lines: [Line]? = nil, layoutlmPredictions: [LinePrediction]? = nil, barcodes: [Barcode]? = nil) {
         self.clusterId = processed.clusterId
         self.bounds = processed.bounds
         self.warpedWidth = processed.warpedWidth
@@ -148,6 +154,7 @@ public struct ReceiptOutput: Codable {
         self.lineIndices = processed.lineIndices
         self.lines = lines
         self.layoutlmPredictions = layoutlmPredictions
+        self.barcodes = barcodes
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -159,6 +166,7 @@ public struct ReceiptOutput: Codable {
         case lineIndices = "line_indices"
         case lines
         case layoutlmPredictions = "layoutlm_predictions"
+        case barcodes
     }
 }
 

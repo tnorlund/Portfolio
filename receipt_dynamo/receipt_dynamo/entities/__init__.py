@@ -94,6 +94,10 @@ from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_analysis import (  # noqa: F401
     ReceiptAnalysis,
 )
+from receipt_dynamo.entities.receipt_barcode import (  # noqa: F401
+    ReceiptBarcode,
+    item_to_receipt_barcode,
+)
 from receipt_dynamo.entities.receipt_bundle import (
     ReceiptBundle,
     ReceiptBundlePage,
@@ -253,6 +257,7 @@ __all__ = [
     "QueueJob",
     "Receipt",
     "ReceiptAnalysis",
+    "ReceiptBarcode",
     "ReceiptChatGPTValidation",
     "ReceiptBundle",
     "ReceiptBundlePage",
@@ -307,6 +312,7 @@ __all__ = [
     "item_to_queue",
     "item_to_queue_job",
     "item_to_receipt",
+    "item_to_receipt_barcode",
     "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_summary_record",
     "item_to_receipt_field",

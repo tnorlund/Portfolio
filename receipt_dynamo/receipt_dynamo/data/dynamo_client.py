@@ -27,6 +27,7 @@ from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
+from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
 from receipt_dynamo.data._receipt_chatgpt_validation import (
     _ReceiptChatGPTValidation,
 )
@@ -81,6 +82,7 @@ class DynamoClient(
     _Word,
     _Letter,
     _Receipt,
+    _ReceiptBarcode,
     _ReceiptLine,
     _ReceiptWord,
     _ReceiptLetter,
