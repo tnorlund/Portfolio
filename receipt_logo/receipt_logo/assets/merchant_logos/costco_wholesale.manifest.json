@@ -1,0 +1,33 @@
+{
+  "merchant_slug": "costco_wholesale",
+  "source_filename": "CostcoWholesale_Logo.svg",
+  "source_kind": "vector",
+  "source_dimensions": {
+    "width": 482.74,
+    "height": 142.01
+  },
+  "palette": [
+    "#005daa",
+    "#e31937",
+    "#fff"
+  ],
+  "assets": {
+    "color_svg": "costco_wholesale.svg"
+  },
+  "layers": [
+    {
+      "fill": "#005daa",
+      "path_count": null
+    },
+    {
+      "fill": "#e31937",
+      "path_count": null
+    },
+    {
+      "fill": "#fff",
+      "path_count": null
+    }
+  ],
+  "notes": "Source is an authored vector logo (no PNG vectorization pass); path/point stats apply to raster-traced assets only. On receipts Costco's mark appears as the reverse-video WHOLESALE band + the Costco wordmark.",
+  "svg_path_count": 17
+}

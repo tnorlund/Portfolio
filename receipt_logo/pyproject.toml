@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "receipt-logo"
+version = "0.1.0"
+description = "MCP tools for converting receipt merchant logos into SVG path assets"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Tyler Norlund" }
+]
+dependencies = [
+    "mcp>=1.26.0",
+    "numpy>=1.26.0,<3.0.0",
+    "Pillow>=10.0.0,<13.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+]
+dev = [
+    "black==26.5.1",
+    "isort==8.0.1",
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+receipt-logo = "receipt_logo.cli:main"
+receipt-logo-mcp = "receipt_logo.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["receipt_logo"]
+include = [
+    "receipt_logo/py.typed",
+    "receipt_logo/assets/**/*.json",
+    "receipt_logo/assets/**/*.svg",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.black]
+line-length = 79
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 79
