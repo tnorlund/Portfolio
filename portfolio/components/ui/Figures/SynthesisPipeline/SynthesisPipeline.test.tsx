@@ -180,6 +180,50 @@ describe("SynthesisPipeline finale act", () => {
     // three named cards carry the generalization beat on their own.
   });
 
+  test("each card pairs the real scan with the synth render for proof", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    fireEvent.click(screen.getByTestId("act-dot-8"));
+    await flushAssets();
+
+    // Every card overlays the real scan on the synthesized render.
+    expect(screen.getAllByTestId("finale-image")).toHaveLength(3);
+    expect(screen.getAllByTestId("finale-real")).toHaveLength(3);
+    const sprouts = screen.getByRole("img", {
+      name: /synthetic sprouts receipt/i,
+    });
+    const sproutsReal = screen.getByRole("img", {
+      name: /real sprouts receipt scan/i,
+    });
+    expect(sprouts.getAttribute("src")).toMatch(/sprouts\/final\.webp$/);
+    expect(sproutsReal.getAttribute("src")).toMatch(/sprouts\/real\.webp$/);
+  });
+
+  test("cards render at their true (different) per-merchant proportions", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    fireEvent.click(screen.getByTestId("act-dot-8"));
+    await flushAssets();
+
+    // The frame's aspect ratio is the receipt's real 760xH — Costco (tallest)
+    // and Sprouts (shortest) must differ, which is the whole point.
+    const frameFor = (merchant: string) =>
+      screen
+        .getAllByTestId("finale-card")
+        .find((c) => c.getAttribute("data-merchant") === merchant)!
+        .querySelector<HTMLElement>('[style*="aspect-ratio"]')!;
+    const sprouts = frameFor("sprouts").style.aspectRatio;
+    const costco = frameFor("costco").style.aspectRatio;
+    const vons = frameFor("vons").style.aspectRatio;
+    expect(sprouts).toBe("760 / 2471");
+    expect(costco).toBe("760 / 2999");
+    expect(vons).toBe("760 / 2732");
+    // Distinct proportions -> visibly different heights at a common width.
+    expect(new Set([sprouts, costco, vons]).size).toBe(3);
+  });
+
   test("a receipt image that fails to load degrades to a named fallback", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();

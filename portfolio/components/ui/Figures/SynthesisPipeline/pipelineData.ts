@@ -66,6 +66,23 @@ export const composeStepsSrc = (merchant: Merchant): string =>
 export const finalSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/final.webp`;
 
+/** The real scanned receipt, normalized to the SAME 760-wide box as final.webp
+ *  (so real and synth align 1:1 for the finale before/after wipe). */
+export const realSrc = (merchant: Merchant): string =>
+  `${assetRoot(merchant)}/real.webp`;
+
+/**
+ * True pixel dimensions of each merchant's normalized receipt (real + final
+ * share these). All 760px wide; heights differ — that difference is the point
+ * of the finale, so the cards render at a common width and their natural
+ * (different) heights, tops aligned.
+ */
+export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
+  sprouts: { w: 760, h: 2471 },
+  costco: { w: 760, h: 2999 },
+  vons: { w: 760, h: 2732 },
+};
+
 export const finalLabelsSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/final.labels.json`;
 

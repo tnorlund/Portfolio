@@ -34,6 +34,8 @@ import {
   MERCHANTS,
   MERCHANT_LABELS,
   MerchantAssets,
+  RECEIPT_DIMS,
+  realSrc,
   realThumbSrc,
   REAL_THUMB_COUNT,
   styleCropSrc,
@@ -816,11 +818,25 @@ const PrintLabelsAct: React.FC<ActProps> = ({
 /* Act 9 — Finale: same machine, every store                            */
 /* ==================================================================== */
 
-const FinaleCard: React.FC<{ merchant: Merchant; shown: boolean }> = ({
-  merchant,
-  shown,
-}) => {
-  const [failed, setFailed] = useState(false);
+/**
+ * One merchant's finale card: a before/after PAIR. The real scan and our
+ * synthesized render (both normalized to the same 760-wide box, so they align
+ * 1:1) are stacked, and a divider auto-wipes left-right — as it sweeps, the
+ * receipt stays continuous line-for-line, which is the proof that the synth
+ * matches the real. The card renders at a common width and its own natural
+ * height (Costco taller than Vons taller than Sprouts).
+ */
+const FinaleCard: React.FC<{
+  merchant: Merchant;
+  shown: boolean;
+  wipe: number;
+}> = ({ merchant, shown, wipe }) => {
+  const [synthFailed, setSynthFailed] = useState(false);
+  const [realFailed, setRealFailed] = useState(false);
+  const dims = RECEIPT_DIMS[merchant];
+  const wipePct = Math.round(clamp01(wipe) * 1000) / 10;
+  const pair = !synthFailed && !realFailed;
+
   return (
     <figure
       className={styles.finaleCard}
@@ -828,15 +844,18 @@ const FinaleCard: React.FC<{ merchant: Merchant; shown: boolean }> = ({
       data-testid="finale-card"
       data-merchant={merchant}
     >
-      <div className={styles.finaleFrame}>
-        {!failed ? (
+      <div
+        className={styles.finaleFrame}
+        style={{ aspectRatio: `${dims.w} / ${dims.h}` }}
+      >
+        {!synthFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={finalSrc(merchant)}
             alt={`Synthetic ${merchant} receipt`}
-            className={styles.finaleImage}
+            className={styles.finaleSynth}
             loading="lazy"
-            onError={() => setFailed(true)}
+            onError={() => setSynthFailed(true)}
             data-testid="finale-image"
           />
         ) : (
@@ -844,6 +863,31 @@ const FinaleCard: React.FC<{ merchant: Merchant; shown: boolean }> = ({
             {MERCHANT_LABELS[merchant]} receipt
           </div>
         )}
+        {pair ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={realSrc(merchant)}
+              alt={`Real ${merchant} receipt scan`}
+              className={styles.finaleReal}
+              loading="lazy"
+              onError={() => setRealFailed(true)}
+              style={{ clipPath: `inset(0 ${100 - wipePct}% 0 0)` }}
+              data-testid="finale-real"
+            />
+            <span
+              className={styles.finaleDivider}
+              style={{ left: `${wipePct}%` }}
+              aria-hidden="true"
+            />
+            <span className={`${styles.finaleChip} ${styles.finaleChipReal}`}>
+              real
+            </span>
+            <span className={`${styles.finaleChip} ${styles.finaleChipSynth}`}>
+              synth
+            </span>
+          </>
+        ) : null}
       </div>
       <figcaption className={styles.finaleName}>
         {MERCHANT_LABELS[merchant]}
@@ -854,13 +898,17 @@ const FinaleCard: React.FC<{ merchant: Merchant; shown: boolean }> = ({
 
 const FinaleAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
   const p = reducedMotion ? 1 : progress;
+  // Divider oscillates across the pair; rests centered (0.5) at p=0/1 so a
+  // paused finale shows a clean real|synth split.
+  const wipe = 0.5 + 0.42 * Math.sin(p * Math.PI * 2);
   return (
     <div className={styles.finaleRow} data-testid="act-finale">
       {MERCHANTS.map((m, i) => (
         <FinaleCard
           key={m}
           merchant={m}
-          shown={p >= (i / MERCHANTS.length) * 0.75}
+          shown={p >= (i / MERCHANTS.length) * 0.7}
+          wipe={wipe}
         />
       ))}
     </div>
