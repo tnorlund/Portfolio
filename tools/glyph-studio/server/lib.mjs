@@ -9,11 +9,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   BITMATRIX_DIR,
+  FONT_MERCHANTS,
   FONTS_DIR,
   OUT_DIR,
   PYTHON,
   PY_ENV,
   RENDER_CACHE_DIR,
+  renderCacheSlug,
   SAMPLES,
   STUDIO_ROOT,
   WORKTREE,
@@ -25,11 +27,13 @@ const execFileP = promisify(execFile);
 // Re-export env so consumers can pull everything from one module if they like.
 export {
   BITMATRIX_DIR,
+  FONT_MERCHANTS,
   FONTS_DIR,
   OUT_DIR,
   PYTHON,
   PY_ENV,
   RENDER_CACHE_DIR,
+  renderCacheSlug,
   SAMPLES,
   STUDIO_ROOT,
   WORKTREE,

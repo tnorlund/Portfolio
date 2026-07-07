@@ -18,6 +18,8 @@ import { z } from "zod";
 
 import {
   SAMPLES,
+  FONT_MERCHANTS,
+  renderCacheSlug,
   PYTHON,
   PY_ENV,
   STUDIO_ROOT,
@@ -734,12 +736,20 @@ server.registerTool(
       } catch {}
       let seedWritten = null;
       if (typeof thinSeed === "number") {
+        // The renderer keys its inkthin pickle off the CANONICAL merchant name
+        // (see _render_cache_path), not the font dir name — resolve it so we
+        // seed the file the renderer will actually read.
+        const merchant = FONT_MERCHANTS[font];
+        if (!merchant) {
+          throw new Error(
+            `no merchant mapping for font "${font}" — cannot target its ` +
+              "inkthin render cache; add it to FONT_MERCHANTS in env.mjs",
+          );
+        }
         await fsp.mkdir(RENDER_CACHE_DIR, { recursive: true });
-        // TODO: the pickle filename derives from the merchant; only Sprouts is
-        // wired today. Generalize when a second merchant ships.
         const seedFile = path.join(
           RENDER_CACHE_DIR,
-          "Sprouts_Farmers_Market__inkthin__n1.pkl",
+          `${renderCacheSlug(merchant)}__inkthin__n1.pkl`,
         );
         await execFileP(
           PYTHON,

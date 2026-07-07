@@ -21,6 +21,23 @@ export const SAMPLES = {
   cvs: "/tmp/gridfix/cvs_studio/cvs.refined.npz",
 };
 
+// Font dir -> canonical merchant name. The receipt renderer caches per-merchant
+// ink-erosion pickles under a slug of the CANONICAL merchant name (see
+// scripts/render_synthetic_receipts.py::_render_cache_path). publish_font seeds
+// that pickle, so it must resolve the font's merchant to hit the right file.
+export const FONT_MERCHANTS = {
+  sprouts: "Sprouts Farmers Market",
+  costco: "Costco Wholesale",
+  vons: "Vons",
+  traderjoes: "Trader Joe's",
+  cvs: "CVS",
+};
+
+// Mirror _render_cache_path's slug: runs of non-alphanumerics -> single "_".
+export function renderCacheSlug(merchant) {
+  return (merchant || "none").replace(/[^A-Za-z0-9]+/g, "_");
+}
+
 export const PY_ENV = {
   ...process.env,
   PYTHONPATH: [
