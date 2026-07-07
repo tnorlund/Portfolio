@@ -22,6 +22,9 @@ import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
+import { CHARGE_GREEN, ENTITY_DISPLAY_NAMES, LABEL_COLORS } from "../labelStyles";
+import { LabelBoxOverlay } from "../labelBoxOverlay";
+import sharedStyles from "../labelBoxOverlay.module.css";
 
 const emptyStringSet = new Set<string>();
 
@@ -33,68 +36,6 @@ const normalizeLabel = (label: string): string => {
 };
 
 // Charge shades (green family) — GRAND_TOTAL boldest, then medium, then light.
-const CHARGE_GREEN = "var(--color-green)";
-const CHARGE_GREEN_MED = "color-mix(in srgb, var(--color-green) 72%, white)";
-const CHARGE_GREEN_LIGHT = "color-mix(in srgb, var(--color-green) 48%, white)";
-
-// Label colors. New model is granular: currency split into charges (green
-// family) vs credits (teal), plus QUANTITY (cyan) and ADDRESS_LINE.
-const LABEL_COLORS: Record<string, string> = {
-  MERCHANT_NAME: "var(--color-yellow)",
-  DATE: "var(--color-blue)",
-  TIME: "var(--color-blue)",
-  // Charges — green family
-  GRAND_TOTAL: CHARGE_GREEN,
-  SUBTOTAL: CHARGE_GREEN_MED,
-  TAX: CHARGE_GREEN_MED,
-  LINE_TOTAL: CHARGE_GREEN_MED,
-  UNIT_PRICE: CHARGE_GREEN_LIGHT,
-  AMOUNT: CHARGE_GREEN, // legacy merged label (back-compat)
-  // Credits / money back — teal
-  DISCOUNT: "var(--color-teal)",
-  COUPON: "var(--color-teal)",
-  TIP: "var(--color-teal)",
-  CHANGE: "var(--color-teal)",
-  CASH_BACK: "var(--color-teal)",
-  REFUND: "var(--color-teal)",
-  // Quantity (a count, not a dollar amount)
-  QUANTITY: "var(--color-cyan)",
-  // Address / contact
-  ADDRESS_LINE: "var(--color-red)",
-  ADDRESS: "var(--color-red)", // back-compat
-  PHONE_NUMBER: "var(--color-pink)",
-  WEBSITE: "var(--color-purple)",
-  STORE_HOURS: "var(--color-orange)",
-  PAYMENT_METHOD: "var(--color-orange)",
-  O: "var(--text-color)",
-};
-
-// Entity type display names
-const ENTITY_DISPLAY_NAMES: Record<string, string> = {
-  MERCHANT_NAME: "Merchant",
-  DATE: "Date",
-  TIME: "Time",
-  GRAND_TOTAL: "Total",
-  SUBTOTAL: "Subtotal",
-  TAX: "Tax",
-  LINE_TOTAL: "Line total",
-  UNIT_PRICE: "Unit price",
-  AMOUNT: "Amount",
-  DISCOUNT: "Discount",
-  COUPON: "Coupon",
-  TIP: "Tip",
-  CHANGE: "Change",
-  CASH_BACK: "Cash back",
-  REFUND: "Refund",
-  QUANTITY: "Qty",
-  ADDRESS_LINE: "Address",
-  ADDRESS: "Address",
-  PHONE_NUMBER: "Phone",
-  WEBSITE: "Website",
-  STORE_HOURS: "Hours",
-  PAYMENT_METHOD: "Payment",
-};
-
 // Entity types in order (grouped by color family for visual clarity)
 const ENTITY_TYPES = [
   "MERCHANT_NAME",
@@ -383,7 +324,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   return (
     <div className={styles.activeReceipt}>
       <div className={styles.receiptImageWrapper}>
-        <div className={styles.receiptImageInner}>
+        <div className={`${styles.receiptImageInner} ${sharedStyles.receiptCard}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
@@ -395,42 +336,37 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 
           {/* SVG overlay for the labeled bounding boxes. The old red scan
               line was removed — inference is now ~15ms, so labels appear
-              effectively instantly. */}
-          <svg
+              effectively instantly. Shared with SynthesisPipeline via
+              LabelBoxOverlay so the two figures can never drift. */}
+          <LabelBoxOverlay
             className={styles.svgOverlay}
-            viewBox={`0 0 ${receiptData.width} ${receiptData.height}`}
-            preserveAspectRatio="none"
-          >
-            {/* Bounding boxes */}
-            {visiblePredictions.map((pred, idx) => {
+            width={receiptData.width}
+            height={receiptData.height}
+            boxes={visiblePredictions.flatMap((pred, idx) => {
               const key = `${pred.line_id}_${pred.word_id}`;
               const word = wordLookup.get(key);
-              if (!word) return null;
+              if (!word) return [];
 
               const { bounding_box } = word;
-              const color = LABEL_COLORS[normalizeLabel(pred.predicted_label_base)] || LABEL_COLORS.O;
+              const color =
+                LABEL_COLORS[normalizeLabel(pred.predicted_label_base)] ||
+                LABEL_COLORS.O;
 
               // Convert normalized bounding box to pixel coordinates
-              const x = bounding_box.x * receiptData.width;
-              const y = (1 - bounding_box.y - bounding_box.height) * receiptData.height;
-              const width = bounding_box.width * receiptData.width;
-              const height = bounding_box.height * receiptData.height;
-
-              return (
-                <rect
-                  key={`${key}-${idx}`}
-                  x={x}
-                  y={y}
-                  width={width}
-                  height={height}
-                  fill={color}
-                  fillOpacity={0.3}
-                  stroke={color}
-                  strokeWidth={2}
-                />
-              );
+              return [
+                {
+                  key: `${key}-${idx}`,
+                  x: bounding_box.x * receiptData.width,
+                  y:
+                    (1 - bounding_box.y - bounding_box.height) *
+                    receiptData.height,
+                  width: bounding_box.width * receiptData.width,
+                  height: bounding_box.height * receiptData.height,
+                  color,
+                },
+              ];
             })}
-          </svg>
+          />
         </div>
       </div>
     </div>

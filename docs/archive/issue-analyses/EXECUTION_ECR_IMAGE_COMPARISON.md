@@ -26,8 +26,8 @@
 
 | Execution | Image URI | Image Digest | Image Pushed At | Image Tags |
 |-----------|-----------|--------------|-----------------|------------|
-| **Success** | `681647709217.dkr.ecr.us-east-1.amazonaws.com/embedding-line-poll-docker-repo-4146688@sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | `sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | 2025-11-16T18:51:24.932000-08:00 | `latest`, `cache`, `8fbaa10875b4` |
-| **Failed** | `681647709217.dkr.ecr.us-east-1.amazonaws.com/embedding-line-poll-docker-repo-4146688@sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | `sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | 2025-11-16T18:51:24.932000-08:00 | `latest`, `cache`, `8fbaa10875b4` |
+| **Success** | `<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/embedding-line-poll-docker-repo-4146688@sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | `sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | 2025-11-16T18:51:24.932000-08:00 | `latest`, `cache`, `8fbaa10875b4` |
+| **Failed** | `<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/embedding-line-poll-docker-repo-4146688@sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | `sha256:47ed87f9aaae891107c6ec326537468098b35583b441739f5c0df027638c5905` | 2025-11-16T18:51:24.932000-08:00 | `latest`, `cache`, `8fbaa10875b4` |
 
 **Result**: ✅ **SAME IMAGE** - Both executions used identical ECR image
 

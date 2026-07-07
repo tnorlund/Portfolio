@@ -8,7 +8,7 @@ The container-based `process_ocr_results` Lambda has been successfully deployed!
 
 **Lambda Function**: `upload-images-dev-process-ocr-results`
 - ✅ Package Type: **Image** (was Zip)
-- ✅ Image URI: `681647709217.dkr.ecr.us-east-1.amazonaws.com/upload-images-process-ocr-image-repo-74f6d53:latest`
+- ✅ Image URI: `<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/upload-images-process-ocr-image-repo-74f6d53:latest`
 - ✅ Timeout: 600 seconds (10 minutes)
 - ✅ Memory: 2048 MB (2 GB)
 

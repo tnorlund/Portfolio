@@ -89,6 +89,9 @@ class CodeBuildDockerImage(ComponentResource):
         source_paths: Optional[
             list[str]
         ] = None,  # Specific paths to include in build
+        extra_context_paths: Optional[
+            list[str]
+        ] = None,  # Literal dirs/files copied verbatim into the context
         lambda_function_name: Optional[
             str
         ] = None,  # If provided, updates Lambda
@@ -110,6 +113,12 @@ class CodeBuildDockerImage(ComponentResource):
         self.source_paths = (
             source_paths or []
         )  # Specific source paths for selective copying
+        # Literal paths (relative to project root) copied verbatim into the
+        # build context, preserving their relative layout. Unlike source_paths
+        # these are NOT treated as monorepo packages, so nested dirs such as
+        # ``tools/glyph-studio/py`` are supported. Only used with a "."
+        # build context.
+        self.extra_context_paths = extra_context_paths or []
         self.lambda_function_name = (
             lambda_function_name or f"{name}-{pulumi.get_stack()}"
         )
@@ -313,6 +322,12 @@ class CodeBuildDockerImage(ComponentResource):
         if dockerfile.exists():
             paths.append(dockerfile)
 
+        # Extra literal context paths always contribute to the hash.
+        for extra in sorted(self.extra_context_paths):
+            full_path = Path(PROJECT_DIR) / extra
+            if full_path.exists():
+                paths.append(full_path)
+
         # If source_paths specified, hash those plus shared packages (Lambda default)
         if self.source_paths:
             for source_path in sorted(self.source_paths):
@@ -384,6 +399,23 @@ class CodeBuildDockerImage(ComponentResource):
                 if context_path.exists():
                     paths.append(context_path)
 
+        # Extra context paths may carry baked non-code assets (e.g. glyph font
+        # JSONs: font.json, stylemap.json, glyphs/*.json) that the include_globs
+        # below deliberately exclude, so a font-only edit would not rebuild the
+        # image. Fold those JSONs in via a sub-hash keyed only when extra paths
+        # exist, keeping the digest byte-identical for callers with none.
+        extra_strings = None
+        if self.extra_context_paths:
+            extra_roots = [
+                Path(PROJECT_DIR) / extra
+                for extra in sorted(self.extra_context_paths)
+            ]
+            json_hash = compute_hash(
+                [p for p in extra_roots if p.exists()],
+                include_globs=["**/*.json"],
+            )
+            extra_strings = {"extra_context_json": json_hash}
+
         return compute_hash(
             paths,
             include_globs=[
@@ -392,6 +424,7 @@ class CodeBuildDockerImage(ComponentResource):
                 "**/requirements.txt",
                 "Dockerfile",
             ],
+            extra_strings=extra_strings,
         )
 
     def _generate_upload_script(self, bucket: str, content_hash: str) -> str:
@@ -403,6 +436,16 @@ class CodeBuildDockerImage(ComponentResource):
         if self.source_paths:
             # Paths are repo-controlled; join directly for shell iteration
             source_paths_str = " ".join(self.source_paths)
+
+        # Build extra literal context paths string (validated for shell safety)
+        for extra in self.extra_context_paths:
+            if not self._validate_source_path(extra):
+                raise ValueError(
+                    f"Invalid extra context path '{extra}': must contain only "
+                    "alphanumeric, underscore, hyphen, and forward slash "
+                    "characters"
+                )
+        extra_context_paths_str = " ".join(self.extra_context_paths)
 
         # Generate rsync include patterns for packages
         # Default minimal packages that all Lambdas need
@@ -446,6 +489,7 @@ HASH="{content_hash}"
 NAME="{self.name}"
 FORCE_REBUILD="{self.force_rebuild}"
 SOURCE_PATHS="{source_paths_str}"
+EXTRA_CONTEXT_PATHS="{extra_context_paths_str}"
 PACKAGES_TO_INCLUDE="{' '.join(packages_to_include)}"
 
 echo "📦 Checking if context upload needed for image '$NAME'..."
@@ -483,6 +527,23 @@ if [ "$CONTEXT_PATH" = "." ]; then
       --exclude='*.pyc' \
       "$INFRA_DIR/" "$TMP/context/$INFRA_DIR/"
   fi
+
+  # Copy any extra literal context paths (non-package dirs/files), preserving
+  # their relative layout so the Dockerfile can COPY them by repo path.
+  for EXTRA in $EXTRA_CONTEXT_PATHS; do
+    if [ -d "$EXTRA" ]; then
+      echo "  → Including extra context dir: $EXTRA"
+      mkdir -p "$TMP/context/$EXTRA"
+      rsync -a \
+        --exclude='__pycache__' \
+        --exclude='*.pyc' \
+        "$EXTRA/" "$TMP/context/$EXTRA/"
+    elif [ -f "$EXTRA" ]; then
+      echo "  → Including extra context file: $EXTRA"
+      mkdir -p "$TMP/context/$(dirname "$EXTRA")"
+      cp "$EXTRA" "$TMP/context/$EXTRA"
+    fi
+  done
 else
   # ECS images - context path is already specific directory
   echo "  → Copying ECS context from $CONTEXT_PATH"

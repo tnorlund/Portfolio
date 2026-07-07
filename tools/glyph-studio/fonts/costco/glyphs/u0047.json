@@ -1,0 +1,86 @@
+{
+ "version": 1,
+ "char": "G",
+ "codepoint": 71,
+ "provenance": "edited",
+ "width": 647.5,
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 450,
+     "y": 780,
+     "type": "corner",
+     "hOut": {
+      "x": 450,
+      "y": 850
+     }
+    },
+    {
+     "x": 270,
+     "y": 930,
+     "type": "smooth",
+     "hIn": {
+      "x": 370,
+      "y": 930
+     },
+     "hOut": {
+      "x": 170,
+      "y": 930
+     }
+    },
+    {
+     "x": 45,
+     "y": 760,
+     "type": "corner",
+     "hIn": {
+      "x": 45,
+      "y": 845
+     }
+    },
+    {
+     "x": 45,
+     "y": 240,
+     "type": "corner",
+     "hOut": {
+      "x": 45,
+      "y": 160
+     }
+    },
+    {
+     "x": 270,
+     "y": 50,
+     "type": "smooth",
+     "hIn": {
+      "x": 170,
+      "y": 50
+     },
+     "hOut": {
+      "x": 370,
+      "y": 50
+     }
+    },
+    {
+     "x": 450,
+     "y": 220,
+     "type": "corner",
+     "hIn": {
+      "x": 450,
+      "y": 150
+     }
+    },
+    {
+     "x": 450,
+     "y": 510,
+     "type": "corner"
+    },
+    {
+     "x": 300,
+     "y": 510,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

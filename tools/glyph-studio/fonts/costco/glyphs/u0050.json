@@ -1,0 +1,83 @@
+{
+ "version": 1,
+ "char": "P",
+ "codepoint": 80,
+ "provenance": "edited",
+ "trace": {
+  "corpus": "costco-studio.samples.npz",
+  "samples": 140,
+  "consensusHash": "3f5c3ff7c5a1",
+  "date": "2026-07-06"
+ },
+ "width": 603.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 67,
+     "y": 950,
+     "type": "corner"
+    },
+    {
+     "x": 67,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 67,
+     "y": 950,
+     "type": "corner"
+    },
+    {
+     "x": 383,
+     "y": 950,
+     "type": "corner",
+     "hOut": {
+      "x": 438,
+      "y": 950
+     }
+    },
+    {
+     "x": 483,
+     "y": 850,
+     "type": "corner",
+     "hIn": {
+      "x": 483,
+      "y": 905
+     }
+    },
+    {
+     "x": 483,
+     "y": 610,
+     "type": "corner",
+     "hOut": {
+      "x": 483,
+      "y": 555
+     }
+    },
+    {
+     "x": 383,
+     "y": 510,
+     "type": "corner",
+     "hIn": {
+      "x": 438,
+      "y": 510
+     }
+    },
+    {
+     "x": 67,
+     "y": 510,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

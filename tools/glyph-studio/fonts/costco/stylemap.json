@@ -1,0 +1,272 @@
+{
+ "version": 1,
+ "source": {
+  "receipts": 38,
+  "date": "2026-07-06",
+  "scan_dir": "tools/glyph-studio/.out/stylescan-costco",
+  "normalization": "per-receipt: cap_px/body_cap_px, stroke_med/body_stroke_px; medians reported"
+ },
+ "sections": {
+  "warehouse_header": {
+   "sizeScale": 1.233,
+   "weight": "normal",
+   "strokeRel": 1.027,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.139,
+   "notes": "n=137. Bimodal: COSTCO/WHOLESALE logo lines cap_rel med 2.30, stroke_rel 1.32, reverse-video 49% (WHOLESALE band; render via logo image). Address/store lines cap_rel med 0.955, stroke_rel 0.945 (n=67) -> header text prints at ~body size."
+  },
+  "self_checkout": {
+   "sizeScale": 0.886,
+   "weight": "normal",
+   "strokeRel": 1.129,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.0,
+   "notes": "n=66. Bimodal: SELF-CHECKOUT heading cap_rel med 1.51 (IQR 1.47-1.53, n=23) stroke_rel 1.32 = large+heavy. 'Thank You!' lines in this section cap_rel med 0.84, stroke_rel 1.03 = SMALLER than body, normal weight."
+  },
+  "member": {
+   "sizeScale": 1.227,
+   "weight": "heavy",
+   "strokeRel": 1.195,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.0,
+   "notes": "n=5 only; stroke_rel med 1.19 hints slightly heavy Member line, but n too small to trust."
+  },
+  "item": {
+   "sizeScale": 1.014,
+   "weight": "normal",
+   "strokeRel": 1.01,
+   "underline": false,
+   "underlineRate": 0.006,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.006,
+   "notes": "n=159. Body baseline by construction: cap_rel med 1.01, stroke_rel med 1.01. No underline/reverse (1 OCR-noise hit each)."
+  },
+  "items_sold": {
+   "sizeScale": 1.149,
+   "weight": "normal",
+   "strokeRel": 1.025,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.0,
+   "notes": "n=70. Mixed: 'ITEMS SOLD:' display heading cap_rel med 1.48 (IQR 1.36-1.50, n=31) stroke_rel 1.26; plain 'TOTAL NUMBER OF ITEMS SOLD = N' lines print near body size (section p25 cap_rel 1.00)."
+  },
+  "total_line": {
+   "sizeScale": 0.932,
+   "weight": "normal",
+   "strokeRel": 1.055,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": "amount_field",
+   "reverseVideoRate": 1.0,
+   "notes": "CORRECTED BY ADVERSARIAL VERIFICATION: the fleet measured 0/43 reverse because OCR cannot read white-on-black digits -- reversed regions produce NO words, so line-based scanning is structurally blind to them. Raw pixels on 2/2 held-out receipts show the TOTAL AMOUNT as white knockout digits in a solid black band; the '**** TOTAL' label prints normal-video. Field-level reversal, not whole-line."
+  },
+  "summary": {
+   "sizeScale": 1.045,
+   "weight": "normal",
+   "strokeRel": 1.051,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.0,
+   "notes": "n=64. SUBTOTAL/TAX at ~body size (cap_rel med 1.05, stroke_rel 1.05). No reverse, no underline."
+  },
+  "savings": {
+   "sizeScale": 1.027,
+   "weight": "normal",
+   "strokeRel": 1.009,
+   "underline": false,
+   "underlineRate": 0.167,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.0,
+   "notes": "n=6. INSTANT SAVINGS ~body size; 1/6 underline hit (single receipt, likely noise). n too small for a rule."
+  },
+  "payment": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "strokeRel": 0.987,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.008,
+   "notes": "n=266. Body size (cap_rel med 1.00, stroke_rel 0.99). Reverse 2/266 = OCR noise."
+  },
+  "footer": {
+   "sizeScale": 0.977,
+   "weight": "normal",
+   "strokeRel": 1.0,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.0,
+   "notes": "n=70. OP#/Whse/Trm lines slightly smaller than body (cap_rel med 0.98, p25 0.91), stroke_rel 1.00. No styling."
+  },
+  "barcode_caption": {
+   "sizeScale": 0.828,
+   "weight": "normal",
+   "strokeRel": 0.881,
+   "underline": false,
+   "underlineRate": 0.0,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.029,
+   "notes": "n=34. Digits under barcode print smaller AND lighter than body: cap_rel med 0.83 (IQR 0.77-0.84), stroke_rel med 0.88. Rule set misses this entirely."
+  },
+  "other": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "strokeRel": 0.995,
+   "underline": false,
+   "underlineRate": 0.033,
+   "reverseVideo": false,
+   "reverseVideoRate": 0.023,
+   "notes": "n=395 unclassified (addresses, dates, marketing/coupon blocks). ~body size. Underline/reverse hits are coupon-graphic OCR noise."
+  },
+  "date_box": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "reverseVideo": "boxed_field",
+   "reverseVideoRate": 1.0,
+   "match": "date after TOTAL NUMBER OF ITEMS SOLD",
+   "notes": "CORRECTED BY ADVERSARIAL VERIFICATION: date after ITEMS SOLD is boxed on 2/2 raw scans (one verifier read full reverse video, the other a printed outline box with dark digits -- treatment may vary by register). Fleet missed it: OCR garbles/drops boxed digits."
+  }
+ },
+ "letterOverrides": {
+  "$": {
+   "n": 65,
+   "strokeRel": 1.165,
+   "capRel": 1.065
+  },
+  "(": {
+   "n": 53,
+   "strokeRel": 0.812,
+   "capRel": 0.911
+  },
+  ")": {
+   "n": 59,
+   "strokeRel": 0.818,
+   "capRel": 0.909
+  },
+  "-": {
+   "n": 274,
+   "strokeRel": 1.32,
+   "capRel": 0.945
+  },
+  "=": {
+   "n": 99,
+   "strokeRel": 1.636,
+   "capRel": 1.0
+  },
+  "L": {
+   "n": 721,
+   "strokeRel": 0.818,
+   "capRel": 1.0
+  },
+  "M": {
+   "n": 650,
+   "strokeRel": 0.81,
+   "capRel": 1.0
+  },
+  "N": {
+   "n": 773,
+   "strokeRel": 0.841,
+   "capRel": 1.0
+  },
+  "S": {
+   "n": 969,
+   "strokeRel": 1.159,
+   "capRel": 1.0
+  },
+  "U": {
+   "n": 371,
+   "strokeRel": 0.82,
+   "capRel": 1.022
+  },
+  "V": {
+   "n": 572,
+   "strokeRel": 0.79,
+   "capRel": 0.977
+  },
+  "W": {
+   "n": 404,
+   "strokeRel": 0.761,
+   "capRel": 1.0
+  },
+  "Z": {
+   "n": 22,
+   "strokeRel": 1.378,
+   "capRel": 0.935
+  },
+  "d": {
+   "n": 245,
+   "strokeRel": 0.783,
+   "capRel": 0.956
+  },
+  "h": {
+   "n": 364,
+   "strokeRel": 0.82,
+   "capRel": 0.957
+  },
+  "i": {
+   "n": 502,
+   "strokeRel": 0.763,
+   "capRel": 1.0
+  },
+  "k": {
+   "n": 251,
+   "strokeRel": 0.813,
+   "capRel": 1.0
+  },
+  "l": {
+   "n": 708,
+   "strokeRel": 0.761,
+   "capRel": 1.0
+  },
+  "u": {
+   "n": 206,
+   "strokeRel": 0.843,
+   "capRel": 0.932
+  },
+  "v": {
+   "n": 9,
+   "strokeRel": 0.826,
+   "capRel": 1.038
+  },
+  "w": {
+   "n": 39,
+   "strokeRel": 0.82,
+   "capRel": 0.928
+  },
+  "y": {
+   "n": 124,
+   "strokeRel": 0.746,
+   "capRel": 0.945
+  }
+ },
+ "audit": {
+  "display_headings.SELF-CHECKOUT=1.7": "PARTIAL: large+heavy CONFIRMED (stroke_rel 1.32) but scale overstated - measured cap_rel med 1.51 (IQR 1.47-1.53, n=23); use ~1.5",
+  "display_headings.THANK YOU=1.4": "WRONG: 'Thank You!' measures cap_rel med 0.84 (IQR 0.79-0.87, n=30), stroke_rel 1.03 - SMALLER than body at normal weight, not a 1.4x heading",
+  "display_headings.PLEASE COME AGAIN=1.4": "WRONG: cap_rel med 0.84 (IQR 0.80-0.88, n=12), stroke_rel 1.11 - smaller than body, not 1.4x",
+  "display_headings.ITEMS SOLD:=1.8": "PARTIAL: large+heavy CONFIRMED (stroke_rel 1.26) but scale overstated - measured cap_rel med 1.48 (IQR 1.36-1.50, n=31); use ~1.5",
+  "reverse_total=true": "CONFIRMED by raw pixels (verifiers, 4/4 receipts) -- fleet 'WRONG' verdict was a detection failure (OCR-blind to knockout text). Nuance: reversal covers the amount field only.",
+  "reverse_date_after_items=true": "CONFIRMED as a boxed/reversed field by raw pixels (verifiers) -- same OCR blindness. Treatment varies: full reverse or outline box.",
+  "section_scale={} (header=body)": "CONFIRMED: warehouse_header address lines cap_rel med 0.955, stroke_rel 0.945 (n=67) - uniform with body",
+  "dashed_separators=true": "UNMEASURED: scanner does not measure dash runs (separator section n=3)",
+  "condense=0.93": "UNMEASURED: no char-pitch data in scans",
+  "underline (no rule)": "CONFIRMED absent: 15/~1380 lines (1.1%) underline flags, all scattered coupon/OCR noise; no systematic underlines (unlike Sprouts)",
+  "MISSED: barcode_caption": "Barcode digits print 0.83x body, stroke_rel 0.88, n=34 - smaller+lighter, no rule exists",
+  "MISSED: thank-you sub-body size": "Thank You / Please Come Again actually print ~0.84x body; rules render them 1.4x",
+  "SELF-CHECKOUT=1.7": "PARTIAL: real and heavy, but measured 1.5-1.65x (coded 1.7 slightly high)",
+  "ITEMS SOLD:=1.8": "PARTIAL: measured ~1.5-1.6x (coded 1.8 high)",
+  "THANK YOU=1.4": "WRONG (pixel-confirmed): prints 0.84x body, normal weight -- rule should be removed or ~0.85"
+ },
+ "limitations": [
+  "stylescan iterates OCR words/lines; reverse-video and boxed fields produce no/garbled OCR and are invisible to it. Reverse-video measurement must come from raw-pixel scanning (band darkness independent of words) -- future stylescan fix."
+ ]
+}

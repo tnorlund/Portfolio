@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "source": {
+    "receipts": 20,
+    "scan_dir": "/tmp/gridfix/tj_studio/scans",
+    "lines_measured": 652,
+    "date": "2026-07-07"
+  },
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.05,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.01,
+      "notes": "n=97. Body-identical weight; slight size bump (cap_rel med 1.053). The TRADER JOE'S wordmark itself is the logo overlay, not scaled text."
+    },
+    "address": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=35. Pure body."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.015,
+      "notes": "n=137. TJ items are body style; no bold, no size change."
+    },
+    "qty_line": {
+      "sizeScale": 0.85,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4 (small). '2 @ $0.89' sublines print slightly smaller (cap_rel med 0.842)."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=33. TOTAL PURCHASE / Balance to pay are plain body \u2014 TJ does not bold totals."
+    },
+    "summary": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=18. Plain body."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.01,
+      "notes": "n=156. Plain body."
+    },
+    "footer": {
+      "sizeScale": 1.09,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.09,
+      "notes": "n=22. 'Please retain for your records' prints slightly larger (cap_rel med 1.095). The 9% underline hits are separator-rule artifacts."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.03,
+      "notes": "n=147. Body."
+    }
+  }
+}

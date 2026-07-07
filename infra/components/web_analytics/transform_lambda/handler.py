@@ -41,6 +41,22 @@ _BOT_RE = (
     "facebookexternal|meta-external|petalbot|ahrefs|semrush|dataforseo"
 )
 
+# Datacenter / hosting / proxy org signal. ip-api's `hosting` flag alone misses
+# a lot of headless-browser scanners that run the beacon (they present a real
+# browser UA and hosting=false), so we also fold ip-api's `proxy` flag and
+# match the network owner (org/isp/asn) against known datacenter, cloud, and
+# proxy providers. Deliberately conservative: residential ISPs (Cox, Comcast,
+# Spectrum, TalkTalk) and company names never match, so real visitors stay
+# human.
+_DC_RE = (
+    "hosting|datacenter|data center|colocation|\\bcolo\\b|\\bvps\\b|"
+    "dedicated server|leaseweb|\\bovh\\b|hetzner|digitalocean|linode|"
+    "vultr|contabo|\\bm247\\b|scaleway|choopa|quadranet|psychz|zenlayer|"
+    "gcore|\\baws\\b|\\bec2\\b|amazon|google llc|googleusercontent|\\bgcp\\b|"
+    "azure|microsoft corp|oracle cloud|alibaba|tencent|ultahost|sprious|"
+    "moack|versatel"
+)
+
 _athena = boto3.client("athena", region_name=REGION)
 _s3 = boto3.client("s3", region_name=REGION)
 
@@ -190,6 +206,15 @@ def _insert_sql(dt: str) -> str:
     def beacon_param(name: str) -> str:
         return f"url_decode(regexp_extract({qs}, '{name}=([^&]+)', 1))"
 
+    # Non-residential (datacenter/cloud/proxy) client: ip-api hosting OR proxy
+    # flag, OR the network owner matches a known hosting/cloud/proxy provider.
+    dc = (
+        "(COALESCE(g.hosting, false) OR COALESCE(g.proxy, false)"
+        " OR regexp_like(lower(concat("
+        "coalesce(g.org, ''), ' ', coalesce(g.isp, ''), ' ',"
+        f" coalesce(g.asn, ''))), '{_DC_RE}'))"
+    )
+
     return f"""
 INSERT INTO {DB}.web_events
 WITH src AS (
@@ -221,13 +246,13 @@ SELECT
   regexp_like(request_ip, '{_WARP_RE}') AS is_warp,
   (regexp_like({ua}, '{_BOT_RE}')
      OR regexp_like(request_ip, '^185\\.177\\.72\\.')
-     OR COALESCE(g.hosting, false)) AS is_bot,
+     OR {dc}) AS is_bot,
   location AS edge_location,
   g.country AS country,
   g.city AS city,
   g.org AS org,
   g.asn AS asn,
-  COALESCE(g.hosting, false) AS is_hosting,
+  {dc} AS is_hosting,
   cast(date as varchar) AS dt
 FROM dedup
 LEFT JOIN {DB}.ip_geo g ON dedup.request_ip = g.ip

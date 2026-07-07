@@ -1,0 +1,15 @@
+{
+ "dotSize": 100,
+ "refCap": 60,
+ "weightDefault": 1.0,
+ "weightBold": 1.33,
+ "hero": "A",
+ "samples": 140,
+ "cloudGeom": {
+  "imageW": 213,
+  "imageH": 213,
+  "baselineFromBottomPx": 18.0,
+  "capHeightPx": 180,
+  "inkCenterXPx": 105.5
+ }
+}

@@ -130,6 +130,25 @@ notification_system = NotificationSystem(
 # Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
 from chromadb_buckets import shared_chromadb_buckets
 
+# Shared resources for the label evaluator pipeline (S3 buckets used by the EMR
+# analytics and Step Function components created ~1300 lines below).
+#
+# This MUST be registered early, near the top of the program, rather than next
+# to its consumers. Under `pulumi --target`, the engine resolves the target
+# closure against the *existing state* and eagerly emits a "same" step for this
+# component from state. If the program's own RegisterResource for the component
+# arrives after that (which happens when it is constructed late in module
+# execution), the engine sees the URN twice and fails with
+# "Duplicate resource URN ...; try giving it a unique name". Constructing it
+# here lets the program registration reconcile with the engine's same-step.
+# Untargeted previews/deploys are unaffected (registration order does not
+# matter there), so prod CI is unchanged.
+from components.shared_label_evaluator_resources import (
+    create_shared_label_evaluator_resources,
+)
+
+label_evaluator_shared = create_shared_label_evaluator_resources()
+
 # Create ChromaDB compaction infrastructure using shared bucket
 # Note: currency validation, create labels, and validation-by-merchant workflows are
 # temporarily disabled to decouple from receipt_label.
@@ -1304,6 +1323,13 @@ mcp_server = McpServerLambda(
 pulumi.export("mcp_server_url", mcp_server.function_url)
 pulumi.export("mcp_server_lambda_arn", mcp_server.lambda_arn)
 
+# Glyph Studio MCP Server Lambda (read-only remote MCP via Function URL)
+from glyph_mcp_lambda import GlyphMcpLambda
+
+glyph_mcp_server = GlyphMcpLambda("glyph-mcp")
+pulumi.export("glyph_mcp_server_url", glyph_mcp_server.function_url)
+pulumi.export("glyph_mcp_server_lambda_arn", glyph_mcp_server.lambda_arn)
+
 # Web analytics query layer: Glue + Athena over the CloudFront access logs,
 # read by the analytics_* MCP tools. No new pipeline — just a queryable view
 # of logs that already exist.
@@ -1319,6 +1345,10 @@ if pulumi.get_stack() == "prod":
     # both the service-account key (secret) and property id are configured.
     #   pulumi config set --secret portfolio:gaServiceAccountKey @key.json
     #   pulumi config set portfolio:gaPropertyId 542366301
+    # GitHub traffic snapshotter is optional too (14-day API window, so daily
+    # snapshots build durable history):
+    #   pulumi config set --secret portfolio:githubTrafficToken <PAT>
+    #   pulumi config set portfolio:githubTrafficRepos tnorlund/Portfolio
     _analytics_cfg = pulumi.Config()
     web_analytics = WebAnalytics(
         "web-analytics",
@@ -1328,6 +1358,8 @@ if pulumi.get_stack() == "prod":
             "gaServiceAccountKey"
         ),
         ga_property_id=_analytics_cfg.get("gaPropertyId"),
+        github_token=_analytics_cfg.get_secret("githubTrafficToken"),
+        github_repos=_analytics_cfg.get("githubTrafficRepos"),
     )
     # Let the MCP Lambda role run Athena/Glue/S3 reads for the analytics tools.
     aws.iam.RolePolicyAttachment(
@@ -1431,13 +1463,10 @@ pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
-# Shared resources for label evaluator pipeline (buckets used by multiple components)
-# Creating these first breaks circular dependencies between EMR and Step Function
-from components.shared_label_evaluator_resources import (
-    create_shared_label_evaluator_resources,
-)
-
-label_evaluator_shared = create_shared_label_evaluator_resources()
+# Shared resources for the label evaluator pipeline (buckets used by multiple
+# components) are constructed near the top of this program (search for
+# label_evaluator_shared) so that `pulumi --target` reconciles cleanly; see the
+# comment there. The instance is reused here via label_evaluator_shared.
 
 # NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
 # the default EMR image initially. After the CodeBuild pipeline completes, it will

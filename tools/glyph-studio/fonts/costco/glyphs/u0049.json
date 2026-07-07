@@ -1,0 +1,62 @@
+{
+ "version": 1,
+ "char": "I",
+ "codepoint": 73,
+ "provenance": "edited",
+ "trace": {
+  "corpus": "costco-studio.samples.npz",
+  "samples": 140,
+  "consensusHash": "2c202c1b9323",
+  "date": "2026-07-06"
+ },
+ "width": 695.9,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50,
+     "y": 950,
+     "type": "corner"
+    },
+    {
+     "x": 383,
+     "y": 950,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 217,
+     "y": 950,
+     "type": "corner"
+    },
+    {
+     "x": 217,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50,
+     "y": 50,
+     "type": "corner"
+    },
+    {
+     "x": 383,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

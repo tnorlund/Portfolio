@@ -1,0 +1,160 @@
+{
+ "version": 1,
+ "char": "&",
+ "codepoint": 38,
+ "provenance": "edited",
+ "trace": {
+  "corpus": "vons-studio.samples.npz",
+  "samples": 3,
+  "date": "2026-07-06"
+ },
+ "width": 628.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 278,
+     "y": 983,
+     "type": "smooth",
+     "hIn": {
+      "x": 207,
+      "y": 983
+     },
+     "hOut": {
+      "x": 349,
+      "y": 983
+     }
+    },
+    {
+     "x": 406,
+     "y": 855,
+     "type": "smooth",
+     "hIn": {
+      "x": 406,
+      "y": 926
+     },
+     "hOut": {
+      "x": 406,
+      "y": 784
+     }
+    },
+    {
+     "x": 278,
+     "y": 727,
+     "type": "smooth",
+     "hIn": {
+      "x": 349,
+      "y": 727
+     },
+     "hOut": {
+      "x": 207,
+      "y": 727
+     }
+    },
+    {
+     "x": 150,
+     "y": 855,
+     "type": "smooth",
+     "hIn": {
+      "x": 150,
+      "y": 784
+     },
+     "hOut": {
+      "x": 150,
+      "y": 926
+     }
+    }
+   ]
+  },
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 285,
+     "y": 685,
+     "type": "smooth",
+     "hIn": {
+      "x": 214,
+      "y": 685
+     },
+     "hOut": {
+      "x": 356,
+      "y": 685
+     }
+    },
+    {
+     "x": 413,
+     "y": 460,
+     "type": "smooth",
+     "hIn": {
+      "x": 413,
+      "y": 584
+     },
+     "hOut": {
+      "x": 413,
+      "y": 336
+     }
+    },
+    {
+     "x": 285,
+     "y": 235,
+     "type": "smooth",
+     "hIn": {
+      "x": 356,
+      "y": 235
+     },
+     "hOut": {
+      "x": 214,
+      "y": 235
+     }
+    },
+    {
+     "x": 157,
+     "y": 460,
+     "type": "smooth",
+     "hIn": {
+      "x": 157,
+      "y": 336
+     },
+     "hOut": {
+      "x": 157,
+      "y": 584
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 395,
+     "y": 545,
+     "type": "corner"
+    },
+    {
+     "x": 575,
+     "y": 90,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 420,
+     "y": 285,
+     "type": "corner"
+    },
+    {
+     "x": 585,
+     "y": 445,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

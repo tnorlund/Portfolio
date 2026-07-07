@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "char": "D",
+ "codepoint": 68,
+ "provenance": "edited",
+ "width": 500.3,
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 58,
+     "y": 925,
+     "type": "corner"
+    },
+    {
+     "x": 58,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 58,
+     "y": 925,
+     "type": "corner"
+    },
+    {
+     "x": 290,
+     "y": 925,
+     "type": "corner",
+     "hOut": {
+      "x": 377,
+      "y": 925
+     }
+    },
+    {
+     "x": 447,
+     "y": 770,
+     "type": "corner",
+     "hIn": {
+      "x": 447,
+      "y": 855
+     }
+    },
+    {
+     "x": 447,
+     "y": 230,
+     "type": "corner",
+     "hOut": {
+      "x": 447,
+      "y": 145
+     }
+    },
+    {
+     "x": 290,
+     "y": 50,
+     "type": "corner",
+     "hIn": {
+      "x": 377,
+      "y": 50
+     }
+    },
+    {
+     "x": 58,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}
