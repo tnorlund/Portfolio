@@ -7,6 +7,7 @@ from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
@@ -29,6 +30,7 @@ class ImageDetails:
     receipt_letters: list[ReceiptLetter]
     receipt_word_labels: list[ReceiptWordLabel]
     receipt_places: list[ReceiptPlace]
+    receipt_barcodes: list[ReceiptBarcode]
     ocr_jobs: list[OCRJob]
     ocr_routing_decisions: list[OCRRoutingDecision]
 
@@ -43,5 +45,6 @@ class ImageDetails:
         yield self.receipt_letters
         yield self.receipt_word_labels
         yield self.receipt_places
+        yield self.receipt_barcodes
         yield self.ocr_jobs
         yield self.ocr_routing_decisions

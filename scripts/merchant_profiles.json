@@ -1,0 +1,257 @@
+{
+  "_comment": "Per-merchant synthetic-receipt render profile, keyed by exact merchant_name. Every field is optional; an absent field falls back to a generic default that reproduces pre-registry behavior. See docs/synthetic-receipt-rendering-generalization.md. typography.font is a token resolved to a bundled font path (PTMONO/VT323/B612); typography.bitmap_font and logo filenames resolve under $BITMATRIX_DIR. _comment keys are ignored by the loader.",
+  "_section_scale_note": "Per-merchant header size relative to body, from a measured + dual-reviewed (Claude pixel-measurement + codex) study of the real receipts. Real thermal printers shrink the header block (Epson Font A vs Font B); warehouse / natural-grocer formats print the header at body size. NONE use a different per-section typeface (size only). {} means uniform (no shrink). Default when unset: {\"HEADER\": 0.80}.",
+  "profiles": {
+    "Costco Wholesale": {
+      "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform).",
+      "section_scale": {},
+      "typography": {
+        "bitmap_font": {
+          "regular": "bitMatrix-C2.glyphs.npz",
+          "heavy": "bitMatrix-C2-heavy.glyphs.npz"
+        },
+        "display_headings": {
+          "SELF-CHECKOUT": 1.7,
+          "SELF CHECKOUT": 1.7,
+          "THANK YOU": 1.4,
+          "PLEASE COME AGAIN": 1.4,
+          "ITEMS SOLD:": 1.8
+        },
+        "reverse_total": true,
+        "reverse_date_after_items": true,
+        "dashed_separators": true,
+        "heading_bleed_phrase": "ITEMS SOLD:",
+        "reverse_date_anchor": "NUMBER OF ITEMS SOLD",
+        "dash_after_amount_date": true,
+        "condense": 0.93,
+        "dash_around_phrases": [
+          "SHOP CARD"
+        ]
+      },
+      "logo": "bitMatrix-C2_logo.png",
+      "logo_anchor": {
+        "phrases": [
+          "EWHOLESALE",
+          "WHOLESALE"
+        ],
+        "extend_left": false,
+        "center": true
+      }
+    },
+    "Amazon Fresh": {
+      "_comment": "receiptfont.com bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.",
+      "section_scale": {
+        "HEADER": 0.78
+      },
+      "typography": {
+        "font": "PTMONO",
+        "condense": 0.8,
+        "stroke": 0
+      },
+      "logo": "amazon_fresh_logo.png"
+    },
+    "Target": {
+      "_comment": "receiptfont.com bitMatrix-D1 (dot-matrix) -> VT323. Logo omitted: Target thermal receipts print no wordmark (header is the store address; the bullseye is not printed).",
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "VT323",
+        "condense": 0.95,
+        "stroke": 0
+      }
+    },
+    "The Home Depot": {
+      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH, built by synthesis_loop/build_homedepot_logo.py from a clean brand SVG (all 17 real receipts use this slogan, not the older 'More saving. More doing.'). Body font: data-driven glyph font shredded (consistent italic slant + photographed-receipt warp defeats the averaging/registration; queued for the codex glyph loop), so fall back to PTMONO for now. condense/section_scale calibrated from real-vs-synth.",
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "PTMONO",
+        "condense": 0.82,
+        "stroke": 0
+      },
+      "logo": "homedepot_logo.png",
+      "logo_anchor": {
+        "phrases": [
+          "HOWDOERS",
+          "GETMOREDONE"
+        ],
+        "extend_left": true
+      },
+      "graphics": {
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
+    },
+    "Vons": {
+      "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
+      "logo": "vons_logo.png",
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "vons.glyphs.npz",
+          "heavy": "vons-heavy.glyphs.npz"
+        },
+        "condense": 0.895,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.649,
+        "stylemap": "vons.stylemap.json",
+        "pitch_ratio": 0.538
+      },
+      "logo_anchor": {
+        "phrases": [
+          "VONS.",
+          "VONS"
+        ],
+        "extend_left": false,
+        "center": true
+      }
+    },
+    "Sprouts Farmers Market": {
+      "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
+      "section_scale": {},
+      "typography": {
+        "font": "PTMONO",
+        "stylemap": "sprouts.stylemap.json",
+        "bitmap_font": {
+          "regular": "sprouts.glyphs.npz",
+          "heavy": "sprouts-heavy.glyphs.npz"
+        },
+        "condense": 0.895,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.795,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.76,
+        "ink": [
+          38,
+          36,
+          34
+        ],
+        "stroke": 0
+      },
+      "logo": "sprouts_logo.png",
+      "logo_reserve_subtitle": true,
+      "logo_subtitle": "FARMERS MARKET",
+      "header": {
+        "reflow_sections": true,
+        "header_dedup": true,
+        "header_exact": [
+          "FARMERSMARKET",
+          "8059174200",
+          "STOREHOURSMONSUN7AM10PM"
+        ],
+        "header_contains": [
+          "WESTLAKE"
+        ],
+        "body_section_anchors": [
+          "PRODUCE",
+          "DAIRY",
+          "GROCERY"
+        ]
+      }
+    },
+    "Smith's": {
+      "_comment": "receiptfont.com pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print (stroke 1).",
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "VT323",
+        "condense": 0.92,
+        "stroke": 1
+      },
+      "logo": "smiths_logo.png"
+    },
+    "Gelson's Westlake Village": {
+      "_comment": "not on receiptfont.com (small grocer) -> clean condensed B612 Mono.",
+      "section_scale": {
+        "HEADER": 0.8
+      },
+      "typography": {
+        "font": "B612",
+        "condense": 0.82,
+        "stroke": 0
+      },
+      "logo": "gelsons_logo.png"
+    },
+    "Trader Joe's": {
+      "_comment": "Studio-minted from 20 pooled receipts (refined corpus). All-caps body, single style fleet-wide; wordmark header replaced by logo overlay.",
+      "aliases": [
+        "TRADER JOE'S",
+        "Trader Joe's Store #0058"
+      ],
+      "logo": "traderjoes_logo.png",
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "traderjoes.glyphs.npz",
+          "heavy": "traderjoes-heavy.glyphs.npz"
+        },
+        "condense": 1.033,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.72,
+        "stylemap": "traderjoes.stylemap.json",
+        "pitch_ratio": 0.499
+      },
+      "logo_anchor": {
+        "phrases": [
+          "TRADER JOE'S"
+        ],
+        "extend_left": false,
+        "center": true
+      },
+      "graphics": {
+        "footer_codes": false,
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
+    },
+    "CVS": {
+      "_comment": "Studio-minted from 20 pooled receipts (refined corpus). Mixed-case body; bold ExtraCare/FSA rows via stylemap; CVSpharmacy wordmark replaced by logo overlay.",
+      "aliases": [
+        "CVS pharmacy",
+        "CVS Pharmacy",
+        "CVS pharmacy®"
+      ],
+      "logo": "cvs_logo.png",
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "cvs.glyphs.npz",
+          "heavy": "cvs-heavy.glyphs.npz"
+        },
+        "condense": 0.962,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.858,
+        "stylemap": "cvs.stylemap.json",
+        "pitch_ratio": 0.551
+      },
+      "logo_anchor": {
+        "phrases": [
+          "CVS pharmacy",
+          "•CVS pharmacy",
+          "CVS pharmacy®",
+          "pharmacy",
+          "pharmacy®",
+          "• CVS",
+          "•CVS",
+          "• CVS pharmacy"
+        ],
+        "extend_left": false,
+        "center": true
+      },
+      "graphics": {
+        "footer_codes": false
+      }
+    }
+  }
+}

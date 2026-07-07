@@ -13,6 +13,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import atan2, degrees
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
 
@@ -32,6 +33,7 @@ from receipt_dynamo.entities import (
     Letter,
     Line,
     Receipt,
+    ReceiptBarcode,
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
@@ -56,6 +58,10 @@ from receipt_upload.utils import (
 from .metrics import emf_metrics
 
 logger = logging.getLogger(__name__)
+
+# C0 control characters + DEL, stripped from barcode payload ends (Vision
+# prepends a mode/ECI control byte to some QR/byte-mode payloads).
+_BARCODE_CTRL_CHARS = "".join(chr(i) for i in range(0x20)) + "\x7f"
 
 
 @dataclass
@@ -148,9 +154,15 @@ class OCRProcessor:
             )
             image = PIL_Image.open(raw_image_path)
 
-            # Process first-pass job
+            # Process first-pass job. Swift's NATIVE path emits full-image
+            # barcode detections at the top level (no per-receipt ``receipts``
+            # array), so pass them through for the native receipt below.
             return self._process_first_pass_job(
-                image, ocr_data, ocr_job, ocr_routing_decision
+                image,
+                ocr_data,
+                ocr_job,
+                ocr_routing_decision,
+                top_level_barcodes=ocr_json.get("barcodes") or [],
             )
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -1422,12 +1434,21 @@ class OCRProcessor:
             if receipt_letters:
                 self.dynamo.add_receipt_letters(receipt_letters)
 
+            # Barcodes / QR codes detected on the warped receipt crop.
+            receipt_barcodes = self._parse_receipt_barcodes_from_swift(
+                image_id, receipt_id, receipt_data.get("barcodes", [])
+            )
+            if receipt_barcodes:
+                self.dynamo.add_receipt_barcodes(receipt_barcodes)
+
             logger.info(
-                "Created receipt %s: %s lines, %s words, %s letters",
+                "Created receipt %s: %s lines, %s words, %s letters, "
+                "%s barcodes",
                 receipt_id,
                 len(receipt_lines),
                 len(receipt_words),
                 len(receipt_letters),
+                len(receipt_barcodes),
             )
 
             successful_receipts += 1
@@ -1512,6 +1533,95 @@ class OCRProcessor:
             "word_count": len(all_receipt_words),
             "swift_single_pass": True,  # Flag for handler to enable embeddings
         }
+
+    def _parse_receipt_barcodes_from_swift(
+        self,
+        image_id: str,
+        receipt_id: int,
+        barcodes_data: list[Dict[str, Any]],
+    ) -> list[ReceiptBarcode]:
+        """Parse Swift barcode output into ReceiptBarcode entities.
+
+        Each barcode carries the decoded payload (stored as the entity ``text``;
+        "" when the symbol was located but not decoded), the Vision symbology, and
+        a normalized bounding box in the warped-receipt coordinate space (matching
+        the receipt's lines/words). The angle is derived from the top edge and the
+        confidence clamped into (0, 1]. Malformed entries are skipped.
+        """
+        barcodes: list[ReceiptBarcode] = []
+        for idx, data in enumerate(barcodes_data):
+            symbology = data.get("symbology")
+            bbox = data.get("bounding_box", {})
+            geometry_ok = all(
+                k in bbox for k in ("x", "y", "width", "height")
+            ) and all(
+                all(k in data.get(corner, {}) for k in ("x", "y"))
+                for corner in (
+                    "top_left",
+                    "top_right",
+                    "bottom_left",
+                    "bottom_right",
+                )
+            )
+            if not symbology or not geometry_ok:
+                logger.warning(
+                    "Skipping barcode %s with missing symbology/geometry "
+                    "for receipt %s",
+                    idx,
+                    receipt_id,
+                )
+                continue
+
+            top_left, top_right = data["top_left"], data["top_right"]
+            angle_radians = atan2(
+                top_right["y"] - top_left["y"],
+                top_right["x"] - top_left["x"],
+            )
+            raw_confidence = data.get("confidence")
+            try:
+                confidence = (
+                    1.0
+                    if raw_confidence is None
+                    else min(1.0, max(0.01, float(raw_confidence)))
+                )
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Skipping barcode %s with malformed confidence %r "
+                    "for receipt %s",
+                    idx,
+                    raw_confidence,
+                    receipt_id,
+                )
+                continue
+            # Vision prepends a mode/ECI control byte to some payloads (e.g. QR
+            # byte-mode: "\x1ahttps://..."); strip leading/trailing C0 controls.
+            payload = (data.get("payload") or "").strip(_BARCODE_CTRL_CHARS)
+            try:
+                barcodes.append(
+                    ReceiptBarcode(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        barcode_id=idx,
+                        symbology=str(symbology),
+                        text=payload,
+                        bounding_box=bbox,
+                        top_left=top_left,
+                        top_right=top_right,
+                        bottom_left=data["bottom_left"],
+                        bottom_right=data["bottom_right"],
+                        angle_degrees=degrees(angle_radians),
+                        angle_radians=angle_radians,
+                        confidence=confidence,
+                    )
+                )
+            except (ValueError, AssertionError) as exc:
+                logger.warning(
+                    "Skipping invalid barcode %s for receipt %s: %s",
+                    idx,
+                    receipt_id,
+                    exc,
+                )
+        return barcodes
 
     def _parse_receipt_ocr_from_swift(
         self,
@@ -1778,8 +1888,13 @@ class OCRProcessor:
         ocr_data: OCRData,
         ocr_job: Any,
         ocr_routing_decision: Any,
+        top_level_barcodes: Optional[list[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        """Process a first-pass OCR job."""
+        """Process a first-pass OCR job.
+
+        ``top_level_barcodes`` carries Swift's full-image barcode detections,
+        which only the NATIVE path (single full-image receipt) consumes.
+        """
         # Classify image type
         image_type = classify_image_layout(
             lines=ocr_data.lines,
@@ -1819,6 +1934,19 @@ class OCRProcessor:
                     ocr_routing_decision=ocr_routing_decision,
                     ocr_job=ocr_job,
                 )
+
+                # NATIVE is a single full-image receipt (receipt_id=1), so
+                # Swift's full-image barcode detections map directly onto it.
+                native_barcodes = self._parse_receipt_barcodes_from_swift(
+                    ocr_job.image_id, 1, top_level_barcodes or []
+                )
+                if native_barcodes:
+                    self.dynamo.add_receipt_barcodes(native_barcodes)
+                    logger.info(
+                        "Stored %s native barcodes for image %s receipt 1",
+                        len(native_barcodes),
+                        ocr_job.image_id,
+                    )
                 return {
                     "success": True,
                     "image_id": ocr_job.image_id,

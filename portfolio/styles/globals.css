@@ -1,6 +1,9 @@
 html {
-  overflow-x: hidden;
-  /* Prevent horizontal scroll on mobile */
+  /* `clip` (not `hidden`) prevents horizontal scroll WITHOUT creating a
+     scroll container -- `hidden` here silently breaks position: sticky in
+     every descendant (the SynthesisPipeline stage scrolled away leaving a
+     blank track). */
+  overflow-x: clip;
   width: 100%;
   max-width: 100vw;
   /* Ensure html doesn't exceed viewport width */
@@ -164,8 +167,11 @@ body {
   padding: 0;
   background-color: var(--background-color);
   color: var(--text-color);
-  overflow-x: hidden;
-  /* Prevent horizontal scroll on mobile */
+  /* `clip` (not `hidden`) prevents horizontal scroll WITHOUT creating a
+     scroll container -- `hidden` here silently breaks position: sticky in
+     every descendant (the SynthesisPipeline stage scrolled away leaving a
+     blank track). */
+  overflow-x: clip;
   width: 100%;
   max-width: 100vw;
   /* Ensure body doesn't exceed viewport width */

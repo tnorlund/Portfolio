@@ -1,0 +1,44 @@
+{
+ "sections": [
+  {
+   "sizeScale": 1.05,
+   "weight": "normal",
+   "underline": "sometimes",
+   "underlineRate": 0.415,
+   "notes": "Category headers (DAIRY, GROCERY, BAKERY). Underlined on ~41% of lines - the only meaningful underline signal on the receipt. Slightly taller than body (cap 1.071); stroke normal (1.012). n=287.",
+   "name": "section_header",
+   "display": "Underlined ~41% of the time",
+   "crop": "style_crops/section_header.png"
+  },
+  {
+   "sizeScale": 1.1,
+   "weight": "bold",
+   "underline": false,
+   "underlineRate": 0.0,
+   "match": "^BALANCE DUE",
+   "notes": "Split from 'summary' after adversarial verification REFUTED the bucket median: BALANCE DUE prints visibly bolder and taller on held-out scans (stroke 4.0px vs body 3.0px = +33%, height 44-45px vs 40-41px = +10%). The summary bucket's n=577 median was diluted by CHANGE/TAX/CREDIT lines. Verified on 03fa2d0f#1 and d5f79185#1.",
+   "name": "balance_due",
+   "display": "Bold + 10% taller \u2014 the only bold line",
+   "crop": "style_crops/balance_due.png"
+  },
+  {
+   "sizeScale": 0.95,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.006,
+   "notes": "Slightly condensed print (cap_rel med 0.921, stroke 0.958); card/auth block. n=1917. RENDERER NOTE: measured cap_rel 0.921 but per-receipt OCR sizing already absorbs most of the condensation; applying the full 0.90 double-counts and drifted right-aligned payment segments 25px on the review receipt (blocker). 0.95 keeps the visual cue without the drift.",
+   "name": "payment",
+   "display": "Slightly condensed",
+   "crop": "style_crops/payment.png"
+  },
+  {
+   "sizeScale": 0.85,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.041,
+   "notes": "Distinctly smaller (cap_rel med 0.844) and lighter (stroke_rel med 0.733) than body; long numeric strings under the barcode. n=219.",
+   "name": "barcode_caption",
+   "display": "Smaller and lighter"
+  }
+ ]
+}

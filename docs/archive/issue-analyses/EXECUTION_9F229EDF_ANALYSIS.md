@@ -1,7 +1,7 @@
 # Execution 9f229edf-35c9-4d5a-8acb-d64057aa0fd7 Analysis
 
 ## Execution Details
-- **Execution ARN**: `arn:aws:states:us-east-1:681647709217:execution:word-ingest-sf-dev-8fa425a:9f229edf-35c9-4d5a-8acb-d64057aa0fd7`
+- **Execution ARN**: `arn:aws:states:us-east-1:<ACCOUNT_ID>:execution:word-ingest-sf-dev-8fa425a:9f229edf-35c9-4d5a-8acb-d64057aa0fd7`
 - **Status**: SUCCEEDED
 - **Start Time**: 2025-11-16T21:26:14.733000-08:00
 - **Stop Time**: 2025-11-16T21:28:16.796000-08:00

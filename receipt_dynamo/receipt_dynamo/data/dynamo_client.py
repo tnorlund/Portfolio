@@ -21,11 +21,13 @@ from receipt_dynamo.data._job_status import _JobStatus
 from receipt_dynamo.data._label_count_cache import _LabelCountCache
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
+from receipt_dynamo.data._merchant_font import _MerchantFont
 from receipt_dynamo.data._ocr_job import _OCRJob
 from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
+from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
 from receipt_dynamo.data._receipt_chatgpt_validation import (
     _ReceiptChatGPTValidation,
 )
@@ -80,6 +82,7 @@ class DynamoClient(
     _Word,
     _Letter,
     _Receipt,
+    _ReceiptBarcode,
     _ReceiptLine,
     _ReceiptWord,
     _ReceiptLetter,
@@ -109,6 +112,7 @@ class DynamoClient(
     _ReceiptMetadata,
     _ReceiptPlace,
     _CompletionBatchResult,
+    _MerchantFont,
     _OCRJob,
     _ReceiptSection,
     _OCRRoutingDecision,

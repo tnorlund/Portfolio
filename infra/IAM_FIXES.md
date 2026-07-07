@@ -9,7 +9,7 @@ During the implementation of the lambda layer components, we encountered **three
 ### Error
 
 ```
-ACCESS_DENIED: Service role arn:aws:iam::681647709217:role/receipt-dynamo-fast-codebuild-role-bf856b5 does not allow AWS CodeBuild to create Amazon CloudWatch Logs log streams for build arn:aws:codebuild:us-east-1:681647709217:build/receipt-dynamo-fast-layer-build-dev:817f3b8c-54de-45c7-b547-05ace80ed7fd. Error message: User: arn:aws:sts::681647709217:assumed-role/receipt-dynamo-fast-codebuild-role-bf856b5/AWSCodeBuild-817f3b8c-54de-45c7-b547-05ace80ed7fd is not authorized to perform: logs:CreateLogStream on resource: arn:aws:logs:us-east-1:681647709217:log-group:/aws/codebuild/receipt-dynamo-fast-layer-build-dev:log-stream:817f3b8c-54de-45c7-b547-05ace80ed7fd because no identity-based policy allows the logs:CreateLogStream action
+ACCESS_DENIED: Service role arn:aws:iam::<ACCOUNT_ID>:role/receipt-dynamo-fast-codebuild-role-bf856b5 does not allow AWS CodeBuild to create Amazon CloudWatch Logs log streams for build arn:aws:codebuild:us-east-1:<ACCOUNT_ID>:build/receipt-dynamo-fast-layer-build-dev:817f3b8c-54de-45c7-b547-05ace80ed7fd. Error message: User: arn:aws:sts::<ACCOUNT_ID>:assumed-role/receipt-dynamo-fast-codebuild-role-bf856b5/AWSCodeBuild-817f3b8c-54de-45c7-b547-05ace80ed7fd is not authorized to perform: logs:CreateLogStream on resource: arn:aws:logs:us-east-1:<ACCOUNT_ID>:log-group:/aws/codebuild/receipt-dynamo-fast-layer-build-dev:log-stream:817f3b8c-54de-45c7-b547-05ace80ed7fd because no identity-based policy allows the logs:CreateLogStream action
 ```
 
 ### Root Cause
@@ -40,7 +40,7 @@ The second ARN pattern (`/*:*`) allows access to log streams within the log grou
 ### Error
 
 ```
-An error occurred (AccessDeniedException) when calling the PublishLayerVersion operation: User: arn:aws:sts::681647709217:assumed-role/receipt-upload-fast-codebuild-role-97b2436/AWSCodeBuild-0b9b626f-4066-49df-97b6-1f0491acd3dc is not authorized to perform: lambda:PublishLayerVersion on resource: arn:aws:lambda:us-east-1:681647709217:layer:receipt-upload-dev because no identity-based policy allows the lambda:PublishLayerVersion action
+An error occurred (AccessDeniedException) when calling the PublishLayerVersion operation: User: arn:aws:sts::<ACCOUNT_ID>:assumed-role/receipt-upload-fast-codebuild-role-97b2436/AWSCodeBuild-0b9b626f-4066-49df-97b6-1f0491acd3dc is not authorized to perform: lambda:PublishLayerVersion on resource: arn:aws:lambda:us-east-1:<ACCOUNT_ID>:layer:receipt-upload-dev because no identity-based policy allows the lambda:PublishLayerVersion action
 ```
 
 ### Root Cause
@@ -69,7 +69,7 @@ The IAM policy only allowed access to versioned layer ARNs (`layer:name:version`
 ### Error
 
 ```
-An error occurred (AccessDeniedException) when calling the PublishLayerVersion operation: Your access has been denied by S3, please make sure your request credentials have permission to GetObject for fast-lambda-layer-receipt-dynamo-artifacts-dev/receipt-dynamo-dev/layer.zip. S3 Error Code: AccessDenied. S3 Error Message: User: arn:aws:sts::681647709217:assumed-role/receipt-dynamo-fast-codebuild-role-bf856b5/AWSCodeBuild-913409e2-2793-4865-a1f3-66e02d53aa00 is not authorized to perform: s3:ListBucket on resource: "arn:aws:s3:::fast-lambda-layer-receipt-dynamo-artifacts-dev" because no identity-based policy allows the s3:ListBucket action
+An error occurred (AccessDeniedException) when calling the PublishLayerVersion operation: Your access has been denied by S3, please make sure your request credentials have permission to GetObject for fast-lambda-layer-receipt-dynamo-artifacts-dev/receipt-dynamo-dev/layer.zip. S3 Error Code: AccessDenied. S3 Error Message: User: arn:aws:sts::<ACCOUNT_ID>:assumed-role/receipt-dynamo-fast-codebuild-role-bf856b5/AWSCodeBuild-913409e2-2793-4865-a1f3-66e02d53aa00 is not authorized to perform: s3:ListBucket on resource: "arn:aws:s3:::fast-lambda-layer-receipt-dynamo-artifacts-dev" because no identity-based policy allows the s3:ListBucket action
 ```
 
 ### Root Cause

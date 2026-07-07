@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generator
 
 from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -28,6 +29,7 @@ class ReceiptDetails:
     labels: list[ReceiptWordLabel]
     letters: list[ReceiptLetter] = field(default_factory=list)
     place: "ReceiptPlace" | None = None
+    barcodes: list[ReceiptBarcode] = field(default_factory=list)
 
     def __iter__(self) -> Generator[
         Receipt
@@ -35,6 +37,7 @@ class ReceiptDetails:
         | list[ReceiptWord]
         | list[ReceiptLetter]
         | list[ReceiptWordLabel]
+        | list[ReceiptBarcode]
         | "ReceiptPlace"
         | None,
         None,
@@ -46,3 +49,4 @@ class ReceiptDetails:
         yield self.letters
         yield self.labels
         yield self.place
+        yield self.barcodes

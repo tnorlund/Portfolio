@@ -1,0 +1,20 @@
+{
+  "name": "glyph-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "server": "node server/server.mjs",
+    "mcp": "node server/mcp.mjs",
+    "app": "vite --config app/vite.config.ts",
+    "test": "vitest run --config app/vite.config.ts",
+    "typecheck": "tsc -p app/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
