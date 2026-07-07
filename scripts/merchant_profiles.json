@@ -70,15 +70,18 @@
         "bitmap_cap_ratio": 0.66,
         "bitmap_thin": 0.0,
         "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.78,
+        "ocr_cap_height_ratio": 0.95,
         "stylemap": "target.stylemap.json",
-        "pitch_ratio": 0.526
+        "pitch_ratio": 0.526,
+        "dash_around_phrases": [
+          "REC#"
+        ]
       },
       "logo": "target_logo.png",
       "logo_anchor": {
-        "top_band": 170,
+        "top_band": 110,
         "reserve_threshold": 0.7,
-        "width_frac": 0.48,
+        "width_frac": 0.2,
         "top_margin": 8,
         "bottom_margin": 12
       },
