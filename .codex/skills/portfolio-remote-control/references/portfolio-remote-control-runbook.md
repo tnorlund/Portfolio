@@ -67,3 +67,34 @@ enforce it. Run `portfolio_remote_control.sh status` periodically:
   resources or confuse status.
 - `check_push_auth` runs at launch; if it warns, fix gh/remote on the mini before
   the agents try to push, or their work strands locally on the box.
+
+## Launch flow (updated) — positional mission + human-accept checkpoint
+
+`launch` now starts each session with its mission **pre-loaded as a positional
+prompt** (`claude … --remote-control <name> "<mission>"`) instead of pasting it
+into the TUI afterward. The fragile bracketed-paste step is gone. The flow:
+
+1. `launch` cleans targets, starts the screens (mission pre-loaded), opens
+   Terminal attachers, caffeinates, and prints accept instructions.
+2. **You accept the bypass-permissions prompt in each Terminal** (`Down` ->
+   `Yes, I accept` -> `Enter`). The mission runs automatically on accept.
+
+That single human accept per agent is intentional — it is the deliberate
+checkpoint for starting an autonomous bypass-permissions session, so the launcher
+does **not** auto-suppress or auto-accept the warning. The manual-paste steps
+below remain only as a fallback for re-sending a mission to an already-running
+session that was launched without one.
+
+### Registering sessions beyond the default trio
+
+`status`, `cleanup`, and stray-detection all read `entries()`. To add a new
+branch-agent so it is tracked (and not flagged as an "unexpected stray"), set:
+
+```
+export PORTFOLIO_RC_EXTRA_SESSIONS="name:branch [name2:branch2 ...]"
+# e.g.
+export PORTFOLIO_RC_EXTRA_SESSIONS="glyph-rendering:feat/receipt-glyph-rendering"
+```
+
+Worktree path, session name, and screen name are derived by convention
+(`.claude/worktrees/<name>`, `<name>`, `claude-<name>-rc`).

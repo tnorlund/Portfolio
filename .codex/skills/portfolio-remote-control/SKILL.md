@@ -33,7 +33,7 @@ This helper:
 
 1. Cleans only the three target Portfolio remote-control sessions.
 2. Starts one detached `screen` session per worktree with `/opt/homebrew/bin/claude --permission-mode bypassPermissions --remote-control <name>`.
-3. Attaches to each `screen` through a real pseudo-terminal, accepts Claude's bypass prompt with `2`, bracket-pastes the mission prompt, submits it with a separate carriage return, and detaches.
+3. Pre-loads each session's mission as a **positional prompt** at launch (no fragile TUI paste). You then accept the bypass-permissions prompt in each Terminal (press `2` -> `Yes, I accept`, then `Enter`); the mission runs automatically on accept. That one human accept per agent is the deliberate checkpoint for starting an autonomous bypass-permissions session.
 4. Opens Terminal.app attachers for the three screens when a GUI session is available.
 5. Starts a skill-managed durable `caffeinate -dimsu /bin/sleep 86400` if one is not already alive.
 6. Prints process, screen, and log status.
