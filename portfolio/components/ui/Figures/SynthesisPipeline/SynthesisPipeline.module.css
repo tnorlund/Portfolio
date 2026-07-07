@@ -266,57 +266,47 @@
   text-align: center;
 }
 
-/* ==== Act 2: one character =========================================== */
+/* ==== Act 2: one character (prints -> pen path + handles -> dots) ===== */
 
-/* The hero glyph rides at ONE height across acts 2-4 (charStack, penStage,
-   thermalCanvas all use --glyph-h) so the letter never resizes between curves,
-   trace, and dots — it only ever travels. */
-.charStack {
-  position: relative;
-  height: var(--glyph-h);
-  aspect-ratio: 3 / 4;
+/* Column: the glyph box (cloud + prints + path/handles + thermal dots, all in
+   ONE cloudGeom frame) with the weight control beneath it. */
+.charStageWrap {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem;
 }
 
-.charLayer {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  height: 82%;
-  width: auto;
-  image-rendering: pixelated;
-  object-fit: contain;
-}
-
-.charCloud {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  height: 92%;
-  width: auto;
-  object-fit: contain;
-  filter: contrast(1.05);
-}
-
-/* ==== Act 3: pen path ================================================= */
-
-/* Height-bounded; aspect ratio is set inline to the cloud PNG's own box so the
-   image and the SVG overlay share one coordinate space (no drift). */
-.penStage {
+/* Height-bounded; aspect ratio (inline) = the cloud PNG's box, so the cloud,
+   the SVG path/handles, and the dot canvas all share ONE coordinate space and
+   can't drift. Capped so the weight control still fits under it. */
+.charGlyphBox {
   position: relative;
   height: var(--glyph-h);
+  max-height: calc(100% - 76px);
   max-width: 86%;
 }
 
-.penCloudFill {
+.charCloudFill {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: fill;
-  opacity: 0.4;
+}
+
+.charPrintLayer {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  height: 86%;
+  width: auto;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .penSvg {
@@ -330,62 +320,44 @@
 .penPath {
   fill: none;
   stroke: var(--color-blue);
-  stroke-width: 26;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
+/* Vector-editor handles: a 1px hairline from the anchor to a hollow control
+   circle, all mapped through the same cloud transform as the path. */
 .handleLine {
-  stroke: var(--color-orange);
-  stroke-width: 5;
-  stroke-dasharray: 14 12;
-  opacity: 0.8;
+  stroke: var(--color-blue);
+  opacity: 0.6;
 }
 
 .handleDot {
-  fill: var(--color-orange);
+  fill: none;
+  stroke: var(--color-blue);
 }
 
-.anchorDot {
-  fill: var(--background-color, #fff);
-  stroke: var(--color-blue);
-  stroke-width: 8;
+/* Anchors: small filled squares, like a vector editor. */
+.anchorSquare {
+  fill: var(--color-blue);
+}
+
+.charThermalCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .penBadge {
   position: absolute;
-  bottom: 0.6rem;
-  right: 0.6rem;
+  bottom: 0.4rem;
+  right: 0.4rem;
+  z-index: 2;
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.25rem 0.55rem;
   border-radius: 999px;
   background: rgba(var(--text-color-rgb), 0.08);
-}
-
-/* ==== Act 4: thermal print + weight ================================== */
-
-/* Canvas + weight control ride as a centered column that fits within the fixed
-   frame — the glyph is the same size as the rest of the run, the control sits
-   just under it, and nothing overflows. */
-.thermalWrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  width: 100%;
-  height: 100%;
-  padding: 0.75rem;
-}
-
-/* One height with the rest of the glyph run (capped so the control still fits);
-   width derives from the inline aspect ratio (glyph box). */
-.thermalCanvas {
-  height: var(--glyph-h);
-  max-height: calc(100% - 76px);
-  max-width: 70%;
-  object-fit: contain;
 }
 
 .weightControl {
@@ -530,41 +502,7 @@
   animation: side-in 0.5s ease both;
 }
 
-.labelBox {
-  opacity: 0;
-  animation: box-in 0.3s ease forwards;
-}
-
-/* Compact wrapped chips beside the assembled receipt. */
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.28rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 1px 6px 1px 4px;
-  border-radius: 999px;
-  background: rgba(var(--text-color-rgb), 0.06);
-  font-size: 0.6rem;
-  font-weight: 600;
-  line-height: 1.5;
-  opacity: 0.92;
-}
-
-.legendSwatch {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
+/* (Label boxes + legend now come from the shared labelBoxOverlay component.) */
 
 .counter {
   margin: 0.15rem 0 0;
@@ -687,10 +625,21 @@
   text-align: center;
 }
 
-.finaleName {
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+/* Merchant logo mark: currentColor through an alpha mask, above each pair.
+   Height-constrained (width follows the logo aspect, ~120-170px) so every
+   logo occupies the same band and the receipts below stay tops-aligned. */
+.finaleLogo {
+  height: clamp(28px, 5.2vh, 44px);
+  width: auto;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask-mode: alpha;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 /* ---- shared fallback note ------------------------------------------- */
@@ -750,15 +699,6 @@
   }
 }
 
-@keyframes box-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 /* The right-side panel (legend + counter) slides in as the labels
    land, so the receipt doesn't appear to jump when it stops being centered. */
 @keyframes side-in {
@@ -804,8 +744,7 @@
   .actLayer.leaving,
   .headingFade,
   .captionFade,
-  .assembleSide,
-  .labelBox {
+  .assembleSide {
     animation: none;
   }
   .fontCell,

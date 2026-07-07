@@ -127,11 +127,11 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(label).toHaveTextContent(ACTS[0].headline);
   });
 
-  test("there are seven act dots, one per act", async () => {
+  test("there are five act dots, one per act", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    expect(ACT_COUNT).toBe(7);
+    expect(ACT_COUNT).toBe(5);
     ACTS.forEach((meta) => {
       expect(screen.getByTestId(`act-dot-${meta.index}`)).toBeInTheDocument();
     });
@@ -174,11 +174,13 @@ describe("SynthesisPipeline finale act", () => {
       "costco",
       "vons",
     ]);
+    // Each merchant is identified by its logo mark (currentColor mask), not a
+    // text caption.
     ["Sprouts", "Costco", "Vons"].forEach((name) =>
-      expect(screen.getByText(name)).toBeInTheDocument(),
+      expect(
+        screen.getByRole("img", { name: new RegExp(`${name} logo`, "i") }),
+      ).toBeInTheDocument(),
     );
-    // Chrome (headline/caption) is intentionally gone in autoplay mode — the
-    // three named cards carry the generalization beat on their own.
   });
 
   test("each card pairs the real scan with the synth render for proof", async () => {
@@ -214,7 +216,7 @@ describe("SynthesisPipeline finale act", () => {
       screen
         .getAllByTestId("finale-card")
         .find((c) => c.getAttribute("data-merchant") === merchant)!
-        .querySelector<HTMLElement>('[style*="aspect-ratio"]')!;
+        .querySelector<HTMLElement>('[data-testid="finale-frame"]')!;
     const sprouts = frameFor("sprouts").style.aspectRatio;
     const costco = frameFor("costco").style.aspectRatio;
     const vons = frameFor("vons").style.aspectRatio;
@@ -247,8 +249,10 @@ describe("SynthesisPipeline finale act", () => {
       vonsCard.querySelector('[data-testid="finale-fallback"]'),
     ).toBeInTheDocument();
     expect(vonsCard.querySelector('[data-testid="finale-image"]')).toBeNull();
-    // The merchant name still labels the card.
-    expect(screen.getByText("Vons")).toBeInTheDocument();
+    // The logo mark still identifies the card.
+    expect(
+      vonsCard.querySelector('[aria-label="Vons logo"]'),
+    ).toBeInTheDocument();
   });
 });
 
@@ -265,12 +269,14 @@ describe("SynthesisPipeline (reduced motion)", () => {
       "data-mode",
       "static",
     );
-    // All seven acts are present as static sections, including the merged
-    // assemble act and the finale.
+    // All five acts are present as static sections, including the merged
+    // character act, the assemble act, and the finale.
     expect(screen.getByTestId("static-act-raw")).toBeInTheDocument();
+    expect(screen.getByTestId("static-act-character")).toBeInTheDocument();
     expect(screen.getByTestId("static-act-assemble")).toBeInTheDocument();
     expect(screen.getByTestId("static-act-finale")).toBeInTheDocument();
-    expect(screen.getByTestId("act-penpath")).toBeInTheDocument();
+    // The merged character act still draws the pen path over the cloud.
+    expect(screen.getByTestId("act-character")).toBeInTheDocument();
     // The finale fans out to three merchant cards.
     expect(screen.getAllByTestId("finale-card")).toHaveLength(3);
   });

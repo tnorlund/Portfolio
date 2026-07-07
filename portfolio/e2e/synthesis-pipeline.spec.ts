@@ -49,14 +49,14 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
   const stage = page.getByTestId("pipeline-stage");
   const dots = page.locator('[data-testid^="act-dot"]');
   const n = await dots.count();
-  expect(n).toBeGreaterThanOrEqual(6);
+  expect(n).toBeGreaterThanOrEqual(5);
 
   const round = (b: { width: number; height: number } | null) =>
     b ? { w: Math.round(b.width), h: Math.round(b.height) } : null;
   const box0 = round(await stage.boundingBox());
-  // Sample a spread of acts (the atlas, the assemble act, the finale) and
-  // assert the frame is byte-identical each time.
-  for (const i of [3, 4, 5, n - 1]) {
+  // Sample a spread of acts (character, atlas, assemble, finale) and assert the
+  // frame is byte-identical each time.
+  for (const i of [1, 2, 3, n - 1]) {
     await dots.nth(i).click();
     await page.waitForTimeout(500);
     expect(round(await stage.boundingBox()), `stage box at act ${i}`).toEqual(
@@ -66,8 +66,9 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
 
   // Atlas glyphs must render as TYPE ON THE PAGE: currentColor through an alpha
   // mask, with the -webkit-mask set inline (Safari). Verify in the real browser
-  // (jsdom can't) — the painted glyph color equals the page text color.
-  await dots.nth(4).click();
+  // (jsdom can't) — the painted glyph color equals the page text color. The
+  // atlas is the font act (index 2).
+  await dots.nth(2).click();
   await page.waitForTimeout(500);
   const glyph = await page.evaluate(() => {
     const cell = document.querySelector('[data-testid="font-cell"]');

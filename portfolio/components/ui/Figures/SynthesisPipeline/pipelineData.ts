@@ -83,6 +83,16 @@ export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
   vons: { w: 760, h: 2732 },
 };
 
+/** Trimmed alpha-mask logo mark, rendered in currentColor (theme-aware). */
+export const logoSrc = (merchant: Merchant): string =>
+  `${assetRoot(merchant)}/logo.png`;
+
+export const LOGO_DIMS: Record<Merchant, { w: number; h: number }> = {
+  sprouts: { w: 690, h: 179 },
+  costco: { w: 689, h: 180 },
+  vons: { w: 662, h: 260 },
+};
+
 export const finalLabelsSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/final.labels.json`;
 
@@ -183,14 +193,7 @@ export const EMPTY_ASSETS: MerchantAssets = {
   finalLabels: null,
 };
 
-export type ActId =
-  | "raw"
-  | "character"
-  | "penpath"
-  | "thermal"
-  | "font"
-  | "assemble"
-  | "finale";
+export type ActId = "raw" | "character" | "font" | "assemble" | "finale";
 
 export interface ActMeta {
   id: ActId;
@@ -218,29 +221,13 @@ export const ACTS: ActMeta[] = [
     id: "character",
     index: 1,
     eyebrow: "One character",
-    headline: "140 prints, averaged",
+    headline: "Prints to a pen path to thermal dots",
     caption:
-      "140 prints of one character, averaged. No single print is trustworthy; together they vote into a consensus cloud.",
-  },
-  {
-    id: "penpath",
-    index: 2,
-    eyebrow: "The pen path",
-    headline: "We learned the path, not the pixels",
-    caption:
-      "We didn't trace pixels. We learned the pen path — six nodes and the Bézier handles between them.",
-  },
-  {
-    id: "thermal",
-    index: 3,
-    eyebrow: "Thermal print + weight",
-    headline: "Bold is one parameter",
-    caption:
-      "Dots stamp along the path. Bold isn't a second font — it's one parameter: the dot weight.",
+      "140 prints of one character vote into a consensus cloud; we learn the pen path over it — six nodes and their Bézier handles — then stamp thermal dots along it. Bold isn't a second font; it's one parameter: the dot weight.",
   },
   {
     id: "font",
-    index: 4,
+    index: 2,
     eyebrow: "A whole font",
     headline: "Ninety-four glyphs, same method",
     caption:
@@ -248,7 +235,7 @@ export const ACTS: ActMeta[] = [
   },
   {
     id: "assemble",
-    index: 5,
+    index: 3,
     eyebrow: "The receipt assembles",
     headline: "It types itself out, then labels itself",
     caption:
@@ -256,7 +243,7 @@ export const ACTS: ActMeta[] = [
   },
   {
     id: "finale",
-    index: 6,
+    index: 4,
     eyebrow: "Same machine, every store",
     headline: "Same machine, three merchants",
     caption:
@@ -273,9 +260,7 @@ export const ACT_COUNT = ACTS.length;
  */
 export const ACT_DWELL_MS: Record<ActId, number> = {
   raw: 4000,
-  character: 5000,
-  penpath: 5500,
-  thermal: 5500,
+  character: 9500, // prints -> pen path + handles -> thermal dots, one beat
   font: 6500, // the hero glyph flies into the atlas — give it room
   assemble: 11000, // parallel section typing, then the label boxes draw on
   finale: 7000,

@@ -4,17 +4,14 @@ import {
   familiesIn,
   toCssRectInner,
 } from "../AugmentationShowcase/labelGeometry";
-import { ENTITY_DISPLAY_NAMES, LABEL_COLORS } from "../labelStyles";
+import { LABEL_COLORS } from "../labelStyles";
+import { LabelBoxOverlay, LabelLegend } from "../labelBoxOverlay";
 import {
   cloudScale,
-  glyphAnchors,
   glyphAnchorsCloud,
-  glyphDotPoints,
   glyphDotPointsCloud,
   nodeCount,
-  skeletonPathDs,
   skeletonPathDsCloud,
-  skeletonViewBox,
 } from "./geometry";
 import {
   ActId,
@@ -23,10 +20,11 @@ import {
   charCloudSrc,
   charPrintSrc,
   COMPOSE_GROUP_ORDER,
-  DotParams,
   FONT_CODEPOINTS,
   fontGlyphSrc,
   finalSrc,
+  LOGO_DIMS,
+  logoSrc,
   Merchant,
   MERCHANTS,
   MERCHANT_LABELS,
@@ -119,196 +117,22 @@ const RawMaterialAct: React.FC<ActProps> = ({
 };
 
 /* ==================================================================== */
-/* Act 2 — One character                                                 */
-/* ==================================================================== */
-
-const OneCharacterAct: React.FC<ActProps> = ({
-  merchant,
-  progress,
-  reducedMotion,
-}) => {
-  const p = reducedMotion ? 1 : progress;
-  // Stack phase indexes the flip-through; cloud fades in at the end.
-  const stackP = phase(p, 0.2, 0.8);
-  const activeIdx = Math.min(
-    CHAR_PRINT_COUNT - 1,
-    Math.floor(stackP * CHAR_PRINT_COUNT),
-  );
-  const cloudOpacity = reducedMotion ? 0.95 : phase(p, 0.75, 1);
-  // Show the current print plus a few behind it, piling up.
-  const layers = [activeIdx, activeIdx - 1, activeIdx - 2, activeIdx - 3].filter(
-    (i) => i >= 0,
-  );
-
-  return (
-    <div className={styles.charStack} data-testid="act-character">
-      {layers.map((i, depth) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={i}
-          src={charPrintSrc(merchant, i)}
-          alt={depth === 0 ? `A real printed character` : ""}
-          aria-hidden={depth !== 0}
-          className={styles.charLayer}
-          style={{
-            opacity: (1 - cloudOpacity) * (1 - depth * 0.28),
-            transform: `translate(${depth * 4}px, ${depth * -4}px) scale(${
-              1 - depth * 0.02
-            })`,
-          }}
-        />
-      ))}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={charCloudSrc(merchant)}
-        alt="Consensus letterform averaged from many prints"
-        className={styles.charCloud}
-        style={{ opacity: cloudOpacity }}
-        data-testid="char-cloud"
-      />
-    </div>
-  );
-};
-
-/* ==================================================================== */
-/* Act 3 — The pen path                                                  */
-/* ==================================================================== */
-
-const PenPathAct: React.FC<ActProps> = ({
-  merchant,
-  assets,
-  progress,
-  reducedMotion,
-}) => {
-  const { skeleton, dotParams } = assets;
-  const cloud = dotParams?.cloudGeom ?? null;
-  const p = reducedMotion ? 1 : progress;
-
-  // When cloudGeom is present, map the skeleton straight into the cloud PNG's
-  // pixel box and draw both in the same viewBox so they can't drift. Without
-  // it (e.g. a merchant whose cloudGeom hasn't been measured yet), fall back
-  // to a self-fitted view box.
-  const geom = useMemo(() => {
-    if (!skeleton) {
-      return null;
-    }
-    if (cloud) {
-      const w = cloud.capHeightPx;
-      return {
-        paths: skeletonPathDsCloud(skeleton, cloud),
-        anchors: glyphAnchorsCloud(skeleton, cloud),
-        nodes: nodeCount(skeleton),
-        viewBox: { minX: 0, minY: 0, width: cloud.imageW, height: cloud.imageH },
-        aspect: `${cloud.imageW} / ${cloud.imageH}`,
-        stroke: w * 0.05,
-        anchorR: w * 0.05,
-        handleW: w * 0.014,
-        handleR: w * 0.03,
-        preserve: "none" as const,
-      };
-    }
-    const vb = skeletonViewBox(skeleton);
-    return {
-      paths: skeletonPathDs(skeleton),
-      anchors: glyphAnchors(skeleton),
-      nodes: nodeCount(skeleton),
-      viewBox: vb,
-      aspect: `${vb.width} / ${vb.height}`,
-      stroke: 26,
-      anchorR: 14,
-      handleW: 5,
-      handleR: 9,
-      preserve: "xMidYMid meet" as const,
-    };
-  }, [skeleton, cloud]);
-
-  if (!geom) {
-    return (
-      <AssetPending>
-        The pen path draws from char_skeleton.json.
-      </AssetPending>
-    );
-  }
-
-  const draw = phase(p, 0, 0.7); // 0..1 path draw
-  const anchorReveal = phase(p, 0.55, 1); // dots + handles fade in
-  const { minX, minY, width, height } = geom.viewBox;
-
-  return (
-    <div
-      className={styles.penStage}
-      style={{ aspectRatio: geom.aspect }}
-      data-testid="act-penpath"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={charCloudSrc(merchant)}
-        alt=""
-        aria-hidden="true"
-        className={styles.penCloudFill}
-      />
-      <svg
-        className={styles.penSvg}
-        viewBox={`${minX} ${minY} ${width} ${height}`}
-        preserveAspectRatio={geom.preserve}
-        aria-hidden="true"
-      >
-        {geom.paths.map((d, i) => (
-          <path
-            key={i}
-            d={d}
-            className={styles.penPath}
-            pathLength={1}
-            data-testid="pen-path"
-            strokeWidth={geom.stroke}
-            strokeDasharray={1}
-            strokeDashoffset={1 - draw}
-          />
-        ))}
-        <g style={{ opacity: anchorReveal }}>
-          {geom.anchors.handles.map((h, i) => (
-            <g key={`h-${i}`}>
-              <line
-                className={styles.handleLine}
-                x1={h.from.x}
-                y1={h.from.y}
-                x2={h.to.x}
-                y2={h.to.y}
-                strokeWidth={geom.handleW}
-              />
-              <circle
-                className={styles.handleDot}
-                cx={h.to.x}
-                cy={h.to.y}
-                r={geom.handleR}
-              />
-            </g>
-          ))}
-          {geom.anchors.anchors.map((a, i) => (
-            <circle
-              key={`a-${i}`}
-              className={styles.anchorDot}
-              cx={a.x}
-              cy={a.y}
-              r={geom.anchorR}
-              strokeWidth={geom.handleW}
-              data-testid="anchor-dot"
-            />
-          ))}
-        </g>
-      </svg>
-      <span className={styles.penBadge}>{geom.nodes} nodes</span>
-    </div>
-  );
-};
-
-/* ==================================================================== */
-/* Act 4 — Thermal print + weight                                        */
+/* Act 2 — One character: prints -> trace (with handles) -> thermal dots  */
 /* ==================================================================== */
 
 const THERMAL_STEP_UNITS = 55; // cap-unit arc-length between dot stamps
+const GLYPH_DISPLAY_PX = 290; // approx on-screen height of the glyph box
+const CHAR_STACK_LAYERS = 4;
 
-const ThermalAct: React.FC<ActProps> = ({
+/**
+ * The former character / pen-path / thermal acts merged into one continuous
+ * beat, all in the SAME cloudGeom frame: real prints stack into the consensus
+ * cloud, the pen path draws over it WITH vector-editor handles (filled square
+ * anchors, hairline handles to hollow control circles — mapped through the
+ * identical cloud transform as the path), then the handles fade as the thermal
+ * dots stamp along the path. The weight slider stays live throughout.
+ */
+const CharacterAct: React.FC<ActProps> = ({
   merchant,
   assets,
   progress,
@@ -320,42 +144,37 @@ const ThermalAct: React.FC<ActProps> = ({
   const { skeleton, dotParams } = assets;
   const cloud = dotParams?.cloudGeom ?? null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const p = reducedMotion ? 1 : progress;
 
-  // Same cap-unit -> cloud-pixel mapping as act 3, so the printed glyph is the
-  // exact same shape and size. Falls back to a fitted box without cloudGeom.
-  const dots = useMemo(() => {
-    if (!skeleton) {
+  const geom = useMemo(() => {
+    if (!skeleton || !cloud) {
       return null;
     }
-    if (cloud) {
-      return {
-        points: glyphDotPointsCloud(skeleton, cloud, THERMAL_STEP_UNITS),
-        boxW: cloud.imageW,
-        boxH: cloud.imageH,
-        minX: 0,
-        minY: 0,
-        pxPerUnit: cloudScale(cloud),
-      };
-    }
-    const vb = skeletonViewBox(skeleton);
-    const pxPerUnit = 1; // fitted view box is already in cap units
     return {
-      points: glyphDotPoints(skeleton, THERMAL_STEP_UNITS),
-      boxW: vb.width,
-      boxH: vb.height,
-      minX: vb.minX,
-      minY: vb.minY,
-      pxPerUnit,
+      paths: skeletonPathDsCloud(skeleton, cloud),
+      anchors: glyphAnchorsCloud(skeleton, cloud),
+      points: glyphDotPointsCloud(skeleton, cloud, THERMAL_STEP_UNITS),
+      nodes: nodeCount(skeleton),
+      viewBox: { width: cloud.imageW, height: cloud.imageH },
+      aspect: `${cloud.imageW} / ${cloud.imageH}`,
+      pxPerUnit: cloudScale(cloud),
+      stroke: cloud.capHeightPx * 0.045,
     };
   }, [skeleton, cloud]);
 
-  const params: DotParams | null = dotParams;
-  const p = reducedMotion ? 1 : progress;
-  const aspect = dots ? `${dots.boxW} / ${dots.boxH}` : "1 / 1";
+  // ---- Beat phases ----
+  const cloudOpacity = reducedMotion ? 0.4 : phase(p, 0.1, 0.28);
+  const printsOpacity = reducedMotion ? 0 : 1 - phase(p, 0.04, 0.24);
+  const draw = reducedMotion ? 0 : phase(p, 0.28, 0.6); // 0..1 path draw
+  const handlesOpacity = reducedMotion
+    ? 0
+    : phase(p, 0.42, 0.54) * (1 - phase(p, 0.62, 0.74));
+  const dotReveal = reducedMotion ? 1 : phase(p, 0.62, 1);
 
+  // Thermal dots stamp along the path as the handles fade.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !dots || !params) {
+    if (!canvas || !geom || !dotParams) {
       return;
     }
     const ctx = canvas.getContext("2d");
@@ -364,76 +183,162 @@ const ThermalAct: React.FC<ActProps> = ({
     }
     const dpr =
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-    // Render at the glyph box's own resolution; CSS scales it to fit.
-    canvas.width = Math.round(dots.boxW * dpr);
-    canvas.height = Math.round(dots.boxH * dpr);
+    canvas.width = Math.round(geom.viewBox.width * dpr);
+    canvas.height = Math.round(geom.viewBox.height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, dots.boxW, dots.boxH);
-
-    // dotSize is a diameter in cap units; radius scales with the live weight.
-    const radius = (params.dotSize / 2) * dotWeight * dots.pxPerUnit;
-
-    const reveal = active && !reducedMotion ? p : 1;
-    const count = Math.max(1, Math.round(dots.points.length * reveal));
-
+    ctx.clearRect(0, 0, geom.viewBox.width, geom.viewBox.height);
+    const radius = (dotParams.dotSize / 2) * dotWeight * geom.pxPerUnit;
+    const reveal = active && !reducedMotion ? dotReveal : 1;
+    const count = Math.max(0, Math.round(geom.points.length * reveal));
     ctx.fillStyle =
       getComputedStyle(canvas).getPropertyValue("--text-color").trim() ||
       "#222";
-    for (let i = 0; i < count && i < dots.points.length; i += 1) {
-      const pt = dots.points[i];
+    for (let i = 0; i < count && i < geom.points.length; i += 1) {
+      const pt = geom.points[i];
       ctx.beginPath();
-      ctx.arc(
-        pt.x - dots.minX,
-        pt.y - dots.minY,
-        Math.max(0.5, radius),
-        0,
-        Math.PI * 2,
-      );
+      ctx.arc(pt.x, pt.y, Math.max(0.5, radius), 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [dots, params, dotWeight, p, active, reducedMotion]);
+  }, [geom, dotParams, dotWeight, dotReveal, active, reducedMotion]);
 
-  const isBold = params ? Math.abs(dotWeight - params.weightBold) < 0.02 : false;
+  if (!geom || !dotParams) {
+    return (
+      <AssetPending>
+        The character is mined from char_skeleton.json + dot_params.json.
+      </AssetPending>
+    );
+  }
+
+  const { width, height } = geom.viewBox;
+  // Vector-editor handle geometry, sized in screen px (converted to viewBox
+  // units so anchors/handles read at a constant on-screen size).
+  const s = height / GLYPH_DISPLAY_PX;
+  const anchorHalf = 1.75 * s; // ~3.5px filled square
+  const handleR = 2.5 * s; // ~2.5px hollow circle
+  const isBold = Math.abs(dotWeight - dotParams.weightBold) < 0.02;
+  const stackP = phase(p, 0.02, 0.24);
+  const activeIdx = Math.min(
+    CHAR_PRINT_COUNT - 1,
+    Math.floor(stackP * CHAR_PRINT_COUNT),
+  );
+  const printLayers = Array.from({ length: CHAR_STACK_LAYERS }, (_, d) => activeIdx - d).filter(
+    (i) => i >= 0,
+  );
 
   return (
-    <div className={styles.thermalWrap} data-testid="act-thermal">
-      {dots && params ? (
-        <>
-          <canvas
-            ref={canvasRef}
-            className={styles.thermalCanvas}
-            style={{ aspectRatio: aspect }}
-            data-testid="thermal-canvas"
-            aria-label={`Thermal dots for ${merchant} at weight ${dotWeight.toFixed(2)}`}
-          />
-          <div className={styles.weightControl}>
-            <div className={styles.weightRow}>
-              <span>Weight</span>
-              <input
-                type="range"
-                className={styles.weightSlider}
-                min={WEIGHT_MIN}
-                max={WEIGHT_MAX}
-                step={WEIGHT_STEP}
-                value={dotWeight}
-                onChange={(e) => onWeightChange(Number(e.target.value))}
-                aria-label="Dot weight"
-                data-testid="weight-slider"
+    <div className={styles.charStageWrap} data-testid="act-character">
+      <div className={styles.charGlyphBox} style={{ aspectRatio: geom.aspect }}>
+        {/* Consensus cloud (the shared frame everything maps into). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={charCloudSrc(merchant)}
+          alt="Consensus letterform averaged from many prints"
+          className={styles.charCloudFill}
+          style={{ opacity: cloudOpacity }}
+          data-testid="char-cloud"
+        />
+        {/* Real prints piling up, fading as the cloud resolves. */}
+        {printsOpacity > 0.01
+          ? printLayers.map((i, depth) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={charPrintSrc(merchant, i)}
+                alt=""
+                aria-hidden="true"
+                className={styles.charPrintLayer}
+                style={{
+                  opacity: printsOpacity * (1 - depth * 0.28),
+                  transform: `translate(${depth * 4}px, ${depth * -4}px)`,
+                }}
               />
-              <span className={styles.weightValue}>{dotWeight.toFixed(2)}</span>
-            </div>
-            <span className={styles.weightLabel} data-bold={isBold}>
-              {isBold
-                ? `Bold — ${BOLD_WEIGHT_CALLOUT[merchant]}`
-                : "Bold isn't a second font. It's one parameter."}
-            </span>
-          </div>
-        </>
-      ) : (
-        <AssetPending>
-          Thermal dots stamp from char_skeleton.json + dot_params.json.
-        </AssetPending>
-      )}
+            ))
+          : null}
+        {/* Pen path + vector-editor handles, in the cloud's pixel space. */}
+        <svg
+          className={styles.penSvg}
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {geom.paths.map((d, i) => (
+            <path
+              key={i}
+              d={d}
+              className={styles.penPath}
+              pathLength={1}
+              data-testid="pen-path"
+              strokeWidth={geom.stroke}
+              strokeDasharray={1}
+              strokeDashoffset={1 - draw}
+            />
+          ))}
+          <g style={{ opacity: handlesOpacity }}>
+            {geom.anchors.handles.map((h, i) => (
+              <g key={`h-${i}`}>
+                <line
+                  className={styles.handleLine}
+                  x1={h.from.x}
+                  y1={h.from.y}
+                  x2={h.to.x}
+                  y2={h.to.y}
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  className={styles.handleDot}
+                  cx={h.to.x}
+                  cy={h.to.y}
+                  r={handleR}
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            ))}
+            {geom.anchors.anchors.map((a, i) => (
+              <rect
+                key={`a-${i}`}
+                className={styles.anchorSquare}
+                data-testid="anchor-dot"
+                x={a.x - anchorHalf}
+                y={a.y - anchorHalf}
+                width={anchorHalf * 2}
+                height={anchorHalf * 2}
+              />
+            ))}
+          </g>
+        </svg>
+        {/* Thermal dots stamped along the path. */}
+        <canvas
+          ref={canvasRef}
+          className={styles.charThermalCanvas}
+          data-testid="thermal-canvas"
+          aria-label={`Thermal dots for ${merchant} at weight ${dotWeight.toFixed(2)}`}
+        />
+        <span className={styles.penBadge}>{geom.nodes} nodes</span>
+      </div>
+      <div className={styles.weightControl}>
+        <div className={styles.weightRow}>
+          <span>Weight</span>
+          <input
+            type="range"
+            className={styles.weightSlider}
+            min={WEIGHT_MIN}
+            max={WEIGHT_MAX}
+            step={WEIGHT_STEP}
+            value={dotWeight}
+            onChange={(e) => onWeightChange(Number(e.target.value))}
+            aria-label="Dot weight"
+            data-testid="weight-slider"
+          />
+          <span className={styles.weightValue}>{dotWeight.toFixed(2)}</span>
+        </div>
+        <span className={styles.weightLabel} data-bold={isBold}>
+          {isBold
+            ? `Bold — ${BOLD_WEIGHT_CALLOUT[merchant]}`
+            : "Bold isn't a second font. It's one parameter."}
+        </span>
+      </div>
     </div>
   );
 };
@@ -663,6 +568,22 @@ const AssembleAct: React.FC<ActProps> = ({
     );
   }
 
+  // Boxes reveal progressively (LayoutLM-style slicing — they simply appear,
+  // top to bottom, no transform animation), mapped into receipt pixel space.
+  const revealCount = Math.round(
+    clamp01(phase(p, TYPE_END + 0.06, 0.9)) * boxes.length,
+  );
+  const overlayBoxes = boxes.slice(0, revealCount).map((box) => ({
+    key: box.index,
+    x: (box.rect.left / 100) * renderW,
+    y: (box.rect.top / 100) * renderH,
+    width: (box.rect.width / 100) * renderW,
+    height: (box.rect.height / 100) * renderH,
+    color: LABEL_COLORS[box.family] || LABEL_COLORS.O,
+    testId: "final-label-box",
+    family: box.family,
+  }));
+
   return (
     <div className={styles.assembleStage} data-testid="act-assemble">
       <div className={styles.assembleReceipt} style={{ aspectRatio: aspect }}>
@@ -673,50 +594,17 @@ const AssembleAct: React.FC<ActProps> = ({
           aria-label={`Synthetic ${merchant} receipt assembling`}
         />
         {labelsShown ? (
-          <svg
+          <LabelBoxOverlay
             className={styles.assembleBoxes}
-            viewBox={`0 0 ${renderW} ${renderH}`}
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            {boxes.map((box, order) => {
-              const color = LABEL_COLORS[box.family] || LABEL_COLORS.O;
-              return (
-                <rect
-                  key={box.index}
-                  data-testid="final-label-box"
-                  data-family={box.family}
-                  className={styles.labelBox}
-                  style={{ animationDelay: `${order * 20}ms` }}
-                  x={(box.rect.left / 100) * renderW}
-                  y={(box.rect.top / 100) * renderH}
-                  width={(box.rect.width / 100) * renderW}
-                  height={(box.rect.height / 100) * renderH}
-                  fill={color}
-                  fillOpacity={0.3}
-                  stroke={color}
-                  strokeWidth={2}
-                />
-              );
-            })}
-          </svg>
+            width={renderW}
+            height={renderH}
+            boxes={overlayBoxes}
+          />
         ) : null}
       </div>
       {labelsShown ? (
         <div className={styles.assembleSide}>
-          <ul className={styles.legend} aria-label="Label families">
-            {families.map((family) => (
-              <li key={family} className={styles.legendItem}>
-                <span
-                  className={styles.legendSwatch}
-                  style={{
-                    backgroundColor: LABEL_COLORS[family] || LABEL_COLORS.O,
-                  }}
-                />
-                {ENTITY_DISPLAY_NAMES[family] ?? family}
-              </li>
-            ))}
-          </ul>
+          <LabelLegend families={families} />
           <p className={styles.counter} data-testid="labels-counter">
             Labeled training example. Zero manual labels.
           </p>
@@ -748,6 +636,8 @@ const FinaleCard: React.FC<{
   const [synthFailed, setSynthFailed] = useState(false);
   const [realFailed, setRealFailed] = useState(false);
   const dims = RECEIPT_DIMS[merchant];
+  const logo = LOGO_DIMS[merchant];
+  const logoUrl = `url(${logoSrc(merchant)})`;
   const wipePct = Math.round(clamp01(wipe) * 1000) / 10;
   const pair = !synthFailed && !realFailed;
 
@@ -758,8 +648,21 @@ const FinaleCard: React.FC<{
       data-testid="finale-card"
       data-merchant={merchant}
     >
+      {/* Merchant logo mark: currentColor through an alpha mask (theme-aware),
+          above the pair — replaces the text caption. */}
+      <div
+        className={styles.finaleLogo}
+        role="img"
+        aria-label={`${MERCHANT_LABELS[merchant]} logo`}
+        style={{
+          aspectRatio: `${logo.w} / ${logo.h}`,
+          WebkitMaskImage: logoUrl,
+          maskImage: logoUrl,
+        }}
+      />
       <div
         className={styles.finaleFrame}
+        data-testid="finale-frame"
         style={{ aspectRatio: `${dims.w} / ${dims.h}` }}
       >
         {!synthFailed ? (
@@ -803,9 +706,6 @@ const FinaleCard: React.FC<{
           </>
         ) : null}
       </div>
-      <figcaption className={styles.finaleName}>
-        {MERCHANT_LABELS[merchant]}
-      </figcaption>
     </figure>
   );
 };
@@ -835,9 +735,7 @@ const FinaleAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
 
 const ACT_COMPONENTS: Record<ActId, React.FC<ActProps>> = {
   raw: RawMaterialAct,
-  character: OneCharacterAct,
-  penpath: PenPathAct,
-  thermal: ThermalAct,
+  character: CharacterAct,
   font: WholeFontAct,
   assemble: AssembleAct,
   finale: FinaleAct,
