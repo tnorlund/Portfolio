@@ -646,9 +646,7 @@ def _top_band_logo_placement(
     )
     shifted = _scale_receipt_y_for_top_band(receipt, scale_y)
 
-    width_frac = max(
-        0.05, min(0.9, float(anchor_cfg.get("width_frac", 0.34)))
-    )
+    width_frac = max(0.05, min(0.9, float(anchor_cfg.get("width_frac", 0.34))))
     top_margin = max(0.0, float(anchor_cfg.get("top_margin", 8.0)))
     bottom_margin = max(0.0, float(anchor_cfg.get("bottom_margin", 10.0)))
     inner_w = config.width - 2 * config.margin
@@ -658,9 +656,9 @@ def _top_band_logo_placement(
     band_h = max(1.0, band_top - band_bottom)
     box_w = coord_max * width_frac
     aspect = logo.width / max(1, logo.height)
-    h_from_width = (box_w / coord_max * inner_w / aspect) / max(
-        1, inner_h
-    ) * coord_max
+    h_from_width = (
+        (box_w / coord_max * inner_w / aspect) / max(1, inner_h) * coord_max
+    )
     box_h = min(band_h, h_from_width)
     cx = coord_max / 2.0
     cy = (band_top + band_bottom) / 2.0
@@ -1134,7 +1132,6 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
         import hashlib
 
         import boto3
-
         from receipt_dynamo import DynamoClient
 
         table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
@@ -1335,9 +1332,8 @@ def resolve_bitmap_thin(
     from statistics import median
 
     from ink_calibration import derive_bitmap_thin  # noqa: E402
-    from receipt_line_scorecard import _load_words_and_real  # noqa: E402
-
     from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
+    from receipt_line_scorecard import _load_words_and_real  # noqa: E402
 
     client = DynamoClient(table_name=table, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant)
@@ -1459,6 +1455,7 @@ def _render_cached_hybrid(
     stylemap: dict | None = None,
     dash_around_phrases: tuple | list = (),
     pitch_ratio: float | None = None,
+    condense_glyphs: bool = False,
     box_sink: list | None = None,
     bitmap_cap_ratio: float = 0.72,
     bitmap_thin: float = 0.0,
@@ -1495,6 +1492,7 @@ def _render_cached_hybrid(
         stylemap=stylemap,
         dash_around_phrases=tuple(dash_around_phrases or ()),
         pitch_ratio=pitch_ratio,
+        condense_glyphs=bool(condense_glyphs),
         box_sink=box_sink,
         bitmap_cap_ratio=bitmap_cap_ratio,
         bitmap_thin=bitmap_thin,

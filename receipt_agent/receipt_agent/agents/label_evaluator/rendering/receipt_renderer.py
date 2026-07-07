@@ -179,6 +179,10 @@ class RenderConfig:
     # Rows containing any of these phrases get a dashed rule ABOVE and BELOW
     # (Costco wraps each "Shop Card" tender subtotal in rules; OCR drops them).
     dash_around_phrases: tuple = ()
+    # Opt-in: also horizontally condense bitmap GLYPH IMAGES (not just cell
+    # advance). Merchants calibrated before this knob existed keep the old
+    # behavior; In-N-Out was calibrated with it on.
+    condense_glyphs: bool = False
     reverse_box_lane_cells: int = 4
     # Hybrid layout: keep fixed grid for tabular/price rows, but render centered
     # headers and prose/footer rows as measured text runs anchored by visible ink.
@@ -746,6 +750,7 @@ def _render_grid(
                 line[0].ink,
                 stroke=config.stroke,
                 condense=config.condense,
+                condense_glyphs=config.condense_glyphs,
                 bitmap_font=bf_row,
                 cap_px=cap_px,
                 bitmap_thin=config.bitmap_thin,
@@ -769,6 +774,7 @@ def _render_grid(
                     anchor=anchor,
                     stroke=config.stroke,
                     condense=config.condense,
+                    condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cap_px,
                     target_width=target_w,
@@ -786,6 +792,7 @@ def _render_grid(
                 amount_lane=amount_lane,
                 stroke=config.stroke,
                 condense=config.condense,
+                condense_glyphs=config.condense_glyphs,
                 bitmap_font=bf_row,
                 cap_px=cap_px,
                 bitmap_thin=config.bitmap_thin,
@@ -856,6 +863,7 @@ def _render_grid(
                     anchor=anchor,
                     stroke=config.stroke,
                     condense=config.condense,
+                    condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cp,
                     target_width=target_w,
@@ -874,6 +882,7 @@ def _render_grid(
                     amount_lane=lane,
                     stroke=config.stroke,
                     condense=config.condense,
+                    condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cp,
                     bitmap_thin=config.bitmap_thin,
@@ -911,6 +920,7 @@ def _render_grid(
             ink=_ink_for({}, config),
             stroke=config.stroke,
             condense=config.condense,
+            condense_glyphs=config.condense_glyphs,
             bitmap_font=dash_bmf,
             cap_px=cap_px,
             bitmap_thin=config.bitmap_thin,

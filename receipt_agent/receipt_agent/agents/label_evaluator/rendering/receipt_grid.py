@@ -412,6 +412,7 @@ def draw_token_chars(
     cap_px: int | None = None,
     right_edge_col: float | None = None,
     bitmap_thin: float = 0.0,
+    condense_glyphs: bool = False,
     x_shift_px: int = 0,
 ) -> None:
     """Draw each glyph of ``text`` at consecutive grid columns on a baseline.
@@ -464,7 +465,10 @@ def draw_token_chars(
             glyph = buf.crop(bb)
             if condense < 0.999:
                 glyph = glyph.resize(
-                    (max(1, int(round(glyph.width * condense))), glyph.height),
+                    (
+                        max(1, int(round(glyph.width * condense))),
+                        glyph.height,
+                    ),
                     Image.Resampling.NEAREST,
                 )
             if (char.isupper() or char.isdigit() or char == "$") and cap_px:
@@ -502,13 +506,24 @@ def draw_token_chars(
             if last:
                 last_res = bitmap_font.glyph(last, cap_px or spec.font_px)
                 if last_res is not None:
-                    right_shift = (spec.cell_w - last_res[0].width) / 2.0
+                    last_width = last_res[0].width
+                    if condense_glyphs and condense < 0.999:
+                        last_width = max(1, int(round(last_width * condense)))
+                    right_shift = (spec.cell_w - last_width) / 2.0
         for char in text:
             if char == " ":
                 continue
             res = bitmap_font.glyph(char, cap_px or spec.font_px)
             if res is not None:
                 gi, h, off = res
+                if condense_glyphs and condense < 0.999:
+                    gi = gi.resize(
+                        (
+                            max(1, int(round(gi.width * condense))),
+                            gi.height,
+                        ),
+                        Image.Resampling.NEAREST,
+                    )
                 x = int(
                     round(
                         spec.grid_left
@@ -589,6 +604,7 @@ def draw_text_run(
     cap_px: int | None = None,
     target_width: float | None = None,
     bitmap_thin: float = 0.0,
+    condense_glyphs: bool = False,
     box_sink: list | None = None,
     sink_words=None,
 ) -> None:
@@ -651,7 +667,10 @@ def draw_text_run(
         glyph = buf.crop(bb)
         if condense < 0.999:
             glyph = glyph.resize(
-                (max(1, int(round(glyph.width * condense))), glyph.height),
+                (
+                    max(1, int(round(glyph.width * condense))),
+                    glyph.height,
+                ),
                 Image.Resampling.NEAREST,
             )
         if (ch.isupper() or ch.isdigit() or ch == "$") and cap_px:
@@ -684,6 +703,14 @@ def draw_text_run(
         )
         if res is not None:
             glyph, h, off = res
+            if condense_glyphs and condense < 0.999:
+                glyph = glyph.resize(
+                    (
+                        max(1, int(round(glyph.width * condense))),
+                        glyph.height,
+                    ),
+                    Image.Resampling.NEAREST,
+                )
             x = int(round(pen + (advance - glyph.width) / 2.0))
             y = int(round(baseline + off - h))
             mask.paste(glyph, (x, y), glyph)
@@ -1005,6 +1032,7 @@ def draw_grid_line(
     bitmap_font=None,
     cap_px: int | None = None,
     bitmap_thin: float = 0.0,
+    condense_glyphs: bool = False,
     reverse_price: bool = False,
     reverse_date: bool = False,
     background: tuple[int, int, int] = (255, 255, 255),
@@ -1113,6 +1141,7 @@ def draw_grid_line(
             cap_px=cap_px,
             right_edge_col=placed.end_col if placed.is_price else None,
             bitmap_thin=bitmap_thin,
+            condense_glyphs=condense_glyphs,
             x_shift_px=x_shift_px,
         )
 
