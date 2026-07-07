@@ -348,6 +348,7 @@ def copy_all_images(
     prod_config: Dict[str, str],
     dry_run: bool = True,
     skip_existing: bool = True,
+    skip_empty: bool = True,
     max_workers: int = 10,
 ) -> Dict[str, Any]:
     """
@@ -363,6 +364,7 @@ def copy_all_images(
         "total_images": len(export_files),
         "copied": 0,
         "skipped": 0,
+        "skipped_empty": 0,
         "failed": 0,
         "entity_stats": {},
         "errors": [],
@@ -382,6 +384,11 @@ def copy_all_images(
                 return export_file.stem, {}, "No images in export file"
 
             image_id = images[0].get("image_id") or export_file.stem
+
+            # Skip images with no receipts (empty / failed-OCR shells).
+            # Promoting a bare Image with no receipts adds junk to prod.
+            if skip_empty and not export_data.get("receipts"):
+                return image_id, {"skipped_empty": True}, None
 
             # Check if image already exists
             if skip_existing and image_exists_in_prod(prod_client, image_id):
@@ -419,6 +426,8 @@ def copy_all_images(
             if error:
                 overall_stats["failed"] += 1
                 overall_stats["errors"].append(error)
+            elif stats.get("skipped_empty"):
+                overall_stats["skipped_empty"] += 1
             elif stats.get("skipped"):
                 overall_stats["skipped"] += 1
             else:
@@ -470,6 +479,19 @@ def main():
         help="Skip images that already exist in prod (default: True)",
     )
     parser.add_argument(
+        "--skip-empty",
+        action="store_true",
+        default=True,
+        help="Skip images with no receipts (empty/failed-OCR shells) "
+        "(default: True)",
+    )
+    parser.add_argument(
+        "--include-empty",
+        action="store_false",
+        dest="skip_empty",
+        help="Promote images even if they have no receipts",
+    )
+    parser.add_argument(
         "--max-workers",
         type=int,
         default=10,
@@ -516,6 +538,7 @@ def main():
             prod_config,
             dry_run=args.dry_run,
             skip_existing=args.skip_existing,
+            skip_empty=args.skip_empty,
             max_workers=args.max_workers,
         )
 
@@ -528,6 +551,7 @@ def main():
             f"{'Would copy' if args.dry_run else 'Copied'}: {stats['copied']}"
         )
         logger.info(f"Skipped (already exist): {stats['skipped']}")
+        logger.info(f"Skipped (no receipts/empty): {stats['skipped_empty']}")
         logger.info(f"Failed: {stats['failed']}")
 
         if stats["entity_stats"]:
