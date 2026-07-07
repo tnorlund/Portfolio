@@ -181,7 +181,7 @@
 }
 
 .progressDot[data-active="true"] {
-  background: var(--color-blue);
+  background: var(--text-color);
   transform: scale(1.18);
 }
 
@@ -191,29 +191,6 @@
 
 .progressDot[data-done="true"] {
   background: rgba(var(--text-color-rgb), 0.5);
-}
-
-/* Progress ring around the active dot: strokeDashoffset (set inline from act
-   progress) sweeps it clockwise as the autoplay dwell elapses, so the dot
-   telegraphs how long until the next act. */
-.progressRing {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 1.35rem;
-  height: 1.35rem;
-  transform: translate(-50%, -50%) rotate(-90deg);
-  pointer-events: none;
-  overflow: visible;
-}
-
-.progressRingFill {
-  fill: none;
-  stroke: var(--color-blue);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  opacity: 0.85;
-  transition: stroke-dashoffset 0.12s linear;
 }
 
 /* ---- Reduced-motion static stack ------------------------------------ */
@@ -857,7 +834,6 @@
   .fontCellHero,
   .thumb,
   .progressDot,
-  .progressRingFill,
   .finaleCard {
     transition: none;
   }
