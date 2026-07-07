@@ -19,6 +19,7 @@ export const SAMPLES = {
   vons: "/tmp/gridfix/vons_studio/vons-studio.samples.npz",
   traderjoes: "/tmp/gridfix/tj_studio/tj.refined.npz",
   cvs: "/tmp/gridfix/cvs_studio/cvs.refined.npz",
+  wildfork: "/tmp/gridfix/wildfork_studio/wildfork.refined.npz",
   innout: "/tmp/gridfix/innout_studio/innout.refined.npz",
   target: "/tmp/gridfix/target_studio/target.refined.npz",
 };
@@ -33,6 +34,7 @@ export const FONT_MERCHANTS = {
   vons: "Vons",
   traderjoes: "Trader Joe's",
   cvs: "CVS",
+  wildfork: "Wild Fork",
   innout: "In-N-Out Burger",
 };
 

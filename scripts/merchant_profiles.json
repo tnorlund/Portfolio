@@ -317,6 +317,38 @@
       "graphics": {
         "footer_codes": false
       }
+    },
+    "Wild Fork": {
+      "_comment": "Studio-minted from 12 merchant-index receipts / 11 production-loadable receipts. Mixed old/new POS structures share the same Wild Fork thermal body font; newer receipts may crop off the logo and include a footer barcode. Logo is the black/white outline WF mark derived from receipt scans, not the filled color web asset.",
+      "logo": "wildfork_logo.png",
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "wildfork.glyphs.npz",
+          "heavy": "wildfork-heavy.glyphs.npz"
+        },
+        "condense": 0.89,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.79,
+        "stylemap": "wildfork.stylemap.json",
+        "pitch_ratio": 0.538
+      },
+      "logo_anchor": {
+        "phrases": [
+          "WF"
+        ],
+        "extend_left": false,
+        "center": true,
+        "expand_x": 0.26
+      },
+      "graphics": {
+        "footer_codes": false,
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
     }
   }
 }

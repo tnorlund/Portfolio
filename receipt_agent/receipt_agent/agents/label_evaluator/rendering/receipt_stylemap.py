@@ -79,18 +79,37 @@ _INNOUT_RULES: list[tuple[str, re.Pattern]] = [
 ]
 _RULES: list[tuple[str, re.Pattern]] = [
     ("balance_due", re.compile(r"^BALANCE DUE", re.I)),
+    ("store_header", re.compile(r"^WF$|^Thousand Oaks CA$", re.I)),
     ("store_hours", re.compile(r"Store Hours|MON-SUN|7AM-10PM", re.I)),
     (
         "address",
         re.compile(
-            r"(BLVD|AVE\b|STREET|\bRD\b|,\s*CA\s+\d{5}|\(\d{3}\)\s*\d{3})",
+            r"(BLVD|BLYD|BIVD|WESTLAKE|AVE\b|STREET|\bRD\b|,\s*CA\s+\d{5}|"
+            r"\(\d{3}\)\s*\d{3}|\b\d{1}-\d{3}-\d{3}-\d{4}\b)",
             re.I,
         ),
     ),
-    ("total_line", re.compile(r"^Total:", re.I)),
+    ("policy", re.compile(r"FEFO|returns|refunds|exchanges", re.I)),
+    (
+        "transaction",
+        re.compile(
+            r"Ticket\s?#|Station:|Sales Rep|User:|"
+            r"^\d{1,2}/\d{1,2}/\d{4}",
+            re.I,
+        ),
+    ),
+    (
+        "item_header",
+        re.compile(r"^(Item|Description)\b|Qty|Uty|Price\s+Total", re.I),
+    ),
+    ("total_line", re.compile(r"^\s*(Subtotal|Total)\b(?!\s*Tax)", re.I)),
     (
         "summary",
-        re.compile(r"CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I),
+        re.compile(
+            r"CHANGE\b|CREDIT\b|^TAX\b|DEBIT\s*$|Total Tax|"
+            r"quantity purchased|items purchased",
+            re.I,
+        ),
     ),
     (
         "payment",
@@ -109,7 +128,9 @@ _RULES: list[tuple[str, re.Pattern]] = [
         "footer",
         re.compile(
             r"Cashier|POS:|Transaction|Save money|weekly ad|sprouts\.com|"
-            r"original receipt|returns|Limits apply",
+            r"original receipt|returns|Limits apply|CAREERS|Forkies|"
+            r"Nourish Better Lives|Visit Link|Scan QR|pages/careers|"
+            r"wildforkfoods|gettingmymail",
             re.I,
         ),
     ),

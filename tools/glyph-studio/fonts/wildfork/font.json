@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "name": "wildfork",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350,
+  "pitchRatioTarget": 0.538,
+  "pitchRatioNote": "median OCR word pitch / cap across 11 loadable Wild Fork receipts"
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 73.5,
+   "pitch": 0.4
+  },
+  "weight": 1.4,
+  "trackingScale": 1.0,
+  "slant": 0.0,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 0.995,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {
+  "merchant": "Wild Fork",
+  "imageId": "f008ea77-272b-4554-b8a6-e1676ec6a088",
+  "receiptId": 1
+ }
+}

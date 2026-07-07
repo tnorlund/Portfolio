@@ -582,6 +582,33 @@ def specs(W: float) -> dict:
                 ],
             },
         ],
+        "$": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(Rt - 40, 790, h_in=(Rt - 60, 900)),
+                    node(
+                        M,
+                        CAP,
+                        h_in=(M + 120, CAP),
+                        h_out=(M - 120, CAP),
+                        smooth=True,
+                    ),
+                    node(L + 15, 735, h_in=(L, 860), h_out=(L, 610)),
+                    node(Rt - 15, 300, h_in=(Rt, 440), h_out=(Rt, 170)),
+                    node(
+                        M,
+                        BASE,
+                        h_in=(M + 120, BASE),
+                        h_out=(M - 120, BASE),
+                        smooth=True,
+                    ),
+                    node(L + 40, 210, h_in=(L + 60, 100)),
+                ],
+            },
+            line((M, CAP + 80), (M, BASE - 80)),
+        ],
+        "|": [line((M, CAP), (M, BASE))],
         "{": [
             {
                 "closed": False,
@@ -675,6 +702,8 @@ DEFAULT_W = {
     "g": 520,
     "n": 520,
     "m": 640,
+             "$": 540,
+             "|": 180,
     "q": 520,
     "j": 300,
     "!": 160,
