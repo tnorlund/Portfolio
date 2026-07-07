@@ -70,7 +70,34 @@ _VONS_RULES = [
     ("points", re.compile(r"POINTS|REWARDS|GAS REWARD|fuel", re.I)),
     ("footer", re.compile(r"Thank You|vons\.com|Your Cashier|survey|TWICE THE DIFFERENCE", re.I)),
 ]
-_MERCHANT_RULES = {"sprouts": _RULES, "costco": _COSTCO_RULES, "vons": _VONS_RULES}
+_TJ_RULES = [
+    ("store_header", re.compile(r"TRADER JOE'?S|Store\s?#\s?\d|OPEN 8:00AM|THANK YOU FOR SHOPPING|traderjoes\.com", re.I)),
+    ("address", re.compile(r"(BLVD|AVE\b|STREET|\bRD\b|Parkway|Henderson|,\s*(CA|NV)\s+\d{5}|^\d{5}$|\d{3}[- ]\d{3}[- ]?\d{4})", re.I)),
+    ("qty_line", re.compile(r"^\d+\s*@\s*\$\d")),
+    ("total_line", re.compile(r"TOTAL PURCHASE|Balance to pay", re.I)),
+    ("summary", re.compile(r"Items in Transaction|^TAX\b|SUBTOTAL", re.I)),
+    ("payment", re.compile(
+        r"SALE TRANSACTION|PAYMENT CARD|US DEBIT|VISA|MASTERCARD|Auth Code|"
+        r"TID:|TVR|Cardholder|PIN Verified|\*{4,}|CUSTOMER COPY|TRANS\.|TILL", re.I)),
+    ("footer", re.compile(r"Please retain|records|DATE\b|STORE\b|TIME\b", re.I)),
+]
+_CVS_RULES = [
+    ("store_header", re.compile(r"CVS\s*pharmacy|•CVS", re.I)),
+    ("reg_line", re.compile(r"REG#\d+|TRN#\d+|CSHR#|STR#", re.I)),
+    ("extracare", re.compile(r"ExtraCare|ExtraBucks|Reward|Earn\b", re.I)),
+    ("pharmacy", re.compile(r"RX\s?#|vaccin|pharmacist|prescription|shingles|Tdap|RSV|insurance", re.I)),
+    ("fsa", re.compile(r"FSA|FLEXIBLE SPENDING|Eligible Total", re.I)),
+    ("total_line", re.compile(r"^\s*TOTAL\b|^CHARGE\b", re.I)),
+    ("summary", re.compile(r"SUBTOTAL|^TAX\b|\d+\.\d{2}N\s*$", re.I)),
+    ("payment", re.compile(
+        r"AID:|TVR|TSI|CVM:|TC:|REF#|MASTERCARD|VISA|DEBIT|PIN VERIFIED|"
+        r"TRAN TYPE|\*{4,}|CHIP|TERMINAL", re.I)),
+    ("footer", re.compile(
+        r"THANK YOU|Return Policy|Returns\b|with receipt|State law|Scan the QR|"
+        r"CVS\.\s?COM|Helped by|Subject to", re.I)),
+]
+_MERCHANT_RULES = {"sprouts": _RULES, "costco": _COSTCO_RULES, "vons": _VONS_RULES,
+                   "traderjoes": _TJ_RULES, "cvs": _CVS_RULES}
 
 
 def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:

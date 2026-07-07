@@ -1,0 +1,138 @@
+{
+ "version": 1,
+ "char": "v",
+ "codepoint": 118,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "sprouts.samples.npz",
+  "samples": 6,
+  "consensusHash": "47e9c304a2b0",
+  "date": "2026-07-07"
+ },
+ "width": 647.0,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 34.6,
+     "y": 477.8,
+     "type": "corner",
+     "hOut": {
+      "x": 35.418854560027995,
+      "y": 358.5077788686609
+     }
+    },
+    {
+     "x": 84.6,
+     "y": 40.4,
+     "type": "corner",
+     "hIn": {
+      "x": 22.766726558433426,
+      "y": 139.1
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 434.6,
+     "y": 40.4,
+     "type": "corner"
+    },
+    {
+     "x": 434.6,
+     "y": 212.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 195.7,
+     "y": 659.6,
+     "type": "corner"
+    },
+    {
+     "x": 246.8,
+     "y": 659.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 231.8,
+     "y": 659.6,
+     "type": "corner"
+    },
+    {
+     "x": 249.1,
+     "y": 659.6,
+     "type": "corner"
+    },
+    {
+     "x": 249.1,
+     "y": 659.6,
+     "type": "corner"
+    },
+    {
+     "x": 334.90338821852885,
+     "y": 303.15604649147247,
+     "type": "corner"
+    },
+    {
+     "x": 390.8,
+     "y": 204.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 479.4,
+     "y": 238.5,
+     "type": "corner",
+     "hOut": {
+      "x": 550.0796427248183,
+      "y": 352.4441513018305
+     }
+    },
+    {
+     "x": 612.4,
+     "y": 659.6,
+     "type": "corner",
+     "hIn": {
+      "x": 594.9528353964371,
+      "y": 526.3
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 479.4,
+     "y": 238.5,
+     "type": "corner"
+    },
+    {
+     "x": 334.6,
+     "y": 194.4,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

@@ -364,6 +364,11 @@ def token_start_col(
     return round((left - spec.grid_left) / spec.cell_w)
 
 
+def _has_descender(text: str) -> bool:
+    """True when any glyph's ink extends below the baseline."""
+    return any(c in "gjpqy,;()[]{}$" for c in str(text or ""))
+
+
 def draw_token_chars(
     draw: ImageDraw.ImageDraw,
     text: str,
@@ -637,10 +642,11 @@ def draw_text_run(
                 continue
             x0m = pad + ci * advance
             x1m = pad + (ci + n) * advance
+            desc = 0.22 * cap if _has_descender(wtext) else 0.04 * cap
             box_sink.append({
                 "word_index": getattr(w, "word_index", None),
                 "px": (x + (x0m - bb[0]), baseline_y - cap,
-                       x + (x1m - bb[0]), baseline_y + 0.25 * cap),
+                       x + (x1m - bb[0]), baseline_y + desc),
             })
             ci += n + 1  # the joining space
 
@@ -929,9 +935,10 @@ def draw_grid_line(
         for p in placed_row:
             x0 = spec.grid_left + p.start_col * spec.cell_w
             x1 = x0 + p.cells * spec.cell_w
+            desc = 0.22 * cap if _has_descender(p.draw_text) else 0.04 * cap
             box_sink.append({
                 "word_index": getattr(p.word, "word_index", None),
-                "px": (x0, baseline_y - cap, x1, baseline_y + 0.25 * cap),
+                "px": (x0, baseline_y - cap, x1, baseline_y + desc),
             })
     if center_to is not None and placed_row:
         span_l = spec.grid_left + min(p.start_col for p in placed_row) * spec.cell_w

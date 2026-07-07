@@ -193,6 +193,18 @@ def specs(W: float) -> dict:
               ]}],
         "i": [circle(M, 830, 40, 40),
               line((M, BASE), (M, XH))],
+        "q": [circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0),
+              line((Rt, XH), (Rt, DESC))],
+        "j": [circle(M + 40, 830, 40, 40),
+              {"closed": False, "nodes": [
+                  node(M + 40, XH),
+                  node(M + 40, DESC + 160, h_out=(M + 40, DESC + 40)),
+                  node(M - 60, DESC, h_in=(M + 10, DESC - 20)),
+              ]}],
+        "!": [line((M, CAP), (M, 340)),
+              circle(M, 60, 40, 40)],
+        "+": [line((M, 660), (M, 240)),
+              line((L + 10, 450), (Rt - 10, 450))],
         "{": [{"closed": False, "nodes": [
                   node(Rt - 20, CAP, h_out=(M - 60, CAP)),
                   node(M - 20, 780, h_in=(M - 20, 900), smooth=True),
@@ -220,7 +232,8 @@ DEFAULT_W = {"K": 560, "M": 640, "N": 580, "V": 580, "W": 660, "X": 560,
              "k": 520, "%": 620, "#": 560, '"': 320, "^": 460, "`": 220,
              ";": 220, "?": 460, "{": 340, "}": 340,
              "o": 500, "e": 500, "a": 500, "u": 500, "h": 520, "i": 220,
-             "O": 580, "Q": 600, "U": 560, "R": 560, "&": 620, "S": 540}
+             "O": 580, "Q": 600, "U": 560, "R": 560, "&": 620, "S": 540,
+             "q": 520, "j": 300, "!": 160, "+": 460}
 
 
 def main(argv=None) -> int:

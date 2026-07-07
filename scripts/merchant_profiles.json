@@ -177,6 +177,81 @@
         "stroke": 0
       },
       "logo": "gelsons_logo.png"
+    },
+    "Trader Joe's": {
+      "_comment": "Studio-minted from 20 pooled receipts (refined corpus). All-caps body, single style fleet-wide; wordmark header replaced by logo overlay.",
+      "aliases": [
+        "TRADER JOE'S",
+        "Trader Joe's Store #0058"
+      ],
+      "logo": "traderjoes_logo.png",
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "traderjoes.glyphs.npz",
+          "heavy": "traderjoes-heavy.glyphs.npz"
+        },
+        "condense": 1.033,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.72,
+        "stylemap": "traderjoes.stylemap.json",
+        "pitch_ratio": 0.499
+      },
+      "logo_anchor": {
+        "phrases": [
+          "TRADER JOE'S"
+        ],
+        "extend_left": false,
+        "center": true
+      },
+      "graphics": {
+        "footer_codes": false,
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
+    },
+    "CVS": {
+      "_comment": "Studio-minted from 20 pooled receipts (refined corpus). Mixed-case body; bold ExtraCare/FSA rows via stylemap; CVSpharmacy wordmark replaced by logo overlay.",
+      "aliases": [
+        "CVS pharmacy",
+        "CVS Pharmacy",
+        "CVS pharmacy®"
+      ],
+      "logo": "cvs_logo.png",
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "cvs.glyphs.npz",
+          "heavy": "cvs-heavy.glyphs.npz"
+        },
+        "condense": 0.962,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.858,
+        "stylemap": "cvs.stylemap.json",
+        "pitch_ratio": 0.551
+      },
+      "logo_anchor": {
+        "phrases": [
+          "CVS pharmacy",
+          "•CVS pharmacy",
+          "CVS pharmacy®",
+          "pharmacy",
+          "pharmacy®",
+          "• CVS",
+          "•CVS",
+          "• CVS pharmacy"
+        ],
+        "extend_left": false,
+        "center": true
+      },
+      "graphics": {
+        "footer_codes": false
+      }
     }
   }
 }

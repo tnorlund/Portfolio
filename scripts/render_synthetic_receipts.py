@@ -876,8 +876,21 @@ def load_merchant_profiles(refresh: bool = False) -> dict:
 
 
 def get_merchant_profile(merchant: str | None) -> dict:
-    """The registry record for ``merchant`` (exact match), or ``{}`` if absent."""
-    return load_merchant_profiles().get(merchant or "", {})
+    """The registry record for ``merchant`` (exact match, then declared alias).
+
+    Dynamo holds name variants of the same store ("TRADER JOE'S", "CVS
+    pharmacy(r)"); a profile lists those under "aliases" so every variant
+    resolves to the one canonical record.
+    """
+    profiles = load_merchant_profiles()
+    name = merchant or ""
+    hit = profiles.get(name)
+    if hit is not None:
+        return hit
+    for record in profiles.values():
+        if name in record.get("aliases", ()):
+            return record
+    return {}
 
 
 def section_scale_for_merchant(merchant: str | None) -> dict:
@@ -1851,9 +1864,34 @@ def _overlay_inbody_barcodes(
             inner_w=inner_w, inner_h=inner_h,
         )
         px.append((w, min(t, b), max(t, b), min(l, r), max(l, r)))
+    # Candidates: single long-numeric words (Costco's transaction id), then
+    # whole lines of short numeric groups (CVS prints "3509 7154 1225 8071 11"
+    # as five words -- no single word clears the HRI length bar, but the line
+    # does). Line candidates run AFTER word candidates so merchants that match
+    # on words are byte-identical.
+    candidates: list[tuple[str | None, float, float, float, float]] = [
+        (_hri_digits(w.get("text")), top, bot, left, right)
+        for (w, top, bot, left, right) in px
+    ]
+    by_line: dict = {}
+    for (w, top, bot, left, right) in px:
+        by_line.setdefault(w.get("line_id"), []).append((w, top, bot, left, right))
+    for line_id, group in sorted(by_line.items(), key=lambda kv: str(kv[0])):
+        if line_id is None or len(group) < 2:
+            continue
+        texts = [g[0].get("text") or "" for g in group]
+        if not all(re.fullmatch(r"\d{1,9}", t) for t in texts):
+            continue
+        joined = "".join(texts)
+        if len(joined) < 10:
+            continue
+        candidates.append((
+            joined,
+            min(g[1] for g in group), max(g[2] for g in group),
+            min(g[3] for g in group), max(g[4] for g in group),
+        ))
     stamped_bands: list[tuple[float, float]] = []
-    for i, (w, top, bot, left, right) in enumerate(px):
-        digits = _hri_digits(w.get("text"))
+    for i, (digits, top, bot, left, right) in enumerate(candidates):
         if digits is None:
             continue
         # nearest content bottom strictly above this line
@@ -1901,6 +1939,11 @@ def _overlay_qr_and_barcode(
     # it -- stamping one anyway drops a stray barcode into whatever blank band
     # exists (e.g. up by the header). Skip the footer graphic in that case.
     if reserved:
+        return
+    # Some merchants print no QR/barcode anywhere (Trader Joe's) — a profile
+    # opts out with graphics.footer_codes: false. Default stays on.
+    if not graphics_for_merchant(receipt.get("merchant_name")).get(
+            "footer_codes", True):
         return
     boxes = _iter_receipt_bboxes(receipt)
     if not boxes:

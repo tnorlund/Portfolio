@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 
 import numpy as np
@@ -54,7 +55,11 @@ COLLINEAR_DEG = 3.0
 AXIS_SNAP_UNITS = 8.0
 GUIDE_SNAP = 80.0
 KAPPA = 0.5522847498
-SAMPLES_PATH = "/tmp/gridfix/sprouts_demo/sprouts.samples.npz"
+# The fidelity gate compares candidates against THIS corpus — it must match the
+# font being simplified (the MCP server passes the right one per font).
+SAMPLES_PATH = os.environ.get(
+    "GLYPHSTUDIO_SAMPLES", "/tmp/gridfix/sprouts_demo/sprouts.samples.npz"
+)
 
 IOU_ACCEPT = 0.985
 IOU_REJECT = 0.97

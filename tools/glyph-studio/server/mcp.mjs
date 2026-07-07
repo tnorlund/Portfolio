@@ -511,7 +511,10 @@ server.registerTool(
     try {
       const { stdout } = await execFileP(PYTHON, args, {
         cwd: path.join(STUDIO_ROOT, "py"),
-        env: PY_ENV,
+        // fidelity gate must judge against THIS font's corpus, not the default
+        env: SAMPLES[font]
+          ? { ...PY_ENV, GLYPHSTUDIO_SAMPLES: SAMPLES[font] }
+          : PY_ENV,
         timeout: 300000,
         maxBuffer: 64 * 1024 * 1024,
       });

@@ -11,7 +11,7 @@ from gone and invisible to any other machine. Now:
   $BITMATRIX_DIR                                   <- local cache, refreshed
 
 Faces: "regular" from the font sources as-is; "heavy" from the same
-skeletons compiled at params.weight = HEAVY_WEIGHT (the fleet-measured
+skeletons compiled at the regular weight x HEAVY_RATIO (the fleet-measured
 BALANCE DUE +33% stroke).
 
 Usage:
@@ -39,7 +39,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _STUDIO_PY = os.path.join(_HERE, "..", "tools", "glyph-studio", "py")
 sys.path.insert(0, os.path.abspath(_STUDIO_PY))
 
-HEAVY_WEIGHT = 1.33
+# Heavy is RELATIVE to the face's own regular weight (stylescan strokes
+# measure bold ~1.33x body for every merchant so far). Weight-1.0 fonts
+# compile byte-identically to the old absolute 1.33 constant.
+HEAVY_RATIO = 1.33
 DEFAULT_BUCKET = os.environ.get(
     "MERCHANT_FONT_BUCKET", "raw-image-bucket-c779c32"
 )
@@ -106,7 +109,7 @@ def _heavy_variant_dir(font_dir: str, tmp: str) -> str:
     shutil.copytree(font_dir, hdir)
     fpath = os.path.join(hdir, "font.json")
     font = json.load(open(fpath, encoding="utf-8"))
-    font["params"]["weight"] = HEAVY_WEIGHT
+    font["params"]["weight"] = round(float(font["params"].get("weight", 1.0)) * HEAVY_RATIO, 4)
     json.dump(font, open(fpath, "w", encoding="utf-8"), indent=1)
     return hdir
 
