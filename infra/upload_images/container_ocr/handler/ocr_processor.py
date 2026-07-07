@@ -1578,11 +1578,21 @@ class OCRProcessor:
                 top_right["x"] - top_left["x"],
             )
             raw_confidence = data.get("confidence")
-            confidence = (
-                1.0
-                if raw_confidence is None
-                else min(1.0, max(0.01, float(raw_confidence)))
-            )
+            try:
+                confidence = (
+                    1.0
+                    if raw_confidence is None
+                    else min(1.0, max(0.01, float(raw_confidence)))
+                )
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Skipping barcode %s with malformed confidence %r "
+                    "for receipt %s",
+                    idx,
+                    raw_confidence,
+                    receipt_id,
+                )
+                continue
             # Vision prepends a mode/ECI control byte to some payloads (e.g. QR
             # byte-mode: "\x1ahttps://..."); strip leading/trailing C0 controls.
             payload = (data.get("payload") or "").strip(_BARCODE_CTRL_CHARS)
