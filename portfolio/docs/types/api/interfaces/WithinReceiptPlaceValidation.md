@@ -6,7 +6,7 @@
 
 # Interface: WithinReceiptPlaceValidation
 
-Defined in: [types/api.ts:920](https://github.com/tnorlund/Portfolio/blob/66786608806d6db598b3e98e6c671ccde63a6e5f/portfolio/types/api.ts#L920)
+Defined in: [types/api.ts:920](https://github.com/tnorlund/Portfolio/blob/3f22d5637b0a0e0afca2e040438937860d211c37/portfolio/types/api.ts#L920)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:920](https://github.com/tnorlund/Portfolio/blob/667866
 
 > **decisions**: [`WithinReceiptWordDecision`](WithinReceiptWordDecision.md)[]
 
-Defined in: [types/api.ts:922](https://github.com/tnorlund/Portfolio/blob/66786608806d6db598b3e98e6c671ccde63a6e5f/portfolio/types/api.ts#L922)
+Defined in: [types/api.ts:922](https://github.com/tnorlund/Portfolio/blob/3f22d5637b0a0e0afca2e040438937860d211c37/portfolio/types/api.ts#L922)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:922](https://github.com/tnorlund/Portfolio/blob/667866
 
 > **duration\_seconds**: `number` \| `null`
 
-Defined in: [types/api.ts:929](https://github.com/tnorlund/Portfolio/blob/66786608806d6db598b3e98e6c671ccde63a6e5f/portfolio/types/api.ts#L929)
+Defined in: [types/api.ts:929](https://github.com/tnorlund/Portfolio/blob/3f22d5637b0a0e0afca2e040438937860d211c37/portfolio/types/api.ts#L929)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:929](https://github.com/tnorlund/Portfolio/blob/667866
 
 > **is\_llm**: `boolean`
 
-Defined in: [types/api.ts:930](https://github.com/tnorlund/Portfolio/blob/66786608806d6db598b3e98e6c671ccde63a6e5f/portfolio/types/api.ts#L930)
+Defined in: [types/api.ts:930](https://github.com/tnorlund/Portfolio/blob/3f22d5637b0a0e0afca2e040438937860d211c37/portfolio/types/api.ts#L930)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:930](https://github.com/tnorlund/Portfolio/blob/667866
 
 > **place**: [`WithinReceiptPlaceInfo`](WithinReceiptPlaceInfo.md) \| `null`
 
-Defined in: [types/api.ts:921](https://github.com/tnorlund/Portfolio/blob/66786608806d6db598b3e98e6c671ccde63a6e5f/portfolio/types/api.ts#L921)
+Defined in: [types/api.ts:921](https://github.com/tnorlund/Portfolio/blob/3f22d5637b0a0e0afca2e040438937860d211c37/portfolio/types/api.ts#L921)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:921](https://github.com/tnorlund/Portfolio/blob/667866
 
 > **summary**: `object`
 
-Defined in: [types/api.ts:923](https://github.com/tnorlund/Portfolio/blob/66786608806d6db598b3e98e6c671ccde63a6e5f/portfolio/types/api.ts#L923)
+Defined in: [types/api.ts:923](https://github.com/tnorlund/Portfolio/blob/3f22d5637b0a0e0afca2e040438937860d211c37/portfolio/types/api.ts#L923)
 
 #### invalid
 
