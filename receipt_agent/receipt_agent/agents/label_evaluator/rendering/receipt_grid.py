@@ -189,6 +189,8 @@ class GridWord:
     # row that fuses words from more than one printed line. ``None`` falls back to
     # a vertical-extent heuristic.
     source_line: int | None = None
+    # Index of the source word in the render input (box-sink identity).
+    word_index: int | None = None
     # Receipt section (HEADER / BODY / TOTALS / PAYMENT), derived from the word's
     # labels. Lets the renderer print each section at its own size/font, the way
     # real thermal receipts switch between Font A / Font B per region.
@@ -518,6 +520,8 @@ def draw_text_run(
     cap_px: int | None = None,
     target_width: float | None = None,
     bitmap_thin: float = 0.0,
+    box_sink: list | None = None,
+    sink_words=None,
 ) -> None:
     """Render a whole text row, then align by its visible ink bounds.
 
@@ -621,6 +625,24 @@ def draw_text_run(
         x = int(round(anchor_x))
     y = int(round(baseline_y + bb[1] - baseline))
     img.paste(Image.new("RGB", crop.size, ink), (x, y), crop)
+    if box_sink is not None and sink_words:
+        # Per-word boxes from the run layout: chars advance uniformly, the
+        # mask was cropped to bb and pasted at x -- map char spans through.
+        cap = float(cap_px or spec.font_px)
+        ci = 0
+        for w in sink_words:
+            wtext = str(getattr(w, "text", "") or "")
+            n = len(wtext)
+            if n == 0:
+                continue
+            x0m = pad + ci * advance
+            x1m = pad + (ci + n) * advance
+            box_sink.append({
+                "word_index": getattr(w, "word_index", None),
+                "px": (x + (x0m - bb[0]), baseline_y - cap,
+                       x + (x1m - bb[0]), baseline_y + 0.25 * cap),
+            })
+            ci += n + 1  # the joining space
 
 
 @dataclass
@@ -884,6 +906,7 @@ def draw_grid_line(
     center_to: float | None = None,
     price_box_extend_cells: int = 4,
     x_shift_px: int = 0,
+    box_sink: list | None = None,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
 
@@ -899,6 +922,17 @@ def draw_grid_line(
     placed_row = plan_grid_line(line, spec, amount_lane=amount_lane)
     if center_to is None and placed_row:
         _right_align_source_segments(placed_row, spec)
+    def _record_boxes():
+        if box_sink is None:
+            return
+        cap = float(cap_px or spec.font_px)
+        for p in placed_row:
+            x0 = spec.grid_left + p.start_col * spec.cell_w
+            x1 = x0 + p.cells * spec.cell_w
+            box_sink.append({
+                "word_index": getattr(p.word, "word_index", None),
+                "px": (x0, baseline_y - cap, x1, baseline_y + 0.25 * cap),
+            })
     if center_to is not None and placed_row:
         span_l = spec.grid_left + min(p.start_col for p in placed_row) * spec.cell_w
         span_r = spec.grid_left + max(p.end_col for p in placed_row) * spec.cell_w
@@ -906,6 +940,7 @@ def draw_grid_line(
         if abs(shift) > 1e-6:
             for p in placed_row:
                 p.start_col += shift
+    _record_boxes()
     for i, placed in enumerate(placed_row):
         ink = placed.word.ink
         # price -> box extends LEFT into the amount lane; date -> tight box.

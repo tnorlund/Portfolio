@@ -129,6 +129,9 @@ class RenderConfig:
     section_scale: Mapping[str, float] | None = None
     # Measured per-section style rules (Glyph Studio stylemap); None = off.
     stylemap: Mapping[str, Any] | None = None
+    # When a list is supplied, every drawn word appends its EXACT placement
+    # ({word_index, px box}) -- render-true ground-truth boxes for labels.
+    box_sink: list | None = None
     section_font: Mapping[str, str] | None = None
     # Per-merchant grid-font shaping (measured against the real receipts):
     # ``condense`` horizontally compresses every glyph (real faces are more
@@ -438,6 +441,7 @@ def _render_grid(
                 bottom=bottom,
                 text=text,
                 ink=_ink_for(word, config),
+                word_index=word.get("_box_index"),
                 source_line=_source_line_id(word),
                 section=section_for_labels(word.get("labels")),
             )
@@ -689,7 +693,8 @@ def _render_grid(
                               anchor=anchor, stroke=config.stroke,
                               condense=config.condense, bitmap_font=bf_row,
                               cap_px=cap_px, target_width=target_w,
-                              bitmap_thin=config.bitmap_thin)
+                              bitmap_thin=config.bitmap_thin,
+                              box_sink=config.box_sink, sink_words=line)
                 continue
             draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
                            stroke=config.stroke, condense=config.condense,
@@ -697,7 +702,8 @@ def _render_grid(
                            bitmap_thin=config.bitmap_thin,
                            reverse_price=is_total, reverse_date=is_date_row,
                            background=config.background, center_to=center_to,
-                           price_box_extend_cells=config.reverse_box_lane_cells)
+                           price_box_extend_cells=config.reverse_box_lane_cells,
+                           box_sink=config.box_sink)
             continue
         key = (fpath, sc, bf_row is bmf_heavy)
         cached = row_cache.get(key)
@@ -740,7 +746,9 @@ def _render_grid(
                               anchor=anchor, stroke=config.stroke,
                               condense=config.condense, bitmap_font=bf_row,
                               cap_px=cp, target_width=target_w,
-                              bitmap_thin=config.bitmap_thin)
+                              bitmap_thin=config.bitmap_thin,
+                              box_sink=config.box_sink if dx == 0 else None,
+                              sink_words=line)
         else:
             for dx in ((0, 1) if sm_bold else (0,)):
                 draw_grid_line(draw, line, baseline, row_spec, row_font,
@@ -751,7 +759,8 @@ def _render_grid(
                                reverse_price=is_total, reverse_date=is_date_row,
                                background=config.background, center_to=center_to,
                                price_box_extend_cells=config.reverse_box_lane_cells,
-                               x_shift_px=dx)
+                               x_shift_px=dx,
+                               box_sink=config.box_sink if dx == 0 else None)
         if sm_underline:
             # Measured underline rule: hugs the baseline like the real prints
             # (the fleet probe found rules INSIDE the OCR boxes' bottom edge).
