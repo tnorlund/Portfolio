@@ -23,7 +23,7 @@ dev = [
     "flake8>=7.0.0",  # Added version specification
     "mypy>=1.19.0",
     "pytest>=9.1.0",  # Added version specification
-    "pytest-cov>=6.0.0",  # Added version specification
+    "pytest-cov>=7.1.0",  # Added version specification
 ]
 
 [tool.hatch.build.targets.wheel]
