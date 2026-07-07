@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "char": "-",
+ "codepoint": 45,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "sprouts.samples.npz",
+  "samples": 39,
+  "consensusHash": "76c3cdcda333",
+  "date": "2026-07-07"
+ },
+ "width": 456.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 56.0,
+     "y": 522.2,
+     "type": "corner"
+    },
+    {
+     "x": 400.5,
+     "y": 522.2,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

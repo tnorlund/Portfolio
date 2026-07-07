@@ -209,12 +209,51 @@ _CVS_RULES = [
         ),
     ),
 ]
+_WILDFORK_RULES = [
+    (
+        "store_header",
+        re.compile(r"^WF$|Thousand Oaks CA|Wild Fork|wildforkfoods", re.I),
+    ),
+    (
+        "address",
+        re.compile(
+            r"(Westlake|Blvd\.?|,\s*CA\s+\d{5}|^\d{3}\s*S\.|"
+            r"1-833-300-9453)",
+            re.I,
+        ),
+    ),
+    ("policy", re.compile(r"FEFO|returns|refunds|exchanges", re.I)),
+    (
+        "transaction",
+        re.compile(r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I),
+    ),
+    ("item_header", re.compile(r"^(Item|Description)\b|Qty|Uty|Price|Total", re.I)),
+    ("total_line", re.compile(r"^\s*Total\b(?! Tax)|^\s*Subtotal\b", re.I)),
+    ("summary", re.compile(r"Total Tax|quantity purchased|items purchased", re.I)),
+    (
+        "payment",
+        re.compile(
+            r"Tender:|VISA|MASTERCARD|DEBIT|Batch:|Auth:|Entry Method|"
+            r"AID:|TVR:|AC:|CVM:|Authorization Mode|X{6,}",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"CAREERS|Forkies|Nourish Better Lives|Visit Link|Scan QR|"
+            r"pages/careers|gettingmymail",
+            re.I,
+        ),
+    ),
+]
 _MERCHANT_RULES = {
     "sprouts": _RULES,
     "costco": _COSTCO_RULES,
     "vons": _VONS_RULES,
     "traderjoes": _TJ_RULES,
     "cvs": _CVS_RULES,
+    "wildfork": _WILDFORK_RULES,
 }
 
 

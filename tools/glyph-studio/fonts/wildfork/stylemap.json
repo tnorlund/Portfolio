@@ -1,0 +1,96 @@
+{
+ "version": 1,
+ "source": {
+  "receipts": 11,
+  "scan_dir": "/tmp/gridfix/wildfork_studio/scans",
+  "lines_measured": 408,
+  "date": "2026-07-07",
+  "notes": "Wild Fork corpus has 12 merchant-index receipts, but 1356d23f-b0ce-4abe-989b-e123d82b67f0 #2 fails the production receipt loader. The merchant list, summary index, and detail index also disagree at 14/13/12 records."
+ },
+ "sections": {
+  "store_header": {
+   "sizeScale": 1.7,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=22. This bucket mixes the large outline WF logo and the large city line. The WF mark is rendered by the logo overlay and suppressed as text; the remaining Thousand Oaks CA header prints about 1.7x body height."
+  },
+  "address": {
+   "sizeScale": 1.08,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=31. Address and phone sit just above body scale on the clean rows (cap_rel med 1.032, street/city rows around 1.05), so render at 1.08x to preserve the visible top-block hierarchy."
+  },
+  "policy": {
+   "sizeScale": 1.04,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=11. FEFO policy line is slightly taller but lighter (cap_rel med 1.114, stroke_rel med 0.962); use a modest bump to avoid double-counting OCR box height."
+  },
+  "transaction": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=31. Ticket/station/user/date rows are body-style (cap_rel med 0.978, stroke_rel med 1.005)."
+  },
+  "item_header": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=54. Item/Description/Qty/Price/Total header rows are body-style (cap_rel med 1.023, stroke_rel med 1.038)."
+  },
+  "item": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=79. Item rows are body-style (cap_rel med 1.056, stroke_rel med 1.018)."
+  },
+  "total_line": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "Subtotal/Total rows are plain body on the sampled Wild Fork receipts; the horizontal separator dashes are source OCR artifacts, not a font weight change."
+  },
+  "summary": {
+   "sizeScale": 0.95,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=5. Item-count / quantity-purchased footer summary is slightly smaller (cap_rel med 0.920)."
+  },
+  "payment": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.01,
+   "notes": "n=91. Tender/auth/EMV block is body-style (cap_rel med 0.978, stroke_rel med 0.995)."
+  },
+  "footer": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "n=11. CAREERS / Forkies / wildforkfoods footer is body-style (cap_rel med 1.000, stroke_rel med 0.989)."
+  },
+  "barcode_caption": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "Newer receipts can include a footer barcode and human-readable caption; keep caption body-size."
+  },
+  "other": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.01,
+   "notes": "n=72. Residual OCR rows behave like body text (cap_rel med 0.957, stroke_rel med 0.981)."
+  }
+ }
+}

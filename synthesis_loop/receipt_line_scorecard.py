@@ -402,10 +402,12 @@ def _colon_gap_scores(
             continue
         real_gap = real_right.left - real_left.right  # type: ignore[union-attr]
         synth_gap = synth_right.left - synth_left.right  # type: ignore[union-attr]
-        # Only score "KEY:VALUE" joins that are actually close in the real ink.
+        # Only score "KEY:VALUE" joins that are actually separated in the real
+        # ink. OCR boxes for long values can overlap the label crop by a few px;
+        # treating overlap-vs-overlap as a spacing error produces false blockers.
         # Right-column labels like "Mode:     Issuer" are alignment problems, not
         # colon-spacing problems.
-        if real_gap < -6.0 or real_gap > 24.0:
+        if real_gap <= 0.0 or real_gap > 24.0:
             continue
         scores.append(
             {

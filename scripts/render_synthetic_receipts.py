@@ -1415,6 +1415,7 @@ def _render_cached_hybrid(
                 coord_max=1000.0,
                 center=anchor_cfg.get("center", False),
                 extend_left=anchor_cfg.get("extend_left", True),
+                expand_x=anchor_cfg.get("expand_x", 0.0),
             )
         if placed is not None:
             drop_words, logo_bbox = placed
@@ -2292,6 +2293,7 @@ def _phrase_logo_placement(
     coord_max,
     extend_left=True,
     center=False,
+    expand_x=0.0,
 ):
     """Place a top-of-receipt logo lockup that has NO ``MERCHANT_NAME`` anchor.
 
@@ -2334,11 +2336,16 @@ def _phrase_logo_placement(
     by0, by1 = min(band[1], band[3]), max(band[1], band[3])
     if extend_left:
         bx0 = 0.0
+    if expand_x:
+        pad = max(0.0, bx1 - bx0) * float(expand_x)
+        bx0 -= pad
+        bx1 += pad
     if center:
         # Real receipts center the wordmark; the OCR'd anchor phrase sits
         # wherever the scan put it, so recenter the band at half coord width.
         half = (bx1 - bx0) / 2.0
         bx0, bx1 = coord_max / 2.0 - half, coord_max / 2.0 + half
+    bx0, bx1 = max(0.0, bx0), min(coord_max, bx1)
     # Size the band to the logo's pixel aspect so the wordmark fills its footprint
     # exactly (no over-wide white-out erasing neighbouring rows).
     inner_w = config.width - 2 * config.margin

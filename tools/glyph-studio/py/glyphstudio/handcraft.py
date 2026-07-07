@@ -137,6 +137,35 @@ def specs(W: float) -> dict:
             line((Rt, CAP), (M, 470)),
             line((M, 470), (M, BASE)),
         ],
+        "Z": [
+            line((L, CAP), (Rt, CAP)),
+            line((Rt, CAP), (L, BASE)),
+            line((L, BASE), (Rt, BASE)),
+        ],
+        "D": [
+            line((L, BASE), (L, CAP)),
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, CAP),
+                    node(
+                        Rt,
+                        760,
+                        h_in=(Rt, CAP),
+                        h_out=(Rt, 560),
+                        smooth=True,
+                    ),
+                    node(
+                        Rt,
+                        240,
+                        h_in=(Rt, 440),
+                        h_out=(Rt, BASE),
+                        smooth=True,
+                    ),
+                    node(L, BASE),
+                ],
+            },
+        ],
         "v": [line((L, XH), (M, BASE)), line((M, BASE), (Rt, XH))],
         "w": [
             line((L, XH), (L + (M - L) * 0.55, BASE)),
@@ -170,13 +199,77 @@ def specs(W: float) -> dict:
             line((L - 10, 620), (Rt + 10, 640)),
             line((L - 10, 340), (Rt + 10, 360)),
         ],
+        "$": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(Rt - 40, 790, h_in=(Rt - 60, 900)),
+                    node(
+                        M,
+                        CAP,
+                        h_in=(M + 120, CAP),
+                        h_out=(M - 120, CAP),
+                        smooth=True,
+                    ),
+                    node(L + 15, 735, h_in=(L, 860), h_out=(L, 610)),
+                    node(Rt - 15, 300, h_in=(Rt, 440), h_out=(Rt, 170)),
+                    node(
+                        M,
+                        BASE,
+                        h_in=(M + 120, BASE),
+                        h_out=(M - 120, BASE),
+                        smooth=True,
+                    ),
+                    node(L + 40, 210, h_in=(L + 60, 100)),
+                ],
+            },
+            line((M, CAP + 80), (M, BASE - 80)),
+        ],
         '"': [
             line((M - 90, CAP), (M - 100, CAP - 240)),
             line((M + 90, CAP), (M + 100, CAP - 240)),
         ],
+        "'": [line((M - 20, CAP), (M + 10, CAP - 250))],
+        "(": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(Rt - 15, CAP),
+                    node(L, 730, h_in=(L + 5, 910), h_out=(L - 5, 560)),
+                    node(
+                        L,
+                        270,
+                        h_in=(L - 5, 440),
+                        h_out=(L + 5, 90),
+                        smooth=True,
+                    ),
+                    node(Rt - 15, BASE),
+                ],
+            }
+        ],
+        ")": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(L + 15, CAP),
+                    node(Rt, 730, h_in=(Rt - 5, 910), h_out=(Rt + 5, 560)),
+                    node(
+                        Rt,
+                        270,
+                        h_in=(Rt + 5, 440),
+                        h_out=(Rt - 5, 90),
+                        smooth=True,
+                    ),
+                    node(L + 15, BASE),
+                ],
+            }
+        ],
         "^": [line((L + 40, 640), (M, CAP)), line((M, CAP), (Rt - 40, 640))],
         "`": [line((M - 50, CAP), (M + 50, CAP - 200))],
         ";": [circle(M, 560, 42, 42), line((M + 15, 160), (M - 55, -120))],
+        "<": [line((Rt - 20, 760), (L + 20, 500)), line((L + 20, 500), (Rt - 20, 240))],
+        "=": [line((L + 20, 620), (Rt - 20, 620)), line((L + 20, 380), (Rt - 20, 380))],
+        ">": [line((L + 20, 760), (Rt - 20, 500)), line((Rt - 20, 500), (L + 20, 240))],
         "?": [
             {
                 "closed": False,
@@ -198,7 +291,87 @@ def specs(W: float) -> dict:
             },
             circle(M, 60, 40, 40),
         ],
+        "@": [
+            circle(M, 520, Rt - M, 430),
+            {
+                "closed": False,
+                "nodes": [
+                    node(Rt - 85, 250),
+                    node(Rt - 85, 525, h_out=(Rt - 85, 665)),
+                    node(
+                        M,
+                        700,
+                        h_in=(M + 120, 700),
+                        h_out=(M - 120, 700),
+                        smooth=True,
+                    ),
+                    node(
+                        L + 110,
+                        520,
+                        h_in=(L + 110, 665),
+                        h_out=(L + 110, 375),
+                        smooth=True,
+                    ),
+                    node(
+                        M,
+                        340,
+                        h_in=(M - 120, 340),
+                        h_out=(M + 120, 340),
+                        smooth=True,
+                    ),
+                    node(Rt - 85, 520, h_in=(Rt - 85, 375)),
+                ],
+            },
+        ],
+        "[": [
+            line((Rt - 20, CAP), (L + 20, CAP)),
+            line((L + 20, CAP), (L + 20, BASE)),
+            line((L + 20, BASE), (Rt - 20, BASE)),
+        ],
+        "\\": [line((L + 20, CAP), (Rt - 20, BASE))],
+        "]": [
+            line((L + 20, CAP), (Rt - 20, CAP)),
+            line((Rt - 20, CAP), (Rt - 20, BASE)),
+            line((Rt - 20, BASE), (L + 20, BASE)),
+        ],
+        "_": [line((L + 10, BASE - 130), (Rt - 10, BASE - 130))],
+        "|": [line((M, CAP), (M, BASE))],
+        "~": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, 500),
+                    node(
+                        M - 90,
+                        610,
+                        h_in=(L + 60, 500),
+                        h_out=(M - 40, 610),
+                        smooth=True,
+                    ),
+                    node(
+                        M + 90,
+                        390,
+                        h_in=(M + 40, 390),
+                        h_out=(Rt - 60, 390),
+                        smooth=True,
+                    ),
+                    node(Rt, 500),
+                ],
+            }
+        ],
         "O": [circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0)],
+        "P": [
+            line((L, BASE), (L, CAP)),
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, CAP),
+                    node(Rt - 30, 870, h_in=(Rt - 30, CAP), smooth=True),
+                    node(Rt - 30, 640, h_out=(Rt - 30, 530)),
+                    node(L, 510),
+                ],
+            },
+        ],
         "Q": [
             circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0),
             line((M + 60, 300), (Rt + 20, BASE - 20)),
@@ -338,6 +511,10 @@ def specs(W: float) -> dict:
             circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0),
             line((Rt, XH), (Rt, DESC)),
         ],
+        "d": [
+            circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0),
+            line((Rt, BASE), (Rt, CAP + 30)),
+        ],
         "j": [
             circle(M + 40, 830, 40, 40),
             {
@@ -391,6 +568,8 @@ DEFAULT_W = {
     "W": 660,
     "X": 560,
     "Y": 560,
+    "Z": 540,
+    "D": 560,
     "v": 500,
     "w": 620,
     "x": 500,
@@ -399,11 +578,25 @@ DEFAULT_W = {
     "k": 520,
     "%": 620,
     "#": 560,
+    "$": 540,
     '"': 320,
+    "'": 180,
+    "(": 300,
+    ")": 300,
     "^": 460,
     "`": 220,
     ";": 220,
+    "<": 460,
+    "=": 460,
+    ">": 460,
     "?": 460,
+    "@": 760,
+    "[": 320,
+    "\\": 460,
+    "]": 320,
+    "_": 500,
+    "|": 180,
+    "~": 500,
     "{": 340,
     "}": 340,
     "o": 500,
@@ -413,12 +606,14 @@ DEFAULT_W = {
     "h": 520,
     "i": 220,
     "O": 580,
+    "P": 540,
     "Q": 600,
     "U": 560,
     "R": 560,
     "&": 620,
     "S": 540,
     "q": 520,
+    "d": 520,
     "j": 300,
     "!": 160,
     "+": 460,
