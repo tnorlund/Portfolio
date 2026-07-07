@@ -648,15 +648,19 @@ def _render_grid(
     # row is the "AMOUNT:" line).
     row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
     dash_after_rows: set[int] = set()
-    if config.dashed_separators:
+    # dash_around_phrases works standalone: a merchant may bracket specific
+    # rows (Target's REC# line) without the Costco-style after-TOTAL rule
+    # that dashed_separators switches on.
+    if config.dashed_separators or config.dash_around_phrases:
         for k, t in enumerate(row_texts):
             prevt = row_texts[k - 1] if k > 0 else ""
             first = t.split()[0] if t.split() else ""
-            is_total_row = _is_final_total(
+            is_total_row = config.dashed_separators and _is_final_total(
                 t, config.total_include_tokens, config.total_exclude_tokens
             )
             is_amount_date = (
-                config.dash_after_amount_date
+                config.dashed_separators
+                and config.dash_after_amount_date
                 and "AMOUNT" in prevt
                 and _DATE_LED.match(first)
             )

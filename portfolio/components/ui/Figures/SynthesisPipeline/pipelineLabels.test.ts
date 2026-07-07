@@ -1,7 +1,7 @@
 /**
  * Regression: Costco's act-8 label rects rendered NaN because its labels
  * file lacked metadata.render.margin (found by interactive browser QA).
- * Every rect from BOTH merchants' real label files must be finite.
+ * Every rect from the finale merchants' real label files must be finite.
  */
 import fs from "fs";
 import path from "path";
@@ -9,13 +9,14 @@ import {
   buildLabelBoxes,
   ShowcaseLabelFile,
 } from "../AugmentationShowcase/labelGeometry";
+import { MERCHANTS } from "./pipelineData";
 
 const PIPELINE = path.join(
   __dirname,
   "../../../../public/synthetic-receipts/pipeline",
 );
 
-describe.each(["sprouts", "costco"])("%s final labels", (merchant) => {
+describe.each(MERCHANTS)("%s final labels", (merchant) => {
   const file: ShowcaseLabelFile = JSON.parse(
     fs.readFileSync(path.join(PIPELINE, merchant, "final.labels.json"), "utf-8"),
   );

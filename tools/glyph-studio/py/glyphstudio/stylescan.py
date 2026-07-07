@@ -209,12 +209,51 @@ _CVS_RULES = [
         ),
     ),
 ]
+_TARGET_RULES = [
+    (
+        "store_header",
+        re.compile(
+            r"TARGET|Westlake Village|Las Vegas|Simi Valley|Woodland Hills|"
+            r"Henderson|Grand Canyon|Russell Ranch|Tierra Rejada|Ventura Blvd|"
+            r"\d{3}[- ]\d{3}[- ]?\d{4}",
+            re.I,
+        ),
+    ),
+    (
+        "section_header",
+        re.compile(
+            r"^(GROCERY|HEALTH AND BEAUTY|HOME|KITCHEN|APPAREL|ELECTRONICS|"
+            r"LAUNDRY CLEANING AND CLOSET|PATIO & OUTDOOR DECOR|ENTERTAINMENT-"
+            r"ELECTRONICS)\b",
+            re.I,
+        ),
+    ),
+    ("total_line", re.compile(r"^\s*TOTAL\b|DEBIT TOTAL PAYMENT", re.I)),
+    ("summary", re.compile(r"SUBTOTAL|^T\s*=|^TAX\b|CA TAX|NV TAX", re.I)),
+    (
+        "payment",
+        re.compile(
+            r"AID:|AUTH CODE|MASTERCARD|VISA|DEBIT|CARD ENTRY|APPROVED|"
+            r"\*{4,}|RETURN|Target Circle Card",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"RETURN POLICY|WHEN YOU RETURN|Target Circle|TARGET\.COM|"
+            r"Guest Copy|Survey",
+            re.I,
+        ),
+    ),
+]
 _MERCHANT_RULES = {
     "sprouts": _RULES,
     "costco": _COSTCO_RULES,
     "vons": _VONS_RULES,
     "traderjoes": _TJ_RULES,
     "cvs": _CVS_RULES,
+    "target": _TARGET_RULES,
 }
 
 

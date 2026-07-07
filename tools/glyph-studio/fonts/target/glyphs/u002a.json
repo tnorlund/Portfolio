@@ -1,0 +1,133 @@
+{
+ "version": 1,
+ "char": "*",
+ "codepoint": 42,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "sprouts.samples.npz",
+  "samples": 14,
+  "consensusHash": "26cf10ab2982",
+  "date": "2026-07-07"
+ },
+ "width": 452.6,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 36.8,
+     "y": 654.2,
+     "type": "corner"
+    },
+    {
+     "x": 58.54541693781094,
+     "y": 707.9423686634095,
+     "type": "corner"
+    },
+    {
+     "x": 92.50845351880807,
+     "y": 654.2,
+     "type": "corner"
+    },
+    {
+     "x": 196.40025957529238,
+     "y": 654.2,
+     "type": "corner"
+    },
+    {
+     "x": 235.3,
+     "y": 654.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 125.7,
+     "y": 495.2,
+     "type": "corner"
+    },
+    {
+     "x": 189.6,
+     "y": 495.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 311.8,
+     "y": 654.2,
+     "type": "corner"
+    },
+    {
+     "x": 402.1,
+     "y": 654.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 311.8,
+     "y": 654.2,
+     "type": "corner",
+     "hOut": {
+      "x": 258.8447386182859,
+      "y": 546.1
+     }
+    },
+    {
+     "x": 128.4,
+     "y": 377.8,
+     "type": "corner",
+     "hIn": {
+      "x": 186.6321157839553,
+      "y": 482.534021194164
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 364.6,
+     "y": 322.2,
+     "type": "corner"
+    },
+    {
+     "x": 319.9974427422494,
+     "y": 400.1977527913699,
+     "type": "corner",
+     "hOut": {
+      "x": 283.1155936084787,
+      "y": 420.4891229846737
+     }
+    },
+    {
+     "x": 257.8,
+     "y": 654.2,
+     "type": "corner",
+     "hIn": {
+      "x": 216.5680477395179,
+      "y": 588.7
+     }
+    },
+    {
+     "x": 257.8,
+     "y": 761.1000000000001,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}
