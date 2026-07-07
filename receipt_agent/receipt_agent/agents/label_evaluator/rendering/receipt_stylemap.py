@@ -34,6 +34,14 @@ SECTION_TOKENS = {
     "WINE",
     "BODY",
     "HOUSEHOLD",
+    "HEALTH AND BEAUTY",
+    "HOME",
+    "KITCHEN",
+    "APPAREL",
+    "ELECTRONICS",
+    "ENTERTAINMENT-ELECTRONICS",
+    "LAUNDRY CLEANING AND CLOSET",
+    "PATIO & OUTDOOR DECOR",
 }
 _RULES: list[tuple[str, re.Pattern]] = [
     ("balance_due", re.compile(r"^BALANCE DUE", re.I)),

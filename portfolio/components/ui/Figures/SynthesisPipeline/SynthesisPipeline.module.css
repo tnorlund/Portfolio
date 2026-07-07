@@ -536,7 +536,7 @@
 
 /* Tops aligned; every card shares one width so the natural height differences
    show. --finale-w is capped by BOTH viewport height (so the tallest receipt,
-   Costco ≈ 3.95:1, fits the fixed stage) AND viewport width (so all five cards
+   Costco ≈ 3.95:1, fits the fixed stage) AND viewport width (so all six cards
    fit the row without overflow, including narrow phones). */
 .finaleRow {
   display: flex;

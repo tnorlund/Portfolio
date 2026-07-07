@@ -16,7 +16,8 @@ export type Merchant =
   | "costco"
   | "vons"
   | "traderjoes"
-  | "cvs";
+  | "cvs"
+  | "target";
 
 /** Every merchant the finale fans out to, in card order. */
 export const MERCHANTS: Merchant[] = [
@@ -25,6 +26,7 @@ export const MERCHANTS: Merchant[] = [
   "vons",
   "traderjoes",
   "cvs",
+  "target",
 ];
 
 /** The single merchant acts 1-8 are built from. */
@@ -36,6 +38,7 @@ export const MERCHANT_LABELS: Record<Merchant, string> = {
   vons: "Vons",
   traderjoes: "Trader Joe's",
   cvs: "CVS",
+  target: "Target",
 };
 
 export const PIPELINE_BASE = "/synthetic-receipts/pipeline";
@@ -96,6 +99,7 @@ export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
   vons: { w: 760, h: 2732 },
   traderjoes: { w: 760, h: 2023 },
   cvs: { w: 760, h: 2771 },
+  target: { w: 760, h: 1878 },
 };
 
 /** Trimmed alpha-mask logo mark, rendered in currentColor (theme-aware). The
@@ -257,9 +261,9 @@ export const ACTS: ActMeta[] = [
     id: "finale",
     index: 4,
     eyebrow: "Same machine, every store",
-    headline: "Same machine, three merchants",
+    headline: "Same machine, six merchants",
     caption:
-      "The same machine minted all three: fonts, logos, and styles, mined from each merchant's own receipts.",
+      "The same machine minted all six: fonts, logos, and styles, mined from each merchant's own receipts.",
   },
 ];
 
@@ -291,4 +295,5 @@ export const BOLD_WEIGHT_CALLOUT: Record<Merchant, string> = {
   vons: "the measured heading weight",
   traderjoes: "the measured heading weight",
   cvs: "the measured heading weight",
+  target: "the measured department heading weight",
 };

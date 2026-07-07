@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import pickle
@@ -562,6 +563,115 @@ def _repair_missing_top_header_lines(receipt: dict) -> dict:
     return repaired
 
 
+def _scale_receipt_y_for_top_band(receipt: dict, scale_y: float) -> dict:
+    """Reserve a top graphic band by scaling receipt-space y coordinates down.
+
+    This is for synthetic rendering only. The source Dynamo records stay in their
+    original receipt-crop coordinates; render-time labels come from the adjusted
+    geometry through ``RenderConfig.box_sink``.
+    """
+    if scale_y >= 0.999:
+        return receipt
+    new = copy.deepcopy(receipt)
+
+    def scaled_y(value):
+        try:
+            return max(0.0, min(1000.0, float(value) * scale_y))
+        except (TypeError, ValueError):
+            return value
+
+    def scale_bbox(box):
+        if not isinstance(box, (list, tuple)) or len(box) < 4:
+            return box
+        out = list(box)
+        out[1] = scaled_y(out[1])
+        out[3] = scaled_y(out[3])
+        return out
+
+    def scale_point(point):
+        if isinstance(point, dict) and "y" in point:
+            point["y"] = scaled_y(point["y"])
+
+    def scale_word(word):
+        if isinstance(word, dict) and word.get("bbox"):
+            word["bbox"] = scale_bbox(word["bbox"])
+
+    for word in new.get("words") or []:
+        scale_word(word)
+    for line in new.get("lines") or []:
+        for word in line.get("words") or []:
+            scale_word(word)
+    for code in new.get("barcodes") or []:
+        if not isinstance(code, dict):
+            continue
+        for key in ("bbox", "bounding_box"):
+            if isinstance(code.get(key), list):
+                code[key] = scale_bbox(code[key])
+            elif isinstance(code.get(key), dict) and "y" in code[key]:
+                code[key]["y"] = scaled_y(code[key]["y"])
+        scale_point(code.get("top_left"))
+        scale_point(code.get("top_right"))
+        scale_point(code.get("bottom_left"))
+        scale_point(code.get("bottom_right"))
+    return new
+
+
+def _top_band_logo_placement(
+    receipt: dict,
+    *,
+    config: RenderConfig,
+    logo,
+    coord_max: float,
+    anchor_cfg: dict,
+) -> tuple[dict, list[float]]:
+    band = max(0.0, min(350.0, float(anchor_cfg.get("top_band", 0.0))))
+    words = [
+        word
+        for line in _receipt_lines(receipt)
+        for word in line
+        if word.get("bbox")
+    ]
+    top_y = max(
+        (
+            max(float(word["bbox"][1]), float(word["bbox"][3]))
+            for word in words
+        ),
+        default=0.0,
+    )
+    required_room = band * float(anchor_cfg.get("reserve_threshold", 0.70))
+    scale_y = (
+        1.0
+        if coord_max - top_y >= required_room
+        else max(0.05, (coord_max - band) / coord_max)
+    )
+    shifted = _scale_receipt_y_for_top_band(receipt, scale_y)
+
+    width_frac = max(
+        0.05, min(0.9, float(anchor_cfg.get("width_frac", 0.34)))
+    )
+    top_margin = max(0.0, float(anchor_cfg.get("top_margin", 8.0)))
+    bottom_margin = max(0.0, float(anchor_cfg.get("bottom_margin", 10.0)))
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    band_top = coord_max - top_margin
+    band_bottom = coord_max - band + bottom_margin
+    band_h = max(1.0, band_top - band_bottom)
+    box_w = coord_max * width_frac
+    aspect = logo.width / max(1, logo.height)
+    h_from_width = (box_w / coord_max * inner_w / aspect) / max(
+        1, inner_h
+    ) * coord_max
+    box_h = min(band_h, h_from_width)
+    cx = coord_max / 2.0
+    cy = (band_top + band_bottom) / 2.0
+    return shifted, [
+        cx - box_w / 2.0,
+        cy - box_h / 2.0,
+        cx + box_w / 2.0,
+        cy + box_h / 2.0,
+    ]
+
+
 def _compact_line_text(line_words: list[dict]) -> str:
     text = "".join(str(word.get("text") or "") for word in line_words)
     return _compact_text(text)
@@ -1035,9 +1145,9 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
         # (a merchant can have several atlases; never let a studio build
         # masquerade as e.g. Costco's chart-derived production font).
         want_name = getattr(ptr, "cache_filename", None)
-        if want_name and want_name != filename and face != "stylemap":
+        if want_name and want_name != filename and face not in ("stylemap", "logo"):
             return local
-        if not want_name and face != "stylemap":
+        if not want_name and face not in ("stylemap", "logo"):
             return local
         os.makedirs(_BITMATRIX_DIR, exist_ok=True)
         tmp = local + ".fetch"
@@ -1386,7 +1496,17 @@ def _render_cached_hybrid(
             or {}
         )
         placed = None
-        if anchor_cfg.get("phrases") and logo_image is not None:
+        top_band_placed = False
+        if anchor_cfg.get("top_band") and logo_image is not None:
+            render_input, logo_bbox = _top_band_logo_placement(
+                receipt,
+                config=config,
+                logo=logo_image,
+                coord_max=1000.0,
+                anchor_cfg=anchor_cfg,
+            )
+            top_band_placed = True
+        elif anchor_cfg.get("phrases") and logo_image is not None:
             placed = _phrase_logo_placement(
                 receipt,
                 anchor_cfg["phrases"],
@@ -1396,7 +1516,9 @@ def _render_cached_hybrid(
                 center=anchor_cfg.get("center", False),
                 extend_left=anchor_cfg.get("extend_left", True),
             )
-        if placed is not None:
+        if top_band_placed:
+            pass
+        elif placed is not None:
             drop_words, logo_bbox = placed
             render_input = _receipt_drop_words(receipt, drop_words)
         else:
@@ -1474,14 +1596,18 @@ def _render_cached_hybrid(
         subtitle_text=logo_subtitle,
     )
     stamped_bands = _overlay_detected_codes(
-        image, receipt, config=config, coord_max=1000.0
+        image, render_input, config=config, coord_max=1000.0
     )
     if not stamped_bands:
         stamped_bands = _overlay_inbody_barcodes(
-            image, receipt, config=config, coord_max=1000.0
+            image, render_input, config=config, coord_max=1000.0
         )
     _overlay_qr_and_barcode(
-        image, receipt, config=config, coord_max=1000.0, reserved=stamped_bands
+        image,
+        render_input,
+        config=config,
+        coord_max=1000.0,
+        reserved=stamped_bands,
     )
     # Deterministic per-output seed so re-rendering the same file is stable.
     texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
