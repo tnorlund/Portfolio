@@ -113,6 +113,19 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(screen.getByTestId("act-raw")).toBeInTheDocument();
   });
 
+  test("chrome is gone: no visible caption/eyebrow, act label is sr-only", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    // The card/caption/eyebrow chrome was removed — the content is the figure.
+    expect(screen.queryByTestId("act-caption")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("act-eyebrow")).not.toBeInTheDocument();
+    // The act label survives only for screen readers + the e2e gate.
+    const label = screen.getByTestId("act-headline");
+    expect(label).toHaveAttribute("aria-live", "polite");
+    expect(label).toHaveTextContent(ACTS[0].headline);
+  });
+
   test("there are nine act dots, one per act", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
@@ -163,10 +176,8 @@ describe("SynthesisPipeline finale act", () => {
     ["Sprouts", "Costco", "Vons"].forEach((name) =>
       expect(screen.getByText(name)).toBeInTheDocument(),
     );
-    // Copy anchor for the generalization beat.
-    expect(
-      screen.getByText(/same machine minted all three/i),
-    ).toBeInTheDocument();
+    // Chrome (headline/caption) is intentionally gone in autoplay mode — the
+    // three named cards carry the generalization beat on their own.
   });
 
   test("a receipt image that fails to load degrades to a named fallback", async () => {
@@ -216,6 +227,17 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("act-penpath")).toBeInTheDocument();
     // The finale fans out to three merchant cards.
     expect(screen.getAllByTestId("finale-card")).toHaveLength(3);
+  });
+
+  test("the font atlas marks exactly one hero cell (the FLIP target)", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    const heroCells = screen
+      .getAllByTestId("font-cell")
+      .filter((cell) => cell.getAttribute("data-hero") === "true");
+    // One glyph is the hero that flew in from the thermal act into its slot.
+    expect(heroCells).toHaveLength(1);
   });
 
   test("pen-path act draws SVG paths + anchor dots from the real skeleton", async () => {

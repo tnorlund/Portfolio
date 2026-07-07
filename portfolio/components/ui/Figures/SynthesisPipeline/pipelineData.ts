@@ -277,10 +277,10 @@ export const ACT_DWELL_MS: Record<ActId, number> = {
   character: 5000,
   penpath: 5500,
   thermal: 5500,
-  font: 5000,
-  style: 5000,
-  compose: 5500,
-  labels: 6000,
+  font: 6500, // the hero glyph flies into the atlas — give it room
+  style: 7000, // treatments stamp on one by one
+  compose: 7500, // line items assemble + the total rolls up
+  labels: 8000, // printhead sweep, labels snap, then hold
   finale: 7000,
 };
 

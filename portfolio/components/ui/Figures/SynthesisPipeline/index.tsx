@@ -310,18 +310,21 @@ const SynthesisPipeline: React.FC = () => {
       data-paused={paused || undefined}
       className={styles.container}
     >
-      <div className={styles.topBar}>
-        <div key={activeMeta.id} className={`${styles.heading} ${styles.headingFade}`}>
-          <span className={styles.eyebrow} data-testid="act-eyebrow">
-            {activeMeta.eyebrow}
-          </span>
-          <h3 className={styles.headline} data-testid="act-headline">
-            {activeMeta.headline}
-          </h3>
-        </div>
-      </div>
+      {/* The content is the figure: no card, no titles, no captions. The act
+          label survives only for screen readers and the e2e gate, announced
+          politely as autoplay advances. */}
+      <p
+        className={styles.srOnly}
+        aria-live="polite"
+        data-testid="act-headline"
+      >
+        {activeMeta.headline}
+      </p>
 
-      <div className={`${styles.stage} ${styles.interactiveStage}`}>
+      <div
+        className={`${styles.stage} ${styles.interactiveStage}`}
+        data-testid="pipeline-stage"
+      >
         {stageLayers.map((layer) => (
           <div
             key={layer.id}
@@ -334,14 +337,6 @@ const SynthesisPipeline: React.FC = () => {
           </div>
         ))}
       </div>
-
-      <p
-        key={activeMeta.id}
-        className={`${styles.caption} ${styles.captionFade}`}
-        data-testid="act-caption"
-      >
-        {activeMeta.caption}
-      </p>
 
       <ol className={styles.progress} aria-label="Pipeline acts">
         {ACTS.map((meta) => {

@@ -44,15 +44,34 @@
 
 /* ---- Stage ----------------------------------------------------------- */
 
+/* No card, no panel: the content is the figure. The stage is just a bounded,
+   transparent coordinate space the acts animate inside of. --glyph-h is the
+   ONE height the hero letterform rides at across acts 2-4 so it never resizes
+   between the crossfades — it only travels. */
 .stage {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
-  border: 1px solid rgba(var(--text-color-rgb), 0.12);
-  background: rgba(var(--text-color-rgb), 0.03);
+  border: none;
+  background: none;
   overflow: hidden;
+  --glyph-h: min(300px, 66%);
+}
+
+/* Screen-reader-only act label: the visible headline/caption chrome is gone,
+   but the act name is still announced (aria-live) and available to the e2e
+   gate via data-testid. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 /* In-place autoplay stage: one bounded stage height, no scroll-through. */
@@ -249,10 +268,13 @@
 
 /* ==== Act 2: one character =========================================== */
 
+/* The hero glyph rides at ONE height across acts 2-4 (charStack, penStage,
+   thermalCanvas all use --glyph-h) so the letter never resizes between curves,
+   trace, and dots — it only ever travels. */
 .charStack {
   position: relative;
-  width: 200px;
-  height: 260px;
+  height: var(--glyph-h);
+  aspect-ratio: 3 / 4;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -262,8 +284,8 @@
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 60%;
-  height: auto;
+  height: 82%;
+  width: auto;
   image-rendering: pixelated;
   object-fit: contain;
 }
@@ -272,8 +294,8 @@
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 66%;
-  height: auto;
+  height: 92%;
+  width: auto;
   object-fit: contain;
   filter: contrast(1.05);
 }
@@ -284,7 +306,7 @@
    image and the SVG overlay share one coordinate space (no drift). */
 .penStage {
   position: relative;
-  height: min(300px, 68%);
+  height: var(--glyph-h);
   max-width: 86%;
 }
 
@@ -343,18 +365,25 @@
 
 /* ==== Act 4: thermal print + weight ================================== */
 
+/* Canvas + weight control ride as a centered column that fits within the fixed
+   frame — the glyph is the same size as the rest of the run, the control sits
+   just under it, and nothing overflows. */
 .thermalWrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  justify-content: center;
+  gap: 0.75rem;
   width: 100%;
-  padding: 1rem;
+  height: 100%;
+  padding: 0.75rem;
 }
 
-/* Height-bounded; width derives from the inline aspect ratio (glyph box). */
+/* One height with the rest of the glyph run (capped so the control still fits);
+   width derives from the inline aspect ratio (glyph box). */
 .thermalCanvas {
-  height: min(220px, 44vh);
+  height: var(--glyph-h);
+  max-height: calc(100% - 76px);
   max-width: 70%;
   object-fit: contain;
 }
@@ -429,6 +458,19 @@
   transform: none;
 }
 
+/* The hero cell is driven frame-by-frame by the flight transform (inline), so
+   it must NOT run the cascade transition or it would smear and lag. It rides
+   in above the grid and lands in its slot. */
+.fontCellHero {
+  opacity: 1;
+  transition: none;
+  will-change: transform;
+  position: relative;
+  z-index: 3;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(var(--color-blue-rgb, 90, 160, 255), 0.35);
+}
+
 .fontGlyph {
   width: 70%;
   height: 70%;
@@ -465,6 +507,22 @@
   opacity: 1;
   border-color: var(--color-blue);
   background: rgba(var(--text-color-rgb), 0.06);
+  animation: style-stamp 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+/* The measured value gets underlined by a sweep the moment its row lights. */
+.styleRow[data-lit="true"] .styleValue {
+  background-image: linear-gradient(var(--color-blue), var(--color-blue));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 1.5px;
+  animation: underline-sweep 0.5s ease 0.1s both;
+}
+
+.styleRow[data-lit="true"] .styleMeasured {
+  color: var(--color-blue);
+  opacity: 1;
+  animation: tag-flash 0.6s ease both;
 }
 
 .styleCrop {
@@ -527,10 +585,10 @@
   flex-direction: column;
   gap: 0.15rem;
   opacity: 0;
-  transform: translateY(5px);
+  transform: translateX(-10px);
   transition:
-    opacity 0.35s ease,
-    transform 0.35s ease;
+    opacity 0.4s ease,
+    transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 .composeGroup[data-shown="true"] {
@@ -566,6 +624,10 @@
   opacity: 1;
 }
 
+.composeTotalValue {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ==== Act 8: print + labels ========================================== */
 
 .printStage {
@@ -593,17 +655,21 @@
   height: auto;
 }
 
+/* The printhead: a live sweep line with a warm thermal glow trailing it. */
 .printHead {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: -4%;
+  right: -4%;
   height: 2px;
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(var(--text-color-rgb), 0.6),
+    var(--color-blue),
     transparent
   );
+  box-shadow:
+    0 0 10px 2px rgba(var(--color-blue-rgb, 90, 160, 255), 0.55),
+    0 6px 16px 0 rgba(var(--color-blue-rgb, 90, 160, 255), 0.25);
 }
 
 .overlay {
@@ -684,10 +750,11 @@
   gap: 0.6rem;
   margin: 0;
   opacity: 0;
-  transform: translateY(14px) scale(0.97);
+  /* slide in from the right, beside the first (printed) receipt */
+  transform: translateX(28px) scale(0.96);
   transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
+    opacity 0.55s ease,
+    transform 0.55s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 .finaleCard[data-shown="true"] {
@@ -798,6 +865,43 @@
   }
 }
 
+/* Act 6 — a style treatment stamping onto the receipt. */
+@keyframes style-stamp {
+  0% {
+    transform: scale(0.9) translateX(-6px);
+  }
+  60% {
+    transform: scale(1.04) translateX(0);
+  }
+  100% {
+    transform: scale(1) translateX(0);
+  }
+}
+
+@keyframes underline-sweep {
+  from {
+    background-size: 0% 1.5px;
+  }
+  to {
+    background-size: 100% 1.5px;
+  }
+}
+
+@keyframes tag-flash {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 @keyframes swap-flip {
   0% {
     transform: rotateX(0);
@@ -830,10 +934,18 @@
   .actLayer.entering,
   .actLayer.leaving,
   .headingFade,
-  .captionFade {
+  .captionFade,
+  .styleRow[data-lit="true"],
+  .styleRow[data-lit="true"] .styleValue,
+  .styleRow[data-lit="true"] .styleMeasured {
     animation: none;
   }
+  .styleRow[data-lit="true"] .styleValue {
+    background-size: 100% 1.5px;
+  }
   .fontCell,
+  .fontCellHero,
+  .composeGroup,
   .composeLine,
   .styleRow,
   .thumb,

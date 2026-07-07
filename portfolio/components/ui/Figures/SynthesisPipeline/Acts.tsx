@@ -445,8 +445,15 @@ const ThermalAct: React.FC<ActProps> = ({
 /* Act 5 — A whole font                                                  */
 /* ==================================================================== */
 
+const FONT_GRID_COLS = 12; // matches grid-template-columns on desktop
+const HERO_FLIGHT_SCALE = 5.2; // how big the hero rides in from stage center
+
+/** Smoothstep ease for the flight. */
+const smooth = (t: number): number => t * t * (3 - 2 * t);
+
 const WholeFontAct: React.FC<ActProps> = ({
   merchant,
+  assets,
   progress,
   reducedMotion,
 }) => {
@@ -454,16 +461,49 @@ const WholeFontAct: React.FC<ActProps> = ({
   const p = reducedMotion ? 1 : progress;
   const total = FONT_CODEPOINTS.length;
 
+  // The hero glyph handed forward from the thermal act flies into its OWN cell
+  // in the atlas. Pick that cell (the skeleton's char if it's in the grid),
+  // then reverse-FLIP: the cell rides in from stage center, big, and settles
+  // to identity in its slot. Percent translates are relative to the cell box,
+  // so this needs no DOM measurement and stays deterministic.
+  const heroCp = useMemo(() => {
+    const ch = assets.skeleton?.char;
+    const cp = ch ? ch.codePointAt(0) : undefined;
+    return cp && FONT_CODEPOINTS.includes(cp) ? cp : FONT_CODEPOINTS[0];
+  }, [assets.skeleton]);
+  const heroIdx = FONT_CODEPOINTS.indexOf(heroCp);
+  const rows = Math.ceil(total / FONT_GRID_COLS);
+  const heroCol = heroIdx % FONT_GRID_COLS;
+  const heroRow = Math.floor(heroIdx / FONT_GRID_COLS);
+  // Delta (in cell-box units) from the hero cell's center to the grid center.
+  const dx = FONT_GRID_COLS / 2 - (heroCol + 0.5);
+  const dy = rows / 2 - (heroRow + 0.5);
+
+  const flight = smooth(phase(p, 0, 0.42)); // 0 = centered+big, 1 = in its cell
+
   return (
     <div className={styles.fontGrid} data-testid="act-font">
       {FONT_CODEPOINTS.map((cp, i) => {
-        const shown = p >= (i / total) * 0.9;
+        const isHero = cp === heroCp;
+        // Non-hero cells cascade in after the hero starts landing; the hero is
+        // always present because it is the object that traveled here.
+        const shown = isHero || p >= 0.28 + (i / total) * 0.6;
+        const heroStyle: React.CSSProperties | undefined = isHero
+          ? {
+              transform: `translate(${dx * (1 - flight) * 100}%, ${
+                dy * (1 - flight) * 100
+              }%) scale(${1 + (HERO_FLIGHT_SCALE - 1) * (1 - flight)})`,
+              zIndex: flight < 1 ? 3 : undefined,
+            }
+          : undefined;
         return (
           <div
             key={cp}
-            className={styles.fontCell}
+            className={`${styles.fontCell}${isHero ? ` ${styles.fontCellHero}` : ""}`}
             data-shown={shown}
+            data-hero={isHero || undefined}
             data-testid="font-cell"
+            style={heroStyle}
           >
             {!failed[cp] ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -614,6 +654,13 @@ const ComposeAct: React.FC<ActProps> = ({
     finalLabels?.metadata as { quality?: { grand_total?: string } } | undefined
   )?.quality?.grand_total;
 
+  // The total recomputes on screen: roll it up from 0 to the real figure as the
+  // last group lands, so the number "settles" like a register tallying.
+  const totalNum = grandTotal ? Number.parseFloat(grandTotal) : NaN;
+  const rolledTotal = Number.isFinite(totalNum)
+    ? (totalNum * smooth(phase(p, 0.82, 1))).toFixed(2)
+    : grandTotal;
+
   return (
     <div className={styles.composeSheet} data-testid="act-compose">
       {groups.map((group, i) => {
@@ -634,11 +681,11 @@ const ComposeAct: React.FC<ActProps> = ({
       {grandTotal ? (
         <div
           className={styles.composeTotal}
-          data-shown={p > 0.9}
+          data-shown={p > 0.82}
           data-testid="compose-total"
         >
           <span>TOTAL</span>
-          <span>${grandTotal}</span>
+          <span className={styles.composeTotalValue}>${rolledTotal}</span>
         </div>
       ) : null}
     </div>

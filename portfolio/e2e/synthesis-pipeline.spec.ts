@@ -28,13 +28,15 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
   // The figure LAZY-MOUNTS (FigureBoundary placeholder until near viewport),
   // so scroll the page progressively until it exists — scrollIntoViewIfNeeded
   // can't target a node that hasn't mounted.
+  // The act label is now a visually-hidden (sr-only) aria-live element — the
+  // figure has no visible chrome — so assert it is ATTACHED, not visible.
   const headline = page.getByTestId("act-headline");
   for (let i = 0; i < 40 && (await headline.count()) === 0; i++) {
     await page.mouse.wheel(0, 700);
     await page.waitForTimeout(200);
   }
   await headline.scrollIntoViewIfNeeded();
-  await expect(headline).toBeVisible({ timeout: 15_000 });
+  await expect(headline).toBeAttached({ timeout: 15_000 });
 
   // autoplay must advance acts without interaction
   const first = await headline.textContent();
@@ -42,10 +44,27 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
     .poll(async () => headline.textContent(), { timeout: 20_000 })
     .not.toBe(first);
 
-  // click through every act dot; none may crash the page
+  // The stage box must NOT bounce as acts swap: fixed height + width across
+  // every act so the shared hero element travels in a stable coordinate frame.
+  const stage = page.getByTestId("pipeline-stage");
   const dots = page.locator('[data-testid^="act-dot"]');
   const n = await dots.count();
   expect(n).toBeGreaterThanOrEqual(8);
+
+  const round = (b: { width: number; height: number } | null) =>
+    b ? { w: Math.round(b.width), h: Math.round(b.height) } : null;
+  const box0 = round(await stage.boundingBox());
+  // Sample a spread of acts (the wild ones + the finale) and assert the frame
+  // is byte-identical each time.
+  for (const i of [3, 4, 5, 7, n - 1]) {
+    await dots.nth(i).click();
+    await page.waitForTimeout(500);
+    expect(round(await stage.boundingBox()), `stage box at act ${i}`).toEqual(
+      box0,
+    );
+  }
+
+  // click through every act dot; none may crash the page
   for (let i = 0; i < n; i++) {
     await dots.nth(i).click();
     await page.waitForTimeout(250);
