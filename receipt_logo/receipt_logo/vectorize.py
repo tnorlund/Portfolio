@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -139,8 +140,15 @@ def write_vector_asset(
 ) -> tuple[Path, Path]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
-    svg_path = out / f"{slug}.svg"
-    manifest_path = out / f"{slug}.manifest.json"
+    # A slug with separators or dot-segments must not escape output_dir
+    # (the MCP/CLI accept arbitrary strings here).
+    safe_slug = re.sub(r"[^A-Za-z0-9._-]", "_", Path(slug).name).strip(".")
+    if not safe_slug:
+        raise ValueError(f"unusable slug: {slug!r}")
+    svg_path = (out / f"{safe_slug}.svg").resolve()
+    manifest_path = (out / f"{safe_slug}.manifest.json").resolve()
+    for candidate in (svg_path, manifest_path):
+        candidate.relative_to(out)
     svg_path.write_text(result.svg, encoding="utf-8")
     manifest_path.write_text(
         json.dumps(result.manifest(str(svg_path)), indent=2) + "\n",
@@ -245,7 +253,9 @@ def remove_collinear(points: list[Point]) -> list[Point]:
     return output
 
 
-def simplify_closed_polygon(points: list[Point], tolerance: float) -> list[Point]:
+def simplify_closed_polygon(
+    points: list[Point], tolerance: float
+) -> list[Point]:
     if tolerance <= 0 or len(points) <= 4:
         return points
     closed = points + [points[0]]
@@ -331,7 +341,9 @@ def _assign_palette_layers(
 
 
 def _rgb_distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
-    return math.sqrt(sum((int(x) - int(y)) ** 2 for x, y in zip(a, b, strict=True)))
+    return math.sqrt(
+        sum((int(x) - int(y)) ** 2 for x, y in zip(a, b, strict=True))
+    )
 
 
 def _add_edge(
@@ -344,7 +356,9 @@ def _add_edge(
     outgoing[start].add(end)
 
 
-def _choose_next(previous: Point, current: Point, candidates: list[Point]) -> Point:
+def _choose_next(
+    previous: Point, current: Point, candidates: list[Point]
+) -> Point:
     if len(candidates) == 1:
         return candidates[0]
 

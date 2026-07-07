@@ -34,6 +34,37 @@ class ReceiptHeaderMatch:
         }
 
 
+def _tokens_from_ocr_lines(data):
+    """Flatten the repo's OCR fixture shape ({"lines": [{"words": [...]}]})
+    into parallel tokens/bboxes lists; (None, None) when the shape is absent.
+    Word boxes are normalized {x, y, width, height} dicts (y-up) -> convert
+    to [x0, y0, x1, y1]."""
+    lines = data.get("lines")
+    if not isinstance(lines, list):
+        return None, None
+    tokens, bboxes = [], []
+    for line in lines:
+        for word in line.get("words") or []:
+            text = word.get("text")
+            box = word.get("bounding_box") or {}
+            if not text or not all(
+                k in box for k in ("x", "y", "width", "height")
+            ):
+                continue
+            tokens.append(str(text))
+            bboxes.append(
+                [
+                    float(box["x"]),
+                    float(box["y"]),
+                    float(box["x"]) + float(box["width"]),
+                    float(box["y"]) + float(box["height"]),
+                ]
+            )
+    if not tokens:
+        return None, None
+    return tokens, bboxes
+
+
 def inspect_receipt_fixture(
     fixture_path: str | Path,
     merchant_name: str = "Sprouts Farmers Market",
@@ -45,7 +76,9 @@ def inspect_receipt_fixture(
     tokens = data.get("tokens")
     bboxes = data.get("bboxes")
     if not isinstance(tokens, list) or not isinstance(bboxes, list):
-        return None
+        tokens, bboxes = _tokens_from_ocr_lines(data)
+        if tokens is None:
+            return None
 
     wanted = tuple(part.upper() for part in merchant_name.split())
     normalized = [str(token).upper().strip(".,:;") for token in tokens]
