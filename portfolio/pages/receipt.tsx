@@ -444,13 +444,12 @@ M1LK 2%           1    $4.4g`}</code>
       </FigureBoundary>
 
       <p>
-        The model is only as good as its training data, and labeled receipts
-        are expensive. So I grow the dataset synthetically: take a real
-        receipt, add or remove items with a grammar learned from the
-        merchant&apos;s other receipts, recompute the math, and render a new
-        photorealistic receipt. Each variant is generated from a real
-        receipt&apos;s labeled positions, so its labels come for free. The
-        figure below discloses which receipt each example came from.
+        More training data helps, but only if it&apos;s the right kind. If the
+        model keeps missing discounts, weird quantities, or item names that run
+        forever, I can make receipts full of that exact nonsense. I start with
+        a real labeled receipt, swap items in and out using that store&apos;s own
+        patterns, fix the totals, and render it again. Same receipt DNA. New
+        failure case. Free labels.
       </p>
 
       <FigureBoundary intrinsicSize="720px">
