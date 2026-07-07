@@ -23,7 +23,10 @@
         "heading_bleed_phrase": "ITEMS SOLD:",
         "reverse_date_anchor": "NUMBER OF ITEMS SOLD",
         "dash_after_amount_date": true,
-        "condense": 0.93
+        "condense": 0.93,
+        "dash_around_phrases": [
+          "SHOP CARD"
+        ]
       },
       "logo": "bitMatrix-C2_logo.png",
       "logo_anchor": {
@@ -95,7 +98,8 @@
         "bitmap_cap_ratio": 0.66,
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.649,
-        "stylemap": "vons.stylemap.json"
+        "stylemap": "vons.stylemap.json",
+        "pitch_ratio": 0.538
       },
       "logo_anchor": {
         "phrases": [

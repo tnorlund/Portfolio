@@ -173,6 +173,9 @@ class RenderConfig:
     heading_bleed_phrase: str | None = None
     reverse_date_anchor: str | None = None
     dash_after_amount_date: bool = False
+    # Rows containing any of these phrases get a dashed rule ABOVE and BELOW
+    # (Costco wraps each "Shop Card" tender subtotal in rules; OCR drops them).
+    dash_around_phrases: tuple = ()
     reverse_box_lane_cells: int = 4
     # Hybrid layout: keep fixed grid for tabular/price rows, but render centered
     # headers and prose/footer rows as measured text runs anchored by visible ink.
@@ -187,6 +190,12 @@ class RenderConfig:
     # profile/atlas sizing.
     ocr_font_sizing: bool = False
     ocr_cap_height_ratio: float = 0.72
+    # Fleet-measured letter pitch / cap height for this merchant. When set,
+    # the OCR-pitch clamp centers on it (0.85-1.15x) instead of the legacy
+    # font_px bounds -- those assume Costco-like cap ratios and their floor
+    # BINDS for fonts with lower bitmap_cap_ratio (Vons: floor 0.73x cap vs
+    # true 0.538x cap -> cells ~35% wide -> truncated item names).
+    pitch_ratio: float | None = None
 
 
 def render_receipt(
@@ -379,8 +388,12 @@ def _ocr_grid_metrics(
         measured_advance = float(median(start_pitches))
     else:
         measured_advance = float(median(box_advances))
-    min_advance = sizing.font_px * 0.48
-    max_advance = sizing.font_px * 0.62
+    if config.pitch_ratio:
+        min_advance = cap_px * float(config.pitch_ratio) * 0.85
+        max_advance = cap_px * float(config.pitch_ratio) * 1.15
+    else:
+        min_advance = sizing.font_px * 0.48
+        max_advance = sizing.font_px * 0.62
     advance_px = max(min_advance, min(max_advance, measured_advance))
     return cap_px, advance_px
 
@@ -590,6 +603,13 @@ def _render_grid(
             )
             if is_total_row or is_amount_date:
                 dash_after_rows.add(k)
+            for phrase in (config.dash_around_phrases or ()):
+                if t.startswith(phrase.upper()) and any(
+                    ch.isdigit() for ch in t
+                ):
+                    dash_after_rows.add(k)
+                    if k > 0:
+                        dash_after_rows.add(k - 1)
     # The OCR drops the dashed rule, so no blank line exists for it -- reserve one
     # line below each anchor by pushing the following rows down, and place the rule
     # in the created gap (else it overprints the next row).
