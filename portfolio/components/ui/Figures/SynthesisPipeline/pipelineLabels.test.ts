@@ -35,13 +35,15 @@ describe.each(["sprouts", "costco"])("%s final labels", (merchant) => {
   });
 
   test("a missing margin degrades to finite rects (never NaN)", () => {
+    const render = file.metadata?.render;
+    expect(render).toBeDefined();
     const stripped = {
       ...file,
       metadata: {
         ...file.metadata,
         render: {
-          width: file.metadata.render.width,
-          height: file.metadata.render.height,
+          width: render!.width,
+          height: render!.height,
         },
       },
     } as ShowcaseLabelFile;
