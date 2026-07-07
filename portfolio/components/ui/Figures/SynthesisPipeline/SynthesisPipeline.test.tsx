@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import SynthesisPipeline, { advanceAutoplay } from ".";
 import { ACT_COUNT, ACTS } from "./pipelineData";
+import { LABEL_COLORS } from "../labelStyles";
 
 jest.mock("react-intersection-observer", () => ({
   useInView: () => ({ ref: jest.fn(), inView: true }),
@@ -126,11 +127,11 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(label).toHaveTextContent(ACTS[0].headline);
   });
 
-  test("there are nine act dots, one per act", async () => {
+  test("there are seven act dots, one per act", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    expect(ACT_COUNT).toBe(9);
+    expect(ACT_COUNT).toBe(7);
     ACTS.forEach((meta) => {
       expect(screen.getByTestId(`act-dot-${meta.index}`)).toBeInTheDocument();
     });
@@ -144,7 +145,7 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(figure).not.toHaveAttribute("data-paused");
 
     // Jump to the final (finale) act via its dot.
-    fireEvent.click(screen.getByTestId("act-dot-8"));
+    fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     await flushAssets();
 
     const finaleMeta = ACTS[ACT_COUNT - 1];
@@ -163,7 +164,7 @@ describe("SynthesisPipeline finale act", () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    fireEvent.click(screen.getByTestId("act-dot-8"));
+    fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     await flushAssets();
 
     const cards = screen.getAllByTestId("finale-card");
@@ -184,7 +185,7 @@ describe("SynthesisPipeline finale act", () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    fireEvent.click(screen.getByTestId("act-dot-8"));
+    fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     await flushAssets();
 
     // Every card overlays the real scan on the synthesized render.
@@ -204,7 +205,7 @@ describe("SynthesisPipeline finale act", () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    fireEvent.click(screen.getByTestId("act-dot-8"));
+    fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     await flushAssets();
 
     // The frame's aspect ratio is the receipt's real 760xH — Costco (tallest)
@@ -228,7 +229,7 @@ describe("SynthesisPipeline finale act", () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    fireEvent.click(screen.getByTestId("act-dot-8"));
+    fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     await flushAssets();
 
     const vonsCard = screen
@@ -264,9 +265,10 @@ describe("SynthesisPipeline (reduced motion)", () => {
       "data-mode",
       "static",
     );
-    // All nine acts are present as static sections, including the finale.
+    // All seven acts are present as static sections, including the merged
+    // assemble act and the finale.
     expect(screen.getByTestId("static-act-raw")).toBeInTheDocument();
-    expect(screen.getByTestId("static-act-labels")).toBeInTheDocument();
+    expect(screen.getByTestId("static-act-assemble")).toBeInTheDocument();
     expect(screen.getByTestId("static-act-finale")).toBeInTheDocument();
     expect(screen.getByTestId("act-penpath")).toBeInTheDocument();
     // The finale fans out to three merchant cards.
@@ -282,6 +284,20 @@ describe("SynthesisPipeline (reduced motion)", () => {
       .filter((cell) => cell.getAttribute("data-hero") === "true");
     // One glyph is the hero that flew in from the thermal act into its slot.
     expect(heroCells).toHaveLength(1);
+  });
+
+  test("atlas glyphs use the alpha-mask technique (mask-image points at the glyph png)", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    // The glyph div paints currentColor through an alpha mask of the glyph png.
+    // (jsdom drops -webkit- props from the serialized style; the -webkit-mask
+    // + rendered currentColor are asserted in the Playwright gate instead.)
+    const glyph = screen
+      .getAllByTestId("font-cell")[0]
+      .firstElementChild as HTMLElement;
+    const style = glyph.getAttribute("style") || "";
+    expect(style).toMatch(/mask-image:\s*url\([^)]*font_grid[^)]*\.png/);
   });
 
   test("pen-path act draws SVG paths + anchor dots from the real skeleton", async () => {
@@ -308,16 +324,12 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByText(/measured BALANCE DUE weight/i)).toBeInTheDocument();
   });
 
-  test("renders the composed content + measured style + final labels for sprouts", async () => {
+  test("the assemble act types the receipt then draws LayoutLM boxes", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
-    // Measured style: the committed display strings appear verbatim.
-    expect(
-      screen.getByText(/Underlined ~41% of the time/i),
-    ).toBeInTheDocument();
-    // Compose: real token groups reveal (not the pending note).
-    expect(screen.getAllByTestId("compose-group").length).toBeGreaterThan(0);
+    // The merged act renders the receipt-assembly canvas (parallel typing).
+    expect(screen.getByTestId("assemble-canvas")).toBeInTheDocument();
     expect(screen.queryByTestId("asset-pending")).not.toBeInTheDocument();
     // Final labels resolve -> ground-truth boxes + the counter.
     await waitFor(() =>
@@ -328,7 +340,26 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("labels-counter")).toHaveTextContent(
       /zero manual labels/i,
     );
-    // The print act fills its right column with the auto-panning magnifier.
-    expect(screen.getByTestId("zoom-inset")).toBeInTheDocument();
+  });
+
+  test("assemble label boxes use the LayoutLM LABEL_COLORS + stroke styling", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("final-label-box").length).toBeGreaterThan(
+        0,
+      ),
+    );
+    const box = screen.getAllByTestId("final-label-box")[0];
+    const family = box.getAttribute("data-family")!;
+    // Mirror the LayoutLM inference viz exactly: LABEL_COLORS fill/stroke,
+    // fillOpacity 0.3, strokeWidth 2, no vectorEffect.
+    const expected = LABEL_COLORS[family] || LABEL_COLORS.O;
+    expect(box.getAttribute("fill")).toBe(expected);
+    expect(box.getAttribute("stroke")).toBe(expected);
+    expect(box.getAttribute("fill-opacity")).toBe("0.3");
+    expect(box.getAttribute("stroke-width")).toBe("2");
+    expect(box.getAttribute("vector-effect")).toBeNull();
   });
 });

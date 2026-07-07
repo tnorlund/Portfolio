@@ -49,20 +49,46 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
   const stage = page.getByTestId("pipeline-stage");
   const dots = page.locator('[data-testid^="act-dot"]');
   const n = await dots.count();
-  expect(n).toBeGreaterThanOrEqual(8);
+  expect(n).toBeGreaterThanOrEqual(6);
 
   const round = (b: { width: number; height: number } | null) =>
     b ? { w: Math.round(b.width), h: Math.round(b.height) } : null;
   const box0 = round(await stage.boundingBox());
-  // Sample a spread of acts (the wild ones + the finale) and assert the frame
-  // is byte-identical each time.
-  for (const i of [3, 4, 5, 7, n - 1]) {
+  // Sample a spread of acts (the atlas, the assemble act, the finale) and
+  // assert the frame is byte-identical each time.
+  for (const i of [3, 4, 5, n - 1]) {
     await dots.nth(i).click();
     await page.waitForTimeout(500);
     expect(round(await stage.boundingBox()), `stage box at act ${i}`).toEqual(
       box0,
     );
   }
+
+  // Atlas glyphs must render as TYPE ON THE PAGE: currentColor through an alpha
+  // mask, with the -webkit-mask set inline (Safari). Verify in the real browser
+  // (jsdom can't) — the painted glyph color equals the page text color.
+  await dots.nth(4).click();
+  await page.waitForTimeout(500);
+  const glyph = await page.evaluate(() => {
+    const cell = document.querySelector('[data-testid="font-cell"]');
+    const g = cell?.firstElementChild as HTMLElement | null;
+    const container = document.getElementById("synthesis-pipeline");
+    if (!g || !container) return null;
+    const gs = getComputedStyle(g);
+    return {
+      background: gs.backgroundColor,
+      pageColor: getComputedStyle(container).color,
+      maskImage: gs.getPropertyValue("mask-image"),
+      webkitMaskImage: gs.getPropertyValue("-webkit-mask-image"),
+    };
+  });
+  expect(glyph, "atlas glyph tile present").not.toBeNull();
+  // background-color: currentColor resolves to the page text color.
+  expect(glyph!.background).toBe(glyph!.pageColor);
+  // the glyph png masks currentColor via both the standard and -webkit-
+  // mask-image (Safari path resolves too).
+  expect(glyph!.maskImage).toMatch(/font_grid/);
+  expect(glyph!.webkitMaskImage).toMatch(/font_grid/);
 
   // click through every act dot; none may crash the page
   for (let i = 0; i < n; i++) {

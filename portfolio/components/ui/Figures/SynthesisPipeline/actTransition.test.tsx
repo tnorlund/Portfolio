@@ -8,6 +8,7 @@ import {
   transitionReducer,
   useActTransition,
 } from "./actTransition";
+import { ACT_COUNT } from "./pipelineData";
 
 /* ---- Pure reducer: enter / leave / settle / reduced-motion ------------- */
 
@@ -162,20 +163,20 @@ describe("SynthesisPipeline crossfade (both acts mounted mid-transition)", () =>
 
     // Opening state: only the raw-material layer is mounted.
     expect(screen.getByTestId("act-layer-raw")).toBeInTheDocument();
-    expect(screen.queryByTestId("act-layer-labels")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("act-layer-finale")).not.toBeInTheDocument();
 
-    // Jump to the print+labels act (index 7): the outgoing (raw) and incoming
-    // (labels) layers overlap during the crossfade window.
+    // Jump to the finale act (last dot): the outgoing (raw) and incoming
+    // (finale) layers overlap during the crossfade window.
     act(() => {
-      fireEvent.click(screen.getByTestId("act-dot-7"));
+      fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     });
     expect(screen.getByTestId("act-layer-raw")).toBeInTheDocument();
-    expect(screen.getByTestId("act-layer-labels")).toBeInTheDocument();
+    expect(screen.getByTestId("act-layer-finale")).toBeInTheDocument();
     expect(screen.getByTestId("act-layer-raw")).toHaveAttribute(
       "data-phase",
       "leaving",
     );
-    expect(screen.getByTestId("act-layer-labels")).toHaveAttribute(
+    expect(screen.getByTestId("act-layer-finale")).toHaveAttribute(
       "data-phase",
       "entering",
     );
@@ -185,8 +186,8 @@ describe("SynthesisPipeline crossfade (both acts mounted mid-transition)", () =>
       jest.advanceTimersByTime(ACT_TRANSITION_MS);
     });
     expect(screen.queryByTestId("act-layer-raw")).not.toBeInTheDocument();
-    expect(screen.getByTestId("act-layer-labels")).toBeInTheDocument();
-    expect(screen.getByTestId("act-layer-labels")).toHaveAttribute(
+    expect(screen.getByTestId("act-layer-finale")).toBeInTheDocument();
+    expect(screen.getByTestId("act-layer-finale")).toHaveAttribute(
       "data-phase",
       "active",
     );

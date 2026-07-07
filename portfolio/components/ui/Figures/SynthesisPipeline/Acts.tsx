@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildLabelBoxes,
   familiesIn,
-  familyColors,
-  ShowcaseLabelFile,
+  toCssRectInner,
 } from "../AugmentationShowcase/labelGeometry";
-import { ENTITY_DISPLAY_NAMES } from "../labelStyles";
+import { ENTITY_DISPLAY_NAMES, LABEL_COLORS } from "../labelStyles";
 import {
   cloudScale,
   glyphAnchors,
@@ -19,12 +18,10 @@ import {
 } from "./geometry";
 import {
   ActId,
-  assetRoot,
   BOLD_WEIGHT_CALLOUT,
   CHAR_PRINT_COUNT,
   charCloudSrc,
   charPrintSrc,
-  COMPOSE_GROUP_LABELS,
   COMPOSE_GROUP_ORDER,
   DotParams,
   FONT_CODEPOINTS,
@@ -38,8 +35,6 @@ import {
   realSrc,
   realThumbSrc,
   REAL_THUMB_COUNT,
-  styleCropSrc,
-  StyleSection,
   WEIGHT_MAX,
   WEIGHT_MIN,
   WEIGHT_STEP,
@@ -523,358 +518,205 @@ const WholeFontAct: React.FC<ActProps> = ({
 };
 
 /* ==================================================================== */
-/* Act 6 — Measured style                                                */
+/* Act 6 — The receipt assembles (typing + LayoutLM boxes)               */
 /* ==================================================================== */
 
-const FALLBACK_STYLE: Record<Merchant, StyleSection[]> = {
-  sprouts: [
-    { name: "section_header", display: "Category headers underlined" },
-    { name: "balance_due", display: "BALANCE DUE bold and taller" },
-    { name: "payment", display: "Payment lines condensed" },
-  ],
-  costco: [
-    { name: "total_line", display: "TOTAL knocked out (reverse video)" },
-    { name: "self_checkout", display: "Display headings heavy and enlarged" },
-    { name: "date_box", display: "Date printed in a box" },
-  ],
-  vons: [
-    { name: "club_savings", display: "Club savings called out per line" },
-    { name: "total_line", display: "TOTAL bold and taller" },
-    { name: "coupon", display: "Coupons printed below the total" },
-  ],
-};
+const TYPE_START = 0.04;
+const TYPE_END = 0.5;
 
-/** `section_header` -> `Section header`. */
-const prettyName = (name: string): string => {
-  const spaced = name.replace(/_/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-};
-
-/** Resolve a section's crop path (relative to the merchant asset root). */
-const styleCropFor = (merchant: Merchant, section: StyleSection): string =>
-  section.crop
-    ? `${assetRoot(merchant)}/${section.crop}`
-    : styleCropSrc(merchant, section.name);
-
-const MeasuredStyleAct: React.FC<ActProps> = ({
+/**
+ * The former style / compose / print+labels acts merged into one. Phase A: the
+ * receipt types itself out, header/items/summary/footer all at once — four
+ * concurrent print heads revealing their words in order from final.webp. Phase
+ * B: the ground-truth label boxes draw on, styled exactly like the LayoutLM
+ * inference viz (LABEL_COLORS, fillOpacity 0.3, stroke 2, no vectorEffect).
+ */
+const AssembleAct: React.FC<ActProps> = ({
   merchant,
-  assets,
-  progress,
-  reducedMotion,
-}) => {
-  const [failed, setFailed] = useState<Record<string, boolean>>({});
-  const sections =
-    assets.style?.sections && assets.style.sections.length > 0
-      ? assets.style.sections
-      : FALLBACK_STYLE[merchant];
-  const p = reducedMotion ? 1 : progress;
-
-  return (
-    <div className={styles.styleList} data-testid="act-style">
-      {sections.map((section, i) => {
-        const lit = p >= (i / sections.length) * 0.85;
-        return (
-          <div
-            key={section.name}
-            className={styles.styleRow}
-            data-lit={lit}
-            data-testid="style-row"
-          >
-            {!failed[section.name] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={styleCropFor(merchant, section)}
-                alt=""
-                aria-hidden="true"
-                className={styles.styleCrop}
-                loading="lazy"
-                onError={() =>
-                  setFailed((prev) => ({ ...prev, [section.name]: true }))
-                }
-              />
-            ) : (
-              <span className={styles.styleCrop} aria-hidden="true" />
-            )}
-            <span className={styles.styleText}>
-              <span className={styles.styleLabel}>{prettyName(section.name)}</span>
-              <span className={styles.styleValue}>{section.display}</span>
-            </span>
-            <span className={styles.styleMeasured}>measured</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-/* ==================================================================== */
-/* Act 7 — Compose                                                       */
-/* ==================================================================== */
-
-const COMPOSE_TOKEN_CAP = 16;
-
-const ComposeAct: React.FC<ActProps> = ({
   assets,
   progress,
   reducedMotion,
 }) => {
   const { compose, finalLabels } = assets;
   const p = reducedMotion ? 1 : progress;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [imgReady, setImgReady] = useState(false);
 
-  // Each group is a list of token indices into final.labels.json; join them
-  // into a readable block (capped so the footer's long tail stays legible).
-  const groups = useMemo(() => {
-    if (!compose || !finalLabels) {
-      return null;
+  const render = finalLabels?.metadata?.render;
+  const renderW = render?.width ?? 760;
+  const renderH = render?.height ?? 2471;
+  const aspect = `${renderW} / ${renderH}`;
+
+  // Every word's rect (labeled OR not), for the typing reveal.
+  const wordRects = useMemo(() => {
+    if (!finalLabels || !render) {
+      return [] as Array<ReturnType<typeof toCssRectInner> | null>;
     }
-    return COMPOSE_GROUP_ORDER.map((id) => {
-      const indices = compose.groups[id] ?? [];
-      const tokens = indices
-        .map((idx) => finalLabels.tokens[idx])
-        .filter((t): t is string => Boolean(t));
-      const text =
-        tokens.slice(0, COMPOSE_TOKEN_CAP).join(" ") +
-        (tokens.length > COMPOSE_TOKEN_CAP ? " …" : "");
-      return { id, label: COMPOSE_GROUP_LABELS[id], text, count: tokens.length };
-    }).filter((group) => group.count > 0);
-  }, [compose, finalLabels]);
+    return finalLabels.bboxes.map((bb) =>
+      bb && bb.length === 4 ? toCssRectInner(bb, render) : null,
+    );
+  }, [finalLabels, render]);
 
-  if (!groups) {
+  // The four section groups (contiguous word-index ranges), typed in parallel.
+  const groups = useMemo(() => {
+    if (!compose) {
+      return [] as number[][];
+    }
+    return COMPOSE_GROUP_ORDER.map((id) => compose.groups[id] ?? []).filter(
+      (g) => g.length > 0,
+    );
+  }, [compose]);
+
+  // Labeled boxes + families for phase B (LayoutLM-styled).
+  const boxes = useMemo(
+    () => (finalLabels ? buildLabelBoxes(finalLabels) : []),
+    [finalLabels],
+  );
+  const families = useMemo(
+    () => (finalLabels ? familiesIn(finalLabels) : []),
+    [finalLabels],
+  );
+
+  const typingP = phase(p, TYPE_START, TYPE_END);
+  const labelsShown = p >= TYPE_END + 0.06;
+
+  // Load the printed receipt once.
+  useEffect(() => {
+    if (!finalLabels) {
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => {
+      imgRef.current = img;
+      setImgReady(true);
+    };
+    img.src = finalSrc(merchant);
+    return () => {
+      img.onload = null;
+    };
+  }, [merchant, finalLabels]);
+
+  // Draw the revealed words. Each group reveals in order, all groups at once, so
+  // the receipt materializes top-to-bottom in four places simultaneously; a
+  // caret blinks at each section's leading edge.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return; // jsdom / no 2d context
+    }
+    canvas.width = renderW;
+    canvas.height = renderH;
+    ctx.clearRect(0, 0, renderW, renderH);
+    const img = imgRef.current;
+    if (!img || !imgReady) {
+      return;
+    }
+    const t = clamp01(typingP);
+    const drawWordCrop = (r: ReturnType<typeof toCssRectInner>) => {
+      const sx = (r.left / 100) * renderW;
+      const sy = (r.top / 100) * renderH;
+      const sw = (r.width / 100) * renderW;
+      const sh = (r.height / 100) * renderH;
+      if (sw > 0 && sh > 0) {
+        ctx.drawImage(img, sx, sy, sw, sh, sx, sy, sw, sh);
+      }
+    };
+    groups.forEach((g) => {
+      const revealed = Math.round(t * g.length);
+      for (let i = 0; i < revealed; i += 1) {
+        const r = wordRects[g[i]];
+        if (r) {
+          drawWordCrop(r);
+        }
+      }
+    });
+    // Blinking carets at each leading edge while typing.
+    if (t > 0 && t < 1 && Math.floor(t * 48) % 2 === 0) {
+      ctx.fillStyle =
+        getComputedStyle(canvas).getPropertyValue("--color-blue").trim() ||
+        "#4a90d9";
+      groups.forEach((g) => {
+        const revealed = Math.round(t * g.length);
+        const r = wordRects[g[Math.min(g.length - 1, revealed)]];
+        if (r) {
+          ctx.fillRect(
+            (r.left / 100) * renderW - 4,
+            (r.top / 100) * renderH,
+            6,
+            (r.height / 100) * renderH,
+          );
+        }
+      });
+    }
+  }, [typingP, imgReady, groups, wordRects, renderW, renderH]);
+
+  if (!finalLabels || !compose) {
     return (
       <AssetPending>
-        Composed content reveals from compose_steps.json + final.labels.json.
+        The receipt assembles from compose_steps.json + final.labels.json.
       </AssetPending>
     );
   }
 
-  const grandTotal = (
-    finalLabels?.metadata as { quality?: { grand_total?: string } } | undefined
-  )?.quality?.grand_total;
-
-  // The total recomputes on screen: roll it up from 0 to the real figure as the
-  // last group lands, so the number "settles" like a register tallying.
-  const totalNum = grandTotal ? Number.parseFloat(grandTotal) : NaN;
-  const rolledTotal = Number.isFinite(totalNum)
-    ? (totalNum * smooth(phase(p, 0.82, 1))).toFixed(2)
-    : grandTotal;
-
   return (
-    <div className={styles.composeSheet} data-testid="act-compose">
-      {groups.map((group, i) => {
-        const shown = p >= (i / groups.length) * 0.85;
-        return (
-          <div
-            key={group.id}
-            className={styles.composeGroup}
-            data-group={group.id}
-            data-shown={shown}
-            data-testid="compose-group"
+    <div className={styles.assembleStage} data-testid="act-assemble">
+      <div className={styles.assembleReceipt} style={{ aspectRatio: aspect }}>
+        <canvas
+          ref={canvasRef}
+          className={styles.assembleCanvas}
+          data-testid="assemble-canvas"
+          aria-label={`Synthetic ${merchant} receipt assembling`}
+        />
+        {labelsShown ? (
+          <svg
+            className={styles.assembleBoxes}
+            viewBox={`0 0 ${renderW} ${renderH}`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
           >
-            <span className={styles.composeGroupLabel}>{group.label}</span>
-            <span className={styles.composeGroupText}>{group.text}</span>
-          </div>
-        );
-      })}
-      {grandTotal ? (
-        <div
-          className={styles.composeTotal}
-          data-shown={p > 0.82}
-          data-testid="compose-total"
-        >
-          <span>TOTAL</span>
-          <span className={styles.composeTotalValue}>${rolledTotal}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-/* ==================================================================== */
-/* Act 8 — Print + labels                                                */
-/* ==================================================================== */
-
-interface FinalLegendProps {
-  labels: ShowcaseLabelFile;
-}
-
-const FinalLegend: React.FC<FinalLegendProps> = ({ labels }) => {
-  const families = useMemo(() => familiesIn(labels), [labels]);
-  const colors = useMemo(() => familyColors(families), [families]);
-  return (
-    <ul className={styles.legend} aria-label="Label families">
-      {families.map((family) => (
-        <li key={family} className={styles.legendItem}>
-          <span
-            className={styles.legendSwatch}
-            style={{ backgroundColor: colors[family] }}
-          />
-          {ENTITY_DISPLAY_NAMES[family] ?? family}
-        </li>
-      ))}
-    </ul>
-  );
-};
-
-const ZOOM_MAG = 3; // magnification of the zoom-inset lens
-const ZOOM_ZONES = 4; // regions the magnifier pans through
-
-const PrintLabelsAct: React.FC<ActProps> = ({
-  merchant,
-  assets,
-  progress,
-  reducedMotion,
-}) => {
-  const [imgFailed, setImgFailed] = useState(false);
-  const labels = assets.finalLabels;
-  const p = reducedMotion ? 1 : progress;
-
-  const boxes = useMemo(
-    () => (labels ? buildLabelBoxes(labels) : []),
-    [labels],
-  );
-  const colors = useMemo(
-    () => (labels ? familyColors(familiesIn(labels)) : {}),
-    [labels],
-  );
-
-  // Zones the magnifier pans through: a handful of label boxes spread down the
-  // receipt, top to bottom.
-  const zones = useMemo(() => {
-    if (boxes.length === 0) {
-      return [] as Array<{ cy: number; family: string }>;
-    }
-    const sorted = [...boxes].sort((a, b) => a.rect.top - b.rect.top);
-    const n = Math.min(ZOOM_ZONES, sorted.length);
-    return Array.from({ length: n }, (_, i) => {
-      const idx = Math.min(
-        sorted.length - 1,
-        Math.floor(((i + 0.5) / n) * sorted.length),
-      );
-      const b = sorted[idx];
-      return { cy: b.rect.top + b.rect.height / 2, family: b.family };
-    });
-  }, [boxes]);
-
-  const printP = phase(p, 0, 0.6);
-  const labelsShown = p >= 0.66;
-  const aspect =
-    labels?.metadata?.render &&
-    labels.metadata.render.width &&
-    labels.metadata.render.height
-      ? `${labels.metadata.render.width} / ${labels.metadata.render.height}`
-      : "2 / 3";
-
-  // Pan the lens through the zones once labels have landed. Pure percentages so
-  // no DOM measurement is needed: translateY = 50/ZOOM - cy centers receipt-y
-  // `cy` in the lens (which is ZOOM× the inset height).
-  const panP = phase(p, 0.72, 1);
-  let zoneCy = zones[0]?.cy ?? 50;
-  let zoneFamily = zones[0]?.family;
-  if (zones.length > 1) {
-    const segf = panP * (zones.length - 1);
-    const i = Math.min(zones.length - 2, Math.floor(segf));
-    const frac = segf - i;
-    const sm = frac * frac * (3 - 2 * frac);
-    zoneCy = zones[i].cy + (zones[i + 1].cy - zones[i].cy) * sm;
-    zoneFamily = zones[Math.min(zones.length - 1, Math.round(segf))].family;
-  }
-  const focusTy = 50 / ZOOM_MAG - zoneCy;
-
-  return (
-    <div className={styles.printStage} data-testid="act-labels">
-      {!imgFailed ? (
-        <div className={styles.printFrame} style={{ aspectRatio: aspect }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={finalSrc(merchant)}
-            alt={`Synthetic ${merchant} receipt, printed`}
-            className={styles.printImage}
-            style={{ clipPath: `inset(0 0 ${(1 - printP) * 100}% 0)` }}
-            onError={() => setImgFailed(true)}
-          />
-          {printP < 1 && printP > 0 ? (
-            <div
-              className={styles.printHead}
-              style={{ top: `${printP * 100}%` }}
-              aria-hidden="true"
-            />
-          ) : null}
-          {labels && labelsShown ? (
-            <svg
-              className={styles.overlay}
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              {boxes.map((box, order) => (
+            {boxes.map((box, order) => {
+              const color = LABEL_COLORS[box.family] || LABEL_COLORS.O;
+              return (
                 <rect
                   key={box.index}
                   data-testid="final-label-box"
                   data-family={box.family}
                   className={styles.labelBox}
-                  style={{ animationDelay: `${order * 25}ms` }}
-                  x={box.rect.left}
-                  y={box.rect.top}
-                  width={box.rect.width}
-                  height={box.rect.height}
-                  fill={colors[box.family]}
+                  style={{ animationDelay: `${order * 20}ms` }}
+                  x={(box.rect.left / 100) * renderW}
+                  y={(box.rect.top / 100) * renderH}
+                  width={(box.rect.width / 100) * renderW}
+                  height={(box.rect.height / 100) * renderH}
+                  fill={color}
                   fillOpacity={0.3}
-                  stroke={colors[box.family]}
+                  stroke={color}
                   strokeWidth={2}
-                  vectorEffect="non-scaling-stroke"
-                >
-                  <title>{`${box.token} — ${box.family}`}</title>
-                </rect>
-              ))}
-            </svg>
-          ) : null}
-        </div>
-      ) : (
-        <div className={styles.printFallback} data-testid="print-fallback">
-          The printed receipt lands as final.webp.
-        </div>
-      )}
-      {labels && labelsShown ? (
-        <div className={styles.printSide}>
-          {/* Auto-panning magnifier: a live zoom of the region being labeled,
-              cycling through zones so the box tightness reads up close. */}
-          <div className={styles.zoomInset} data-testid="zoom-inset" aria-hidden="true">
-            <div
-              className={styles.zoomFocus}
-              style={{
-                aspectRatio: aspect,
-                height: `${ZOOM_MAG * 100}%`,
-                transform: `translate(-50%, ${focusTy}%)`,
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={finalSrc(merchant)} alt="" className={styles.zoomImg} />
-              <svg
-                className={styles.zoomBoxes}
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-              >
-                {boxes.map((box) => (
-                  <rect
-                    key={box.index}
-                    x={box.rect.left}
-                    y={box.rect.top}
-                    width={box.rect.width}
-                    height={box.rect.height}
-                    fill={colors[box.family]}
-                    fillOpacity={0.28}
-                    stroke={colors[box.family]}
-                    strokeWidth={1.4}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
-              </svg>
-            </div>
-            <span className={styles.zoomChip}>
-              {ZOOM_MAG}× · {ENTITY_DISPLAY_NAMES[zoneFamily ?? ""] ?? zoneFamily}
-            </span>
-          </div>
-          <FinalLegend labels={labels} />
+                />
+              );
+            })}
+          </svg>
+        ) : null}
+      </div>
+      {labelsShown ? (
+        <div className={styles.assembleSide}>
+          <ul className={styles.legend} aria-label="Label families">
+            {families.map((family) => (
+              <li key={family} className={styles.legendItem}>
+                <span
+                  className={styles.legendSwatch}
+                  style={{
+                    backgroundColor: LABEL_COLORS[family] || LABEL_COLORS.O,
+                  }}
+                />
+                {ENTITY_DISPLAY_NAMES[family] ?? family}
+              </li>
+            ))}
+          </ul>
           <p className={styles.counter} data-testid="labels-counter">
             Labeled training example. Zero manual labels.
           </p>
@@ -883,6 +725,8 @@ const PrintLabelsAct: React.FC<ActProps> = ({
     </div>
   );
 };
+
+/* (Acts 7 & 8 — Compose and Print+labels — merged into AssembleAct above.) */
 
 /* ==================================================================== */
 /* Act 9 — Finale: same machine, every store                            */
@@ -995,9 +839,7 @@ const ACT_COMPONENTS: Record<ActId, React.FC<ActProps>> = {
   penpath: PenPathAct,
   thermal: ThermalAct,
   font: WholeFontAct,
-  style: MeasuredStyleAct,
-  compose: ComposeAct,
-  labels: PrintLabelsAct,
+  assemble: AssembleAct,
   finale: FinaleAct,
 };
 

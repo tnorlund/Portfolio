@@ -189,9 +189,7 @@ export type ActId =
   | "penpath"
   | "thermal"
   | "font"
-  | "style"
-  | "compose"
-  | "labels"
+  | "assemble"
   | "finale";
 
 export interface ActMeta {
@@ -249,32 +247,16 @@ export const ACTS: ActMeta[] = [
       "94 glyphs, roughly six to twelve nodes each, mined from the same receipts.",
   },
   {
-    id: "style",
+    id: "assemble",
     index: 5,
-    eyebrow: "Measured style",
-    headline: "Style isn't designed. It's measured.",
+    eyebrow: "The receipt assembles",
+    headline: "It types itself out, then labels itself",
     caption:
-      "Underlines, bold weights, condensed payment lines, reverse-video totals — every treatment is a measured number, not a design choice.",
-  },
-  {
-    id: "compose",
-    index: 6,
-    eyebrow: "Compose",
-    headline: "Content assembles itself",
-    caption:
-      "Line items drop in from the merchant's grammar, one swaps for another out of the catalog, and the totals recompute.",
-  },
-  {
-    id: "labels",
-    index: 7,
-    eyebrow: "Print + labels",
-    headline: "A receipt that never existed, labeled perfectly, for free",
-    caption:
-      "The synthetic receipt prints top to bottom, then its ground-truth label boxes snap on. A labeled training example, with zero manual labels.",
+      "Header, items, summary, and footer type out at once from the merchant's grammar; then every word's ground-truth box snaps on. A labeled training example, with zero manual labels.",
   },
   {
     id: "finale",
-    index: 8,
+    index: 6,
     eyebrow: "Same machine, every store",
     headline: "Same machine, three merchants",
     caption:
@@ -295,9 +277,7 @@ export const ACT_DWELL_MS: Record<ActId, number> = {
   penpath: 5500,
   thermal: 5500,
   font: 6500, // the hero glyph flies into the atlas — give it room
-  style: 7000, // treatments stamp on one by one
-  compose: 7500, // line items assemble + the total rolls up
-  labels: 8000, // printhead sweep, labels snap, then hold
+  assemble: 11000, // parallel section typing, then the label boxes draw on
   finale: 7000,
 };
 
