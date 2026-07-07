@@ -1304,6 +1304,13 @@ mcp_server = McpServerLambda(
 pulumi.export("mcp_server_url", mcp_server.function_url)
 pulumi.export("mcp_server_lambda_arn", mcp_server.lambda_arn)
 
+# Glyph Studio MCP Server Lambda (read-only remote MCP via Function URL)
+from glyph_mcp_lambda import GlyphMcpLambda
+
+glyph_mcp_server = GlyphMcpLambda("glyph-mcp")
+pulumi.export("glyph_mcp_server_url", glyph_mcp_server.function_url)
+pulumi.export("glyph_mcp_server_lambda_arn", glyph_mcp_server.lambda_arn)
+
 # Web analytics query layer: Glue + Athena over the CloudFront access logs,
 # read by the analytics_* MCP tools. No new pipeline — just a queryable view
 # of logs that already exist.
