@@ -34,7 +34,8 @@
           "EWHOLESALE",
           "WHOLESALE"
         ],
-        "extend_left": false
+        "extend_left": false,
+        "center": true
       }
     },
     "Amazon Fresh": {
@@ -106,7 +107,8 @@
           "VONS.",
           "VONS"
         ],
-        "extend_left": false
+        "extend_left": false,
+        "center": true
       }
     },
     "Sprouts Farmers Market": {
