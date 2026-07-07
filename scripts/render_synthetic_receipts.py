@@ -1401,6 +1401,38 @@ def resolve_bitmap_thin(
     return thin
 
 
+def _content_texture_seed(receipt: dict) -> int:
+    """A stable paper-texture seed derived from the receipt's CONTENT.
+
+    The texture must be a property of the receipt, not of where the render is
+    written. Keying the seed on the output filename coupled the render to an
+    incidental input: an evaluator that re-renders the same receipt to a fresh
+    debug path (glyph_review / the line scorecard write ``det_1.png``,
+    ``det_2.png`` ...) got a different paper texture per run, which shifted the
+    thresholded glyph-height measurements and made the scorecard gates bounce
+    run-to-run on identical inputs. Seeding from the content instead keeps a
+    given receipt's render byte-identical regardless of the output path, while
+    distinct receipts still get distinct textures (dataset variety survives,
+    since distinct examples differ in merchant/word content).
+    """
+    parts = [str(receipt.get("merchant_name") or "")]
+    words = receipt.get("words") or []
+
+    def _key(word: dict):
+        return (
+            int(word.get("line_id") or 0),
+            int(word.get("word_id") or 0),
+        )
+
+    for word in sorted(words, key=_key):
+        line_id, word_id = _key(word)
+        bbox = word.get("bbox") or []
+        bbox_str = ",".join(f"{float(v):.2f}" for v in bbox)
+        text = word.get("text", "")
+        parts.append(f"{line_id}:{word_id}:{text}:{bbox_str}")
+    return zlib.crc32("\n".join(parts).encode("utf-8"))
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -1629,8 +1661,11 @@ def _render_cached_hybrid(
         coord_max=1000.0,
         reserved=stamped_bands,
     )
-    # Deterministic per-output seed so re-rendering the same file is stable.
-    texture_seed = zlib.crc32(os.path.basename(path).encode("utf-8"))
+    # Content-derived seed so a given receipt renders the SAME paper texture
+    # regardless of the output path. Keying on the filename made scorecard
+    # metrics (measured on the textured image) bounce run-to-run whenever an
+    # evaluator re-rendered to a fresh debug path. See _content_texture_seed.
+    texture_seed = _content_texture_seed(receipt)
     image = _composite_paper_texture(image, seed=texture_seed)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.convert("RGB").save(path, format="PNG")
