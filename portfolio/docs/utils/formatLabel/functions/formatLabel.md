@@ -8,7 +8,7 @@
 
 > **formatLabel**(`text`): `string`
 
-Defined in: [utils/formatLabel.ts:10](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/utils/formatLabel.ts#L10)
+Defined in: [utils/formatLabel.ts:10](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/utils/formatLabel.ts#L10)
 
 Format label/status for display: Title Case with special cases
 - "id" becomes "ID"

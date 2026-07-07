@@ -6,7 +6,7 @@
 
 # Interface: UploadReceiptProgress
 
-Defined in: [types/api.ts:3](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/types/api.ts#L3)
+Defined in: [types/api.ts:3](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/types/api.ts#L3)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:3](https://github.com/tnorlund/Portfolio/blob/6931f89e
 
 > **merchant\_found**: `boolean`
 
-Defined in: [types/api.ts:5](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/types/api.ts#L5)
+Defined in: [types/api.ts:5](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/types/api.ts#L5)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:5](https://github.com/tnorlund/Portfolio/blob/6931f89e
 
 > **merchant\_name**: `string` \| `null`
 
-Defined in: [types/api.ts:6](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/types/api.ts#L6)
+Defined in: [types/api.ts:6](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/types/api.ts#L6)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:6](https://github.com/tnorlund/Portfolio/blob/6931f89e
 
 > **receipt\_id**: `number`
 
-Defined in: [types/api.ts:4](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/types/api.ts#L4)
+Defined in: [types/api.ts:4](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/types/api.ts#L4)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:4](https://github.com/tnorlund/Portfolio/blob/6931f89e
 
 > **total\_labels**: `number`
 
-Defined in: [types/api.ts:7](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/types/api.ts#L7)
+Defined in: [types/api.ts:7](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/types/api.ts#L7)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:7](https://github.com/tnorlund/Portfolio/blob/6931f89e
 
 > **validated\_labels**: `number`
 
-Defined in: [types/api.ts:8](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/types/api.ts#L8)
+Defined in: [types/api.ts:8](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/types/api.ts#L8)

@@ -8,4 +8,4 @@
 
 > `const` **GA\_MEASUREMENT\_ID**: `string` \| `undefined`
 
-Defined in: [utils/analytics.ts:34](https://github.com/tnorlund/Portfolio/blob/6931f89e0036330454d312d7e732773ad84a2be9/portfolio/utils/analytics.ts#L34)
+Defined in: [utils/analytics.ts:34](https://github.com/tnorlund/Portfolio/blob/d2ae7bbaa0d87c901d3343e4026ff31f1010a964/portfolio/utils/analytics.ts#L34)
