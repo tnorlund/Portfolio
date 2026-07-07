@@ -14,6 +14,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
+from receipt_dynamo.entities.receipt_barcode import item_to_receipt_barcode
 from receipt_dynamo.entities.receipt_bundle import ReceiptBundlePage
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_line import (
@@ -232,6 +233,8 @@ class _Receipt(FlattenedStandardMixin):
                 return ("label", item_to_receipt_word_label(item))
             if item_type == "RECEIPT_PLACE":
                 return ("place", item_to_receipt_place(item))
+            if item_type == "RECEIPT_BARCODE":
+                return ("barcode", item_to_receipt_barcode(item))
             return None
 
         # Query GSI4 for all receipt-related items (excluding letters)
@@ -250,7 +253,7 @@ class _Receipt(FlattenedStandardMixin):
 
         receipt = None
         place = None
-        lines, words, labels = [], [], []
+        lines, words, labels, barcodes = [], [], [], []
 
         # Process converted items
         for item in items:
@@ -267,6 +270,8 @@ class _Receipt(FlattenedStandardMixin):
                 labels.append(entity)
             elif item_type == "place":
                 place = entity
+            elif item_type == "barcode":
+                barcodes.append(entity)
 
         if receipt is None:
             raise EntityNotFoundError(
@@ -281,6 +286,7 @@ class _Receipt(FlattenedStandardMixin):
             words=words,
             labels=labels,
             place=place,
+            barcodes=barcodes,
             # letters excluded by GSI4 design - uses default empty list
         )
 

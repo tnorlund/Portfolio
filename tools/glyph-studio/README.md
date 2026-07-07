@@ -10,14 +10,20 @@ hand-polished in the editor.
 
 ## Run
 
+The interactive GUI is gone; the tool now drives from the MCP server (agent
+loop) or the Python CLIs. Start a server with:
+
 ```bash
 cd tools/glyph-studio
 npm install          # once
-npm run dev          # server :5177 + vite app
+npm run mcp          # stdio MCP server (agent tools) — see "MCP server" below
+npm run server       # or the HTTP server on :5177 over the same core
 ```
 
 Python side uses `~/Portfolio/.venv/bin/python` (numpy + PIL only — no new
-deps by design; scipy/skimage are deliberately absent from the venv).
+deps by design; scipy/skimage are deliberately absent from the venv). See the
+CLIs below for the trace/compile/test loop, and `ADD_MERCHANT.md` for
+onboarding a new merchant font.
 
 ## CLIs
 

@@ -279,7 +279,7 @@ export const ACT_DWELL_MS: Record<ActId, number> = {
   character: 9500, // prints -> pen path + handles -> thermal dots, one beat
   font: 6500, // the hero glyph flies into the atlas — give it room
   assemble: 11000, // parallel section typing, then the label boxes draw on
-  finale: 7000,
+  finale: 18000, // slow gallery auto-pan through all the merchant pairs
 };
 
 /** How long autoplay stays paused after a manual interaction, then resumes. */

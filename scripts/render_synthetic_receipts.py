@@ -1058,22 +1058,33 @@ def load_merchant_profiles(refresh: bool = False) -> dict:
     return _MERCHANT_PROFILES_CACHE
 
 
-def get_merchant_profile(merchant: str | None) -> dict:
-    """The registry record for ``merchant`` (exact match, then declared alias).
+def get_merchant_profile_key(
+    merchant: str | None,
+) -> tuple[str | None, dict]:
+    """The canonical registry KEY and record for ``merchant``.
 
     Dynamo holds name variants of the same store ("TRADER JOE'S", "CVS
     pharmacy(r)"); a profile lists those under "aliases" so every variant
-    resolves to the one canonical record.
+    resolves to the one canonical record. Returns the profile's canonical KEY
+    alongside the record so callers that key external systems off the canonical
+    merchant name -- e.g. the MerchantFont Dynamo pointer, published under the
+    canonical name, not a receipt's alias -- resolve the same record the
+    profile does. ``(None, {})`` when unknown.
     """
     profiles = load_merchant_profiles()
     name = merchant or ""
     hit = profiles.get(name)
     if hit is not None:
-        return hit
-    for record in profiles.values():
+        return name, hit
+    for key, record in profiles.items():
         if name in record.get("aliases", ()):
-            return record
-    return {}
+            return key, record
+    return None, {}
+
+
+def get_merchant_profile(merchant: str | None) -> dict:
+    """The registry record for ``merchant`` (exact match, then declared alias)."""
+    return get_merchant_profile_key(merchant)[1]
 
 
 def section_scale_for_merchant(merchant: str | None) -> dict:
@@ -1128,14 +1139,19 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
 
         table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
         client = DynamoClient(table)
+        # Pointers are published under the profile's CANONICAL name; a render
+        # invoked with a receipt-variant alias ("CVS pharmacy", "TRADER JOE'S")
+        # must resolve to that key first or the lookup misses and the font
+        # silently drops.
+        lookup = get_merchant_profile_key(merchant)[0] or merchant
         if face in ("stylemap", "logo"):
-            ptr = client.get_merchant_font(merchant, "regular")
+            ptr = client.get_merchant_font(lookup, "regular")
             bucket = ptr.s3_bucket if ptr else None
             attr = "stylemap_s3_key" if face == "stylemap" else "logo_s3_key"
             key = getattr(ptr, attr, None) if ptr else None
             want_hash = None
         else:
-            ptr = client.get_merchant_font(merchant, face)
+            ptr = client.get_merchant_font(lookup, face)
             bucket = ptr.s3_bucket if ptr else None
             key = ptr.s3_key if ptr else None
             want_hash = ptr.content_hash if ptr else None
@@ -1143,11 +1159,15 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
             return local
         # A pointer may only satisfy the exact filename it was published as
         # (a merchant can have several atlases; never let a studio build
-        # masquerade as e.g. Costco's chart-derived production font).
+        # masquerade as e.g. Costco's chart-derived production font). Stylemaps
+        # and logos ride on the regular pointer under their own key fields
+        # (stylemap_s3_key/logo_s3_key), so the atlas cache_filename guard does
+        # not apply to them -- it would always mismatch and drop the download.
         want_name = getattr(ptr, "cache_filename", None)
-        if want_name and want_name != filename and face not in ("stylemap", "logo"):
+        guarded = face not in ("stylemap", "logo")
+        if want_name and want_name != filename and guarded:
             return local
-        if not want_name and face not in ("stylemap", "logo"):
+        if not want_name and guarded:
             return local
         os.makedirs(_BITMATRIX_DIR, exist_ok=True)
         tmp = local + ".fetch"
@@ -2626,6 +2646,23 @@ def _render_cached_synthetic_examples(args: argparse.Namespace) -> int:
     )
     fallback = make_ttf_fallback(atlas)
 
+    # Resolve the merchant's minted typography (bitmap font, section scale,
+    # derived ink erosion) so the hybrid path renders in the minted font, not
+    # the default TTF. Mirrors the direct render path (synthesis_loop
+    # glyph_review). bitmap_thin is derived only when a bitmap font is in play.
+    section_scale = section_scale_for_merchant(merchant)
+    typography = merchant_typography(merchant)
+    if "bitmap_font" in typography and "bitmap_thin" not in typography:
+        typography["bitmap_thin"] = resolve_bitmap_thin(
+            table_name,
+            merchant,
+            region=args.aws_region,
+            atlas=atlas,
+            profile=profile,
+            section_scale=section_scale,
+            typography=typography,
+        )
+
     os.makedirs(args.out_dir, exist_ok=True)
     if args.public_dir:
         os.makedirs(args.public_dir, exist_ok=True)
@@ -2653,6 +2690,8 @@ def _render_cached_synthetic_examples(args: argparse.Namespace) -> int:
                 width=width,
                 height=height,
                 path=out_path,
+                section_scale=section_scale,
+                **typography,
             )
         else:
             config = GlyphRenderConfig(
@@ -2683,6 +2722,8 @@ def _render_cached_synthetic_examples(args: argparse.Namespace) -> int:
                     width=width,
                     height=height,
                     path=public_path,
+                    section_scale=section_scale,
+                    **typography,
                 )
             else:
                 save_receipt_glyphs(

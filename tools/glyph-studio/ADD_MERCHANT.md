@@ -71,7 +71,13 @@ gate judges against it. The compile self-check must end with **no cap-height
 deviations**; deviations at this stage mean the corpus needs more refining or
 the glyph needs hand-authoring (step 5).
 
-## 4. Per-glyph QA fleet
+## 4. Per-glyph QA fleet (GATE — do this BEFORE the first receipt render)
+
+This step is not optional and not deferrable: every glyph gets a compare
+strip BEFORE step 7, and **every glyph the simplify gate REJECTED must be
+hand-fixed or explicitly justified** in your notes. (Audit finding: a Target
+mint skipped strips on the first pass and shipped `$ @ 8 9` as raw traces
+the gate had rejected — they were unreadable at receipt size.)
 
 Render compare strips (`python -m glyphstudio.compare <refined.npz>
 ../fonts/<slug> out.png "--chars=ABC..." --scale 2`; note the `--chars=` form
@@ -143,6 +149,16 @@ with `RECEIPT_PAPER_STRENGTH=0.3` (texture at 1.0 inflates density and hides
 thin ink). Read the metrics line and the PNG side-by-side. Targets:
 **h_ratio 0.95–1.05, wpc_ratio 0.95–1.05, density_ratio ≥ 0.85**.
 
+These targets are a **MUST-PASS gate, measured on the PRODUCTION render
+path** — the full profile active exactly as it will ship (logo band, stylemap,
+published fonts, cold cache). A passing run on a stripped-down variant (no
+logo, warm cache, hand-picked receipt) does NOT count. If a profile feature
+(e.g. a logo band that rescales geometry) drags a metric out of range, tune
+the feature until the production path passes — do not report the variant
+that happens to pass. Scorecard BLOCKERs must each be resolved or explained
+with evidence (scan skew gradients are the known benign class); "known
+alignment checks" is not an explanation.
+
 Knobs, in order of impact:
 - `font.json params.weight` — thermal prints are BOLD; TJ needed 1.4, CVS
   1.35, Vons 1.2. After changing weight, recompute `condense` (the pitch
@@ -184,7 +200,15 @@ stylemap to S3, writes MerchantFont pointers to Dynamo, refreshes the local
 cache, and clears render caches. Any machine now renders this merchant with
 zero manual setup (the renderer self-heals from the pointers).
 
-## 10. Verify + commit
+## 10. Verify + commit (and report honestly)
+
+**The PR body MUST include the final production-path scorecard verbatim**:
+the metrics line (h/wpc/density) and the failures table from the LAST
+cold-cache run with the full profile active. Reviewers diff this against the
+targets above; a PR whose validation section lists build/test commands but no
+scorecard is not reviewable and will be bounced.
+
+## 10b. Verify + commit
 
 Re-run step 7 once from a cold cache (proves vault resolution), then commit
 the font sources (`fonts/<slug>/` — skeleton JSONs + font.json + stylemap

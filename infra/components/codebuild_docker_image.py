@@ -399,6 +399,23 @@ class CodeBuildDockerImage(ComponentResource):
                 if context_path.exists():
                     paths.append(context_path)
 
+        # Extra context paths may carry baked non-code assets (e.g. glyph font
+        # JSONs: font.json, stylemap.json, glyphs/*.json) that the include_globs
+        # below deliberately exclude, so a font-only edit would not rebuild the
+        # image. Fold those JSONs in via a sub-hash keyed only when extra paths
+        # exist, keeping the digest byte-identical for callers with none.
+        extra_strings = None
+        if self.extra_context_paths:
+            extra_roots = [
+                Path(PROJECT_DIR) / extra
+                for extra in sorted(self.extra_context_paths)
+            ]
+            json_hash = compute_hash(
+                [p for p in extra_roots if p.exists()],
+                include_globs=["**/*.json"],
+            )
+            extra_strings = {"extra_context_json": json_hash}
+
         return compute_hash(
             paths,
             include_globs=[
@@ -407,6 +424,7 @@ class CodeBuildDockerImage(ComponentResource):
                 "**/requirements.txt",
                 "Dockerfile",
             ],
+            extra_strings=extra_strings,
         )
 
     def _generate_upload_script(self, bucket: str, content_hash: str) -> str:

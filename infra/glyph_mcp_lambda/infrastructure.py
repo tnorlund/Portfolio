@@ -148,6 +148,9 @@ class GlyphMcpLambda(ComponentResource):
             "role_arn": lambda_role.arn,
             "timeout": 300,  # 5 min — compile/compare are well under this
             "memory_size": 1536,  # numpy + PIL rasterization headroom
+            # Public (auth NONE) Function URL — cap concurrency so a burst of
+            # requests can't fan out into unbounded 1.5 GB invocations.
+            "reserved_concurrent_executions": 10,
             "tags": {"environment": stack},
             "environment": {
                 "GLYPH_FONTS_DIR": "/var/task/fonts",

@@ -365,6 +365,20 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     return parser
 
 
+def create_receipt_barcode_sk_parser() -> KeyParser:
+    """Create a type-safe SK parser for RECEIPT#/BARCODE# pattern."""
+
+    def parser(sk: str) -> dict[str, Any]:
+        parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
+        sk_parts = sk.split("#")
+        return {
+            "receipt_id": parsed["receipt_id"],
+            "barcode_id": int(sk_parts[3]),  # BARCODE is at position 3
+        }
+
+    return parser
+
+
 def create_geometry_extractors() -> dict[str, DynamoDBItemExtractor]:
     """Create type-safe extractors for geometry fields."""
 

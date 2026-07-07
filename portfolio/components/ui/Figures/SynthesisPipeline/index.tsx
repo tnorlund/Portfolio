@@ -353,24 +353,6 @@ const SynthesisPipeline: React.FC = () => {
                 onClick={() => jumpToAct(meta.index)}
                 data-testid={`act-dot-${meta.index}`}
               />
-              {isActive ? (
-                <svg
-                  className={styles.progressRing}
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  data-testid="act-progress-ring"
-                >
-                  <circle
-                    className={styles.progressRingFill}
-                    cx="12"
-                    cy="12"
-                    r="9"
-                    pathLength={1}
-                    strokeDasharray={1}
-                    strokeDashoffset={Math.min(1, Math.max(0, 1 - actProgress))}
-                  />
-                </svg>
-              ) : null}
             </li>
           );
         })}

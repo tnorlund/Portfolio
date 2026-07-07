@@ -8,7 +8,7 @@
 
 > **setViewport**(`__namedParameters?`): `void`
 
-Defined in: [utils/analytics.test.ts:35](https://github.com/tnorlund/Portfolio/blob/ddd0e9fa8c840403a3b1b2084bdd7da4c7dba8cc/portfolio/utils/analytics.test.ts#L35)
+Defined in: [utils/analytics.test.ts:35](https://github.com/tnorlund/Portfolio/blob/f663fb9a4bdfe48cc089a175c6853bbfb1d69736/portfolio/utils/analytics.test.ts#L35)
 
 ## Parameters
 

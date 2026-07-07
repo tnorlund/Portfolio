@@ -123,12 +123,30 @@ def _heavy_variant_dir(font_dir: str, tmp: str) -> str:
         float(font["params"].get("weight", 1.0)) * HEAVY_RATIO, 4
     )
     json.dump(font, open(fpath, "w", encoding="utf-8"), indent=1)
+    # Per-glyph weight overrides REPLACE (not scale) font.params.weight in
+    # glyphstudio.schema.merged_params, so scaling only the font-level weight
+    # leaves overridden glyphs at their body weight -- a mixed-weight heavy
+    # face. Scale each glyph's overrides.weight by the same ratio.
+    glyph_dir = os.path.join(hdir, "glyphs")
+    if os.path.isdir(glyph_dir):
+        for name in os.listdir(glyph_dir):
+            if not name.endswith(".json"):
+                continue
+            gpath = os.path.join(glyph_dir, name)
+            glyph = json.load(open(gpath, encoding="utf-8"))
+            overrides = glyph.get("overrides")
+            if isinstance(overrides, dict) and "weight" in overrides:
+                overrides["weight"] = round(
+                    float(overrides["weight"]) * HEAVY_RATIO, 4
+                )
+                json.dump(glyph, open(gpath, "w", encoding="utf-8"), indent=1)
     return hdir
 
 
 def _prebuilt_report(npz_path: str) -> dict:
     """Metrics for a prebuilt atlas (e.g. chart-derived) via BitmapFont."""
     import numpy as np  # noqa: PLC0415
+
     from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (  # noqa: PLC0415,E501
         BitmapFont,
     )
