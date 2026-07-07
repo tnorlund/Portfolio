@@ -1,0 +1,34 @@
+{
+ "version": 1,
+ "name": "homedepot",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350,
+  "pitchRatioTarget": 0.556,
+  "pitchRatioNote": "median OCR letter pitch / cap across 19 Home Depot receipts (p25 0.519, p75 0.599); renderer pitch = advance_ratio x condense must stay within 2%"
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 76.0,
+   "pitch": 0.4
+  },
+  "weight": 1.15,
+  "trackingScale": 1.0,
+  "slant": 0.1,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 0.914,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {}
+}

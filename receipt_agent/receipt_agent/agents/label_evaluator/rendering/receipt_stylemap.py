@@ -37,6 +37,13 @@ SECTION_TOKENS = {
 }
 _RULES: list[tuple[str, re.Pattern]] = [
     ("balance_due", re.compile(r"^BALANCE DUE", re.I)),
+    (
+        "store_header",
+        re.compile(
+            r"How doers|get more done|HOMEDEPOT\.COM|@\s*HOMEDEPOT\.COM",
+            re.I,
+        ),
+    ),
     ("store_hours", re.compile(r"Store Hours|MON-SUN|7AM-10PM", re.I)),
     (
         "address",
@@ -45,10 +52,25 @@ _RULES: list[tuple[str, re.Pattern]] = [
             re.I,
         ),
     ),
-    ("total_line", re.compile(r"^Total:", re.I)),
+    ("total_line", re.compile(r"^\s*TOTAL\b|^Total:|^CHARGE\b|USD\$", re.I)),
     (
         "summary",
-        re.compile(r"CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I),
+        re.compile(
+            r"CHANGE\b|CREDIT\b|SUBTOTAL|SALES TAX|^TAX\b|DEBIT\s*$",
+            re.I,
+        ),
+    ),
+    (
+        "transaction",
+        re.compile(r"\bSALE\b|CASHIER|^\d{4}\s+\d{5}\s+\d{3}\b", re.I),
+    ),
+    (
+        "discount",
+        re.compile(
+            r"Pro\s*Xtra(?!\s+(MEMBER|[#*]))|Preferred Pricing|"
+            r"MAX REFUND|REFUND\s+VALUE",
+            re.I,
+        ),
     ),
     (
         "payment",
@@ -67,7 +89,9 @@ _RULES: list[tuple[str, re.Pattern]] = [
         "footer",
         re.compile(
             r"Cashier|POS:|Transaction|Save money|weekly ad|sprouts\.com|"
-            r"original receipt|returns|Limits apply",
+            r"original receipt|returns|Limits apply|PRO XTRA MEMBER|"
+            r"PRO XTRA .*SUMMARY|PO/JOB|SPEND|CREDIT LINE|Perks|"
+            r"Apply and SAVE|homedepot\.com/credit",
             re.I,
         ),
     ),

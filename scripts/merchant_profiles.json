@@ -62,14 +62,25 @@
       }
     },
     "The Home Depot": {
-      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH, built by synthesis_loop/build_homedepot_logo.py from a clean brand SVG (all 17 real receipts use this slogan, not the older 'More saving. More doing.'). Body font: data-driven glyph font shredded (consistent italic slant + photographed-receipt warp defeats the averaging/registration; queued for the codex glyph loop), so fall back to PTMONO for now. condense/section_scale calibrated from real-vs-synth.",
-      "section_scale": {
-        "HEADER": 0.8
-      },
+      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black. Body font uses a clean studio-authored thermal scaffold calibrated to Home Depot's measured pitch/slant because the raw Home Depot consensus is too warped/noisy for reliable topology.",
+      "aliases": [
+        "Home Depot"
+      ],
+      "section_scale": {},
       "typography": {
         "font": "PTMONO",
-        "condense": 0.82,
-        "stroke": 0
+        "bitmap_font": {
+          "regular": "homedepot.glyphs.npz",
+          "heavy": "homedepot-heavy.glyphs.npz"
+        },
+        "condense": 0.914,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.72,
+        "bitmap_thin": 0.0,
+        "stylemap": "homedepot.stylemap.json",
+        "pitch_ratio": 0.556
       },
       "logo": "homedepot_logo.png",
       "logo_anchor": {
@@ -77,9 +88,11 @@
           "HOWDOERS",
           "GETMOREDONE"
         ],
-        "extend_left": true
+        "extend_left": true,
+        "center": true
       },
       "graphics": {
+        "footer_codes": false,
         "inbody_barcode": {
           "max_count": 0
         }

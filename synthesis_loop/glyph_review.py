@@ -103,14 +103,16 @@ def receipt(
     region = os.environ.get("AWS_REGION", "us-east-1")
     c = DynamoClient(table_name=table, region=region)
     s3 = boto3.client("s3", region_name=region)
-    atlas = rsr.cached_glyph_atlas(
-        table, merchant, region=region, max_receipts=8
-    )
     prof = rsr.cached_font_profile(
         table, merchant, region=region, max_receipts=12
     )
     ss = rsr.section_scale_for_merchant(merchant)
     typ = rsr.merchant_typography(merchant)
+    atlas = None
+    if "bitmap_font" not in typ:
+        atlas = rsr.cached_glyph_atlas(
+            table, merchant, region=region, max_receipts=8
+        )
     if "bitmap_font" in typ and "bitmap_thin" not in typ:
         typ["bitmap_thin"] = rsr.resolve_bitmap_thin(
             table,

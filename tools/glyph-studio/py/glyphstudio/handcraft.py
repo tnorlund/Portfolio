@@ -113,6 +113,35 @@ def specs(W: float) -> dict:
             line((Rt, CAP), (L + 30, 470)),
             line((L + 30, 470), (Rt, BASE)),
         ],
+        "D": [
+            line((L, BASE), (L, CAP)),
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, CAP),
+                    node(
+                        Rt,
+                        780,
+                        h_in=(Rt, CAP),
+                        h_out=(Rt, 620),
+                        smooth=True,
+                    ),
+                    node(
+                        Rt,
+                        280,
+                        h_in=(Rt, 440),
+                        h_out=(Rt, BASE),
+                        smooth=True,
+                    ),
+                    node(L, BASE),
+                ],
+            },
+        ],
+        "H": [
+            line((L, BASE), (L, CAP)),
+            line((Rt, BASE), (Rt, CAP)),
+            line((L, 500), (Rt, 500)),
+        ],
         "M": [
             line((L, BASE), (L, CAP)),
             line((L, CAP), (M, 400)),
@@ -365,6 +394,14 @@ def specs(W: float) -> dict:
                 ],
             }
         ],
+        "[": [
+            line((Rt, CAP), (L, CAP), (L, BASE), (Rt, BASE)),
+        ],
+        "\\": [line((L, CAP), (Rt, BASE))],
+        "]": [
+            line((L, CAP), (Rt, CAP), (Rt, BASE), (L, BASE)),
+        ],
+        "|": [line((M, CAP), (M, BASE))],
         "}": [
             {
                 "closed": False,
@@ -385,6 +422,8 @@ def specs(W: float) -> dict:
 # Default ink widths (cap units) when a char has no corpus samples.
 DEFAULT_W = {
     "K": 560,
+    "D": 560,
+    "H": 560,
     "M": 640,
     "N": 580,
     "V": 580,
@@ -405,6 +444,10 @@ DEFAULT_W = {
     ";": 220,
     "?": 460,
     "{": 340,
+    "[": 300,
+    "\\": 420,
+    "]": 300,
+    "|": 160,
     "}": 340,
     "o": 500,
     "e": 500,
