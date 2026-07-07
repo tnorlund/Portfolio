@@ -137,6 +137,32 @@ def specs(W: float) -> dict:
             line((Rt, CAP), (M, 470)),
             line((M, 470), (M, BASE)),
         ],
+        "D": [
+            line((L, BASE), (L, CAP)),
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, CAP),
+                    node(Rt, 790, h_in=(Rt, CAP), h_out=(Rt, 610), smooth=True),
+                    node(Rt, 260, h_in=(Rt, 390), h_out=(Rt, BASE), smooth=True),
+                    node(L, BASE),
+                ],
+            },
+        ],
+        "H": [
+            line((L, BASE), (L, CAP)),
+            line((Rt, BASE), (Rt, CAP)),
+            line((L, 500), (Rt, 500)),
+        ],
+        "F": [
+            line((L, BASE), (L, CAP)),
+            line((L, CAP), (Rt, CAP)),
+            line((L, 540), (Rt - 40, 540)),
+        ],
+        "8": [
+            circle(M, 715, Rt - M, 245),
+            circle(M, 285, Rt - M, 245),
+        ],
         "v": [line((L, XH), (M, BASE)), line((M, BASE), (Rt, XH))],
         "w": [
             line((L, XH), (L + (M - L) * 0.55, BASE)),
@@ -174,9 +200,34 @@ def specs(W: float) -> dict:
             line((M - 90, CAP), (M - 100, CAP - 240)),
             line((M + 90, CAP), (M + 100, CAP - 240)),
         ],
+        "'": [line((M, CAP), (M - 15, CAP - 240))],
+        "(": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(Rt - 20, CAP, h_out=(L + 20, 780)),
+                    node(L, 500, h_in=(L, 760), h_out=(L, 240), smooth=True),
+                    node(Rt - 20, BASE, h_in=(L + 20, 220)),
+                ],
+            }
+        ],
+        ")": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(L + 20, CAP, h_out=(Rt - 20, 780)),
+                    node(Rt, 500, h_in=(Rt, 760), h_out=(Rt, 240), smooth=True),
+                    node(L + 20, BASE, h_in=(Rt - 20, 220)),
+                ],
+            }
+        ],
+        ",": [circle(M, 70, 38, 38), line((M + 25, 45), (M - 40, -140))],
         "^": [line((L + 40, 640), (M, CAP)), line((M, CAP), (Rt - 40, 640))],
         "`": [line((M - 50, CAP), (M + 50, CAP - 200))],
         ";": [circle(M, 560, 42, 42), line((M + 15, 160), (M - 55, -120))],
+        "<": [line((Rt - 20, 720), (L + 20, 500)), line((L + 20, 500), (Rt - 20, 280))],
+        "=": [line((L + 10, 620), (Rt - 10, 620)), line((L + 10, 380), (Rt - 10, 380))],
+        ">": [line((L + 20, 720), (Rt - 20, 500)), line((Rt - 20, 500), (L + 20, 280))],
         "?": [
             {
                 "closed": False,
@@ -197,6 +248,33 @@ def specs(W: float) -> dict:
                 ],
             },
             circle(M, 60, 40, 40),
+        ],
+        "@": [
+            circle(M, 500, Rt - M, 420),
+            circle(M + 35, 450, max(90, (Rt - M) * 0.38), 150),
+            line((M + 125, 580), (M + 155, 310)),
+        ],
+        "[": [
+            line((Rt - 20, CAP), (L + 20, CAP)),
+            line((L + 20, CAP), (L + 20, BASE)),
+            line((L + 20, BASE), (Rt - 20, BASE)),
+        ],
+        "\\": [line((L + 20, CAP), (Rt - 20, BASE))],
+        "]": [
+            line((L + 20, CAP), (Rt - 20, CAP)),
+            line((Rt - 20, CAP), (Rt - 20, BASE)),
+            line((Rt - 20, BASE), (L + 20, BASE)),
+        ],
+        "_": [line((L + 10, -120), (Rt - 10, -120))],
+        "~": [
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, 500, h_out=(L + 80, 620)),
+                    node(M, 500, h_in=(M - 100, 650), h_out=(M + 100, 350), smooth=True),
+                    node(Rt, 500, h_in=(Rt - 80, 380)),
+                ],
+            }
         ],
         "O": [circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0)],
         "Q": [
@@ -233,6 +311,18 @@ def specs(W: float) -> dict:
                 ],
             },
             line((L + 60, 510), (Rt, BASE)),
+        ],
+        "P": [
+            line((L, BASE), (L, CAP)),
+            {
+                "closed": False,
+                "nodes": [
+                    node(L, CAP),
+                    node(Rt - 30, 870, h_in=(Rt - 30, CAP), smooth=True),
+                    node(Rt - 30, 640, h_out=(Rt - 30, 530)),
+                    node(L, 510),
+                ],
+            },
         ],
         "&": [
             {
@@ -287,6 +377,11 @@ def specs(W: float) -> dict:
                 ],
             }
         ],
+        "Z": [
+            line((L, CAP), (Rt, CAP)),
+            line((Rt, CAP), (L, BASE)),
+            line((L, BASE), (Rt, BASE)),
+        ],
         "o": [circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0)],
         "e": [
             circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0),
@@ -333,7 +428,15 @@ def specs(W: float) -> dict:
                 ],
             },
         ],
+        "b": [
+            line((L, BASE), (L, CAP + 30)),
+            circle(M, (XH + BASE) / 2.0 - 20, Rt - M, (XH - BASE) / 2.0 - 20),
+        ],
         "i": [circle(M, 830, 40, 40), line((M, BASE), (M, XH))],
+        "p": [
+            line((L, DESC), (L, XH)),
+            circle(M, (XH + BASE) / 2.0 + 40, Rt - M, (XH - BASE) / 2.0 - 20),
+        ],
         "q": [
             circle(M, (XH + BASE) / 2.0, Rt - M, (XH - BASE) / 2.0),
             line((Rt, XH), (Rt, DESC)),
@@ -391,6 +494,10 @@ DEFAULT_W = {
     "W": 660,
     "X": 560,
     "Y": 560,
+    "D": 560,
+    "H": 560,
+    "F": 460,
+    "8": 520,
     "v": 500,
     "w": 620,
     "x": 500,
@@ -400,10 +507,23 @@ DEFAULT_W = {
     "%": 620,
     "#": 560,
     '"': 320,
+    "'": 180,
+    "(": 300,
+    ")": 300,
+    ",": 180,
     "^": 460,
     "`": 220,
     ";": 220,
+    "<": 440,
+    "=": 440,
+    ">": 440,
     "?": 460,
+    "@": 700,
+    "[": 300,
+    "\\": 420,
+    "]": 300,
+    "_": 440,
+    "~": 460,
     "{": 340,
     "}": 340,
     "o": 500,
@@ -411,13 +531,17 @@ DEFAULT_W = {
     "a": 500,
     "u": 500,
     "h": 520,
+    "b": 520,
     "i": 220,
+    "p": 520,
     "O": 580,
     "Q": 600,
     "U": 560,
     "R": 560,
+    "P": 560,
     "&": 620,
     "S": 540,
+    "Z": 520,
     "q": 520,
     "j": 300,
     "!": 160,
@@ -430,15 +554,27 @@ def main(argv=None) -> int:
     ap.add_argument("samples")
     ap.add_argument("font_dir")
     ap.add_argument("--chars", default="".join(DEFAULT_W))
+    ap.add_argument(
+        "--default-width-chars",
+        default="",
+        help=(
+            "Use DEFAULT_W instead of the soft consensus width for these chars. "
+            "Use this when the receipt corpus consensus is visibly corrupted."
+        ),
+    )
     args = ap.parse_args(argv)
 
     paths = font_dir_paths(args.font_dir)
     written = []
+    default_width_chars = set(args.default_width_chars)
     for ch in args.chars:
         if ch not in DEFAULT_W:
             print(f"no spec for {ch!r}, skipping")
             continue
-        W = soft_ink_width(args.samples, ord(ch), DEFAULT_W[ch])
+        if ch in default_width_chars:
+            W = DEFAULT_W[ch]
+        else:
+            W = soft_ink_width(args.samples, ord(ch), DEFAULT_W[ch])
         W = max(200.0, min(760.0, W))
         glyph = {
             "version": 1,

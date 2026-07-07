@@ -85,6 +85,36 @@
         }
       }
     },
+    "In-N-Out Burger": {
+      "_comment": "Studio-minted from 15 real receipts. Scans print a thermal text header such as 'IN-N-OUT WESTLAKE VILLAGE', not the full red/yellow restaurant-logo lockup; keep the downloaded brand SVG out of receipt-body rendering so boxes and receipt-level records stay scan-faithful.",
+      "aliases": [
+        "IN-N-OUT",
+        "IN-N-OUT BURGER",
+        "IN-N-OUT WESTLAKE VILLAGE"
+      ],
+      "section_scale": {},
+      "typography": {
+        "font": "PTMONO",
+        "bitmap_font": {
+          "regular": "innout.glyphs.npz",
+          "heavy": "innout-heavy.glyphs.npz"
+        },
+        "condense": 0.7,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "bitmap_thin": 0.0,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.769,
+        "stylemap": "innout.stylemap.json",
+        "pitch_ratio": 0.508
+      },
+      "graphics": {
+        "footer_codes": false,
+        "inbody_barcode": {
+          "max_count": 0
+        }
+      }
+    },
     "Vons": {
       "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
       "logo": "vons_logo.png",

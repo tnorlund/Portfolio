@@ -19,6 +19,7 @@ export const SAMPLES = {
   vons: "/tmp/gridfix/vons_studio/vons-studio.samples.npz",
   traderjoes: "/tmp/gridfix/tj_studio/tj.refined.npz",
   cvs: "/tmp/gridfix/cvs_studio/cvs.refined.npz",
+  innout: "/tmp/gridfix/innout_studio/innout.refined.npz",
 };
 
 // Font dir -> canonical merchant name. The receipt renderer caches per-merchant
@@ -31,6 +32,7 @@ export const FONT_MERCHANTS = {
   vons: "Vons",
   traderjoes: "Trader Joe's",
   cvs: "CVS",
+  innout: "In-N-Out Burger",
 };
 
 // Mirror _render_cache_path's slug: runs of non-alphanumerics -> single "_".
