@@ -6,6 +6,7 @@ import {
 } from "../AugmentationShowcase/labelGeometry";
 import { LABEL_COLORS } from "../labelStyles";
 import { LabelBoxOverlay, LabelLegend } from "../labelBoxOverlay";
+import sharedStyles from "../labelBoxOverlay.module.css";
 import {
   cloudScale,
   glyphAnchorsCloud,
@@ -586,7 +587,10 @@ const AssembleAct: React.FC<ActProps> = ({
 
   return (
     <div className={styles.assembleStage} data-testid="act-assemble">
-      <div className={styles.assembleReceipt} style={{ aspectRatio: aspect }}>
+      <div
+        className={`${styles.assembleReceipt} ${sharedStyles.receiptCard}`}
+        style={{ aspectRatio: aspect }}
+      >
         <canvas
           ref={canvasRef}
           className={styles.assembleCanvas}
@@ -605,9 +609,6 @@ const AssembleAct: React.FC<ActProps> = ({
       {labelsShown ? (
         <div className={styles.assembleSide}>
           <LabelLegend families={families} />
-          <p className={styles.counter} data-testid="labels-counter">
-            Labeled training example. Zero manual labels.
-          </p>
         </div>
       ) : null}
     </div>

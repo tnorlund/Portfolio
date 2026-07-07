@@ -24,6 +24,7 @@ import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
 import { CHARGE_GREEN, ENTITY_DISPLAY_NAMES, LABEL_COLORS } from "../labelStyles";
 import { LabelBoxOverlay } from "../labelBoxOverlay";
+import sharedStyles from "../labelBoxOverlay.module.css";
 
 const emptyStringSet = new Set<string>();
 
@@ -323,7 +324,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   return (
     <div className={styles.activeReceipt}>
       <div className={styles.receiptImageWrapper}>
-        <div className={styles.receiptImageInner}>
+        <div className={`${styles.receiptImageInner} ${sharedStyles.receiptCard}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}

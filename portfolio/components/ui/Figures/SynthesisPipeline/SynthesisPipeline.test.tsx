@@ -337,15 +337,14 @@ describe("SynthesisPipeline (reduced motion)", () => {
     // The merged act renders the receipt-assembly canvas (parallel typing).
     expect(screen.getByTestId("assemble-canvas")).toBeInTheDocument();
     expect(screen.queryByTestId("asset-pending")).not.toBeInTheDocument();
-    // Final labels resolve -> ground-truth boxes + the counter.
+    // Final labels resolve -> ground-truth boxes draw on.
     await waitFor(() =>
       expect(screen.getAllByTestId("final-label-box").length).toBeGreaterThan(
         10,
       ),
     );
-    expect(screen.getByTestId("labels-counter")).toHaveTextContent(
-      /zero manual labels/i,
-    );
+    // The caption was dropped — the boxes + legend carry the act.
+    expect(screen.queryByTestId("labels-counter")).not.toBeInTheDocument();
   });
 
   test("assemble label boxes use the LayoutLM LABEL_COLORS + stroke styling", async () => {

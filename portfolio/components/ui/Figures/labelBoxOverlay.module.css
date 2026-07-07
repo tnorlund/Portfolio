@@ -1,3 +1,13 @@
+/* The receipt "card": the paper the receipt sits on, with LayoutLM's border +
+   drop shadow. Shared by both figures so they can't drift. (The paper
+   background is applied by each figure — LayoutLM's receipt image covers the
+   card; the SynthesisPipeline canvas needs an explicit light paper fill.) */
+.receiptCard {
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
 /* Legend styling copied from LayoutLMBatchVisualization.module.css so the two
    figures' legends read identically (dot + label per family). */
 
@@ -25,4 +35,26 @@
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-color);
+}
+
+/* On narrow viewports the legend reflows from a tall column into a compact
+   wrapping chip row (keeps the dot+name styling) so every entry stays visible
+   without clipping at the stage edge. */
+@media (max-width: 700px) {
+  .legend {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3rem 0.7rem;
+  }
+  .legendItem {
+    gap: 0.4rem;
+  }
+  .legendDot {
+    width: 12px;
+    height: 12px;
+  }
+  .legendLabel {
+    font-size: 0.78rem;
+  }
 }

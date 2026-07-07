@@ -309,6 +309,25 @@
   image-rendering: pixelated;
 }
 
+/* Dark mode: the consensus cloud + real prints are dark-ink-on-white PNGs, so
+   invert them to read as light ink on the dark stage — no glaring white slab.
+   The blue pen path and the --text-color (white) thermal dots already contrast
+   on the dark stage. */
+@media (prefers-color-scheme: dark) {
+  .charCloudFill,
+  .charPrintLayer {
+    filter: invert(1);
+  }
+}
+:root[data-theme="dark"] .charCloudFill,
+:root[data-theme="dark"] .charPrintLayer {
+  filter: invert(1);
+}
+:root[data-theme="light"] .charCloudFill,
+:root[data-theme="light"] .charPrintLayer {
+  filter: none;
+}
+
 .penSvg {
   position: absolute;
   inset: 0;
@@ -471,11 +490,17 @@
 }
 
 /* Height-bounded; width follows the receipt aspect ratio (set inline). */
+/* The typed receipt sits on light paper with LayoutLM's card border+shadow (via
+   the shared .receiptCard class). The paper is a FIXED off-white that matches
+   the final.webp crops and stays light in dark mode (the receipt text is dark
+   ink), so it reads like the real LayoutLM receipt image on white — not dark
+   text floating on the black page. */
 .assembleReceipt {
   position: relative;
   height: 100%;
   width: auto;
   flex-shrink: 0;
+  background: #f7f6f2;
 }
 
 .assembleCanvas {
@@ -503,13 +528,6 @@
 }
 
 /* (Label boxes + legend now come from the shared labelBoxOverlay component.) */
-
-.counter {
-  margin: 0.15rem 0 0;
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-align: center;
-}
 
 /* ==== Act 9: finale — same machine, every store ====================== */
 
@@ -735,6 +753,30 @@
   }
   .staticStage {
     height: 360px;
+  }
+
+  /* Assemble act: stack the receipt over the legend, and let the legend reflow
+     into a compact wrapping chip row so every entry stays visible (no tall
+     right-hand column clipping at the stage edge on narrow/phone viewports). */
+  .assembleStage {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+  .assembleReceipt {
+    height: auto;
+    max-height: 66%;
+    max-width: 88%;
+  }
+  .assembleSide {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Finale: constrain each logo to its card width so the row can't overflow. */
+  .finaleLogo {
+    height: auto;
+    width: var(--finale-w);
   }
 }
 
