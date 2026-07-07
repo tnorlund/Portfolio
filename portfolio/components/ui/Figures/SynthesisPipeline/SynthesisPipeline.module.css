@@ -561,6 +561,12 @@
   display: none; /* WebKit/Chrome — no scrollbar chrome */
 }
 
+/* While the auto-pan drives scrollLeft each frame, turn OFF snap so it can't
+   fight the animation; snap returns for manual scrolling. */
+.finaleRow[data-autopan] {
+  scroll-snap-type: none;
+}
+
 .finaleCard {
   display: flex;
   flex-direction: column;
@@ -687,15 +693,23 @@
   text-align: center;
 }
 
-/* Merchant logo mark: currentColor through an alpha mask, above each pair.
-   Rendered into a FIXED box (card width x a fixed band) with mask-size:contain,
-   so every logo — from the square-ish Vons mark to the long Trader Joe's / CVS
-   wordmarks — fits within the same box; the box is a constant height so the
-   receipts below stay tops-aligned regardless of logo aspect. */
-.finaleLogo {
-  width: var(--finale-w);
-  height: clamp(20px, 3.6vh, 34px);
+/* A constant-height slot the logo is centered in, so the receipts below stay
+   tops-aligned even though each logo's own height varies with its aspect. */
+.finaleLogoSlot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: clamp(30px, 4.6vh, 42px);
+  width: 100%;
   flex-shrink: 0;
+}
+
+/* Merchant logo mark: currentColor through an alpha mask, at its NATURAL aspect
+   with an equal ink area across merchants (width/height set inline). The box
+   already matches the logo's aspect, so mask-size:contain fills it exactly. */
+.finaleLogo {
+  flex-shrink: 0;
+  max-width: 100%;
   background-color: currentColor;
   mask-mode: alpha;
   mask-repeat: no-repeat;

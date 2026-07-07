@@ -628,6 +628,12 @@ const AssembleAct: React.FC<ActProps> = ({
  * matches the real. The card renders at a common width and its own natural
  * height (Costco taller than Vons taller than Sprouts).
  */
+/* Every logo is sized to the SAME visual weight (equal ink AREA) at its own
+   natural aspect, so wide wordmarks (Trader Joe's, CVS) read short-and-wide and
+   a squarer mark reads compact — none stretched. Area in (logo-height-unit)^2;
+   the box height is clamped so tall/square marks don't push the receipt down. */
+const LOGO_AREA = 1450;
+
 const FinaleCard: React.FC<{
   merchant: Merchant;
   shown: boolean;
@@ -635,10 +641,31 @@ const FinaleCard: React.FC<{
 }> = ({ merchant, shown, wipe }) => {
   const [synthFailed, setSynthFailed] = useState(false);
   const [realFailed, setRealFailed] = useState(false);
+  // Natural logo aspect, read from the mask image (works for any merchant — no
+  // hardcoded per-logo dimensions needed as new merchants are added).
+  const [logoAspect, setLogoAspect] = useState<number | null>(null);
   const dims = RECEIPT_DIMS[merchant];
   const logoUrl = `url(${logoSrc(merchant)})`;
   const wipePct = Math.round(clamp01(wipe) * 1000) / 10;
   const pair = !synthFailed && !realFailed;
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        setLogoAspect(img.naturalWidth / img.naturalHeight);
+      }
+    };
+    img.src = logoSrc(merchant);
+    return () => {
+      img.onload = null;
+    };
+  }, [merchant]);
+
+  // Equal-area sizing: w = sqrt(AREA * aspect), h = sqrt(AREA / aspect).
+  const aspect = logoAspect ?? 4;
+  const logoW = Math.sqrt(LOGO_AREA * aspect);
+  const logoH = Math.sqrt(LOGO_AREA / aspect);
 
   return (
     <figure
@@ -648,17 +675,21 @@ const FinaleCard: React.FC<{
       data-merchant={merchant}
     >
       {/* Merchant logo mark: currentColor through an alpha mask (theme-aware),
-          above the pair — replaces the text caption. A fixed box + mask
-          contain fits every aspect (Trader Joe's/CVS are long wordmarks). */}
-      <div
-        className={styles.finaleLogo}
-        role="img"
-        aria-label={`${MERCHANT_LABELS[merchant]} logo`}
-        style={{
-          WebkitMaskImage: logoUrl,
-          maskImage: logoUrl,
-        }}
-      />
+          at its natural aspect + equal ink area, centered in a fixed-height
+          slot so the receipts below stay tops-aligned. */}
+      <div className={styles.finaleLogoSlot}>
+        <div
+          className={styles.finaleLogo}
+          role="img"
+          aria-label={`${MERCHANT_LABELS[merchant]} logo`}
+          style={{
+            width: `${logoW}px`,
+            height: `${logoH}px`,
+            WebkitMaskImage: logoUrl,
+            maskImage: logoUrl,
+          }}
+        />
+      </div>
       <div
         className={styles.finaleFrame}
         data-testid="finale-frame"
@@ -714,25 +745,38 @@ const FinaleCard: React.FC<{
   );
 };
 
-const FinaleAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
+const FINALE_PAN_MS = 14000; // full left->right pan duration (fits the dwell)
+const FINALE_PAN_DELAY = 1200; // let the cards settle in before panning
+
+const FinaleAct: React.FC<ActProps> = ({
+  progress,
+  active,
+  reducedMotion,
+}) => {
   const p = reducedMotion ? 1 : progress;
   // Divider oscillates across the pair; rests centered (0.5) at p=0/1 so a
   // paused finale shows a clean real|synth split.
   const wipe = 0.5 + 0.42 * Math.sin(p * Math.PI * 2);
   const rowRef = useRef<HTMLDivElement>(null);
+  // Once the viewer touches the row (wheel/drag/touch) we hand over to manual
+  // snap-scroll and never fight them again for this mount.
+  const [manual, setManual] = useState(false);
+  const autoPan = active && !manual && !reducedMotion;
 
-  // Let a vertical mouse wheel scroll the pair row horizontally (trackpad and
-  // touch already scroll it natively). Only intercept when the row can scroll
-  // further in that direction, so the page still scrolls at the ends.
+  // Interaction cancels the auto-pan. A vertical mouse wheel also scrolls the
+  // row horizontally (trackpad/touch do that natively); only intercept when the
+  // row can scroll further, so the page still scrolls at the ends.
   useEffect(() => {
     const el = rowRef.current;
     if (!el) {
       return;
     }
+    const takeOver = () => setManual(true);
     const onWheel = (e: WheelEvent) => {
+      takeOver();
       const max = el.scrollWidth - el.clientWidth;
       if (max <= 1 || e.deltaY === 0 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) {
-        return; // nothing to scroll, or already a horizontal gesture
+        return;
       }
       const atStart = el.scrollLeft <= 0;
       const atEnd = el.scrollLeft >= max - 1;
@@ -743,16 +787,58 @@ const FinaleAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
       el.scrollLeft += e.deltaY;
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("pointerdown", takeOver, { passive: true });
+    el.addEventListener("touchstart", takeOver, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", takeOver);
+      el.removeEventListener("touchstart", takeOver);
+    };
   }, []);
 
+  // Auto-pan: while the finale is active (and untouched), smoothly scroll the
+  // row left->right through every pair, then rest at the end. Time-based so it
+  // runs whether autoplay is playing or the act was jumped to.
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el || !autoPan) {
+      return;
+    }
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 1) {
+      return; // everything fits — nothing to pan
+    }
+    let raf = 0;
+    let start = 0;
+    const ease = (t: number) => t * t * (3 - 2 * t);
+    const step = (ts: number) => {
+      if (!start) {
+        start = ts;
+      }
+      const t = clamp01((ts - start - FINALE_PAN_DELAY) / FINALE_PAN_MS);
+      el.scrollLeft = ease(t) * max;
+      if (t < 1) {
+        raf = requestAnimationFrame(step);
+      }
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [autoPan]);
+
   return (
-    <div ref={rowRef} className={styles.finaleRow} data-testid="act-finale">
+    <div
+      ref={rowRef}
+      className={styles.finaleRow}
+      data-testid="act-finale"
+      data-autopan={autoPan || undefined}
+    >
       {MERCHANTS.map((m, i) => (
         <FinaleCard
           key={m}
           merchant={m}
-          shown={p >= (i / MERCHANTS.length) * 0.7}
+          // Cards settle in quickly (not spread across the long dwell) so the
+          // auto-pan reaches each one after it has appeared.
+          shown={p >= (i / MERCHANTS.length) * 0.08}
           wipe={wipe}
         />
       ))}

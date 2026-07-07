@@ -109,5 +109,28 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
     ).toBeAttached();
   }
 
+  // The finale auto-pans through the pairs on its own, and any interaction
+  // hands over to manual scroll. Force the row to overflow (narrow viewport)
+  // then re-enter the finale so the pan starts fresh.
+  await page.setViewportSize({ width: 560, height: 900 });
+  await dots.nth(0).click();
+  await page.waitForTimeout(300);
+  await dots.nth(n - 1).click();
+  const row = page.getByTestId("act-finale");
+  await page.waitForTimeout(2000); // past the pan start delay
+  const s1 = await row.evaluate((el) => el.scrollLeft);
+  await page.waitForTimeout(1800);
+  const s2 = await row.evaluate((el) => el.scrollLeft);
+  // scrollLeft advances without any interaction...
+  expect(s2, "auto-pan advances scrollLeft").toBeGreaterThan(s1 + 5);
+  expect(await row.getAttribute("data-autopan")).not.toBeNull();
+  // ...and a wheel interaction cancels it (hands over to manual scroll).
+  await row.dispatchEvent("wheel", { deltaY: 20, deltaX: 0 });
+  await page.waitForTimeout(200);
+  expect(
+    await row.getAttribute("data-autopan"),
+    "a wheel interaction stops the auto-pan",
+  ).toBeNull();
+
   expect(errors, errors.join("\n")).toHaveLength(0);
 });
