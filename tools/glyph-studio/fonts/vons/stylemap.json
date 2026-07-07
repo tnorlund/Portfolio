@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "source": {
+    "receipts": 30,
+    "scan_dir": ".out/stylescan-vons",
+    "lines_measured": 987,
+    "date": "2026-07-06"
+  },
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.009,
+      "notes": "n=116. Address/phone lines are body-identical (cap_rel med 1.01, stroke_rel med 1.02). The VONS logo is a separate sub-style: 27/116 lines tier=large, cap_rel med 4.11x body (range 3.26-4.66), reverse-video (white-on-black) on 17/116 lines. Render logo as its own element, not scaled text. The 1 underline hit is a vons.com URL line, likely a coupon-zone artifact."
+    },
+    "savings": {
+      "sizeScale": 1.04,
+      "weight": "semibold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=84. Two sub-weights: dept 'Price You Pay' header lines are bold (30/84 tier=bold, stroke_rel med 1.42); Member Savings / YOUR SAVINGS value lines are lighter but still above body (stroke_rel med 1.15). Section-wide stroke_rel med 1.26, cap_rel med 1.04. Same glyph size as body; emphasis is stroke weight only."
+    },
+    "section_header": {
+      "sizeScale": 1.05,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=23. Dept banners (PRODUCE, MEAT, REFRIG/FROZEN, LIQUOR, GEN MERCHANDISE): stroke_rel med 1.34 (p25 1.18, p90 1.43), 15/23 tier=bold. cap_rel med 1.05, i.e. bold at body size, not enlarged."
+    },
+    "total_line": {
+      "sizeScale": 1.08,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=66, heterogeneous. '**** BALANCE' lines are body weight (stroke_rel med 1.03, n=26) with slight size bump (cap_rel med 1.08). 'TOTAL NUMBER OF ITEMS SOLD' is plain body (stroke_rel med 1.00, n=26). The savings-block 'Total X.XX' line IS bold (stroke_rel med 1.31, up to 1.61, n=14) — style that one line bold, not BALANCE."
+    },
+    "summary": {
+      "sizeScale": 1.04,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=81. TAX/CHANGE/Credit Purchase lines: cap_rel med 1.04, stroke_rel med 0.97, 80/81 tier=normal. Plain body."
+    },
+    "payment": {
+      "sizeScale": 1.04,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=108. cap_rel med 1.04, stroke_rel med 0.99. Plain body. Card-slip fields that print reverse-video/boxed would be invisible to this scan (see limitations)."
+    },
+    "points": {
+      "sizeScale": 1.03,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=20 (small sample). cap_rel med 1.03, stroke_rel med 1.01. Plain body; occasional promo line measured large (1/20)."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=28. Tightest match to body: cap_rel med 1.00 (p25 0.94, p90 1.04), stroke_rel med 1.00. 28/28 tier=normal."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=30 explicitly tagged 'item'; the 406 'other' lines behave identically (cap_rel med 1.00, stroke_rel med 1.00). This IS the body baseline: sizeScale/weight 1.0 by construction. Underlines in 'other' (13/406) are coupon/ad fine print ('5% OFF', 'stock'), not receipt body."
+    }
+  },
+  "letterOverrides": {
+    "S": {"strokeScale": 1.18, "n": 1835, "note": "curved caps measure heavy; likely real ink gain on curves"},
+    "s": {"strokeScale": 1.20, "n": 1546},
+    "e": {"strokeScale": 1.22, "n": 1531},
+    "a": {"strokeScale": 1.16, "n": 1714},
+    "3": {"strokeScale": 1.16, "n": 1673},
+    "F": {"strokeScale": 1.17, "n": 757},
+    "$": {"strokeScale": 1.16, "n": 97},
+    "&": {"strokeScale": 1.21, "n": 24},
+    "-": {"strokeScale": 1.19, "n": 277, "note": "horizontal-bar glyph; stroke estimator reads bar thickness high"},
+    "=": {"strokeScale": 1.64, "n": 191, "note": "double-bar; almost certainly a measurement artifact (bars merge), do not thicken"},
+    "z": {"strokeScale": 1.49, "n": 206, "note": "diagonal-dominant; known diagonal measurement bias, treat with caution"},
+    "Z": {"strokeScale": 1.33, "n": 57, "note": "diagonal-dominant; same caution as z"},
+    "N": {"strokeScale": 0.84, "n": 1043, "note": "diagonal reads thin; measurement bias suspected"},
+    "x": {"strokeScale": 0.79, "n": 161, "note": "diagonal-dominant; measurement bias suspected"},
+    "/": {"strokeScale": 0.83, "n": 588, "note": "pure diagonal; measurement bias suspected"},
+    ".": {"strokeScale": 0.82, "n": 871, "note": "dot glyphs under-measure stroke"},
+    ":": {"strokeScale": 0.76, "n": 481, "note": "dot glyphs under-measure stroke"},
+    "!": {"strokeScale": 0.77, "n": 149, "note": "dot+stem; under-measures"},
+    "'": {"strokeScale": 0.75, "n": 10, "note": "n barely meets threshold"},
+    "@": {"strokeScale": 0.85, "n": 70}
+  },
+  "limitations": [
+    "Reverse-video / boxed fields are OCR-invisible: this scan is word-driven, so any region OCR failed to read (solid black banners, boxed card-slip fields) produced no line at all. Observed reverse_video rates (17/116 store_header logo, 7/406 other, 0 elsewhere) are LOWER BOUNDS, not true zeros — Costco taught us this. Do not conclude Vons has no reverse-video fields outside the logo.",
+    "1 of 30 receipts (129ee4aa_1) had no body baseline (body_cap_px null); its lines are excluded from normalized percentiles but counted in underline/reverse-video rates.",
+    "39 lines had null cap_px and 5 null stroke_med; excluded from the respective percentile pools.",
+    "Diagonal-dominant glyphs (z, Z, x, N, /) show known stroke-measurement bias in this pipeline; their letterOverrides describe measurements, not necessarily true ink weight.",
+    "'=' strokeScale 1.64 is a double-bar merge artifact; '-' 1.19 is bar-thickness vs stem-thickness comparison, not boldness.",
+    "section_header (n=23) and points (n=20) samples are small; percentiles are coarse.",
+    "The savings-block bold 'Total' line only appears on receipts with club-card savings (14/30 receipts); its bold verdict rests on n=14 lines."
+  ]
+}

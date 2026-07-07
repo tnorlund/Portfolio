@@ -1,0 +1,54 @@
+{
+ "version": 1,
+ "char": "H",
+ "codepoint": 72,
+ "provenance": "edited",
+ "width": 724.1,
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 58,
+     "y": 920,
+     "type": "corner"
+    },
+    {
+     "x": 58,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 458,
+     "y": 920,
+     "type": "corner"
+    },
+    {
+     "x": 458,
+     "y": 50,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 58,
+     "y": 490,
+     "type": "corner"
+    },
+    {
+     "x": 458,
+     "y": 490,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

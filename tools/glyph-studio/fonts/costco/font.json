@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "name": "costco-studio",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 100,
+   "pitch": 0.4
+  },
+  "weight": 1.0,
+  "trackingScale": 1.0,
+  "slant": 0.0,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 0.895,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {
+  "merchant": "Costco Wholesale",
+  "imageId": "0324604e-e1f7-4021-b887-7ef7e012c563",
+  "receiptId": 1
+ }
+}

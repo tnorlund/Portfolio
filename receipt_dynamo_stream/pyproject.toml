@@ -35,14 +35,14 @@ test = [
     "moto>=5.1.0,<6.0.0",
 ]
 lint = [
-    "black==26.1.0",
-    "isort==8.0.0",
+    "black==26.5.1",
+    "isort==8.0.1",
 ]
 dev = [
-    "black==26.1.0",
+    "black==26.5.1",
     "pylint>=3.0.0,<5.0.0",
     "mypy>=1.19.0",
-    "isort==8.0.0",
+    "isort==8.0.1",
     "boto3-stubs[dynamodb]>=1.42.0",
     "mypy-boto3-dynamodbstreams>=1.42.0",
 ]

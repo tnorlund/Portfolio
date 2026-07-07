@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "source": {
+    "receipts": 19,
+    "scan_dir": "/tmp/gridfix/cvs_studio/scans",
+    "lines_measured": 703,
+    "date": "2026-07-07"
+  },
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.06,
+      "notes": "n=18. cap_rel med 2.765 / stroke 2.085 IS the CVSpharmacy wordmark graphic \u2014 rendered as the logo overlay, never as scaled text. Non-logo header lines are body."
+    },
+    "reg_line": {
+      "sizeScale": 1.1,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=18. REG#/TRN#/CSHR#/STR# line prints slightly larger, normal weight (cap_rel med 1.125, stroke med 0.937)."
+    },
+    "extracare": {
+      "sizeScale": 1.0,
+      "weight": "semibold",
+      "underline": false,
+      "underlineRate": 0.02,
+      "notes": "n=47. ExtraCare/ExtraBucks lines run bold-ish (stroke_rel med 1.117, p75 1.30): card # lines and offer headers are the bold sub-population."
+    },
+    "pharmacy": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.02,
+      "notes": "n=100. Vaccination/prescription copy is body weight (stroke med 1.052)."
+    },
+    "fsa": {
+      "sizeScale": 1.0,
+      "weight": "semibold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=16. FSA summary header + totals run semibold (stroke_rel med 1.152, p75 1.22)."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=31. Body."
+    },
+    "total_line": {
+      "sizeScale": 0.9,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=18. TOTAL/CHARGE block prints smaller than body (cap_rel med 0.897)."
+    },
+    "summary": {
+      "sizeScale": 0.9,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=7. Small like total block."
+    },
+    "payment": {
+      "sizeScale": 0.9,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.02,
+      "notes": "n=123. EMV/auth block prints smaller and lighter (cap_rel med 0.909, stroke med 0.925)."
+    },
+    "barcode_caption": {
+      "sizeScale": 0.9,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=16. Barcode digit captions slightly larger (cap_rel med 1.093). Render-audit vs 8de52018: OCR-box sizing overshoots this line ~1.3x, sizeScale 0.9 recenters."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=58. Body. (The giant $4-off coupon text is a graphic zone beyond stylemap scope.)"
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.05,
+      "notes": "n=251. Body."
+    }
+  }
+}

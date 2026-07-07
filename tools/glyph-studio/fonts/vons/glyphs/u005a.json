@@ -1,0 +1,61 @@
+{
+ "version": 1,
+ "char": "Z",
+ "codepoint": 90,
+ "provenance": "edited",
+ "trace": {
+  "corpus": "vons-studio.samples.npz",
+  "samples": 21,
+  "date": "2026-07-06"
+ },
+ "width": 514.2,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 45,
+     "y": 935,
+     "type": "corner"
+    },
+    {
+     "x": 465,
+     "y": 935,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 465,
+     "y": 935,
+     "type": "corner"
+    },
+    {
+     "x": 45,
+     "y": 135,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 45,
+     "y": 135,
+     "type": "corner"
+    },
+    {
+     "x": 465,
+     "y": 135,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

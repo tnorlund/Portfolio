@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "source": {
+    "receipts": 173,
+    "date": "2026-07-03"
+  },
+  "sections": {
+    "address": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.015,
+      "notes": "Heaviest body section (stroke_rel med 1.122, p75 1.254) but below bold threshold; consider a mild ~1.10 weight nudge if address lines look thin. n=776."
+    },
+    "barcode_caption": {
+      "sizeScale": 0.85,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.041,
+      "notes": "Distinctly smaller (cap_rel med 0.844) and lighter (stroke_rel med 0.733) than body; long numeric strings under the barcode. n=219."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.016,
+      "notes": "Baseline body text (cap 1.0, stroke 0.998). n=913."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.004,
+      "notes": "Baseline body text (cap 1.0, stroke 0.975). n=523."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.048,
+      "notes": "Median is body-weight; elevated p75 (stroke 1.267, cap 1.158) comes from SPROUTS logo/header lines mixed into this bucket, not a section-wide style. n=2137."
+    },
+    "payment": {
+      "sizeScale": 0.95,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.006,
+      "notes": "Slightly condensed print (cap_rel med 0.921, stroke 0.958); card/auth block. n=1917. RENDERER NOTE: measured cap_rel 0.921 but per-receipt OCR sizing already absorbs most of the condensation; applying the full 0.90 double-counts and drifted right-aligned payment segments 25px on the review receipt (blocker). 0.95 keeps the visual cue without the drift."
+    },
+    "section_header": {
+      "sizeScale": 1.05,
+      "weight": "normal",
+      "underline": "sometimes",
+      "underlineRate": 0.415,
+      "notes": "Category headers (DAIRY, GROCERY, BAKERY). Underlined on ~41% of lines - the only meaningful underline signal on the receipt. Slightly taller than body (cap 1.071); stroke normal (1.012). n=287."
+    },
+    "separator": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "Asterisk rules; cap_rel undefined (no cap-height letters). Stroke normal (1.017). n=171."
+    },
+    "store_hours": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "Body-weight (cap 1.0, stroke 1.081, mildly heavy but within band). n=237."
+    },
+    "summary": {
+      "sizeScale": 0.95,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.003,
+      "notes": "Slightly smaller than body (cap_rel med 0.947); BALANCE DUE / CHANGE / tax lines. n=577. NOTE: BALANCE DUE lines are excluded \u2014 see 'balance_due' (bold)."
+    },
+    "survey": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.005,
+      "notes": "Body-weight, slightly light (stroke 0.965). n=795."
+    },
+    "total_line": {
+      "sizeScale": 1.05,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "Total: USD$ lines print marginally taller (cap 1.053) but NOT bold (stroke 0.998) - do not embolden. n=114."
+    },
+    "balance_due": {
+      "sizeScale": 1.1,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "match": "^BALANCE DUE",
+      "notes": "Split from 'summary' after adversarial verification REFUTED the bucket median: BALANCE DUE prints visibly bolder and taller on held-out scans (stroke 4.0px vs body 3.0px = +33%, height 44-45px vs 40-41px = +10%). The summary bucket's n=577 median was diluted by CHANGE/TAX/CREDIT lines. Verified on 03fa2d0f#1 and d5f79185#1."
+    }
+  },
+  "letterOverrides": {
+    "/": {
+      "weightScale": 0.85,
+      "evidence": "stroke_rel_med -21% (item, n=65), -18% (other, n=1829), -26% (footer, n=158) vs section typical; pure diagonal renders weak, matches known diagonal-glyph weakness."
+    },
+    "i": {
+      "weightScale": 0.87,
+      "evidence": "stroke_rel_med -18% (other, n=6753), -19% (footer, n=9199); single thin vertical."
+    },
+    "l": {
+      "weightScale": 0.87,
+      "evidence": "stroke_rel_med -17% (other, n=4812), -17% (footer, n=3073); single thin vertical."
+    },
+    "h": {
+      "weightScale": 0.88,
+      "evidence": "stroke_rel_med -16% (other, n=3088), -16% (footer, n=2044)."
+    },
+    ":": {
+      "weightScale": 0.88,
+      "evidence": "stroke_rel_med -16% (other, n=1133), -15% (survey, n=1344); dot pair measures light."
+    },
+    "2": {
+      "weightScale": 1.2,
+      "evidence": "stroke_rel_med +24% (item, n=433), +23% (other, n=4330), +24% (footer, n=1252); most consistent heavy glyph in the fleet."
+    },
+    "F": {
+      "weightScale": 1.2,
+      "evidence": "stroke_rel_med +17% (item, n=364), +26% (other, n=1475), +27% (footer, n=48), +17% (survey, n=181); heavy in all four body sections."
+    },
+    "E": {
+      "weightScale": 1.15,
+      "evidence": "stroke_rel_med +15% (item, n=1445), +27% (footer, n=48); heavy horizontals."
+    }
+  },
+  "verification": {
+    "date": "2026-07-03",
+    "verdicts": {
+      "section_header_underline": "CONFIRMED (3/3 headers underlined on held-out scans; 0.415 may undercount)",
+      "storefront_size": "CONFIRMED (address/hours = body size; only logo is larger)",
+      "summary_weight": "REFUTED -> corrected via balance_due split"
+    }
+  }
+}
