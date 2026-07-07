@@ -459,7 +459,6 @@ const WholeFontAct: React.FC<ActProps> = ({
   progress,
   reducedMotion,
 }) => {
-  const [failed, setFailed] = useState<Record<number, boolean>>({});
   const p = reducedMotion ? 1 : progress;
   const total = FONT_CODEPOINTS.length;
 
@@ -498,6 +497,7 @@ const WholeFontAct: React.FC<ActProps> = ({
               zIndex: flight < 1 ? 3 : undefined,
             }
           : undefined;
+        const maskUrl = `url(${fontGlyphSrc(merchant, cp)})`;
         return (
           <div
             key={cp}
@@ -507,19 +507,14 @@ const WholeFontAct: React.FC<ActProps> = ({
             data-testid="font-cell"
             style={heroStyle}
           >
-            {!failed[cp] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={fontGlyphSrc(merchant, cp)}
-                alt=""
-                aria-hidden="true"
-                className={styles.fontGlyph}
-                loading="lazy"
-                onError={() =>
-                  setFailed((prev) => ({ ...prev, [cp]: true }))
-                }
-              />
-            ) : null}
+            {/* Type on the page: the alpha-mask glyph inherits the page text
+                color (currentColor) on the transparent page background, in both
+                themes. */}
+            <div
+              className={styles.fontGlyph}
+              style={{ WebkitMaskImage: maskUrl, maskImage: maskUrl }}
+              aria-hidden="true"
+            />
           </div>
         );
       })}
@@ -720,6 +715,9 @@ const FinalLegend: React.FC<FinalLegendProps> = ({ labels }) => {
   );
 };
 
+const ZOOM_MAG = 3; // magnification of the zoom-inset lens
+const ZOOM_ZONES = 4; // regions the magnifier pans through
+
 const PrintLabelsAct: React.FC<ActProps> = ({
   merchant,
   assets,
@@ -739,14 +737,48 @@ const PrintLabelsAct: React.FC<ActProps> = ({
     [labels],
   );
 
-  const printP = phase(p, 0, 0.65);
-  const labelsShown = p >= 0.7;
+  // Zones the magnifier pans through: a handful of label boxes spread down the
+  // receipt, top to bottom.
+  const zones = useMemo(() => {
+    if (boxes.length === 0) {
+      return [] as Array<{ cy: number; family: string }>;
+    }
+    const sorted = [...boxes].sort((a, b) => a.rect.top - b.rect.top);
+    const n = Math.min(ZOOM_ZONES, sorted.length);
+    return Array.from({ length: n }, (_, i) => {
+      const idx = Math.min(
+        sorted.length - 1,
+        Math.floor(((i + 0.5) / n) * sorted.length),
+      );
+      const b = sorted[idx];
+      return { cy: b.rect.top + b.rect.height / 2, family: b.family };
+    });
+  }, [boxes]);
+
+  const printP = phase(p, 0, 0.6);
+  const labelsShown = p >= 0.66;
   const aspect =
     labels?.metadata?.render &&
     labels.metadata.render.width &&
     labels.metadata.render.height
       ? `${labels.metadata.render.width} / ${labels.metadata.render.height}`
       : "2 / 3";
+
+  // Pan the lens through the zones once labels have landed. Pure percentages so
+  // no DOM measurement is needed: translateY = 50/ZOOM - cy centers receipt-y
+  // `cy` in the lens (which is ZOOM× the inset height).
+  const panP = phase(p, 0.72, 1);
+  let zoneCy = zones[0]?.cy ?? 50;
+  let zoneFamily = zones[0]?.family;
+  if (zones.length > 1) {
+    const segf = panP * (zones.length - 1);
+    const i = Math.min(zones.length - 2, Math.floor(segf));
+    const frac = segf - i;
+    const sm = frac * frac * (3 - 2 * frac);
+    zoneCy = zones[i].cy + (zones[i + 1].cy - zones[i].cy) * sm;
+    zoneFamily = zones[Math.min(zones.length - 1, Math.round(segf))].family;
+  }
+  const focusTy = 50 / ZOOM_MAG - zoneCy;
 
   return (
     <div className={styles.printStage} data-testid="act-labels">
@@ -802,14 +834,52 @@ const PrintLabelsAct: React.FC<ActProps> = ({
           The printed receipt lands as final.webp.
         </div>
       )}
-      <div>
-        {labels && labelsShown ? <FinalLegend labels={labels} /> : null}
-        {labels && labelsShown ? (
+      {labels && labelsShown ? (
+        <div className={styles.printSide}>
+          {/* Auto-panning magnifier: a live zoom of the region being labeled,
+              cycling through zones so the box tightness reads up close. */}
+          <div className={styles.zoomInset} data-testid="zoom-inset" aria-hidden="true">
+            <div
+              className={styles.zoomFocus}
+              style={{
+                aspectRatio: aspect,
+                height: `${ZOOM_MAG * 100}%`,
+                transform: `translate(-50%, ${focusTy}%)`,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={finalSrc(merchant)} alt="" className={styles.zoomImg} />
+              <svg
+                className={styles.zoomBoxes}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                {boxes.map((box) => (
+                  <rect
+                    key={box.index}
+                    x={box.rect.left}
+                    y={box.rect.top}
+                    width={box.rect.width}
+                    height={box.rect.height}
+                    fill={colors[box.family]}
+                    fillOpacity={0.28}
+                    stroke={colors[box.family]}
+                    strokeWidth={1.4}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+            </div>
+            <span className={styles.zoomChip}>
+              {ZOOM_MAG}× · {ENTITY_DISPLAY_NAMES[zoneFamily ?? ""] ?? zoneFamily}
+            </span>
+          </div>
+          <FinalLegend labels={labels} />
           <p className={styles.counter} data-testid="labels-counter">
             Labeled training example. Zero manual labels.
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 };

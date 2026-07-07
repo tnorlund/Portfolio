@@ -439,13 +439,12 @@
   padding: 1rem;
 }
 
+/* No tile chrome: the glyphs sit directly on the page background like type. */
 .fontCell {
   display: flex;
   align-items: center;
   justify-content: center;
   aspect-ratio: 1 / 1;
-  background: rgba(var(--text-color-rgb), 0.05);
-  border-radius: 3px;
   opacity: 0;
   transform: translateY(6px);
   transition:
@@ -460,22 +459,29 @@
 
 /* The hero cell is driven frame-by-frame by the flight transform (inline), so
    it must NOT run the cascade transition or it would smear and lag. It rides
-   in above the grid and lands in its slot. */
+   in above the grid and lands in its slot with the exact same treatment as its
+   neighbors (no ring/tile), so the landing is seamless. */
 .fontCellHero {
   opacity: 1;
   transition: none;
   will-change: transform;
   position: relative;
   z-index: 3;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(var(--color-blue-rgb, 90, 160, 255), 0.35);
 }
 
+/* Alpha-mask glyph: painted in the page text color (currentColor) through the
+   glyph's alpha, so it reads as type-on-page and is theme-aware. */
 .fontGlyph {
-  width: 70%;
-  height: 70%;
-  object-fit: contain;
-  image-rendering: pixelated;
+  width: 78%;
+  height: 78%;
+  background-color: currentColor;
+  mask-mode: alpha;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 /* ==== Act 6: measured style ========================================== */
@@ -633,16 +639,20 @@
 .printStage {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
+  gap: clamp(1rem, 4%, 2.5rem);
   height: 100%;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
 }
 
-/* 80mm thermal receipt proportions: capped narrow so it reads as a real one. */
+/* The whole labeled receipt fits the fixed stage height (height-bounded; width
+   follows the receipt's aspect ratio). Boxes and footer stay fully visible. */
 .printFrame {
   position: relative;
-  width: min(300px, 72vw);
+  height: 100%;
+  width: auto;
+  flex-shrink: 0;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
   border-radius: 4px;
   overflow: hidden;
@@ -652,7 +662,71 @@
 .printImage {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* Right column: the auto-panning magnifier, a compact legend, and the counter
+   — fills what used to be a dead void beside the narrow receipt. */
+.printSide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: min(300px, 40%);
+  animation: side-in 0.5s ease both;
+}
+
+/* Live magnifier window. */
+.zoomInset {
+  position: relative;
+  width: clamp(150px, 22vw, 240px);
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--text-color-rgb), 0.16);
+  background: var(--background-color, #fff);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+}
+
+/* The lens: the receipt at ZOOM× the inset, panned by an inline translate so
+   the current zone sits centered. Its box overlay shares the same coordinates. */
+.zoomFocus {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  /* height + aspect-ratio + transform are set inline (kept in sync with JS). */
+}
+
+.zoomImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  image-rendering: auto;
+}
+
+.zoomBoxes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zoomChip {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.66);
+  pointer-events: none;
 }
 
 /* The printhead: a live sweep line with a warm thermal glow trailing it. */
@@ -699,12 +773,13 @@
   padding: 1rem;
 }
 
+/* Compact wrapped chips, tight to the magnifier. */
 .legend {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.35rem 0.7rem;
-  margin: 0.75rem 0 0;
+  gap: 0.28rem;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -712,21 +787,26 @@
 .legendItem {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.74rem;
-  opacity: 0.9;
+  gap: 0.25rem;
+  padding: 1px 6px 1px 4px;
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb), 0.06);
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 1.5;
+  opacity: 0.92;
 }
 
 .legendSwatch {
-  width: 0.65rem;
-  height: 0.65rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .counter {
-  margin: 0.6rem 0 0;
-  font-size: 0.9rem;
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
   font-weight: 600;
   text-align: center;
 }
@@ -954,6 +1034,19 @@
   }
 }
 
+/* The right-side panel (magnifier + legend + counter) slides in as the labels
+   land, so the receipt doesn't appear to jump when it stops being centered. */
+@keyframes side-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes swap-flip {
   0% {
     transform: rotateX(0);
@@ -987,6 +1080,7 @@
   .actLayer.leaving,
   .headingFade,
   .captionFade,
+  .printSide,
   .styleRow[data-lit="true"],
   .styleRow[data-lit="true"] .styleValue,
   .styleRow[data-lit="true"] .styleMeasured {

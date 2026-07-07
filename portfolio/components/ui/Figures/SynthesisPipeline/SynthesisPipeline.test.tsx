@@ -328,5 +328,7 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("labels-counter")).toHaveTextContent(
       /zero manual labels/i,
     );
+    // The print act fills its right column with the auto-panning magnifier.
+    expect(screen.getByTestId("zoom-inset")).toBeInTheDocument();
   });
 });
