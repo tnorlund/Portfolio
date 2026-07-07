@@ -1,0 +1,5 @@
+B612 Mono is licensed under the SIL Open Font License, Version 1.1.
+Copyright 2017 The B612 Project Authors (https://github.com/polarsys/b612).
+Vendored for the synthetic-receipt grid renderer as a redistributable
+clean thermal-style monospace face (replaces the Px437 IBM VGA face,
+which read as a blocky "serif typewriter" vs real thermal receipts).

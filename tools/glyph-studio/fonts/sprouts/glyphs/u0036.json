@@ -1,0 +1,104 @@
+{
+ "version": 1,
+ "char": "6",
+ "codepoint": 54,
+ "provenance": "edited",
+ "width": 595.3,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 455,
+     "y": 866,
+     "type": "corner",
+     "hOut": {
+      "x": 455,
+      "y": 925
+     }
+    },
+    {
+     "x": 270,
+     "y": 940,
+     "type": "smooth",
+     "hIn": {
+      "x": 370,
+      "y": 940
+     },
+     "hOut": {
+      "x": 170,
+      "y": 940
+     }
+    },
+    {
+     "x": 50,
+     "y": 700,
+     "type": "smooth",
+     "hIn": {
+      "x": 50,
+      "y": 810
+     }
+    },
+    {
+     "x": 50,
+     "y": 350,
+     "type": "smooth",
+     "hOut": {
+      "x": 50,
+      "y": 215
+     }
+    },
+    {
+     "x": 260,
+     "y": 100,
+     "type": "smooth",
+     "hIn": {
+      "x": 140,
+      "y": 100
+     },
+     "hOut": {
+      "x": 355,
+      "y": 100
+     }
+    },
+    {
+     "x": 465,
+     "y": 300,
+     "type": "smooth",
+     "hIn": {
+      "x": 465,
+      "y": 190
+     },
+     "hOut": {
+      "x": 465,
+      "y": 390
+     }
+    },
+    {
+     "x": 250,
+     "y": 570,
+     "type": "smooth",
+     "hIn": {
+      "x": 390,
+      "y": 570
+     },
+     "hOut": {
+      "x": 150,
+      "y": 570
+     }
+    },
+    {
+     "x": 55,
+     "y": 480,
+     "type": "corner",
+     "hIn": {
+      "x": 55,
+      "y": 520
+     }
+    }
+   ]
+  }
+ ]
+}

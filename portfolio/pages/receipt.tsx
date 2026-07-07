@@ -12,6 +12,7 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
+  SynthesisPipeline,
   AWSFlowDiagram,
   CICDLoop,
   CodeBuildDiagram,
@@ -439,6 +440,21 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary intrinsicSize="720px">
         <ClientOnly>
           <LayoutLMInferenceVisualization />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        More training data helps, but only if it&apos;s the right kind. If the
+        model keeps missing discounts, weird quantities, or item names that run
+        forever, I can make receipts full of that exact nonsense. I start with
+        a real labeled receipt, swap items in and out using that store&apos;s own
+        patterns, fix the totals, and render it again. Same receipt DNA. New
+        failure case. Free labels.
+      </p>
+
+      <FigureBoundary intrinsicSize="720px">
+        <ClientOnly>
+          <SynthesisPipeline />
         </ClientOnly>
       </FigureBoundary>
 
