@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "name": "vons-studio",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350,
+  "pitchRatioTarget": 0.538,
+  "pitchRatioNote": "median OCR letter pitch / cap across 13 Vons receipts"
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 100,
+   "pitch": 0.4
+  },
+  "weight": 1.2,
+  "trackingScale": 1.0,
+  "slant": 0.0,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 1.021,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {
+  "merchant": "Vons",
+  "imageId": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+  "receiptId": 1
+ }
+}

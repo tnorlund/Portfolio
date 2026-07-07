@@ -1,0 +1,52 @@
+{
+ "version": 1,
+ "char": "J",
+ "codepoint": 74,
+ "provenance": "edited",
+ "width": 398.3,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 300,
+     "y": 917,
+     "type": "corner"
+    },
+    {
+     "x": 300,
+     "y": 300,
+     "type": "corner",
+     "hOut": {
+      "x": 300,
+      "y": 190
+     }
+    },
+    {
+     "x": 190,
+     "y": 100,
+     "type": "smooth",
+     "hIn": {
+      "x": 250,
+      "y": 100
+     },
+     "hOut": {
+      "x": 130,
+      "y": 100
+     }
+    },
+    {
+     "x": 58,
+     "y": 250,
+     "type": "corner",
+     "hIn": {
+      "x": 58,
+      "y": 140
+     }
+    }
+   ]
+  }
+ ]
+}

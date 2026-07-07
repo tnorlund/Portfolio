@@ -75,7 +75,15 @@ from receipt_dynamo.entities.label_metadata import (  # noqa: F401
 )
 from receipt_dynamo.entities.letter import Letter, item_to_letter  # noqa: F401
 from receipt_dynamo.entities.line import Line, item_to_line  # noqa: F401
+from receipt_dynamo.entities.merchant_font import (  # noqa: F401
+    MerchantFont,
+    item_to_merchant_font,
+)
 from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: F401
+from receipt_dynamo.entities.merchant_font import (  # noqa: F401
+    MerchantFont,
+    item_to_merchant_font,
+)
 from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
     OCRRoutingDecision,
@@ -241,6 +249,7 @@ __all__ = [
     "LabelMetadata",
     "Letter",
     "Line",
+    "MerchantFont",
     "OCRJob",
     "OCRRoutingDecision",
     "PlacesCache",
@@ -295,6 +304,7 @@ __all__ = [
     "item_to_label_metadata",
     "item_to_letter",
     "item_to_line",
+    "item_to_merchant_font",
     "item_to_ocr_job",
     "item_to_ocr_routing_decision",
     "item_to_places_cache",

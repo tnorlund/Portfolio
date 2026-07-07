@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "traderjoes",
+  "refCap": 60,
+  "metrics": {
+    "capHeight": 1000,
+    "xHeight": 700,
+    "ascender": 1080,
+    "descender": -350,
+    "pitchRatioTarget": 0.499
+  },
+  "params": {
+    "dot": {
+      "shape": "round",
+      "size": 80.8,
+      "pitch": 0.4
+    },
+    "weight": 1.4,
+    "trackingScale": 1.0,
+    "slant": 0.0,
+    "corner": {
+      "mode": "round",
+      "tension": 0.5
+    },
+    "supersample": 4
+  },
+  "preview": {
+    "condense": 1.033,
+    "capPx": 22,
+    "thin": "auto"
+  },
+  "review": {}
+}

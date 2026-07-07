@@ -1,0 +1,25 @@
+Vendored font
+=============
+
+File: Px437_IBM_VGA_8x16.ttf
+Face: Px437 IBM VGA 8x16 (Regular)
+From: The Ultimate Oldschool PC Font Pack v2.2 by VileR (int10h.org)
+
+License: Creative Commons Attribution-ShareAlike 4.0 International
+         (CC BY-SA 4.0) -- https://creativecommons.org/licenses/by-sa/4.0/
+
+Attribution: "The Ultimate Oldschool PC Font Pack" by VileR, licensed
+under CC BY-SA 4.0. Project home: https://int10h.org/oldschool-pc-fonts/
+
+This is a faithful TrueType reproduction of the IBM PC VGA 8x16 text-mode
+ROM font: a fixed-pitch (monospace) bitmap face. It is used by the grid
+typography renderer (receipt_grid.py) to draw synthetic thermal receipts as
+a fixed character grid with hard (non-anti-aliased) dots, matching the look
+of dot-matrix / thermal receipt printers.
+
+Source download (vendored copy obtained from the retro-vault/font-vault
+mirror, which redistributes the same CC BY-SA 4.0 files):
+  https://raw.githubusercontent.com/retro-vault/font-vault/main/source/fonts/oldschool_ibm_vga_8x16/Px437_IBM_VGA_8x16.ttf
+
+Per CC BY-SA 4.0, any modified versions of this font must be shared under the
+same license. We redistribute it unmodified.

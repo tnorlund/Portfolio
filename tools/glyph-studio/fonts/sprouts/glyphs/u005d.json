@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "char": "]",
+ "codepoint": 93,
+ "provenance": "edited",
+ "width": 318.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50,
+     "y": 950,
+     "type": "corner"
+    },
+    {
+     "x": 217,
+     "y": 950,
+     "type": "corner"
+    },
+    {
+     "x": 217,
+     "y": 58,
+     "type": "corner"
+    },
+    {
+     "x": 50,
+     "y": 58,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}
