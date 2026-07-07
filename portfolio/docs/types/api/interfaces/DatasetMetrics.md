@@ -6,7 +6,7 @@
 
 # Interface: DatasetMetrics
 
-Defined in: [types/api.ts:395](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L395)
+Defined in: [types/api.ts:395](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L395)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:395](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **num\_train\_receipts**: `number`
 
-Defined in: [types/api.ts:401](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L401)
+Defined in: [types/api.ts:401](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L401)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:401](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **num\_train\_samples**: `number`
 
-Defined in: [types/api.ts:396](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L396)
+Defined in: [types/api.ts:396](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L396)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:396](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **num\_val\_receipts**: `number`
 
-Defined in: [types/api.ts:402](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L402)
+Defined in: [types/api.ts:402](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L402)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:402](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **num\_val\_samples**: `number`
 
-Defined in: [types/api.ts:397](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L397)
+Defined in: [types/api.ts:397](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L397)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:397](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **o\_entity\_ratio\_train**: `number`
 
-Defined in: [types/api.ts:398](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L398)
+Defined in: [types/api.ts:398](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L398)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:398](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **o\_entity\_ratio\_val**: `number`
 
-Defined in: [types/api.ts:399](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L399)
+Defined in: [types/api.ts:399](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L399)
 
 ***
 
@@ -62,4 +62,4 @@ Defined in: [types/api.ts:399](https://github.com/tnorlund/Portfolio/blob/a54efa
 
 > `optional` **random\_seed**: `number`
 
-Defined in: [types/api.ts:400](https://github.com/tnorlund/Portfolio/blob/a54efa781288dd4ee4383c3a030d49be807bb389/portfolio/types/api.ts#L400)
+Defined in: [types/api.ts:400](https://github.com/tnorlund/Portfolio/blob/4b1b18891f2ca2d4be335a04683c64445ad9f524/portfolio/types/api.ts#L400)
