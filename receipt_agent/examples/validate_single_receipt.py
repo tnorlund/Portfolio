@@ -45,6 +45,7 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
     # Import the actual clients
     try:
         from receipt_chroma.data.chroma_client import ChromaClient
+
         from receipt_dynamo.data.dynamo_client import DynamoClient
     except ImportError as e:
         logger.error(

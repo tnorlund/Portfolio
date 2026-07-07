@@ -15,6 +15,7 @@ share the SAME deterministic images:
 Env for receipt mode: PYTHONPATH=receipt_agent:receipt_dynamo:receipt_upload,
 DYNAMODB_TABLE_NAME, AWS_REGION, BITMATRIX_DIR, FONT_LIB, PORTFOLIO_ENV=dev.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,8 +41,15 @@ def _label_font(size: int):
 def sheet(atlas_path: str, out_png: str) -> int:
     a = np.load(atlas_path)
     chars = sorted(chr(int(k[1:])) for k in a.files if k.startswith("c"))
-    caph = float(np.median([a[f"c{ord(c)}"].shape[0]
-                            for c in _CAP_REF if f"c{ord(c)}" in a.files]))
+    caph = float(
+        np.median(
+            [
+                a[f"c{ord(c)}"].shape[0]
+                for c in _CAP_REF
+                if f"c{ord(c)}" in a.files
+            ]
+        )
+    )
     cap, tw, th, cols = 54, 96, 110, 10
     rows = (len(chars) + cols - 1) // cols
     img = Image.new("RGB", (cols * tw, rows * th), (255, 255, 255))
@@ -52,7 +60,9 @@ def sheet(atlas_path: str, out_png: str) -> int:
         off = int(a[f"o{ord(ch)}"])
         sc = cap / caph
         nh, nw = max(1, int(g.shape[0] * sc)), max(1, int(g.shape[1] * sc))
-        gi = Image.fromarray(((1 - g) * 255).astype(np.uint8), "L").convert("RGB")
+        gi = Image.fromarray(((1 - g) * 255).astype(np.uint8), "L").convert(
+            "RGB"
+        )
         gi = gi.resize((nw, nh), Image.NEAREST)
         cx, cy = (i % cols) * tw, (i // cols) * th
         base = cy + 20 + cap
@@ -60,37 +70,57 @@ def sheet(atlas_path: str, out_png: str) -> int:
         img.paste(gi, (cx + (tw - nw) // 2, base + int(off * sc) - nh))
         dd.rectangle([cx, cy, cx + tw - 1, cy + 18], fill=(240, 240, 240))
         dd.text((cx + 3, cy + 1), repr(ch), fill=(200, 0, 0), font=lab)
-        dd.rectangle([cx, cy, cx + tw - 1, cy + th - 1], outline=(220, 220, 220))
+        dd.rectangle(
+            [cx, cy, cx + tw - 1, cy + th - 1], outline=(220, 220, 220)
+        )
     img.save(out_png)
-    missing = "".join(ch for ch in "!\"#$%&'()*+,-./0123456789:;<=>?@"
-                      "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]_"
-                      "abcdefghijklmnopqrstuvwxyz|~" if ch not in chars)
+    missing = "".join(
+        ch
+        for ch in "!\"#$%&'()*+,-./0123456789:;<=>?@"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]_"
+        "abcdefghijklmnopqrstuvwxyz|~"
+        if ch not in chars
+    )
     print(f"{len(chars)} glyphs -> {out_png}")
     print(f"absent (TTF-fallback): {missing!r}")
     return 0
 
 
-def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
+def receipt(
+    merchant: str, image_id: str, receipt_id: int, out_png: str
+) -> int:
     from io import BytesIO
 
     import boto3
+
     sys.path.insert(0, os.path.join(os.path.dirname(HERE), "scripts"))
     sys.path.insert(0, HERE)
     import render_synthetic_receipts as rsr  # noqa: E402
+
     from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 
     table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
     region = os.environ.get("AWS_REGION", "us-east-1")
     c = DynamoClient(table_name=table, region=region)
     s3 = boto3.client("s3", region_name=region)
-    atlas = rsr.cached_glyph_atlas(table, merchant, region=region, max_receipts=8)
-    prof = rsr.cached_font_profile(table, merchant, region=region, max_receipts=12)
+    atlas = rsr.cached_glyph_atlas(
+        table, merchant, region=region, max_receipts=8
+    )
+    prof = rsr.cached_font_profile(
+        table, merchant, region=region, max_receipts=12
+    )
     ss = rsr.section_scale_for_merchant(merchant)
     typ = rsr.merchant_typography(merchant)
     if "bitmap_font" in typ and "bitmap_thin" not in typ:
         typ["bitmap_thin"] = rsr.resolve_bitmap_thin(
-            table, merchant, region=region, atlas=atlas, profile=prof,
-            section_scale=ss, typography=typ)
+            table,
+            merchant,
+            region=region,
+            atlas=atlas,
+            profile=prof,
+            section_scale=ss,
+            typography=typ,
+        )
 
     d = None
     rec = None
@@ -109,46 +139,72 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
             f"receipt {receipt_id} not found for image {image_id}; found {found}"
         )
     ws = [w for w in d.receipt_words if w.receipt_id == receipt_id]
-    lbl = {(l.line_id, l.word_id): l.label
-           for l in d.receipt_word_labels if l.receipt_id == receipt_id}
-    words = [{
-        "text": w.text,
-        "line_id": w.line_id,
-        "word_id": w.word_id,
-        "bbox": [w.top_left["x"] * 1000, w.top_left["y"] * 1000,
-                 w.bottom_right["x"] * 1000, w.bottom_right["y"] * 1000],
-        "labels": ([lbl[(w.line_id, w.word_id)]]
-                   if lbl.get((w.line_id, w.word_id)) not in (None, "O") else []),
-    } for w in ws]
+    lbl = {
+        (l.line_id, l.word_id): l.label
+        for l in d.receipt_word_labels
+        if l.receipt_id == receipt_id
+    }
+    words = [
+        {
+            "text": w.text,
+            "line_id": w.line_id,
+            "word_id": w.word_id,
+            "bbox": [
+                w.top_left["x"] * 1000,
+                w.top_left["y"] * 1000,
+                w.bottom_right["x"] * 1000,
+                w.bottom_right["y"] * 1000,
+            ],
+            "labels": (
+                [lbl[(w.line_id, w.word_id)]]
+                if lbl.get((w.line_id, w.word_id)) not in (None, "O")
+                else []
+            ),
+        }
+        for w in ws
+    ]
     barcodes = []
     if hasattr(c, "list_receipt_barcodes_from_receipt"):
         try:
-            for b in c.list_receipt_barcodes_from_receipt(image_id, receipt_id):
-                barcodes.append({
-                    "text": getattr(b, "text", "") or "",
-                    "symbology": getattr(b, "symbology", ""),
-                    "top_left": getattr(b, "top_left", None),
-                    "bottom_right": getattr(b, "bottom_right", None),
-                    "confidence": getattr(b, "confidence", None),
-                })
+            for b in c.list_receipt_barcodes_from_receipt(
+                image_id, receipt_id
+            ):
+                barcodes.append(
+                    {
+                        "text": getattr(b, "text", "") or "",
+                        "symbology": getattr(b, "symbology", ""),
+                        "top_left": getattr(b, "top_left", None),
+                        "bottom_right": getattr(b, "bottom_right", None),
+                        "confidence": getattr(b, "confidence", None),
+                    }
+                )
         except Exception:  # noqa: BLE001
             barcodes = []
     wt = 760
     ht = int(round(wt * rec.height / rec.width))
     tmp = out_png + ".syn.png"
-    rsr._render_cached_hybrid({"words": words, "barcodes": barcodes,
-                               "merchant_name": merchant}, atlas,
-                              profile=prof, width=wt, height=ht, path=tmp,
-                              section_scale=ss, **typ)
+    rsr._render_cached_hybrid(
+        {"words": words, "barcodes": barcodes, "merchant_name": merchant},
+        atlas,
+        profile=prof,
+        width=wt,
+        height=ht,
+        path=tmp,
+        section_scale=ss,
+        **typ,
+    )
     syn = Image.open(tmp).convert("RGB")
     real = None
-    for bkt, key in [(rec.cdn_s3_bucket, rec.cdn_s3_key),
-                     (rec.raw_s3_bucket, rec.raw_s3_key)]:
+    for bkt, key in [
+        (rec.cdn_s3_bucket, rec.cdn_s3_key),
+        (rec.raw_s3_bucket, rec.raw_s3_key),
+    ]:
         if not bkt or not key:
             continue
         try:
-            real = Image.open(BytesIO(
-                s3.get_object(Bucket=bkt, Key=key)["Body"].read())).convert("RGB")
+            real = Image.open(
+                BytesIO(s3.get_object(Bucket=bkt, Key=key)["Body"].read())
+            ).convert("RGB")
             break
         except Exception:  # noqa: BLE001
             continue
@@ -157,11 +213,13 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
     def byw(im):
         w, h = im.size
         return im.resize((wd, int(h * wd / w)))
+
     panels = [("REAL", real), ("SYNTH", syn)]
     panels = [(t, byw(im)) for t, im in panels if im is not None]
     hh = max(im.height for _, im in panels) + 40
-    cv = Image.new("RGB", (wd * len(panels) + 20 * (len(panels) + 1), hh),
-                   (235, 235, 235))
+    cv = Image.new(
+        "RGB", (wd * len(panels) + 20 * (len(panels) + 1), hh), (235, 235, 235)
+    )
     dd = ImageDraw.Draw(cv)
     lab = _label_font(16)
     x = 20
@@ -180,7 +238,7 @@ def receipt(merchant: str, image_id: str, receipt_id: int, out_png: str) -> int:
 
 
 def _save_line_scorecard(real, syn, words, out_png: str) -> None:
-    from receipt_line_scorecard import score_receipt_images, _write_markdown
+    from receipt_line_scorecard import _write_markdown, score_receipt_images
 
     report = score_receipt_images(real, syn, words)
     stem = os.path.splitext(out_png)[0]
@@ -212,7 +270,12 @@ def _metric_box(
     if right <= left or bottom <= top:
         return None
     if not pad:
-        return (max(0, left), max(0, top), min(width, right), min(height, bottom))
+        return (
+            max(0, left),
+            max(0, top),
+            min(width, right),
+            min(height, bottom),
+        )
     pad_x = max(2, int(round((right - left) * 0.12)))
     pad_y = max(2, int(round((bottom - top) * 0.20)))
     return (
@@ -286,7 +349,10 @@ def _ocr_pitch_metrics(words, width: int, height: int) -> dict[str, float]:
                 pitches.append(float(pitch))
     if not pitches:
         return {}
-    return {"pitch_med": float(np.median(pitches)), "pitch_n": float(len(pitches))}
+    return {
+        "pitch_med": float(np.median(pitches)),
+        "pitch_n": float(len(pitches)),
+    }
 
 
 def _print_metric_summary(real, syn, words) -> None:

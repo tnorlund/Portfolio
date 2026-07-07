@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
-
 from receipt_agent.utils.chroma_types import (
     ChromaWhereClause,
     extract_get_metadata_rows,

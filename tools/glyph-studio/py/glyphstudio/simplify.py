@@ -22,6 +22,7 @@ Usage:
 Only glyphs with provenance "traced" are touched; hand-authored ("edited")
 skeletons are already minimal and are never modified.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,7 +34,7 @@ import sys
 import numpy as np
 
 from . import CAP_UNITS
-from .fitcurve import fit_cubics, find_corners
+from .fitcurve import find_corners, fit_cubics
 from .raster import _flatten_cubic, _segments, rasterize_glyph
 from .samples import canvas_geometry, consensus_soft, load_stack
 from .schema import (
@@ -45,9 +46,9 @@ from .schema import (
     merged_params,
 )
 
-EPS_JOIN = 25.0          # endpoint cluster radius (0.5 dot radius)
-DEDUP_DIST = 15.0        # sub-dot Chamfer distance for overlap dedup
-DANGLE_LEN = 50.0        # dot radius: shorter dangles are stamp noise
+EPS_JOIN = 25.0  # endpoint cluster radius (0.5 dot radius)
+DEDUP_DIST = 15.0  # sub-dot Chamfer distance for overlap dedup
+DANGLE_LEN = 50.0  # dot radius: shorter dangles are stamp noise
 JUNCTION_TURN_DEG = 50.0
 RESAMPLE_STEP = 5.0
 TOL_LADDER = (25.0, 15.0, 8.0)
@@ -68,11 +69,15 @@ HAUSDORFF_HARD = 50.0
 
 # ---------------------------------------------------------------- geometry
 
+
 def _flatten_stroke(stroke: dict) -> np.ndarray:
     pts: list[np.ndarray] = []
     for seg in _segments(stroke):
-        poly = (seg["pts"] if seg["kind"] == "line"
-                else _flatten_cubic(seg["pts"], tol=1.0))
+        poly = (
+            seg["pts"]
+            if seg["kind"] == "line"
+            else _flatten_cubic(seg["pts"], tol=1.0)
+        )
         if pts:
             poly = poly[1:]
         pts.extend(poly)
@@ -139,6 +144,7 @@ def _chamfer_redundant(a: np.ndarray, b: np.ndarray) -> bool:
 
 # --------------------------------------------------------------- graph merge
 
+
 def consolidate(chains: list[np.ndarray]) -> list[dict]:
     """Fragment soup -> merged chains [{points, closed}]."""
     chains = [c for c in chains if len(c) >= 2]
@@ -180,9 +186,9 @@ def consolidate(chains: list[np.ndarray]) -> list[dict]:
             _, _, i, ei, j, ej = best
             a, b = chains[i], chains[j]
             if ei == 0:
-                a = a[::-1]           # a now ends at the join
+                a = a[::-1]  # a now ends at the join
             if ej == 1:
-                b = b[::-1]           # b now starts at the join
+                b = b[::-1]  # b now starts at the join
             merged = np.vstack([a, b[1:]])
             chains = [c for k, c in enumerate(chains) if k not in (i, j)]
             chains.append(merged)
@@ -192,13 +198,16 @@ def consolidate(chains: list[np.ndarray]) -> list[dict]:
     for c in chains:
         if _arc_length(c) < DANGLE_LEN and len(chains) > 1:
             continue  # sub-dot dangle
-        closed = bool(np.linalg.norm(c[0] - c[-1]) <= EPS_JOIN and
-                      _arc_length(c) > 4 * EPS_JOIN)
+        closed = bool(
+            np.linalg.norm(c[0] - c[-1]) <= EPS_JOIN
+            and _arc_length(c) > 4 * EPS_JOIN
+        )
         out.append({"points": c, "closed": closed})
     return out
 
 
 # --------------------------------------------------------------- refit
+
 
 def _ellipse_fit(chain: np.ndarray) -> dict | None:
     """Taubin-style circle then axis-aligned ellipse; None if not a bowl."""
@@ -232,19 +241,28 @@ def _kappa_loop(e: dict) -> dict:
     ka, kb = KAPPA * a, KAPPA * b
 
     def node(x, y, hin, hout):
-        return {"x": round(x, 1), "y": round(y, 1), "type": "smooth",
-                "hIn": {"x": round(hin[0], 1), "y": round(hin[1], 1)},
-                "hOut": {"x": round(hout[0], 1), "y": round(hout[1], 1)}}
-    return {"closed": True, "nodes": [
-        node(cx, cy + b, (cx - ka, cy + b), (cx + ka, cy + b)),
-        node(cx + a, cy, (cx + a, cy + kb), (cx + a, cy - kb)),
-        node(cx, cy - b, (cx + ka, cy - b), (cx - ka, cy - b)),
-        node(cx - a, cy, (cx - a, cy - kb), (cx - a, cy + kb)),
-    ]}
+        return {
+            "x": round(x, 1),
+            "y": round(y, 1),
+            "type": "smooth",
+            "hIn": {"x": round(hin[0], 1), "y": round(hin[1], 1)},
+            "hOut": {"x": round(hout[0], 1), "y": round(hout[1], 1)},
+        }
+
+    return {
+        "closed": True,
+        "nodes": [
+            node(cx, cy + b, (cx - ka, cy + b), (cx + ka, cy + b)),
+            node(cx + a, cy, (cx + a, cy + kb), (cx + a, cy - kb)),
+            node(cx, cy - b, (cx + ka, cy - b), (cx - ka, cy - b)),
+            node(cx - a, cy, (cx - a, cy - kb), (cx - a, cy + kb)),
+        ],
+    }
 
 
 def _segments_to_nodes(segs: list[dict], closed: bool) -> list[dict]:
     from .fitcurve import segments_to_nodes
+
     return segments_to_nodes(segs, closed)
 
 
@@ -289,23 +307,29 @@ def refit_chain(chain: np.ndarray, closed: bool, dot_r: float) -> dict | None:
         e = _ellipse_fit(pts)
         if e is not None:
             return _kappa_loop(e)
-    corners = find_corners(pts, angle_deg=42.0, win=max(3, int(30 / RESAMPLE_STEP)))
+    corners = find_corners(
+        pts, angle_deg=42.0, win=max(3, int(30 / RESAMPLE_STEP))
+    )
     cuts = [0] + corners + [len(pts) - 1]
     for tol in TOL_LADDER:
         segs: list[dict] = []
         for a, b in zip(cuts[:-1], cuts[1:]):
-            run = pts[a: b + 1]
+            run = pts[a : b + 1]
             if len(run) < 2:
                 continue
             chord = run[-1] - run[0]
             denom = max(float(np.linalg.norm(chord)), 1e-9)
             if len(run) > 2:
                 rel = run - run[0]
-                dev = np.abs(chord[0] * rel[:, 1] - chord[1] * rel[:, 0]) / denom
+                dev = (
+                    np.abs(chord[0] * rel[:, 1] - chord[1] * rel[:, 0]) / denom
+                )
             else:
                 dev = np.zeros(1)
             if float(np.max(dev)) <= tol * 0.6:
-                segs.append({"kind": "line", "ctrl": np.array([run[0], run[-1]])})
+                segs.append(
+                    {"kind": "line", "ctrl": np.array([run[0], run[-1]])}
+                )
             else:
                 for ctrl in fit_cubics(run, tol):
                     segs.append({"kind": "cubic", "ctrl": ctrl})
@@ -316,6 +340,7 @@ def refit_chain(chain: np.ndarray, closed: bool, dot_r: float) -> dict | None:
 
 
 # --------------------------------------------------------------- gates
+
 
 def _components_and_holes(mask: np.ndarray) -> tuple[int, int]:
     def count(m):
@@ -332,11 +357,16 @@ def _components_and_holes(mask: np.ndarray) -> tuple[int, int]:
                 for dy in (-1, 0, 1):
                     for dx in (-1, 0, 1):
                         ny, nx = cy + dy, cx + dx
-                        if (0 <= ny < m.shape[0] and 0 <= nx < m.shape[1]
-                                and m[ny, nx] and not lab[ny, nx]):
+                        if (
+                            0 <= ny < m.shape[0]
+                            and 0 <= nx < m.shape[1]
+                            and m[ny, nx]
+                            and not lab[ny, nx]
+                        ):
                             lab[ny, nx] = cur
                             stack.append((ny, nx))
         return cur
+
     comps = count(mask.astype(bool))
     # holes: background components fully inside (total bg comps - 1 border)
     bg = ~mask.astype(bool)
@@ -345,8 +375,13 @@ def _components_and_holes(mask: np.ndarray) -> tuple[int, int]:
     return comps, holes
 
 
-def soft_fidelity(bitmap: np.ndarray, off: int, soft: np.ndarray,
-                  soft_ref_cap: int, soft_baseline: int) -> float:
+def soft_fidelity(
+    bitmap: np.ndarray,
+    off: int,
+    soft: np.ndarray,
+    soft_ref_cap: int,
+    soft_baseline: int,
+) -> float:
     """Soft-IoU of a rendered glyph vs the corpus soft consensus map.
 
     Both live at cap 60 (render REF_CAP == demo-corpus ref cap), aligned by
@@ -365,14 +400,15 @@ def soft_fidelity(bitmap: np.ndarray, off: int, soft: np.ndarray,
     ye, xe = min(H, y0 + bh), min(W, x0 + bw)
     if ye <= ys0 or xe <= xs0:
         return 0.0
-    canvas[ys0:ye, xs0:xe] = bitmap[ys0 - y0: ye - y0, xs0 - x0: xe - x0]
+    canvas[ys0:ye, xs0:xe] = bitmap[ys0 - y0 : ye - y0, xs0 - x0 : xe - x0]
     inter = np.minimum(soft, canvas).sum()
     union = np.maximum(soft, canvas).sum()
     return float(inter / union) if union > 0 else 0.0
 
 
-def gate(old_bitmap: np.ndarray, old_off: int,
-         new_bitmap: np.ndarray, new_off: int) -> dict:
+def gate(
+    old_bitmap: np.ndarray, old_off: int, new_bitmap: np.ndarray, new_off: int
+) -> dict:
     """Shape-preservation verdict between two tight-cropped rasters."""
     # align by baseline: bottom row sits at baseline+off
     h = max(old_bitmap.shape[0] + 40, new_bitmap.shape[0] + 40)
@@ -383,7 +419,7 @@ def gate(old_bitmap: np.ndarray, old_off: int,
         y1 = h - 20 + min(0, off)
         y0 = y1 - bm.shape[0]
         x0 = (w - bm.shape[1]) // 2
-        c[y0:y1, x0:x0 + bm.shape[1]] = bm.astype(bool)
+        c[y0:y1, x0 : x0 + bm.shape[1]] = bm.astype(bool)
         return c
 
     a, b = place(old_bitmap, old_off), place(new_bitmap, new_off)
@@ -413,17 +449,24 @@ def gate(old_bitmap: np.ndarray, old_off: int,
     if top_a != top_b:
         verdict = "reject"
         reasons.append(f"topology {top_a} -> {top_b}")
-    return {"verdict": verdict, "iou": round(iou, 4),
-            "hausdorff_units": round(hausdorff_units, 1),
-            "topology": {"before": top_a, "after": top_b},
-            "reasons": reasons}
+    return {
+        "verdict": verdict,
+        "iou": round(iou, 4),
+        "hausdorff_units": round(hausdorff_units, 1),
+        "topology": {"before": top_a, "after": top_b},
+        "reasons": reasons,
+    }
 
 
 # --------------------------------------------------------------- driver
 
+
 def simplify_glyph(glyph: dict, params: dict, ref_cap: int) -> dict:
-    dot_r = float(params.get("dot", {}).get("size", 100)) * \
-        float(params.get("weight", 1.0)) / 2.0
+    dot_r = (
+        float(params.get("dot", {}).get("size", 100))
+        * float(params.get("weight", 1.0))
+        / 2.0
+    )
     chains = [_flatten_stroke(s) for s in glyph.get("strokes", [])]
     merged = consolidate(chains)
     new_strokes = []
@@ -444,23 +487,34 @@ def simplify_glyph(glyph: dict, params: dict, ref_cap: int) -> dict:
     soft = params.get("_soft_map")
     if soft is not None and g["verdict"] != "reject":
         sref, sbase = params["_soft_geom"]
-        fid_old = soft_fidelity(old_bm.astype(float), old_off, soft, sref, sbase)
-        fid_new = soft_fidelity(new_bm.astype(float), new_off, soft, sref, sbase)
-        g["soft_fidelity"] = {"before": round(fid_old, 4),
-                              "after": round(fid_new, 4)}
+        fid_old = soft_fidelity(
+            old_bm.astype(float), old_off, soft, sref, sbase
+        )
+        fid_new = soft_fidelity(
+            new_bm.astype(float), new_off, soft, sref, sbase
+        )
+        g["soft_fidelity"] = {
+            "before": round(fid_old, 4),
+            "after": round(fid_new, 4),
+        }
         if fid_new >= fid_old - 0.015:
             if g["verdict"] == "flag":
                 g["verdict"] = "accept"
                 g["reasons"].append(
-                    f"soft fidelity non-degrading ({fid_old:.3f}->{fid_new:.3f})")
+                    f"soft fidelity non-degrading ({fid_old:.3f}->{fid_new:.3f})"
+                )
         else:
             g["verdict"] = "reject"
             g["reasons"].append(
-                f"soft fidelity degraded {fid_old:.3f}->{fid_new:.3f}")
+                f"soft fidelity degraded {fid_old:.3f}->{fid_new:.3f}"
+            )
 
     def counts(gl):
-        return (len(gl["strokes"]),
-                sum(len(s["nodes"]) for s in gl["strokes"]))
+        return (
+            len(gl["strokes"]),
+            sum(len(s["nodes"]) for s in gl["strokes"]),
+        )
+
     s0, n0 = counts(glyph)
     s1, n1 = counts(candidate)
     return {
@@ -499,16 +553,31 @@ def main(argv=None) -> int:
                 params["_soft_map"] = consensus_soft(stack)
                 params["_soft_geom"] = canvas_geometry(stack.shape[1])
             r = simplify_glyph(glyph, params, ref_cap)
-        except Exception as exc:  # noqa: BLE001 -- one glyph must not kill the fleet
-            results.append({"char": ch, "before": None, "after": None,
-                            "gate": {"verdict": "error", "reasons": [repr(exc)]},
-                            "applied": False})
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 -- one glyph must not kill the fleet
+            results.append(
+                {
+                    "char": ch,
+                    "before": None,
+                    "after": None,
+                    "gate": {"verdict": "error", "reasons": [repr(exc)]},
+                    "applied": False,
+                }
+            )
             continue
-        entry = {"char": ch,
-                 "before": r.get("before"), "after": r.get("after"),
-                 "gate": r.get("gate"), "applied": False}
-        accepted = r["ok"] and r["gate"]["verdict"] in ("accept", "flag") \
+        entry = {
+            "char": ch,
+            "before": r.get("before"),
+            "after": r.get("after"),
+            "gate": r.get("gate"),
+            "applied": False,
+        }
+        accepted = (
+            r["ok"]
+            and r["gate"]["verdict"] in ("accept", "flag")
             and r["after"]["nodes"] < r["before"]["nodes"]
+        )
         if args.apply and accepted:
             paths = font_dir_paths(args.font_dir)
             target = f"{paths['glyphs']}/{glyph_filename(cp)}"
@@ -521,10 +590,12 @@ def main(argv=None) -> int:
     else:
         for e in results:
             g = e["gate"] or {}
-            print(f"{e['char']!r}: {e['before']} -> {e['after']} "
-                  f"{g.get('verdict')} iou={g.get('iou')} "
-                  f"H={g.get('hausdorff_units')}u "
-                  f"{'APPLIED' if e['applied'] else ''}")
+            print(
+                f"{e['char']!r}: {e['before']} -> {e['after']} "
+                f"{g.get('verdict')} iou={g.get('iou')} "
+                f"H={g.get('hausdorff_units')}u "
+                f"{'APPLIED' if e['applied'] else ''}"
+            )
     return 0
 
 

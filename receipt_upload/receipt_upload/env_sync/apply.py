@@ -19,7 +19,6 @@ from datetime import datetime, timezone
 from typing import List
 
 from botocore.exceptions import ClientError
-
 from receipt_upload.dedup._ddb import AWS_ERRORS, raw_client
 from receipt_upload.env_sync.plan import (
     MigrationPlan,

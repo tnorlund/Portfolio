@@ -10,6 +10,7 @@ Usage:
   python -m glyphstudio.measure <samples.npz> <char> [--threshold 0.45]
 Prints one JSON object; {"available": false} when the corpus lacks the char.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,10 +43,16 @@ def measure_char(samples_path: str, ch: str, threshold: float = 0.45) -> dict:
 
     top, bot = int(ys.min()), int(ys.max())
     out: dict = {
-        "char": ch, "available": True, "samples": int(len(stack)),
+        "char": ch,
+        "available": True,
+        "samples": int(len(stack)),
         "units_note": "cap units, y-up, baseline 0; ink extends dot/2 (50u) past centerlines",
-        "ink_bbox": {"y_top": yu(top), "y_bottom": yu(bot),
-                     "x_left": 0.0, "x_right": xu(int(xs.max()))},
+        "ink_bbox": {
+            "y_top": yu(top),
+            "y_bottom": yu(bot),
+            "x_left": 0.0,
+            "x_right": xu(int(xs.max())),
+        },
     }
 
     # ink spans at reference heights (top -> bottom)
@@ -68,7 +75,7 @@ def measure_char(samples_path: str, ch: str, threshold: float = 0.45) -> dict:
 
     # horizontal bars: rows where the middle third is nearly solid
     w = int(xs.max()) - x0
-    mid = ink[:, x0 + w // 3: x0 + 2 * w // 3]
+    mid = ink[:, x0 + w // 3 : x0 + 2 * w // 3]
     solid = [r for r in range(top, bot + 1) if mid[r].mean() > 0.85]
     bars = []
     if solid:
@@ -83,7 +90,7 @@ def measure_char(samples_path: str, ch: str, threshold: float = 0.45) -> dict:
     out["horizontal_bars"] = bars
 
     # vertical stems: columns inked for >60% of the glyph's height
-    col_fill = ink[top:bot + 1].mean(axis=0)
+    col_fill = ink[top : bot + 1].mean(axis=0)
     stem_cols = [c for c in range(x0, int(xs.max()) + 1) if col_fill[c] > 0.6]
     stems = []
     if stem_cols:
@@ -126,12 +133,17 @@ def measure_char(samples_path: str, ch: str, threshold: float = 0.45) -> dict:
         y, x = stack_px.pop()
         for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             ny, nx = y + dy, x + dx
-            if (0 <= ny < padded.shape[0] and 0 <= nx < padded.shape[1]
-                    and padded[ny, nx] and not lab[ny, nx]):
+            if (
+                0 <= ny < padded.shape[0]
+                and 0 <= nx < padded.shape[1]
+                and padded[ny, nx]
+                and not lab[ny, nx]
+            ):
                 lab[ny, nx] = True
                 stack_px.append((ny, nx))
     out["holes"] = int(padded.sum() - lab.sum() > 0) and int(
-        _count_components(padded & ~lab))
+        _count_components(padded & ~lab)
+    )
     return out
 
 
@@ -149,8 +161,12 @@ def _count_components(mask: np.ndarray) -> int:
             for dy in (-1, 0, 1):
                 for dx in (-1, 0, 1):
                     ny, nx = cy + dy, cx + dx
-                    if (0 <= ny < mask.shape[0] and 0 <= nx < mask.shape[1]
-                            and mask[ny, nx] and not lab[ny, nx]):
+                    if (
+                        0 <= ny < mask.shape[0]
+                        and 0 <= nx < mask.shape[1]
+                        and mask[ny, nx]
+                        and not lab[ny, nx]
+                    ):
                         lab[ny, nx] = cur
                         stk.append((ny, nx))
     return cur

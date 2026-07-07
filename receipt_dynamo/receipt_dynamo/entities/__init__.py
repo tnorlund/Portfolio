@@ -80,10 +80,6 @@ from receipt_dynamo.entities.merchant_font import (  # noqa: F401
     item_to_merchant_font,
 )
 from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: F401
-from receipt_dynamo.entities.merchant_font import (  # noqa: F401
-    MerchantFont,
-    item_to_merchant_font,
-)
 from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
     OCRRoutingDecision,

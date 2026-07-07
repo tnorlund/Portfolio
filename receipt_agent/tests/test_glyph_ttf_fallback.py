@@ -10,7 +10,7 @@ import math
 
 import pytest
 from PIL import Image, ImageDraw
-
+from receipt_agent.agents.label_evaluator.rendering import glyph_ttf_fallback
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     build_glyph_atlas,
 )
@@ -19,17 +19,23 @@ from receipt_agent.agents.label_evaluator.rendering.glyph_ttf_fallback import (
     make_ttf_fallback,
     match_fallback_font,
 )
-from receipt_agent.agents.label_evaluator.rendering import glyph_ttf_fallback
 
 _W, _H = 320, 1600
 _HAS_TTF = bool(available_candidates())
-_skip_no_ttf = pytest.mark.skipif(not _HAS_TTF, reason="no monospace TTF on host")
+_skip_no_ttf = pytest.mark.skipif(
+    not _HAS_TTF, reason="no monospace TTF on host"
+)
 
 
 def _letter(char, x, y, w, h, *, line_id, word_id, letter_id):
     return {
-        "text": char, "confidence": 0.99, "image_id": "img-1", "receipt_id": 1,
-        "line_id": line_id, "word_id": word_id, "letter_id": letter_id,
+        "text": char,
+        "confidence": 0.99,
+        "image_id": "img-1",
+        "receipt_id": 1,
+        "line_id": line_id,
+        "word_id": word_id,
+        "letter_id": letter_id,
         "bounding_box": {"x": x, "y": y, "width": w, "height": h},
     }
 
@@ -40,8 +46,16 @@ def _atlas():
     draw = ImageDraw.Draw(image)
 
     def add(char, x, y, w, h, *, line_id, word_id, letter_id, coverage):
-        lt = _letter(char, x, y, w, h, line_id=line_id, word_id=word_id,
-                     letter_id=letter_id)
+        lt = _letter(
+            char,
+            x,
+            y,
+            w,
+            h,
+            line_id=line_id,
+            word_id=word_id,
+            letter_id=letter_id,
+        )
         box = lt["bounding_box"]
         left, right = box["x"] * _W, (box["x"] + box["width"]) * _W
         top = (1.0 - box["y"] - box["height"]) * _H
@@ -49,18 +63,38 @@ def _atlas():
         frac = math.sqrt(coverage)
         iw, ih = (right - left) * frac, (bottom - top) * frac
         cx, cy = (left + right) / 2, (top + bottom) / 2
-        draw.rectangle([cx - iw / 2, cy - ih / 2, cx + iw / 2, cy + ih / 2],
-                       fill=(10, 10, 10))
+        draw.rectangle(
+            [cx - iw / 2, cy - ih / 2, cx + iw / 2, cy + ih / 2],
+            fill=(10, 10, 10),
+        )
         letters.append(lt)
 
     chars = "ABCEHOST0123"
     for li, ytop in enumerate((0.80, 0.74, 0.68), start=2):
         for wi, ch in enumerate(chars):
-            add(ch, 0.06 + wi * 0.06, ytop, 0.022, 0.02,
-                line_id=li, word_id=2, letter_id=wi + 1, coverage=0.22)
+            add(
+                ch,
+                0.06 + wi * 0.06,
+                ytop,
+                0.022,
+                0.02,
+                line_id=li,
+                word_id=2,
+                letter_id=wi + 1,
+                coverage=0.22,
+            )
     atlas = build_glyph_atlas(
-        [{"image_id": "img-1", "receipt_id": 1, "letters": letters,
-          "raw_image": image}], "TestMart", min_samples=5)
+        [
+            {
+                "image_id": "img-1",
+                "receipt_id": 1,
+                "letters": letters,
+                "raw_image": image,
+            }
+        ],
+        "TestMart",
+        min_samples=5,
+    )
     assert atlas is not None
     return atlas
 
@@ -77,7 +111,9 @@ def test_match_picks_an_available_font_with_scores():
 
 def test_available_candidates_requires_fixed_pitch(monkeypatch):
     candidates = ("/fonts/thermal-mono.ttf", "/fonts/script.ttf")
-    monkeypatch.setattr(glyph_ttf_fallback.os.path, "exists", lambda path: True)
+    monkeypatch.setattr(
+        glyph_ttf_fallback.os.path, "exists", lambda path: True
+    )
     monkeypatch.setattr(
         glyph_ttf_fallback,
         "_is_fixed_pitch_font",
@@ -140,13 +176,18 @@ def test_custom_score_font_hook_is_used():
 @_skip_no_ttf
 def test_fallback_integrates_with_renderer():
     from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
-        GlyphRenderConfig, render_receipt_glyphs,
+        GlyphRenderConfig,
+        render_receipt_glyphs,
     )
+
     atlas = _atlas()
     fallback = make_ttf_fallback(atlas)
     # 'Z'/'Q' missing from atlas -> fallback fills them; render must not crash.
-    receipt = {"words": [{"text": "ZQ", "bbox": [100, 800, 220, 830],
-                          "labels": []}]}
+    receipt = {
+        "words": [{"text": "ZQ", "bbox": [100, 800, 220, 830], "labels": []}]
+    }
     cfg = GlyphRenderConfig(width=300, height=700, noise=0.0, blur=0.0)
-    image = render_receipt_glyphs(receipt, atlas, config=cfg, fallback=fallback)
+    image = render_receipt_glyphs(
+        receipt, atlas, config=cfg, fallback=fallback
+    )
     assert image.convert("L").getextrema()[0] < 150  # ink present

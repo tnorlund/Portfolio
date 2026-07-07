@@ -31,12 +31,15 @@ def auto_polarity(gray: np.ndarray, dark_border: float = 110.0):
         return gray, False
     border = np.concatenate([gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]])
     if float(np.median(border)) < dark_border:
-        return (255 - gray.astype(np.int16)).clip(0, 255).astype(gray.dtype), True
+        return (255 - gray.astype(np.int16)).clip(0, 255).astype(
+            gray.dtype
+        ), True
     return gray, False
 
 
-def sauvola_mask(gray: np.ndarray, window: int = 25, k: float = 0.18,
-                 R: float = 128.0) -> np.ndarray:
+def sauvola_mask(
+    gray: np.ndarray, window: int = 25, k: float = 0.18, R: float = 128.0
+) -> np.ndarray:
     """Boolean ink mask (True = ink) via Sauvola adaptive thresholding."""
     g = gray.astype(np.float64)
     H, W = g.shape
@@ -86,7 +89,9 @@ def segment_to_n(mask: np.ndarray, n: int) -> list[tuple[int, int]]:
         return []
     # Merge the smallest inter-run gaps until at most n runs (dot-matrix breaks).
     while len(runs) > n:
-        gi = min(range(len(runs) - 1), key=lambda i: runs[i + 1][0] - runs[i][1])
+        gi = min(
+            range(len(runs) - 1), key=lambda i: runs[i + 1][0] - runs[i][1]
+        )
         runs[gi][1] = runs[gi + 1][1]
         del runs[gi + 1]
     # Split the widest run at its deepest interior projection valley (fused pair).
@@ -104,7 +109,9 @@ def segment_to_n(mask: np.ndarray, n: int) -> list[tuple[int, int]]:
     return [(a, b) for a, b in runs]
 
 
-def glyph_boxes(gray: np.ndarray, n: int, **kw) -> list[tuple[int, int, int, int]]:
+def glyph_boxes(
+    gray: np.ndarray, n: int, **kw
+) -> list[tuple[int, int, int, int]]:
     """Per-glyph tight ink bboxes (x0, y0, x1, y1) for an N-character word crop."""
     mask = sauvola_mask(gray, **kw)
     boxes: list[tuple[int, int, int, int]] = []
@@ -115,6 +122,12 @@ def glyph_boxes(gray: np.ndarray, n: int, **kw) -> list[tuple[int, int, int, int
         if rows.size == 0 or cols.size == 0:
             boxes.append((x0, 0, x1, gray.shape[0]))
             continue
-        boxes.append((x0 + int(cols.min()), int(rows.min()),
-                      x0 + int(cols.max()) + 1, int(rows.max()) + 1))
+        boxes.append(
+            (
+                x0 + int(cols.min()),
+                int(rows.min()),
+                x0 + int(cols.max()) + 1,
+                int(rows.max()) + 1,
+            )
+        )
     return boxes

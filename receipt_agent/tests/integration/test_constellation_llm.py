@@ -37,8 +37,6 @@ logger = logging.getLogger(__name__)
 async def run_test():
     """Run constellation anomaly detection test with OpenRouter LLM."""
     # Import after path setup
-    from receipt_dynamo import DynamoClient
-
     from receipt_agent.agents.label_evaluator import (
         create_label_evaluator_graph,
     )
@@ -46,6 +44,8 @@ async def run_test():
     from receipt_agent.agents.label_evaluator import (
         run_label_evaluator,
     )
+
+    from receipt_dynamo import DynamoClient
 
     # Limit receipts for faster testing
     original_max = evaluator_graph.MAX_OTHER_RECEIPTS

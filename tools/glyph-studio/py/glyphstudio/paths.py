@@ -5,6 +5,7 @@ Endpoints have 8-degree 1, junctions >= 3. Thinning smears junctions into
 junction clusters before edges are walked. Pure loops (O, 0) have no
 endpoints/junctions and are walked from an arbitrary start, marked closed.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,7 +13,14 @@ import numpy as np
 from .thin import degree_map
 
 _OFFSETS = [
-    (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)
+    (-1, 0),
+    (-1, 1),
+    (0, 1),
+    (1, 1),
+    (1, 0),
+    (1, -1),
+    (0, -1),
+    (-1, -1),
 ]
 
 
@@ -20,7 +28,11 @@ def _ink_neighbors(skel: np.ndarray, y: int, x: int) -> list[tuple[int, int]]:
     out = []
     for dy, dx in _OFFSETS:
         ny, nx = y + dy, x + dx
-        if 0 <= ny < skel.shape[0] and 0 <= nx < skel.shape[1] and skel[ny, nx]:
+        if (
+            0 <= ny < skel.shape[0]
+            and 0 <= nx < skel.shape[1]
+            and skel[ny, nx]
+        ):
             out.append((ny, nx))
     return out
 
@@ -64,19 +76,22 @@ def extract_paths(skel: np.ndarray) -> list[dict]:
     ]
 
     visited = np.zeros_like(skel, dtype=bool)
-    for (y, x) in pixel_to_cluster:
+    for y, x in pixel_to_cluster:
         visited[y, x] = True  # cluster pixels are vertices, not chain members
 
     paths: list[dict] = []
 
-    def walk(start: tuple[int, int], first: tuple[int, int]) -> list[tuple[int, int]]:
+    def walk(
+        start: tuple[int, int], first: tuple[int, int]
+    ) -> list[tuple[int, int]]:
         """Follow a degree-2 chain from ``first`` (start vertex excluded)."""
         pts = [first]
         visited[first] = True
         prev, cur = start, first
         while True:
             nbrs = [
-                p for p in _ink_neighbors(skel, *cur)
+                p
+                for p in _ink_neighbors(skel, *cur)
                 if p != prev and (p in pixel_to_cluster or not visited[p])
             ]
             nxt = None
@@ -107,12 +122,21 @@ def extract_paths(skel: np.ndarray) -> list[dict]:
             continue
         pts = [(y, x)]
         visited[y, x] = True
-        nbrs = [p for p in _ink_neighbors(skel, y, x)
-                if p in pixel_to_cluster or not visited[p]]
+        nbrs = [
+            p
+            for p in _ink_neighbors(skel, y, x)
+            if p in pixel_to_cluster or not visited[p]
+        ]
         if nbrs:
             pts.extend(walk((y, x), nbrs[0]))
-        points = [vertex_point(p) if p in pixel_to_cluster else (float(p[0]), float(p[1]))
-                  for p in pts]
+        points = [
+            (
+                vertex_point(p)
+                if p in pixel_to_cluster
+                else (float(p[0]), float(p[1]))
+            )
+            for p in pts
+        ]
         if len(points) >= 2:
             paths.append({"points": points, "closed": False})
 
@@ -126,7 +150,8 @@ def extract_paths(skel: np.ndarray) -> list[dict]:
                 points = [centroids[cid]]
                 for p in chain:
                     points.append(
-                        vertex_point(p) if p in pixel_to_cluster
+                        vertex_point(p)
+                        if p in pixel_to_cluster
                         else (float(p[0]), float(p[1]))
                     )
                 if len(points) >= 2:
@@ -142,8 +167,11 @@ def extract_paths(skel: np.ndarray) -> list[dict]:
         prev: tuple[int, int] | None = None
         cur = (y, x)
         while True:
-            nbrs = [p for p in _ink_neighbors(skel, *cur)
-                    if p != prev and not visited[p]]
+            nbrs = [
+                p
+                for p in _ink_neighbors(skel, *cur)
+                if p != prev and not visited[p]
+            ]
             if not nbrs:
                 break
             nxt = nbrs[0]
@@ -151,8 +179,10 @@ def extract_paths(skel: np.ndarray) -> list[dict]:
             pts.append(nxt)
             prev, cur = cur, nxt
         if len(pts) >= 4:
-            paths.append({
-                "points": [(float(p[0]), float(p[1])) for p in pts],
-                "closed": True,
-            })
+            paths.append(
+                {
+                    "points": [(float(p[0]), float(p[1])) for p in pts],
+                    "closed": True,
+                }
+            )
     return paths

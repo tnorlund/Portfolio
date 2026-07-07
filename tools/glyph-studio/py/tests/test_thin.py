@@ -40,8 +40,8 @@ def test_idempotent():
 
 def test_prune_spurs_removes_short_hairs():
     skel = np.zeros((21, 41), dtype=bool)
-    skel[10, 2:39] = True          # main stroke
-    skel[7:10, 20] = True          # 3-px spur off the middle
+    skel[10, 2:39] = True  # main stroke
+    skel[7:10, 20] = True  # 3-px spur off the middle
     pruned = prune_spurs(skel, min_len=5)
     assert not pruned[7:10, 20].any()
     assert pruned[10, 2:39].all()  # main stroke intact

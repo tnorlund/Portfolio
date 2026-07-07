@@ -3,7 +3,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_agent.state.models import (
     ChromaSearchResult,
     EvidenceType,

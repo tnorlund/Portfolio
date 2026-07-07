@@ -9,6 +9,7 @@ stem's centerline runs from y = dot/2 to y = 1000 - dot/2. The tracer emits
 this automatically (skeletons sit half a stroke inside the ink); the editor
 draws both the cap guide and the inset "centerline cap" guide.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,9 @@ def load_font(font_dir: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as fh:
         font = json.load(fh)
     if font.get("version") != SCHEMA_VERSION:
-        raise ValueError(f"unsupported font schema version: {font.get('version')}")
+        raise ValueError(
+            f"unsupported font schema version: {font.get('version')}"
+        )
     return font
 
 
@@ -79,7 +82,9 @@ def load_glyphs(font_dir: str) -> dict[int, dict[str, Any]]:
 
 def validate_glyph(g: dict[str, Any]) -> None:
     if g.get("version") != SCHEMA_VERSION:
-        raise ValueError(f"glyph schema version {g.get('version')} unsupported")
+        raise ValueError(
+            f"glyph schema version {g.get('version')} unsupported"
+        )
     for field in ("char", "codepoint", "provenance", "strokes"):
         if field not in g:
             raise ValueError(f"glyph missing field: {field}")
@@ -104,8 +109,9 @@ def atomic_write_json(path: str, obj: Any) -> None:
     os.replace(tmp, path)
 
 
-def write_glyph(font_dir: str, glyph: dict[str, Any], *,
-                respect_edited: bool = True) -> str:
+def write_glyph(
+    font_dir: str, glyph: dict[str, Any], *, respect_edited: bool = True
+) -> str:
     """Write a glyph source; hand-edited glyphs divert to _traced/.
 
     Returns the path written. Machine re-traces must never clobber hand
@@ -127,7 +133,9 @@ def write_glyph(font_dir: str, glyph: dict[str, Any], *,
     return target
 
 
-def merged_params(font: dict[str, Any], glyph: dict[str, Any]) -> dict[str, Any]:
+def merged_params(
+    font: dict[str, Any], glyph: dict[str, Any]
+) -> dict[str, Any]:
     """Font params with per-glyph overrides applied (shallow per subtree)."""
     params = json.loads(json.dumps(font["params"]))  # deep copy
     for key, val in (glyph.get("overrides") or {}).items():

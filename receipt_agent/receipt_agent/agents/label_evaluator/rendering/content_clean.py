@@ -22,8 +22,14 @@ from typing import Any, Mapping
 
 from receipt_agent.agents.label_evaluator.rendering.number_format import (
     US as _NF,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
     date_core as _date_core,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
     fraction as _fraction,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
     integer_part as _integer_part,
 )
 
@@ -57,6 +63,7 @@ def _valid_date(text: str) -> bool:
     mo, da = int(m.group(1)), int(m.group(2))
     return 1 <= mo <= 12 and 1 <= da <= 31
 
+
 # Context-free single-token repairs that are essentially never legitimate text.
 _TOKEN_FIX = {
     "Seg#": "Seq#",
@@ -87,10 +94,14 @@ def canonicalize_auth_tokens(words: list[dict]) -> int:
         nxt = str(words[i + 1].get("text") or "") if i + 1 < len(words) else ""
         if t in _TOKEN_FIX:
             new = _TOKEN_FIX[t]
-        elif (
-            t.rstrip(":").upper() in ("DID", "AND", "ALD", "A1D", "AIO", "AlD")
-            and _AID_HEX.match(nxt.upper())
-        ):
+        elif t.rstrip(":").upper() in (
+            "DID",
+            "AND",
+            "ALD",
+            "A1D",
+            "AIO",
+            "AlD",
+        ) and _AID_HEX.match(nxt.upper()):
             # "AID" label before the hex AID, with/without the printed colon. The
             # hex-follow gate makes substituting the common word "AND" safe here.
             new = "AID:" if t.endswith(":") else "AID"
@@ -141,8 +152,11 @@ def canonicalize_dates(words: list[dict]) -> int:
     """
     from collections import Counter
 
-    valid = [str(w.get("text") or "") for w in words
-             if _valid_date(str(w.get("text") or ""))]
+    valid = [
+        str(w.get("text") or "")
+        for w in words
+        if _valid_date(str(w.get("text") or ""))
+    ]
     if not valid:
         return 0
     canonical = Counter(valid).most_common(1)[0][0]

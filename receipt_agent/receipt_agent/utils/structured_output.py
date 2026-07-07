@@ -287,9 +287,7 @@ def invoke_structured_with_retry(
             if result.get("parsing_error") is not None:
                 # Try to repair the raw response before giving up
                 raw_msg = result.get("raw")
-                raw_text = (
-                    getattr(raw_msg, "content", "") if raw_msg else ""
-                )
+                raw_text = getattr(raw_msg, "content", "") if raw_msg else ""
                 if raw_text:
                     repaired = _try_repair_and_parse(raw_text, schema)
                     if repaired is not None:
@@ -425,9 +423,7 @@ async def ainvoke_structured_with_retry(
             if result.get("parsing_error") is not None:
                 # Try to repair the raw response before giving up
                 raw_msg = result.get("raw")
-                raw_text = (
-                    getattr(raw_msg, "content", "") if raw_msg else ""
-                )
+                raw_text = getattr(raw_msg, "content", "") if raw_msg else ""
                 if raw_text:
                     repaired = _try_repair_and_parse(raw_text, schema)
                     if repaired is not None:
@@ -471,9 +467,7 @@ async def ainvoke_structured_with_retry(
             if config is None:
                 raw_result = await llm.ainvoke(hinted_payload)
             else:
-                raw_result = await llm.ainvoke(
-                    hinted_payload, config=config
-                )
+                raw_result = await llm.ainvoke(hinted_payload, config=config)
         else:
             if config is None:
                 raw_result = await asyncio.to_thread(

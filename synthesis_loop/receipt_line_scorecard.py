@@ -18,6 +18,7 @@ Usage:
 The CLI needs AWS/Dynamo only to fetch the real image and OCR words. The metric
 functions are pure and unit-testable with local images + word dicts.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,13 +33,11 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 from PIL import Image
-
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridWord,
     group_words_into_grid_lines,
     is_price_token,
 )
-
 
 DEFAULT_THRESHOLDS = {
     "height_ratio_minor": 1.04,
@@ -151,7 +150,9 @@ def measure_ink(
     pad_x: float = 0.0,
     pad_y: float = 0.0,
 ) -> InkStats | None:
-    clipped = _clip_box(box, image.width, image.height, pad_x=pad_x, pad_y=pad_y)
+    clipped = _clip_box(
+        box, image.width, image.height, pad_x=pad_x, pad_y=pad_y
+    )
     if clipped is None:
         return None
     left, top, right, bottom = clipped
@@ -188,8 +189,10 @@ def _word_text(word: Mapping[str, Any]) -> str:
 def _is_long_numeric_caption(text: str) -> bool:
     glyphs = re.sub(r"\\s+", "", text)
     digits = sum(ch.isdigit() for ch in glyphs)
-    return digits >= 14 and digits >= 0.75 * max(1, len(glyphs)) and bool(
-        _LONG_NUMERIC_RE.match(glyphs)
+    return (
+        digits >= 14
+        and digits >= 0.75 * max(1, len(glyphs))
+        and bool(_LONG_NUMERIC_RE.match(glyphs))
     )
 
 
@@ -228,7 +231,9 @@ def _grid_words(
     return out, by_id
 
 
-def _row_word_source(row: Sequence[GridWord], by_id: Mapping[int, Mapping[str, Any]]):
+def _row_word_source(
+    row: Sequence[GridWord], by_id: Mapping[int, Mapping[str, Any]]
+):
     return [by_id[id(word)] for word in row if id(word) in by_id]
 
 
@@ -274,8 +279,7 @@ def _row_band(
         bottom = max(w.bottom for w in row)
         return 0.0, top, float(image.width), bottom
     boxes = [
-        _box_for_word(word, image, margin=margin)
-        for word in source_words
+        _box_for_word(word, image, margin=margin) for word in source_words
     ]
     boxes = [box for box in boxes if box is not None]
     if not boxes:
@@ -285,8 +289,11 @@ def _row_band(
     top = min(box[1] for box in boxes)
     bottom = max(box[3] for box in boxes)
     pad_y = max(4.0, (bottom - top) * 0.35)
-    return 0.0, max(0.0, top - pad_y), float(image.width), min(
-        float(image.height), bottom + pad_y
+    return (
+        0.0,
+        max(0.0, top - pad_y),
+        float(image.width),
+        min(float(image.height), bottom + pad_y),
     )
 
 
@@ -353,15 +360,19 @@ def _word_scores(
         if real_stats is None or synth_stats is None:
             continue
         glyphs = max(1, len(text.replace(" ", "")))
-        scores.append({
-            "text": text,
-            "line_id": word.get("line_id"),
-            "height_ratio": synth_stats.height / real_stats.height,
-            "wpc_ratio": (synth_stats.width / glyphs) / (real_stats.width / glyphs),
-            "density_ratio": synth_stats.density / max(1e-6, real_stats.density),
-            "real_height": real_stats.height,
-            "synth_height": synth_stats.height,
-        })
+        scores.append(
+            {
+                "text": text,
+                "line_id": word.get("line_id"),
+                "height_ratio": synth_stats.height / real_stats.height,
+                "wpc_ratio": (synth_stats.width / glyphs)
+                / (real_stats.width / glyphs),
+                "density_ratio": synth_stats.density
+                / max(1e-6, real_stats.density),
+                "real_height": real_stats.height,
+                "synth_height": synth_stats.height,
+            }
+        )
     return scores
 
 
@@ -384,7 +395,9 @@ def _colon_gap_scores(
         real_left = _measure_segment(real, [left_word], margin=0)
         real_right = _measure_segment(real, [right_word], margin=0)
         synth_left = _measure_segment(synth, [left_word], margin=synth_margin)
-        synth_right = _measure_segment(synth, [right_word], margin=synth_margin)
+        synth_right = _measure_segment(
+            synth, [right_word], margin=synth_margin
+        )
         if not all((real_left, real_right, synth_left, synth_right)):
             continue
         real_gap = real_right.left - real_left.right  # type: ignore[union-attr]
@@ -394,12 +407,14 @@ def _colon_gap_scores(
         # colon-spacing problems.
         if real_gap < -6.0 or real_gap > 24.0:
             continue
-        scores.append({
-            "pair": f"{left_text} {right_text}",
-            "real_gap_px": real_gap,
-            "synth_gap_px": synth_gap,
-            "gap_delta_px": synth_gap - real_gap,
-        })
+        scores.append(
+            {
+                "pair": f"{left_text} {right_text}",
+                "real_gap_px": real_gap,
+                "synth_gap_px": synth_gap,
+                "gap_delta_px": synth_gap - real_gap,
+            }
+        )
     return scores
 
 
@@ -439,7 +454,9 @@ def score_receipt_images(
 
     grid_words, by_id = _grid_words(words, real)
     rows = group_words_into_grid_lines(grid_words, row_pitch_px)
-    rows = sorted(rows, key=lambda row: sum(w.center_y for w in row) / len(row))
+    rows = sorted(
+        rows, key=lambda row: sum(w.center_y for w in row) / len(row)
+    )
     word_scores = _word_scores(real, synth, words, synth_margin=synth_margin)
 
     row_scores: list[dict[str, Any]] = []
@@ -457,39 +474,49 @@ def score_receipt_images(
         )
         text = _row_text(source_words)
         real_band = _row_band(row, real, margin=0, source_words=source_words)
-        synth_band = _row_band(row, synth, margin=synth_margin, source_words=source_words)
+        synth_band = _row_band(
+            row, synth, margin=synth_margin, source_words=source_words
+        )
         real_stats = measure_ink(real, real_band)
         synth_stats = measure_ink(synth, synth_band)
 
         height_ratio = (
             synth_stats.height / real_stats.height
-            if real_stats is not None and synth_stats is not None else None
+            if real_stats is not None and synth_stats is not None
+            else None
         )
         density_ratio = (
             synth_stats.density / max(1e-6, real_stats.density)
-            if real_stats is not None and synth_stats is not None else None
+            if real_stats is not None and synth_stats is not None
+            else None
         )
         right_delta = (
             synth_stats.right - real_stats.right
-            if real_stats is not None and synth_stats is not None else None
+            if real_stats is not None and synth_stats is not None
+            else None
         )
         center_delta = (
             synth_stats.center_x - real_stats.center_x
-            if real_stats is not None and synth_stats is not None else None
+            if real_stats is not None and synth_stats is not None
+            else None
         )
         baseline_delta = (
             synth_stats.bottom - real_stats.bottom
-            if real_stats is not None and synth_stats is not None else None
+            if real_stats is not None and synth_stats is not None
+            else None
         )
 
         colon_scores = _colon_gap_scores(
             real, synth, source_words, synth_margin=synth_margin
         )
-        colon_scores_all.extend({
-            **item,
-            "row_index": row_index,
-            "row_text": text,
-        } for item in colon_scores)
+        colon_scores_all.extend(
+            {
+                **item,
+                "row_index": row_index,
+                "row_text": text,
+            }
+            for item in colon_scores
+        )
 
         segment_scores = []
         for seg_no, segment_grid in enumerate(_row_segments(row), start=1):
@@ -499,7 +526,9 @@ def score_receipt_images(
             if not segment_words:
                 continue
             real_seg = _measure_segment(real, segment_words, margin=0)
-            synth_seg = _measure_segment(synth, segment_words, margin=synth_margin)
+            synth_seg = _measure_segment(
+                synth, segment_words, margin=synth_margin
+            )
             if real_seg is None or synth_seg is None:
                 continue
             seg = {
@@ -510,7 +539,9 @@ def score_receipt_images(
                 "left_delta_px": synth_seg.left - real_seg.left,
             }
             segment_scores.append(seg)
-            segment_scores_all.append({**seg, "row_index": row_index, "row_text": text})
+            segment_scores_all.append(
+                {**seg, "row_index": row_index, "row_text": text}
+            )
 
         barcode = _barcode_caption_score(text, real_stats, synth_stats)
         if barcode is not None:
@@ -521,7 +552,9 @@ def score_receipt_images(
         price_right_delta = None
         if is_price_row:
             price_words = [
-                word for word in source_words if is_price_token(_word_text(word))
+                word
+                for word in source_words
+                if is_price_token(_word_text(word))
             ]
             real_price = _measure_segment(real, price_words, margin=0)
             synth_price = _measure_segment(
@@ -530,11 +563,15 @@ def score_receipt_images(
             if real_price is not None and synth_price is not None:
                 price_right_delta = synth_price.right - real_price.right
         row_severity = _worst(
-            _severity(
-                price_right_delta,
-                thresholds["right_edge_delta_minor_px"],
-                thresholds["right_edge_delta_blocker_px"],
-            ) if is_price_row else "PASS",
+            (
+                _severity(
+                    price_right_delta,
+                    thresholds["right_edge_delta_minor_px"],
+                    thresholds["right_edge_delta_blocker_px"],
+                )
+                if is_price_row
+                else "PASS"
+            ),
             *[
                 _severity(
                     item["gap_delta_px"],
@@ -551,55 +588,79 @@ def score_receipt_images(
                 )
                 for item in segment_scores[1:]
             ],
-            _ratio_severity(
-                barcode["height_ratio"] if barcode else None,
-                thresholds["barcode_caption_height_minor"],
-                thresholds["barcode_caption_height_blocker"],
-            ) if barcode else "PASS",
+            (
+                _ratio_severity(
+                    barcode["height_ratio"] if barcode else None,
+                    thresholds["barcode_caption_height_minor"],
+                    thresholds["barcode_caption_height_blocker"],
+                )
+                if barcode
+                else "PASS"
+            ),
         )
 
-        row_scores.append({
-            "row_index": row_index,
-            "source_lines": sorted({
-                int(word.get("line_id")) for word in source_words
-                if str(word.get("line_id") or "").lstrip("-").isdigit()
-            }),
-            "text": text,
-            "severity": row_severity,
-            "height_ratio": height_ratio,
-            "density_ratio": density_ratio,
-            "right_delta_px": right_delta,
-            "price_right_delta_px": price_right_delta,
-            "center_delta_px": center_delta,
-            "baseline_delta_px": baseline_delta,
-            "is_price_row": is_price_row,
-            "colon_gaps": colon_scores,
-            "segments": segment_scores,
-            "barcode_caption": barcode,
-        })
+        row_scores.append(
+            {
+                "row_index": row_index,
+                "source_lines": sorted(
+                    {
+                        int(word.get("line_id"))
+                        for word in source_words
+                        if str(word.get("line_id") or "").lstrip("-").isdigit()
+                    }
+                ),
+                "text": text,
+                "severity": row_severity,
+                "height_ratio": height_ratio,
+                "density_ratio": density_ratio,
+                "right_delta_px": right_delta,
+                "price_right_delta_px": price_right_delta,
+                "center_delta_px": center_delta,
+                "baseline_delta_px": baseline_delta,
+                "is_price_row": is_price_row,
+                "colon_gaps": colon_scores,
+                "segments": segment_scores,
+                "barcode_caption": barcode,
+            }
+        )
 
     def _median(values: Sequence[float | None]) -> float | None:
-        clean = [float(v) for v in values if v is not None and math.isfinite(float(v))]
+        clean = [
+            float(v)
+            for v in values
+            if v is not None and math.isfinite(float(v))
+        ]
         return float(median(clean)) if clean else None
 
     summary = {
         "row_count": len(row_scores),
         "word_count": len(word_scores),
-        "height_ratio_median": _median([item["height_ratio"] for item in word_scores]),
-        "wpc_ratio_median": _median([item["wpc_ratio"] for item in word_scores]),
-        "density_ratio_median": _median([item["density_ratio"] for item in word_scores]),
-        "price_right_delta_abs_median_px": _median([
-            abs(item["price_right_delta_px"]) for item in row_scores
-            if item["price_right_delta_px"] is not None
-        ]),
-        "colon_gap_delta_median_px": _median([
-            item["gap_delta_px"] for item in colon_scores_all
-        ]),
-        "barcode_caption_height_ratio_median": _median([
-            item["height_ratio"] for item in barcode_scores
-        ]),
+        "height_ratio_median": _median(
+            [item["height_ratio"] for item in word_scores]
+        ),
+        "wpc_ratio_median": _median(
+            [item["wpc_ratio"] for item in word_scores]
+        ),
+        "density_ratio_median": _median(
+            [item["density_ratio"] for item in word_scores]
+        ),
+        "price_right_delta_abs_median_px": _median(
+            [
+                abs(item["price_right_delta_px"])
+                for item in row_scores
+                if item["price_right_delta_px"] is not None
+            ]
+        ),
+        "colon_gap_delta_median_px": _median(
+            [item["gap_delta_px"] for item in colon_scores_all]
+        ),
+        "barcode_caption_height_ratio_median": _median(
+            [item["height_ratio"] for item in barcode_scores]
+        ),
         "severity_counts": {
-            severity: sum(1 for item in row_scores if item["severity"] == severity)
+            severity: sum(
+                1 for item in row_scores if item["severity"] == severity
+            )
             for severity in ("PASS", "MINOR", "BLOCKER", "NA")
         },
     }
@@ -607,13 +668,15 @@ def score_receipt_images(
     failures = []
     for item in row_scores:
         if item["severity"] in ("MINOR", "BLOCKER"):
-            failures.append({
-                "severity": item["severity"],
-                "row_index": item["row_index"],
-                "source_lines": item["source_lines"],
-                "text": item["text"],
-                "reasons": _row_reasons(item, thresholds),
-            })
+            failures.append(
+                {
+                    "severity": item["severity"],
+                    "row_index": item["row_index"],
+                    "source_lines": item["source_lines"],
+                    "text": item["text"],
+                    "reasons": _row_reasons(item, thresholds),
+                }
+            )
 
     return {
         "summary": summary,
@@ -624,7 +687,9 @@ def score_receipt_images(
     }
 
 
-def _row_reasons(row: Mapping[str, Any], thresholds: Mapping[str, float]) -> list[str]:
+def _row_reasons(
+    row: Mapping[str, Any], thresholds: Mapping[str, float]
+) -> list[str]:
     reasons: list[str] = []
     right = row.get("price_right_delta_px")
     if (
@@ -640,11 +705,16 @@ def _row_reasons(row: Mapping[str, Any], thresholds: Mapping[str, float]) -> lis
     for segment in (row.get("segments") or [])[1:]:
         delta = float(segment["center_delta_px"])
         if abs(delta) >= thresholds["segment_delta_minor_px"]:
-            reasons.append(f"segment {segment['segment']} center_delta={delta:.1f}px")
+            reasons.append(
+                f"segment {segment['segment']} center_delta={delta:.1f}px"
+            )
     barcode = row.get("barcode_caption")
     if barcode is not None:
         ratio = float(barcode["height_ratio"])
-        if abs(ratio - 1.0) >= thresholds["barcode_caption_height_minor"] - 1.0:
+        if (
+            abs(ratio - 1.0)
+            >= thresholds["barcode_caption_height_minor"] - 1.0
+        ):
             reasons.append(f"barcode_caption_height_ratio={ratio:.3f}")
     return reasons
 
@@ -697,6 +767,7 @@ def _fmt(value: Any) -> str:
 def _load_words_and_real(merchant: str, image_id: str, receipt_id: int):
     del merchant
     import boto3
+
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
     table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
@@ -705,26 +776,34 @@ def _load_words_and_real(merchant: str, image_id: str, receipt_id: int):
     s3 = boto3.client("s3", region_name=region)
     details = client.get_image_details(image_id)
     receipt = next(
-        (item for item in details.receipts if str(item.receipt_id) == str(receipt_id)),
+        (
+            item
+            for item in details.receipts
+            if str(item.receipt_id) == str(receipt_id)
+        ),
         None,
     )
     if receipt is None:
-        raise RuntimeError(f"receipt {receipt_id} not found for image {image_id}")
+        raise RuntimeError(
+            f"receipt {receipt_id} not found for image {image_id}"
+        )
     words = []
     for word in details.receipt_words:
         if str(word.receipt_id) != str(receipt_id):
             continue
-        words.append({
-            "text": word.text,
-            "line_id": word.line_id,
-            "word_id": word.word_id,
-            "bbox": [
-                word.top_left["x"] * 1000,
-                word.top_left["y"] * 1000,
-                word.bottom_right["x"] * 1000,
-                word.bottom_right["y"] * 1000,
-            ],
-        })
+        words.append(
+            {
+                "text": word.text,
+                "line_id": word.line_id,
+                "word_id": word.word_id,
+                "bbox": [
+                    word.top_left["x"] * 1000,
+                    word.top_left["y"] * 1000,
+                    word.bottom_right["x"] * 1000,
+                    word.bottom_right["y"] * 1000,
+                ],
+            }
+        )
     for bucket, key in (
         (receipt.cdn_s3_bucket, receipt.cdn_s3_key),
         (receipt.raw_s3_bucket, receipt.raw_s3_key),
@@ -736,7 +815,9 @@ def _load_words_and_real(merchant: str, image_id: str, receipt_id: int):
             return Image.open(BytesIO(body)).convert("RGB"), words
         except Exception:  # noqa: BLE001
             continue
-    raise RuntimeError(f"could not load real image for {image_id}:{receipt_id}")
+    raise RuntimeError(
+        f"could not load real image for {image_id}:{receipt_id}"
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -38,7 +38,6 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from langsmith import traceable
 from pydantic import ValidationError
-
 from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.prompts.structured_outputs import (
     CurrencyEvaluationResponse,
@@ -498,22 +497,25 @@ def evaluate_currency_labels(
         )
         if chroma_resolved:
             for word_dict, decision in chroma_resolved:
-                auto_results.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": word_dict["line_id"],
-                        "word_id": word_dict["word_id"],
-                        "current_label": word_dict["current_label"],
-                        "word_text": word_dict["word_text"],
-                    },
-                    "llm_review": decision,
-                })
+                auto_results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": word_dict["line_id"],
+                            "word_id": word_dict["word_id"],
+                            "current_label": word_dict["current_label"],
+                            "word_text": word_dict["word_text"],
+                        },
+                        "llm_review": decision,
+                    }
+                )
             chroma_unresolved_ids = {
                 (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
             }
             currency_words = [
-                cw for cw in currency_words
+                cw
+                for cw in currency_words
                 if (cw.word_context.word.line_id, cw.word_context.word.word_id)
                 in chroma_unresolved_ids
             ]
@@ -524,7 +526,9 @@ def evaluate_currency_labels(
             )
 
     if not currency_words:
-        logger.info("All currency words resolved by ChromaDB, skipping LLM call")
+        logger.info(
+            "All currency words resolved by ChromaDB, skipping LLM call"
+        )
         return auto_results
 
     # Step 3: Build prompt and call LLM
@@ -668,7 +672,9 @@ def evaluate_currency_labels(
 
     # Step 4: ChromaDB fallback for system failures
     if chroma_client and currency_words:
-        from receipt_agent.utils.chroma_helpers import chroma_fallback_decisions
+        from receipt_agent.utils.chroma_helpers import (
+            chroma_fallback_decisions,
+        )
 
         failure_word_dicts = [
             {
@@ -823,22 +829,25 @@ async def evaluate_currency_labels_async(
         )
         if chroma_resolved:
             for word_dict, decision in chroma_resolved:
-                auto_results.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": word_dict["line_id"],
-                        "word_id": word_dict["word_id"],
-                        "current_label": word_dict["current_label"],
-                        "word_text": word_dict["word_text"],
-                    },
-                    "llm_review": decision,
-                })
+                auto_results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": word_dict["line_id"],
+                            "word_id": word_dict["word_id"],
+                            "current_label": word_dict["current_label"],
+                            "word_text": word_dict["word_text"],
+                        },
+                        "llm_review": decision,
+                    }
+                )
             chroma_unresolved_ids = {
                 (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
             }
             currency_words = [
-                cw for cw in currency_words
+                cw
+                for cw in currency_words
                 if (cw.word_context.word.line_id, cw.word_context.word.word_id)
                 in chroma_unresolved_ids
             ]
@@ -849,7 +858,9 @@ async def evaluate_currency_labels_async(
             )
 
     if not currency_words:
-        logger.info("All currency words resolved by ChromaDB, skipping LLM call")
+        logger.info(
+            "All currency words resolved by ChromaDB, skipping LLM call"
+        )
         return auto_results
 
     # Step 3: Build prompt
@@ -1015,7 +1026,9 @@ async def evaluate_currency_labels_async(
 
     # Step 4: ChromaDB fallback for system failures
     if chroma_client and currency_words:
-        from receipt_agent.utils.chroma_helpers import chroma_fallback_decisions
+        from receipt_agent.utils.chroma_helpers import (
+            chroma_fallback_decisions,
+        )
 
         failure_word_dicts = [
             {

@@ -42,10 +42,6 @@ from receipt_chroma import (
     upload_lines_delta,
     upload_words_delta,
 )
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
-
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
 )
@@ -70,6 +66,10 @@ from receipt_upload.merchant_resolution.resolver import (
 from receipt_upload.merchant_resolution.resolver import (
     redact_pii as _redact_pii,
 )
+
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -388,16 +388,16 @@ def _run_lines_pipeline_worker(
         group_lines_into_visual_rows,
     )
     from receipt_chroma.embedding.records import RowEmbeddingRecord
+    from receipt_upload.merchant_resolution.resolver import (
+        MerchantResolver,
+        merchant_name_matches_receipt,
+    )
+
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import (
         ReceiptLine,
         ReceiptWord,
         ReceiptWordLabel,
-    )
-
-    from receipt_upload.merchant_resolution.resolver import (
-        MerchantResolver,
-        merchant_name_matches_receipt,
     )
 
     def _do_lines_work() -> Dict[str, Any]:

@@ -5,6 +5,7 @@ spacing on a supersampled canvas, then block-mean downsampled and
 thresholded — overlapping dots make natural joins, and supersampling turns
 curve edges into believable pixel stairsteps at REF_CAP=60 without scipy.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -66,7 +67,7 @@ def _dot_mask(radius_px: float, shape: str) -> np.ndarray:
     r = max(1, int(round(radius_px)))
     if shape == "square":
         return np.ones((2 * r, 2 * r), dtype=bool)
-    yy, xx = np.mgrid[-r: r + 1, -r: r + 1]
+    yy, xx = np.mgrid[-r : r + 1, -r : r + 1]
     return (xx * xx + yy * yy) <= radius_px * radius_px
 
 
@@ -79,10 +80,12 @@ def _stamp(canvas: np.ndarray, mask: np.ndarray, cy: float, cx: float) -> None:
     x1 = min(canvas.shape[1], left + mw)
     if y1 <= y0 or x1 <= x0:
         return
-    canvas[y0:y1, x0:x1] |= mask[y0 - top: y1 - top, x0 - left: x1 - left]
+    canvas[y0:y1, x0:x1] |= mask[y0 - top : y1 - top, x0 - left : x1 - left]
 
 
-def rasterize_glyph(glyph: dict, params: dict, ref_cap: int) -> tuple[np.ndarray, int]:
+def rasterize_glyph(
+    glyph: dict, params: dict, ref_cap: int
+) -> tuple[np.ndarray, int]:
     """Rasterize one glyph -> (tight-cropped uint8 bitmap, baseline offset).
 
     Matches the npz contract exactly: bitmap is binary {0,1}, offset is
@@ -139,9 +142,7 @@ def rasterize_glyph(glyph: dict, params: dict, ref_cap: int) -> tuple[np.ndarray
         return np.zeros((1, 1), dtype=np.uint8), 0
 
     # Downsample by block mean, threshold 0.5
-    down = canvas.reshape(
-        canvas_h // s, s, canvas_w // s, s
-    ).mean(axis=(1, 3))
+    down = canvas.reshape(canvas_h // s, s, canvas_w // s, s).mean(axis=(1, 3))
     binary = (down >= 0.5).astype(np.uint8)
 
     ys, xs = np.nonzero(binary)
@@ -149,7 +150,7 @@ def rasterize_glyph(glyph: dict, params: dict, ref_cap: int) -> tuple[np.ndarray
         return np.zeros((1, 1), dtype=np.uint8), 0
     y0, y1 = int(ys.min()), int(ys.max())
     x0, x1 = int(xs.min()), int(xs.max())
-    cropped = binary[y0: y1 + 1, x0: x1 + 1]
+    cropped = binary[y0 : y1 + 1, x0 : x1 + 1]
     baseline_down = baseline_row // s
     offset = int(y1 - baseline_down) + int(glyph.get("baselineNudgePx", 0))
     return cropped, offset

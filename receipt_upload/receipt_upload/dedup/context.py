@@ -22,13 +22,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from receipt_dynamo.constants import CORE_LABELS
-
 from receipt_upload.dedup.detector import group_by_pixels
 from receipt_upload.label_validation.label_normalization import (
     NON_CORE_LABEL_ALIASES,
     canonical_label_name,
 )
+
+from receipt_dynamo.constants import CORE_LABELS
 
 Key = Tuple[str, int]  # (image_id, receipt_id)
 CANONICAL_LABELS = set(CORE_LABELS)

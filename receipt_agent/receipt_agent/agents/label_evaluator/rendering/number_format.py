@@ -10,6 +10,7 @@ from these atoms, so supporting a non-US merchant is a config change rather than
 an edit to every regex. ``US`` reproduces the exact former patterns byte-for-byte
 (see tests/test_number_format.py).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

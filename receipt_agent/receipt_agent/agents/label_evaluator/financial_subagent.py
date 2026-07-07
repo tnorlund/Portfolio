@@ -45,8 +45,6 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from langsmith import traceable
 from pydantic import ValidationError
-from receipt_dynamo.amounts import parse_receipt_amount
-
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
 from receipt_agent.prompts.structured_outputs import (
     FinancialEvaluationResponse,
@@ -60,6 +58,8 @@ from receipt_agent.utils import (
     get_structured_output_settings,
     invoke_structured_with_retry,
 )
+
+from receipt_dynamo.amounts import parse_receipt_amount
 
 from .state import VisualLine, WordContext
 
@@ -370,9 +370,7 @@ def extract_financial_values_enhanced(
                 getattr(lbl, "validation_status", "NONE"), 0
             ) >= _STATUS_RANK.get(existing, 0):
                 label_map[key] = lbl.label
-                label_status[key] = getattr(
-                    lbl, "validation_status", "NONE"
-                )
+                label_status[key] = getattr(lbl, "validation_status", "NONE")
 
     # Step 2: Local column fallback
     local_col_x = _detect_price_column(words, labels)
@@ -393,9 +391,7 @@ def extract_financial_values_enhanced(
 
     # Step 5: Collect numeric candidates with column filtering
     # Store as (line_id, label, value, text, word_context, line_index) tuples
-    candidates: list[
-        tuple[int, str, float, str, WordContext | None, int]
-    ] = []
+    candidates: list[tuple[int, str, float, str, WordContext | None, int]] = []
     x_tolerance = 0.20
     min_chroma_evidence = 3
 
@@ -427,9 +423,7 @@ def extract_financial_values_enhanced(
         # different x-positions and the single-median column rejects one
         # group.
         if status == "VALID":
-            candidates.append(
-                (w.line_id, label, num, w.text, wc, line_index)
-            )
+            candidates.append((w.line_id, label, num, w.text, wc, line_index))
             continue
 
         # INVALID labels were explicitly rejected — never use them in
@@ -483,9 +477,7 @@ def extract_financial_values_enhanced(
                     )
                     continue
 
-        candidates.append(
-            (w.line_id, label, num, w.text, wc, line_index)
-        )
+        candidates.append((w.line_id, label, num, w.text, wc, line_index))
 
     logger.info(
         "Enhanced extraction: %d numeric candidates after column filter",
@@ -502,7 +494,9 @@ def extract_financial_values_enhanced(
 
     # Step 7: Deduplicate summary labels
     # For each summary label, prefer in-block occurrence over pre-block
-    summary_best: dict[str, tuple[int, float, str, WordContext | None, int]] = {}
+    summary_best: dict[
+        str, tuple[int, float, str, WordContext | None, int]
+    ] = {}
     for line_id, label, val, txt, wc, li in candidates:
         if label not in SUMMARY_LABELS:
             continue
@@ -714,7 +708,10 @@ def _match_llm_items_to_words(
                 if found_word is None:
                     for w in vl.words:
                         num = extract_number(w.text)
-                        if num is not None and abs(abs(num) - llm_amount) < 0.01:
+                        if (
+                            num is not None
+                            and abs(abs(num) - llm_amount) < 0.01
+                        ):
                             found_word = w
                             break
 
@@ -781,8 +778,7 @@ async def _llm_identify_line_items_async(
     diff = subtotal - algo_expected
 
     algo_lt_desc = "\n".join(
-        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")'
-        for fv in line_totals
+        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")' for fv in line_totals
     )
     algo_disc_desc = (
         "\n".join(
@@ -875,8 +871,7 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
         # Accept if math balances within $0.05
         if abs(computed - subtotal) > 0.05:
             logger.info(
-                "LLM fallback rejected: math doesn't balance "
-                "(diff=$%.2f)",
+                "LLM fallback rejected: math doesn't balance " "(diff=$%.2f)",
                 abs(computed - subtotal),
             )
             return None
@@ -918,8 +913,7 @@ def _llm_identify_line_items(
     diff = subtotal - algo_expected
 
     algo_lt_desc = "\n".join(
-        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")'
-        for fv in line_totals
+        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")' for fv in line_totals
     )
     algo_disc_desc = (
         "\n".join(
@@ -1009,8 +1003,7 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
         # Accept if math balances within $0.05
         if abs(computed - subtotal) > 0.05:
             logger.info(
-                "LLM fallback rejected: math doesn't balance "
-                "(diff=$%.2f)",
+                "LLM fallback rejected: math doesn't balance " "(diff=$%.2f)",
                 abs(computed - subtotal),
             )
             return None
@@ -1556,8 +1549,7 @@ def classify_receipt_type(
     # "service" because they contain SUBTOTAL/TAX keywords.
     if labels:
         line_total_count = sum(
-            1 for lbl in labels
-            if getattr(lbl, "label", None) == "LINE_TOTAL"
+            1 for lbl in labels if getattr(lbl, "label", None) == "LINE_TOTAL"
         )
         if line_total_count >= 2:
             logger.info(
@@ -1833,9 +1825,7 @@ def check_grand_total_math(
         else "0.00"
     )
     tip_desc = (
-        " + ".join(f"{t.numeric_value:.2f}" for t in tips)
-        if tips
-        else "0.00"
+        " + ".join(f"{t.numeric_value:.2f}" for t in tips) if tips else "0.00"
     )
     discount_desc = (
         " + ".join(f"{abs(d.numeric_value):.2f}" for d in discounts)
@@ -2514,9 +2504,7 @@ def evaluate_financial_math(
             )
             if any(text_scan_values.values()):
                 enhanced_values = text_scan_values
-                math_issues = detect_math_issues_from_values(
-                    enhanced_values
-                )
+                math_issues = detect_math_issues_from_values(enhanced_values)
                 used_text_scan_fallback = True
                 logger.info(
                     "Text-scan fallback: %d values from %d label types, "
@@ -2862,9 +2850,7 @@ async def evaluate_financial_math_async(
             )
             if any(text_scan_values.values()):
                 enhanced_values = text_scan_values
-                math_issues = detect_math_issues_from_values(
-                    enhanced_values
-                )
+                math_issues = detect_math_issues_from_values(enhanced_values)
                 used_text_scan_fallback = True
                 logger.info(
                     "Text-scan fallback: %d values from %d label types, "

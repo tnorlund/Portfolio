@@ -4,6 +4,7 @@ The corpus (``*.samples.npz`` from build_merchant_glyphs.py) stores, per
 ``str(codepoint)`` key, a stack of baseline-and-center-aligned boolean
 canvases (H = 3*ref_cap, baseline row = int(ref_cap*2.3)).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -35,11 +36,18 @@ def _components(mask: np.ndarray) -> np.ndarray:
     )
     while True:
         p = np.pad(labels, 1, constant_values=0)
-        stacked = np.stack([
-            p[:-2, :-2], p[:-2, 1:-1], p[:-2, 2:],
-            p[1:-1, :-2], p[1:-1, 2:],
-            p[2:, :-2], p[2:, 1:-1], p[2:, 2:],
-        ])
+        stacked = np.stack(
+            [
+                p[:-2, :-2],
+                p[:-2, 1:-1],
+                p[:-2, 2:],
+                p[1:-1, :-2],
+                p[1:-1, 2:],
+                p[2:, :-2],
+                p[2:, 1:-1],
+                p[2:, 2:],
+            ]
+        )
         stacked = np.where(stacked == 0, np.iinfo(np.int64).max, stacked)
         neighbor_min = stacked.min(axis=0)
         new = np.where(
@@ -47,7 +55,8 @@ def _components(mask: np.ndarray) -> np.ndarray:
         )
         new = np.where(
             mask & (neighbor_min != np.iinfo(np.int64).max),
-            np.minimum(labels, neighbor_min), labels,
+            np.minimum(labels, neighbor_min),
+            labels,
         )
         new = np.where(mask, new, 0)
         if np.array_equal(new, labels):
@@ -71,9 +80,14 @@ def fill_pinholes(mask: np.ndarray) -> np.ndarray:
     """Paper pixels with >= 7 of 8 ink neighbors become ink."""
     p = np.pad(mask.astype(np.uint8), 1)
     count = (
-        p[:-2, :-2] + p[:-2, 1:-1] + p[:-2, 2:]
-        + p[1:-1, :-2] + p[1:-1, 2:]
-        + p[2:, :-2] + p[2:, 1:-1] + p[2:, 2:]
+        p[:-2, :-2]
+        + p[:-2, 1:-1]
+        + p[:-2, 2:]
+        + p[1:-1, :-2]
+        + p[1:-1, 2:]
+        + p[2:, :-2]
+        + p[2:, 1:-1]
+        + p[2:, 2:]
     )
     return mask | ((~mask) & (count >= 7))
 
@@ -112,8 +126,9 @@ def consensus_soft(stack: np.ndarray) -> np.ndarray:
     return stack.mean(axis=0)
 
 
-def soft_stroke_width(frac: np.ndarray, skeleton: np.ndarray,
-                      upsample_factor: int = 1) -> float:
+def soft_stroke_width(
+    frac: np.ndarray, skeleton: np.ndarray, upsample_factor: int = 1
+) -> float:
     """Stroke width from SOFT ink mass / skeleton length.
 
     Post-threshold pixel counts inflate or deflate with the threshold choice;
@@ -123,7 +138,7 @@ def soft_stroke_width(frac: np.ndarray, skeleton: np.ndarray,
     length = float(skeleton.sum())
     if length <= 0:
         return 0.0
-    mass = float(frac.sum()) * (upsample_factor ** 2)
+    mass = float(frac.sum()) * (upsample_factor**2)
     return mass / length
 
 

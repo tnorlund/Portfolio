@@ -34,7 +34,9 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
 def _row_merges(row: Sequence[GridWord], cell_h: float) -> bool:
     """True when a grouped row fuses more than one source line."""
     lines = {
-        w.source_line for w in row if getattr(w, "source_line", None) is not None
+        w.source_line
+        for w in row
+        if getattr(w, "source_line", None) is not None
     }
     if len(lines) > 1:
         return True

@@ -180,8 +180,8 @@ def test_merchant_font_invalid_face(bad_value):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "field_name", ["s3_bucket", "s3_key", "content_hash",
-                   "source_commit", "pitch_check"]
+    "field_name",
+    ["s3_bucket", "s3_key", "content_hash", "source_commit", "pitch_check"],
 )
 def test_merchant_font_invalid_empty_string_fields(field_name):
     kwargs = dict(

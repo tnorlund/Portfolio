@@ -11,15 +11,15 @@ All external services (ChromaDB, DynamoDB, Places API) are mocked.
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
-
 from receipt_upload.merchant_resolution import (
     MerchantResolver,
     MerchantResult,
     merchant_name_matches_receipt,
     tokenize_text,
 )
+
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 TEST_IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 

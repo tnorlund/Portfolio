@@ -6,6 +6,7 @@ Every measurement is normalized per receipt against that receipt's own body
 (median cap/stroke of item/other/footer/survey lines) before pooling, so
 scanner exposure and resolution cancel out.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,14 +23,26 @@ def main(argv=None) -> int:
     ap.add_argument("out")
     args = ap.parse_args(argv)
 
-    files = [f for f in glob.glob(f"{args.scan_dir}/*.json")
-             if not f.endswith(("receipts.json", "stylemap.json"))]
-    sections = defaultdict(lambda: {
-        "lines": 0, "underlined": 0, "cap_rel": [], "stroke_rel": [],
-        "density": [], "examples": [],
-    })
-    letters = defaultdict(lambda: defaultdict(
-        lambda: {"n": 0, "stroke_rel": [], "density": [], "h_rel": []}))
+    files = [
+        f
+        for f in glob.glob(f"{args.scan_dir}/*.json")
+        if not f.endswith(("receipts.json", "stylemap.json"))
+    ]
+    sections = defaultdict(
+        lambda: {
+            "lines": 0,
+            "underlined": 0,
+            "cap_rel": [],
+            "stroke_rel": [],
+            "density": [],
+            "examples": [],
+        }
+    )
+    letters = defaultdict(
+        lambda: defaultdict(
+            lambda: {"n": 0, "stroke_rel": [], "density": [], "h_rel": []}
+        )
+    )
     receipts_used = 0
 
     for f in sorted(files):
@@ -79,12 +92,17 @@ def main(argv=None) -> int:
         out_sections[sec] = {
             "lines": s["lines"],
             "underline_rate": round(s["underlined"] / max(1, s["lines"]), 3),
-            "cap_rel": {"p25": q(s["cap_rel"], .25), "med": q(s["cap_rel"], .5),
-                        "p75": q(s["cap_rel"], .75)},
-            "stroke_rel": {"p25": q(s["stroke_rel"], .25),
-                           "med": q(s["stroke_rel"], .5),
-                           "p75": q(s["stroke_rel"], .75)},
-            "density_med": q(s["density"], .5),
+            "cap_rel": {
+                "p25": q(s["cap_rel"], 0.25),
+                "med": q(s["cap_rel"], 0.5),
+                "p75": q(s["cap_rel"], 0.75),
+            },
+            "stroke_rel": {
+                "p25": q(s["stroke_rel"], 0.25),
+                "med": q(s["stroke_rel"], 0.5),
+                "p75": q(s["stroke_rel"], 0.75),
+            },
+            "density_med": q(s["density"], 0.5),
             "examples": s["examples"],
         }
 
@@ -96,9 +114,9 @@ def main(argv=None) -> int:
                 continue
             per[ch] = {
                 "n": rec["n"],
-                "stroke_rel_med": q(rec["stroke_rel"], .5),
-                "density_med": q(rec["density"], .5),
-                "h_rel_med": q(rec["h_rel"], .5),
+                "stroke_rel_med": q(rec["stroke_rel"], 0.5),
+                "density_med": q(rec["density"], 0.5),
+                "h_rel_med": q(rec["h_rel"], 0.5),
             }
         if per:
             out_letters[sec] = dict(sorted(per.items()))
@@ -113,8 +131,10 @@ def main(argv=None) -> int:
         json.dump(result, fh, indent=1)
     print(f"aggregated {receipts_used} receipts -> {args.out}")
     for sec, s in out_sections.items():
-        print(f"  {sec:16s} n={s['lines']:5d} ul={s['underline_rate']:.2f} "
-              f"cap={s['cap_rel']['med']} stroke={s['stroke_rel']['med']}")
+        print(
+            f"  {sec:16s} n={s['lines']:5d} ul={s['underline_rate']:.2f} "
+            f"cap={s['cap_rel']['med']} stroke={s['stroke_rel']['med']}"
+        )
     return 0
 
 

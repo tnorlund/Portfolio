@@ -68,7 +68,6 @@ def _ensure_receipt_upload_on_path() -> None:
 _ensure_receipt_upload_on_path()
 
 from PIL import Image, ImageOps  # noqa: E402
-
 from receipt_upload.font_analysis import (  # noqa: E402
     _coerce_image,
     _is_normalized_box,
@@ -100,15 +99,48 @@ _LOGO_HEIGHT_FACTOR = 1.9
 # A captured logo line must be the merchant wordmark, not a promo/coupon banner
 # (those are often the tallest text on the receipt). Reject lines whose text reads
 # as a promo, and prefer lines that match the merchant name.
-_PROMO_TERMS = frozenset({
-    "OFF", "SAVE", "SAVINGS", "SAVING", "COUPON", "REWARD", "REWARDS", "HOT",
-    "DEAL", "DEALS", "FREE", "BUY", "GET", "SCAN", "BONUS", "EARN", "SALE",
-    "EXTRABUCKS", "EXTRACARE", "POINTS", "MEMBER", "VALUE", "PROMO", "%",
-})
-_COMPACT_PROMO_PHRASES = frozenset({
-    "MEMBERSAVINGS", "MEMBERREWARDS", "HOTDEAL", "HOTDEALS", "BUYGET",
-    "BUYGETFREE", "SCANCOUPON", "SAVEBIG", "SAVEMORE", "YOUSAVED",
-})
+_PROMO_TERMS = frozenset(
+    {
+        "OFF",
+        "SAVE",
+        "SAVINGS",
+        "SAVING",
+        "COUPON",
+        "REWARD",
+        "REWARDS",
+        "HOT",
+        "DEAL",
+        "DEALS",
+        "FREE",
+        "BUY",
+        "GET",
+        "SCAN",
+        "BONUS",
+        "EARN",
+        "SALE",
+        "EXTRABUCKS",
+        "EXTRACARE",
+        "POINTS",
+        "MEMBER",
+        "VALUE",
+        "PROMO",
+        "%",
+    }
+)
+_COMPACT_PROMO_PHRASES = frozenset(
+    {
+        "MEMBERSAVINGS",
+        "MEMBERREWARDS",
+        "HOTDEAL",
+        "HOTDEALS",
+        "BUYGET",
+        "BUYGETFREE",
+        "SCANCOUPON",
+        "SAVEBIG",
+        "SAVEMORE",
+        "YOUSAVED",
+    }
+)
 
 # Cap stored crops per (style, char) to bound atlas size; representatives are
 # chosen nearest the style's median glyph height.
@@ -181,9 +213,7 @@ class AtlasStyle:
     def chars(self) -> set[str]:
         return set(self.glyphs)
 
-    def glyph_for(
-        self, char: str, *, index: int = 0
-    ) -> GlyphCrop | None:
+    def glyph_for(self, char: str, *, index: int = 0) -> GlyphCrop | None:
         crops = self.glyphs.get(_norm_char(char))
         if not crops:
             return None
@@ -452,7 +482,10 @@ def _trim_edge_slivers(alpha: Image.Image) -> Image.Image | None:
         # tiny share of the ink. A detached letter bowl is narrow too but ink-
         # heavy, so the area guard spares it.
         narrow = (run[1] - run[0] + 1) <= sliver_max
-        light = sum(col_count[run[0] : run[1] + 1]) <= total_ink * _SLIVER_MAX_INK_FRAC
+        light = (
+            sum(col_count[run[0] : run[1] + 1])
+            <= total_ink * _SLIVER_MAX_INK_FRAC
+        )
         return narrow and light
 
     keep = list(runs)
@@ -551,8 +584,12 @@ def build_glyph_atlas(
         )
         cluster_counts.append(max(1, len(analysis.clusters)))
 
-        body_height = _median([s.metrics.get("box_height", 0.0) for s in samples])
-        body_width = _median([s.metrics.get("box_width", 0.0) for s in samples])
+        body_height = _median(
+            [s.metrics.get("box_height", 0.0) for s in samples]
+        )
+        body_width = _median(
+            [s.metrics.get("box_width", 0.0) for s in samples]
+        )
         # Some OCR "letters" carry a whole-word (or line) box; cropping those
         # yields a multi-char blob that would double-ink stamped text. Skip any
         # letter whose box is far wider/taller than the receipt's median glyph.
@@ -578,7 +615,9 @@ def build_glyph_atlas(
             if tier != "logo":
                 continue
             line_samples = line_groups[line_key]
-            lh = _median([s.metrics.get("box_height", 0.0) for s in line_samples])
+            lh = _median(
+                [s.metrics.get("box_height", 0.0) for s in line_samples]
+            )
             captured = _capture_logo(line_samples, raw_image, image_y_origin)
             if captured is None:
                 continue
@@ -586,9 +625,7 @@ def build_glyph_atlas(
             score = _logo_match_score(text, merchant_name)
             if _is_promo_text(text) and score < 0.75:
                 continue
-            logo_candidates.append(
-                (score, lh, image_crop, text)
-            )
+            logo_candidates.append((score, lh, image_crop, text))
 
         # Assign each sample to a weight-tier style and stamp its real glyph.
         # Style id is the line tier (body / bold) only — #994 letter clusters are
@@ -710,8 +747,9 @@ def build_glyph_atlas_from_dynamo(
     deprecated), loads letters + the raw receipt crop per receipt, and delegates
     to :func:`build_glyph_atlas`. ``max_receipts`` bounds the S3 image pulls.
     """
-    from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_upload.font_analysis import load_raw_image_from_s3
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient
 
     client = DynamoClient(table_name=table_name, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant_name)
@@ -829,7 +867,9 @@ def save_atlas(atlas: GlyphAtlas, directory: str) -> str:
 
 def load_atlas(directory: str) -> GlyphAtlas:
     """Load an atlas previously written by :func:`save_atlas`."""
-    with open(os.path.join(directory, "atlas.json"), encoding="utf-8") as handle:
+    with open(
+        os.path.join(directory, "atlas.json"), encoding="utf-8"
+    ) as handle:
         index = json.load(handle)
 
     styles: dict[str, AtlasStyle] = {}
@@ -873,9 +913,9 @@ def load_atlas(directory: str) -> GlyphAtlas:
 
     logo = None
     if index.get("logo_file"):
-        logo = Image.open(
-            os.path.join(directory, index["logo_file"])
-        ).convert("RGBA")
+        logo = Image.open(os.path.join(directory, index["logo_file"])).convert(
+            "RGBA"
+        )
         logo.load()
 
     return GlyphAtlas(
@@ -1018,9 +1058,7 @@ def _capture_logo(
     y_origin: str,
 ) -> tuple[Image.Image, str] | None:
     """Crop the union box of a display line as the logo image + its text."""
-    pairs = [
-        (s, _box_from_metrics(s.metrics)) for s in line_samples
-    ]
+    pairs = [(s, _box_from_metrics(s.metrics)) for s in line_samples]
     pairs = [(s, b) for (s, b) in pairs if b is not None]
     if not pairs:
         return None
@@ -1072,7 +1110,9 @@ def _line_text_from_samples(line_samples: Sequence[LetterImageSample]) -> str:
     words: list[str] = []
     for _, samples in sorted(
         grouped.items(),
-        key=lambda item: min(s.metrics.get("box_center_x", 0.0) for s in item[1]),
+        key=lambda item: min(
+            s.metrics.get("box_center_x", 0.0) for s in item[1]
+        ),
     ):
         letters = sorted(
             samples,
@@ -1110,7 +1150,7 @@ def _logo_match_score(text: str, merchant_name: str) -> float:
     logo_tokens = _merchant_tokens(text)
     merchant_tokens = _merchant_tokens(merchant_name)
     if logo_tokens and merchant_tokens:
-        if merchant_tokens[:len(logo_tokens)] == logo_tokens:
+        if merchant_tokens[: len(logo_tokens)] == logo_tokens:
             if len(logo_tokens) >= 2 or len(merchant_tokens) == 1:
                 return 1.0
 
@@ -1179,7 +1219,8 @@ def _finalize_styles(
                 [s.metrics.get("ink_ratio", 0.0) for s in samples]
             ),
             y_span=(min(ys), max(ys)) if ys else (0.0, 0.0),
-            cluster_label=_most_common(style_labels.get(style_id, ())) or "n/a",
+            cluster_label=_most_common(style_labels.get(style_id, ()))
+            or "n/a",
         )
     return styles
 
@@ -1196,8 +1237,10 @@ def _select_representatives(
     """
     aspects = sorted(c.aspect for c in crops)
     median_aspect = aspects[len(aspects) // 2]
-    target_h = target_height if target_height > 0 else (
-        median(c.box_height_norm for c in crops) if crops else 0.0
+    target_h = (
+        target_height
+        if target_height > 0
+        else (median(c.box_height_norm for c in crops) if crops else 0.0)
     )
 
     median_ink = median(c.ink_ratio for c in crops) if crops else 0.0

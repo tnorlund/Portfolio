@@ -100,20 +100,21 @@ class MerchantFont(DynamoDBEntity):
                 f"face must be one of {VALID_FACES}, got: {self.face}"
             )
 
-        for field_name in ("s3_bucket", "s3_key", "content_hash",
-                           "source_commit", "pitch_check"):
+        for field_name in (
+            "s3_bucket",
+            "s3_key",
+            "content_hash",
+            "source_commit",
+            "pitch_check",
+        ):
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value:
-                raise ValueError(
-                    f"{field_name} must be a non-empty string"
-                )
+                raise ValueError(f"{field_name} must be a non-empty string")
 
         if isinstance(self.compiled_at, datetime):
             self.compiled_at = self.compiled_at.isoformat()
         elif not isinstance(self.compiled_at, str):
-            raise ValueError(
-                "compiled_at must be datetime or ISO-8601 string"
-            )
+            raise ValueError("compiled_at must be datetime or ISO-8601 string")
 
         if isinstance(self.cap_h, bool) or not isinstance(
             self.cap_h, (int, float)
@@ -182,9 +183,7 @@ class MerchantFont(DynamoDBEntity):
                 else {"NULL": True}
             ),
             "logo_s3_key": (
-                {"S": self.logo_s3_key}
-                if self.logo_s3_key
-                else {"NULL": True}
+                {"S": self.logo_s3_key} if self.logo_s3_key else {"NULL": True}
             ),
             "stylemap_s3_key": (
                 {"S": self.stylemap_s3_key}

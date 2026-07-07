@@ -41,13 +41,11 @@ from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
     build_merchant_font_profile_from_dynamo,
     extract_receipt_font_profile,
     make_ttf_fallback,
+    receipt_graphics,
+    render_real_vs_synthetic,
     render_receipt,
     save_receipt_glyphs,
-    render_real_vs_synthetic,
     save_receipt_png,
-)
-from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
-    receipt_graphics,
 )
 from receipt_agent.agents.label_evaluator.rendering.content_clean import (  # noqa: E402
     clean_for_render,
@@ -103,13 +101,19 @@ def _resolve_tag(tag, id_to_label: dict[int, str]):
     return None
 
 
-def _synthetic_receipt_dict(example: dict, id_to_label: dict[int, str]) -> dict:
+def _synthetic_receipt_dict(
+    example: dict, id_to_label: dict[int, str]
+) -> dict:
     words = []
     tokens = example.get("tokens") or []
     bboxes = example.get("bboxes") or []
     tags = example.get("ner_tags") or []
     for index, (token, bbox) in enumerate(zip(tokens, bboxes)):
-        label = _resolve_tag(tags[index], id_to_label) if index < len(tags) else None
+        label = (
+            _resolve_tag(tags[index], id_to_label)
+            if index < len(tags)
+            else None
+        )
         # Keep the raw (possibly BIO-prefixed) label; the renderer normalizes it.
         words.append(
             {
@@ -176,9 +180,13 @@ def _cached_token_receipt_dict(example: dict) -> dict:
             }
         )
     words = _drop_duplicate_header_words(words, hp)
-    if hp["reflow"] and hp["brand"] and any(
-        hp["brand"] in _compact_line_text(line)
-        for line in _group_cached_words_by_line(words)
+    if (
+        hp["reflow"]
+        and hp["brand"]
+        and any(
+            hp["brand"] in _compact_line_text(line)
+            for line in _group_cached_words_by_line(words)
+        )
     ):
         return _line_receipt_from_cached_token_words(words, merchant)
     return {"words": words}
@@ -188,12 +196,12 @@ def _cached_token_receipt_dict(example: dict) -> dict:
 # GENERIC estimates for the width-less line/token examples (no OCR word widths to
 # measure), NOT per-merchant geometry -- the hybrid/grid path measures real
 # pitch/advance/price-column from the font profile instead.
-_PRICE_COLUMN_RIGHT = 905.0   # right edge the price column is anchored to
-_LINE_ROW_PITCH = 16.0        # vertical step between synthesized line rows
-_LINE_CHAR_WIDTH = 12.0       # width estimate per character (no measured widths)
-_LINE_WORD_GAP = 8.0          # horizontal gap between words
+_PRICE_COLUMN_RIGHT = 905.0  # right edge the price column is anchored to
+_LINE_ROW_PITCH = 16.0  # vertical step between synthesized line rows
+_LINE_CHAR_WIDTH = 12.0  # width estimate per character (no measured widths)
+_LINE_WORD_GAP = 8.0  # horizontal gap between words
 _LINE_LOGO_MIN_WIDTH = 220.0  # floor width for a single-token logo line
-_LINE_MAX_WIDTH = 900.0       # content width the row is scaled to fit within
+_LINE_MAX_WIDTH = 900.0  # content width the row is scaled to fit within
 # Trailing price/amount tokens: optional leading currency / sign, a decimal
 # amount with two fractional digits, optional trailing sign (e.g. "1.99-").
 _PRICE_TOKEN_RE = re.compile(r"^[-+]?\$?\d{1,3}(?:,\d{3})*\.\d{2}[-+]?$")
@@ -216,14 +224,20 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         words = text.split()
         y = float(line.get("y") or (940 - index * _LINE_ROW_PITCH))
         labels = list(line.get("labels") or [])
-        is_logo_line = any(_label_name(label) == "MERCHANT_NAME" for label in labels)
+        is_logo_line = any(
+            _label_name(label) == "MERCHANT_NAME" for label in labels
+        )
         # Cached line-only examples do not carry OCR word widths, so give the
         # renderer enough horizontal room to avoid shrinking every line to the
         # minimum font size.
-        width_units = [max(18.0, len(word) * _LINE_CHAR_WIDTH) for word in words]
+        width_units = [
+            max(18.0, len(word) * _LINE_CHAR_WIDTH) for word in words
+        ]
         if is_logo_line and len(words) == 1:
             width_units = [max(width_units[0], _LINE_LOGO_MIN_WIDTH)]
-        total_width = sum(width_units) + max(0, len(words) - 1) * _LINE_WORD_GAP
+        total_width = (
+            sum(width_units) + max(0, len(words) - 1) * _LINE_WORD_GAP
+        )
         if total_width > _LINE_MAX_WIDTH:
             factor = _LINE_MAX_WIDTH / total_width
             width_units = [width * factor for width in width_units]
@@ -237,11 +251,7 @@ def _cached_line_receipt_dict(example: dict) -> dict:
         # currency/decimal token, anchor that trailing token's right edge to the
         # fixed price column instead of letting it butt against the item name.
         price_index = None
-        if (
-            not is_logo_line
-            and len(words) >= 2
-            and _is_price_token(words[-1])
-        ):
+        if not is_logo_line and len(words) >= 2 and _is_price_token(words[-1]):
             price_index = len(words) - 1
             price_width = width_units[price_index]
             price_x0 = max(x, _PRICE_COLUMN_RIGHT - price_width)
@@ -268,7 +278,9 @@ def _cached_line_receipt_dict(example: dict) -> dict:
     return {"lines": lines}
 
 
-def _normalize_bbox(bbox: list[float] | tuple[float, ...]) -> list[float] | None:
+def _normalize_bbox(
+    bbox: list[float] | tuple[float, ...],
+) -> list[float] | None:
     if not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
         return None
     try:
@@ -299,9 +311,14 @@ def _drop_duplicate_header_lines(example: dict, hp: dict) -> list[dict]:
 
 
 def _order_cached_lines(lines: list[dict], hp: dict) -> list[dict]:
-    if not (hp["reflow"] and hp["brand"] and any(
-        hp["brand"] in _compact_text(line.get("text") or "") for line in lines
-    )):
+    if not (
+        hp["reflow"]
+        and hp["brand"]
+        and any(
+            hp["brand"] in _compact_text(line.get("text") or "")
+            for line in lines
+        )
+    ):
         return lines
 
     sections: dict[str, list[dict]] = {
@@ -311,7 +328,9 @@ def _order_cached_lines(lines: list[dict], hp: dict) -> list[dict]:
         "footer": [],
     }
     for line in lines:
-        sections[_text_section(_compact_text(line.get("text") or ""), hp)].append(line)
+        sections[
+            _text_section(_compact_text(line.get("text") or ""), hp)
+        ].append(line)
 
     ordered = []
     for name in ("header", "body", "payment", "footer"):
@@ -319,7 +338,9 @@ def _order_cached_lines(lines: list[dict], hp: dict) -> list[dict]:
             ordered.append({"text": "", "y": None, "labels": []})
         ordered.extend(sections[name])
 
-    real_count = sum(1 for line in ordered if str(line.get("text") or "").strip())
+    real_count = sum(
+        1 for line in ordered if str(line.get("text") or "").strip()
+    )
     break_count = len(ordered) - real_count
     section_gap = 18.0 if real_count < 70 else 10.0
     spacing = (930.0 - break_count * section_gap) / max(1, real_count - 1)
@@ -395,12 +416,14 @@ def _repair_missing_top_header_lines(receipt: dict) -> dict:
     line_infos = []
     for line in _group_cached_words_by_line(words):
         text = _compact_line_text(line)
-        line_infos.append({
-            "words": line,
-            "text": text,
-            "center": _line_center_y(line),
-            "is_header": _is_header_line(text, hp),
-        })
+        line_infos.append(
+            {
+                "words": line,
+                "text": text,
+                "center": _line_center_y(line),
+                "is_header": _is_header_line(text, hp),
+            }
+        )
     try:
         first_header = next(
             index for index, info in enumerate(line_infos) if info["is_header"]
@@ -409,15 +432,18 @@ def _repair_missing_top_header_lines(receipt: dict) -> dict:
         return receipt
 
     top_end = first_header
-    while top_end + 1 < len(line_infos) and line_infos[top_end + 1]["is_header"]:
+    while (
+        top_end + 1 < len(line_infos) and line_infos[top_end + 1]["is_header"]
+    ):
         top_end += 1
-    top_block = line_infos[first_header:top_end + 1]
+    top_block = line_infos[first_header : top_end + 1]
     top_texts = {info["text"] for info in top_block}
     exact_markers = set(hp.get("exact") or ())
     missing = [
-        marker for marker in exact_markers
+        marker
+        for marker in exact_markers
         if marker not in top_texts
-        and any(info["text"] == marker for info in line_infos[top_end + 1:])
+        and any(info["text"] == marker for info in line_infos[top_end + 1 :])
     ]
     if not missing:
         return receipt
@@ -425,12 +451,15 @@ def _repair_missing_top_header_lines(receipt: dict) -> dict:
     additions: list[dict] = []
     for marker in missing:
         source_index = next(
-            index for index, info in enumerate(line_infos[top_end + 1:], top_end + 1)
+            index
+            for index, info in enumerate(
+                line_infos[top_end + 1 :], top_end + 1
+            )
             if info["text"] == marker
         )
         source = line_infos[source_index]
         anchor = None
-        for candidate in reversed(line_infos[top_end + 1:source_index]):
+        for candidate in reversed(line_infos[top_end + 1 : source_index]):
             if candidate["is_header"] and candidate["text"] in top_texts:
                 anchor = candidate
                 break
@@ -448,48 +477,59 @@ def _repair_missing_top_header_lines(receipt: dict) -> dict:
             centers = [float(info["center"]) for info in top_block]
             gaps = [
                 abs(a - b)
-                for a, b in zip(sorted(centers, reverse=True), sorted(centers, reverse=True)[1:])
+                for a, b in zip(
+                    sorted(centers, reverse=True),
+                    sorted(centers, reverse=True)[1:],
+                )
             ]
             pitch = sorted(gaps)[len(gaps) // 2] if gaps else 16.0
             target_center = min(centers) - pitch
         shift = float(target_center) - float(source["center"])
-        source_box = _union_bbox([
-            word["bbox"] for word in source["words"] if word.get("bbox")
-        ])
+        source_box = _union_bbox(
+            [word["bbox"] for word in source["words"] if word.get("bbox")]
+        )
         source_cx = (
             (float(source_box[0]) + float(source_box[2])) / 2.0
-            if source_box is not None else 0.0
+            if source_box is not None
+            else 0.0
         )
         source_span = (
             max(1e-6, float(source_box[2]) - float(source_box[0]))
-            if source_box is not None else 1.0
+            if source_box is not None
+            else 1.0
         )
         x_scale = 1.0
         if anchor is not None:
             target_anchor = next(
                 info for info in top_block if info["text"] == anchor["text"]
             )
-            source_anchor_box = _union_bbox([
-                word["bbox"] for word in anchor["words"] if word.get("bbox")
-            ])
-            target_anchor_box = _union_bbox([
-                word["bbox"] for word in target_anchor["words"] if word.get("bbox")
-            ])
+            source_anchor_box = _union_bbox(
+                [word["bbox"] for word in anchor["words"] if word.get("bbox")]
+            )
+            target_anchor_box = _union_bbox(
+                [
+                    word["bbox"]
+                    for word in target_anchor["words"]
+                    if word.get("bbox")
+                ]
+            )
             if source_anchor_box is not None and target_anchor_box is not None:
                 source_anchor_span = max(
-                    1e-6, float(source_anchor_box[2]) - float(source_anchor_box[0])
+                    1e-6,
+                    float(source_anchor_box[2]) - float(source_anchor_box[0]),
                 )
                 target_anchor_span = max(
-                    1e-6, float(target_anchor_box[2]) - float(target_anchor_box[0])
+                    1e-6,
+                    float(target_anchor_box[2]) - float(target_anchor_box[0]),
                 )
                 x_scale = target_anchor_span / source_anchor_span
         top_spans = []
         for info in top_block:
             if info["text"].startswith(hp["brand"]):
                 continue
-            box = _union_bbox([
-                word["bbox"] for word in info["words"] if word.get("bbox")
-            ])
+            box = _union_bbox(
+                [word["bbox"] for word in info["words"] if word.get("bbox")]
+            )
             if box is not None:
                 top_spans.append(float(box[2]) - float(box[0]))
         if top_spans:
@@ -542,8 +582,10 @@ def _is_header_line(text: str, hp: dict) -> bool:
     """True for a store header/address line: the brand wordmark (minus footer
     false-positives) or one of the merchant's configured header markers."""
     brand = hp["brand"]
-    is_brand_line = bool(brand) and text.startswith(brand) and not any(
-        marker in text for marker in _HEADER_BRAND_EXCLUDE
+    is_brand_line = (
+        bool(brand)
+        and text.startswith(brand)
+        and not any(marker in text for marker in _HEADER_BRAND_EXCLUDE)
     )
     return (
         is_brand_line
@@ -584,7 +626,9 @@ def _line_receipt_from_cached_token_words(
         if text:
             lines.append({"y": y, "text": text, "labels": labels})
             y -= spacing
-    return _cached_line_receipt_dict({"lines": lines, "merchant_name": merchant})
+    return _cached_line_receipt_dict(
+        {"lines": lines, "merchant_name": merchant}
+    )
 
 
 def _ordered_token_lines(
@@ -635,7 +679,9 @@ def _group_cached_words_by_line(words: list[dict]) -> list[list[dict]]:
 
 
 def _line_center_y(line: list[dict]) -> float:
-    return sum((float(word["bbox"][1]) + float(word["bbox"][3])) / 2 for word in line) / len(line)
+    return sum(
+        (float(word["bbox"][1]) + float(word["bbox"][3])) / 2 for word in line
+    ) / len(line)
 
 
 def _token_section(line: list[dict], hp: dict) -> str:
@@ -646,68 +692,76 @@ def _token_section(line: list[dict], hp: dict) -> str:
 def _text_section(text: str, hp: dict) -> str:
     if _is_header_line(text, hp):
         return "header"
-    if any(token in text for token in (
-        "FEEDBACK",
-        "SURVEY",
-        "SPROUTSFEEDBACK",
-        "WINNERS",
-        "CASHIER",
-        "POSTRANSACTION",
-        "TRANSACTION",
-        "SIGNUP",
-        "RECEIVE",
-        "WEEKLYAD",
-        "EMAILATSPROUTS",
-        "PLEASEKEEP",
-        "PAYMENTUSED",
-        "RETURNS",
-        "RECEIPT",
-        "REWARDS",
-        "CHAN",
-        "MONTHLY",
-        "SPROUTSCOM",
-        "SAVE",
-        "PAPER",
-        "EMAIL",
-        "TYPEOFCREDIT",
-        "METHODOFPAYMENT",
-        "WITHOUT",
-        "LIMITS",
-        "APPLY",
-        "WIN",
-        "GIFT",
-    )):
+    if any(
+        token in text
+        for token in (
+            "FEEDBACK",
+            "SURVEY",
+            "SPROUTSFEEDBACK",
+            "WINNERS",
+            "CASHIER",
+            "POSTRANSACTION",
+            "TRANSACTION",
+            "SIGNUP",
+            "RECEIVE",
+            "WEEKLYAD",
+            "EMAILATSPROUTS",
+            "PLEASEKEEP",
+            "PAYMENTUSED",
+            "RETURNS",
+            "RECEIPT",
+            "REWARDS",
+            "CHAN",
+            "MONTHLY",
+            "SPROUTSCOM",
+            "SAVE",
+            "PAPER",
+            "EMAIL",
+            "TYPEOFCREDIT",
+            "METHODOFPAYMENT",
+            "WITHOUT",
+            "LIMITS",
+            "APPLY",
+            "WIN",
+            "GIFT",
+        )
+    ):
         return "footer"
-    if any(token in text for token in (
-        "DEBIT",
-        "CREDIT",
-        "MASTERCARD",
-        "PURCHASE",
-        "APPROVED",
-        "AUTHCODE",
-        "ENTRYMETHOD",
-        "ENTRY",
-        "METHOD",
-        "CARD",
-        "TOTALUSD",
-        "TOTAL",
-        "USD",
-        "BALANCEDUE",
-        "BALANCE",
-        "DUE",
-        "CHANGE",
-        "REF",
-        "AUTH",
-        "MODE",
-        "ISSUER",
-        "PIN",
-        "VERIFIED",
-        "APPROVED",
-        "CONTACTLESS",
-        "CTLESS",
-    )):
+    if any(
+        token in text
+        for token in (
+            "DEBIT",
+            "CREDIT",
+            "MASTERCARD",
+            "PURCHASE",
+            "APPROVED",
+            "AUTHCODE",
+            "ENTRYMETHOD",
+            "ENTRY",
+            "METHOD",
+            "CARD",
+            "TOTALUSD",
+            "TOTAL",
+            "USD",
+            "BALANCEDUE",
+            "BALANCE",
+            "DUE",
+            "CHANGE",
+            "REF",
+            "AUTH",
+            "MODE",
+            "ISSUER",
+            "PIN",
+            "VERIFIED",
+            "APPROVED",
+            "CONTACTLESS",
+            "CTLESS",
+        )
+    ):
         return "payment"
-    if text.startswith(("AID", "TVR", "IAD", "TSI", "ARC", "TC", "MID", "SEQ")):
+    if text.startswith(
+        ("AID", "TVR", "IAD", "TSI", "ARC", "TC", "MID", "SEQ")
+    ):
         return "payment"
     return "body"
 
@@ -748,11 +802,14 @@ def _smooth_luma_field(rng, height, width, scale, amp):
     lo, hi = float(small.min()), float(small.max())
     norm = (small - lo) / (hi - lo + 1e-6)
     img = Image.fromarray((norm * 255.0).astype(np.uint8)).resize(
-        (width, height), Image.BICUBIC)
+        (width, height), Image.BICUBIC
+    )
     return (np.asarray(img).astype(np.float32) / 255.0 - 0.5) * 2.0 * amp
 
 
-def _composite_paper_texture(image, *, seed: int | None = None, strength: float | None = None):
+def _composite_paper_texture(
+    image, *, seed: int | None = None, strength: float | None = None
+):
     """Composite thermal-paper realism onto a clean render.
 
     Layers (all bounded, applied AFTER layout so they never hide a layout bug):
@@ -791,7 +848,9 @@ def _composite_paper_texture(image, *, seed: int | None = None, strength: float 
         rgb *= lum[:, :, None]
 
     # Fine grain (neutral: same delta on R/G/B).
-    grain = rng.normal(0.0, 4.5 * s, size=(height, width, 1)).astype(np.float32)
+    grain = rng.normal(0.0, 4.5 * s, size=(height, width, 1)).astype(
+        np.float32
+    )
     rgb += grain
 
     # Edge vignette: darker toward the paper edges/corners.
@@ -807,8 +866,10 @@ def _composite_paper_texture(image, *, seed: int | None = None, strength: float 
     if s > 0:
         bar_w, soft = 0.06, 0.025
         xn = np.linspace(0.0, 1.0, width, dtype=np.float32)
-        d = np.minimum(xn, 1.0 - xn)                          # 0 at edges -> 0.5 center
-        ew = np.clip((bar_w + soft - d) / soft, 0.0, 1.0)[None, :]  # flat 1 in bar
+        d = np.minimum(xn, 1.0 - xn)  # 0 at edges -> 0.5 center
+        ew = np.clip((bar_w + soft - d) / soft, 0.0, 1.0)[
+            None, :
+        ]  # flat 1 in bar
         rgb[..., 0] -= 24.0 * s * ew
         rgb[..., 1] -= 2.0 * s * ew
         rgb[..., 2] -= 4.0 * s * ew
@@ -820,7 +881,9 @@ def _composite_paper_texture(image, *, seed: int | None = None, strength: float 
     if s > 0:
         angle = float(rng.uniform(-0.8, 0.8)) * min(s, 1.5)
         fill = tuple(int(v) for v in np.asarray(image.convert("RGB"))[0, 0])
-        textured = textured.rotate(angle, resample=Image.BICUBIC, fillcolor=fill)
+        textured = textured.rotate(
+            angle, resample=Image.BICUBIC, fillcolor=fill
+        )
 
     if source_mode == "RGB":
         return textured
@@ -849,11 +912,21 @@ _DEFAULT_SECTION_SCALE = {"HEADER": 0.80}
 # machine-specific paths.
 _PTMONO = "/System/Library/Fonts/Supplemental/PTMono.ttc"
 _VENDORED_FONTS_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "receipt_agent", "receipt_agent",
-    "agents", "label_evaluator", "rendering", "fonts",
+    os.path.dirname(__file__),
+    "..",
+    "receipt_agent",
+    "receipt_agent",
+    "agents",
+    "label_evaluator",
+    "rendering",
+    "fonts",
 )
-_VT323 = os.path.join(_VENDORED_FONTS_DIR, "VT323-Regular.ttf")   # OFL pixel/dot-matrix
-_B612 = os.path.join(_VENDORED_FONTS_DIR, "B612Mono-Regular.ttf")  # OFL clean sans mono
+_VT323 = os.path.join(
+    _VENDORED_FONTS_DIR, "VT323-Regular.ttf"
+)  # OFL pixel/dot-matrix
+_B612 = os.path.join(
+    _VENDORED_FONTS_DIR, "B612Mono-Regular.ttf"
+)  # OFL clean sans mono
 _FONT_TOKENS = {"PTMONO": _PTMONO, "VT323": _VT323, "B612": _B612}
 # Glyph atlases + logo PNGs (bitMatrix-C2 chart derived / logo_master medians),
 # kept local (paid-font derived). Relocate via $BITMATRIX_DIR.
@@ -916,9 +989,10 @@ def _merchant_logo(merchant: str | None):
         return None
     import numpy as np
     from PIL import Image
+
     g = np.asarray(Image.open(path).convert("L")).astype(np.uint8)
     rgba = np.zeros((*g.shape, 4), np.uint8)
-    rgba[..., 3] = 255 - g   # dark ink -> opaque, white paper -> transparent
+    rgba[..., 3] = 255 - g  # dark ink -> opaque, white paper -> transparent
     return Image.fromarray(rgba, "RGBA")
 
 
@@ -1053,24 +1127,47 @@ def _cached_build(kind, build, table, merchant, region, max_receipts, refresh):
     return obj
 
 
-def cached_glyph_atlas(table, merchant, *, region, max_receipts=8, refresh=False):
+def cached_glyph_atlas(
+    table, merchant, *, region, max_receipts=8, refresh=False
+):
     """Disk-cached :func:`build_glyph_atlas_from_dynamo` (per merchant)."""
     return _cached_build(
-        "atlas", build_glyph_atlas_from_dynamo,
-        table, merchant, region, max_receipts, refresh,
+        "atlas",
+        build_glyph_atlas_from_dynamo,
+        table,
+        merchant,
+        region,
+        max_receipts,
+        refresh,
     )
 
 
-def cached_font_profile(table, merchant, *, region, max_receipts=12, refresh=False):
+def cached_font_profile(
+    table, merchant, *, region, max_receipts=12, refresh=False
+):
     """Disk-cached :func:`build_merchant_font_profile_from_dynamo` (per merchant)."""
     return _cached_build(
-        "profile", build_merchant_font_profile_from_dynamo,
-        table, merchant, region, max_receipts, refresh,
+        "profile",
+        build_merchant_font_profile_from_dynamo,
+        table,
+        merchant,
+        region,
+        max_receipts,
+        refresh,
     )
 
 
-def resolve_bitmap_thin(table, merchant, *, region, atlas, profile,
-                        section_scale=None, typography=None, refresh=False):
+def resolve_bitmap_thin(
+    table,
+    merchant,
+    *,
+    region,
+    atlas,
+    profile,
+    section_scale=None,
+    typography=None,
+    refresh=False,
+):
     """Derived-by-default glyph erosion (see synthesis_loop/ink_calibration).
 
     ``bitmap_thin`` is not a per-merchant opinion: the right value is whatever
@@ -1105,12 +1202,12 @@ def resolve_bitmap_thin(table, merchant, *, region, atlas, profile,
     )
     if loop_dir not in sys.path:
         sys.path.insert(0, loop_dir)
+    from statistics import median
+
     from ink_calibration import derive_bitmap_thin  # noqa: E402
     from receipt_line_scorecard import _load_words_and_real  # noqa: E402
 
     from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
-
-    from statistics import median
 
     client = DynamoClient(table_name=table, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant)
@@ -1148,8 +1245,15 @@ def resolve_bitmap_thin(table, merchant, *, region, atlas, profile,
             fd, out = tempfile.mkstemp(suffix=".png")
             os.close(fd)
             _render_cached_hybrid(
-                receipt, atlas, profile=profile, width=wt, height=ht,
-                path=out, section_scale=section_scale, **typo)
+                receipt,
+                atlas,
+                profile=profile,
+                width=wt,
+                height=ht,
+                path=out,
+                section_scale=section_scale,
+                **typo,
+            )
             img = Image.open(out).convert("RGB")
             os.unlink(out)
             return img
@@ -1266,7 +1370,8 @@ def _render_cached_hybrid(
     # capture; it is the full wordmark, so treat it as depicting the subtitle.
     canon_logo = _merchant_logo(receipt.get("merchant_name"))
     _have_logo = canon_logo is not None or (
-        atlas is not None and getattr(atlas, "logo", None) is not None)
+        atlas is not None and getattr(atlas, "logo", None) is not None
+    )
     if _have_logo:
         if canon_logo is not None:
             logo_image, depicts_subtitle = canon_logo, True
@@ -1274,13 +1379,20 @@ def _render_cached_hybrid(
             logo_image, depicts_subtitle = _trim_clipped_subtitle(atlas.logo)
         # Merchants whose wordmark is a pure graphic (no MERCHANT_NAME OCR text,
         # e.g. The Home Depot) anchor the logo off a configured slogan phrase.
-        anchor_cfg = get_merchant_profile(
-            receipt.get("merchant_name")).get("logo_anchor") or {}
+        anchor_cfg = (
+            get_merchant_profile(receipt.get("merchant_name")).get(
+                "logo_anchor"
+            )
+            or {}
+        )
         placed = None
         if anchor_cfg.get("phrases") and logo_image is not None:
             placed = _phrase_logo_placement(
-                receipt, anchor_cfg["phrases"], config=config,
-                logo=logo_image, coord_max=1000.0,
+                receipt,
+                anchor_cfg["phrases"],
+                config=config,
+                logo=logo_image,
+                coord_max=1000.0,
                 center=anchor_cfg.get("center", False),
                 extend_left=anchor_cfg.get("extend_left", True),
             )
@@ -1296,46 +1408,55 @@ def _render_cached_hybrid(
                     wordmark = _logo_wordmark_words(receipt)
                     if wordmark:
                         wordmark_words, logo_bbox = wordmark
-                        if (
-                            get_merchant_profile(
-                                receipt.get("merchant_name")
-                            ).get("logo_reserve_subtitle")
-                            and len(wordmark_words) == len(logo_line)
+                        if get_merchant_profile(
+                            receipt.get("merchant_name")
+                        ).get("logo_reserve_subtitle") and len(
+                            wordmark_words
+                        ) == len(
+                            logo_line
                         ):
                             logo_bbox = _reserve_logo_subtitle_bbox(logo_bbox)
                         render_input = _receipt_drop_words(
-                            receipt, wordmark_words)
+                            receipt, wordmark_words
+                        )
                 else:
                     # Logo shows only the brand line. For merchants whose
                     # subtitle is part of the wordmark (Sprouts' FARMERS
                     # MARKET), synthesize the subtitle inside the logo overlay
                     # instead of routing it through receipt text layout.
                     merchant_profile = get_merchant_profile(
-                        receipt.get("merchant_name"))
+                        receipt.get("merchant_name")
+                    )
                     subtitle = merchant_profile.get("logo_subtitle")
                     wordmark = _logo_wordmark_words(receipt)
                     if subtitle:
                         wordmark_words, logo_bbox = (
-                            wordmark if wordmark is not None else (
+                            wordmark
+                            if wordmark is not None
+                            else (
                                 logo_line,
-                                _union_bbox([
-                                    w["bbox"] for w in logo_line
-                                    if w.get("bbox")
-                                ]),
+                                _union_bbox(
+                                    [
+                                        w["bbox"]
+                                        for w in logo_line
+                                        if w.get("bbox")
+                                    ]
+                                ),
                             )
                         )
-                        if (wordmark is None
-                                or len(wordmark_words) == len(logo_line)):
+                        if wordmark is None or len(wordmark_words) == len(
+                            logo_line
+                        ):
                             logo_bbox = _reserve_logo_subtitle_bbox(logo_bbox)
                         logo_subtitle = str(subtitle)
                         render_input = _receipt_drop_words(
-                            receipt, wordmark_words)
+                            receipt, wordmark_words
+                        )
                     else:
                         logo_bbox = _union_bbox(
                             [w["bbox"] for w in logo_line if w.get("bbox")]
                         )
-                        render_input = _receipt_drop_words(
-                            receipt, logo_line)
+                        render_input = _receipt_drop_words(receipt, logo_line)
     image = render_receipt(
         render_input,
         profile=profile,
@@ -1391,7 +1512,9 @@ def _overlay_cached_logo(
 ) -> None:
     # ``logo_image`` (e.g. a clipped-subtitle-trimmed copy) overrides the atlas
     # bitmap when supplied.
-    logo = logo_image if logo_image is not None else getattr(atlas, "logo", None)
+    logo = (
+        logo_image if logo_image is not None else getattr(atlas, "logo", None)
+    )
     if logo is None:
         return
     # ``bbox`` (the full wordmark region, including any reserved subtitle row)
@@ -1454,7 +1577,9 @@ _LOGO_SUBTITLE_FONTS = (
 )
 
 
-def _draw_logo_subtitle(image, text: str, left: float, top: float, right: float, bottom: float) -> None:
+def _draw_logo_subtitle(
+    image, text: str, left: float, top: float, right: float, bottom: float
+) -> None:
     from PIL import Image, ImageDraw, ImageFont
 
     label = str(text or "").strip().upper()
@@ -1694,8 +1819,10 @@ def _code_bbox(code, coord_max: float) -> list[float] | None:
         if isinstance(tl, dict) and isinstance(br, dict):
             try:
                 bbox = [
-                    float(tl["x"]), float(tl["y"]),
-                    float(br["x"]), float(br["y"]),
+                    float(tl["x"]),
+                    float(tl["y"]),
+                    float(br["x"]),
+                    float(br["y"]),
                 ]
             except (KeyError, TypeError, ValueError):
                 return None
@@ -1757,8 +1884,11 @@ def _overlay_detected_codes(
         if bbox is None:
             continue
         left, top, right, bottom = _to_pixel_box(
-            bbox, coord_max=coord_max, margin=config.margin,
-            inner_w=inner_w, inner_h=inner_h,
+            bbox,
+            coord_max=coord_max,
+            margin=config.margin,
+            inner_w=inner_w,
+            inner_h=inner_h,
         )
         left, right = sorted((left, right))
         top, bottom = sorted((top, bottom))
@@ -1814,7 +1944,7 @@ def _visual_barcode_payload(digits: str, symbology: str) -> str:
     """
     if str(symbology).lower() != "code128":
         return digits
-    pairs = [digits[i:i + 2] for i in range(0, len(digits), 2)]
+    pairs = [digits[i : i + 2] for i in range(0, len(digits), 2)]
     return "-".join(pair for pair in pairs if pair)
 
 
@@ -1843,15 +1973,22 @@ def _overlay_inbody_barcodes(
     inner_w = config.width - 2 * config.margin
     inner_h = config.height - 2 * config.margin
     all_words = receipt.get("words") or [
-        w for line in (receipt.get("lines") or [])
+        w
+        for line in (receipt.get("lines") or [])
         for w in (line.get("words") or [])
     ]
     words = [w for w in all_words if w.get("bbox")]
     if not words:
         return 0
-    ib = {**_INBODY_BARCODE_DEFAULTS,
-          **(graphics_for_merchant(receipt.get("merchant_name")).get(
-              "inbody_barcode") or {})}
+    ib = {
+        **_INBODY_BARCODE_DEFAULTS,
+        **(
+            graphics_for_merchant(receipt.get("merchant_name")).get(
+                "inbody_barcode"
+            )
+            or {}
+        ),
+    }
     # A profile may disable the in-body transaction barcode (max_count 0) for
     # merchants that print the transaction number as plain text, not a barcode
     # (e.g. The Home Depot; its only barcode is the footer).
@@ -1860,8 +1997,11 @@ def _overlay_inbody_barcodes(
     px = []
     for w in words:
         l, t, r, b = _to_pixel_box(
-            w["bbox"], coord_max=coord_max, margin=config.margin,
-            inner_w=inner_w, inner_h=inner_h,
+            w["bbox"],
+            coord_max=coord_max,
+            margin=config.margin,
+            inner_w=inner_w,
+            inner_h=inner_h,
         )
         px.append((w, min(t, b), max(t, b), min(l, r), max(l, r)))
     # Candidates: single long-numeric words (Costco's transaction id), then
@@ -1874,8 +2014,10 @@ def _overlay_inbody_barcodes(
         for (w, top, bot, left, right) in px
     ]
     by_line: dict = {}
-    for (w, top, bot, left, right) in px:
-        by_line.setdefault(w.get("line_id"), []).append((w, top, bot, left, right))
+    for w, top, bot, left, right in px:
+        by_line.setdefault(w.get("line_id"), []).append(
+            (w, top, bot, left, right)
+        )
     for line_id, group in sorted(by_line.items(), key=lambda kv: str(kv[0])):
         if line_id is None or len(group) < 2:
             continue
@@ -1885,29 +2027,40 @@ def _overlay_inbody_barcodes(
         joined = "".join(texts)
         if len(joined) < 10:
             continue
-        candidates.append((
-            joined,
-            min(g[1] for g in group), max(g[2] for g in group),
-            min(g[3] for g in group), max(g[4] for g in group),
-        ))
+        candidates.append(
+            (
+                joined,
+                min(g[1] for g in group),
+                max(g[2] for g in group),
+                min(g[3] for g in group),
+                max(g[4] for g in group),
+            )
+        )
     stamped_bands: list[tuple[float, float]] = []
     for i, (digits, top, bot, left, right) in enumerate(candidates):
         if digits is None:
             continue
         # nearest content bottom strictly above this line
-        above = [pb for j, (_, pt, pb, _, _) in enumerate(px)
-                 if j != i and pb <= top + 2]
+        above = [
+            pb
+            for j, (_, pt, pb, _, _) in enumerate(px)
+            if j != i and pb <= top + 2
+        ]
         nearest = max(above) if above else float(config.margin)
         space = top - nearest
         if space < ib["min_gap_px"]:
             continue
         bar_h = int(min(ib["bar_h_px"], space - 8))
-        bar_w = int(min(
-            inner_w * 0.72,
-            max((right - left) * 1.30, inner_w * float(ib["bar_w_frac"])),
-        ))
+        bar_w = int(
+            min(
+                inner_w * 0.72,
+                max((right - left) * 1.30, inner_w * float(ib["bar_w_frac"])),
+            )
+        )
         cx = (left + right) / 2.0
-        payload = _visual_barcode_payload(digits[:ib["max_digits"]], ib["symbology"])
+        payload = _visual_barcode_payload(
+            digits[: ib["max_digits"]], ib["symbology"]
+        )
         tile = receipt_graphics.render_barcode_tile(
             payload, ib["symbology"], bar_w, bar_h, with_hri=False
         )
@@ -1921,7 +2074,11 @@ def _overlay_inbody_barcodes(
 
 
 def _overlay_qr_and_barcode(
-    image, receipt: dict, *, config: RenderConfig, coord_max: float,
+    image,
+    receipt: dict,
+    *,
+    config: RenderConfig,
+    coord_max: float,
     reserved: list[tuple[float, float]] | None = None,
 ) -> None:
     """Stamp a REAL QR symbol and a REAL 1D barcode in the blank footer region.
@@ -1943,7 +2100,8 @@ def _overlay_qr_and_barcode(
     # Some merchants print no QR/barcode anywhere (Trader Joe's) — a profile
     # opts out with graphics.footer_codes: false. Default stays on.
     if not graphics_for_merchant(receipt.get("merchant_name")).get(
-            "footer_codes", True):
+        "footer_codes", True
+    ):
         return
     boxes = _iter_receipt_bboxes(receipt)
     if not boxes:
@@ -1966,7 +2124,7 @@ def _overlay_qr_and_barcode(
         intervals.append((min(t, b), max(t, b)))
     # Treat already-stamped in-body barcode bands as occupied so we don't stack a
     # redundant second barcode in the same gap.
-    for r0, r1 in (reserved or []):
+    for r0, r1 in reserved or []:
         intervals.append((min(r0, r1), max(r0, r1)))
     intervals.sort()
     merged: list[list[float]] = []
@@ -2035,7 +2193,9 @@ def _overlay_qr_and_barcode(
             _qr_payload(receipt, seed), qs, seed
         )
         _paste_graphic_tile(image, qr_tile, int(cx - qs / 2), y0)
-        _paste_graphic_tile(image, barcode_tile, int(cx - bar_w / 2), y0 + qs + gap)
+        _paste_graphic_tile(
+            image, barcode_tile, int(cx - bar_w / 2), y0 + qs + gap
+        )
     elif avail_h >= bar_h + 6:
         y0 = int(gtop + (avail_h - bar_h) / 2)
         _paste_graphic_tile(image, barcode_tile, int(cx - bar_w / 2), y0)
@@ -2056,7 +2216,9 @@ def _cached_logo_line(receipt: dict) -> list[dict] | None:
 
     candidates = []
     for line in lines:
-        line_words = [word for word in line.get("words", []) if word.get("bbox")]
+        line_words = [
+            word for word in line.get("words", []) if word.get("bbox")
+        ]
         if not line_words:
             continue
         labels = {
@@ -2088,7 +2250,8 @@ def _receipt_lines(receipt: dict) -> list[list[dict]]:
     lines = receipt.get("lines")
     if lines:
         return [
-            [w for w in line.get("words", []) if w.get("bbox")] for line in lines
+            [w for w in line.get("words", []) if w.get("bbox")]
+            for line in lines
         ]
     grouped: dict[int, list[dict]] = {}
     for word in receipt.get("words") or []:
@@ -2100,8 +2263,16 @@ def _receipt_lines(receipt: dict) -> list[list[dict]]:
     return list(grouped.values())
 
 
-def _phrase_logo_placement(receipt, phrases, *, config, logo, coord_max,
-                           extend_left=True, center=False):
+def _phrase_logo_placement(
+    receipt,
+    phrases,
+    *,
+    config,
+    logo,
+    coord_max,
+    extend_left=True,
+    center=False,
+):
     """Place a top-of-receipt logo lockup that has NO ``MERCHANT_NAME`` anchor.
 
     Some merchants print the wordmark as a pure graphic (no OCR text) beside a
@@ -2118,14 +2289,20 @@ def _phrase_logo_placement(receipt, phrases, *, config, logo, coord_max,
         return None
     drop, boxes = [], []
     for words in _receipt_lines(receipt):
-        text = _normalize_phrase(" ".join(str(w.get("text") or "") for w in words))
+        text = _normalize_phrase(
+            " ".join(str(w.get("text") or "") for w in words)
+        )
         if not text or not any(p in text for p in norm):
             continue
         # This anchors a TOP-of-receipt lockup; short brand phrases ("VONS")
         # also match footer URLs / body mentions, which unions a bogus
         # mid-receipt band and drops body words. Only accept header lines.
-        ys = [v for w in words if w.get("bbox")
-              for v in (w["bbox"][1], w["bbox"][3])]
+        ys = [
+            v
+            for w in words
+            if w.get("bbox")
+            for v in (w["bbox"][1], w["bbox"][3])
+        ]
         if ys and (sum(ys) / len(ys)) < 780.0:
             continue
         drop.extend(words)
@@ -2169,7 +2346,9 @@ def _flatten_receipt_words(receipt: dict) -> list[dict]:
     ]
 
 
-def _logo_wordmark_words(receipt: dict) -> tuple[list[dict], list[float]] | None:
+def _logo_wordmark_words(
+    receipt: dict,
+) -> tuple[list[dict], list[float]] | None:
     """The MERCHANT_NAME wordmark that the atlas logo bitmap depicts.
 
     Returns the detected logo line plus any MERCHANT_NAME subtitle word(s)
@@ -2186,11 +2365,14 @@ def _logo_wordmark_words(receipt: dict) -> tuple[list[dict], list[float]] | None
     logo_line = _cached_logo_line(receipt)
     if not logo_line:
         return None
-    band = _union_bbox([word["bbox"] for word in logo_line if word.get("bbox")])
+    band = _union_bbox(
+        [word["bbox"] for word in logo_line if word.get("bbox")]
+    )
     if band is None:
         return None
     cluster = list(logo_line)
     cluster_ids = {id(word) for word in cluster}
+
     # OCR bboxes may be bottom-origin (y0 > y1), so read spans via min/max rather
     # than assuming [1] is the top -- a raw ``band[3] - band[1]`` goes negative on
     # inverted coords and collapses the contiguity gap, leaking the subtitle
@@ -2413,7 +2595,9 @@ def _profile_from_export_dir(merchant: str, receipt_dir: str):
         for line in export.get("receipt_lines", []) or []:
             lines_by_rid.setdefault(line.get("receipt_id"), []).append(line)
         for letter in export.get("receipt_letters", []) or []:
-            letters_by_rid.setdefault(letter.get("receipt_id"), []).append(letter)
+            letters_by_rid.setdefault(letter.get("receipt_id"), []).append(
+                letter
+            )
         for rid, words in words_by_rid.items():
             profile = extract_receipt_font_profile(
                 words,
@@ -2468,7 +2652,9 @@ def main() -> int:
     if args.cached_synthetic_dir:
         return _render_cached_synthetic_examples(args)
     if not args.bundle or not args.receipt_dir:
-        parser.error("--bundle and --receipt-dir are required outside cached mode")
+        parser.error(
+            "--bundle and --receipt-dir are required outside cached mode"
+        )
 
     bundle = json.load(open(args.bundle))
     examples = bundle.get("synthetic_training_examples", []) or []
@@ -2497,11 +2683,14 @@ def main() -> int:
             )
 
     profile = _profile_from_export_dir(args.merchant, args.receipt_dir)
-    print("Merchant profile:", json.dumps(profile.to_dict() if profile else None))
+    print(
+        "Merchant profile:", json.dumps(profile.to_dict() if profile else None)
+    )
 
     os.makedirs(args.out_dir, exist_ok=True)
-    config = RenderConfig(width=460, height=1100, color_by_label=True,
-                          draw_price_column=True)
+    config = RenderConfig(
+        width=460, height=1100, color_by_label=True, draw_price_column=True
+    )
 
     rendered = 0
     for example in examples[: args.limit]:
@@ -2514,14 +2703,22 @@ def main() -> int:
             base_receipt_id = None
 
         synthetic = _synthetic_receipt_dict(example, id_to_label)
-        synth_path = os.path.join(args.out_dir, f"{candidate_id}.synthetic.png")
+        synth_path = os.path.join(
+            args.out_dir, f"{candidate_id}.synthetic.png"
+        )
         save_receipt_png(synthetic, synth_path, profile=profile, config=config)
 
         if image_id in exports and base_receipt_id is not None:
             real = _real_receipt_dict(exports[image_id], base_receipt_id)
             combined = render_real_vs_synthetic(
-                real, synthetic, profile=profile, config=config,
-                labels=(f"real {base_key}", f"synthetic {example.get('operation','')}")
+                real,
+                synthetic,
+                profile=profile,
+                config=config,
+                labels=(
+                    f"real {base_key}",
+                    f"synthetic {example.get('operation','')}",
+                ),
             )
             combined_path = os.path.join(
                 args.out_dir, f"{candidate_id}.real_vs_synthetic.png"
@@ -2529,7 +2726,13 @@ def main() -> int:
             combined.save(combined_path)
             print("wrote", combined_path)
         else:
-            print("wrote", synth_path, "(no base receipt found for", base_key, ")")
+            print(
+                "wrote",
+                synth_path,
+                "(no base receipt found for",
+                base_key,
+                ")",
+            )
         rendered += 1
 
     print(f"Rendered {rendered} candidate(s) to {args.out_dir}")

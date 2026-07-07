@@ -7,6 +7,7 @@ Per char: consensus -> 3x upsample -> Zhang-Suen thin -> spur prune ->
 path extraction -> corner-split Schneider fit -> cap-unit glyph JSON.
 Hand-edited glyphs are never clobbered (they divert to _traced/).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,9 +26,9 @@ from .samples import (
     canvas_geometry,
     consensus,
     consensus_soft,
-    soft_stroke_width,
     list_codepoints,
     load_stack,
+    soft_stroke_width,
     stroke_width_px,
     upsample,
 )
@@ -77,13 +78,15 @@ def trace_char(stack: np.ndarray, codepoint: int) -> tuple[dict | None, float]:
             continue
         # convert control points (y,x px) -> cap units (x, y-up)
         for seg in segments:
-            seg["ctrl"] = np.array([
+            seg["ctrl"] = np.array(
                 [
-                    p[1] * scale_units,
-                    (baseline_ss - p[0]) * scale_units,
+                    [
+                        p[1] * scale_units,
+                        (baseline_ss - p[0]) * scale_units,
+                    ]
+                    for p in seg["ctrl"]
                 ]
-                for p in seg["ctrl"]
-            ])
+            )
         nodes = segments_to_nodes(segments, closed=path["closed"])
         if len(nodes) < 2:
             continue
@@ -133,7 +136,9 @@ def trace_char(stack: np.ndarray, codepoint: int) -> tuple[dict | None, float]:
         "codepoint": codepoint,
         "provenance": "traced",
         "trace": {
-            "corpus": os.environ.get("GLYPH_CORPUS_NAME", "sprouts.samples.npz"),
+            "corpus": os.environ.get(
+                "GLYPH_CORPUS_NAME", "sprouts.samples.npz"
+            ),
             "samples": int(len(stack)),
             "consensusHash": hashlib.sha1(mask.tobytes()).hexdigest()[:12],
             "date": datetime.date.today().isoformat(),
@@ -151,8 +156,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("samples")
     ap.add_argument("font_dir")
     ap.add_argument("--chars", help="only these characters")
-    ap.add_argument("--force", action="store_true",
-                    help="overwrite even hand-edited glyphs")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite even hand-edited glyphs",
+    )
     args = ap.parse_args(argv)
 
     codepoints = list_codepoints(args.samples)
@@ -177,8 +185,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if chr(cp) in ADVANCE_REF_CHARS and width_units > 0:
             dot_sizes.append(width_units)
-        target = write_glyph(args.font_dir, glyph,
-                             respect_edited=not args.force)
+        target = write_glyph(
+            args.font_dir, glyph, respect_edited=not args.force
+        )
         if os.sep + "_traced" + os.sep in target:
             diverted.append(chr(cp))
         else:

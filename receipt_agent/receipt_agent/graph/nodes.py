@@ -10,7 +10,6 @@ from difflib import SequenceMatcher
 from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
 from receipt_agent.state.models import (
     ChromaSearchResult,
     EvidenceType,

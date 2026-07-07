@@ -30,7 +30,6 @@ from functools import lru_cache
 from typing import Callable, Mapping, Sequence
 
 from PIL import Image, ImageFilter, ImageFont
-
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     AtlasStyle,
     GlyphAtlas,
@@ -164,9 +163,7 @@ def make_ttf_fallback(
 # --------------------------------------------------------------------------- #
 
 
-def _probe_glyphs(
-    style: AtlasStyle, limit: int
-) -> dict[str, GlyphCrop]:
+def _probe_glyphs(style: AtlasStyle, limit: int) -> dict[str, GlyphCrop]:
     """Pick representative real glyphs to match against (letters/digits first)."""
     preferred = [c for c in style.chars() if c.isalnum()]
     ordered = sorted(preferred) or sorted(style.chars())
@@ -201,10 +198,7 @@ def _is_fixed_pitch_font(path: str) -> bool:
     font = _load_ttf(path, 32)
     if font is None:
         return False
-    widths = [
-        _advance_width(font, char)
-        for char in _FIXED_PITCH_PROBE_CHARS
-    ]
+    widths = [_advance_width(font, char) for char in _FIXED_PITCH_PROBE_CHARS]
     widths = [width for width in widths if width > 0]
     if not widths:
         return False
@@ -326,7 +320,9 @@ def _alpha_vector(alpha: Image.Image) -> tuple[float, ...]:
     """Normalize an alpha image to a square ink vector (shape, not size/aspect)."""
     side = max(alpha.width, alpha.height, 1)
     square = Image.new("L", (side, side), 0)
-    square.paste(alpha, ((side - alpha.width) // 2, (side - alpha.height) // 2))
+    square.paste(
+        alpha, ((side - alpha.width) // 2, (side - alpha.height) // 2)
+    )
     small = square.resize((_SIM_GLYPH_SIZE, _SIM_GLYPH_SIZE), Image.BOX)
     return tuple(v / 255.0 for v in small.getdata())
 

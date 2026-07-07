@@ -28,16 +28,20 @@ from __future__ import annotations
 import os
 import re
 import sys
-
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    US as _NF,
-    fraction as _fraction,
-    integer_part as _integer_part,
-)
 from collections import Counter
 from dataclasses import dataclass, field
 from statistics import median
 from typing import Any, Mapping, Sequence
+
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US as _NF,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    fraction as _fraction,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    integer_part as _integer_part,
+)
 
 
 def _ensure_receipt_upload_on_path() -> None:
@@ -156,9 +160,7 @@ class MerchantFontProfile:
             "char_width_px": self.char_width * canvas,
             "char_aspect": self.char_aspect,
             "line_step_px": (
-                None
-                if self.line_pitch is None
-                else self.line_pitch * canvas
+                None if self.line_pitch is None else self.line_pitch * canvas
             ),
             "price_column_x_px": (
                 None
@@ -340,8 +342,9 @@ def build_merchant_font_profile_from_dynamo(
     the download keeps the pass fast. Receipts that fail to load are skipped so
     one bad image does not sink the merchant profile.
     """
-    from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_upload.font_analysis import load_raw_image_from_s3
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient
 
     client = DynamoClient(table_name=table_name, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant_name)
@@ -471,9 +474,7 @@ def _line_pitch(
     if len(centers) < 2:
         return None
     ordered = sorted(centers, reverse=True)  # top first
-    gaps = [
-        abs(ordered[i] - ordered[i + 1]) for i in range(len(ordered) - 1)
-    ]
+    gaps = [abs(ordered[i] - ordered[i + 1]) for i in range(len(ordered) - 1)]
     gaps = [gap for gap in gaps if gap > _EPSILON]
     if not gaps:
         return None
@@ -511,8 +512,7 @@ def _price_column_x(
     for metric in ordered:
         right_x = float(metric["right_x"])
         if clusters and (
-            abs(float(clusters[-1][0]["right_x"]) - right_x)
-            <= align_tolerance
+            abs(float(clusters[-1][0]["right_x"]) - right_x) <= align_tolerance
         ):
             clusters[-1].append(metric)
         else:

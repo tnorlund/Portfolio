@@ -12,7 +12,6 @@ from typing import Any, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
-
 from receipt_agent.agents.receipt_grouping.state import GroupingState
 from receipt_agent.agents.receipt_grouping.tools import (
     ImageContext,

@@ -26,22 +26,26 @@ coordinate helpers and font loader so the two paths stay consistent.
 from __future__ import annotations
 
 import re
-
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    US as _NF,
-    date_core as _date_core,
-    fraction as _fraction,
-    integer_part as _integer_part,
-)
 from dataclasses import dataclass
 from statistics import median
 from typing import Any, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
-
 from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
     preserve_top_arc,
     thin_ink_mask,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US as _NF,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    date_core as _date_core,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    fraction as _fraction,
+)
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    integer_part as _integer_part,
 )
 
 # A right-aligned amount token (optional currency/sign, 2-decimal tail, optional
@@ -108,7 +112,9 @@ def build_grid_spec(
         A :class:`GridSpec` with ``cell_w`` (char advance px), ``cell_h`` (line
         pitch px), ``font_px`` (single body size) and ``grid_left`` (column-0 x).
     """
-    char_width_n = _positive(getattr(profile, "char_width", None), _FALLBACK_CHAR_WIDTH)
+    char_width_n = _positive(
+        getattr(profile, "char_width", None), _FALLBACK_CHAR_WIDTH
+    )
     font_height_n = _positive(
         getattr(profile, "font_height", None), _FALLBACK_FONT_HEIGHT
     )
@@ -116,8 +122,12 @@ def build_grid_spec(
 
     # Clamp the body size to a sane range, honoring the config clamps but never
     # dropping below the readability floor / above the sanity ceiling.
-    lo = max(_GRID_FONT_MIN, int(getattr(config, "min_font_px", _GRID_FONT_MIN)))
-    hi = min(_GRID_FONT_MAX, int(getattr(config, "max_font_px", _GRID_FONT_MAX)))
+    lo = max(
+        _GRID_FONT_MIN, int(getattr(config, "min_font_px", _GRID_FONT_MIN))
+    )
+    hi = min(
+        _GRID_FONT_MAX, int(getattr(config, "max_font_px", _GRID_FONT_MAX))
+    )
     if hi < lo:
         hi = lo
     font_px = int(round(font_height_n * inner_h))
@@ -135,7 +145,9 @@ def build_grid_spec(
     cell_h = max(cell_h, float(font_px) * 1.05)
 
     grid_left = float(getattr(config, "margin", 0))
-    return GridSpec(cell_w=cell_w, cell_h=cell_h, font_px=font_px, grid_left=grid_left)
+    return GridSpec(
+        cell_w=cell_w, cell_h=cell_h, font_px=font_px, grid_left=grid_left
+    )
 
 
 def glyph_advance(
@@ -204,14 +216,30 @@ class GridWord:
 # Word labels grouped into the visual sections a thermal receipt sizes
 # independently. Order matters: the first matching section wins.
 SECTION_LABELS: dict[str, frozenset[str]] = {
-    "HEADER": frozenset({
-        "MERCHANT_NAME", "STORE_HOURS", "PHONE_NUMBER", "WEBSITE",
-        "ADDRESS_LINE", "DATE", "TIME",
-    }),
-    "TOTALS": frozenset({
-        "SUBTOTAL", "TAX", "TIP", "GRAND_TOTAL", "DISCOUNT", "COUPON",
-    }),
-    "BODY": frozenset({"PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"}),
+    "HEADER": frozenset(
+        {
+            "MERCHANT_NAME",
+            "STORE_HOURS",
+            "PHONE_NUMBER",
+            "WEBSITE",
+            "ADDRESS_LINE",
+            "DATE",
+            "TIME",
+        }
+    ),
+    "TOTALS": frozenset(
+        {
+            "SUBTOTAL",
+            "TAX",
+            "TIP",
+            "GRAND_TOTAL",
+            "DISCOUNT",
+            "COUPON",
+        }
+    ),
+    "BODY": frozenset(
+        {"PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"}
+    ),
     "PAYMENT": frozenset({"PAYMENT_METHOD", "LOYALTY_ID"}),
 }
 
@@ -264,9 +292,7 @@ def effective_row_sections(
             return True
         return any(is_price_token(w.text) for w in rows[i])
 
-    first_item = next(
-        (i for i in range(len(rows)) if is_item_row(i)), None
-    )
+    first_item = next((i for i in range(len(rows)) if is_item_row(i)), None)
     if first_item is not None:
         for i in range(first_item):
             if base[i] is None:
@@ -326,7 +352,9 @@ def group_words_into_grid_lines(
         band_center = (band_top + band_bottom) / 2.0
         center_close = abs(word.center_y - band_center) <= center_tol
         current_sources = {
-            item.source_line for item in current if item.source_line is not None
+            item.source_line
+            for item in current
+            if item.source_line is not None
         }
         source_conflict = (
             word.source_line is not None
@@ -402,7 +430,9 @@ def draw_token_chars(
         if img is None:
             return
 
-        def _draw_ttf_fallback(char: str, col: float, x_extra: float = 0.0) -> None:
+        def _draw_ttf_fallback(
+            char: str, col: float, x_extra: float = 0.0
+        ) -> None:
             """Draw a missing atlas glyph with TTF metrics matched to the grid."""
             if font is None:
                 return
@@ -417,9 +447,15 @@ def draw_token_chars(
             bh = max(ascent + descent + 2 * pad + 4, 8)
             base = pad + ascent
             buf = Image.new("L", (bw, bh), 0)
-            ImageDraw.Draw(buf).text((pad, base), char, font=font, fill=255,
-                                     anchor="ls", stroke_width=stroke,
-                                     stroke_fill=255)
+            ImageDraw.Draw(buf).text(
+                (pad, base),
+                char,
+                font=font,
+                fill=255,
+                anchor="ls",
+                stroke_width=stroke,
+                stroke_fill=255,
+            )
             bb = buf.getbbox()
             if bb is None:
                 return
@@ -440,13 +476,21 @@ def draw_token_chars(
                     )
             max_w = max(1, int(round(spec.cell_w * 0.96)))
             if glyph.width > max_w:
-                glyph = glyph.resize((max_w, glyph.height), Image.Resampling.NEAREST)
+                glyph = glyph.resize(
+                    (max_w, glyph.height), Image.Resampling.NEAREST
+                )
             glyph = glyph.point(lambda value: 255 if value >= 160 else 0)
             glyph = thin_ink_mask(
                 glyph, bitmap_thin, preserve_top=preserve_top_arc(char)
             )
-            x = int(round(spec.grid_left + col * spec.cell_w
-                          + (spec.cell_w - glyph.width) / 2.0 + x_extra))
+            x = int(
+                round(
+                    spec.grid_left
+                    + col * spec.cell_w
+                    + (spec.cell_w - glyph.width) / 2.0
+                    + x_extra
+                )
+            )
             y = int(round(baseline_y + off - glyph.height))
             img.paste(Image.new("RGB", glyph.size, ink), (x, y), glyph)
 
@@ -464,9 +508,15 @@ def draw_token_chars(
             res = bitmap_font.glyph(char, cap_px or spec.font_px)
             if res is not None:
                 gi, h, off = res
-                x = int(round(spec.grid_left + col * spec.cell_w
-                              + (spec.cell_w - gi.width) / 2.0
-                              + right_shift + x_shift_px))
+                x = int(
+                    round(
+                        spec.grid_left
+                        + col * spec.cell_w
+                        + (spec.cell_w - gi.width) / 2.0
+                        + right_shift
+                        + x_shift_px
+                    )
+                )
                 y = int(round(baseline_y + off - h))
                 img.paste(Image.new("RGB", gi.size, ink), (x, y), gi)
             elif font is not None:
@@ -482,8 +532,15 @@ def draw_token_chars(
             if char == " ":
                 continue
             x = spec.grid_left + col * spec.cell_w + x_shift_px
-            draw.text((x, baseline_y), char, font=font, fill=ink, anchor="ls",
-                      stroke_width=stroke, stroke_fill=ink)
+            draw.text(
+                (x, baseline_y),
+                char,
+                font=font,
+                fill=ink,
+                anchor="ls",
+                stroke_width=stroke,
+                stroke_fill=ink,
+            )
             col += 1
         return
     # Condensed path: render each glyph to a buffer, scale its width, paste.
@@ -499,9 +556,15 @@ def draw_token_chars(
         if char == " ":
             continue
         buf = Image.new("L", (bw, bh), 0)
-        ImageDraw.Draw(buf).text((stroke + 1, ascent + stroke), char, font=font,
-                                 fill=255, anchor="ls", stroke_width=stroke,
-                                 stroke_fill=255)
+        ImageDraw.Draw(buf).text(
+            (stroke + 1, ascent + stroke),
+            char,
+            font=font,
+            fill=255,
+            anchor="ls",
+            stroke_width=stroke,
+            stroke_fill=255,
+        )
         buf = buf.resize((max(1, int(round(bw * condense))), bh))
         x = int(round(spec.grid_left + col * spec.cell_w + x_shift_px))
         y = int(round(baseline_y - ascent - stroke))
@@ -553,7 +616,9 @@ def draw_text_run(
         advance = max(base_advance, min(base_advance * 1.28, wanted))
     pad = max(4, int(round(advance * 2)))
     width = max(8, int(round(advance * (len(text) + 2))) + 2 * pad)
-    height = max(ascent + descent + 2 * pad, int(round((cap_px or spec.font_px) * 3)))
+    height = max(
+        ascent + descent + 2 * pad, int(round((cap_px or spec.font_px) * 3))
+    )
     baseline = min(height - pad, max(pad + ascent, int(round(height * 0.68))))
     mask = Image.new("L", (width, height), 0)
     pen = float(pad)
@@ -569,9 +634,15 @@ def draw_text_run(
         gh = max(ascent + descent + 2 * gpad + 4, 8)
         base = gpad + ascent
         buf = Image.new("L", (gw, gh), 0)
-        ImageDraw.Draw(buf).text((gpad, base), ch, font=font, fill=255,
-                                 anchor="ls", stroke_width=stroke,
-                                 stroke_fill=255)
+        ImageDraw.Draw(buf).text(
+            (gpad, base),
+            ch,
+            font=font,
+            fill=255,
+            anchor="ls",
+            stroke_width=stroke,
+            stroke_fill=255,
+        )
         bb = buf.getbbox()
         if bb is None:
             return None
@@ -592,7 +663,9 @@ def draw_text_run(
                 )
         max_w = max(1, int(round(advance * 0.96)))
         if glyph.width > max_w:
-            glyph = glyph.resize((max_w, glyph.height), Image.Resampling.NEAREST)
+            glyph = glyph.resize(
+                (max_w, glyph.height), Image.Resampling.NEAREST
+            )
         glyph = glyph.point(lambda value: 255 if value >= 160 else 0)
         glyph = thin_ink_mask(
             glyph, bitmap_thin, preserve_top=preserve_top_arc(ch)
@@ -603,7 +676,11 @@ def draw_text_run(
         if ch == " ":
             pen += advance
             continue
-        res = bitmap_font.glyph(ch, cap_px or spec.font_px) if bitmap_font else None
+        res = (
+            bitmap_font.glyph(ch, cap_px or spec.font_px)
+            if bitmap_font
+            else None
+        )
         if res is not None:
             glyph, h, off = res
             x = int(round(pen + (advance - glyph.width) / 2.0))
@@ -643,11 +720,17 @@ def draw_text_run(
             x0m = pad + ci * advance
             x1m = pad + (ci + n) * advance
             desc = 0.22 * cap if _has_descender(wtext) else 0.04 * cap
-            box_sink.append({
-                "word_index": getattr(w, "word_index", None),
-                "px": (x + (x0m - bb[0]), baseline_y - cap,
-                       x + (x1m - bb[0]), baseline_y + desc),
-            })
+            box_sink.append(
+                {
+                    "word_index": getattr(w, "word_index", None),
+                    "px": (
+                        x + (x0m - bb[0]),
+                        baseline_y - cap,
+                        x + (x1m - bb[0]),
+                        baseline_y + desc,
+                    ),
+                }
+            )
             ci += n + 1  # the joining space
 
 
@@ -696,7 +779,11 @@ def _is_amount_prefix_token(text: str) -> bool:
     token = str(text or "").strip().upper().replace(" ", "")
     if token in {"$", "US$", "USD", "USD$"}:
         return True
-    return token.endswith("$") and len(token) <= 4 and any(ch.isalpha() for ch in token)
+    return (
+        token.endswith("$")
+        and len(token) <= 4
+        and any(ch.isalpha() for ch in token)
+    )
 
 
 def amount_lane_end(
@@ -767,7 +854,10 @@ def plan_grid_line(
         slot_right = amount_lane
         for i in reversed(price_idxs):
             abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
-            if abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS and i not in anchored:
+            if (
+                abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS
+                and i not in anchored
+            ):
                 # This price sits far from the lane in the source. If one is
                 # already anchored it's a further-left column -> stop the stack.
                 # If none is, this lone price is an INLINE value (e.g.
@@ -822,7 +912,9 @@ def plan_grid_line(
                     source_gap = max(
                         1, round((word.left - prev_right_px) / spec.cell_w)
                     )
-                start = max(min(absolute, cursor_col + source_gap), cursor_col + 1)
+                start = max(
+                    min(absolute, cursor_col + source_gap), cursor_col + 1
+                )
             # Truncate a description that would run into the price column.
             if (
                 leftmost_price_start is not None
@@ -837,7 +929,11 @@ def plan_grid_line(
                     text, cells = _truncate_to_cells(word.text, avail)
         placed.append(
             PlacedToken(
-                word=word, start_col=start, cells=cells, is_price=price, text=text
+                word=word,
+                start_col=start,
+                cells=cells,
+                is_price=price,
+                text=text,
             )
         )
         # Advance past EVERY token so the next word clears it by at least one cell.
@@ -877,13 +973,15 @@ def _right_align_source_segments(
     if len(breaks) == 1:
         return
     breaks.append(len(placed_row))
-    prev_end = max(p.end_col for p in placed_row[:breaks[1]])
+    prev_end = max(p.end_col for p in placed_row[: breaks[1]])
     for start_i, end_i in zip(breaks[1:-1], breaks[2:]):
         segment = placed_row[start_i:end_i]
         if not segment or any(p.is_price for p in segment):
             continue
         source_right = max(p.word.right for p in segment)
-        rendered_right = spec.grid_left + max(p.end_col for p in segment) * spec.cell_w
+        rendered_right = (
+            spec.grid_left + max(p.end_col for p in segment) * spec.cell_w
+        )
         shift = (source_right - rendered_right) / spec.cell_w
         min_start = min(p.start_col for p in segment)
         if min_start + shift <= prev_end:
@@ -928,6 +1026,7 @@ def draw_grid_line(
     placed_row = plan_grid_line(line, spec, amount_lane=amount_lane)
     if center_to is None and placed_row:
         _right_align_source_segments(placed_row, spec)
+
     def _record_boxes():
         if box_sink is None:
             return
@@ -936,13 +1035,20 @@ def draw_grid_line(
             x0 = spec.grid_left + p.start_col * spec.cell_w
             x1 = x0 + p.cells * spec.cell_w
             desc = 0.22 * cap if _has_descender(p.draw_text) else 0.04 * cap
-            box_sink.append({
-                "word_index": getattr(p.word, "word_index", None),
-                "px": (x0, baseline_y - cap, x1, baseline_y + desc),
-            })
+            box_sink.append(
+                {
+                    "word_index": getattr(p.word, "word_index", None),
+                    "px": (x0, baseline_y - cap, x1, baseline_y + desc),
+                }
+            )
+
     if center_to is not None and placed_row:
-        span_l = spec.grid_left + min(p.start_col for p in placed_row) * spec.cell_w
-        span_r = spec.grid_left + max(p.end_col for p in placed_row) * spec.cell_w
+        span_l = (
+            spec.grid_left + min(p.start_col for p in placed_row) * spec.cell_w
+        )
+        span_r = (
+            spec.grid_left + max(p.end_col for p in placed_row) * spec.cell_w
+        )
         shift = (center_to - (span_l + span_r) / 2.0) / spec.cell_w
         if abs(shift) > 1e-6:
             for p in placed_row:
@@ -962,11 +1068,31 @@ def draw_grid_line(
                     ascent, descent = font.getmetrics()
                     top_ext, bot_ext = float(ascent), float(descent)
                 if rev_date:
-                    x0 = int(round(spec.grid_left + (placed.start_col - 0.4) * spec.cell_w))
-                    x1 = int(round(spec.grid_left + (placed.end_col + 0.4) * spec.cell_w))
+                    x0 = int(
+                        round(
+                            spec.grid_left
+                            + (placed.start_col - 0.4) * spec.cell_w
+                        )
+                    )
+                    x1 = int(
+                        round(
+                            spec.grid_left
+                            + (placed.end_col + 0.4) * spec.cell_w
+                        )
+                    )
                 else:
-                    x0 = int(round(spec.grid_left + (placed.start_col - price_box_extend_cells) * spec.cell_w))
-                    x1 = int(round(spec.grid_left + (placed.end_col + 1) * spec.cell_w))
+                    x0 = int(
+                        round(
+                            spec.grid_left
+                            + (placed.start_col - price_box_extend_cells)
+                            * spec.cell_w
+                        )
+                    )
+                    x1 = int(
+                        round(
+                            spec.grid_left + (placed.end_col + 1) * spec.cell_w
+                        )
+                    )
                 x0 = max(int(spec.grid_left), x0)
                 y0 = int(round(baseline_y - top_ext))
                 y1 = int(round(baseline_y + bot_ext))

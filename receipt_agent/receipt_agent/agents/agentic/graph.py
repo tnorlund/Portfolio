@@ -24,7 +24,6 @@ from typing import Annotated, Any, Callable, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
-
 from receipt_agent.agents.agentic.state import AgentState
 from receipt_agent.agents.agentic.tools import (
     ReceiptContext,

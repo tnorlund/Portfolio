@@ -702,9 +702,7 @@ class LLMInvoker:
 
             try:
                 response = await asyncio.wait_for(
-                    self.llm.ainvoke(
-                        messages, config=merged_config, **kwargs
-                    ),
+                    self.llm.ainvoke(messages, config=merged_config, **kwargs),
                     timeout=self.invoke_timeout,
                 )
 

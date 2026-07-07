@@ -10,6 +10,7 @@ Ops:
   measure_char  {samples, char, threshold}      -> measure.measure_char(...)
   atlas_json    {npz}                           -> {glyphs: {cp: {w,h,off,bits_b64}}}
 """
+
 from __future__ import annotations
 
 import base64
@@ -69,7 +70,7 @@ def _grid_montage(stack: np.ndarray) -> np.ndarray:
         r, c = divmod(k, 3)
         y0 = r * (th + gut)
         x0 = c * (tw + gut)
-        grid[y0:y0 + th, x0:x0 + tw] = stack[k].astype(float)
+        grid[y0 : y0 + th, x0 : x0 + tw] = stack[k].astype(float)
     return grid
 
 
@@ -144,8 +145,11 @@ def main() -> int:
             result = handler(req)
             result.update({"id": req.get("id"), "ok": True})
         except Exception as exc:  # noqa: BLE001
-            result = {"id": (req.get("id") if isinstance(req, dict) else None),
-                      "ok": False, "error": repr(exc)}
+            result = {
+                "id": (req.get("id") if isinstance(req, dict) else None),
+                "ok": False,
+                "error": repr(exc),
+            }
         sys.stdout.write(json.dumps(result) + "\n")
         sys.stdout.flush()
     return 0

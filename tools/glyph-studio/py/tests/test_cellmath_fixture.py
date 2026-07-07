@@ -3,13 +3,17 @@
 If bitmap_font.py's derivation or scaling changes, this fails and the fixture
 (and the TS port) must be regenerated — that's the WYSIWYG parity contract.
 """
+
 import json
 import os
 
 from glyphstudio.cellmath import emit
 
 FIXTURE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "fixtures",
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "..",
+    "fixtures",
     "cellmath_cases.json",
 )
 

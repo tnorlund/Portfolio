@@ -19,6 +19,7 @@ Usage:
 Env: DYNAMODB_TABLE_NAME, AWS_REGION, BITMATRIX_DIR (default /tmp/bitmatrix),
      MERCHANT_FONT_BUCKET (default raw-image-bucket-c779c32).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,9 @@ DEFAULT_BUCKET = os.environ.get(
 
 
 def _slug(merchant: str) -> str:
-    return "".join(c if c.isalnum() else "_" for c in merchant.lower()).strip("_")
+    return "".join(c if c.isalnum() else "_" for c in merchant.lower()).strip(
+        "_"
+    )
 
 
 def _sha256(path: str) -> str:
@@ -62,10 +65,16 @@ def _sha256(path: str) -> str:
 
 def _git_commit(font_dir: str) -> str:
     try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=font_dir, capture_output=True, text=True, timeout=10,
-        ).stdout.strip()[:12] or "unknown"
+        return (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=font_dir,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()[:12]
+            or "unknown"
+        )
     except Exception:
         return "unknown"
 
@@ -84,7 +93,8 @@ def _compile(font_dir: str, out_npz: str, enforce_pitch: bool = True) -> dict:
     if report.get("missing") or report.get("empty"):
         raise SystemExit(
             f"compile self-check failed: missing={report.get('missing')} "
-            f"empty={report.get('empty')}")
+            f"empty={report.get('empty')}"
+        )
     font = load_font(font_dir)
     target = (font.get("metrics") or {}).get("pitchRatioTarget")
     pitch_check = "no target"
@@ -109,7 +119,9 @@ def _heavy_variant_dir(font_dir: str, tmp: str) -> str:
     shutil.copytree(font_dir, hdir)
     fpath = os.path.join(hdir, "font.json")
     font = json.load(open(fpath, encoding="utf-8"))
-    font["params"]["weight"] = round(float(font["params"].get("weight", 1.0)) * HEAVY_RATIO, 4)
+    font["params"]["weight"] = round(
+        float(font["params"].get("weight", 1.0)) * HEAVY_RATIO, 4
+    )
     json.dump(font, open(fpath, "w", encoding="utf-8"), indent=1)
     return hdir
 
@@ -137,16 +149,28 @@ def main() -> int:
     ap.add_argument("font_dir")
     ap.add_argument("--bucket", default=DEFAULT_BUCKET)
     ap.add_argument("--skip-heavy", action="store_true")
-    ap.add_argument("--npz", default=None,
-                    help="publish this prebuilt regular npz instead of "
-                         "compiling from sources (chart-derived atlases)")
-    ap.add_argument("--heavy-npz", default=None,
-                    help="prebuilt heavy npz to publish alongside --npz")
-    ap.add_argument("--logo", default=None,
-                    help="canonical logo master PNG to vault + cache "
-                         "(cache name <base>_logo.png; profile 'logo' field)")
-    ap.add_argument("--atlas-name", default=None,
-                    help="local cache filename base (default <font dir name>)")
+    ap.add_argument(
+        "--npz",
+        default=None,
+        help="publish this prebuilt regular npz instead of "
+        "compiling from sources (chart-derived atlases)",
+    )
+    ap.add_argument(
+        "--heavy-npz",
+        default=None,
+        help="prebuilt heavy npz to publish alongside --npz",
+    )
+    ap.add_argument(
+        "--logo",
+        default=None,
+        help="canonical logo master PNG to vault + cache "
+        "(cache name <base>_logo.png; profile 'logo' field)",
+    )
+    ap.add_argument(
+        "--atlas-name",
+        default=None,
+        help="local cache filename base (default <font dir name>)",
+    )
     args = ap.parse_args()
 
     from receipt_dynamo import DynamoClient  # noqa: PLC0415
@@ -177,22 +201,31 @@ def main() -> int:
 
         logo_key = None
         if args.logo:
-            logo_key = f"merchant_fonts/{slug}/logo-{_sha256(args.logo)[:8]}.png"
+            logo_key = (
+                f"merchant_fonts/{slug}/logo-{_sha256(args.logo)[:8]}.png"
+            )
             s3.upload_file(args.logo, args.bucket, logo_key)
             logo_cache = os.path.join(cache_dir, f"{base}_logo.png")
             shutil.copy(args.logo, logo_cache)
-            print(f"logo -> s3://{args.bucket}/{logo_key} + cache {logo_cache}")
+            print(
+                f"logo -> s3://{args.bucket}/{logo_key} + cache {logo_cache}"
+            )
 
         stylemap_local = os.path.join(args.font_dir, "stylemap.json")
         stylemap_key = None
         if os.path.exists(stylemap_local):
             stylemap_key = f"merchant_fonts/{slug}/stylemap-{_sha256(stylemap_local)[:8]}.json"
             s3.upload_file(stylemap_local, args.bucket, stylemap_key)
-            shutil.copy(stylemap_local, os.path.join(cache_dir, f"{base}.stylemap.json"))
+            shutil.copy(
+                stylemap_local,
+                os.path.join(cache_dir, f"{base}.stylemap.json"),
+            )
             print(f"stylemap -> s3://{args.bucket}/{stylemap_key}")
 
         for face, fdir in faces.items():
-            suffix = ".glyphs.npz" if face == "regular" else "-heavy.glyphs.npz"
+            suffix = (
+                ".glyphs.npz" if face == "regular" else "-heavy.glyphs.npz"
+            )
             cache_filename = f"{base}{suffix}"
             if prebuilt:
                 npz = prebuilt[face]
@@ -228,16 +261,22 @@ def main() -> int:
                 os.unlink(local)
             if os.path.abspath(npz) != os.path.abspath(local):
                 shutil.copy(npz, local)
-            print(f"{face}: {report['glyph_count']} glyphs "
-                  f"cap_h={report['cap_h']:.1f} adv={report['advance_ratio']:.3f} "
-                  f"pitch[{report['pitch_check']}]")
+            print(
+                f"{face}: {report['glyph_count']} glyphs "
+                f"cap_h={report['cap_h']:.1f} adv={report['advance_ratio']:.3f} "
+                f"pitch[{report['pitch_check']}]"
+            )
             print(f"  -> s3://{args.bucket}/{key}")
             print(f"  -> dynamo MERCHANT_FONT#{args.merchant} FACE#{face}")
             print(f"  -> cache {local}")
 
     # inkthin caches are per-atlas; stale ones poison density
     cleared = 0
-    for f in os.listdir("/tmp/render_cache") if os.path.isdir("/tmp/render_cache") else []:
+    for f in (
+        os.listdir("/tmp/render_cache")
+        if os.path.isdir("/tmp/render_cache")
+        else []
+    ):
         if "inkthin" in f:
             os.remove(os.path.join("/tmp/render_cache", f))
             cleared += 1

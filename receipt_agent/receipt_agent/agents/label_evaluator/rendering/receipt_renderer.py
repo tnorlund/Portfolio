@@ -29,16 +29,12 @@ from statistics import median
 from typing import Any, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
-
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    US,
-    date_core,
-)
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
-from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
-    row_style,
+from receipt_agent.agents.label_evaluator.rendering.number_format import (
+    US,
+    date_core,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
@@ -46,15 +42,18 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     amount_lane_end,
     assign_row_baselines,
     build_grid_spec,
-    drawn_cell_count,
     draw_grid_line,
-    draw_token_chars,
     draw_text_run,
+    draw_token_chars,
+    drawn_cell_count,
     effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
     is_price_token,
     section_for_labels,
+)
+from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
+    row_style,
 )
 
 # Grid-path body face, most receipt-like first. Real thermal receipts use a
@@ -300,9 +299,21 @@ def _is_final_total(
 _DATE_LED = re.compile(f"^{date_core(US)}$")
 
 
-def _draw_dash_row(draw, x0: float, x1: float, baseline_y: float, spec, font,
-                   *, ink, stroke=0, condense=1.0, bitmap_font=None,
-                   cap_px=None, bitmap_thin: float = 0.0) -> None:
+def _draw_dash_row(
+    draw,
+    x0: float,
+    x1: float,
+    baseline_y: float,
+    spec,
+    font,
+    *,
+    ink,
+    stroke=0,
+    condense=1.0,
+    bitmap_font=None,
+    cap_px=None,
+    bitmap_thin: float = 0.0,
+) -> None:
     """A thermal separator rule printed as a run of actual ``-`` glyphs.
 
     Costco prints its section separators as a full-width row of the dash
@@ -314,9 +325,20 @@ def _draw_dash_row(draw, x0: float, x1: float, baseline_y: float, spec, font,
     n = int((x1 - x0) / spec.cell_w)
     if n <= 0:
         return
-    draw_token_chars(draw, "-" * n, start_col, baseline_y, spec, font, ink,
-                     stroke=stroke, condense=condense, bitmap_font=bitmap_font,
-                     cap_px=cap_px, bitmap_thin=bitmap_thin)
+    draw_token_chars(
+        draw,
+        "-" * n,
+        start_col,
+        baseline_y,
+        spec,
+        font,
+        ink,
+        stroke=stroke,
+        condense=condense,
+        bitmap_font=bitmap_font,
+        cap_px=cap_px,
+        bitmap_thin=bitmap_thin,
+    )
 
 
 def _is_asterisk_rule(row_text: str) -> bool:
@@ -367,7 +389,9 @@ def _ocr_grid_metrics(
         return None, None
 
     cap_ratio = max(0.65, min(0.95, float(config.ocr_cap_height_ratio)))
-    base_cap = max(6, int(round(sizing.font_px * float(config.bitmap_cap_ratio))))
+    base_cap = max(
+        6, int(round(sizing.font_px * float(config.bitmap_cap_ratio)))
+    )
     measured_cap = int(round(median(heights) * cap_ratio))
     cap_px = max(int(round(base_cap * 0.9)), measured_cap)
     cap_px = min(max(6, int(config.max_font_px)), cap_px)
@@ -454,9 +478,12 @@ def _render_grid(
         from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
             BitmapFont,
         )
+
         bitmap_thin = max(0.0, min(0.9, float(config.bitmap_thin or 0.0)))
         bmf = BitmapFont(config.bitmap_font["regular"], thin=bitmap_thin)
-        heavy_path = config.bitmap_font.get("heavy", config.bitmap_font["regular"])
+        heavy_path = config.bitmap_font.get(
+            "heavy", config.bitmap_font["regular"]
+        )
         bmf_heavy = BitmapFont(heavy_path, thin=bitmap_thin)
         cap_ratio = max(0.5, min(1.0, float(config.bitmap_cap_ratio)))
         cap_px = max(6, int(round(sizing.font_px * cap_ratio)))
@@ -504,14 +531,17 @@ def _render_grid(
     if hasattr(raw_head, "items"):
         heading_rules = [(k.upper(), float(v)) for k, v in raw_head.items()]
     else:
-        heading_rules = [(str(h).upper(), float(config.heading_scale or 1.0))
-                         for h in raw_head]
+        heading_rules = [
+            (str(h).upper(), float(config.heading_scale or 1.0))
+            for h in raw_head
+        ]
     # The big bottom item-count date line inherits its heading phrase's scale
     # (Costco's "ITEMS SOLD:"); the anchor phrase comes from the merchant profile.
     _bleed = config.heading_bleed_phrase
     items_sold_scale = (
         next((sc for pat, sc in heading_rules if _bleed in pat), None)
-        if _bleed else None
+        if _bleed
+        else None
     )
 
     # Scale-aware pitch floor: the gap before an enlarged display row must clear
@@ -522,8 +552,13 @@ def _render_grid(
     def _row_scale(k: int) -> float:
         t = _row_texts_pitch[k]
         hs = next((sc for pat, sc in heading_rules if pat in t), None)
-        if (hs is None and items_sold_scale is not None and k > 0
-                and _bleed and _bleed in _row_texts_pitch[k - 1]):
+        if (
+            hs is None
+            and items_sold_scale is not None
+            and k > 0
+            and _bleed
+            and _bleed in _row_texts_pitch[k - 1]
+        ):
             hs = items_sold_scale
         return float(hs) if hs else 1.0
 
@@ -548,8 +583,11 @@ def _render_grid(
         ll = min(w.left for w in line)
         lr = max(w.right for w in line)
         lm, rm = ll - content_left, content_right - lr
-        if (lm > 0.08 * content_cw and rm > 0.08 * content_cw
-                and abs(lm - rm) < 0.18 * content_cw):
+        if (
+            lm > 0.08 * content_cw
+            and rm > 0.08 * content_cw
+            and abs(lm - rm) < 0.18 * content_cw
+        ):
             return content_left + content_cw / 2.0
         return None
 
@@ -564,9 +602,25 @@ def _render_grid(
             return None
         upper = text.upper()
         payment_markers = (
-            "ENTRY", "CARD", "PURCHASE", "AUTH", "AID", "TVR", "IAD",
-            "TC:", "MID", "TID", "SEQ", "ISSUER", "ARC", "TSI", "MODE:",
-            "TOTAL:", "BALANCE", "CREDIT", "DEBIT",
+            "ENTRY",
+            "CARD",
+            "PURCHASE",
+            "AUTH",
+            "AID",
+            "TVR",
+            "IAD",
+            "TC:",
+            "MID",
+            "TID",
+            "SEQ",
+            "ISSUER",
+            "ARC",
+            "TSI",
+            "MODE:",
+            "TOTAL:",
+            "BALANCE",
+            "CREDIT",
+            "DEBIT",
         )
         if any(marker in upper for marker in payment_markers):
             return None
@@ -607,7 +661,7 @@ def _render_grid(
             )
             if is_total_row or is_amount_date:
                 dash_after_rows.add(k)
-            for phrase in (config.dash_around_phrases or ()):
+            for phrase in config.dash_around_phrases or ():
                 if t.startswith(phrase.upper()) and any(
                     ch.isdigit() for ch in t
                 ):
@@ -635,11 +689,17 @@ def _render_grid(
         # heavy + enlarged; the heavy face is NOT applied to the whole TOTALS zone
         # (real Costco totals are body weight -- only headings, the reverse-video
         # total, and the bottom block stand out).
-        hscale = next((sc for pat, sc in heading_rules if pat in row_text), None)
+        hscale = next(
+            (sc for pat, sc in heading_rules if pat in row_text), None
+        )
         # Bottom date line: the big date right after "Items Sold:" (distinct from
         # the reverse-video date after "TOTAL NUMBER OF ITEMS SOLD").
-        if (hscale is None and items_sold_scale is not None
-                and _bleed and _bleed in prev_text):
+        if (
+            hscale is None
+            and items_sold_scale is not None
+            and _bleed
+            and _bleed in prev_text
+        ):
             hscale = items_sold_scale
         is_heading = hscale is not None
         is_total = bool(config.reverse_total) and _is_final_total(
@@ -647,9 +707,11 @@ def _render_grid(
         )
         # The date on the row right after the item-count line is boxed (anchor
         # phrase from the merchant profile, e.g. Costco's "NUMBER OF ITEMS SOLD").
-        is_date_row = (bool(config.reverse_date_after_items)
-                       and bool(config.reverse_date_anchor)
-                       and config.reverse_date_anchor in prev_text)
+        is_date_row = (
+            bool(config.reverse_date_after_items)
+            and bool(config.reverse_date_anchor)
+            and config.reverse_date_anchor in prev_text
+        )
         prev_text = row_text
         center_to = _center_target(line)
         fpath = section_font.get(sect) if sect else None
@@ -684,26 +746,51 @@ def _render_grid(
                 bitmap_thin=config.bitmap_thin,
             )
             continue
-        sm_extra = bool(sm_style and (sm_style["bold"] or sm_style["underline"]))
+        sm_extra = bool(
+            sm_style and (sm_style["bold"] or sm_style["underline"])
+        )
         if sc == 1.0 and not fpath and not sm_extra:
             run = _run_layout(line, center_to)
             if run is not None:
                 text, anchor, x, target_w = run
-                draw_text_run(draw, text, x, baseline, spec, font, line[0].ink,
-                              anchor=anchor, stroke=config.stroke,
-                              condense=config.condense, bitmap_font=bf_row,
-                              cap_px=cap_px, target_width=target_w,
-                              bitmap_thin=config.bitmap_thin,
-                              box_sink=config.box_sink, sink_words=line)
+                draw_text_run(
+                    draw,
+                    text,
+                    x,
+                    baseline,
+                    spec,
+                    font,
+                    line[0].ink,
+                    anchor=anchor,
+                    stroke=config.stroke,
+                    condense=config.condense,
+                    bitmap_font=bf_row,
+                    cap_px=cap_px,
+                    target_width=target_w,
+                    bitmap_thin=config.bitmap_thin,
+                    box_sink=config.box_sink,
+                    sink_words=line,
+                )
                 continue
-            draw_grid_line(draw, line, baseline, spec, font, amount_lane=amount_lane,
-                           stroke=config.stroke, condense=config.condense,
-                           bitmap_font=bf_row, cap_px=cap_px,
-                           bitmap_thin=config.bitmap_thin,
-                           reverse_price=is_total, reverse_date=is_date_row,
-                           background=config.background, center_to=center_to,
-                           price_box_extend_cells=config.reverse_box_lane_cells,
-                           box_sink=config.box_sink)
+            draw_grid_line(
+                draw,
+                line,
+                baseline,
+                spec,
+                font,
+                amount_lane=amount_lane,
+                stroke=config.stroke,
+                condense=config.condense,
+                bitmap_font=bf_row,
+                cap_px=cap_px,
+                bitmap_thin=config.bitmap_thin,
+                reverse_price=is_total,
+                reverse_date=is_date_row,
+                background=config.background,
+                center_to=center_to,
+                price_box_extend_cells=config.reverse_box_lane_cells,
+                box_sink=config.box_sink,
+            )
             continue
         key = (fpath, sc, bf_row is bmf_heavy)
         cached = row_cache.get(key)
@@ -718,49 +805,81 @@ def _render_grid(
                 row_adv = bf_row.advance(row_cap) * float(config.condense)
             else:
                 row_cap = None
-                row_adv = glyph_advance(draw, row_font) * float(config.condense)
+                row_adv = glyph_advance(draw, row_font) * float(
+                    config.condense
+                )
             row_spec = GridSpec(
-                cell_w=row_adv, cell_h=spec.cell_h,
-                font_px=row_font_px, grid_left=spec.grid_left,
+                cell_w=row_adv,
+                cell_h=spec.cell_h,
+                font_px=row_font_px,
+                grid_left=spec.grid_left,
             )
             row_cache[key] = (row_spec, row_font, row_cap)
             cached = row_cache[key]
         row_spec, row_font, row_cap = cached
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
-        cp = row_cap if row_cap else (int(round(cap_px * sc)) if cap_px else None)
+        cp = (
+            row_cap
+            if row_cap
+            else (int(round(cap_px * sc)) if cap_px else None)
+        )
         sm_bold = bool(sm_style and sm_style["bold"])
         sm_underline = bool(sm_style and sm_style["underline"])
         # A genuinely-compiled heavy face beats a 1px double-strike; fall back
         # to double-strike only when the profile's heavy is the regular file.
         bfp = config.bitmap_font or {}
-        if sm_bold and bmf_heavy is not None and bfp.get("heavy") != bfp.get("regular"):
+        if (
+            sm_bold
+            and bmf_heavy is not None
+            and bfp.get("heavy") != bfp.get("regular")
+        ):
             bf_row = bmf_heavy
             sm_bold = False
         run = _run_layout(line, center_to)
         if run is not None:
             text, anchor, x, target_w = run
             for dx in ((0, 1) if sm_bold else (0,)):
-                draw_text_run(draw, text, x + dx, baseline, row_spec, row_font,
-                              line[0].ink,
-                              anchor=anchor, stroke=config.stroke,
-                              condense=config.condense, bitmap_font=bf_row,
-                              cap_px=cp, target_width=target_w,
-                              bitmap_thin=config.bitmap_thin,
-                              box_sink=config.box_sink if dx == 0 else None,
-                              sink_words=line)
+                draw_text_run(
+                    draw,
+                    text,
+                    x + dx,
+                    baseline,
+                    row_spec,
+                    row_font,
+                    line[0].ink,
+                    anchor=anchor,
+                    stroke=config.stroke,
+                    condense=config.condense,
+                    bitmap_font=bf_row,
+                    cap_px=cp,
+                    target_width=target_w,
+                    bitmap_thin=config.bitmap_thin,
+                    box_sink=config.box_sink if dx == 0 else None,
+                    sink_words=line,
+                )
         else:
             for dx in ((0, 1) if sm_bold else (0,)):
-                draw_grid_line(draw, line, baseline, row_spec, row_font,
-                               amount_lane=lane,
-                               stroke=config.stroke, condense=config.condense,
-                               bitmap_font=bf_row, cap_px=cp,
-                               bitmap_thin=config.bitmap_thin,
-                               reverse_price=is_total, reverse_date=is_date_row,
-                               background=config.background, center_to=center_to,
-                               price_box_extend_cells=config.reverse_box_lane_cells,
-                               x_shift_px=dx,
-                               box_sink=config.box_sink if dx == 0 else None)
+                draw_grid_line(
+                    draw,
+                    line,
+                    baseline,
+                    row_spec,
+                    row_font,
+                    amount_lane=lane,
+                    stroke=config.stroke,
+                    condense=config.condense,
+                    bitmap_font=bf_row,
+                    cap_px=cp,
+                    bitmap_thin=config.bitmap_thin,
+                    reverse_price=is_total,
+                    reverse_date=is_date_row,
+                    background=config.background,
+                    center_to=center_to,
+                    price_box_extend_cells=config.reverse_box_lane_cells,
+                    x_shift_px=dx,
+                    box_sink=config.box_sink if dx == 0 else None,
+                )
         if sm_underline:
             # Measured underline rule: hugs the baseline like the real prints
             # (the fleet probe found rules INSIDE the OCR boxes' bottom edge).
@@ -768,23 +887,32 @@ def _render_grid(
             ul_right = int(round(max(w.right for w in line)))
             ul_h = max(1, int(round((cp or spec.font_px) * 0.07)))
             ul_y = int(round(baseline + max(2, ul_h)))
-            draw.rectangle([ul_left, ul_y, ul_right, ul_y + ul_h - 1],
-                           fill=line[0].ink)
+            draw.rectangle(
+                [ul_left, ul_y, ul_right, ul_y + ul_h - 1], fill=line[0].ink
+            )
 
     # Dashed section rules, printed as a run of real ``-`` glyphs in the reserved
     # gap below each anchor row. Use the merchant's bitmap face when it carries a
     # dash glyph, else the body TTF (which always has one).
     dash_bmf = bmf if (bmf is not None and bmf.has("-")) else None
     for y in dash_ys:
-        _draw_dash_row(draw, content_left, content_right, y, spec, font,
-                       ink=_ink_for({}, config), stroke=config.stroke,
-                       condense=config.condense, bitmap_font=dash_bmf,
-                       cap_px=cap_px, bitmap_thin=config.bitmap_thin)
+        _draw_dash_row(
+            draw,
+            content_left,
+            content_right,
+            y,
+            spec,
+            font,
+            ink=_ink_for({}, config),
+            stroke=config.stroke,
+            condense=config.condense,
+            bitmap_font=dash_bmf,
+            cap_px=cap_px,
+            bitmap_thin=config.bitmap_thin,
+        )
 
 
-def _load_grid_font(
-    size: int, config: RenderConfig
-) -> ImageFont.FreeTypeFont:
+def _load_grid_font(size: int, config: RenderConfig) -> ImageFont.FreeTypeFont:
     """Load the body font for the grid path.
 
     Prefers an explicit ``config.font_path``, else the first present face in
@@ -1059,9 +1187,9 @@ def _load_font(size: int, config: RenderConfig) -> ImageFont.FreeTypeFont:
     cached = _FONT_CACHE.get(key)
     if cached is not None:
         return cached
-    candidates = (
-        [config.font_path] if config.font_path else []
-    ) + list(_MONOSPACE_FONT_CANDIDATES)
+    candidates = ([config.font_path] if config.font_path else []) + list(
+        _MONOSPACE_FONT_CANDIDATES
+    )
     for path in candidates:
         if path and os.path.exists(path):
             try:
@@ -1091,6 +1219,9 @@ def _hstack_labeled(
     font = ImageFont.load_default(size=14)
     draw.text((4, 4), labels[0], font=font, fill=(0, 0, 0))
     draw.text((left.width + gap + 4, 4), labels[1], font=font, fill=(0, 0, 0))
-    draw.line([(left.width + gap // 2, 0), (left.width + gap // 2, height)],
-              fill=(200, 200, 200), width=1)
+    draw.line(
+        [(left.width + gap // 2, 0), (left.width + gap // 2, height)],
+        fill=(200, 200, 200),
+        width=1,
+    )
     return canvas

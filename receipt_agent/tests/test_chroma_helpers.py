@@ -1,7 +1,6 @@
 """Unit tests for targeted Chroma evidence helpers."""
 
 import pytest
-
 from receipt_agent.utils.chroma_helpers import (
     LabelEvidence,
     _discover_and_evaluate_unlabeled,
@@ -198,6 +197,7 @@ def test_format_label_evidence_for_prompt_includes_source_tags():
 # Helpers for unlabeled-word consensus tests
 # ---------------------------------------------------------------------------
 
+
 def _make_word_dict(
     image_id="img1",
     receipt_id=1,
@@ -247,7 +247,9 @@ class UnfilteredFakeChromaClient:
             return {"embeddings": [self._get_embedding]}
         return {"embeddings": []}
 
-    def query(self, collection_name, query_embeddings, n_results, include, **kwargs):
+    def query(
+        self, collection_name, query_embeddings, n_results, include, **kwargs
+    ):
         metadatas = []
         distances = []
         for neighbor in self._query_neighbors:
@@ -270,21 +272,31 @@ def test_discover_candidate_label_returns_dominant_label():
     neighbors = [
         {
             "metadata": {
-                "image_id": "img2", "receipt_id": 2, "line_id": 1, "word_id": i,
-                "text": "item", "valid_labels_array": ["LINE_TOTAL"],
+                "image_id": "img2",
+                "receipt_id": 2,
+                "line_id": 1,
+                "word_id": i,
+                "text": "item",
+                "valid_labels_array": ["LINE_TOTAL"],
             },
             "distance": 0.1,
         }
         for i in range(5)
     ]
     # Add a couple with a different label
-    neighbors.append({
-        "metadata": {
-            "image_id": "img3", "receipt_id": 3, "line_id": 1, "word_id": 1,
-            "text": "tax", "valid_labels_array": ["TAX"],
-        },
-        "distance": 0.2,
-    })
+    neighbors.append(
+        {
+            "metadata": {
+                "image_id": "img3",
+                "receipt_id": 3,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "tax",
+                "valid_labels_array": ["TAX"],
+            },
+            "distance": 0.2,
+        }
+    )
 
     result = _discover_candidate_label(
         chroma_client=UnfilteredFakeChromaClient(query_neighbors=neighbors),
@@ -300,8 +312,12 @@ def test_discover_candidate_label_returns_none_when_no_dominant():
     neighbors = [
         {
             "metadata": {
-                "image_id": "img2", "receipt_id": 2, "line_id": 1, "word_id": i,
-                "text": f"word{i}", "valid_labels_array": [f"LABEL_{i}"],
+                "image_id": "img2",
+                "receipt_id": 2,
+                "line_id": 1,
+                "word_id": i,
+                "text": f"word{i}",
+                "valid_labels_array": [f"LABEL_{i}"],
             },
             "distance": 0.1,
         }
@@ -333,8 +349,12 @@ def test_discover_candidate_label_skips_unlabeled_labels():
     neighbors = [
         {
             "metadata": {
-                "image_id": "img2", "receipt_id": 2, "line_id": 1, "word_id": i,
-                "text": "word", "valid_labels_array": ["O"],
+                "image_id": "img2",
+                "receipt_id": 2,
+                "line_id": 1,
+                "word_id": i,
+                "text": "word",
+                "valid_labels_array": ["O"],
             },
             "distance": 0.1,
         }
@@ -352,26 +372,40 @@ def test_discover_candidate_label_skips_unlabeled_labels():
 @pytest.mark.unit
 def test_discover_candidate_label_excludes_self():
     """Should skip the query word's own chroma ID."""
-    self_id = _word_chroma_id(image_id="img2", receipt_id=2, line_id=1, word_id=1)
+    self_id = _word_chroma_id(
+        image_id="img2", receipt_id=2, line_id=1, word_id=1
+    )
     neighbors = [
         {
             "metadata": {
-                "image_id": "img2", "receipt_id": 2, "line_id": 1, "word_id": 1,
-                "text": "self", "valid_labels_array": ["TOTAL"],
+                "image_id": "img2",
+                "receipt_id": 2,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "self",
+                "valid_labels_array": ["TOTAL"],
             },
             "distance": 0.05,
         },
         {
             "metadata": {
-                "image_id": "img3", "receipt_id": 3, "line_id": 1, "word_id": 1,
-                "text": "other1", "valid_labels_array": ["TOTAL"],
+                "image_id": "img3",
+                "receipt_id": 3,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "other1",
+                "valid_labels_array": ["TOTAL"],
             },
             "distance": 0.1,
         },
         {
             "metadata": {
-                "image_id": "img4", "receipt_id": 4, "line_id": 1, "word_id": 1,
-                "text": "other2", "valid_labels_array": ["TOTAL"],
+                "image_id": "img4",
+                "receipt_id": 4,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "other2",
+                "valid_labels_array": ["TOTAL"],
             },
             "distance": 0.15,
         },
@@ -396,8 +430,12 @@ def test_discover_and_evaluate_returns_candidate_and_consensus():
     neighbors = [
         {
             "metadata": {
-                "image_id": f"nb{i}", "receipt_id": i + 10, "line_id": 1, "word_id": 1,
-                "text": "item", "valid_labels_array": ["LINE_TOTAL"],
+                "image_id": f"nb{i}",
+                "receipt_id": i + 10,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "item",
+                "valid_labels_array": ["LINE_TOTAL"],
                 "invalid_labels_array": [],
             },
             "distance": 0.1,
@@ -423,8 +461,12 @@ def test_discover_and_evaluate_returns_none_no_dominant():
     neighbors = [
         {
             "metadata": {
-                "image_id": f"nb{i}", "receipt_id": i + 10, "line_id": 1, "word_id": 1,
-                "text": "word", "valid_labels_array": [f"UNIQUE_{i}"],
+                "image_id": f"nb{i}",
+                "receipt_id": i + 10,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "word",
+                "valid_labels_array": [f"UNIQUE_{i}"],
                 "invalid_labels_array": [],
             },
             "distance": 0.1,
@@ -457,8 +499,12 @@ def test_discover_and_evaluate_mixed_consensus():
         # 3 neighbors with LINE_TOTAL as valid
         {
             "metadata": {
-                "image_id": f"v{i}", "receipt_id": i + 10, "line_id": 1, "word_id": 1,
-                "text": "amount", "valid_labels_array": ["LINE_TOTAL"],
+                "image_id": f"v{i}",
+                "receipt_id": i + 10,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "amount",
+                "valid_labels_array": ["LINE_TOTAL"],
                 "invalid_labels_array": [],
             },
             "distance": 0.1 + i * 0.01,
@@ -468,8 +514,12 @@ def test_discover_and_evaluate_mixed_consensus():
         # 2 neighbors with LINE_TOTAL as invalid
         {
             "metadata": {
-                "image_id": f"i{i}", "receipt_id": i + 20, "line_id": 1, "word_id": 1,
-                "text": "price", "valid_labels_array": [],
+                "image_id": f"i{i}",
+                "receipt_id": i + 20,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "price",
+                "valid_labels_array": [],
                 "invalid_labels_array": ["LINE_TOTAL"],
             },
             "distance": 0.15 + i * 0.01,
@@ -500,7 +550,10 @@ def _make_consensus_neighbors(target_label, count=5, valid=True):
     neighbors = []
     for i in range(count):
         meta = {
-            "image_id": f"nb{i}", "receipt_id": i + 10, "line_id": 1, "word_id": 1,
+            "image_id": f"nb{i}",
+            "receipt_id": i + 10,
+            "line_id": 1,
+            "word_id": 1,
             "text": "amount",
         }
         if valid:
@@ -563,8 +616,12 @@ def test_chroma_resolve_unlabeled_word_no_dominant_label():
     neighbors = [
         {
             "metadata": {
-                "image_id": f"nb{i}", "receipt_id": i + 10, "line_id": 1, "word_id": 1,
-                "text": "word", "valid_labels_array": [f"UNIQUE_{i}"],
+                "image_id": f"nb{i}",
+                "receipt_id": i + 10,
+                "line_id": 1,
+                "word_id": 1,
+                "text": "word",
+                "valid_labels_array": [f"UNIQUE_{i}"],
             },
             "distance": 0.1 + i * 0.02,
         }
@@ -617,7 +674,9 @@ def test_chroma_resolve_mixed_labeled_and_unlabeled():
 
     labeled_word = _make_word_dict(current_label="TOTAL", word_text="12.99")
     unlabeled_word = _make_word_dict(
-        current_label="", word_text="5.00", word_id=4,
+        current_label="",
+        word_text="5.00",
+        word_id=4,
     )
 
     resolved, unresolved = chroma_resolve_words(

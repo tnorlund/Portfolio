@@ -3,6 +3,7 @@
 scipy/scikit-image are deliberately absent from the venv; the thinning
 conditions are computed vectorized over the whole array with padded shifts.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,14 +13,14 @@ def _neighbors(img: np.ndarray) -> list[np.ndarray]:
     """P2..P9 (clockwise from north) for every pixel, via padded shifts."""
     p = np.pad(img, 1)
     return [
-        p[:-2, 1:-1],   # P2 N
-        p[:-2, 2:],     # P3 NE
-        p[1:-1, 2:],    # P4 E
-        p[2:, 2:],      # P5 SE
-        p[2:, 1:-1],    # P6 S
-        p[2:, :-2],     # P7 SW
-        p[1:-1, :-2],   # P8 W
-        p[:-2, :-2],    # P9 NW
+        p[:-2, 1:-1],  # P2 N
+        p[:-2, 2:],  # P3 NE
+        p[1:-1, 2:],  # P4 E
+        p[2:, 2:],  # P5 SE
+        p[2:, 1:-1],  # P6 S
+        p[2:, :-2],  # P7 SW
+        p[1:-1, :-2],  # P8 W
+        p[:-2, :-2],  # P9 NW
     ]
 
 
@@ -40,9 +41,7 @@ def zhang_suen(mask: np.ndarray, max_iters: int = 200) -> np.ndarray:
                 cond = (n[0] * n[2] * n[4] == 0) & (n[2] * n[4] * n[6] == 0)
             else:
                 cond = (n[0] * n[2] * n[6] == 0) & (n[0] * n[4] * n[6] == 0)
-            kill = (
-                (img == 1) & (b >= 2) & (b <= 6) & (a == 1) & cond
-            )
+            kill = (img == 1) & (b >= 2) & (b <= 6) & (a == 1) & cond
             if kill.any():
                 img[kill] = 0
                 changed = True
@@ -66,7 +65,11 @@ def _ink_nbrs(mask: np.ndarray, y: int, x: int) -> list[tuple[int, int]]:
             if dy == 0 and dx == 0:
                 continue
             ny, nx = y + dy, x + dx
-            if 0 <= ny < mask.shape[0] and 0 <= nx < mask.shape[1] and mask[ny, nx]:
+            if (
+                0 <= ny < mask.shape[0]
+                and 0 <= nx < mask.shape[1]
+                and mask[ny, nx]
+            ):
                 out.append((ny, nx))
     return out
 

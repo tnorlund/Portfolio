@@ -7,6 +7,7 @@ placement, so WYSIWYG parity has a single source of truth.
 
 Usage: python -m glyphstudio.cellmath --emit ../fixtures/cellmath_cases.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,8 +29,11 @@ def _imports():
         if p not in sys.path:
             sys.path.insert(0, p)
     from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
-        BitmapFont, thin_ink_mask, preserve_top_arc,
+        BitmapFont,
+        preserve_top_arc,
+        thin_ink_mask,
     )
+
     return BitmapFont, thin_ink_mask, preserve_top_arc
 
 
@@ -38,16 +42,35 @@ def _fixture_atlas(tmpdir: str) -> str:
     rng = np.random.default_rng(7)
     arrays = {}
     specs = {
-        "A": (60, 33, 0), "B": (60, 31, 0), "D": (60, 32, 0),
-        "E": (59, 30, 0), "F": (60, 29, 0), "G": (61, 34, 0),
-        "H": (60, 35, -1), "K": (60, 33, 0), "L": (60, 28, 0),
-        "M": (60, 40, 0), "N": (60, 36, 1), "P": (60, 30, 0),
-        "R": (60, 32, 0), "S": (60, 30, 0), "T": (60, 32, 0),
-        "U": (60, 34, 0), "V": (60, 34, 0), "W": (60, 42, 0),
-        "X": (60, 33, 0), "Z": (60, 31, 0),
-        "O": (61, 35, 0), "o": (43, 30, 0), "e": (42, 29, 0),
-        "c": (42, 28, 0), "p": (55, 30, 12), "g": (56, 31, 13),
-        "-": (6, 26, -26), "5": (60, 31, 0), ".": (8, 8, 0),
+        "A": (60, 33, 0),
+        "B": (60, 31, 0),
+        "D": (60, 32, 0),
+        "E": (59, 30, 0),
+        "F": (60, 29, 0),
+        "G": (61, 34, 0),
+        "H": (60, 35, -1),
+        "K": (60, 33, 0),
+        "L": (60, 28, 0),
+        "M": (60, 40, 0),
+        "N": (60, 36, 1),
+        "P": (60, 30, 0),
+        "R": (60, 32, 0),
+        "S": (60, 30, 0),
+        "T": (60, 32, 0),
+        "U": (60, 34, 0),
+        "V": (60, 34, 0),
+        "W": (60, 42, 0),
+        "X": (60, 33, 0),
+        "Z": (60, 31, 0),
+        "O": (61, 35, 0),
+        "o": (43, 30, 0),
+        "e": (42, 29, 0),
+        "c": (42, 28, 0),
+        "p": (55, 30, 12),
+        "g": (56, 31, 13),
+        "-": (6, 26, -26),
+        "5": (60, 31, 0),
+        ".": (8, 8, 0),
         "$": (66, 32, 3),
     }
     for ch, (h, w, off) in specs.items():
@@ -76,10 +99,13 @@ def emit(out_path: str) -> dict:
             cp = int(key[1:])
             arr = data[key]
             atlas_dump[str(cp)] = {
-                "w": int(arr.shape[1]), "h": int(arr.shape[0]),
+                "w": int(arr.shape[1]),
+                "h": int(arr.shape[0]),
                 "off": int(data[f"o{cp}"]),
-                "rows": ["".join("1" if v else "0" for v in row)
-                         for row in arr.tolist()],
+                "rows": [
+                    "".join("1" if v else "0" for v in row)
+                    for row in arr.tolist()
+                ],
             }
 
     cases = []
@@ -88,7 +114,19 @@ def emit(out_path: str) -> dict:
         for cap_px in (16, 22, 30, 48):
             for condense in (1.0, 0.895):
                 cell_w = bmf.advance(cap_px) * condense
-                for ch in ("A", "M", "W", "o", "p", "g", "-", "5", ".", "$", "e"):
+                for ch in (
+                    "A",
+                    "M",
+                    "W",
+                    "o",
+                    "p",
+                    "g",
+                    "-",
+                    "5",
+                    ".",
+                    "$",
+                    "e",
+                ):
                     g = bmf.glyph(ch, cap_px)
                     if g is None:
                         continue
@@ -97,24 +135,30 @@ def emit(out_path: str) -> dict:
                     # condense width resize + 0.96 clamp exactly as
                     # draw_token_chars does it
                     from PIL import Image
+
                     gw = img.width
                     if condense < 0.999:
                         gw = max(1, int(round(img.width * condense)))
                     max_w = max(1, int(round(cell_w * 0.96)))
                     gw_final = min(gw, max_w)
-                    cases.append({
-                        "ch": ch, "cap_px": cap_px, "thin": thin,
-                        "condense": condense,
-                        "cap_h": bmf.cap_h,
-                        "advance_ratio": bmf.advance(1.0),
-                        "cell_w": cell_w,
-                        "scaled_h": h,
-                        "scaled_w": img.width,
-                        "final_w": gw_final,
-                        "off_px": off,
-                        "bitmap_sha1": hashlib.sha1(
-                            arr.tobytes()).hexdigest()[:16],
-                    })
+                    cases.append(
+                        {
+                            "ch": ch,
+                            "cap_px": cap_px,
+                            "thin": thin,
+                            "condense": condense,
+                            "cap_h": bmf.cap_h,
+                            "advance_ratio": bmf.advance(1.0),
+                            "cell_w": cell_w,
+                            "scaled_h": h,
+                            "scaled_w": img.width,
+                            "final_w": gw_final,
+                            "off_px": off,
+                            "bitmap_sha1": hashlib.sha1(
+                                arr.tobytes()
+                            ).hexdigest()[:16],
+                        }
+                    )
     fixture = {
         "source": "generated by glyphstudio.cellmath from the real BitmapFont",
         "atlas": atlas_dump,
@@ -130,8 +174,10 @@ def main(argv=None) -> int:
     ap.add_argument("--emit", required=True)
     args = ap.parse_args(argv)
     fixture = emit(args.emit)
-    print(f"wrote {args.emit}: {len(fixture['cases'])} cases, "
-          f"{len(fixture['atlas'])} glyphs")
+    print(
+        f"wrote {args.emit}: {len(fixture['cases'])} cases, "
+        f"{len(fixture['atlas'])} glyphs"
+    )
     return 0
 
 

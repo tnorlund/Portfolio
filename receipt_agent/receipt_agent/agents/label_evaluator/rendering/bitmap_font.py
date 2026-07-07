@@ -52,7 +52,9 @@ def thin_ink_mask(
     edge = ink & ~solid_neighbors
     yy, xx = np.indices(ink.shape)
     period = max(2, int(round(1.0 / amount)))
-    drop = ((xx * 17 + yy * 31 + mask.width * 7 + mask.height * 11) % period) == 0
+    drop = (
+        (xx * 17 + yy * 31 + mask.width * 7 + mask.height * 11) % period
+    ) == 0
     if preserve_top:
         drop &= yy >= max(1, int(round(mask.height * 0.32)))
     arr[edge & drop] = 0
@@ -68,19 +70,29 @@ class BitmapFont:
         thin: float = 0.0,
     ):
         data = np.load(atlas_path)
-        self.glyphs = {chr(int(k[1:])): np.asarray(data[k])
-                       for k in data.files if k.startswith("c")}
+        self.glyphs = {
+            chr(int(k[1:])): np.asarray(data[k])
+            for k in data.files
+            if k.startswith("c")
+        }
         # baseline offset per char (glyph bottom relative to the row baseline;
         # caps 0, hyphen/= negative=above, descenders positive=below).
-        self.offsets = {chr(int(k[1:])): int(data[k])
-                        for k in data.files if k.startswith("o")}
+        self.offsets = {
+            chr(int(k[1:])): int(data[k])
+            for k in data.files
+            if k.startswith("o")
+        }
         caps = [self.glyphs[c].shape[0] for c in _CAP_REF if c in self.glyphs]
         self.cap_h = float(np.median(caps)) if caps else 20.0
         # Monospace advance: derive from the actual glyph widths (bitMatrix is a
         # CONDENSED face) -- the widest letters + one thin gap -- not the padded
         # chart cell. Override via advance_ratio if given.
         if advance_ratio is None:
-            wide = [self.glyphs[c].shape[1] for c in "MWHNUABDOR" if c in self.glyphs]
+            wide = [
+                self.glyphs[c].shape[1]
+                for c in "MWHNUABDOR"
+                if c in self.glyphs
+            ]
             gw = float(np.median(wide)) if wide else self.cap_h * 0.7
             advance_ratio = (gw + 2.0) / self.cap_h
         self._advance_ratio = advance_ratio
@@ -112,9 +124,9 @@ class BitmapFont:
         # filter rounds its square dot-matrix strokes into a generic bold blob --
         # losing the very letterform that identifies the font. Nearest keeps the
         # crisp blocky pixels; the paper-texture pass adds thermal bleed on top.
-        im = Image.fromarray(
-            (np.clip(g, 0, 1) * 255).astype(np.uint8)
-        ).resize((w, h), Image.NEAREST)
+        im = Image.fromarray((np.clip(g, 0, 1) * 255).astype(np.uint8)).resize(
+            (w, h), Image.NEAREST
+        )
         im = thin_ink_mask(im, self.thin, preserve_top=preserve_top_arc(ch))
         off = int(round(self.offsets.get(ch, 0) * scale))
         self._cache[key] = (im, h, off)

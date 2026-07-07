@@ -25,49 +25,87 @@ def _fixture_font(tmp_path):
     font_dir = tmp_path / "testfont"
     (font_dir / "glyphs").mkdir(parents=True)
     font = {
-        "version": 1, "name": "testfont", "refCap": 60,
-        "metrics": {"capHeight": 1000, "xHeight": 700,
-                    "ascender": 1080, "descender": -350},
+        "version": 1,
+        "name": "testfont",
+        "refCap": 60,
+        "metrics": {
+            "capHeight": 1000,
+            "xHeight": 700,
+            "ascender": 1080,
+            "descender": -350,
+        },
         "params": {
             "dot": {"shape": "round", "size": 110, "pitch": 0.4},
-            "weight": 1.0, "trackingScale": 1.0, "slant": 0.0,
+            "weight": 1.0,
+            "trackingScale": 1.0,
+            "slant": 0.0,
             "corner": {"mode": "round", "tension": 0.5},
             "supersample": 4,
         },
-        "preview": {}, "review": {},
+        "preview": {},
+        "review": {},
     }
     (font_dir / "font.json").write_text(json.dumps(font))
 
     glyphs = {
         # cap-ref chars: simple full-height strokes
-        "A": [_line(0, R, 280, 1000 - R), _line(280, 1000 - R, 560, R),
-              _line(120, 350, 440, 350)],
+        "A": [
+            _line(0, R, 280, 1000 - R),
+            _line(280, 1000 - R, 560, R),
+            _line(120, 350, 440, 350),
+        ],
         "B": [_line(60, R, 60, 1000 - R)],
         "D": [_line(60, R, 60, 1000 - R)],
-        "E": [_line(60, R, 60, 1000 - R), _line(60, 1000 - R, 500, 1000 - R),
-              _line(60, R, 500, R)],
+        "E": [
+            _line(60, R, 60, 1000 - R),
+            _line(60, 1000 - R, 500, 1000 - R),
+            _line(60, R, 500, R),
+        ],
         "F": [_line(60, R, 60, 1000 - R)],
         "G": [_line(60, R, 60, 1000 - R)],
-        "H": [_line(60, R, 60, 1000 - R), _line(560, R, 560, 1000 - R),
-              _line(60, 500, 560, 500)],
+        "H": [
+            _line(60, R, 60, 1000 - R),
+            _line(560, R, 560, 1000 - R),
+            _line(60, 500, 560, 500),
+        ],
         "K": [_line(60, R, 60, 1000 - R)],
         "L": [_line(60, R, 60, 1000 - R), _line(60, R, 480, R)],
-        "M": [_line(40, R, 40, 1000 - R), _line(40, 1000 - R, 320, 400),
-              _line(320, 400, 600, 1000 - R), _line(600, 1000 - R, 600, R)],
-        "N": [_line(60, R, 60, 1000 - R), _line(60, 1000 - R, 560, R),
-              _line(560, R, 560, 1000 - R)],
+        "M": [
+            _line(40, R, 40, 1000 - R),
+            _line(40, 1000 - R, 320, 400),
+            _line(320, 400, 600, 1000 - R),
+            _line(600, 1000 - R, 600, R),
+        ],
+        "N": [
+            _line(60, R, 60, 1000 - R),
+            _line(60, 1000 - R, 560, R),
+            _line(560, R, 560, 1000 - R),
+        ],
         "P": [_line(60, R, 60, 1000 - R)],
         "R": [_line(60, R, 60, 1000 - R)],
         "S": [_line(60, R, 60, 1000 - R)],
-        "T": [_line(300, R, 300, 1000 - R), _line(40, 1000 - R, 560, 1000 - R)],
-        "U": [_line(60, R, 60, 1000 - R), _line(560, R, 560, 1000 - R),
-              _line(60, R, 560, R)],
+        "T": [
+            _line(300, R, 300, 1000 - R),
+            _line(40, 1000 - R, 560, 1000 - R),
+        ],
+        "U": [
+            _line(60, R, 60, 1000 - R),
+            _line(560, R, 560, 1000 - R),
+            _line(60, R, 560, R),
+        ],
         "V": [_line(40, 1000 - R, 300, R), _line(300, R, 560, 1000 - R)],
-        "W": [_line(20, 1000 - R, 180, R), _line(180, R, 320, 600),
-              _line(320, 600, 460, R), _line(460, R, 620, 1000 - R)],
+        "W": [
+            _line(20, 1000 - R, 180, R),
+            _line(180, R, 320, 600),
+            _line(320, 600, 460, R),
+            _line(460, R, 620, 1000 - R),
+        ],
         "X": [_line(40, R, 560, 1000 - R), _line(40, 1000, 560, 0)],
-        "Z": [_line(40, 1000 - R, 560, 1000 - R), _line(560, 1000 - R, 40, R),
-              _line(40, R, 560, R)],
+        "Z": [
+            _line(40, 1000 - R, 560, 1000 - R),
+            _line(560, 1000 - R, 40, R),
+            _line(40, R, 560, R),
+        ],
         "O": [_line(60, R, 60, 1000 - R)],
         # hyphen above baseline; p with descender
         "-": [_line(60, 420, 420, 420)],
@@ -75,12 +113,18 @@ def _fixture_font(tmp_path):
     }
     for ch, strokes in glyphs.items():
         g = {
-            "version": 1, "char": ch, "codepoint": ord(ch),
-            "provenance": "traced", "width": 600,
-            "baselineNudgePx": 0, "overrides": {}, "strokes": strokes,
+            "version": 1,
+            "char": ch,
+            "codepoint": ord(ch),
+            "provenance": "traced",
+            "width": 600,
+            "baselineNudgePx": 0,
+            "overrides": {},
+            "strokes": strokes,
         }
         (font_dir / "glyphs" / f"u{ord(ch):04x}.json").write_text(
-            json.dumps(g))
+            json.dumps(g)
+        )
     return str(font_dir)
 
 
@@ -112,51 +156,81 @@ def test_compile_contract(tmp_path):
 
 def test_rasterize_cubic_bowl():
     glyph = {
-        "version": 1, "char": "o", "codepoint": 111,
-        "provenance": "traced", "width": 500, "baselineNudgePx": 0,
+        "version": 1,
+        "char": "o",
+        "codepoint": 111,
+        "provenance": "traced",
+        "width": 500,
+        "baselineNudgePx": 0,
         "overrides": {},
-        "strokes": [{
-            "closed": True,
-            "nodes": [
-                {"x": 250, "y": 700, "type": "smooth",
-                 "hIn": {"x": 100, "y": 700}, "hOut": {"x": 400, "y": 700}},
-                {"x": 250, "y": 0, "type": "smooth",
-                 "hIn": {"x": 400, "y": 0}, "hOut": {"x": 100, "y": 0}},
-            ],
-        }],
+        "strokes": [
+            {
+                "closed": True,
+                "nodes": [
+                    {
+                        "x": 250,
+                        "y": 700,
+                        "type": "smooth",
+                        "hIn": {"x": 100, "y": 700},
+                        "hOut": {"x": 400, "y": 700},
+                    },
+                    {
+                        "x": 250,
+                        "y": 0,
+                        "type": "smooth",
+                        "hIn": {"x": 400, "y": 0},
+                        "hOut": {"x": 100, "y": 0},
+                    },
+                ],
+            }
+        ],
     }
-    params = {"dot": {"shape": "round", "size": 110, "pitch": 0.4},
-              "weight": 1.0, "trackingScale": 1.0, "slant": 0.0,
-              "supersample": 4}
+    params = {
+        "dot": {"shape": "round", "size": 110, "pitch": 0.4},
+        "weight": 1.0,
+        "trackingScale": 1.0,
+        "slant": 0.0,
+        "supersample": 4,
+    }
     bitmap, off = rasterize_glyph(glyph, params, 60)
     assert bitmap.sum() > 50
     # x-height bowl: ~42px tall at REF_CAP 60 (700 units + dot)
     assert 35 <= bitmap.shape[0] <= 55
     assert abs(off) <= 4
     # bowl must have a hole (counter not filled)
-    interior = bitmap[bitmap.shape[0] // 2 - 2: bitmap.shape[0] // 2 + 2,
-                      bitmap.shape[1] // 2 - 2: bitmap.shape[1] // 2 + 2]
+    interior = bitmap[
+        bitmap.shape[0] // 2 - 2 : bitmap.shape[0] // 2 + 2,
+        bitmap.shape[1] // 2 - 2 : bitmap.shape[1] // 2 + 2,
+    ]
     assert interior.sum() == 0
 
 
 def test_trace_roundtrip_bar():
     """Rasterize a known skeleton -> stack it -> trace -> shape survives."""
     glyph = {
-        "version": 1, "char": "I", "codepoint": 73,
-        "provenance": "traced", "width": 200, "baselineNudgePx": 0,
+        "version": 1,
+        "char": "I",
+        "codepoint": 73,
+        "provenance": "traced",
+        "width": 200,
+        "baselineNudgePx": 0,
         "overrides": {},
         "strokes": [_line(100, 0, 100, 1000)],
     }
-    params = {"dot": {"shape": "round", "size": 110, "pitch": 0.4},
-              "weight": 1.0, "trackingScale": 1.0, "slant": 0.0,
-              "supersample": 4}
+    params = {
+        "dot": {"shape": "round", "size": 110, "pitch": 0.4},
+        "weight": 1.0,
+        "trackingScale": 1.0,
+        "slant": 0.0,
+        "supersample": 4,
+    }
     bitmap, _ = rasterize_glyph(glyph, params, 40)  # sample-scale cap
 
     # place onto a 120x80 corpus-like canvas at baseline 92
     canvas = np.zeros((120, 80), dtype=bool)
     h, w = bitmap.shape
     y1 = 92
-    canvas[y1 - h: y1, 10: 10 + w] = bitmap.astype(bool)
+    canvas[y1 - h : y1, 10 : 10 + w] = bitmap.astype(bool)
     stack = np.stack([canvas] * 12)
 
     traced, width_units = trace_char(stack, 73)

@@ -4,6 +4,7 @@ Polylines from the skeleton walk are noisy pixel chains; this converts them
 to the editor's node model: corner-split runs, each emitted as a straight
 line (when the chord fits) or a chain of least-squares cubics.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -20,7 +21,9 @@ def smooth_polyline(pts: np.ndarray, passes: int = 1) -> np.ndarray:
     return out
 
 
-def find_corners(pts: np.ndarray, angle_deg: float = 40.0, win: int = 3) -> list[int]:
+def find_corners(
+    pts: np.ndarray, angle_deg: float = 40.0, win: int = 3
+) -> list[int]:
     """Indices where the turning angle over a +/-win window exceeds threshold."""
     n = len(pts)
     if n < 2 * win + 1:
@@ -59,10 +62,10 @@ def _chord_deviation(pts: np.ndarray) -> float:
 def _bezier_point(ctrl: np.ndarray, t: np.ndarray) -> np.ndarray:
     mt = 1 - t
     return (
-        (mt ** 3)[:, None] * ctrl[0]
-        + 3 * (mt ** 2 * t)[:, None] * ctrl[1]
-        + 3 * (mt * t ** 2)[:, None] * ctrl[2]
-        + (t ** 3)[:, None] * ctrl[3]
+        (mt**3)[:, None] * ctrl[0]
+        + 3 * (mt**2 * t)[:, None] * ctrl[1]
+        + 3 * (mt * t**2)[:, None] * ctrl[2]
+        + (t**3)[:, None] * ctrl[3]
     )
 
 
@@ -77,14 +80,13 @@ def _generate_bezier(pts, u, t_left, t_right):
     """Least-squares inner control points given end tangents (Schneider)."""
     n = len(pts)
     a1 = (3 * (1 - u) ** 2 * u)[:, None] * t_left
-    a2 = (3 * (1 - u) * u ** 2)[:, None] * t_right
+    a2 = (3 * (1 - u) * u**2)[:, None] * t_right
     c11 = np.sum(a1 * a1)
     c12 = np.sum(a1 * a2)
     c22 = np.sum(a2 * a2)
-    base = (
-        ((1 - u) ** 3 + 3 * (1 - u) ** 2 * u)[:, None] * pts[0]
-        + (u ** 3 + 3 * (1 - u) * u ** 2)[:, None] * pts[-1]
-    )
+    base = ((1 - u) ** 3 + 3 * (1 - u) ** 2 * u)[:, None] * pts[0] + (
+        u**3 + 3 * (1 - u) * u**2
+    )[:, None] * pts[-1]
     tmp = pts - base
     x1 = np.sum(a1 * tmp)
     x2 = np.sum(a2 * tmp)
@@ -98,12 +100,14 @@ def _generate_bezier(pts, u, t_left, t_right):
         eps = 1e-6 * seg
         if alpha1 < eps or alpha2 < eps:
             alpha1 = alpha2 = seg / 3.0
-    return np.array([
-        pts[0],
-        pts[0] + t_left * alpha1,
-        pts[-1] + t_right * alpha2,
-        pts[-1],
-    ])
+    return np.array(
+        [
+            pts[0],
+            pts[0] + t_left * alpha1,
+            pts[-1] + t_right * alpha2,
+            pts[-1],
+        ]
+    )
 
 
 def _reparameterize(pts, u, ctrl):
@@ -113,9 +117,9 @@ def _reparameterize(pts, u, ctrl):
     d2c = 2 * np.diff(d1c, axis=0)
     mt = 1 - u
     d1 = (
-        (mt ** 2)[:, None] * d1c[0]
+        (mt**2)[:, None] * d1c[0]
         + (2 * mt * u)[:, None] * d1c[1]
-        + (u ** 2)[:, None] * d1c[2]
+        + (u**2)[:, None] * d1c[2]
     )
     d2 = mt[:, None] * d2c[0] + u[:, None] * d2c[1]
     diff = p - pts
@@ -134,7 +138,9 @@ def _max_error(pts, u, ctrl):
     return float(errs[idx]), idx
 
 
-def fit_cubics(pts: np.ndarray, tol: float, depth: int = 0) -> list[np.ndarray]:
+def fit_cubics(
+    pts: np.ndarray, tol: float, depth: int = 0
+) -> list[np.ndarray]:
     """Schneider FitCurve: list of cubic control-point arrays (4x2)."""
     pts = np.asarray(pts, dtype=float)
     if len(pts) < 2:
@@ -164,26 +170,27 @@ def fit_cubics(pts: np.ndarray, tol: float, depth: int = 0) -> list[np.ndarray]:
     if depth >= 12 or len(pts) <= 4:
         return [ctrl]
     split = max(1, min(len(pts) - 2, split))
-    return (
-        fit_cubics(pts[: split + 1], tol, depth + 1)
-        + fit_cubics(pts[split:], tol, depth + 1)
+    return fit_cubics(pts[: split + 1], tol, depth + 1) + fit_cubics(
+        pts[split:], tol, depth + 1
     )
 
 
-def polyline_to_segments(pts: np.ndarray, tol: float, line_tol: float,
-                         corner_deg: float = 40.0) -> list[dict]:
+def polyline_to_segments(
+    pts: np.ndarray, tol: float, line_tol: float, corner_deg: float = 40.0
+) -> list[dict]:
     """Polyline -> [{"kind": "line"|"cubic", "ctrl": ...}] split at corners."""
     pts = smooth_polyline(np.asarray(pts, dtype=float))
     corners = find_corners(pts, angle_deg=corner_deg)
     cuts = [0] + corners + [len(pts) - 1]
     segments: list[dict] = []
     for a, b in zip(cuts[:-1], cuts[1:]):
-        run = pts[a: b + 1]
+        run = pts[a : b + 1]
         if len(run) < 2:
             continue
         if _chord_deviation(run) <= line_tol:
-            segments.append({"kind": "line",
-                             "ctrl": np.array([run[0], run[-1]])})
+            segments.append(
+                {"kind": "line", "ctrl": np.array([run[0], run[-1]])}
+            )
         else:
             for ctrl in fit_cubics(run, tol):
                 segments.append({"kind": "cubic", "ctrl": ctrl})
@@ -224,10 +231,12 @@ def segments_to_nodes(segments: list[dict], closed: bool) -> list[dict]:
     # mark smooth nodes: collinear-ish in/out handles
     for node in nodes:
         if "hIn" in node and "hOut" in node:
-            v1 = np.array([node["x"] - node["hIn"]["x"],
-                           node["y"] - node["hIn"]["y"]])
-            v2 = np.array([node["hOut"]["x"] - node["x"],
-                           node["hOut"]["y"] - node["y"]])
+            v1 = np.array(
+                [node["x"] - node["hIn"]["x"], node["y"] - node["hIn"]["y"]]
+            )
+            v2 = np.array(
+                [node["hOut"]["x"] - node["x"], node["hOut"]["y"] - node["y"]]
+            )
             n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
             if n1 > 1e-9 and n2 > 1e-9 and np.dot(v1, v2) / (n1 * n2) > 0.9:
                 node["type"] = "smooth"

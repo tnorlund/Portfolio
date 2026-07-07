@@ -9,12 +9,12 @@ import statistics
 from collections import defaultdict
 from typing import Optional
 
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
 from receipt_agent.agents.label_evaluator.state import (
     VisualLine,
     WordContext,
 )
+
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 def build_word_contexts(

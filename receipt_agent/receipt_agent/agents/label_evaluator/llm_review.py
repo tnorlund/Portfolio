@@ -19,13 +19,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
-from receipt_dynamo.amounts import (
-    looks_like_receipt_amount,
-    parse_receipt_amount,
-)
-from receipt_dynamo import ReceiptWordLabel
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
     build_receipt_context_prompt,
@@ -43,6 +36,13 @@ from receipt_agent.utils.chroma_helpers import (
     query_cascade_evidence,
 )
 
+from receipt_dynamo import ReceiptWordLabel
+from receipt_dynamo.amounts import (
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
+from receipt_dynamo.entities import ReceiptWord
+
 from .state import (
     EvaluationIssue,
     ReviewContext,
@@ -53,7 +53,6 @@ from .word_context import get_same_line_words
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
-
     from receipt_agent.utils.llm_factory import RateLimitedLLMInvoker
 
 logger = logging.getLogger(__name__)
@@ -697,9 +696,7 @@ def review_issues_batch(
 
     try:
         structured_llm = caller.with_structured_output(BatchedReviewResponse)
-        response = structured_llm.invoke(
-            [HumanMessage(content=prompt)]
-        )
+        response = structured_llm.invoke([HumanMessage(content=prompt)])
         return response.to_ordered_list(len(normalized_issues))
     except LLMRateLimitError:
         raise  # Propagate for Step Function retry
@@ -781,9 +778,7 @@ def review_issues_with_receipt_context(
 
     try:
         structured_llm = caller.with_structured_output(BatchedReviewResponse)
-        response = structured_llm.invoke(
-            [HumanMessage(content=prompt)]
-        )
+        response = structured_llm.invoke([HumanMessage(content=prompt)])
         return response.to_ordered_list(len(issues_with_context))
     except LLMRateLimitError:
         raise  # Propagate for Step Function retry

@@ -35,7 +35,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from langsmith import traceable
-
 from receipt_agent.constants import METADATA_EVALUATION_LABELS
 
 from .state import VisualLine, WordContext
@@ -119,8 +118,7 @@ TIER1_PAYMENT_PATTERNS = [
 TIER1_STORE_HOURS_PATTERNS = [
     # Day RANGES (hyphen required — single day names are ambiguous)
     re.compile(
-        r"^(MON|TUE|WED|THU|FRI|SAT|SUN)"
-        r"-(MON|TUE|WED|THU|FRI|SAT|SUN):?$",
+        r"^(MON|TUE|WED|THU|FRI|SAT|SUN)" r"-(MON|TUE|WED|THU|FRI|SAT|SUN):?$",
         re.I,
     ),
     # Time ranges: 7AM-10PM, 9:00AM-5:00PM
@@ -576,22 +574,25 @@ def evaluate_metadata_labels(
         )
         if chroma_resolved:
             for word_dict, decision in chroma_resolved:
-                auto_results.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": word_dict["line_id"],
-                        "word_id": word_dict["word_id"],
-                        "current_label": word_dict["current_label"],
-                        "word_text": word_dict["word_text"],
-                    },
-                    "llm_review": decision,
-                })
+                auto_results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": word_dict["line_id"],
+                            "word_id": word_dict["word_id"],
+                            "current_label": word_dict["current_label"],
+                            "word_text": word_dict["word_text"],
+                        },
+                        "llm_review": decision,
+                    }
+                )
             chroma_unresolved_ids = {
                 (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
             }
             remaining_words = [
-                mw for mw in remaining_words
+                mw
+                for mw in remaining_words
                 if (mw.word_context.word.line_id, mw.word_context.word.word_id)
                 in chroma_unresolved_ids
             ]
@@ -728,22 +729,25 @@ async def evaluate_metadata_labels_async(
         )
         if chroma_resolved:
             for word_dict, decision in chroma_resolved:
-                auto_results.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": word_dict["line_id"],
-                        "word_id": word_dict["word_id"],
-                        "current_label": word_dict["current_label"],
-                        "word_text": word_dict["word_text"],
-                    },
-                    "llm_review": decision,
-                })
+                auto_results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": word_dict["line_id"],
+                            "word_id": word_dict["word_id"],
+                            "current_label": word_dict["current_label"],
+                            "word_text": word_dict["word_text"],
+                        },
+                        "llm_review": decision,
+                    }
+                )
             chroma_unresolved_ids = {
                 (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
             }
             remaining_words = [
-                mw for mw in remaining_words
+                mw
+                for mw in remaining_words
                 if (mw.word_context.word.line_id, mw.word_context.word.word_id)
                 in chroma_unresolved_ids
             ]

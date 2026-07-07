@@ -19,6 +19,7 @@ from receipt_agent.agents.label_evaluator.currency_subagent import (
     parse_currency_evaluation_response,
 )
 from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
+
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 # Use a fixed valid UUID for testing
@@ -89,9 +90,13 @@ def _make_word_context(
     )
 
 
-def _make_visual_line(words: list[WordContext], line_index: int = 0) -> VisualLine:
+def _make_visual_line(
+    words: list[WordContext], line_index: int = 0
+) -> VisualLine:
     """Helper to create a VisualLine."""
-    y_center = sum(w.normalized_y for w in words) / len(words) if words else 0.5
+    y_center = (
+        sum(w.normalized_y for w in words) / len(words) if words else 0.5
+    )
     return VisualLine(line_index=line_index, words=words, y_center=y_center)
 
 

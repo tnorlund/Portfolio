@@ -17,7 +17,6 @@ from typing import Any, Mapping, Sequence
 
 from PIL import Image as PILImage
 from PIL import ImageFilter, ImageOps
-
 from receipt_upload.font_analysis import (
     _EPSILON,
     _box,

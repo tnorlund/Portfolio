@@ -15,6 +15,7 @@ margins, so IoU is computed on the central band around the ink's mass column.
 Usage:
   python -m glyphstudio.refine <in.samples.npz> <out.samples.npz> [--min-keep 5]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,8 +56,9 @@ def _central_band(stack: np.ndarray) -> tuple[int, int]:
     return max(0, lo - pad), min(stack.shape[2], hi + pad)
 
 
-def refine_char(stack: np.ndarray, min_keep: int = MIN_KEEP_DEFAULT
-                ) -> tuple[np.ndarray, dict]:
+def refine_char(
+    stack: np.ndarray, min_keep: int = MIN_KEEP_DEFAULT
+) -> tuple[np.ndarray, dict]:
     n = stack.shape[0]
     if n <= min_keep:
         return stack, {"kept": n, "total": n, "floor": None}
@@ -66,7 +68,11 @@ def refine_char(stack: np.ndarray, min_keep: int = MIN_KEEP_DEFAULT
     ref = soft >= 0.5
     if not ref.any():
         # sparse/blurry consensus: match total ink area instead
-        thr = float(np.quantile(soft[soft > 0], 0.75)) if (soft > 0).any() else 0.5
+        thr = (
+            float(np.quantile(soft[soft > 0], 0.75))
+            if (soft > 0).any()
+            else 0.5
+        )
         ref = soft >= thr
     scores = np.array([_iou(band[i], ref) for i in range(n)])
     # seed = best-agreeing half, rebuilt into a cleaner reference
@@ -106,10 +112,14 @@ def main(argv=None) -> int:
     np.savez_compressed(args.dst, **out)
     report.sort(key=lambda t: t[1]["kept"] / t[1]["total"])
     for ch, info in report:
-        print(f"  {ch!r}: kept {info['kept']}/{info['total']}"
-              f" (median IoU {info.get('median_iou')})")
-    print(f"wrote {args.dst}: {len(out)} chars,"
-          f" {sum(1 for _, i in report if i['kept'] < i['total'])} refined")
+        print(
+            f"  {ch!r}: kept {info['kept']}/{info['total']}"
+            f" (median IoU {info.get('median_iou')})"
+        )
+    print(
+        f"wrote {args.dst}: {len(out)} chars,"
+        f" {sum(1 for _, i in report if i['kept'] < i['total'])} refined"
+    )
     return 0
 
 

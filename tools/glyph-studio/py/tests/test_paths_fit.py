@@ -19,8 +19,8 @@ def test_extract_straight_line():
 
 def test_extract_t_junction_yields_three_edges():
     skel = np.zeros((40, 40), dtype=bool)
-    skel[20, 5:35] = True   # horizontal
-    skel[5:20, 20] = True   # vertical meeting it
+    skel[20, 5:35] = True  # horizontal
+    skel[5:20, 20] = True  # vertical meeting it
     paths = extract_paths(skel)
     assert len(paths) == 3  # left arm, right arm, vertical arm
 
@@ -30,6 +30,7 @@ def test_extract_ring_is_closed():
     r = np.sqrt((yy - 25) ** 2 + (xx - 25) ** 2)
     ring = (r > 14.5) & (r < 16.5)
     from glyphstudio.thin import zhang_suen
+
     skel = zhang_suen(ring)
     paths = extract_paths(skel)
     closed = [p for p in paths if p["closed"]]
@@ -62,10 +63,10 @@ def test_fit_cubic_arc_error_bounded():
         ts = np.linspace(0, 1, 50)
         mt = 1 - ts
         curve = (
-            (mt ** 3)[:, None] * ctrl[0]
-            + 3 * (mt ** 2 * ts)[:, None] * ctrl[1]
-            + 3 * (mt * ts ** 2)[:, None] * ctrl[2]
-            + (ts ** 3)[:, None] * ctrl[3]
+            (mt**3)[:, None] * ctrl[0]
+            + 3 * (mt**2 * ts)[:, None] * ctrl[1]
+            + 3 * (mt * ts**2)[:, None] * ctrl[2]
+            + (ts**3)[:, None] * ctrl[3]
         )
         d = np.min(
             np.linalg.norm(curve[:, None, :] - pts[None, :, :], axis=2),

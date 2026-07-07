@@ -7,6 +7,7 @@ Writes only c{cp}/o{cp} keys (the entire contract), then instantiates the
 renderer's actual BitmapFont class and reports cap_h, advance_ratio,
 cap-height deviations, clamp-width warnings, and ASCII coverage.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,6 +34,7 @@ def _import_bitmap_font():
     from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
         BitmapFont,
     )
+
     return BitmapFont
 
 
@@ -82,13 +84,17 @@ def self_check(npz_path: str, ref_cap: int) -> dict:
         if arr.shape[1] * scale > 0.96 * cell_w:
             clamp_warn.append(ch)
 
-    offsets = {ch: int(bmf.offsets.get(ch, 0)) for ch in ("A", "-", "p", "g")
-               if ch in bmf.glyphs}
+    offsets = {
+        ch: int(bmf.offsets.get(ch, 0))
+        for ch in ("A", "-", "p", "g")
+        if ch in bmf.glyphs
+    }
     return {
         "cap_h": float(bmf.cap_h),
         "advance_ratio": advance_ratio,
-        "advance_ref_present": [c for c in ADVANCE_REF_CHARS
-                                if c in bmf.glyphs],
+        "advance_ref_present": [
+            c for c in ADVANCE_REF_CHARS if c in bmf.glyphs
+        ],
         "coverage": len(covered),
         "missing": "".join(missing),
         "cap_height_deviations": cap_devs,
@@ -101,14 +107,23 @@ def render_sheet(npz_path: str, sheet_path: str) -> None:
     review = os.path.join(_WORKTREE, "synthesis_loop", "glyph_review.py")
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
-        [os.path.join(_WORKTREE, p) for p in
-         ("receipt_agent", "receipt_dynamo", "receipt_upload")]
+        [
+            os.path.join(_WORKTREE, p)
+            for p in ("receipt_agent", "receipt_dynamo", "receipt_upload")
+        ]
         + [env.get("PYTHONPATH", "")]
     )
     subprocess.run(
-        [sys.executable, review, "sheet",
-         os.path.abspath(npz_path), os.path.abspath(sheet_path)],
-        check=True, env=env, cwd=_WORKTREE,
+        [
+            sys.executable,
+            review,
+            "sheet",
+            os.path.abspath(npz_path),
+            os.path.abspath(sheet_path),
+        ],
+        check=True,
+        env=env,
+        cwd=_WORKTREE,
     )
 
 
@@ -121,23 +136,34 @@ def main(argv: list[str] | None = None) -> int:
 
     report = compile_font(args.font_dir, args.out)
     print(f"wrote {args.out}: {report['glyph_count']} glyphs")
-    print(f"  cap_h={report['cap_h']:.1f} advance_ratio={report['advance_ratio']:.3f}")
+    print(
+        f"  cap_h={report['cap_h']:.1f} advance_ratio={report['advance_ratio']:.3f}"
+    )
     _font = load_font(args.font_dir)
     _target = (_font.get("metrics") or {}).get("pitchRatioTarget")
     if _target:
         _condense = float((_font.get("preview") or {}).get("condense", 1.0))
         _got = report["advance_ratio"] * _condense
         _drift = abs(_got - _target) / _target
-        _flag = ("OK" if _drift <= 0.02
-                 else "DRIFT>2% -- glyph width edits moved global spacing")
-        print(f"  pitch check: advance*condense={_got:.3f} "
-              f"vs measured {_target:.3f} [{_flag}]")
-    print(f"  coverage={report['coverage']}/94 missing: {report['missing'] or '-'}")
+        _flag = (
+            "OK"
+            if _drift <= 0.02
+            else "DRIFT>2% -- glyph width edits moved global spacing"
+        )
+        print(
+            f"  pitch check: advance*condense={_got:.3f} "
+            f"vs measured {_target:.3f} [{_flag}]"
+        )
+    print(
+        f"  coverage={report['coverage']}/94 missing: {report['missing'] or '-'}"
+    )
     if report["cap_height_deviations"]:
         print(f"  CAP-HEIGHT DEVIATIONS: {report['cap_height_deviations']}")
     if report["clamp_width_warnings"]:
-        print(f"  CLAMP-WIDTH WARNINGS (squeezed at render): "
-              f"{report['clamp_width_warnings']}")
+        print(
+            f"  CLAMP-WIDTH WARNINGS (squeezed at render): "
+            f"{report['clamp_width_warnings']}"
+        )
     if report["empty"]:
         print(f"  EMPTY RASTERS: {''.join(report['empty'])}")
     print(f"  offsets: {report['sample_offsets']}")

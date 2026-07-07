@@ -11,6 +11,7 @@ cap baseline), so it drops straight into a merchant profile's bitmap_font.
 
 Usage: build_merchant_glyphs.py <merchant_name> <out_dir> <atlas_name> [max_receipts]
 """
+
 from __future__ import annotations
 
 import os
@@ -32,21 +33,21 @@ _CAP_REF = set("ABDEFGHKLMNPRSTUVXZ0123456789")
 # Characters we build glyphs for (printable ASCII minus space).
 _TARGET = set(chr(c) for c in range(33, 127))
 
-REF_CAP = 60          # stored cap height in px (BitmapFont rescales at render).
-                      # Higher = more pixels for x-height lowercase to average.
+REF_CAP = 60  # stored cap height in px (BitmapFont rescales at render).
+# Higher = more pixels for x-height lowercase to average.
 CANVAS_H = REF_CAP * 3
 CANVAS_W = REF_CAP * 2
-CANVAS_BASE = int(REF_CAP * 2.3)   # baseline row inside the accumulation canvas
-MIN_SAMPLES = 10      # inlier occurrences required to keep a glyph (else TTF)
-MAX_SAMPLES = 140     # cap stored samples per char (memory)
-MAX_SHIFT = 3         # clamp phase-correlation to jitter, not gross moves
-VOTE = 0.45           # ink if >= this fraction of ALIGNED inliers are ink
-SMALL_INK = 130       # glyphs with fewer ink px skip alignment (dots/commas are
-                      # position-stable; IoU/phase-corr is unstable for them)
+CANVAS_BASE = int(REF_CAP * 2.3)  # baseline row inside the accumulation canvas
+MIN_SAMPLES = 10  # inlier occurrences required to keep a glyph (else TTF)
+MAX_SAMPLES = 140  # cap stored samples per char (memory)
+MAX_SHIFT = 3  # clamp phase-correlation to jitter, not gross moves
+VOTE = 0.45  # ink if >= this fraction of ALIGNED inliers are ink
+SMALL_INK = 130  # glyphs with fewer ink px skip alignment (dots/commas are
+# position-stable; IoU/phase-corr is unstable for them)
 
 # Some glyphs have enough samples, but their data-built consensus is worse than
 # the renderer's clean TTF fallback at receipt scale.
-FALLBACK_CHARS = set("!\"#%&*:3@BCHGMOWhagilpqtw")
+FALLBACK_CHARS = set('!"#%&*:3@BCHGMOWhagilpqtw')
 # Lowercase x samples collapse into a star/noisy blob; uppercase X is clean and
 # receipt-scale lowercase x mostly appears as an x-marker ("x5"). Alias it
 # explicitly so review sheets reflect what the renderer will draw.
@@ -102,14 +103,18 @@ def _close(mask, r=1):
     """Morphological close (dilate then erode): bridges small stroke gaps from
     averaging jitter without fattening the letterform."""
     im = Image.fromarray((mask.astype(np.uint8)) * 255)
-    im = im.filter(ImageFilter.MaxFilter(2 * r + 1)).filter(ImageFilter.MinFilter(2 * r + 1))
+    im = im.filter(ImageFilter.MaxFilter(2 * r + 1)).filter(
+        ImageFilter.MinFilter(2 * r + 1)
+    )
     return np.asarray(im) > 127
 
 
 def _keep_components(mask, min_frac=0.03):
     """Drop connected components smaller than ``min_frac`` of total ink (floating
-    specks / detached noise) while keeping every real stroke. 4-connectivity."""
+    specks / detached noise) while keeping every real stroke. 4-connectivity.
+    """
     from collections import deque
+
     H, W = mask.shape
     lbl = np.zeros((H, W), np.int32)
     sizes = {}
@@ -126,7 +131,12 @@ def _keep_components(mask, min_frac=0.03):
                     sz += 1
                     for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         ny, nx = y + dy, x + dx
-                        if 0 <= ny < H and 0 <= nx < W and mask[ny, nx] and lbl[ny, nx] == 0:
+                        if (
+                            0 <= ny < H
+                            and 0 <= nx < W
+                            and mask[ny, nx]
+                            and lbl[ny, nx] == 0
+                        ):
                             lbl[ny, nx] = nxt
                             q.append((ny, nx))
                 sizes[nxt] = sz
@@ -144,8 +154,10 @@ def _clean(binm):
 
 def _ncomp(mask):
     """Number of 4-connected ink components (a well-formed glyph is 1-2; a
-    shattered one is many -- used to auto-drop unsalvageable low-data glyphs)."""
+    shattered one is many -- used to auto-drop unsalvageable low-data glyphs).
+    """
     from collections import deque
+
     H, W = mask.shape
     seen = np.zeros((H, W), bool)
     n = 0
@@ -159,14 +171,19 @@ def _ncomp(mask):
                     y, x = q.popleft()
                     for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         ny, nx = y + dy, x + dx
-                        if 0 <= ny < H and 0 <= nx < W and mask[ny, nx] and not seen[ny, nx]:
+                        if (
+                            0 <= ny < H
+                            and 0 <= nx < W
+                            and mask[ny, nx]
+                            and not seen[ny, nx]
+                        ):
                             seen[ny, nx] = True
                             q.append((ny, nx))
     return n
 
 
 # Glyphs that legitimately have multiple ink pieces (don't drop them for it).
-_MULTIPART = set("i j = : ; % ! \" ? _".split()) | {'"'}
+_MULTIPART = set('i j = : ; % ! " ? _'.split()) | {'"'}
 
 
 def _too_broken(ch, binm):
@@ -187,11 +204,16 @@ def _shifted(stack, key):
         if xs.size == 0:
             pos.append(0)
         else:
-            pos.append(int(xs.min()) if key == "left"
-                       else int((xs.min() + xs.max()) / 2))
+            pos.append(
+                int(xs.min())
+                if key == "left"
+                else int((xs.min() + xs.max()) / 2)
+            )
     tgt = int(np.median(pos))
     for s, p in zip(stack, pos):
-        out.append(np.roll(s, _clamp(tgt - p, -MAX_SHIFT * 2, MAX_SHIFT * 2), 1))
+        out.append(
+            np.roll(s, _clamp(tgt - p, -MAX_SHIFT * 2, MAX_SHIFT * 2), 1)
+        )
     return out
 
 
@@ -203,7 +225,7 @@ def _drop_small_components(mask, ch):
     if bb is None:
         return mask
     iy0, iy1, ix0, ix1 = bb
-    crop = mask[iy0:iy1 + 1, ix0:ix1 + 1]
+    crop = mask[iy0 : iy1 + 1, ix0 : ix1 + 1]
     seen = np.zeros_like(crop, bool)
     comps = []
     h, w = crop.shape
@@ -221,8 +243,12 @@ def _drop_small_components(mask, ch):
                     if dy == 0 and dx == 0:
                         continue
                     ny, nx = cy + dy, cx + dx
-                    if (0 <= ny < h and 0 <= nx < w and crop[ny, nx]
-                            and not seen[ny, nx]):
+                    if (
+                        0 <= ny < h
+                        and 0 <= nx < w
+                        and crop[ny, nx]
+                        and not seen[ny, nx]
+                    ):
                         seen[ny, nx] = True
                         stack.append((ny, nx))
         comps.append(pts)
@@ -235,7 +261,7 @@ def _drop_small_components(mask, ch):
             for y, x in pts:
                 keep[y, x] = True
     out = mask.copy()
-    out[iy0:iy1 + 1, ix0:ix1 + 1] = keep
+    out[iy0 : iy1 + 1, ix0 : ix1 + 1] = keep
     return out
 
 
@@ -245,7 +271,9 @@ def _best_exemplar(samples, ch):
     for key in ("left", "center"):
         stack = _shifted(samples, key)
         ref = np.mean(stack, axis=0) >= VOTE
-        ious = np.array([_iou(_drop_small_components(s, ch), ref) for s in stack])
+        ious = np.array(
+            [_iou(_drop_small_components(s, ch), ref) for s in stack]
+        )
         order = sorted(range(len(stack)), key=lambda i: -ious[i])[:60]
         peers = [_drop_small_components(stack[i], ch) for i in order[:32]]
         for i in order:
@@ -278,7 +306,9 @@ def _vote(samples, ch):
         ref = np.mean(stack, axis=0) >= 0.5
         ious = np.array([_iou(a, ref) for a in stack])
         thr = max(0.25, float(np.median(ious)) * 0.5)
-        idx = [i for i, v in enumerate(ious) if v >= thr] or list(range(len(stack)))
+        idx = [i for i, v in enumerate(ious) if v >= thr] or list(
+            range(len(stack))
+        )
         order = sorted(idx, key=lambda i: -ious[i])
         k = max(MIN_SAMPLES, len(order) // 2)
         full = np.mean([stack[i] for i in idx], axis=0)
@@ -300,8 +330,9 @@ def _vote(samples, ch):
 
 
 def _collect(merchants, max_receipts):
-    from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_upload.font_analysis import load_raw_image_from_s3
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient
 
     client = DynamoClient(table_name=TABLE, region=REGION)
     # Pool receipts across every merchant that shares this font family (e.g.
@@ -336,7 +367,7 @@ def _collect(merchants, max_receipts):
         for lt in letters:
             lines[lt.line_id].append(lt)
         for _, lts in lines.items():
-            glyphs = []          # (ch, mask, ink_bottom_abs, ink_h)
+            glyphs = []  # (ch, mask, ink_bottom_abs, ink_h)
             for lt in lts:
                 ch = (lt.text or "").strip()
                 if ch not in _TARGET:
@@ -354,7 +385,9 @@ def _collect(merchants, max_receipts):
                 if bb is None:
                     continue
                 iy0, iy1, ix0, ix1 = bb
-                gm = (mask[iy0:iy1 + 1, ix0:ix1 + 1] > 0.5).astype(np.float32)
+                gm = (mask[iy0 : iy1 + 1, ix0 : ix1 + 1] > 0.5).astype(
+                    np.float32
+                )
                 glyphs.append((ch, gm, t + iy1, iy1 - iy0 + 1))
             # baseline + cap height from the reference glyphs on THIS line
             refs = [(bot, h) for ch, _, bot, h in glyphs if ch in _CAP_REF]
@@ -367,19 +400,34 @@ def _collect(merchants, max_receipts):
             scale = REF_CAP / cap_h
             for ch, gm, bot, _h in glyphs:
                 gh, gw = gm.shape
-                nw, nh = max(1, int(round(gw * scale))), max(1, int(round(gh * scale)))
-                g = np.asarray(Image.fromarray((gm * 255).astype(np.uint8)).resize(
-                    (nw, nh), Image.NEAREST)) > 127
-                off = int(round((bot - baseline) * scale))       # bottom vs baseline
+                nw, nh = max(1, int(round(gw * scale))), max(
+                    1, int(round(gh * scale))
+                )
+                g = (
+                    np.asarray(
+                        Image.fromarray((gm * 255).astype(np.uint8)).resize(
+                            (nw, nh), Image.NEAREST
+                        )
+                    )
+                    > 127
+                )
+                off = int(
+                    round((bot - baseline) * scale)
+                )  # bottom vs baseline
                 row_bot = CANVAS_BASE + off
                 row_top = row_bot - nh
                 col0 = CANVAS_W // 2 - nw // 2
-                if row_top < 0 or row_bot > CANVAS_H or col0 < 0 or col0 + nw > CANVAS_W:
+                if (
+                    row_top < 0
+                    or row_bot > CANVAS_H
+                    or col0 < 0
+                    or col0 + nw > CANVAS_W
+                ):
                     continue
                 if len(samples[ch]) >= MAX_SAMPLES:
                     continue
                 canvas = np.zeros((CANVAS_H, CANVAS_W), bool)
-                canvas[row_top:row_bot, col0:col0 + nw] = g
+                canvas[row_top:row_bot, col0 : col0 + nw] = g
                 samples[ch].append(canvas)
         used += 1
         if (k + 1) % 20 == 0:
@@ -402,12 +450,21 @@ def main() -> int:
     cache = os.path.join(out_dir, f"{name}.samples.npz")
     if os.path.exists(cache) and not os.environ.get("REBUILD_SAMPLES"):
         z = np.load(cache)
-        samples = {chr(int(k)): [z[k][i] for i in range(z[k].shape[0])] for k in z.files}
+        samples = {
+            chr(int(k)): [z[k][i] for i in range(z[k].shape[0])]
+            for k in z.files
+        }
         print(f"loaded cached samples from {cache}")
     else:
         samples = _collect(merchants, max_receipts)
-        np.savez_compressed(cache, **{str(ord(ch)): np.array(s, bool)
-                                      for ch, s in samples.items() if s})
+        np.savez_compressed(
+            cache,
+            **{
+                str(ord(ch)): np.array(s, bool)
+                for ch, s in samples.items()
+                if s
+            },
+        )
         print(f"cached samples -> {cache}")
 
     glyphs, offsets, dropped, forced_fallback = {}, {}, [], []
@@ -429,18 +486,22 @@ def main() -> int:
             dropped.append(ch)
             continue
         iy0, iy1, ix0, ix1 = bb
-        glyphs[ch] = binm[iy0:iy1 + 1, ix0:ix1 + 1].astype(np.uint8)
-        offsets[ch] = int(iy1 - CANVAS_BASE)     # glyph bottom minus baseline
+        glyphs[ch] = binm[iy0 : iy1 + 1, ix0 : ix1 + 1].astype(np.uint8)
+        offsets[ch] = int(iy1 - CANVAS_BASE)  # glyph bottom minus baseline
     for ch, src in ALIAS_GLYPHS.items():
         if src in glyphs:
             glyphs[ch] = glyphs[src].copy()
             offsets[ch] = offsets[src]
     print(f"built {len(glyphs)} glyphs: {''.join(sorted(glyphs))}")
     if forced_fallback:
-        print("forced fallback (broken/noisy consensus): "
-              f"{''.join(sorted(forced_fallback))}")
+        print(
+            "forced fallback (broken/noisy consensus): "
+            f"{''.join(sorted(forced_fallback))}"
+        )
     if dropped:
-        print(f"dropped (too few samples -> TTF fallback): {''.join(sorted(dropped))}")
+        print(
+            f"dropped (too few samples -> TTF fallback): {''.join(sorted(dropped))}"
+        )
 
     payload = {f"c{ord(k)}": v for k, v in glyphs.items()}
     payload.update({f"o{ord(k)}": np.int16(v) for k, v in offsets.items()})
@@ -456,7 +517,9 @@ def main() -> int:
     dd = ImageDraw.Draw(sheet)
     for i, ch in enumerate(order):
         g = glyphs[ch]
-        im = Image.fromarray(((1 - g) * 255).astype(np.uint8), "L").convert("RGB")
+        im = Image.fromarray(((1 - g) * 255).astype(np.uint8), "L").convert(
+            "RGB"
+        )
         cx, cy = (i % cols) * cell, (i // cols) * cell
         # place on baseline within the cell
         base = cy + int(cell * 0.7)

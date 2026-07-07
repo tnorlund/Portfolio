@@ -44,6 +44,7 @@ Env: DYNAMODB_TABLE_NAME (default ReceiptsTable-dc5be22), AWS_REGION
 (default us-east-1). Requires a Mac (Apple Vision) and the receipt_dynamo /
 receipt_upload packages on PYTHONPATH.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -72,12 +73,13 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 import boto3  # noqa: E402
+from receipt_upload.ocr import apple_vision_ocr  # noqa: E402
+
 from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: E402
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: E402
     ReceiptWordLabel,
 )
-from receipt_upload.ocr import apple_vision_ocr  # noqa: E402
 
 TABLE = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
@@ -145,7 +147,9 @@ def load_receipt(client, s3, image_id: str, receipt_id: int):
     if receipt is None:
         raise RuntimeError(f"receipt {receipt_id} not found for {image_id}")
     words = [
-        w for w in details.receipt_words if str(w.receipt_id) == str(receipt_id)
+        w
+        for w in details.receipt_words
+        if str(w.receipt_id) == str(receipt_id)
     ]
     labels = [
         l
@@ -174,7 +178,11 @@ def load_receipt(client, s3, image_id: str, receipt_id: int):
 # amount association: value to the right of a label word, same visual row
 # =========================================================================
 def _amount_right_of(
-    label_word: ReceiptWord, words: list[ReceiptWord], W: int, H: int, mh: float
+    label_word: ReceiptWord,
+    words: list[ReceiptWord],
+    W: int,
+    H: int,
+    mh: float,
 ) -> tuple[float, ReceiptWord] | None:
     """Amount token on the same visual row, to the right of the label.
 
@@ -522,8 +530,12 @@ def recover_date(im, words, W, H, mh):
             result["recovered"] = DATE_RE.search(row_words[0].text).group(1)
             return result
 
-        box = (int(W * 0.03), int(row_cy - 0.8 * mh), int(W * 0.97),
-               int(row_cy + 0.8 * mh))
+        box = (
+            int(W * 0.03),
+            int(row_cy - 0.8 * mh),
+            int(W * 0.97),
+            int(row_cy + 0.8 * mh),
+        )
         # outline-box dates print dark-on-white (normal); knockout inverts
         found = []
         for inv in (False, True):
@@ -614,9 +626,7 @@ def _next_word_id(words, line_id):
 # driver
 # =========================================================================
 def process(client, s3, image_id, receipt_id, apply: bool):
-    receipt, im, words, labels = load_receipt(
-        client, s3, image_id, receipt_id
-    )
+    receipt, im, words, labels = load_receipt(client, s3, image_id, receipt_id)
     W, H = im.size
     mh = _median_height(words, W, H)
     rows = []
@@ -631,9 +641,7 @@ def process(client, s3, image_id, receipt_id, apply: bool):
         rows.append(rec)
 
     if apply:
-        existing_labels = {
-            (l.line_id, l.word_id, l.label) for l in labels
-        }
+        existing_labels = {(l.line_id, l.word_id, l.label) for l in labels}
         for rec in rows:
             if rec.get("verdict") != "validated" or "box" not in rec:
                 continue
@@ -661,15 +669,23 @@ def process(client, s3, image_id, receipt_id, apply: bool):
                 line_id = rec["line_id"]
                 wid = _next_word_id(words, line_id)
                 word = build_word(
-                    image_id, receipt_id, line_id, wid, rec["recovered"],
-                    rec["box"], rec.get("conf", 0.9), W, H,
+                    image_id,
+                    receipt_id,
+                    line_id,
+                    wid,
+                    rec["recovered"],
+                    rec["box"],
+                    rec.get("conf", 0.9),
+                    W,
+                    H,
                 )
                 client.add_receipt_word(word)
                 rec["written_word"] = (line_id, wid)
 
-            if rec["field"] == "GRAND_TOTAL" and (
-                line_id, wid, "GRAND_TOTAL"
-            ) not in existing_labels:
+            if (
+                rec["field"] == "GRAND_TOTAL"
+                and (line_id, wid, "GRAND_TOTAL") not in existing_labels
+            ):
                 lbl = ReceiptWordLabel(
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -699,7 +715,9 @@ def process(client, s3, image_id, receipt_id, apply: bool):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--keys", required=True, help="JSON list of {image_id, receipt_id}")
+    ap.add_argument(
+        "--keys", required=True, help="JSON list of {image_id, receipt_id}"
+    )
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
@@ -755,6 +773,7 @@ def main(argv=None):
 
     # summary
     from collections import Counter
+
     verdicts = Counter((r["field"], r["verdict"]) for r in all_rows)
     print("\n=== summary ===")
     for (field, verdict), n in sorted(verdicts.items()):

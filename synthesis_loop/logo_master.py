@@ -22,6 +22,7 @@ Outputs in <out_dir>:
   logo_master_soft.png   -- vote-fraction grayscale (anti-aliased edges)
   logo_compare.png       -- old mean | crisp | soft, stacked, for review
 """
+
 from __future__ import annotations
 
 import os
@@ -32,8 +33,10 @@ from PIL import Image
 
 TABLE = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-CW = 690                 # canvas width; height derived from the median wordmark aspect
-KEEP_IOU = 0.55          # reject a capture if its aligned IoU vs reference is below this
+CW = 690  # canvas width; height derived from the median wordmark aspect
+KEEP_IOU = (
+    0.55  # reject a capture if its aligned IoU vs reference is below this
+)
 
 # merchant -> the wordmark tokens that make up the logo (besides MERCHANT_NAME labels)
 _WORDMARK = {
@@ -100,7 +103,7 @@ def _tight(m):
     ys, xs = np.where(m)
     if ys.size < 80:
         return None
-    return m[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    return m[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
 
 
 def _top_block(mask):
@@ -129,23 +132,27 @@ def _top_block(mask):
         else:
             merged.append(b)
     maxink = max(b[2] for b in merged)
-    keep = [b for b in merged if b[2] >= 0.30 * maxink]  # address band is sparse -> dropped
-    return mask[keep[0][0]:keep[-1][1]]
+    keep = [
+        b for b in merged if b[2] >= 0.30 * maxink
+    ]  # address band is sparse -> dropped
+    return mask[keep[0][0] : keep[-1][1]]
 
 
 def _clean_tight(crop_gray):
     """Gray crop -> cleaned, tight-cropped binary (variable size, bool) or None."""
     ink = _otsu_ink(crop_gray)
-    ink = _open(ink, 1)               # kill fold-lines/speckle before bbox
+    ink = _open(ink, 1)  # kill fold-lines/speckle before bbox
     t = _tight(ink)
     if t is None:
         return None
-    t = _top_block(t)                 # drop the address line below the wordmark
+    t = _top_block(t)  # drop the address line below the wordmark
     return _tight(t)
 
 
 def _resize_bin(t, ch):
-    img = Image.fromarray((t.astype(np.uint8) * 255)).resize((CW, ch), Image.LANCZOS)
+    img = Image.fromarray((t.astype(np.uint8) * 255)).resize(
+        (CW, ch), Image.LANCZOS
+    )
     return (np.asarray(img) > 127).astype(np.float64)
 
 
@@ -172,16 +179,21 @@ def _iou(a, b):
 
 def _logo_crop(arr, words, wordmark):
     H, W = arr.shape
-    mn = [w for w in words
-          if "MERCHANT_NAME" in (w.get("labels") or [])
-          or str(w.get("text", "")).strip().upper() in wordmark]
+    mn = [
+        w
+        for w in words
+        if "MERCHANT_NAME" in (w.get("labels") or [])
+        or str(w.get("text", "")).strip().upper() in wordmark
+    ]
     if not mn:
         return None
+
     # The wordmark may also appear in body/footer text (e.g. "VONS.com", taglines)
     # which would stretch the bbox down the whole receipt. The LOGO is the topmost
     # cluster -> keep only tokens within one line-band of the highest match.
     def _cy(w):
         return (1 - (w["top_left"]["y"] + w["bottom_right"]["y"]) / 2) * H
+
     top_cy = min(_cy(w) for w in mn)
     mn = [w for w in mn if _cy(w) <= top_cy + 0.06 * H]
     tops, bottoms, lefts, rights = [], [], [], []
@@ -202,20 +214,27 @@ def _logo_crop(arr, words, wordmark):
 # --- fast collection: shared clients, thread-pool the S3/Dynamo I/O, disk-cache
 # the small grayscale logo crop so re-tuning align/vote never re-hits S3.
 CACHE_DIR = os.environ.get("LOGO_CACHE", "/tmp/logo_cache")
-CACHE_VER = "v2"   # bump when _logo_crop / cropping / image-source logic changes
+CACHE_VER = (
+    "v2"  # bump when _logo_crop / cropping / image-source logic changes
+)
 
 
 def _load_receipt_gray(rec, s3):
     """Grayscale receipt image, trying multiple S3 locations. The raw upload key
     often 404s (cleaned up); the CDN copy under assets/ is reliable, so prefer it.
-    Coords are normalized, so any variant works. Returns a PIL 'L' image or None."""
+    Coords are normalized, so any variant works. Returns a PIL 'L' image or None.
+    """
     from io import BytesIO
 
     from PIL import Image
+
     attempts = [
-        (rec.cdn_s3_bucket, rec.cdn_s3_key),            # reliable processed copy
-        (rec.raw_s3_bucket, rec.raw_s3_key),            # original upload (may 404)
-        (rec.cdn_s3_bucket, getattr(rec, "cdn_medium_s3_key", None)),  # smaller fallback
+        (rec.cdn_s3_bucket, rec.cdn_s3_key),  # reliable processed copy
+        (rec.raw_s3_bucket, rec.raw_s3_key),  # original upload (may 404)
+        (
+            rec.cdn_s3_bucket,
+            getattr(rec, "cdn_medium_s3_key", None),
+        ),  # smaller fallback
     ]
     for bucket, key in attempts:
         if not bucket or not key:
@@ -240,25 +259,40 @@ def _collect_crops(merchant, targets, wordmark):
     import concurrent.futures as cf
 
     import boto3
+
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
-    client = DynamoClient(table_name=TABLE, region=REGION)  # boto3 client is thread-safe
-    s3 = boto3.client("s3")                                 # ONE shared client, reused
+    client = DynamoClient(
+        table_name=TABLE, region=REGION
+    )  # boto3 client is thread-safe
+    s3 = boto3.client("s3")  # ONE shared client, reused
 
     def _one(iid, rid):
         p = _cache_path(merchant, iid, rid)
         if os.path.exists(p):
             a = np.load(p)
-            return None if a.size == 0 else a               # cached (incl. negative)
+            return None if a.size == 0 else a  # cached (incl. negative)
         crop = None
         try:
             d = client.get_image_details(iid)
-            words = [{"text": w.text, "labels": [], "top_left": w.top_left,
-                      "bottom_right": w.bottom_right}
-                     for w in d.receipt_words if w.receipt_id == rid]
-            lab = {(l.line_id, l.word_id): l.label for l in d.receipt_word_labels
-                   if l.receipt_id == rid}
-            for w, ww in zip(words, [w for w in d.receipt_words if w.receipt_id == rid]):
+            words = [
+                {
+                    "text": w.text,
+                    "labels": [],
+                    "top_left": w.top_left,
+                    "bottom_right": w.bottom_right,
+                }
+                for w in d.receipt_words
+                if w.receipt_id == rid
+            ]
+            lab = {
+                (l.line_id, l.word_id): l.label
+                for l in d.receipt_word_labels
+                if l.receipt_id == rid
+            }
+            for w, ww in zip(
+                words, [w for w in d.receipt_words if w.receipt_id == rid]
+            ):
                 if lab.get((ww.line_id, ww.word_id)):
                     w["labels"] = [lab[(ww.line_id, ww.word_id)]]
             rec = next((c for c in d.receipts if c.receipt_id == rid), None)
@@ -281,7 +315,10 @@ def _collect_crops(merchant, targets, wordmark):
             if c is not None:
                 crops.append(c)
             if done % 25 == 0:
-                print(f"  ...{done}/{len(targets)} fetched, {len(crops)} crops", flush=True)
+                print(
+                    f"  ...{done}/{len(targets)} fetched, {len(crops)} crops",
+                    flush=True,
+                )
     return crops
 
 
@@ -314,8 +351,10 @@ def main() -> int:
     aspects = [t.shape[1] / t.shape[0] for t in tights]
     med_aspect = float(np.median(aspects))
     CH = max(8, int(round(CW / med_aspect)))
-    print(f"collected {len(tights)} crops; median aspect {med_aspect:.2f} -> canvas {CW}x{CH}",
-          flush=True)
+    print(
+        f"collected {len(tights)} crops; median aspect {med_aspect:.2f} -> canvas {CW}x{CH}",
+        flush=True,
+    )
     canvases = [_resize_bin(t, CH) for t in tights]
 
     # reference = the canvas with median ink mass (a representative capture)
@@ -331,16 +370,24 @@ def main() -> int:
             kept += 1
         else:
             rejected += 1
-    print(f"aligned: kept {kept}, rejected {rejected} (IoU<{KEEP_IOU})", flush=True)
+    print(
+        f"aligned: kept {kept}, rejected {rejected} (IoU<{KEEP_IOU})",
+        flush=True,
+    )
     if len(aligned) < 3:
         # Low-count merchant (few receipts / missing S3): no stable vote -> fall
         # back to the single sharpest reference capture (already cleaned).
-        print(f"too few aligned ({len(aligned)}); single-best fallback", flush=True)
+        print(
+            f"too few aligned ({len(aligned)}); single-best fallback",
+            flush=True,
+        )
         aligned = [ref]
 
     stack = np.stack(aligned)
-    frac = stack.mean(axis=0)                 # vote fraction 0..1 (soft, anti-aliased)
-    crisp = (frac >= 0.5).astype(np.float64)  # majority vote (median of binary stack)
+    frac = stack.mean(axis=0)  # vote fraction 0..1 (soft, anti-aliased)
+    crisp = (frac >= 0.5).astype(
+        np.float64
+    )  # majority vote (median of binary stack)
 
     # mean of the SAME aligned stack, for comparison (what the old approach yields)
     mean_img = frac  # mean == fraction here; show old UNALIGNED mean too
@@ -354,14 +401,18 @@ def main() -> int:
 
     # comparison sheet: old unaligned mean | aligned crisp | aligned soft
     gap = 10
-    panel = lambda a: Image.fromarray(((1 - a) * 255).astype(np.uint8)).convert("RGB")
+    panel = lambda a: Image.fromarray(
+        ((1 - a) * 255).astype(np.uint8)
+    ).convert("RGB")
     imgs = [panel(old_mean), panel(crisp), panel(frac)]
     sheet = Image.new("RGB", (CW, CH * 3 + gap * 2), (245, 245, 245))
     for i, im in enumerate(imgs):
         sheet.paste(im, (0, i * (CH + gap)))
     sheet.save(os.path.join(out_dir, "logo_compare.png"))
-    print(f"master -> {out_dir}/logo_master_crisp.png (+ _soft, + compare) "
-          f"from {kept} aligned captures")
+    print(
+        f"master -> {out_dir}/logo_master_crisp.png (+ _soft, + compare) "
+        f"from {kept} aligned captures"
+    )
     return 0
 
 

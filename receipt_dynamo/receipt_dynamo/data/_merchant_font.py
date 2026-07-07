@@ -75,9 +75,7 @@ class _MerchantFont(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("list_merchant_fonts")
-    def list_merchant_fonts(
-        self, merchant_name: str
-    ) -> list[MerchantFont]:
+    def list_merchant_fonts(self, merchant_name: str) -> list[MerchantFont]:
         """
         Lists all font faces for a merchant.
 

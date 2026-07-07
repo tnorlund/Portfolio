@@ -12,6 +12,7 @@ section headers are the receipt's only underline signal (~41% of lines);
 BALANCE DUE alone prints bold + taller; the payment block is condensed and
 barcode captions are smaller/lighter; everything else is single-weight.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -19,25 +20,57 @@ import re
 from typing import Any, Mapping
 
 SECTION_TOKENS = {
-    "PRODUCE", "DAIRY", "MEAT", "GROCERY", "BULK", "DELI", "BAKERY",
-    "FROZEN", "SEAFOOD", "VITAMINS", "BEER", "WINE", "BODY", "HOUSEHOLD",
+    "PRODUCE",
+    "DAIRY",
+    "MEAT",
+    "GROCERY",
+    "BULK",
+    "DELI",
+    "BAKERY",
+    "FROZEN",
+    "SEAFOOD",
+    "VITAMINS",
+    "BEER",
+    "WINE",
+    "BODY",
+    "HOUSEHOLD",
 }
 _RULES: list[tuple[str, re.Pattern]] = [
     ("balance_due", re.compile(r"^BALANCE DUE", re.I)),
     ("store_hours", re.compile(r"Store Hours|MON-SUN|7AM-10PM", re.I)),
-    ("address", re.compile(
-        r"(BLVD|AVE\b|STREET|\bRD\b|,\s*CA\s+\d{5}|\(\d{3}\)\s*\d{3})", re.I)),
+    (
+        "address",
+        re.compile(
+            r"(BLVD|AVE\b|STREET|\bRD\b|,\s*CA\s+\d{5}|\(\d{3}\)\s*\d{3})",
+            re.I,
+        ),
+    ),
     ("total_line", re.compile(r"^Total:", re.I)),
-    ("summary", re.compile(
-        r"CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I)),
-    ("payment", re.compile(
-        r"AUTH|AID:|TVR:|TSI:|ARC:|IAD:|TC:|MID:|TID:|SEQ|Entry Method|"
-        r"APPROVED|CARD\s*#|Cntctless|MASTERCARD|US DEBIT|PURCHASE|Issuer|"
-        r"Verified|X{6,}", re.I)),
-    ("survey", re.compile(r"survey|feedback|WIN\b|Winners|gift card|Go to", re.I)),
-    ("footer", re.compile(
-        r"Cashier|POS:|Transaction|Save money|weekly ad|sprouts\.com|"
-        r"original receipt|returns|Limits apply", re.I)),
+    (
+        "summary",
+        re.compile(r"CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I),
+    ),
+    (
+        "payment",
+        re.compile(
+            r"AUTH|AID:|TVR:|TSI:|ARC:|IAD:|TC:|MID:|TID:|SEQ|Entry Method|"
+            r"APPROVED|CARD\s*#|Cntctless|MASTERCARD|US DEBIT|PURCHASE|Issuer|"
+            r"Verified|X{6,}",
+            re.I,
+        ),
+    ),
+    (
+        "survey",
+        re.compile(r"survey|feedback|WIN\b|Winners|gift card|Go to", re.I),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"Cashier|POS:|Transaction|Save money|weekly ad|sprouts\.com|"
+            r"original receipt|returns|Limits apply",
+            re.I,
+        ),
+    ),
 ]
 _BARCODE_RE = re.compile(r"^\d{10,}$")
 

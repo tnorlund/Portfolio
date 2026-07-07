@@ -9,6 +9,7 @@ Overlay: compiled ink tinted blue over the soft map in red — misalignment
 and weight mismatch read instantly. This is the CLI equivalent of the
 editor's onion-skin for batch review.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,9 +23,15 @@ from .samples import canvas_geometry, consensus_soft, load_stack
 from .schema import load_font, load_glyphs, merged_params
 
 
-def _cell(soft: np.ndarray | None, comp: np.ndarray | None,
-          comp_off: int, ref_cap_s: int, baseline_s: int,
-          cap_ref: int, scale: int) -> Image.Image:
+def _cell(
+    soft: np.ndarray | None,
+    comp: np.ndarray | None,
+    comp_off: int,
+    ref_cap_s: int,
+    baseline_s: int,
+    cap_ref: int,
+    scale: int,
+) -> Image.Image:
     """One char row: consensus | compiled | overlay, baseline-aligned."""
     ch_h, ch_w = 3 * cap_ref, 2 * cap_ref
     base_row = int(cap_ref * 2.3)
@@ -36,9 +43,12 @@ def _cell(soft: np.ndarray | None, comp: np.ndarray | None,
     soft_c = canvas()
     if soft is not None:
         img = Image.fromarray((soft * 255).astype(np.uint8)).resize(
-            (int(round(soft.shape[1] * cap_ref / ref_cap_s)),
-             int(round(soft.shape[0] * cap_ref / ref_cap_s))),
-            Image.BILINEAR)
+            (
+                int(round(soft.shape[1] * cap_ref / ref_cap_s)),
+                int(round(soft.shape[0] * cap_ref / ref_cap_s)),
+            ),
+            Image.BILINEAR,
+        )
         arr = np.asarray(img).astype(float) / 255.0
         src_base = int(round(baseline_s * cap_ref / ref_cap_s))
         y0 = base_row - src_base
@@ -46,7 +56,7 @@ def _cell(soft: np.ndarray | None, comp: np.ndarray | None,
         ys, xs = max(0, y0), max(0, x0)
         ye = min(ch_h, y0 + arr.shape[0])
         xe = min(ch_w, x0 + arr.shape[1])
-        soft_c[ys:ye, xs:xe] = arr[ys - y0: ye - y0, xs - x0: xe - x0]
+        soft_c[ys:ye, xs:xe] = arr[ys - y0 : ye - y0, xs - x0 : xe - x0]
 
     comp_c = canvas()
     if comp is not None:
@@ -56,7 +66,7 @@ def _cell(soft: np.ndarray | None, comp: np.ndarray | None,
         x0 = (ch_w - w) // 2
         ys, xs = max(0, y0), max(0, x0)
         ye, xe = min(ch_h, y0 + h), min(ch_w, x0 + w)
-        comp_c[ys:ye, xs:xe] = comp[ys - y0: ye - y0, xs - x0: xe - x0]
+        comp_c[ys:ye, xs:xe] = comp[ys - y0 : ye - y0, xs - x0 : xe - x0]
 
     cells = []
     for mode in ("soft", "comp", "overlay"):
@@ -69,19 +79,25 @@ def _cell(soft: np.ndarray | None, comp: np.ndarray | None,
             rgb = np.stack([v, v, v], axis=2)
         else:
             # consensus in red channel-off, compiled in blue channel-off
-            rgb[..., 1] = (255 * (1 - np.maximum(soft_c * 0.9, comp_c))).astype(np.uint8)
+            rgb[..., 1] = (
+                255 * (1 - np.maximum(soft_c * 0.9, comp_c))
+            ).astype(np.uint8)
             rgb[..., 2] = (255 * (1 - soft_c * 0.9)).astype(np.uint8)
             rgb[..., 0] = (255 * (1 - comp_c)).astype(np.uint8)
-        img = Image.fromarray(rgb).resize((ch_w * scale, ch_h * scale),
-                                          Image.NEAREST)
+        img = Image.fromarray(rgb).resize(
+            (ch_w * scale, ch_h * scale), Image.NEAREST
+        )
         d = ImageDraw.Draw(img)
         by = (base_row + 0.5) * scale
         d.line([(0, by), (img.width, by)], fill=(180, 180, 180), width=1)
         cy = (base_row - cap_ref + 0.5) * scale
         d.line([(0, cy), (img.width, cy)], fill=(210, 210, 210), width=1)
         cells.append(img)
-    strip = Image.new("RGB", (sum(c.width for c in cells) + 2 * len(cells),
-                              cells[0].height), (140, 140, 140))
+    strip = Image.new(
+        "RGB",
+        (sum(c.width for c in cells) + 2 * len(cells), cells[0].height),
+        (140, 140, 140),
+    )
     x = 0
     for c in cells:
         strip.paste(c, (x, 0))
@@ -115,19 +131,25 @@ def main(argv=None) -> int:
         comp, off = (None, 0)
         if cp in glyphs:
             comp_arr, off = rasterize_glyph(
-                glyphs[cp], merged_params(font, glyphs[cp]), ref_cap)
+                glyphs[cp], merged_params(font, glyphs[cp]), ref_cap
+            )
             comp = comp_arr.astype(float)
-        row = _cell(soft, comp, off, ref_cap_s, baseline_s, ref_cap,
-                    args.scale)
-        labeled = Image.new("RGB", (row.width + 40 * args.scale, row.height),
-                            (255, 255, 255))
+        row = _cell(
+            soft, comp, off, ref_cap_s, baseline_s, ref_cap, args.scale
+        )
+        labeled = Image.new(
+            "RGB", (row.width + 40 * args.scale, row.height), (255, 255, 255)
+        )
         labeled.paste(row, (40 * args.scale, 0))
         d = ImageDraw.Draw(labeled)
         d.text((6, row.height // 2 - 10), ch, fill=(200, 30, 30))
         rows.append(labeled)
 
-    total = Image.new("RGB", (max(r.width for r in rows),
-                              sum(r.height + 2 for r in rows)), (120, 120, 120))
+    total = Image.new(
+        "RGB",
+        (max(r.width for r in rows), sum(r.height + 2 for r in rows)),
+        (120, 120, 120),
+    )
     y = 0
     for r in rows:
         total.paste(r, (0, y))

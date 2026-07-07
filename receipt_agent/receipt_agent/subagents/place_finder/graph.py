@@ -14,7 +14,6 @@ from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-
 from receipt_agent.agents.agentic.tools import (
     ReceiptContext,
     create_agentic_tools,

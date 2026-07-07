@@ -35,7 +35,6 @@ from statistics import median
 from typing import Any, Callable, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFilter
-
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
@@ -60,9 +59,22 @@ GlyphFallback = Callable[[str, AtlasStyle, int], "Image.Image | None"]
 # When a synthesized receipt does not mark emphasis, fall back to these cues.
 _BOLD_LINE_HINTS = ("MEMBER SAVINGS", "SAVINGS", "YOU SAVED")
 _CATEGORY_HINTS = (
-    "GROCERY", "PRODUCE", "LIQUOR", "BAKERY", "BAKED GOODS", "DELI", "DAIRY",
-    "REFRIG", "FROZEN", "MEAT", "SEAFOOD", "GENERAL", "HEALTH", "BEAUTY",
-    "HOUSEHOLD", "BEVERAGE",
+    "GROCERY",
+    "PRODUCE",
+    "LIQUOR",
+    "BAKERY",
+    "BAKED GOODS",
+    "DELI",
+    "DAIRY",
+    "REFRIG",
+    "FROZEN",
+    "MEAT",
+    "SEAFOOD",
+    "GENERAL",
+    "HEALTH",
+    "BEAUTY",
+    "HOUSEHOLD",
+    "BEVERAGE",
 )
 _MERCHANT_LABELS = ("MERCHANT_NAME", "STORE_NAME")
 # A genuine wordmark line is short ("SPROUTS", "SPROUTS FARMERS MARKET",
@@ -74,10 +86,19 @@ _MERCHANT_LABELS = ("MERCHANT_NAME", "STORE_NAME")
 _LOGO_MAX_WORDS = 4
 
 # Tokens that are right-aligned into the price/amount column.
-_AMOUNT_LABELS = frozenset({
-    "LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL", "UNIT_PRICE", "AMOUNT",
-    "BALANCE", "TOTAL", "PRICE",
-})
+_AMOUNT_LABELS = frozenset(
+    {
+        "LINE_TOTAL",
+        "SUBTOTAL",
+        "TAX",
+        "GRAND_TOTAL",
+        "UNIT_PRICE",
+        "AMOUNT",
+        "BALANCE",
+        "TOTAL",
+        "PRICE",
+    }
+)
 _AMOUNT_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}\$?[A-Z]?-?$")
 # A standalone long digit run is the human-readable barcode number; real receipts
 # print the bar field just above it (OCR never captures the bars themselves).
@@ -110,14 +131,20 @@ class GlyphRenderConfig:
     ink: tuple[int, int, int] = (38, 36, 34)
     ink_jitter: int = 26  # per-glyph brightness variation (thermal unevenness)
     ink_density: float = 1.16  # alpha multiplier for faint thermal glyph crops
-    char_tracking: float = 0.04  # extra advance as a fraction of the cell width
-    descender_frac: float = 0.12  # baseline raised this fraction above box bottom
+    char_tracking: float = (
+        0.04  # extra advance as a fraction of the cell width
+    )
+    descender_frac: float = (
+        0.12  # baseline raised this fraction above box bottom
+    )
     noise: float = 0.5  # 0 = clean, 1 = heavy paper/scan noise
     blur: float = 0.4  # gaussian blur radius for thermal softness
     seed: int = 7
     use_logo: bool = True
     draw_barcodes: bool = True  # render bar fields above long-numeric lines
-    paper_realism: float = 0.6  # 0=flat; thermal fade + banding + vignette + grain
+    paper_realism: float = (
+        0.6  # 0=flat; thermal fade + banding + vignette + grain
+    )
     body_glyph_source: str = "atlas"  # "numeric" or "font" opts into TTF body
 
 
@@ -158,16 +185,18 @@ def render_receipt_glyphs(
     # advance. This is what makes lines render on a true grid instead of each
     # word being squeezed into its own box (the collapsed-spacing failure).
     pitch_norm = _pitch_norm(words, scale, profile)
-    font_h_norm = profile.font_height if (profile and profile.font_height) else None
-    row_pitch_px = _row_pitch_px(
-        line_words, scale, config, inner_w, inner_h
+    font_h_norm = (
+        profile.font_height if (profile and profile.font_height) else None
     )
+    row_pitch_px = _row_pitch_px(line_words, scale, config, inner_w, inner_h)
     wordmark = atlas.logo_text or atlas.merchant_name
     for line in line_words:
         is_logo = _line_is_logo(line, body_h_ref, wordmark)
         bold = _line_is_bold(line)
         if is_logo and config.use_logo and atlas.logo is not None:
-            if _stamp_logo(image, line, atlas, scale, config, inner_w, inner_h):
+            if _stamp_logo(
+                image, line, atlas, scale, config, inner_w, inner_h
+            ):
                 continue  # logo stamped; skip per-char rendering for this line
         if _line_is_rule(line):
             _stamp_rule(image, line, scale, config, inner_w, inner_h, rng)
@@ -179,9 +208,18 @@ def render_receipt_glyphs(
                     image, line, scale, config, inner_w, inner_h, digits
                 )  # then fall through to print the human-readable number below
         _stamp_line_fixed_pitch(
-            image, line, atlas, scale, config, inner_w, inner_h,
-            bold=bold, rng=rng, fallback=fallback,
-            pitch_norm=pitch_norm, font_h_norm=font_h_norm,
+            image,
+            line,
+            atlas,
+            scale,
+            config,
+            inner_w,
+            inner_h,
+            bold=bold,
+            rng=rng,
+            fallback=fallback,
+            pitch_norm=pitch_norm,
+            font_h_norm=font_h_norm,
             row_pitch_px=row_pitch_px,
         )
 
@@ -202,8 +240,12 @@ def render_real_vs_glyph(
     """A real receipt photo beside its glyph-stamped render, for visual diffing."""
     config = config or GlyphRenderConfig()
     rendered = render_receipt_glyphs(
-        receipt, atlas, profile=profile, config=config, coord_max=coord_max,
-        fallback=fallback
+        receipt,
+        atlas,
+        profile=profile,
+        config=config,
+        coord_max=coord_max,
+        fallback=fallback,
     )
     left = _fit_height(real_image.convert("RGB"), rendered.height)
     return _hstack_labeled(left, rendered, labels)
@@ -221,8 +263,12 @@ def save_receipt_glyphs(
 ) -> str:
     """Render and write a glyph-stamped receipt PNG. Returns ``path``."""
     image = render_receipt_glyphs(
-        receipt, atlas, profile=profile, config=config, coord_max=coord_max,
-        fallback=fallback
+        receipt,
+        atlas,
+        profile=profile,
+        config=config,
+        coord_max=coord_max,
+        fallback=fallback,
     )
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.save(path, format="PNG")
@@ -340,7 +386,9 @@ def _stamp_line_fixed_pitch(
         text = str(word.get("text") or "")
         if not text.strip():
             continue
-        px = _to_pixel_box(word.get("bbox"), scale, _PixelCfg(config), inner_w, inner_h)
+        px = _to_pixel_box(
+            word.get("bbox"), scale, _PixelCfg(config), inner_w, inner_h
+        )
         if px is not None:
             placed.append((word, text, px))
     if not placed:
@@ -351,7 +399,10 @@ def _stamp_line_fixed_pitch(
     box_heights = [b - t for _, _, (l, t, r, b) in placed]
     line_h = median(box_heights)
     glyph_h = _glyph_height_px(line_h, inner_h, font_h_norm, row_pitch_px)
-    baseline = median([b for _, _, (l, t, r, b) in placed]) - line_h * config.descender_frac
+    baseline = (
+        median([b for _, _, (l, t, r, b) in placed])
+        - line_h * config.descender_frac
+    )
     ref_h = style.median_box_height or 1.0
     max_glyph_w = pitch * (1.0 - config.char_tracking)
     grid_origin = float(config.margin)
@@ -388,8 +439,13 @@ def _stamp_line_fixed_pitch(
                 word_max_glyph_w = word_pitch * (1.0 - config.char_tracking)
                 span_w = n * word_pitch
         word_seed = _stable_u32(
-            config.seed, style.style_id, "bold" if bold else "regular",
-            text, round(left, 2), round(top, 2), round(right, 2),
+            config.seed,
+            style.style_id,
+            "bold" if bold else "regular",
+            text,
+            round(left, 2),
+            round(top, 2),
+            round(right, 2),
             round(bottom, 2),
         )
         if config.ink_jitter > 0:
@@ -407,11 +463,19 @@ def _stamp_line_fixed_pitch(
                     config, style, bold=bold, word_seed=word_seed, char=char
                 )
                 glyph_img = _render_glyph(
-                    char, atlas, style, bold=bold, target_h=glyph_h,
-                    ref_h=ref_h, max_w=word_max_glyph_w, config=config, rng=rng,
+                    char,
+                    atlas,
+                    style,
+                    bold=bold,
+                    target_h=glyph_h,
+                    ref_h=ref_h,
+                    max_w=word_max_glyph_w,
+                    config=config,
+                    rng=rng,
                     fallback=fallback,
                     prefer_font=_prefer_font_for_char(
-                        config, char,
+                        config,
+                        char,
                         word_prefers_font=prefer_font_for_word,
                     ),
                     variant_index=variant_index,
@@ -421,7 +485,9 @@ def _stamp_line_fixed_pitch(
                     gx = int(cell_left + (word_pitch - glyph_img.width) / 2)
                     gy = int(baseline - glyph_img.height)
                     image.alpha_composite(glyph_img, (max(0, gx), max(0, gy)))
-        cursor = start_x + span_w + word_pitch  # one blank cell before next word
+        cursor = (
+            start_x + span_w + word_pitch
+        )  # one blank cell before next word
 
 
 def _stable_u32(*parts: object) -> int:
@@ -498,7 +564,9 @@ def _render_glyph(
         if glyph_img is not None:
             if ink_jitter is not None:
                 glyph_img = _retint_glyph(
-                    glyph_img, config, ink_jitter,
+                    glyph_img,
+                    config,
+                    ink_jitter,
                     preserve_shape=char in _ATLAS_CONFUSABLE_CHARS,
                 )
             return _fit_glyph_width(glyph_img, max_w)
@@ -506,10 +574,14 @@ def _render_glyph(
     # Rotate among the char's stored variants (seeded rng) so a repeated letter
     # is not the identical crop every time — natural variation, and no single
     # imperfect crop repeats across the whole receipt.
-    index = variant_index if variant_index is not None else rng.randrange(1 << 16)
+    index = (
+        variant_index if variant_index is not None else rng.randrange(1 << 16)
+    )
     crop = atlas.glyph(char, role="body", bold=bold, index=index)
     if crop is not None:
-        rel = max(0.5, min(1.0, crop.box_height_norm / ref_h if ref_h else 1.0))
+        rel = max(
+            0.5, min(1.0, crop.box_height_norm / ref_h if ref_h else 1.0)
+        )
         h = max(2.0, target_h * rel)
         w = h * crop.aspect
         if w > max_w:
@@ -562,7 +634,9 @@ def _thermalize_font_alpha(alpha: Image.Image) -> Image.Image:
             if px[x, y] == 0:
                 continue
             edge = (
-                x == 0 or y == 0 or x == alpha.width - 1
+                x == 0
+                or y == 0
+                or x == alpha.width - 1
                 or y == alpha.height - 1
                 or px[x - 1, y] == 0
                 or px[min(x + 1, alpha.width - 1), y] == 0
@@ -574,7 +648,9 @@ def _thermalize_font_alpha(alpha: Image.Image) -> Image.Image:
     return alpha
 
 
-def _apply_ink_density(alpha: Image.Image, config: GlyphRenderConfig) -> Image.Image:
+def _apply_ink_density(
+    alpha: Image.Image, config: GlyphRenderConfig
+) -> Image.Image:
     density = max(0.1, min(2.0, float(config.ink_density)))
     if density == 1.0:
         return alpha
@@ -648,8 +724,10 @@ def _stamp_word(
         if glyph_img.width > max_glyph_w:
             s = max_glyph_w / glyph_img.width
             glyph_img = glyph_img.resize(
-                (max(1, int(glyph_img.width * s)),
-                 max(1, int(glyph_img.height * s))),
+                (
+                    max(1, int(glyph_img.width * s)),
+                    max(1, int(glyph_img.height * s)),
+                ),
                 Image.LANCZOS,
             )
         # Center in the cell horizontally; bottom-align to the baseline.
@@ -802,7 +880,10 @@ def _band_has_existing_ink(
         return True
     gray = image.crop((left, top, right, bottom)).convert("L")
     dark = sum(1 for value in gray.getdata() if value < 170)
-    limit = max(3, int((right - left) * (bottom - top) * _BARCODE_MAX_EXISTING_INK_FRAC))
+    limit = max(
+        3,
+        int((right - left) * (bottom - top) * _BARCODE_MAX_EXISTING_INK_FRAC),
+    )
     return dark > limit
 
 
@@ -903,7 +984,9 @@ def _row_pitch_px(
         boxes = [box for box in boxes if box is not None]
         if not boxes:
             continue
-        centers.append(median([(top + bottom) / 2 for _, top, _, bottom in boxes]))
+        centers.append(
+            median([(top + bottom) / 2 for _, top, _, bottom in boxes])
+        )
     centers = sorted(centers)
     gaps = [
         centers[index + 1] - centers[index]
@@ -926,7 +1009,9 @@ def _norm_wordmark(text: str) -> str:
     return "".join(ch for ch in text.upper() if ch.isalnum())
 
 
-def _line_matches_wordmark(line: Sequence[Mapping[str, Any]], wordmark: str) -> bool:
+def _line_matches_wordmark(
+    line: Sequence[Mapping[str, Any]], wordmark: str
+) -> bool:
     """The line's text actually reads as the merchant wordmark (not just shares a
     stray MERCHANT_NAME label). Source OCR mislabels times, prices, phone numbers
     and stray words as MERCHANT_NAME; without this, the big logo image is stamped
@@ -934,11 +1019,13 @@ def _line_matches_wordmark(line: Sequence[Mapping[str, Any]], wordmark: str) -> 
     short accidental substring ("ON" in "VONS") does not match."""
     mark = _norm_wordmark(wordmark)
     if len(mark) < 3:
-        return True  # no usable wordmark text — fall back to label+height gates
+        return (
+            True  # no usable wordmark text — fall back to label+height gates
+        )
     lt = _norm_wordmark(_line_text(line))
     if len(lt) < 3:
         return False
-    return (lt in mark or mark in lt)
+    return lt in mark or mark in lt
 
 
 def _line_is_logo(
@@ -954,7 +1041,8 @@ def _line_is_logo(
     being stamped over ordinary lines. A promo *sentence* that merely mentions the
     merchant is excluded by the word-count cap, and a mislabelled time/price/phone
     line is excluded by the wordmark text match — so the logo asset never bleeds
-    over body text it happens to share a tall, MERCHANT_NAME-tagged line with."""
+    over body text it happens to share a tall, MERCHANT_NAME-tagged line with.
+    """
     if not (_line_labels(line) & set(_MERCHANT_LABELS)):
         return False
     words = [w for w in line if str(w.get("text") or "").strip()]
@@ -978,7 +1066,9 @@ def _line_is_bold(line: Sequence[Mapping[str, Any]]) -> bool:
         return True
     # A short all-caps line that is exactly a category name is a section header.
     compact = text.replace("/", " ")
-    if any(compact == hint or compact.startswith(hint) for hint in _CATEGORY_HINTS):
+    if any(
+        compact == hint or compact.startswith(hint) for hint in _CATEGORY_HINTS
+    ):
         return True
     return False
 
@@ -988,8 +1078,12 @@ def _line_is_bold(line: Sequence[Mapping[str, Any]]) -> bool:
 # --------------------------------------------------------------------------- #
 
 
-def _thermal_paper(config: GlyphRenderConfig, rng: random.Random) -> Image.Image:
-    image = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+def _thermal_paper(
+    config: GlyphRenderConfig, rng: random.Random
+) -> Image.Image:
+    image = Image.new(
+        "RGBA", (config.width, config.height), config.paper + (255,)
+    )
     if config.noise <= 0:
         return image
     # Sparse darker speckle + faint horizontal scan banding for thermal realism.
@@ -1005,7 +1099,9 @@ def _thermal_paper(config: GlyphRenderConfig, rng: random.Random) -> Image.Image
     return image
 
 
-def _thermal_finish(image: Image.Image, config: GlyphRenderConfig) -> Image.Image:
+def _thermal_finish(
+    image: Image.Image, config: GlyphRenderConfig
+) -> Image.Image:
     out = image.convert("RGB")
     if config.blur > 0:
         out = out.filter(ImageFilter.GaussianBlur(radius=config.blur))
@@ -1038,7 +1134,10 @@ def _apply_paper_effects(
     fade = 1.0 - amt * 0.05 * (np.abs(yy - 0.5) * 2.0)
     # faint horizontal scan banding
     period = float(rng.integers(7, 14))
-    banding = 1.0 - amt * 0.025 * (0.5 + 0.5 * np.sin(np.arange(h) / period))[:, None]
+    banding = (
+        1.0
+        - amt * 0.025 * (0.5 + 0.5 * np.sin(np.arange(h) / period))[:, None]
+    )
     # edge vignette (stronger at the left/right paper edges)
     vignette = 1.0 - amt * 0.10 * ((np.abs(xx - 0.5) * 2.0) ** 3)
     mask = (fade * banding * vignette)[..., None]
@@ -1071,13 +1170,17 @@ def _apply_paper_effects(
     gray = arr.mean(axis=2)
     ink_mask = np.clip((238.0 - gray) / 180.0, 0.0, 1.0)
     fade_field = np.clip(
-        0.38 + coating * 0.14 + coarse * 0.13
-        + fine * 0.06 + coating_wave[:, None] * 0.07,
-        0.0, 1.0,
+        0.38
+        + coating * 0.14
+        + coarse * 0.13
+        + fine * 0.06
+        + coating_wave[:, None] * 0.07,
+        0.0,
+        1.0,
     )
-    thermal_fade = (
-        amt * (0.18 + noise_amt * 0.05) * fade_field * ink_mask
-    )[..., None]
+    thermal_fade = (amt * (0.18 + noise_amt * 0.05) * fade_field * ink_mask)[
+        ..., None
+    ]
     paper = np.asarray(config.paper, dtype=np.float32)
     arr = arr * (1.0 - thermal_fade) + paper * thermal_fade
     # fine grain

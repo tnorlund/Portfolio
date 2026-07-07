@@ -9,10 +9,10 @@ equal-valued restatements for invalidation.
 
 from types import SimpleNamespace
 
+from receipt_upload.line_items import dedupe_grand_total
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
-
-from receipt_upload.line_items import dedupe_grand_total
 
 IMAGE_ID = "00000000-0000-4000-8000-000000000a01"
 

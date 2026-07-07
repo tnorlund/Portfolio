@@ -9,21 +9,20 @@ from __future__ import annotations
 
 import pytest
 from PIL import Image, ImageDraw
-
-from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
-    build_glyph_atlas,
-)
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
+)
+from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
+    build_glyph_atlas,
 )
 from receipt_agent.agents.label_evaluator.rendering.glyph_renderer import (
     GlyphRenderConfig,
     _apply_ink_density,
-    _glyph_variant_index,
     _glyph_height_px,
+    _glyph_variant_index,
+    _line_barcode_digits,
     _line_is_logo,
     _line_is_rule,
-    _line_barcode_digits,
     _pitch_norm,
     _prefer_font_for_char,
     _snap_to_pitch,
@@ -39,21 +38,35 @@ _W, _H = 320, 1600
 
 def _letter(char, x, y, w, h, *, line_id, word_id, letter_id):
     return {
-        "text": char, "confidence": 0.99, "image_id": "img-1", "receipt_id": 1,
-        "line_id": line_id, "word_id": word_id, "letter_id": letter_id,
+        "text": char,
+        "confidence": 0.99,
+        "image_id": "img-1",
+        "receipt_id": 1,
+        "line_id": line_id,
+        "word_id": word_id,
+        "letter_id": letter_id,
         "bounding_box": {"x": x, "y": y, "width": w, "height": h},
     }
 
 
 def _atlas():
     import math
+
     letters = []
     image = Image.new("RGB", (_W, _H), (250, 249, 246))
     draw = ImageDraw.Draw(image)
 
     def add(char, x, y, w, h, *, line_id, word_id, letter_id, coverage):
-        lt = _letter(char, x, y, w, h, line_id=line_id, word_id=word_id,
-                     letter_id=letter_id)
+        lt = _letter(
+            char,
+            x,
+            y,
+            w,
+            h,
+            line_id=line_id,
+            word_id=word_id,
+            letter_id=letter_id,
+        )
         box = lt["bounding_box"]
         left = box["x"] * _W
         right = (box["x"] + box["width"]) * _W
@@ -62,21 +75,61 @@ def _atlas():
         frac = math.sqrt(coverage)
         iw, ih = (right - left) * frac, (bottom - top) * frac
         cx, cy = (left + right) / 2, (top + bottom) / 2
-        draw.rectangle([cx - iw / 2, cy - ih / 2, cx + iw / 2, cy + ih / 2],
-                       fill=(10, 10, 10))
+        draw.rectangle(
+            [cx - iw / 2, cy - ih / 2, cx + iw / 2, cy + ih / 2],
+            fill=(10, 10, 10),
+        )
         letters.append(lt)
 
     # Logo line + body lines covering the chars we render below.
-    add("V", 0.30, 0.94, 0.05, 0.045, line_id=1, word_id=1, letter_id=1, coverage=0.6)
-    add("S", 0.40, 0.94, 0.05, 0.045, line_id=1, word_id=1, letter_id=2, coverage=0.6)
+    add(
+        "V",
+        0.30,
+        0.94,
+        0.05,
+        0.045,
+        line_id=1,
+        word_id=1,
+        letter_id=1,
+        coverage=0.6,
+    )
+    add(
+        "S",
+        0.40,
+        0.94,
+        0.05,
+        0.045,
+        line_id=1,
+        word_id=1,
+        letter_id=2,
+        coverage=0.6,
+    )
     chars = "ABC123"
     for li, ytop in enumerate((0.80, 0.74, 0.68, 0.62), start=2):
         for wi, ch in enumerate(chars):
-            add(ch, 0.10 + wi * 0.05, ytop, 0.022, 0.02,
-                line_id=li, word_id=2, letter_id=wi + 1, coverage=0.22)
+            add(
+                ch,
+                0.10 + wi * 0.05,
+                ytop,
+                0.022,
+                0.02,
+                line_id=li,
+                word_id=2,
+                letter_id=wi + 1,
+                coverage=0.22,
+            )
     atlas = build_glyph_atlas(
-        [{"image_id": "img-1", "receipt_id": 1, "letters": letters,
-          "raw_image": image}], "TestMart", min_samples=5)
+        [
+            {
+                "image_id": "img-1",
+                "receipt_id": 1,
+                "letters": letters,
+                "raw_image": image,
+            }
+        ],
+        "TestMart",
+        min_samples=5,
+    )
     assert atlas is not None
     return atlas
 
@@ -87,13 +140,21 @@ def _word(text, x0, y0, x1, y1, labels=None):
 
 def _receipt():
     # 0-1000 space, y high-is-top.
-    return {"lines": [
-        {"line_id": 1, "words": [_word("ABC", 100, 950, 300, 985,
-                                       ["MERCHANT_NAME"])]},  # tall logo line
-        {"line_id": 2, "words": [_word("ABC", 80, 800, 240, 820),
-                                 _word("123", 820, 800, 900, 820,
-                                       ["LINE_TOTAL"])]},
-    ]}
+    return {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [_word("ABC", 100, 950, 300, 985, ["MERCHANT_NAME"])],
+            },  # tall logo line
+            {
+                "line_id": 2,
+                "words": [
+                    _word("ABC", 80, 800, 240, 820),
+                    _word("123", 820, 800, 900, 820, ["LINE_TOTAL"]),
+                ],
+            },
+        ]
+    }
 
 
 def _profile(char_width=0.02, font_height=0.02):
@@ -128,10 +189,14 @@ def test_logo_gate_only_fires_on_tall_merchant_line():
     # A small MERCHANT_NAME line (same height as body) must NOT be replaced by the
     # logo image — only the genuinely tall display line is.
     atlas = _atlas()
-    receipt = {"lines": [
-        {"line_id": 1, "words": [_word("ABC", 100, 800, 240, 820,
-                                       ["MERCHANT_NAME"])]},  # body-height
-    ]}
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [_word("ABC", 100, 800, 240, 820, ["MERCHANT_NAME"])],
+            },  # body-height
+        ]
+    }
     config = GlyphRenderConfig(width=300, height=700, noise=0.0, blur=0.0)
     # Should render glyphs (not crash, not stamp logo); ink present.
     image = render_receipt_glyphs(receipt, atlas, config=config)
@@ -148,12 +213,20 @@ def test_logo_gate_matches_wordmark_and_rejects_mislabelled_lines():
     # genuine wordmark line is stamped as the logo
     assert _line_is_logo([_tall("VONS", ["MERCHANT_NAME"])], BODY, "VONS")
     # a partial wordmark token still matches the full mark ("CVS" in "CVS pharmacy")
-    assert _line_is_logo([_tall("CVS", ["MERCHANT_NAME"])], BODY, "•CVS pharmacy")
+    assert _line_is_logo(
+        [_tall("CVS", ["MERCHANT_NAME"])], BODY, "•CVS pharmacy"
+    )
     # a mislabelled time / price / phone that happens to be tall + MERCHANT_NAME
     # tagged must NOT pull in the logo image (it does not match the wordmark)
-    assert not _line_is_logo([_tall("6:33", ["MERCHANT_NAME"])], BODY, "COSTCO")
-    assert not _line_is_logo([_tall("17.49", ["MERCHANT_NAME"])], BODY, "COSTCO")
-    assert not _line_is_logo([_tall("495-4938", ["MERCHANT_NAME"])], BODY, "•CVS pharmacy")
+    assert not _line_is_logo(
+        [_tall("6:33", ["MERCHANT_NAME"])], BODY, "COSTCO"
+    )
+    assert not _line_is_logo(
+        [_tall("17.49", ["MERCHANT_NAME"])], BODY, "COSTCO"
+    )
+    assert not _line_is_logo(
+        [_tall("495-4938", ["MERCHANT_NAME"])], BODY, "•CVS pharmacy"
+    )
 
 
 def test_logo_gate_rejects_promo_sentence_mentioning_merchant():
@@ -161,9 +234,14 @@ def test_logo_gate_rejects_promo_sentence_mentioning_merchant():
     # "to WIN a $250 Sprouts gift card. Go to:" — tall, one word MERCHANT_NAME
     # tagged, but a sentence, so the logo image must not stamp over it.
     promo = [
-        _tall("to", [], 60), _tall("WIN", [], 90), _tall("a", [], 140),
-        _tall("$250", [], 170), _tall("Sprouts", ["MERCHANT_NAME"], 230),
-        _tall("gift", [], 320), _tall("card", [], 380), _tall("Go", [], 440),
+        _tall("to", [], 60),
+        _tall("WIN", [], 90),
+        _tall("a", [], 140),
+        _tall("$250", [], 170),
+        _tall("Sprouts", ["MERCHANT_NAME"], 230),
+        _tall("gift", [], 320),
+        _tall("card", [], 380),
+        _tall("Go", [], 440),
     ]
     assert not _line_is_logo(promo, BODY, "SPROUTS")
 
@@ -194,7 +272,10 @@ def test_numeric_body_source_uses_fallback_for_amount_tokens():
 
     receipt = {"words": [_word("12.30", 100, 800, 260, 830, ["LINE_TOTAL"])]}
     config = GlyphRenderConfig(
-        width=300, height=700, noise=0.0, blur=0.0,
+        width=300,
+        height=700,
+        noise=0.0,
+        blur=0.0,
         body_glyph_source="numeric",
     )
     render_receipt_glyphs(receipt, atlas, config=config, fallback=fallback)
@@ -211,7 +292,10 @@ def test_numeric_body_source_keeps_plain_words_on_atlas():
 
     receipt = {"words": [_word("ABC", 100, 800, 260, 830)]}
     config = GlyphRenderConfig(
-        width=300, height=700, noise=0.0, blur=0.0,
+        width=300,
+        height=700,
+        noise=0.0,
+        blur=0.0,
         body_glyph_source="numeric",
     )
     render_receipt_glyphs(receipt, atlas, config=config, fallback=fallback)
@@ -233,10 +317,17 @@ def test_numeric_body_source_prefers_font_for_atlas_confusables():
 
 def test_bold_line_renders_without_error():
     atlas = _atlas()
-    receipt = {"lines": [
-        {"line_id": 1, "words": [_word("MEMBER", 80, 800, 300, 820),
-                                 _word("SAVINGS", 320, 800, 520, 820)]},
-    ]}
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [
+                    _word("MEMBER", 80, 800, 300, 820),
+                    _word("SAVINGS", 320, 800, 520, 820),
+                ],
+            },
+        ]
+    }
     config = GlyphRenderConfig(width=400, height=600, noise=0.0, blur=0.0)
     image = render_receipt_glyphs(receipt, atlas, config=config)
     assert image.size == (400, 600)
@@ -244,8 +335,12 @@ def test_bold_line_renders_without_error():
 
 def test_save_receipt_glyphs(tmp_path):
     out = str(tmp_path / "nested" / "r.png")
-    path = save_receipt_glyphs(_receipt(), _atlas(), out,
-                               config=GlyphRenderConfig(noise=0.0, blur=0.0))
+    path = save_receipt_glyphs(
+        _receipt(),
+        _atlas(),
+        out,
+        config=GlyphRenderConfig(noise=0.0, blur=0.0),
+    )
     with Image.open(path) as img:
         assert img.format == "PNG"
 
@@ -255,8 +350,9 @@ def test_save_and_comparison_helpers_accept_font_profile(tmp_path):
     profile = _profile(char_width=0.018)
 
     out = str(tmp_path / "profiled.png")
-    save_receipt_glyphs(_receipt(), _atlas(), out, profile=profile,
-                        config=config)
+    save_receipt_glyphs(
+        _receipt(), _atlas(), out, profile=profile, config=config
+    )
     with Image.open(out) as img:
         assert img.size == (300, 700)
 
@@ -288,21 +384,33 @@ def test_profile_pitch_is_clamped_to_receipt_geometry():
 
 
 def test_profile_height_is_clamped_to_row_geometry():
-    assert _glyph_height_px(
-        line_h=12.0, inner_h=1000, font_h_norm=0.03, row_pitch_px=16.0
-    ) == 12.0
+    assert (
+        _glyph_height_px(
+            line_h=12.0, inner_h=1000, font_h_norm=0.03, row_pitch_px=16.0
+        )
+        == 12.0
+    )
 
 
 def test_right_edge_overflow_is_clamped_inside_printable_margin():
     atlas = _atlas()
     config = GlyphRenderConfig(
-        width=160, height=220, margin=10, noise=0.0, blur=0.0,
-        ink_jitter=0, paper_realism=0.0,
+        width=160,
+        height=220,
+        margin=10,
+        noise=0.0,
+        blur=0.0,
+        ink_jitter=0,
+        paper_realism=0.0,
     )
-    receipt = {"lines": [
-        {"line_id": 1, "words": [_word("ABC123", 900, 800, 1080, 830)]},
-    ]}
-    image = render_receipt_glyphs(receipt, atlas, config=config, coord_max=1000.0)
+    receipt = {
+        "lines": [
+            {"line_id": 1, "words": [_word("ABC123", 900, 800, 1080, 830)]},
+        ]
+    }
+    image = render_receipt_glyphs(
+        receipt, atlas, config=config, coord_max=1000.0
+    )
     gray = image.convert("L")
     assert any(value < 120 for value in gray.getdata())
     page_right = config.width - config.margin
@@ -332,61 +440,108 @@ def test_glyph_variant_index_uses_cleanest_crop_for_text_legibility():
 
 def test_rule_lines_are_detected_as_structural_rules():
     assert _line_is_rule([_word("********", 100, 500, 300, 520)])
-    assert _line_is_rule([
-        _word("----", 100, 500, 180, 520),
-        _word("----", 190, 500, 270, 520),
-    ])
+    assert _line_is_rule(
+        [
+            _word("----", 100, 500, 180, 520),
+            _word("----", 190, 500, 270, 520),
+        ]
+    )
     assert not _line_is_rule([_word("TOTAL", 100, 500, 180, 520)])
     assert not _line_is_rule([_word("***", 100, 500, 130, 520)])
 
 
 def test_barcode_digits_accept_long_and_grouped_numbers_only():
-    assert _line_barcode_digits([
-        _word("3509", 100, 200, 180, 220),
-        _word("7155", 190, 200, 270, 220),
-        _word("1559", 280, 200, 360, 220),
-        _word("749120", 370, 200, 500, 220),
-    ]) == "350971551559749120"
-    assert _line_barcode_digits([_word("1234567890123", 100, 200, 300, 220)]) is None
-    assert _line_barcode_digits([_word("12345678901234A", 100, 200, 300, 220)]) is None
+    assert (
+        _line_barcode_digits(
+            [
+                _word("3509", 100, 200, 180, 220),
+                _word("7155", 190, 200, 270, 220),
+                _word("1559", 280, 200, 360, 220),
+                _word("749120", 370, 200, 500, 220),
+            ]
+        )
+        == "350971551559749120"
+    )
+    assert (
+        _line_barcode_digits([_word("1234567890123", 100, 200, 300, 220)])
+        is None
+    )
+    assert (
+        _line_barcode_digits([_word("12345678901234A", 100, 200, 300, 220)])
+        is None
+    )
 
 
 def test_stamp_barcode_draws_only_for_wide_barcode_lines():
-    config = GlyphRenderConfig(width=300, height=300, margin=10, noise=0.0, blur=0.0)
+    config = GlyphRenderConfig(
+        width=300, height=300, margin=10, noise=0.0, blur=0.0
+    )
     inner_w = config.width - config.margin * 2
     inner_h = config.height - config.margin * 2
     digits = "123456789012345678"
 
-    wide = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    wide = Image.new(
+        "RGBA", (config.width, config.height), config.paper + (255,)
+    )
     _stamp_barcode(
-        wide, [_word(digits, 100, 500, 900, 520)], 1000.0,
-        config, inner_w, inner_h, digits,
+        wide,
+        [_word(digits, 100, 500, 900, 520)],
+        1000.0,
+        config,
+        inner_w,
+        inner_h,
+        digits,
     )
     wide_dark = sum(1 for px in wide.convert("L").getdata() if px < 80)
     assert wide_dark > 100
 
-    narrow = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    narrow = Image.new(
+        "RGBA", (config.width, config.height), config.paper + (255,)
+    )
     _stamp_barcode(
-        narrow, [_word(digits, 100, 500, 300, 520)], 1000.0,
-        config, inner_w, inner_h, digits,
+        narrow,
+        [_word(digits, 100, 500, 300, 520)],
+        1000.0,
+        config,
+        inner_w,
+        inner_h,
+        digits,
     )
     assert sum(1 for px in narrow.convert("L").getdata() if px < 80) == 0
 
-    off_center = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
+    off_center = Image.new(
+        "RGBA", (config.width, config.height), config.paper + (255,)
+    )
     _stamp_barcode(
-        off_center, [_word(digits, 0, 500, 450, 520)], 1000.0,
-        config, inner_w, inner_h, digits,
+        off_center,
+        [_word(digits, 0, 500, 450, 520)],
+        1000.0,
+        config,
+        inner_w,
+        inner_h,
+        digits,
     )
     assert sum(1 for px in off_center.convert("L").getdata() if px < 80) == 0
 
-    occupied = Image.new("RGBA", (config.width, config.height), config.paper + (255,))
-    ImageDraw.Draw(occupied).rectangle([100, 130, 200, 138], fill=config.ink + (255,))
+    occupied = Image.new(
+        "RGBA", (config.width, config.height), config.paper + (255,)
+    )
+    ImageDraw.Draw(occupied).rectangle(
+        [100, 130, 200, 138], fill=config.ink + (255,)
+    )
     before = sum(1 for px in occupied.convert("L").getdata() if px < 80)
     _stamp_barcode(
-        occupied, [_word(digits, 100, 500, 900, 520)], 1000.0,
-        config, inner_w, inner_h, digits,
+        occupied,
+        [_word(digits, 100, 500, 900, 520)],
+        1000.0,
+        config,
+        inner_w,
+        inner_h,
+        digits,
     )
-    assert sum(1 for px in occupied.convert("L").getdata() if px < 80) == before
+    assert (
+        sum(1 for px in occupied.convert("L").getdata() if px < 80) == before
+    )
 
 
 def test_thermal_finish_paper_realism_is_deterministic_and_disableable():
@@ -425,12 +580,14 @@ def test_flat_receipt_with_degenerate_bboxes_does_not_crash():
     # Non-numeric / short / NaN bboxes in a FLAT word list must be skipped during
     # line grouping, not crash (matches receipt_renderer's defensive handling).
     atlas = _atlas()
-    receipt = {"words": [
-        {"text": "BAD", "bbox": [float("nan"), 0, 1, 1]},
-        {"text": "STR", "bbox": "nope"},
-        {"text": "SHORT", "bbox": [1, 2, 3]},
-        {"text": "OK", "bbox": [100, 800, 200, 830]},
-    ]}
+    receipt = {
+        "words": [
+            {"text": "BAD", "bbox": [float("nan"), 0, 1, 1]},
+            {"text": "STR", "bbox": "nope"},
+            {"text": "SHORT", "bbox": [1, 2, 3]},
+            {"text": "OK", "bbox": [100, 800, 200, 830]},
+        ]
+    }
     config = GlyphRenderConfig(width=300, height=400, noise=0.0, blur=0.0)
     image = render_receipt_glyphs(receipt, atlas, config=config)
     assert image.size == (300, 400)

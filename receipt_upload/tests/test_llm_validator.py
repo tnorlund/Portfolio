@@ -1,7 +1,6 @@
 """Tests for LLM validator parsing logic."""
 
 import pytest
-
 from receipt_upload.label_validation.llm_validator import (
     LabelDecision,
     LabelValidationResponse,

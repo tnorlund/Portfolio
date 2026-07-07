@@ -52,18 +52,60 @@ def _simple_receipt() -> tuple[list[SimpleNamespace], list[SimpleNamespace]]:
     # Three body rows, y-high-is-top, evenly spaced ~0.05 apart. The price
     # column sits at center x ~0.8.
     words = [
-        _word(text="MILK", line_id=1, word_id=1, x=0.10, y=0.80,
-              glyph_width=0.02, height=0.03),
-        _word(text="3.49", line_id=1, word_id=2, x=0.78, y=0.80,
-              glyph_width=0.02, height=0.03),
-        _word(text="BREAD", line_id=2, word_id=1, x=0.10, y=0.75,
-              glyph_width=0.02, height=0.03),
-        _word(text="2.99", line_id=2, word_id=2, x=0.78, y=0.75,
-              glyph_width=0.02, height=0.03),
-        _word(text="EGGS", line_id=3, word_id=1, x=0.10, y=0.70,
-              glyph_width=0.02, height=0.03),
-        _word(text="5.00", line_id=3, word_id=2, x=0.78, y=0.70,
-              glyph_width=0.02, height=0.03),
+        _word(
+            text="MILK",
+            line_id=1,
+            word_id=1,
+            x=0.10,
+            y=0.80,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="3.49",
+            line_id=1,
+            word_id=2,
+            x=0.78,
+            y=0.80,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="BREAD",
+            line_id=2,
+            word_id=1,
+            x=0.10,
+            y=0.75,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="2.99",
+            line_id=2,
+            word_id=2,
+            x=0.78,
+            y=0.75,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="EGGS",
+            line_id=3,
+            word_id=1,
+            x=0.10,
+            y=0.70,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="5.00",
+            line_id=3,
+            word_id=2,
+            x=0.78,
+            y=0.70,
+            glyph_width=0.02,
+            height=0.03,
+        ),
     ]
     lines = [
         _line(line_id=1, x=0.10, y=0.80, width=0.72, height=0.03),
@@ -106,10 +148,24 @@ def test_extract_receipt_profile_returns_none_for_empty():
 
 def test_price_column_none_when_no_price_tokens():
     words = [
-        _word(text="HELLO", line_id=1, word_id=1, x=0.1, y=0.8,
-              glyph_width=0.02, height=0.03),
-        _word(text="WORLD", line_id=2, word_id=1, x=0.1, y=0.75,
-              glyph_width=0.02, height=0.03),
+        _word(
+            text="HELLO",
+            line_id=1,
+            word_id=1,
+            x=0.1,
+            y=0.8,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="WORLD",
+            line_id=2,
+            word_id=1,
+            x=0.1,
+            y=0.75,
+            glyph_width=0.02,
+            height=0.03,
+        ),
     ]
     profile = extract_receipt_font_profile(words, None)
     assert profile is not None
@@ -126,18 +182,39 @@ def test_price_column_picks_rightmost_aligned_column():
     ):
         y = 0.80 - (row - 1) * 0.05
         words.append(
-            _word(text="ITEM", line_id=row, word_id=1, x=0.10, y=y,
-                  glyph_width=0.02, height=0.03)
+            _word(
+                text="ITEM",
+                line_id=row,
+                word_id=1,
+                x=0.10,
+                y=y,
+                glyph_width=0.02,
+                height=0.03,
+            )
         )
         # Unit price: left column, right edge ~0.59.
         words.append(
-            _word(text=unit, line_id=row, word_id=2, x=0.51, y=y,
-                  glyph_width=0.02, height=0.03)
+            _word(
+                text=unit,
+                line_id=row,
+                word_id=2,
+                x=0.51,
+                y=y,
+                glyph_width=0.02,
+                height=0.03,
+            )
         )
         # Line total: right column, right edge ~0.86.
         words.append(
-            _word(text=total, line_id=row, word_id=3, x=0.78, y=y,
-                  glyph_width=0.02, height=0.03)
+            _word(
+                text=total,
+                line_id=row,
+                word_id=3,
+                x=0.78,
+                y=y,
+                glyph_width=0.02,
+                height=0.03,
+            )
         )
     profile = extract_receipt_font_profile(words, None)
     assert profile is not None
@@ -149,10 +226,24 @@ def test_price_column_picks_rightmost_aligned_column():
 def test_price_column_none_when_two_unaligned_prices():
     # Two amount-like tokens in different columns cannot prove a column.
     words = [
-        _word(text="3.49", line_id=1, word_id=1, x=0.20, y=0.80,
-              glyph_width=0.02, height=0.03),
-        _word(text="9.99", line_id=2, word_id=1, x=0.70, y=0.75,
-              glyph_width=0.02, height=0.03),
+        _word(
+            text="3.49",
+            line_id=1,
+            word_id=1,
+            x=0.20,
+            y=0.80,
+            glyph_width=0.02,
+            height=0.03,
+        ),
+        _word(
+            text="9.99",
+            line_id=2,
+            word_id=1,
+            x=0.70,
+            y=0.75,
+            glyph_width=0.02,
+            height=0.03,
+        ),
     ]
     profile = extract_receipt_font_profile(words, None)
     assert profile is not None
@@ -165,14 +256,46 @@ def test_build_merchant_profile_aggregates_medians():
 
     # A second, slightly larger receipt.
     words_b = [
-        _word(text="MILK", line_id=1, word_id=1, x=0.10, y=0.80,
-              glyph_width=0.03, height=0.04, image_id="image-2"),
-        _word(text="9.99", line_id=1, word_id=2, x=0.70, y=0.80,
-              glyph_width=0.03, height=0.04, image_id="image-2"),
-        _word(text="BREAD", line_id=2, word_id=1, x=0.10, y=0.74,
-              glyph_width=0.03, height=0.04, image_id="image-2"),
-        _word(text="8.99", line_id=2, word_id=2, x=0.70, y=0.74,
-              glyph_width=0.03, height=0.04, image_id="image-2"),
+        _word(
+            text="MILK",
+            line_id=1,
+            word_id=1,
+            x=0.10,
+            y=0.80,
+            glyph_width=0.03,
+            height=0.04,
+            image_id="image-2",
+        ),
+        _word(
+            text="9.99",
+            line_id=1,
+            word_id=2,
+            x=0.70,
+            y=0.80,
+            glyph_width=0.03,
+            height=0.04,
+            image_id="image-2",
+        ),
+        _word(
+            text="BREAD",
+            line_id=2,
+            word_id=1,
+            x=0.10,
+            y=0.74,
+            glyph_width=0.03,
+            height=0.04,
+            image_id="image-2",
+        ),
+        _word(
+            text="8.99",
+            line_id=2,
+            word_id=2,
+            x=0.70,
+            y=0.74,
+            glyph_width=0.03,
+            height=0.04,
+            image_id="image-2",
+        ),
     ]
     profile_b = extract_receipt_font_profile(words_b, None)
 
@@ -216,8 +339,15 @@ def test_extract_uses_dominant_cluster_when_letters_present():
             x = 0.10 if word_id == 1 else 0.78
             gw = 0.02
             words.append(
-                _word(text=token, line_id=row, word_id=word_id, x=x, y=y,
-                      glyph_width=gw, height=0.03)
+                _word(
+                    text=token,
+                    line_id=row,
+                    word_id=word_id,
+                    x=x,
+                    y=y,
+                    glyph_width=gw,
+                    height=0.03,
+                )
             )
             for idx, ch in enumerate(token):
                 letters.append(
