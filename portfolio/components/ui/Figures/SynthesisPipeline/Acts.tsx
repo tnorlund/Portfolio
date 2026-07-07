@@ -24,7 +24,6 @@ import {
   FONT_CODEPOINTS,
   fontGlyphSrc,
   finalSrc,
-  LOGO_DIMS,
   logoSrc,
   Merchant,
   MERCHANTS,
@@ -637,7 +636,6 @@ const FinaleCard: React.FC<{
   const [synthFailed, setSynthFailed] = useState(false);
   const [realFailed, setRealFailed] = useState(false);
   const dims = RECEIPT_DIMS[merchant];
-  const logo = LOGO_DIMS[merchant];
   const logoUrl = `url(${logoSrc(merchant)})`;
   const wipePct = Math.round(clamp01(wipe) * 1000) / 10;
   const pair = !synthFailed && !realFailed;
@@ -650,13 +648,13 @@ const FinaleCard: React.FC<{
       data-merchant={merchant}
     >
       {/* Merchant logo mark: currentColor through an alpha mask (theme-aware),
-          above the pair — replaces the text caption. */}
+          above the pair — replaces the text caption. A fixed box + mask
+          contain fits every aspect (Trader Joe's/CVS are long wordmarks). */}
       <div
         className={styles.finaleLogo}
         role="img"
         aria-label={`${MERCHANT_LABELS[merchant]} logo`}
         style={{
-          aspectRatio: `${logo.w} / ${logo.h}`,
           WebkitMaskImage: logoUrl,
           maskImage: logoUrl,
         }}

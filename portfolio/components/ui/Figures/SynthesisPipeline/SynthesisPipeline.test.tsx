@@ -160,7 +160,7 @@ describe("SynthesisPipeline (autoplay mode)", () => {
 });
 
 describe("SynthesisPipeline finale act", () => {
-  test("renders one receipt card per merchant (Sprouts, Costco, Vons)", async () => {
+  test("renders one receipt card per merchant (all five, in order)", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
@@ -168,15 +168,17 @@ describe("SynthesisPipeline finale act", () => {
     await flushAssets();
 
     const cards = screen.getAllByTestId("finale-card");
-    expect(cards).toHaveLength(3);
+    expect(cards).toHaveLength(5);
     expect(cards.map((c) => c.getAttribute("data-merchant"))).toEqual([
       "sprouts",
       "costco",
       "vons",
+      "traderjoes",
+      "cvs",
     ]);
     // Each merchant is identified by its logo mark (currentColor mask), not a
     // text caption.
-    ["Sprouts", "Costco", "Vons"].forEach((name) =>
+    ["Sprouts", "Costco", "Vons", "Trader Joe's", "CVS"].forEach((name) =>
       expect(
         screen.getByRole("img", { name: new RegExp(`${name} logo`, "i") }),
       ).toBeInTheDocument(),
@@ -191,8 +193,8 @@ describe("SynthesisPipeline finale act", () => {
     await flushAssets();
 
     // Every card overlays the real scan on the synthesized render.
-    expect(screen.getAllByTestId("finale-image")).toHaveLength(3);
-    expect(screen.getAllByTestId("finale-real")).toHaveLength(3);
+    expect(screen.getAllByTestId("finale-image")).toHaveLength(5);
+    expect(screen.getAllByTestId("finale-real")).toHaveLength(5);
     const sprouts = screen.getByRole("img", {
       name: /synthetic sprouts receipt/i,
     });
@@ -220,11 +222,17 @@ describe("SynthesisPipeline finale act", () => {
     const sprouts = frameFor("sprouts").style.aspectRatio;
     const costco = frameFor("costco").style.aspectRatio;
     const vons = frameFor("vons").style.aspectRatio;
+    const traderjoes = frameFor("traderjoes").style.aspectRatio;
+    const cvs = frameFor("cvs").style.aspectRatio;
     expect(sprouts).toBe("760 / 2471");
     expect(costco).toBe("760 / 2999");
     expect(vons).toBe("760 / 2732");
+    expect(traderjoes).toBe("760 / 2023");
+    expect(cvs).toBe("760 / 2771");
     // Distinct proportions -> visibly different heights at a common width.
-    expect(new Set([sprouts, costco, vons]).size).toBe(3);
+    expect(
+      new Set([sprouts, costco, vons, traderjoes, cvs]).size,
+    ).toBe(5);
   });
 
   test("a receipt image that fails to load degrades to a named fallback", async () => {
@@ -277,8 +285,8 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("static-act-finale")).toBeInTheDocument();
     // The merged character act still draws the pen path over the cloud.
     expect(screen.getByTestId("act-character")).toBeInTheDocument();
-    // The finale fans out to three merchant cards.
-    expect(screen.getAllByTestId("finale-card")).toHaveLength(3);
+    // The finale fans out to five merchant cards.
+    expect(screen.getAllByTestId("finale-card")).toHaveLength(5);
   });
 
   test("the font atlas marks exactly one hero cell (the FLIP target)", async () => {

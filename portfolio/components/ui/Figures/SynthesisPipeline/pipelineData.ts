@@ -11,10 +11,21 @@
 import { CloudGeom, GlyphSkeleton } from "./geometry";
 import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
 
-export type Merchant = "sprouts" | "costco" | "vons";
+export type Merchant =
+  | "sprouts"
+  | "costco"
+  | "vons"
+  | "traderjoes"
+  | "cvs";
 
 /** Every merchant the finale fans out to, in card order. */
-export const MERCHANTS: Merchant[] = ["sprouts", "costco", "vons"];
+export const MERCHANTS: Merchant[] = [
+  "sprouts",
+  "costco",
+  "vons",
+  "traderjoes",
+  "cvs",
+];
 
 /** The single merchant acts 1-8 are built from. */
 export const PIPELINE_MERCHANT: Merchant = "sprouts";
@@ -23,6 +34,8 @@ export const MERCHANT_LABELS: Record<Merchant, string> = {
   sprouts: "Sprouts",
   costco: "Costco",
   vons: "Vons",
+  traderjoes: "Trader Joe's",
+  cvs: "CVS",
 };
 
 export const PIPELINE_BASE = "/synthetic-receipts/pipeline";
@@ -81,17 +94,16 @@ export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
   sprouts: { w: 760, h: 2471 },
   costco: { w: 760, h: 2999 },
   vons: { w: 760, h: 2732 },
+  traderjoes: { w: 760, h: 2023 },
+  cvs: { w: 760, h: 2771 },
 };
 
-/** Trimmed alpha-mask logo mark, rendered in currentColor (theme-aware). */
+/** Trimmed alpha-mask logo mark, rendered in currentColor (theme-aware). The
+ * finale renders it into a fixed box with mask-size:contain, so no per-logo
+ * dimensions are needed (aspect ratios vary widely — Trader Joe's/CVS are long
+ * wordmarks). */
 export const logoSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/logo.png`;
-
-export const LOGO_DIMS: Record<Merchant, { w: number; h: number }> = {
-  sprouts: { w: 690, h: 179 },
-  costco: { w: 689, h: 180 },
-  vons: { w: 662, h: 260 },
-};
 
 export const finalLabelsSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/final.labels.json`;
@@ -277,4 +289,6 @@ export const BOLD_WEIGHT_CALLOUT: Record<Merchant, string> = {
   sprouts: "the measured BALANCE DUE weight",
   costco: "the chart heavy face",
   vons: "the measured heading weight",
+  traderjoes: "the measured heading weight",
+  cvs: "the measured heading weight",
 };

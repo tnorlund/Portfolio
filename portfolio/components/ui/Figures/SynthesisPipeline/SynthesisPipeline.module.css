@@ -535,20 +535,18 @@
 /* ==== Act 9: finale — same machine, every store ====================== */
 
 /* Tops aligned; every card shares one width so the natural height differences
-   (Costco tallest, Sprouts shortest) show. --finale-w is capped so the tallest
-   receipt (Costco, ~3.95:1) still fits the fixed stage height. */
+   show. --finale-w is capped by BOTH viewport height (so the tallest receipt,
+   Costco ≈ 3.95:1, fits the fixed stage) AND viewport width (so all five cards
+   fit the row without overflow, including narrow phones). */
 .finaleRow {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: clamp(0.75rem, 4%, 2rem);
+  gap: clamp(0.4rem, 2.5%, 1.25rem);
   width: 100%;
   height: 100%;
-  padding: 0.5rem 1rem;
-  /* Width is derived from viewport HEIGHT (which tracks the fixed stage height)
-     so the tallest card (Costco ≈ 3.95:1) always fits — no overflow, no
-     bounce — even on short, wide viewports. */
-  --finale-w: clamp(56px, 10.5vh, 100px);
+  padding: 0.5rem 0.75rem;
+  --finale-w: clamp(46px, min(10vh, 16vw), 92px);
 }
 
 .finaleCard {
@@ -647,11 +645,13 @@
 }
 
 /* Merchant logo mark: currentColor through an alpha mask, above each pair.
-   Height-constrained (width follows the logo aspect, ~120-170px) so every
-   logo occupies the same band and the receipts below stay tops-aligned. */
+   Rendered into a FIXED box (card width x a fixed band) with mask-size:contain,
+   so every logo — from the square-ish Vons mark to the long Trader Joe's / CVS
+   wordmarks — fits within the same box; the box is a constant height so the
+   receipts below stay tops-aligned regardless of logo aspect. */
 .finaleLogo {
-  height: clamp(28px, 5.2vh, 44px);
-  width: auto;
+  width: var(--finale-w);
+  height: clamp(20px, 3.6vh, 34px);
   flex-shrink: 0;
   background-color: currentColor;
   mask-mode: alpha;
@@ -774,12 +774,6 @@
   .assembleSide {
     max-width: 100%;
     width: 100%;
-  }
-
-  /* Finale: constrain each logo to its card width so the row can't overflow. */
-  .finaleLogo {
-    height: auto;
-    width: var(--finale-w);
   }
 }
 
