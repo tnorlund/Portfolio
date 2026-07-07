@@ -114,6 +114,50 @@ def _compile(font_dir: str, out_npz: str, enforce_pitch: bool = True) -> dict:
     return report
 
 
+def _reject_copied_letterforms(font_dir: str) -> None:
+    """Refuse to publish a font whose glyph geometries duplicate another
+    merchant's font.
+
+    A "mint" that copies a sibling font's skeletons (and relabels provenance)
+    renders one merchant's receipts in another's letterforms — discovered
+    when a Home Depot PR shipped CVS's glyphs byte-for-byte. Trivial glyphs
+    (separators, brackets: few strokes/nodes) legitimately coincide across
+    fonts, so only substantial glyphs count toward the verdict.
+    """
+    import glob  # noqa: PLC0415
+
+    def geometries(d):
+        out = {}
+        for gp in glob.glob(os.path.join(d, "glyphs", "u*.json")):
+            try:
+                g = json.load(open(gp, encoding="utf-8"))
+            except Exception:
+                continue
+            strokes = g.get("strokes") or []
+            nodes = sum(len(st.get("nodes") or []) for st in strokes)
+            if len(strokes) >= 3 or nodes >= 6:
+                out[os.path.basename(gp)] = json.dumps(strokes, sort_keys=True)
+        return out
+
+    mine = geometries(font_dir)
+    if not mine:
+        return
+    fonts_root = os.path.dirname(os.path.abspath(font_dir))
+    for other in sorted(glob.glob(os.path.join(fonts_root, "*"))):
+        if not os.path.isdir(other) or os.path.samefile(other, font_dir):
+            continue
+        theirs = geometries(other)
+        same = [n for n, geo in mine.items() if theirs.get(n) == geo]
+        if len(same) > max(4, int(0.25 * len(mine))):
+            raise SystemExit(
+                f"anti-copy gate: {len(same)}/{len(mine)} substantial glyph "
+                f"geometries are byte-identical to "
+                f"{os.path.basename(other)!r} (e.g. "
+                f"{', '.join(sorted(same)[:6])}). A merchant font must be "
+                "minted from its own corpus; see ADD_MERCHANT.md."
+            )
+
+
 def _heavy_variant_dir(font_dir: str, tmp: str) -> str:
     hdir = os.path.join(tmp, "font-heavy")
     shutil.copytree(font_dir, hdir)
@@ -190,6 +234,7 @@ def main() -> int:
         help="local cache filename base (default <font dir name>)",
     )
     args = ap.parse_args()
+    _reject_copied_letterforms(args.font_dir)
 
     from receipt_dynamo import DynamoClient  # noqa: PLC0415
     from receipt_dynamo.entities import MerchantFont  # noqa: PLC0415
