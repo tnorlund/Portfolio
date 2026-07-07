@@ -143,8 +143,12 @@ def specs(W: float) -> dict:
                 "closed": False,
                 "nodes": [
                     node(L, CAP),
-                    node(Rt, 790, h_in=(Rt, CAP), h_out=(Rt, 610), smooth=True),
-                    node(Rt, 260, h_in=(Rt, 390), h_out=(Rt, BASE), smooth=True),
+                    node(
+                        Rt, 790, h_in=(Rt, CAP), h_out=(Rt, 610), smooth=True
+                    ),
+                    node(
+                        Rt, 260, h_in=(Rt, 390), h_out=(Rt, BASE), smooth=True
+                    ),
                     node(L, BASE),
                 ],
             },
@@ -216,7 +220,9 @@ def specs(W: float) -> dict:
                 "closed": False,
                 "nodes": [
                     node(L + 20, CAP, h_out=(Rt - 20, 780)),
-                    node(Rt, 500, h_in=(Rt, 760), h_out=(Rt, 240), smooth=True),
+                    node(
+                        Rt, 500, h_in=(Rt, 760), h_out=(Rt, 240), smooth=True
+                    ),
                     node(L + 20, BASE, h_in=(Rt - 20, 220)),
                 ],
             }
@@ -225,9 +231,18 @@ def specs(W: float) -> dict:
         "^": [line((L + 40, 640), (M, CAP)), line((M, CAP), (Rt - 40, 640))],
         "`": [line((M - 50, CAP), (M + 50, CAP - 200))],
         ";": [circle(M, 560, 42, 42), line((M + 15, 160), (M - 55, -120))],
-        "<": [line((Rt - 20, 720), (L + 20, 500)), line((L + 20, 500), (Rt - 20, 280))],
-        "=": [line((L + 10, 620), (Rt - 10, 620)), line((L + 10, 380), (Rt - 10, 380))],
-        ">": [line((L + 20, 720), (Rt - 20, 500)), line((Rt - 20, 500), (L + 20, 280))],
+        "<": [
+            line((Rt - 20, 720), (L + 20, 500)),
+            line((L + 20, 500), (Rt - 20, 280)),
+        ],
+        "=": [
+            line((L + 10, 620), (Rt - 10, 620)),
+            line((L + 10, 380), (Rt - 10, 380)),
+        ],
+        ">": [
+            line((L + 20, 720), (Rt - 20, 500)),
+            line((Rt - 20, 500), (L + 20, 280)),
+        ],
         "?": [
             {
                 "closed": False,
@@ -271,7 +286,13 @@ def specs(W: float) -> dict:
                 "closed": False,
                 "nodes": [
                     node(L, 500, h_out=(L + 80, 620)),
-                    node(M, 500, h_in=(M - 100, 650), h_out=(M + 100, 350), smooth=True),
+                    node(
+                        M,
+                        500,
+                        h_in=(M - 100, 650),
+                        h_out=(M + 100, 350),
+                        smooth=True,
+                    ),
                     node(Rt, 500, h_in=(Rt - 80, 380)),
                 ],
             }

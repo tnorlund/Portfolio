@@ -216,7 +216,9 @@ _INNOUT_RULES = [
     ),
     (
         "transaction",
-        re.compile(r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I),
+        re.compile(
+            r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I
+        ),
     ),
     ("note", re.compile(r"^NOTE\b|^tes$", re.I)),
     (
@@ -237,7 +239,10 @@ _INNOUT_RULES = [
     ),
     (
         "footer",
-        re.compile(r"THANK YOU|Questions/Comments|Call\s+800|^\d{4}-\d{2}-\d{2}\b", re.I),
+        re.compile(
+            r"THANK YOU|Questions/Comments|Call\s+800|^\d{4}-\d{2}-\d{2}\b",
+            re.I,
+        ),
     ),
 ]
 _TARGET_RULES = [
@@ -287,7 +292,7 @@ _MERCHANT_RULES = {
     "traderjoes": _TJ_RULES,
     "cvs": _CVS_RULES,
     "innout": _INNOUT_RULES,
-                   "target": _TARGET_RULES,
+    "target": _TARGET_RULES,
 }
 
 

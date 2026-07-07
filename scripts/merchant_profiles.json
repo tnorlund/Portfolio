@@ -140,7 +140,8 @@
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.769,
         "stylemap": "innout.stylemap.json",
-        "pitch_ratio": 0.508
+        "pitch_ratio": 0.508,
+        "condense_glyphs": true
       },
       "graphics": {
         "footer_codes": false,
