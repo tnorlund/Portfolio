@@ -154,9 +154,15 @@ class OCRProcessor:
             )
             image = PIL_Image.open(raw_image_path)
 
-            # Process first-pass job
+            # Process first-pass job. Swift's NATIVE path emits full-image
+            # barcode detections at the top level (no per-receipt ``receipts``
+            # array), so pass them through for the native receipt below.
             return self._process_first_pass_job(
-                image, ocr_data, ocr_job, ocr_routing_decision
+                image,
+                ocr_data,
+                ocr_job,
+                ocr_routing_decision,
+                top_level_barcodes=ocr_json.get("barcodes") or [],
             )
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -1571,8 +1577,11 @@ class OCRProcessor:
                 top_right["y"] - top_left["y"],
                 top_right["x"] - top_left["x"],
             )
-            confidence = min(
-                1.0, max(0.01, float(data.get("confidence") or 1.0))
+            raw_confidence = data.get("confidence")
+            confidence = (
+                1.0
+                if raw_confidence is None
+                else min(1.0, max(0.01, float(raw_confidence)))
             )
             # Vision prepends a mode/ECI control byte to some payloads (e.g. QR
             # byte-mode: "\x1ahttps://..."); strip leading/trailing C0 controls.
@@ -1869,8 +1878,13 @@ class OCRProcessor:
         ocr_data: OCRData,
         ocr_job: Any,
         ocr_routing_decision: Any,
+        top_level_barcodes: Optional[list[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        """Process a first-pass OCR job."""
+        """Process a first-pass OCR job.
+
+        ``top_level_barcodes`` carries Swift's full-image barcode detections,
+        which only the NATIVE path (single full-image receipt) consumes.
+        """
         # Classify image type
         image_type = classify_image_layout(
             lines=ocr_data.lines,
@@ -1910,6 +1924,19 @@ class OCRProcessor:
                     ocr_routing_decision=ocr_routing_decision,
                     ocr_job=ocr_job,
                 )
+
+                # NATIVE is a single full-image receipt (receipt_id=1), so
+                # Swift's full-image barcode detections map directly onto it.
+                native_barcodes = self._parse_receipt_barcodes_from_swift(
+                    ocr_job.image_id, 1, top_level_barcodes or []
+                )
+                if native_barcodes:
+                    self.dynamo.add_receipt_barcodes(native_barcodes)
+                    logger.info(
+                        "Stored %s native barcodes for image %s receipt 1",
+                        len(native_barcodes),
+                        ocr_job.image_id,
+                    )
                 return {
                     "success": True,
                     "image_id": ocr_job.image_id,

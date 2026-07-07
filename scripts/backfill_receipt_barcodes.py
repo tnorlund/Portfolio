@@ -21,6 +21,7 @@ Usage:
       [--apply] [--limit N] [--merchant "The Home Depot"] \
       [--binary receipt_ocr_swift/.build/debug/receipt-ocr]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +57,9 @@ def resolve_table() -> str:
     return load_env(env=env)["dynamodb_table_name"]
 
 
-def barcode_from_swift(image_id, receipt_id, idx, data) -> ReceiptBarcode | None:
+def barcode_from_swift(
+    image_id, receipt_id, idx, data
+) -> ReceiptBarcode | None:
     """Map one Swift barcode dict -> ReceiptBarcode (or None if malformed)."""
     symbology = data.get("symbology")
     bbox = data.get("bounding_box", {})
@@ -65,13 +68,12 @@ def barcode_from_swift(image_id, receipt_id, idx, data) -> ReceiptBarcode | None
     ):
         return None
     corners = ("top_left", "top_right", "bottom_left", "bottom_right")
-    if not all(
-        all(k in data.get(c, {}) for k in ("x", "y")) for c in corners
-    ):
+    if not all(all(k in data.get(c, {}) for k in ("x", "y")) for c in corners):
         return None
     tl, tr = data["top_left"], data["top_right"]
     ar = atan2(tr["y"] - tl["y"], tr["x"] - tl["x"])
-    conf = min(1.0, max(0.01, float(data.get("confidence") or 1.0)))
+    raw_conf = data.get("confidence")
+    conf = 1.0 if raw_conf is None else min(1.0, max(0.01, float(raw_conf)))
     try:
         return ReceiptBarcode(
             image_id=image_id,
@@ -117,9 +119,16 @@ def detect_on_crop(binary, s3, receipt, workdir) -> list[dict] | None:
         return None
     try:
         result = subprocess.run(
-            [binary, "--detect-barcodes-only", img_path,
-             "--output-dir", out_dir],
-            capture_output=True, timeout=60, check=False,
+            [
+                binary,
+                "--detect-barcodes-only",
+                img_path,
+                "--output-dir",
+                out_dir,
+            ],
+            capture_output=True,
+            timeout=60,
+            check=False,
         )
         # Only trust output from a clean exit that produced a fresh file.
         if result.returncode != 0 or not os.path.exists(out_json):
@@ -153,9 +162,7 @@ def iter_receipts(client, limit, merchant):
     lek = None
     n = 0
     while True:
-        receipts, lek = client.list_receipts(
-            limit=100, last_evaluated_key=lek
-        )
+        receipts, lek = client.list_receipts(limit=100, last_evaluated_key=lek)
         for r in receipts:
             yield r
             n += 1
@@ -167,26 +174,37 @@ def iter_receipts(client, limit, merchant):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--apply", action="store_true",
-                    help="Write ReceiptBarcode rows (default: dry-run)")
+    ap.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write ReceiptBarcode rows (default: dry-run)",
+    )
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--merchant", default=None,
-                    help="Restrict to one merchant (exact name)")
+    ap.add_argument(
+        "--merchant",
+        default=None,
+        help="Restrict to one merchant (exact name)",
+    )
     ap.add_argument("--binary", default=DEFAULT_BINARY)
     args = ap.parse_args()
 
     if not os.path.exists(args.binary):
-        print(f"ERROR: receipt-ocr binary not found at {args.binary}\n"
-              f"Build it: (cd receipt_ocr_swift && swift build --product "
-              f"receipt-ocr)", file=sys.stderr)
+        print(
+            f"ERROR: receipt-ocr binary not found at {args.binary}\n"
+            f"Build it: (cd receipt_ocr_swift && swift build --product "
+            f"receipt-ocr)",
+            file=sys.stderr,
+        )
         return 2
 
     table = resolve_table()
     client = DynamoClient(table_name=table, region=REGION)
     s3 = boto3.client("s3", region_name=REGION)
     mode = "APPLY" if args.apply else "DRY-RUN"
-    print(f"[{mode}] table={table} merchant={args.merchant or 'ALL'} "
-          f"limit={args.limit or 'ALL'}")
+    print(
+        f"[{mode}] table={table} merchant={args.merchant or 'ALL'} "
+        f"limit={args.limit or 'ALL'}"
+    )
 
     stats = collections.Counter()
     symbologies = collections.Counter()
@@ -219,25 +237,37 @@ def main() -> int:
                         client.add_receipt_barcodes(barcodes)
             except Exception as exc:  # noqa: BLE001
                 stats["errors"] += 1
-                print(f"  error on {receipt.image_id} r{receipt.receipt_id}: "
-                      f"{type(exc).__name__}: {exc}", file=sys.stderr)
+                print(
+                    f"  error on {receipt.image_id} r{receipt.receipt_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
             if stats["receipts"] % 25 == 0:
-                print(f"  ...{stats['receipts']} receipts, "
-                      f"{stats['decoded']} decoded", flush=True)
+                print(
+                    f"  ...{stats['receipts']} receipts, "
+                    f"{stats['decoded']} decoded",
+                    flush=True,
+                )
 
     n = stats["receipts"] or 1
     print("\n===== BACKFILL REPORT =====")
     print(f"  receipts scanned:   {stats['receipts']}")
     print(f"  crop unavailable:   {stats['no_crop']}")
     print(f"  errors (skipped):   {stats['errors']}")
-    print(f"  with >=1 barcode:   {stats['with_barcode']} "
-          f"({100 * stats['with_barcode'] // n}%)")
-    print(f"  with decoded:       {stats['decoded']} "
-          f"({100 * stats['decoded'] // n}%)")
+    print(
+        f"  with >=1 barcode:   {stats['with_barcode']} "
+        f"({100 * stats['with_barcode'] // n}%)"
+    )
+    print(
+        f"  with decoded:       {stats['decoded']} "
+        f"({100 * stats['decoded'] // n}%)"
+    )
     print(f"  total barcodes:     {stats['total_barcodes']}")
     print(f"  symbologies:        {dict(symbologies)}")
-    print(f"  written:            "
-          f"{'yes' if args.apply else 'NO (dry-run, use --apply)'}")
+    print(
+        f"  written:            "
+        f"{'yes' if args.apply else 'NO (dry-run, use --apply)'}"
+    )
     return 0
 
 

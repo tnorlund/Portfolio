@@ -67,10 +67,16 @@ struct ReceiptOCR: AsyncParsableCommand {
             encoder.outputFormatting = [.prettyPrinted]
             encoder.keyEncodingStrategy = .convertToSnakeCase
             try encoder.encode(["barcodes": barcodes]).write(to: outURL)
-            #else
-            try Data("{\"barcodes\": []}".utf8).write(to: outURL)
-            #endif
             return
+            #else
+            // Barcode detection relies on Vision, which is macOS-only. Emitting an
+            // empty-but-successful result here would let the backfill (which
+            // deletes existing barcodes before re-adding on --apply) wipe real
+            // rows when run from a Linux build/host, so fail loudly instead.
+            FileHandle.standardError.write(Data(
+                "--detect-barcodes-only is only supported on macOS (Vision framework); refusing to emit empty results.\n".utf8))
+            throw ExitCode.failure
+            #endif
         }
 
         // Local-image mode is fully self-contained (Vision only) and must NOT

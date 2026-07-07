@@ -106,11 +106,51 @@ class _ReceiptBarcode(FlattenedStandardMixin):
     ) -> None:
         """Deletes all ReceiptBarcodes under a receipt.
 
-        Lets a backfill re-run idempotently (delete then re-add).
+        Lets a backfill re-run idempotently (delete then re-add). The rows are
+        read from the base table with a strongly consistent query rather than
+        via ``list_receipt_barcodes_from_receipt`` (GSI3): GSI propagation lags
+        recent writes, so a just-written row could be missed by the delete and
+        then collide with the conditional re-add, breaking idempotency.
         """
         self.delete_receipt_barcodes(
-            self.list_receipt_barcodes_from_receipt(image_id, receipt_id)
+            self._list_receipt_barcodes_from_receipt_consistent(
+                image_id, receipt_id
+            )
         )
+
+    def _list_receipt_barcodes_from_receipt_consistent(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptBarcode]:
+        """Base-table, strongly consistent list of a receipt's barcodes.
+
+        Used only by the delete-then-re-add idempotency path, where GSI lag
+        would be unsafe.
+        """
+        barcodes: list[ReceiptBarcode] = []
+        exclusive_start_key: dict[str, Any] | None = None
+        while True:
+            query_params: dict[str, Any] = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": (
+                    "PK = :pk AND begins_with(SK, :sk)"
+                ),
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}#BARCODE#"},
+                },
+                "ConsistentRead": True,
+            }
+            if exclusive_start_key:
+                query_params["ExclusiveStartKey"] = exclusive_start_key
+            response = self._client.query(**query_params)
+            for item in response.get("Items", []):
+                entity = item_to_receipt_barcode(item)
+                if entity is not None:
+                    barcodes.append(entity)
+            exclusive_start_key = response.get("LastEvaluatedKey")
+            if not exclusive_start_key:
+                break
+        return barcodes
 
     @handle_dynamodb_errors("get_receipt_barcode")
     def get_receipt_barcode(

@@ -753,6 +753,7 @@ public struct VisionOCREngine: OCREngineProtocol {
     /// Extracted from process() for reuse in both sequential and concurrent paths.
     private func processSingleImageSync(_ imageURL: URL, outputDirectory: URL, includeClassification: Bool) throws -> URL {
         let ocrLines = try performOCRSync(from: imageURL)
+        let imageBarcodes = detectBarcodesSync(from: imageURL)
         var mutableLines = ocrLines
         var aggregatedText = ""
         var wordMappings: [WordMapping] = []
@@ -873,7 +874,8 @@ public struct VisionOCREngine: OCREngineProtocol {
             lines: mutableLines,
             classification: classification,
             clustering: clustering,
-            receipts: receiptOutputs
+            receipts: receiptOutputs,
+            barcodes: imageBarcodes.isEmpty ? nil : imageBarcodes
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
