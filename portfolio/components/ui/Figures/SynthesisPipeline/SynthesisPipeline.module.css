@@ -498,6 +498,9 @@
 .assembleReceipt {
   position: relative;
   height: 100%;
+  /* Leave vertical room inside the stage's overflow:hidden clip so the card's
+     drop shadow reads on the top and bottom edges too (not just left/right). */
+  max-height: calc(100% - 24px);
   width: auto;
   flex-shrink: 0;
   background: #f7f6f2;
