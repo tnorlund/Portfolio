@@ -34,6 +34,14 @@ SECTION_TOKENS = {
     "WINE",
     "BODY",
     "HOUSEHOLD",
+    "HEALTH AND BEAUTY",
+    "HOME",
+    "KITCHEN",
+    "APPAREL",
+    "ELECTRONICS",
+    "ENTERTAINMENT-ELECTRONICS",
+    "LAUNDRY CLEANING AND CLOSET",
+    "PATIO & OUTDOOR DECOR",
 }
 _INNOUT_RULES: list[tuple[str, re.Pattern]] = [
     (

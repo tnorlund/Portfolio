@@ -20,6 +20,7 @@ export const SAMPLES = {
   traderjoes: "/tmp/gridfix/tj_studio/tj.refined.npz",
   cvs: "/tmp/gridfix/cvs_studio/cvs.refined.npz",
   innout: "/tmp/gridfix/innout_studio/innout.refined.npz",
+  target: "/tmp/gridfix/target_studio/target.refined.npz",
 };
 
 // Font dir -> canonical merchant name. The receipt renderer caches per-merchant
