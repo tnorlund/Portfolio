@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from receipt_agent.utils import (
     LLMRateLimitError,
     ainvoke_structured_with_retry,
@@ -175,9 +176,7 @@ class TestAinvokeStructuredWithRetry:
         """Rate limit errors are propagated for Step Functions retry handling."""
         llm = MagicMock()
         structured_llm = MagicMock()
-        structured_llm.ainvoke = AsyncMock(
-            side_effect=LLMRateLimitError("429")
-        )
+        structured_llm.ainvoke = AsyncMock(side_effect=LLMRateLimitError("429"))
         llm.with_structured_output.return_value = structured_llm
 
         with pytest.raises(LLMRateLimitError):

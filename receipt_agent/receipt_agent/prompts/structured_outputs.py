@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
 from receipt_agent.constants import CORE_LABELS_SET
 
 logger = logging.getLogger(__name__)

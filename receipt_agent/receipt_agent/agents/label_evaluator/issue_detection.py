@@ -505,12 +505,8 @@ def check_missing_constellation_member(
 
             if training_present_dx:
                 # Training centroid offset of present labels
-                training_present_offset_x = sum(training_present_dx) / len(
-                    training_present_dx
-                )
-                training_present_offset_y = sum(training_present_dy) / len(
-                    training_present_dy
-                )
+                training_present_offset_x = sum(training_present_dx) / len(training_present_dx)
+                training_present_offset_y = sum(training_present_dy) / len(training_present_dy)
 
                 # Estimate the full constellation centroid from present labels
                 constellation_centroid = (

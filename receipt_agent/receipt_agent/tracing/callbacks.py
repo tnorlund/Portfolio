@@ -11,6 +11,7 @@ from uuid import UUID
 
 from langsmith import Client as LangSmithClient
 from langsmith.run_helpers import get_current_run_tree
+
 from receipt_agent.config.settings import get_settings
 
 logger = logging.getLogger(__name__)

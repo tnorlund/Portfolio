@@ -72,7 +72,6 @@ from receipt_agent.agents.place_id_finder import (
     create_place_id_finder_graph,
     run_place_id_finder,
 )
-
 from receipt_dynamo.constants import MerchantValidationStatus
 from receipt_dynamo.entities import ReceiptPlace
 

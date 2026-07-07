@@ -19,7 +19,7 @@ from typing import Any, Callable, Literal, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
-from receipt_agent.tools.places import _format_place_result, _place_to_dict
+
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
 from receipt_agent.utils.chroma_types import (
     ChromaWhereClause,
@@ -29,6 +29,7 @@ from receipt_agent.utils.label_metadata import (
     combine_where_clauses,
     metadata_matches_label_state,
 )
+from receipt_agent.tools.places import _format_place_result, _place_to_dict
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -1282,16 +1283,8 @@ def create_agentic_tools(
 
                 geometry = geocode_result.get("geometry") or {}
                 location = geometry.get("location") or {}
-                lat = (
-                    location["lat"]
-                    if "lat" in location
-                    else location.get("latitude")
-                )
-                lng = (
-                    location["lng"]
-                    if "lng" in location
-                    else location.get("longitude")
-                )
+                lat = location["lat"] if "lat" in location else location.get("latitude")
+                lng = location["lng"] if "lng" in location else location.get("longitude")
 
                 if lat is None or lng is None:
                     return {

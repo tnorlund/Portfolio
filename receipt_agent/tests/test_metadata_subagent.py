@@ -15,7 +15,6 @@ from receipt_agent.agents.label_evaluator.metadata_subagent import (
     should_skip_for_metadata_evaluation,
 )
 from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
-
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
@@ -115,9 +114,7 @@ class TestAutoResolveMetadataWords:
     def test_place_match_confirms_merchant_name(self):
         """Word labeled MERCHANT_NAME matching Google Places → auto-VALID."""
         mw = _make_metadata_word(
-            "Sprouts",
-            current_label="MERCHANT_NAME",
-            place_match="MERCHANT_NAME",
+            "Sprouts", current_label="MERCHANT_NAME", place_match="MERCHANT_NAME"
         )
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 1
@@ -168,9 +165,7 @@ class TestAutoResolveMetadataWords:
 
     def test_detected_type_confirms_time(self):
         """Word labeled TIME matching time regex → auto-VALID."""
-        mw = _make_metadata_word(
-            "14:30", current_label="TIME", detected_type="TIME"
-        )
+        mw = _make_metadata_word("14:30", current_label="TIME", detected_type="TIME")
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 1
         assert resolved[0][1]["decision"] == "VALID"
@@ -178,9 +173,7 @@ class TestAutoResolveMetadataWords:
     def test_detected_type_confirms_payment(self):
         """Word labeled PAYMENT_METHOD matching payment regex → auto-VALID."""
         mw = _make_metadata_word(
-            "VISA",
-            current_label="PAYMENT_METHOD",
-            detected_type="PAYMENT_METHOD",
+            "VISA", current_label="PAYMENT_METHOD", detected_type="PAYMENT_METHOD"
         )
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 1
@@ -423,3 +416,5 @@ class TestShouldSkipForMetadataEvaluation:
     def test_normal_words_not_skipped(self):
         assert should_skip_for_metadata_evaluation("Sprouts") is False
         assert should_skip_for_metadata_evaluation("12/25/2024") is False
+
+

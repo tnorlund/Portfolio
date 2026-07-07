@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from receipt_upload.dedup.context import LabelObs
-
 from receipt_dynamo import DynamoClient
+
+from receipt_upload.dedup.context import LabelObs
 
 ENV_TABLE = {"dev": "ReceiptsTable-dc5be22", "prod": "ReceiptsTable-d7ff76a"}
 

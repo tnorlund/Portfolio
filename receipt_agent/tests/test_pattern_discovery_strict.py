@@ -60,6 +60,4 @@ def test_pattern_response_schema_forbids_additional_properties():
 
     object_nodes = list(_all_object_nodes(schema))
     assert object_nodes
-    assert all(
-        node.get("additionalProperties") is False for node in object_nodes
-    )
+    assert all(node.get("additionalProperties") is False for node in object_nodes)

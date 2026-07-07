@@ -24,7 +24,6 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, ValidationError
 from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
-
 from receipt_dynamo.amounts import (
     looks_like_receipt_amount,
     parse_receipt_amount,

@@ -88,9 +88,7 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(
         default="us-east-1",
-        validation_alias=AliasChoices(
-            "RECEIPT_AGENT_AWS_REGION", "AWS_REGION"
-        ),
+        validation_alias=AliasChoices("RECEIPT_AGENT_AWS_REGION", "AWS_REGION"),
         description="AWS region for DynamoDB",
     )
 

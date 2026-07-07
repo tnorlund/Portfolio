@@ -1157,27 +1157,25 @@ def create_qa_tools(
             receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
 
             # Store aggregates for synthesizer
-            state_holder["aggregates"].append(
-                {
-                    "source": (
-                        f"get_receipt_summaries("
-                        f"merchant={merchant_filter}, "
-                        f"category={category_filter}, "
-                        f"start={start_date}, "
-                        f"end={end_date})"
-                    ),
-                    "count": len(filtered),
-                    "total_spending": round(total_spending, 2),
-                    "total_tax": round(total_tax, 2),
-                    "total_tip": round(total_tip, 2),
-                    "receipts_with_totals": receipts_with_totals,
-                    "average_receipt": (
-                        round(total_spending / receipts_with_totals, 2)
-                        if receipts_with_totals > 0
-                        else None
-                    ),
-                }
-            )
+            state_holder["aggregates"].append({
+                "source": (
+                    f"get_receipt_summaries("
+                    f"merchant={merchant_filter}, "
+                    f"category={category_filter}, "
+                    f"start={start_date}, "
+                    f"end={end_date})"
+                ),
+                "count": len(filtered),
+                "total_spending": round(total_spending, 2),
+                "total_tax": round(total_tax, 2),
+                "total_tip": round(total_tip, 2),
+                "receipts_with_totals": receipts_with_totals,
+                "average_receipt": (
+                    round(total_spending / receipts_with_totals, 2)
+                    if receipts_with_totals > 0
+                    else None
+                ),
+            })
 
             # Auto-fetch a few sample receipts
             fetched_count = 0

@@ -6,6 +6,7 @@ locality from real receipt lines while ignoring incidental two-letter tokens.
 """
 
 import pytest
+
 from receipt_upload.merchant_resolution.resolver import (
     address_state_conflict,
     locality_from_lines,

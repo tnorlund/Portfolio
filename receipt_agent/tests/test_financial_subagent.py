@@ -12,7 +12,6 @@ from receipt_agent.agents.label_evaluator.financial_subagent import (
     filter_junk_values,
 )
 from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
-
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
@@ -224,9 +223,7 @@ class TestFilterJunkValuesLineTotal:
             "SUBTOTAL": [_fv("SUBTOTAL", 173.47)],
             "LINE_TOTAL": [
                 _fv("LINE_TOTAL", 8.97, line_index=0, text="8.97"),
-                _fv(
-                    "LINE_TOTAL", 400.95, line_index=1, text="400.95"
-                ),  # phantom
+                _fv("LINE_TOTAL", 400.95, line_index=1, text="400.95"),  # phantom
                 _fv("LINE_TOTAL", 12.50, line_index=2, text="12.50"),
             ],
         }

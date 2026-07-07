@@ -102,11 +102,6 @@ from receipt_agent.agents.label_evaluator.currency_subagent import (
     identify_line_item_rows,
     parse_currency_evaluation_response,
 )
-from receipt_agent.agents.label_evaluator.financial_structured import (
-    TwoTierFinancialResult,
-    run_two_tier_financial_validation,
-    run_two_tier_financial_validation_async,
-)
 from receipt_agent.agents.label_evaluator.financial_subagent import (
     FinancialValue,
     MathIssue,
@@ -165,6 +160,11 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_issues_batch,
     review_issues_with_receipt_context,
     review_single_issue,
+)
+from receipt_agent.agents.label_evaluator.financial_structured import (
+    TwoTierFinancialResult,
+    run_two_tier_financial_validation,
+    run_two_tier_financial_validation_async,
 )
 from receipt_agent.agents.label_evaluator.metadata_subagent import (
     FORMAT_VALIDATED_LABELS,

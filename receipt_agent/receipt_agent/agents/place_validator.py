@@ -17,6 +17,7 @@ import structlog
 from langsmith import Client as LangSmithClient
 from langsmith import traceable
 from openai import OpenAI
+
 from receipt_agent.agents.agentic import (
     create_agentic_validation_graph,
     run_agentic_validation,

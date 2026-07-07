@@ -37,7 +37,6 @@ from receipt_chroma.embedding.utils.normalize import (
     normalize_address,
     normalize_phone,
 )
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel

@@ -15,6 +15,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, TypedDict
 
+from receipt_chroma.s3 import download_snapshot_atomic
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
 from receipt_agent.config.settings import get_settings
 from receipt_agent.utils.chroma_types import extract_query_metadata_rows
@@ -22,9 +25,6 @@ from receipt_agent.utils.label_metadata import (
     build_label_membership_clause,
     parse_labels_from_metadata,
 )
-from receipt_chroma.s3 import download_snapshot_atomic
-
-from receipt_dynamo.entities import ReceiptWord
 
 logger = logging.getLogger(__name__)
 
@@ -179,9 +179,7 @@ def build_consensus_auto_review(
         else:
             return None
 
-    confidence = (
-        "high" if abs(consensus) >= min(threshold + 0.15, 0.95) else "medium"
-    )
+    confidence = "high" if abs(consensus) >= min(threshold + 0.15, 0.95) else "medium"
     return {
         "decision": decision,
         "reasoning": reasoning,
@@ -231,11 +229,7 @@ def chroma_resolve_words(
         current_label = word_dict.get("current_label", "")
         normalized = current_label.strip().upper() if current_label else ""
         is_unlabeled = normalized in {
-            "",
-            "O",
-            "NONE",
-            "NONE (UNLABELED)",
-            "UNLABELED",
+            "", "O", "NONE", "NONE (UNLABELED)", "UNLABELED",
         }
 
         if is_unlabeled:
@@ -395,9 +389,7 @@ def chroma_fallback_decisions(
         if dec.get("decision") != "NEEDS_REVIEW":
             continue
         reasoning = dec.get("reasoning", "")
-        if any(
-            indicator in reasoning for indicator in _SYSTEM_FAILURE_INDICATORS
-        ):
+        if any(indicator in reasoning for indicator in _SYSTEM_FAILURE_INDICATORS):
             failure_indices.append(i)
 
     if not failure_indices:
@@ -996,7 +988,9 @@ def _discover_candidate_label(
             include=["metadatas", "distances"],
         )
     except Exception as exc:
-        logger.warning("Label discovery query failed: %s", exc)
+        logger.warning(
+            "Label discovery query failed: %s", exc
+        )
         return None
 
     metadata_rows = results.get("metadatas", [[]])
@@ -1032,14 +1026,9 @@ def _discover_candidate_label(
             for label in v_arr:
                 label_str = str(label).strip().upper()
                 if label_str and label_str not in {
-                    "O",
-                    "NONE",
-                    "NONE (UNLABELED)",
-                    "UNLABELED",
+                    "O", "NONE", "NONE (UNLABELED)", "UNLABELED",
                 }:
-                    label_counts[label_str] = (
-                        label_counts.get(label_str, 0) + 1
-                    )
+                    label_counts[label_str] = label_counts.get(label_str, 0) + 1
 
     if not label_counts:
         return None
@@ -1125,9 +1114,7 @@ def _discover_and_evaluate_unlabeled(
             for label in v_arr:
                 label_str = str(label).strip().upper()
                 if label_str not in _UNLABELED_SENTINELS:
-                    label_counts[label_str] = (
-                        label_counts.get(label_str, 0) + 1
-                    )
+                    label_counts[label_str] = label_counts.get(label_str, 0) + 1
 
     if not label_counts:
         return None

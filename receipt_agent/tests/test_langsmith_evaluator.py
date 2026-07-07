@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 
 import pytest
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
     EvaluationQualityMetrics,
     LabelComparisonMetrics,
@@ -12,8 +14,6 @@ from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
     label_accuracy_evaluator,
     label_quality_evaluator,
 )
-
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 # Use a valid UUIDv4 for tests
 TEST_IMAGE_ID = "a1b2c3d4-e5f6-47a8-89b0-c1d2e3f4a5b6"

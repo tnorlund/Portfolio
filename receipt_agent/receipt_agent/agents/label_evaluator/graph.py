@@ -36,6 +36,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from langgraph.graph import END, StateGraph
+from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
 )
@@ -68,8 +70,6 @@ from receipt_agent.constants import CORE_LABELS
 
 # LLM factory for creating OpenRouter-based LLMs
 from receipt_agent.utils.llm_factory import create_llm
-
-from receipt_dynamo.entities import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

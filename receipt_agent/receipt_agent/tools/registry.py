@@ -11,6 +11,7 @@ from functools import partial
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import BaseTool, StructuredTool
+
 from receipt_agent.tools.chroma import (
     query_similar_lines,
     query_similar_words,

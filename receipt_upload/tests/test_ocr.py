@@ -9,15 +9,6 @@ from unittest.mock import MagicMock, Mock, call, patch
 from uuid import uuid4
 
 import pytest
-from receipt_upload.ocr import (
-    _download_image_from_s3,
-    _upload_json_to_s3,
-    apple_vision_ocr,
-    apple_vision_ocr_job,
-    process_ocr_dict_as_image,
-    process_ocr_dict_as_receipt,
-)
-
 from receipt_dynamo.entities import (
     Letter,
     Line,
@@ -25,6 +16,15 @@ from receipt_dynamo.entities import (
     ReceiptLine,
     ReceiptWord,
     Word,
+)
+
+from receipt_upload.ocr import (
+    _download_image_from_s3,
+    _upload_json_to_s3,
+    apple_vision_ocr,
+    apple_vision_ocr_job,
+    process_ocr_dict_as_image,
+    process_ocr_dict_as_receipt,
 )
 
 

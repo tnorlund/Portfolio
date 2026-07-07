@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace
 
-from receipt_upload.line_items import propose_product_names
-
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
+
+from receipt_upload.line_items import propose_product_names
 
 IMAGE_ID = "00000000-0000-4000-8000-000000000def"
 

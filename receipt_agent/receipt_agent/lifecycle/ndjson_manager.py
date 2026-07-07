@@ -9,7 +9,6 @@ import traceback
 from typing import Optional
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 
 

@@ -1,6 +1,4 @@
 import pytest
-from receipt_upload.utils import image_ocr_to_receipt_ocr
-
 from receipt_dynamo.entities import (
     Letter,
     Line,
@@ -9,6 +7,8 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+
+from receipt_upload.utils import image_ocr_to_receipt_ocr
 
 
 @pytest.fixture

@@ -88,13 +88,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities import ReceiptPlace
+
 from receipt_agent.subagents.place_finder import (
     create_receipt_place_finder_graph,
     run_receipt_place_finder,
 )
-
-from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities import ReceiptPlace
 
 logger = logging.getLogger(__name__)
 

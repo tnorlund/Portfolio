@@ -79,9 +79,7 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
             "receipt_type": patterns.get("receipt_type"),
             "receipt_type_reason": patterns.get("receipt_type_reason"),
             "auto_generated": patterns.get("auto_generated", False),
-            "discovered_from_receipts": patterns.get(
-                "discovered_from_receipts"
-            ),
+            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
             **nested,
         }
 
@@ -138,19 +136,11 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
         lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
 
     special_markers = patterns.get("special_markers")
-    if (
-        special_markers
-        and isinstance(special_markers, list)
-        and special_markers
-    ):
+    if special_markers and isinstance(special_markers, list) and special_markers:
         lines.append(f"**Special Markers**: {', '.join(special_markers)}")
 
     product_patterns = patterns.get("product_name_patterns")
-    if (
-        product_patterns
-        and isinstance(product_patterns, list)
-        and product_patterns
-    ):
+    if product_patterns and isinstance(product_patterns, list) and product_patterns:
         lines.append("**Product Name Patterns**:")
         for p in product_patterns[:3]:  # Limit to 3 for prompt size
             lines.append(f"  - {p}")
@@ -215,9 +205,7 @@ def compute_currency_math_hints(currency_items: list[dict]) -> str:
             label_desc.append(f"{len(line_totals)} LINE_TOTAL")
         if unit_prices:
             label_desc.append(f"{len(unit_prices)} UNIT_PRICE")
-        hints.append(
-            f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}"
-        )
+        hints.append(f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}")
 
     # Check for GRAND_TOTAL match against item amounts
     grand_totals = by_label.get("GRAND_TOTAL", [])
@@ -293,9 +281,7 @@ def build_review_prompt(
     other_merchant_examples = []
 
     for e in similar_evidence[:30]:  # Show top 30
-        line = (
-            f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
-        )
+        line = f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
         line += f"\n  Context: `{e['left_neighbor']}` | **{e['word_text']}** "
         line += f"| `{e['right_neighbor']}`"
         line += f"\n  Position: {e['position_description']}"
@@ -303,9 +289,7 @@ def build_review_prompt(
         if e["validated_as"]:
             for v in e["validated_as"][:2]:
                 reasoning = v.get("reasoning") or "no reasoning recorded"
-                line += (
-                    f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
-                )
+                line += f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
 
         if e["invalidated_as"]:
             for v in e["invalidated_as"][:2]:
@@ -330,9 +314,7 @@ def build_review_prompt(
 
     # Build label distribution
     label_summary_lines = []
-    for label, stats in sorted(
-        label_dist.items(), key=lambda x: -x[1]["count"]
-    )[:10]:
+    for label, stats in sorted(label_dist.items(), key=lambda x: -x[1]["count"])[:10]:
         examples = ", ".join(stats["example_words"][:3])
         label_summary_lines.append(
             f"- **{label}**: {stats['count']} occurrences "
@@ -504,9 +486,7 @@ def build_batched_review_prompt(
             currency_str = f"\n  Currency amounts: {', '.join(amounts)}"
 
         # Evidence section
-        evidence_section = (
-            evidence_text if evidence_text else "No evidence available"
-        )
+        evidence_section = evidence_text if evidence_text else "No evidence available"
 
         issue_block = f"""
 ---
@@ -707,9 +687,7 @@ Consider:
     return prompt
 
 
-def _build_legacy_similar_text(
-    similar_evidence: list[dict[str, Any]], idx: int
-) -> str:
+def _build_legacy_similar_text(similar_evidence: list[dict[str, Any]], idx: int) -> str:
     """Build similar text from legacy similar_evidence format."""
     similar_lines = []
     for e_idx, e in enumerate(similar_evidence[:10]):
@@ -758,9 +736,7 @@ def _build_legacy_similar_text(
             line += f" | {'; '.join(invalidated_info)}"
         similar_lines.append(line)
 
-    return (
-        "\n".join(similar_lines) if similar_lines else "No similar words found"
-    )
+    return "\n".join(similar_lines) if similar_lines else "No similar words found"
 
 
 def _build_drill_down_text(drill_down: list[dict[str, Any]]) -> str:
@@ -782,12 +758,10 @@ def _build_drill_down_text(drill_down: list[dict[str, Any]]) -> str:
     ]
 
     if non_culprits:
-        drill_down_lines.append(
-            f"Normal positions ({len(non_culprits)} words):"
-        )
-        for w in sorted(
-            non_culprits, key=lambda x: _get_y_position(x.get("position"))
-        )[:5]:
+        drill_down_lines.append(f"Normal positions ({len(non_culprits)} words):")
+        for w in sorted(non_culprits, key=lambda x: _get_y_position(x.get("position")))[
+            :5
+        ]:
             y = _get_y_position(w.get("position"))
             drill_down_lines.append(f'  - "{w.get("text", "?")}" at y={y:.2f}')
 
@@ -847,9 +821,7 @@ def _infer_label_from_reasoning(reasoning: str) -> Optional[str]:
         r"\bMARK AS\b",
         r"\bUSE\b",
     )
-    if not any(
-        re.search(pattern, upper_reasoning) for pattern in assignment_markers
-    ):
+    if not any(re.search(pattern, upper_reasoning) for pattern in assignment_markers):
         return None
 
     for label in sorted(CORE_LABELS_SET, key=len, reverse=True):
@@ -860,10 +832,7 @@ def _infer_label_from_reasoning(reasoning: str) -> Optional[str]:
             rf"(?:SHOULD BE|LABEL SHOULD BE|CORRECT LABEL(?: IS)?|SET TO|MARK AS|USE)\s+(?:THE\s+)?(?:A\s+)?{label_token}\b",
             rf"(?:SHOULD BE|LABEL SHOULD BE|CORRECT LABEL(?: IS)?|SET TO|MARK AS|USE)\s+(?:THE\s+)?(?:A\s+)?{label_with_spaces}\b",
         )
-        if any(
-            re.search(pattern, upper_reasoning)
-            for pattern in assignment_patterns
-        ):
+        if any(re.search(pattern, upper_reasoning) for pattern in assignment_patterns):
             return label
 
     return None
@@ -920,9 +889,7 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
     try:
         result = json.loads(response_text)
         if not isinstance(result, dict):
-            raise json.JSONDecodeError(
-                "Expected JSON object", response_text, 0
-            )
+            raise json.JSONDecodeError("Expected JSON object", response_text, 0)
         return _normalize_review_result(result)
     except json.JSONDecodeError:
         return {

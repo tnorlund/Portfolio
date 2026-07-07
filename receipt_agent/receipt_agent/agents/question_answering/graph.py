@@ -24,6 +24,7 @@ from typing import Any, Callable, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+
 from receipt_agent.agents.question_answering.state import (
     AmountItem,
     AnswerWithEvidence,

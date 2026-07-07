@@ -59,6 +59,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
 )
@@ -66,9 +69,6 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
-
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 

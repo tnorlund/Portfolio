@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+
 from receipt_agent.tools.chroma import (
     query_similar_lines,
     query_similar_words,
