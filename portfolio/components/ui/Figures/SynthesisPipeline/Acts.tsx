@@ -702,6 +702,11 @@ const FinaleCard: React.FC<{
             <span className={`${styles.finaleChip} ${styles.finaleChipSynth}`}>
               synth
             </span>
+            {/* Mobile: one indicator that names whichever half currently
+                dominates the wipe (shown via CSS on narrow cards). */}
+            <span className={styles.finaleChipMobile}>
+              {wipePct >= 50 ? "real" : "synth"}
+            </span>
           </>
         ) : null}
       </div>
@@ -714,8 +719,35 @@ const FinaleAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
   // Divider oscillates across the pair; rests centered (0.5) at p=0/1 so a
   // paused finale shows a clean real|synth split.
   const wipe = 0.5 + 0.42 * Math.sin(p * Math.PI * 2);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // Let a vertical mouse wheel scroll the pair row horizontally (trackpad and
+  // touch already scroll it natively). Only intercept when the row can scroll
+  // further in that direction, so the page still scrolls at the ends.
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) {
+      return;
+    }
+    const onWheel = (e: WheelEvent) => {
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 1 || e.deltaY === 0 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) {
+        return; // nothing to scroll, or already a horizontal gesture
+      }
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = el.scrollLeft >= max - 1;
+      if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) {
+        return; // let the page take over at the ends
+      }
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   return (
-    <div className={styles.finaleRow} data-testid="act-finale">
+    <div ref={rowRef} className={styles.finaleRow} data-testid="act-finale">
       {MERCHANTS.map((m, i) => (
         <FinaleCard
           key={m}
