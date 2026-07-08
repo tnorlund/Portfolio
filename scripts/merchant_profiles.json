@@ -113,7 +113,8 @@
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.86,
         "stylemap": "homedepot.stylemap.json",
-        "pitch_ratio": 0.66
+        "pitch_ratio": 0.66,
+        "bitmap_thin": 0.6
       },
       "logo_anchor": {
         "phrases": [
