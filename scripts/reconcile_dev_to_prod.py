@@ -78,10 +78,11 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     One bulk scan per child entity, grouped by image, then hashed. Only
     content that must match across environments is included.
     """
-    words = defaultdict(list)      # image_id -> [(line, word, text)]
-    labels = defaultdict(list)     # image_id -> [(line, word, label, status)]
+    words = defaultdict(list)      # image_id -> [(receipt, line, word, text)]
+    labels = defaultdict(list)     # image_id -> [(receipt, line, word, label, status)]
     places = defaultdict(list)     # image_id -> [(receipt_id, merchant, place_id)]
     receipts = defaultdict(set)    # image_id -> {receipt_id}
+    images = set()                 # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
         lek = None
@@ -91,15 +92,20 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             if not lek:
                 break
 
+    # receipt_id is included in the word/label tuples so a word/label that moves
+    # between receipts on a multi-receipt image changes the fingerprint.
     _scan(
         client.list_receipt_words,
-        lambda b: [words[w.image_id].append((w.line_id, w.word_id, w.text)) for w in b],
+        lambda b: [
+            words[w.image_id].append((w.receipt_id, w.line_id, w.word_id, w.text))
+            for w in b
+        ],
     )
     _scan(
         client.list_receipt_word_labels,
         lambda b: [
             labels[l.image_id].append(
-                (l.line_id, l.word_id, l.label, str(l.validation_status))
+                (l.receipt_id, l.line_id, l.word_id, l.label, str(l.validation_status))
             )
             for l in b
         ],
@@ -117,8 +123,15 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for p in b
         ],
     )
+    # Include bare Image rows so childless shells are still ADD/REPLACE/DELETE'd
+    # correctly (otherwise a prod Image with no children is invisible here and a
+    # skip_existing copy would silently skip it).
+    _scan(
+        client.list_images,
+        lambda b: [images.add(im.image_id) for im in b],
+    )
 
-    all_ids = set(words) | set(labels) | set(receipts) | set(places)
+    all_ids = set(words) | set(labels) | set(receipts) | set(places) | images
     out = {}
     for iid in all_ids:
         payload = {
@@ -239,9 +252,20 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
             skip_empty=True,
         )
         logger.info(
-            f"Copied: {stats['copied']}, skipped_empty: {stats['skipped_empty']}, "
-            f"failed: {stats['failed']}"
+            f"Copied: {stats['copied']}, skipped: {stats['skipped']}, "
+            f"skipped_empty: {stats['skipped_empty']}, failed: {stats['failed']}"
         )
+        # The REPLACE set was already deleted from prod above, so an incomplete
+        # copy leaves prod missing those images. Fail loudly instead of reporting
+        # success — every add/replace image has receipts, so all must copy.
+        if stats["copied"] != len(to_copy) or stats["failed"]:
+            raise RuntimeError(
+                f"Incomplete copy: expected {len(to_copy)} copied, got "
+                f"{stats['copied']} (failed={stats['failed']}, "
+                f"skipped={stats['skipped']}, skipped_empty={stats['skipped_empty']}). "
+                f"REPLACE images were already deleted from prod — re-run to repair. "
+                f"Errors: {stats['errors'][:5]}"
+            )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
