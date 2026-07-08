@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
 
-from receipt_dynamo.constants import SectionType
+from receipt_dynamo.constants import SectionType, ValidationStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
@@ -25,12 +25,17 @@ class ReceiptSection:
         section_type (str): The type of section (e.g., "HEADER", "FOOTER",
             "LINE_ITEMS", etc.)
         line_ids (list[int]): The line IDs in this section.
-        confidence (float): The model's confidence in this section
-            classification.
-        embedding_status (EmbeddingStatus): The status of the embedding for
-            this section.
         created_at (datetime): Timestamp when this section was created.
-        model_source (str): The model or pipeline that identified this section.
+        confidence (float | None): Optional model confidence in [0, 1].
+        model_source (str | None): Optional model / pipeline that produced this
+            section (e.g. "section-seed-v0"). Used to version writes and to
+            distinguish generations of rows.
+        validation_status (str | None): Optional QA status
+            (PENDING / VALID / INVALID / NEEDS_REVIEW) — machine-seeded rows
+            land PENDING and are promoted by QA.
+
+    The three optional fields are additive: rows written before they existed
+    (and readers that ignore them) remain valid.
     """
 
     REQUIRED_KEYS = {
@@ -46,6 +51,9 @@ class ReceiptSection:
     section_type: str | SectionType
     line_ids: list[int]
     created_at: datetime | str
+    confidence: float | None = None
+    model_source: str | None = None
+    validation_status: str | None = None
 
     def __post_init__(self):
         """Validate and initialize the ReceiptSection instance."""
@@ -87,6 +95,35 @@ class ReceiptSection:
         else:
             raise ValueError("created_at must be a datetime or ISO string")
 
+        # Optional fields (additive) --------------------------------------
+        if self.confidence is not None:
+            if isinstance(self.confidence, bool) or not isinstance(
+                self.confidence, (int, float)
+            ):
+                raise ValueError("confidence must be a number or None")
+            self.confidence = float(self.confidence)
+            if not 0.0 <= self.confidence <= 1.0:
+                raise ValueError("confidence must be in [0, 1]")
+
+        if self.model_source is not None and not isinstance(
+            self.model_source, str
+        ):
+            raise ValueError("model_source must be a string or None")
+
+        if self.validation_status is not None:
+            status = self.validation_status
+            if isinstance(status, ValidationStatus):
+                status = status.value
+            status = str(status).upper()
+            allowed = {s.value for s in ValidationStatus}
+            if status not in allowed:
+                raise ValueError(
+                    "validation_status must be one of "
+                    f"{sorted(allowed)} or None; got "
+                    f"{self.validation_status!r}"
+                )
+            self.validation_status = status
+
     @property
     def key(self) -> dict[str, Any]:
         """Generate the primary key for the receipt section."""
@@ -101,8 +138,12 @@ class ReceiptSection:
         }
 
     def to_item(self) -> dict[str, Any]:
-        """Convert the ReceiptSection to a DynamoDB item."""
-        return {
+        """Convert the ReceiptSection to a DynamoDB item.
+
+        Optional fields are only emitted when set, so rows stay identical to
+        the pre-existing schema when the new fields are unused.
+        """
+        item = {
             **self.key,
             "TYPE": {"S": "RECEIPT_SECTION"},
             "section_type": {"S": self.section_type},
@@ -111,6 +152,13 @@ class ReceiptSection:
             },
             "created_at": {"S": self.created_at.isoformat()},
         }
+        if self.confidence is not None:
+            item["confidence"] = {"N": str(self.confidence)}
+        if self.model_source is not None:
+            item["model_source"] = {"S": self.model_source}
+        if self.validation_status is not None:
+            item["validation_status"] = {"S": self.validation_status}
+        return item
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptSection object."""
@@ -120,7 +168,10 @@ class ReceiptSection:
             f"image_id={_repr_str(self.image_id)}, "
             f"section_type='{self.section_type}', "
             f"line_ids={self.line_ids}, "
-            f"created_at={_repr_str(self.created_at.isoformat())}"
+            f"created_at={_repr_str(self.created_at.isoformat())}, "
+            f"confidence={self.confidence}, "
+            f"model_source={_repr_str(self.model_source)}, "
+            f"validation_status={_repr_str(self.validation_status)}"
             f")"
         )
 
@@ -132,6 +183,9 @@ class ReceiptSection:
         yield "section_type", self.section_type
         yield "line_ids", self.line_ids
         yield "created_at", self.created_at.isoformat()
+        yield "confidence", self.confidence
+        yield "model_source", self.model_source
+        yield "validation_status", self.validation_status
 
     def __hash__(self) -> int:
         """Return a hash of the ReceiptSection."""
@@ -142,6 +196,9 @@ class ReceiptSection:
                 self.section_type,
                 tuple(self.line_ids),
                 self.created_at.isoformat(),
+                self.confidence,
+                self.model_source,
+                self.validation_status,
             )
         )
 
@@ -172,12 +229,30 @@ class ReceiptSection:
             line_ids = [int(li["N"]) for li in item["line_ids"]["L"]]
             created_at = datetime.fromisoformat(item["created_at"]["S"])
 
+            # Optional fields (absent on legacy rows)
+            confidence = (
+                float(item["confidence"]["N"])
+                if "confidence" in item
+                else None
+            )
+            model_source = (
+                item["model_source"]["S"] if "model_source" in item else None
+            )
+            validation_status = (
+                item["validation_status"]["S"]
+                if "validation_status" in item
+                else None
+            )
+
             return cls(
                 receipt_id=receipt_id,
                 image_id=image_id,
                 section_type=section_type,
                 line_ids=line_ids,
                 created_at=created_at,
+                confidence=confidence,
+                model_source=model_source,
+                validation_status=validation_status,
             )
         except (KeyError, IndexError, ValueError) as e:
             raise ValueError(
