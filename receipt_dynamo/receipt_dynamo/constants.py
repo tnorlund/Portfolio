@@ -80,12 +80,31 @@ class EmbeddingStatus(str, Enum):
 
 
 class SectionType(str, Enum):
-    """Types of receipt sections for classification."""
+    """Types of receipt sections for classification.
 
-    HEADER = "HEADER"  # Contains merchant info, date, receipt number
-    FOOTER = "FOOTER"  # Contains totals, payment info, thank you notes
-    ITEMS_VALUE = "ITEMS_VALUE"  # The number that the item is worth
-    ITEMS_DESCRIPTION = "ITEMS_DESCRIPTION"  # The description of the item
+    The canonical vocabulary (font-intelligence epic, stylescan's ten
+    sections) is the lower block. The three LEGACY values are from a
+    superseded 2025-05 classifier experiment and are deprecated — kept only so
+    any stray legacy rows still parse. ``FOOTER`` is retained and reused as the
+    canonical footer.
+    """
+
+    # --- legacy (deprecated: superseded 2025-05 experiment) ---
+    HEADER = "HEADER"  # deprecated -> STOREFRONT / ADDRESS
+    ITEMS_VALUE = "ITEMS_VALUE"  # deprecated -> ITEMS
+    ITEMS_DESCRIPTION = "ITEMS_DESCRIPTION"  # deprecated -> ITEMS
+
+    # --- canonical vocabulary (epic sec. 4.1) ---
+    STOREFRONT = "STOREFRONT"  # merchant name / logo / hours / lane header
+    ADDRESS = "ADDRESS"  # street address + store phone
+    ITEMS = "ITEMS"  # purchased line items
+    SECTION_HEADER = "SECTION_HEADER"  # department dividers
+    SUMMARY = "SUMMARY"  # subtotal / tax / discounts / item counts
+    TOTAL_LINE = "TOTAL_LINE"  # the grand-total line
+    PAYMENT = "PAYMENT"  # tender: card / auth / change / cash back
+    SURVEY = "SURVEY"  # post-purchase survey / sweepstakes
+    FOOTER = "FOOTER"  # thank-you / policy / rewards / register metadata
+    BARCODE = "BARCODE"  # numeric barcode captions
 
 
 class MerchantValidationStatus(str, Enum):

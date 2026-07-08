@@ -267,3 +267,121 @@ def test_item_to_receipt_section(example_receipt_section):
         ValueError, match="Error converting item to ReceiptSection"
     ):
         item_to_receipt_section(invalid_item)
+
+
+# --- canonical vocabulary + optional fields (font-intelligence epic) -------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "canonical",
+    [
+        "STOREFRONT",
+        "ADDRESS",
+        "ITEMS",
+        "SECTION_HEADER",
+        "SUMMARY",
+        "TOTAL_LINE",
+        "PAYMENT",
+        "SURVEY",
+        "FOOTER",
+        "BARCODE",
+    ],
+)
+def test_canonical_section_types_accepted(canonical):
+    """All ten canonical section types are valid."""
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type=canonical,
+        line_ids=[1],
+        created_at=datetime(2023, 1, 1),
+    )
+    assert s.section_type == canonical
+
+
+@pytest.mark.unit
+def test_optional_fields_roundtrip():
+    """confidence / model_source / validation_status survive to_item/from_item."""
+    s = ReceiptSection(
+        receipt_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="TOTAL_LINE",
+        line_ids=[7, 8],
+        created_at=datetime(2026, 7, 8),
+        confidence=0.75,
+        model_source="section-seed-v0",
+        validation_status="pending",  # normalized to PENDING
+    )
+    assert s.validation_status == "PENDING"
+    item = s.to_item()
+    assert item["confidence"]["N"] == "0.75"
+    assert item["model_source"]["S"] == "section-seed-v0"
+    assert item["validation_status"]["S"] == "PENDING"
+    assert item_to_receipt_section(item) == s
+
+
+@pytest.mark.unit
+def test_optional_fields_omitted_when_none(example_receipt_section):
+    """to_item stays schema-identical to the legacy row when unset."""
+    item = example_receipt_section.to_item()
+    assert "confidence" not in item
+    assert "model_source" not in item
+    assert "validation_status" not in item
+
+
+@pytest.mark.unit
+def test_legacy_item_without_optionals_parses():
+    """A row written before the optional fields existed still deserializes."""
+    legacy = {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "RECEIPT#00001#SECTION#HEADER"},
+        "TYPE": {"S": "RECEIPT_SECTION"},
+        "section_type": {"S": "HEADER"},
+        "line_ids": {"L": [{"N": "1"}, {"N": "2"}]},
+        "created_at": {"S": "2025-05-01T00:00:00"},
+    }
+    s = item_to_receipt_section(legacy)
+    assert s.confidence is None
+    assert s.model_source is None
+    assert s.validation_status is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", [-0.1, 1.1, "high", True])
+def test_invalid_confidence_rejected(bad):
+    with pytest.raises(ValueError, match="confidence"):
+        ReceiptSection(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            section_type="ITEMS",
+            line_ids=[1],
+            created_at=datetime(2023, 1, 1),
+            confidence=bad,
+        )
+
+
+@pytest.mark.unit
+def test_invalid_validation_status_rejected():
+    with pytest.raises(ValueError, match="validation_status"):
+        ReceiptSection(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            section_type="ITEMS",
+            line_ids=[1],
+            created_at=datetime(2023, 1, 1),
+            validation_status="BOGUS",
+        )
+
+
+@pytest.mark.unit
+def test_invalid_model_source_rejected():
+    with pytest.raises(ValueError, match="model_source"):
+        ReceiptSection(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            section_type="ITEMS",
+            line_ids=[1],
+            created_at=datetime(2023, 1, 1),
+            model_source=123,
+        )
