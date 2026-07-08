@@ -1,9 +1,9 @@
 {
  "version": 1,
- "char": "\"",
- "codepoint": 34,
+ "char": "^",
+ "codepoint": 94,
  "provenance": "edited",
- "width": 316.7,
+ "width": 460,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -11,13 +11,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 68.3,
-     "y": 950.0,
+     "x": 90.0,
+     "y": 640,
      "type": "corner"
     },
     {
-     "x": 58.3,
-     "y": 710.0,
+     "x": 230.0,
+     "y": 950.0,
      "type": "corner"
     }
    ]
@@ -26,13 +26,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 248.3,
+     "x": 230.0,
      "y": 950.0,
      "type": "corner"
     },
     {
-     "x": 258.3,
-     "y": 710.0,
+     "x": 370.0,
+     "y": 640,
      "type": "corner"
     }
    ]
