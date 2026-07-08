@@ -89,6 +89,21 @@ def test_solve_is_robust_to_non_monotone_plateaus(font):
         )
 
 
+def test_effective_condense_gates_on_flag():
+    # condense_glyphs OFF -> mask not narrowed (factor 1.0), even if condense<1;
+    # ON -> the profile's condense passes through.
+    assert calibrate.effective_condense(0.7, False) == 1.0
+    assert calibrate.effective_condense(0.7, True) == pytest.approx(0.7)
+    assert calibrate.effective_condense(1.0, True) == pytest.approx(1.0)
+
+
+def test_solve_thins_reach_slight_erosion():
+    # The plateau grid must reach well below 0.05 so a merchant needing a hair
+    # of erosion isn't forced onto 0.0 or a coarse plateau.
+    assert min(t for t in calibrate._SOLVE_THINS if t > 0) < 0.02
+    assert 0.0 in calibrate._SOLVE_THINS
+
+
 def test_condense_narrows_the_measured_mask(font):
     # condense_glyphs resizes the mask narrower along x (NEAREST) after
     # thinning, exactly as the renderer does before pasting -- the measurer

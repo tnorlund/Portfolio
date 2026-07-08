@@ -45,20 +45,43 @@ cannot be reproduced without a render, and are out of scope by design:
 
 from __future__ import annotations
 
+import os
+import sys
 from collections import Counter
 from typing import TYPE_CHECKING, Mapping, Sequence
 
 import numpy as np
 from PIL import Image
-from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
-    preserve_top_arc,
-    thin_ink_mask,
-)
 
 if TYPE_CHECKING:  # pragma: no cover
     from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
         BitmapFont,
     )
+
+# The renderer lives in a sibling monorepo package, not a declared dependency of
+# the ``glyphstudio`` package (pyproject only lists numpy/pillow). Match the
+# rest of the studio tooling (compile.py._import_bitmap_font): insert the
+# sibling package paths lazily and import on first use, so ``import
+# glyphstudio.calibrate`` still succeeds in a clean studio env where the
+# renderer is only needed when a measurement actually runs.
+_WORKTREE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+)
+
+
+def _renderer():
+    """Lazily import the renderer's ``thin_ink_mask`` / ``preserve_top_arc``."""
+    for pkg in ("receipt_agent", "receipt_upload", "receipt_dynamo"):
+        path = os.path.join(_WORKTREE, pkg)
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
+        preserve_top_arc,
+        thin_ink_mask,
+    )
+
+    return thin_ink_mask, preserve_top_arc
+
 
 # Beyond this thin, thin_ink_mask's drop-period (round(1/thin)) floors at 2 and
 # density stops falling -- probing higher is wasted work. Kept in sync with
@@ -99,6 +122,21 @@ def dilate_ink(mask: np.ndarray, iters: int) -> np.ndarray:
     return out
 
 
+def effective_condense(condense: float, condense_glyphs: bool) -> float:
+    """The x-resize factor the renderer applies to the glyph MASK, gated.
+
+    Critical distinction: ``condense`` in a merchant profile always narrows the
+    cell *advance* (spacing), but the renderer only resizes the glyph mask when
+    ``condense_glyphs`` is enabled (receipt_grid draw_token_chars/draw_text_run).
+    Target/Vons/CVS set ``condense < 1`` with ``condense_glyphs`` FALSE, so their
+    masks are NOT narrowed -- measuring them condensed would understate width and
+    solve the wrong density. Pass ``effective_condense(profile.condense,
+    profile.condense_glyphs)`` as the ``condense`` argument to the density
+    functions so the mask is only narrowed when production actually narrows it.
+    """
+    return float(condense) if condense_glyphs else 1.0
+
+
 def _rendered_glyph(
     font: "BitmapFont",
     ch: str,
@@ -111,11 +149,13 @@ def _rendered_glyph(
 
     Mirrors ``BitmapFont.glyph``: NEAREST scale to ``cap_px`` first, then
     ``thin_ink_mask`` -- the ordering matters, since erosion works on rendered-
-    size edges, not atlas-resolution edges. When ``condense < 1`` and the
-    merchant enables ``condense_glyphs`` (e.g. In-N-Out at 0.7), the renderer
-    resizes the thinned mask again along x before pasting (receipt_grid.py
-    draw_token_chars / draw_text_run); we replicate that so the measured density
-    matches the pixels actually stamped, not the un-condensed mask.
+    size edges, not atlas-resolution edges.
+
+    ``condense`` here is the EFFECTIVE mask-resize factor, i.e. already gated on
+    the merchant's ``condense_glyphs`` flag (use ``effective_condense``). The
+    renderer resizes the thinned mask along x before pasting ONLY when
+    ``condense_glyphs`` is enabled (e.g. In-N-Out at 0.7); when it is off,
+    ``condense`` affects only cell advance, not the mask, so pass ``1.0`` here.
 
     ``weight_iters`` models the mint's stroke-weight dilation (see ``dilate_ink``
     / ``solve_weight_and_thin``): dilation is applied AFTER scale and BEFORE
@@ -128,6 +168,7 @@ def _rendered_glyph(
     g = font.glyphs.get(ch)
     if g is None:
         return None
+    thin_ink_mask, preserve_top_arc = _renderer()
     scale = cap_px / font.cap_h
     h = max(1, int(round(g.shape[0] * scale)))
     w = max(1, int(round(g.shape[1] * scale)))
@@ -338,7 +379,17 @@ def thin_response_curve(
 # pixels for sparse glyphs). Distinct behavior therefore lives only at the
 # period representatives; enumerate them and pick the closest, rather than
 # bisecting on a false monotonicity assumption.
-_SOLVE_THINS = (0.0,) + tuple(round(1.0 / p, 4) for p in range(2, 21))
+#
+# Periods run 2..MAX so the grid reaches down to very slight erosion
+# (thin = 1/MAX): each larger period is a distinct mask (drops 1/period of the
+# edge pixels), so stopping early would force a merchant that only needs a hair
+# of erosion onto the 0.0 or a coarser plateau. MAX=60 -> finest thin ~0.017,
+# well below the scorecard's ~0.03 density tolerance; probes are milliseconds so
+# the extra plateaus are free.
+_MAX_SOLVE_PERIOD = 60
+_SOLVE_THINS = (0.0,) + tuple(
+    round(1.0 / p, 4) for p in range(2, _MAX_SOLVE_PERIOD + 1)
+)
 
 
 def solve_thin_for_density(
