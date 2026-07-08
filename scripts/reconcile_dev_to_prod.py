@@ -38,6 +38,7 @@ import shutil
 import sys
 import tempfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import boto3
@@ -101,6 +102,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     labels = defaultdict(list)     # image_id -> [(receipt, line, word, label, status)]
     places = defaultdict(list)     # image_id -> [(receipt_id, merchant, place_id)]
     receipts = defaultdict(set)    # image_id -> {receipt_id}
+    barcodes = defaultdict(list)   # image_id -> [(receipt, barcode_id, symbology, text)]
     images = set()                 # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
@@ -142,6 +144,17 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for p in b
         ],
     )
+    # Barcodes are restored only via REPLACE, so a barcode-only change must
+    # change the fingerprint or prod would stay stale.
+    _scan(
+        client.list_receipt_barcodes,
+        lambda b: [
+            barcodes[bc.image_id].append(
+                (bc.receipt_id, bc.barcode_id, bc.symbology, bc.text or "")
+            )
+            for bc in b
+        ],
+    )
     # Include bare Image rows so childless shells are still ADD/REPLACE/DELETE'd
     # correctly (otherwise a prod Image with no children is invisible here and a
     # skip_existing copy would silently skip it).
@@ -150,7 +163,10 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         lambda b: [images.add(im.image_id) for im in b],
     )
 
-    all_ids = set(words) | set(labels) | set(receipts) | set(places) | images
+    all_ids = (
+        set(words) | set(labels) | set(receipts) | set(places)
+        | set(barcodes) | images
+    )
     out = {}
     for iid in all_ids:
         payload = {
@@ -158,6 +174,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             "labels": sorted(labels[iid]),
             "places": sorted(places[iid]),
             "receipts": sorted(receipts[iid]),
+            "barcodes": sorted(barcodes[iid]),
         }
         fp = hashlib.sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
@@ -239,9 +256,8 @@ def health_gate(strict: bool = True) -> bool:
     return healthy
 
 
-def _partition_types(table: str, image_id: str) -> set:
+def _partition_types(ddb, table: str, image_id: str) -> set:
     """Distinct entity TYPEs under a prod image partition (read-only)."""
-    ddb = boto3.client("dynamodb", region_name="us-east-1")
     types, lek = set(), None
     while True:
         kwargs = dict(
@@ -264,13 +280,22 @@ def _partition_types(table: str, image_id: str) -> set:
     return types
 
 
-def guard_replaces(prod_table: str, replaces: list) -> tuple:
+def guard_replaces(prod_table: str, replaces: list, max_workers: int = 16) -> tuple:
     """Split REPLACE ids into safe (only restorable types) and guarded (would
-    lose data). A guarded image is left untouched, not deleted."""
+    lose data). A guarded image is left untouched, not deleted. Queries run in
+    parallel over a shared boto3 client (clients are thread-safe)."""
+    ddb = boto3.client("dynamodb", region_name="us-east-1")
     safe, guarded = [], []
-    for iid in replaces:
-        bad = _partition_types(prod_table, iid) - RESTORABLE_TYPES
-        (guarded if bad else safe).append((iid, sorted(bad)) if bad else iid)
+
+    def _check(iid):
+        return iid, sorted(_partition_types(ddb, prod_table, iid) - RESTORABLE_TYPES)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for iid, bad in ex.map(_check, replaces):
+            if bad:
+                guarded.append((iid, bad))
+            else:
+                safe.append(iid)
     return safe, guarded
 
 

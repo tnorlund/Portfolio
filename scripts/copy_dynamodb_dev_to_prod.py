@@ -433,6 +433,13 @@ def copy_all_images(
             if error:
                 overall_stats["failed"] += 1
                 overall_stats["errors"].append(error)
+            elif stats.get("errors"):
+                # copy_image_entities caught a per-entity error but still
+                # returned; treat that image as a failure so callers that gate
+                # on `failed`/`copied` (e.g. the reconcile completeness check)
+                # do not report success after a partial copy.
+                overall_stats["failed"] += 1
+                overall_stats["errors"].extend(stats["errors"])
             elif stats.get("skipped_empty"):
                 overall_stats["skipped_empty"] += 1
             elif stats.get("skipped"):
