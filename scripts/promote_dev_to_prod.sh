@@ -72,7 +72,13 @@ if [[ "$SKIP_SYNC" == "true" ]]; then
   echo -e "${YELLOW}Skipping data sync (--skip-sync)${NC}"
 else
   echo -e "${GREEN}[1/3] Syncing S3 images (dev → prod)...${NC}"
-  run bash "$SCRIPT_DIR/sync_images_dev_to_prod_fast.sh"
+  # Resolve the CDN (assets) bucket names the sync script needs.
+  DEV_CDN=$(python3 -c "from receipt_dynamo.data._pulumi import load_env; print(load_env('dev')['cdn_bucket_name'])" 2>/dev/null)
+  PROD_CDN=$(python3 -c "from receipt_dynamo.data._pulumi import load_env; print(load_env('prod')['cdn_bucket_name'])" 2>/dev/null)
+  if [[ -z "$DEV_CDN" || -z "$PROD_CDN" ]]; then
+    echo -e "${RED}Could not resolve CDN bucket names${NC}" >&2; exit 1
+  fi
+  run bash "$SCRIPT_DIR/sync_images_dev_to_prod_fast.sh" "$DEV_CDN" "$PROD_CDN"
   echo ""
 
   # Mirror the dev corpus onto prod at image granularity (ADD / REPLACE / DELETE).
