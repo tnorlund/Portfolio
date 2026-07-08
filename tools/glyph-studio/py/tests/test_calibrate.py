@@ -174,6 +174,105 @@ def test_solve_thin_for_word_density_rejects_empty(font):
         calibrate.solve_thin_for_word_density(font, ["zz"], 40, 0.2)
 
 
+# --- M3: weight (stroke dilation) + joint weight/thin solve ---
+
+
+def test_dilate_ink_grows_one_pixel_to_eight_neighbours():
+    m = np.zeros((5, 5), bool)
+    m[2, 2] = True
+    d1 = calibrate.dilate_ink(m, 1)
+    assert d1.sum() == 9  # center + 8 neighbours
+    assert calibrate.dilate_ink(m, 0).sum() == 1  # identity
+    assert calibrate.dilate_ink(m, 2).sum() == 25  # full 5x5
+
+
+def test_weight_iters_raises_density(font):
+    # The ring 'B' and sparse '0' have room to thicken; more weight -> more ink.
+    d0 = calibrate.text_ink_density(font, "B0", 40, 0.0, weight_iters=0)
+    d1 = calibrate.text_ink_density(font, "B0", 40, 0.0, weight_iters=1)
+    d2 = calibrate.text_ink_density(font, "B0", 40, 0.0, weight_iters=2)
+    assert d1 > d0
+    assert d2 >= d1
+
+
+def test_weight_iters_zero_is_unchanged(font):
+    # Default weight_iters=0 must reproduce the pre-M3 measurement exactly.
+    plain = calibrate.text_ink_density(font, "B0", 40, 0.2)
+    zero = calibrate.text_ink_density(font, "B0", 40, 0.2, weight_iters=0)
+    assert plain == zero
+
+
+def _synthetic_density():
+    # density_at(w, thin) = 0.30 + 0.10*w - 0.50*thin: monotone up in weight,
+    # down in thin -- the shape the joint solver assumes.
+    return lambda w, thin: 0.30 + 0.10 * w - 0.50 * thin
+
+
+def test_solve_weight_and_thin_picks_least_weight_then_fine_tunes():
+    dens = _synthetic_density()
+    # un-eroded d0: w0=.30 w1=.40 w2=.50 w3=.60. target .45 reachable by w2,w3;
+    # least is w2, then erode: t=0.1 gives .45 exactly.
+    w, thin, ach = calibrate.solve_weight_and_thin(
+        dens,
+        0.45,
+        weight_iters_options=(0, 1, 2, 3),
+        thins=(0.0, 0.1, 0.2, 0.3),
+    )
+    assert w == 2
+    assert thin == pytest.approx(0.1)
+    assert ach == pytest.approx(0.45)
+
+
+def test_solve_weight_and_thin_target_too_dense_uses_heaviest():
+    dens = _synthetic_density()
+    # target .99 exceeds every un-eroded density -> heaviest weight, least thin.
+    w, thin, ach = calibrate.solve_weight_and_thin(
+        dens,
+        0.99,
+        weight_iters_options=(0, 1, 2, 3),
+        thins=(0.0, 0.1, 0.2, 0.3),
+    )
+    assert w == 3
+    assert thin == pytest.approx(0.0)
+    assert ach == pytest.approx(0.60)
+
+
+def test_solve_weight_and_thin_lightest_already_dense_erodes_down():
+    dens = _synthetic_density()
+    # target .10 is below every un-eroded density -> least weight w0, erode to
+    # the closest achievable (.15 at t=0.3 on this grid).
+    w, thin, ach = calibrate.solve_weight_and_thin(
+        dens,
+        0.10,
+        weight_iters_options=(0, 1, 2, 3),
+        thins=(0.0, 0.1, 0.2, 0.3),
+    )
+    assert w == 0
+    assert thin == pytest.approx(0.3)
+    assert ach == pytest.approx(0.15)
+
+
+def test_solve_weight_and_thin_raises_without_measurable_density():
+    with pytest.raises(ValueError):
+        calibrate.solve_weight_and_thin(lambda w, t: None, 0.3)
+
+
+def test_weight_density_fn_solves_toward_target(font):
+    words = ["B0", "AB0"]
+    density_at = calibrate.weight_density_fn(font, words, 40)
+    # A target between the un-eroded density and a lightly-eroded one is
+    # reachable; the solve should land close and return valid knobs.
+    target = calibrate.median_word_density(
+        font, words, 40, 0.1, weight_iters=1
+    )
+    w, thin, ach = calibrate.solve_weight_and_thin(
+        density_at, target, weight_iters_options=(0, 1, 2)
+    )
+    assert w in (0, 1, 2)
+    assert 0.0 <= thin <= calibrate.SATURATION_THIN
+    assert ach == pytest.approx(target, abs=0.05)
+
+
 # --- M2: cap height ---
 
 

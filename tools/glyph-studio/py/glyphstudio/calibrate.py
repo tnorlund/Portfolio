@@ -73,12 +73,39 @@ CAP_RATIO_MIN = 0.65
 CAP_RATIO_MAX = 0.95
 
 
+def dilate_ink(mask: np.ndarray, iters: int) -> np.ndarray:
+    """Morphological dilation by ``iters`` steps (8-connected), pure numpy.
+
+    Models stroke *weight*: the mint thickens glyph strokes before the atlas is
+    frozen, so a heavier weight stamps more ink. Each step grows the ink by one
+    pixel in all 8 directions; ``iters <= 0`` is the identity. This is the
+    weight analog of ``thin_ink_mask``'s erosion -- density rises monotonically
+    with ``iters``, which is the property the joint solver relies on.
+    """
+    if iters <= 0:
+        return mask
+    out = mask.astype(bool)
+    for _ in range(int(iters)):
+        d = out.copy()
+        d[1:, :] |= out[:-1, :]
+        d[:-1, :] |= out[1:, :]
+        d[:, 1:] |= out[:, :-1]
+        d[:, :-1] |= out[:, 1:]
+        d[1:, 1:] |= out[:-1, :-1]
+        d[1:, :-1] |= out[:-1, 1:]
+        d[:-1, 1:] |= out[1:, :-1]
+        d[:-1, :-1] |= out[1:, 1:]
+        out = d
+    return out
+
+
 def _rendered_glyph(
     font: "BitmapFont",
     ch: str,
     cap_px: int,
     thin: float,
     condense: float = 1.0,
+    weight_iters: int = 0,
 ) -> np.ndarray | None:
     """The eroded ink mask for one glyph at the EXACT pixels the renderer stamps.
 
@@ -89,6 +116,14 @@ def _rendered_glyph(
     resizes the thinned mask again along x before pasting (receipt_grid.py
     draw_token_chars / draw_text_run); we replicate that so the measured density
     matches the pixels actually stamped, not the un-condensed mask.
+
+    ``weight_iters`` models the mint's stroke-weight dilation (see ``dilate_ink``
+    / ``solve_weight_and_thin``): dilation is applied AFTER scale and BEFORE
+    erosion, mirroring the mint order (weight is baked into the atlas, then the
+    render erodes). ``weight_iters`` is an explicit pixel count rather than a
+    ``weight`` float because the weight->pixels magnitude is mint-specific and
+    is calibrated at M4/M5 against the real mint; the density *shape* (monotone
+    in iters) is faithful regardless. ``0`` = current render behavior.
     """
     g = font.glyphs.get(ch)
     if g is None:
@@ -99,6 +134,9 @@ def _rendered_glyph(
     im = Image.fromarray((np.clip(g, 0, 1) * 255).astype(np.uint8)).resize(
         (w, h), Image.NEAREST
     )
+    if weight_iters > 0:
+        arr = dilate_ink(np.asarray(im) > 0, weight_iters)
+        im = Image.fromarray(arr.astype(np.uint8) * 255)
     im = thin_ink_mask(im, thin, preserve_top=preserve_top_arc(ch))
     if condense < 0.999:
         im = im.resize(
@@ -114,9 +152,10 @@ def _rendered_glyph_ink(
     cap_px: int,
     thin: float,
     condense: float = 1.0,
+    weight_iters: int = 0,
 ) -> tuple[int, int] | None:
     """(ink_px, total_px) for one glyph at the rendered pixels."""
-    arr = _rendered_glyph(font, ch, cap_px, thin, condense)
+    arr = _rendered_glyph(font, ch, cap_px, thin, condense, weight_iters)
     if arr is None:
         return None
     return int(arr.sum()), int(arr.size)
@@ -144,14 +183,16 @@ def text_ink_density(
     cap_px: int,
     thin: float,
     condense: float = 1.0,
+    weight_iters: int = 0,
 ) -> float | None:
     """Frequency-weighted ink fraction of ``text`` rendered at cap_px/thin.
 
     Sums ink and area over each drawn glyph weighted by its count in ``text``
     (spaces skipped) -- the per-glyph density the renderer would stamp, before
     the paper-texture pass. ``condense`` replicates the ``condense_glyphs``
-    post-thin x-resize for merchants that enable it. ``None`` if no glyph in
-    ``text`` is in the atlas. NOTE: atlas misses are skipped, so at less than
+    post-thin x-resize for merchants that enable it. ``weight_iters`` models the
+    mint's stroke-weight dilation (see ``_rendered_glyph``). ``None`` if no glyph
+    in ``text`` is in the atlas. NOTE: atlas misses are skipped, so at less than
     full coverage this under-counts the TTF-fallback ink the renderer stamps --
     check ``text_glyph_coverage`` (the 94/94 publish gate normally guarantees
     it is 1.0).
@@ -159,7 +200,9 @@ def text_ink_density(
     counts = Counter(c for c in text if not c.isspace())
     ink = area = 0
     for ch, n in counts.items():
-        res = _rendered_glyph_ink(font, ch, cap_px, thin, condense)
+        res = _rendered_glyph_ink(
+            font, ch, cap_px, thin, condense, weight_iters
+        )
         if res is None:
             continue
         ink += res[0] * n
@@ -230,16 +273,18 @@ def word_ink_densities(
     cap_px: int,
     thin: float,
     condense: float = 1.0,
+    weight_iters: int = 0,
 ) -> list[float]:
     """Per-word tight-ink density for each of ``words`` (atlas-covered glyphs).
 
     One density per word (ink / drawn-glyph area within that word), so a single
     long dense token cannot dominate the aggregate the way a char-frequency
-    corpus mean lets it. Words with no atlas glyphs are skipped.
+    corpus mean lets it. ``weight_iters`` models the mint stroke-weight dilation.
+    Words with no atlas glyphs are skipped.
     """
     out = []
     for text in words:
-        d = text_ink_density(font, text, cap_px, thin, condense)
+        d = text_ink_density(font, text, cap_px, thin, condense, weight_iters)
         if d is not None:
             out.append(d)
     return out
@@ -251,15 +296,17 @@ def median_word_density(
     cap_px: int,
     thin: float,
     condense: float = 1.0,
+    weight_iters: int = 0,
 ) -> float | None:
     """Median of per-word densities -- the scorecard's aggregation protocol.
 
     ``ink_calibration.measure_density_ratio`` takes ``median`` over per-word
     ratios; this mirrors that on the synth side so the cheap signal moves with
-    ``density_ratio_median`` rather than an area-weighted corpus mean. ``None``
-    if no word carries atlas glyphs.
+    ``density_ratio_median`` rather than an area-weighted corpus mean.
+    ``weight_iters`` models the mint stroke-weight dilation. ``None`` if no word
+    carries atlas glyphs.
     """
-    ds = word_ink_densities(font, words, cap_px, thin, condense)
+    ds = word_ink_densities(font, words, cap_px, thin, condense, weight_iters)
     if not ds:
         return None
     ds.sort()
@@ -358,6 +405,116 @@ def solve_thin_for_word_density(
     if best is None:
         raise ValueError("no atlas glyphs in words; cannot measure density")
     return best
+
+
+# --------------------------------------------------------------------------
+# M3: derive weight + bitmap_thin JOINTLY.
+#
+# density_ratio (ink) is controlled by TWO coupled knobs: weight (mint stroke
+# dilation, ink UP) and bitmap_thin (render erosion, ink DOWN). The epic's
+# recipe: raise weight to bring density into range, then erode with thin to
+# fine-tune to target. Because density is monotone-increasing in weight and
+# (mostly) decreasing in thin, this is a 2-stage solve, not a 2-D search:
+# choose the LEAST weight whose un-eroded density still meets-or-exceeds the
+# target (so erosion can bring it down), then solve thin at that weight. This
+# generalizes derive_bitmap_thin (thin only) and moves it off the render path.
+#
+# The solver takes an INJECTED ``density_at(weight_iters, thin) -> float | None``
+# so it is agnostic to how weight/thin map to pixels: the cheap path passes the
+# render-free model (weight_density_fn below); a validation path can pass a real
+# render closure. weight is expressed as integer dilation ``weight_iters``; the
+# iters<->weight-float magnitude is mint-specific and calibrated at M4/M5.
+# --------------------------------------------------------------------------
+
+
+def weight_density_fn(
+    font: "BitmapFont",
+    words: Sequence[str],
+    cap_px: int,
+    *,
+    condense: float = 1.0,
+):
+    """Build ``density_at(weight_iters, thin)`` for ``solve_weight_and_thin``.
+
+    The returned closure measures the render-free median-word density with the
+    mint stroke-weight dilation modelled (``weight_iters`` dilation steps) and
+    the render erosion applied (``thin``). Injecting it keeps the solver's
+    algorithm independent of the (mint-specific) weight->pixels magnitude.
+    """
+
+    def density_at(weight_iters: int, thin: float) -> float | None:
+        return median_word_density(
+            font, words, cap_px, thin, condense, int(weight_iters)
+        )
+
+    return density_at
+
+
+def solve_weight_and_thin(
+    density_at,
+    target_density: float,
+    *,
+    weight_iters_options: Sequence[int] = (0, 1, 2, 3, 4),
+    thins: Sequence[float] = _SOLVE_THINS,
+) -> tuple[int, float, float]:
+    """Jointly solve (weight_iters, thin) for density closest to ``target``.
+
+    ``density_at(weight_iters, thin) -> float | None`` is injected (cheap model
+    or real render). Un-eroded density (``thin`` at its minimum) is the MOST ink
+    a given weight can produce, so a weight can reach ``target`` by erosion iff
+    its un-eroded density >= target. Strategy (per the epic):
+
+    * Among weights whose un-eroded density >= target, pick the SMALLEST (least
+      thickening), then argmin ``thin`` to fine-tune down to target.
+    * If NO weight reaches target even un-eroded (target too dense), pick the
+      HEAVIEST weight and its closest thin (best effort from below).
+
+    Returns ``(weight_iters, thin, achieved_density)``. Raises ValueError if
+    ``density_at`` yields no measurable density for any (weight, thin).
+    """
+    weights = sorted(set(int(w) for w in weight_iters_options))
+    thin_grid = sorted(set(float(t) for t in thins))
+    min_thin = thin_grid[0]
+
+    def best_thin_at(weight: int) -> tuple[float, float] | None:
+        best: tuple[float, float] | None = None
+        for t in thin_grid:
+            d = density_at(weight, t)
+            if d is None:
+                continue
+            if (
+                best is None
+                or abs(d - target_density)
+                < abs(best[1] - target_density) - 1e-12
+            ):
+                best = (t, d)
+        return best
+
+    # Un-eroded (max-ink) density per weight, to find which can reach target.
+    reachable: list[int] = []
+    heaviest_uneroded: tuple[int, float] | None = None
+    for w in weights:
+        d0 = density_at(w, min_thin)
+        if d0 is None:
+            continue
+        heaviest_uneroded = (w, d0)
+        if d0 >= target_density - 1e-12:
+            reachable.append(w)
+
+    if reachable:
+        chosen = min(reachable)  # least thickening that can erode to target
+    elif heaviest_uneroded is not None:
+        chosen = heaviest_uneroded[
+            0
+        ]  # target too dense: heaviest, best effort
+    else:
+        raise ValueError("density_at yielded no measurable density")
+
+    bt = best_thin_at(chosen)
+    if bt is None:
+        raise ValueError("density_at yielded no measurable density")
+    thin, achieved = bt
+    return chosen, thin, achieved
 
 
 # --------------------------------------------------------------------------
