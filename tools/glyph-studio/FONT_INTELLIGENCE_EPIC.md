@@ -80,26 +80,32 @@ in a family** is the statistical fix for mushy diagonals: averaging happens in
 payment / survey / footer / barcode` (stylescan.py). Receipt-native, already
 has hand-written rules for 3 merchants; richer than the CORE_LABELS grouping.
 
-### 4.2 Sections as labels — the `SECTION_*` namespace
+### 4.2 Sections as `ReceiptSection` rows
 
-Persist per-word sections as `ReceiptWordLabel` rows with a `SECTION_` prefix
-(e.g. `SECTION_TOTAL_LINE`), exactly like word labels. Verified:
+Persist sections as **`ReceiptSection`** rows — line-level, one row per
+`(receipt, section)` keyed `SK = RECEIPT#{id:05d}#SECTION#{TYPE}` holding that
+section's `line_ids`. Words inherit their line's section. This keeps the
+`ReceiptWordLabel` table a **clean training corpus** — sections are receipt
+*structure*, not word labels. (Earlier draft persisted `SECTION_*`
+`ReceiptWordLabel` rows; rejected — it pollutes the label table.)
 
-- `create_word_label_impl` does **not** validate against `CORE_LABELS` (it
-  uppercases and writes), so the namespace is writable today.
-- Tools that iterate `for label in CORE_LABELS` ignore the new namespace — no
-  breakage, it is parallel.
-- We inherit the entire validation-status workflow (`PENDING → VALID /
-  INVALID`), MCP QA tooling (`list_words_by_label`,
-  `label_validation_summary`, `update_word_label`), and label-distribution
-  reporting for free.
-- **One small write-path change needed:** the MCP create path hardcodes
-  `validation_status="VALID"`. Machine-propagated sections must land as
-  `PENDING` (promoted by QA), so add a `validation_status` parameter or write
-  propagated rows via `add_receipt_word_label` directly. Dynamo writes require
-  explicit approval per repo policy.
-- The section labels are **shared ground truth** — the LayoutLM leg consumes
-  the same rows. Labeling sections once serves both epics.
+- `SectionType` carries the 10 canonical sections. The 4-value 2025-05
+  classifier experiment vocab (`HEADER/FOOTER/ITEMS_VALUE/ITEMS_DESCRIPTION`)
+  is deprecated; its stale 818-row batch (219 receipts, `model_source` unset)
+  was deleted from dev.
+- Rows carry `confidence`, `model_source` (versions writes: `section-seed-v0`
+  seeds → `-v1` propagation), and `validation_status` (`PENDING` → QA). CRUD
+  is fully plumbed (add/update/delete/get/list).
+- Machine-seeded rows land `PENDING`; QA promotes them. Writes are additive
+  (conditional add skips existing `(receipt, section)` rows) and require
+  explicit approval per repo policy; dev first.
+- **Shared ground truth for Chroma — but the wiring is currently inert.** The
+  embedding pipeline already calls `get_receipt_sections_from_receipt` and
+  `records.py` has a `section_label` line-metadata hook, but nothing maps
+  `section.line_ids` onto `line.section_label` (and `ReceiptLine` has no such
+  field), so it always emits `None`. Completing that map is a **deferred M1
+  task** so section rows enrich line embeddings. The LayoutLM leg also
+  consumes sections — writing them once serves both epics.
 
 ### 4.3 ChromaDB — two collections
 
@@ -126,11 +132,11 @@ powers `validate_word_similarity` / `search_product_lines`.
 ### 4.4 MCP tools in the loop
 
 - `get_receipt_words` / `get_receipt_image_url` — corpus + pixels.
-- `create_word_label` / `update_word_label` — write/correct `SECTION_*` rows.
-- `list_words_by_label` / `label_validation_summary` — QA sampling and
-  coverage tracking per section.
-- Section QA becomes the same human-in-the-loop review motion already used for
-  word labels.
+- `get_receipt_sections_from_receipt` / `add|update|delete_receipt_section` —
+  read/write section rows (`update_word_label` is still used, but only by the
+  M1 consistency audit to flag inconsistent CORE labels `NEEDS_REVIEW`).
+- Section QA reuses the same `validation_status` (`PENDING → VALID`) motion as
+  word labels; `list_receipt_sections` samples coverage per section.
 
 ## 5. Pipeline (five stages)
 
@@ -138,7 +144,7 @@ powers `validate_word_similarity` / `search_product_lines`.
 S0 seed        CORE_LABELS → section projection (GRAND_TOTAL ⇒ total_line, PRODUCT_NAME ⇒ items, …)
                + stylescan rules where they exist (Costco/Vons/TJ)
 S1 propagate   word-context Chroma NN → section posterior for every word
-               → write SECTION_* labels as PENDING → MCP QA sample → VALID
+               → write ReceiptSection rows as PENDING → QA sample → VALID
 S1' audit      cross-tab CORE label × consensus section → flag inconsistent
                word labels NEEDS_REVIEW (update_word_label); report per-label
                violation rate
@@ -159,9 +165,10 @@ unchanged — family fonts are *fitted skeletons*, never copied crops).
 
 ## 6. Milestones
 
-- **M0 — Section-label infrastructure.** `SECTION_*` write path (with
-  `PENDING` support), seed projection from CORE_LABELS, stylescan rules
-  extended to all 9 merchants. *Exit:* every labeled word has a section row;
+- **M0 — Section infrastructure.** `ReceiptSection` write path (canonical
+  `SectionType` + `confidence`/`model_source`/`validation_status`, `PENDING`
+  support), seed projection from CORE_LABELS, stylescan rules extended to all
+  9 merchants. *Exit:* every labeled word has a section row;
   seed coverage/accuracy report per merchant.
 - **M1 — Propagation + QA.** Word-context Chroma collection; NN propagation;
   QA loop via MCP. *Exit:* ≥95 % of words carry a section with measured
@@ -249,9 +256,10 @@ synthesis-v2 handoff is a data dependency, not code.
 - **Anti-copy gate.** Family fonts must remain fitted skeletons, never crop
   copies — the existing `_reject_copied_letterforms` gate stays mandatory in
   the publish path.
-- **Dynamo write volume.** Dense `SECTION_*` rows are a large additive write.
-  → Batch, additive-only, explicit approval before the first write; dev first,
-  promotion via the existing dev→prod mirror.
+- **Dynamo write volume.** `ReceiptSection` rows are a large additive write
+  (~10 per receipt). → Additive-only (conditional add skips existing), explicit
+  approval before the first write; dev first, promotion via the existing
+  dev→prod mirror.
 
 ## 8. Decision log (structure locked here)
 
@@ -259,7 +267,7 @@ synthesis-v2 handoff is a data dependency, not code.
 |---|---|---|
 | Unit of analysis | `(merchant, section) → (family, face)` | section is the strongest face prior; fixes multi-face rendering by construction |
 | Section vocabulary | stylescan's 10 sections | receipt-native, rules already exist for 3 merchants |
-| Section persistence | `SECTION_*` ReceiptWordLabel rows | zero schema change (verified), full QA workflow free, shared with LayoutLM leg |
+| Section persistence | line-level `ReceiptSection` rows (`confidence`/`model_source`/`validation_status`) | keeps the label table a clean training corpus; purpose-built line-level entity; CRUD plumbed; shared with LayoutLM + Chroma legs |
 | Propagation | Chroma NN from labeled seeds | infra proven by validate_word_similarity; turns sparse seed into dense coverage |
 | Crop embedding | deterministic pixel+geometry features first | no new API deps, reproducible; upgrade only if clusters demand |
 | Font model | family skeleton + face transform + merchant offset | stroke-space pooling is the diagonal fix; offsets keep printer character |
