@@ -3,15 +3,14 @@
 #
 # Steps:
 #   1. Sync S3 images  (dev → prod bucket)
-#   2. Export current dev DynamoDB records to a fresh dev.export/ (avoids stale snapshot)
-#   3. Sync DynamoDB records (new images only; empties excluded)
-#   4. Sync OCR jobs
-#   5. Sync word labels (incl. validation-status changes)
-#   6. Start prod word + line embedding step functions
+#   2. Reconcile DynamoDB records (dev → prod mirror: ADD / REPLACE / DELETE)
+#   3. Sync OCR jobs
+#   4. Start prod word + line embedding step functions
 #
-# NOTE: word/label edits on receipts ALREADY in prod are covered for labels
-# (step 5, --update-status) but NOT for word text/geometry changes from re-OCR
-# — copy (step 3) only creates entities for brand-new images.
+# The reconcile step (reconcile_dev_to_prod.py) makes prod an exact mirror of
+# dev at image granularity: new images added, changed images replaced (delete +
+# recopy, so re-OCR/merges are correct), removed images deleted. It subsumes the
+# old copy + word-label sync, and gates apply on prod compaction-queue health.
 #
 # Usage: ./scripts/promote_dev_to_prod.sh [--skip-sync] [--skip-embed] [--dry-run]
 #   --skip-sync   Skip S3/DynamoDB sync (useful when already synced)
@@ -63,43 +62,27 @@ echo ""
 if [[ "$SKIP_SYNC" == "true" ]]; then
   echo -e "${YELLOW}Skipping data sync (--skip-sync)${NC}"
 else
-  echo -e "${GREEN}[1/5] Syncing S3 images (dev → prod)...${NC}"
+  echo -e "${GREEN}[1/3] Syncing S3 images (dev → prod)...${NC}"
   run bash "$SCRIPT_DIR/sync_images_dev_to_prod_fast.sh"
   echo ""
 
-  # Regenerate the export from LIVE dev so the copy reflects current state
-  # (not a stale snapshot) and so images deleted from dev since the last
-  # export are not re-promoted. Read-only against dev, so run even in dry-run.
-  echo -e "${GREEN}[2/5] Exporting current dev records → dev.export/...${NC}"
-  rm -rf "$PROJECT_ROOT/dev.export"
-  python3 "$SCRIPT_DIR/export_all_images.py" --stack dev \
-    --output-dir "$PROJECT_ROOT/dev.export"
-  echo ""
-
-  echo -e "${GREEN}[3/5] Syncing DynamoDB records (dev → prod; new images, empties excluded)...${NC}"
+  # Mirror the dev corpus onto prod at image granularity (ADD / REPLACE / DELETE).
+  # REPLACE = delete + recopy, so re-OCR/merges land correctly; DELETE propagates
+  # dev cleanups. Subsumes the old copy + word-label sync. Gates on prod
+  # compaction-queue health before writing (--skip-health-gate to override).
+  echo -e "${GREEN}[2/3] Reconciling DynamoDB records (dev → prod mirror)...${NC}"
   if [[ "$DRY_RUN" == "true" ]]; then
-    run python3 "$SCRIPT_DIR/copy_dynamodb_dev_to_prod.py" \
-      --export-dir "$PROJECT_ROOT/dev.export"
+    run python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py"
   else
-    python3 "$SCRIPT_DIR/copy_dynamodb_dev_to_prod.py" \
-      --export-dir "$PROJECT_ROOT/dev.export" --no-dry-run
+    python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py" --no-dry-run
   fi
   echo ""
 
-  echo -e "${GREEN}[4/5] Syncing OCR jobs (dev → prod)...${NC}"
+  echo -e "${GREEN}[3/3] Syncing OCR jobs (dev → prod)...${NC}"
   if [[ "$DRY_RUN" == "true" ]]; then
     run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py"
   else
     python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py" --no-dry-run
-  fi
-  echo ""
-
-  echo -e "${GREEN}[5/5] Syncing word labels (dev → prod; incl. validation-status changes)...${NC}"
-  if [[ "$DRY_RUN" == "true" ]]; then
-    run python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py" --update-status
-  else
-    python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py" \
-      --no-dry-run --force-dump --update-status
   fi
   echo ""
 fi
@@ -108,7 +91,7 @@ fi
 if [[ "$SKIP_EMBED" == "true" ]]; then
   echo -e "${YELLOW}Skipping embedding step functions (--skip-embed)${NC}"
 else
-  echo -e "${GREEN}[6/6] Starting prod embedding step functions...${NC}"
+  echo -e "${GREEN}[4/4] Starting prod embedding step functions...${NC}"
   run bash "$SCRIPT_DIR/start_ingestion_prod.sh" both
   echo ""
   echo -e "${BLUE}Monitor ingestion:${NC}"
