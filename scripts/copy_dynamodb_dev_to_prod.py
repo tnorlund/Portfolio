@@ -40,9 +40,9 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
@@ -189,7 +189,7 @@ def copy_image_entities(
         "receipt_word_labels": 0,
         "receipt_metadatas": 0,
         "receipt_places": 0,
-        "ocr_jobs": 0,
+        "receipt_barcodes": 0,
         "ocr_routing_decisions": 0,
         "errors": [],
     }
@@ -316,12 +316,19 @@ def copy_image_entities(
                 prod_client.add_receipt_places(receipt_places)
             stats["receipt_places"] = len(receipt_places)
 
-        # Process OCRJobs
-        if export_data.get("ocr_jobs"):
-            ocr_jobs = [OCRJob(**job) for job in export_data["ocr_jobs"]]
+        # Process ReceiptBarcodes (exported but previously dropped — a REPLACE
+        # deletes the whole image partition, so these must be restored)
+        if export_data.get("receipt_barcodes"):
+            receipt_barcodes = [
+                ReceiptBarcode(**bc) for bc in export_data["receipt_barcodes"]
+            ]
             if not dry_run:
-                prod_client.add_ocr_jobs(ocr_jobs)
-            stats["ocr_jobs"] = len(ocr_jobs)
+                prod_client.add_receipt_barcodes(receipt_barcodes)
+            stats["receipt_barcodes"] = len(receipt_barcodes)
+
+        # NOTE: OCRJobs are intentionally NOT copied here. sync_ocr_jobs_dev_to_prod.py
+        # owns them because it also rewrites OCRJob.s3_bucket (dev→prod) and copies
+        # the ocr_results/ S3 artifact, which a raw DynamoDB copy would not do.
 
         # Process OCRRoutingDecisions
         if export_data.get("ocr_routing_decisions"):

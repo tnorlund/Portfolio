@@ -4,13 +4,15 @@
 # Steps:
 #   1. Sync S3 images  (dev → prod bucket)
 #   2. Reconcile DynamoDB records (dev → prod mirror: ADD / REPLACE / DELETE)
-#   3. Start prod word + line embedding step functions
+#   3. Sync OCR jobs (bucket rewrite + ocr_results/ S3 copy; prod-image filtered)
+#   4. Start prod word + line embedding step functions
 #
 # The reconcile step (reconcile_dev_to_prod.py) makes prod an exact mirror of
 # dev at image granularity: new images added, changed images replaced (delete +
 # recopy, so re-OCR/merges are correct), removed images deleted. It subsumes the
-# old copy + word-label sync AND the OCR-job sync (OCR jobs + routing decisions
-# are copied per promoted image and cascade-deleted with removed images), and
+# old copy + word-label sync. OCR jobs stay in the dedicated step because it also
+# rewrites OCRJob.s3_bucket and copies the ocr_results/ S3 artifact; that step is
+# now filtered to prod-existing images so it can't recreate orphan rows. Reconcile
 # gates apply on prod compaction-queue health.
 #
 # Usage: ./scripts/promote_dev_to_prod.sh [--skip-sync] [--skip-embed] [--dry-run]
@@ -71,11 +73,21 @@ else
   # REPLACE = delete + recopy, so re-OCR/merges land correctly; DELETE propagates
   # dev cleanups. Subsumes the old copy + word-label sync. Gates on prod
   # compaction-queue health before writing (--skip-health-gate to override).
-  echo -e "${GREEN}[2/2] Reconciling DynamoDB records (dev → prod mirror)...${NC}"
+  echo -e "${GREEN}[2/3] Reconciling DynamoDB records (dev → prod mirror)...${NC}"
   if [[ "$DRY_RUN" == "true" ]]; then
     run python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py"
   else
     python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py" --no-dry-run
+  fi
+  echo ""
+
+  # OCR jobs run AFTER reconcile so the prod-image filter sees the final image
+  # set (rewrites OCRJob.s3_bucket dev→prod and copies the ocr_results/ artifact).
+  echo -e "${GREEN}[3/3] Syncing OCR jobs (dev → prod; prod-image filtered)...${NC}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py"
+  else
+    python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py" --no-dry-run
   fi
   echo ""
 fi
@@ -84,7 +96,7 @@ fi
 if [[ "$SKIP_EMBED" == "true" ]]; then
   echo -e "${YELLOW}Skipping embedding step functions (--skip-embed)${NC}"
 else
-  echo -e "${GREEN}[3/3] Starting prod embedding step functions...${NC}"
+  echo -e "${GREEN}[4/4] Starting prod embedding step functions...${NC}"
   run bash "$SCRIPT_DIR/start_ingestion_prod.sh" both
   echo ""
   echo -e "${BLUE}Monitor ingestion:${NC}"

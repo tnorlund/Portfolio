@@ -44,6 +44,9 @@ import boto3
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR.parent))
+# Also add the package source dir so `receipt_dynamo` resolves to the package,
+# not the outer namespace directory, in a fresh checkout with no editable install.
+sys.path.insert(0, str(SCRIPT_DIR.parent / "receipt_dynamo"))
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
@@ -70,6 +73,22 @@ PROD_DLQ_NAMES = [
     "chromadb-prod-queues-summary-dlq-1ebd871",
 ]
 BACKLOG_LIMIT = 500  # refuse to start if a live queue is already this deep
+
+# Entity TYPEs (DynamoDB "TYPE" attr) that a REPLACE can safely delete, because
+# they are either restored by the copy/OCR-sync path or are derived data that
+# regenerates after copy. If a prod image partition contains any TYPE outside
+# this set, the REPLACE is skipped (not deleted) to avoid silent data loss.
+RESTORABLE_TYPES = {
+    # restored by copy_image_entities
+    "IMAGE", "RECEIPT", "LINE", "WORD", "LETTER",
+    "RECEIPT_LINE", "RECEIPT_WORD", "RECEIPT_LETTER", "RECEIPT_WORD_LABEL",
+    "RECEIPT_METADATA", "RECEIPT_PLACE", "RECEIPT_BARCODE",
+    "OCR_ROUTING_DECISION",
+    # restored by the filtered sync_ocr_jobs step
+    "OCR_JOB",
+    # derived / regenerated after copy (safe to drop on replace)
+    "RECEIPT_SUMMARY", "COMPACTION_RUN", "EMBEDDING_STATUS",
+}
 
 
 def _fingerprint_env(client: DynamoClient) -> dict:
@@ -220,6 +239,41 @@ def health_gate(strict: bool = True) -> bool:
     return healthy
 
 
+def _partition_types(table: str, image_id: str) -> set:
+    """Distinct entity TYPEs under a prod image partition (read-only)."""
+    ddb = boto3.client("dynamodb", region_name="us-east-1")
+    types, lek = set(), None
+    while True:
+        kwargs = dict(
+            TableName=table,
+            KeyConditionExpression="PK = :pk",
+            ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"}},
+            ProjectionExpression="#T",
+            ExpressionAttributeNames={"#T": "TYPE"},
+        )
+        if lek:
+            kwargs["ExclusiveStartKey"] = lek
+        resp = ddb.query(**kwargs)
+        for item in resp["Items"]:
+            t = item.get("TYPE", {}).get("S")
+            if t:
+                types.add(t)
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
+    return types
+
+
+def guard_replaces(prod_table: str, replaces: list) -> tuple:
+    """Split REPLACE ids into safe (only restorable types) and guarded (would
+    lose data). A guarded image is left untouched, not deleted."""
+    safe, guarded = [], []
+    for iid in replaces:
+        bad = _partition_types(prod_table, iid) - RESTORABLE_TYPES
+        (guarded if bad else safe).append((iid, sorted(bad)) if bad else iid)
+    return safe, guarded
+
+
 def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
     """Execute DELETE, then REPLACE-delete + copy, then ADD copy."""
     dev_table = dev_config["table"]
@@ -290,6 +344,13 @@ def main():
     prod_fp = _fingerprint_env(prod_client)
 
     p = plan(dev_fp, prod_fp)
+
+    # Safety guard: never delete a prod image whose partition holds entity types
+    # the copy path cannot restore. Such images are left untouched and reported.
+    prod_table = load_env("prod")["dynamodb_table_name"]
+    safe_replace, guarded = guard_replaces(prod_table, p["replace"])
+    p["replace"] = safe_replace
+
     logger.info("=" * 60)
     logger.info("RECONCILE PLAN (dev → prod mirror)")
     logger.info("=" * 60)
@@ -297,6 +358,12 @@ def main():
     logger.info(f"  REPLACE (content changed):       {len(p['replace'])}")
     logger.info(f"  DELETE  (gone/empty on dev):     {len(p['delete'])}")
     logger.info(f"  skipped (empty dev images):      {len(p['empty_skipped'])}")
+    if guarded:
+        logger.warning(
+            f"  GUARDED (unrestorable types, left as-is): {len(guarded)}"
+        )
+        for iid, bad in guarded[: args.limit_list]:
+            logger.warning(f"    {iid}: would lose {bad}")
     for bucket in ("add", "replace", "delete"):
         if p[bucket]:
             shown = p[bucket][: args.limit_list]

@@ -197,9 +197,22 @@ def main():
     prod_job_keys = {(j.image_id, j.job_id) for j in prod_jobs}
 
     # -------------------------------------------------------------------------
+    # Build the set of image_ids that actually exist in prod, so we never
+    # recreate OCR jobs for images the reconcile step removed or never promoted
+    # (which would leave orphan OCRJob rows with no Image/Receipt).
+    prod_image_ids = set()
+    _lek = None
+    while True:
+        _imgs, _lek = prod_client.list_images(limit=1000, last_evaluated_key=_lek)
+        prod_image_ids.update(im.image_id for im in _imgs)
+        if not _lek:
+            break
+    logger.info("Prod images available for OCR-job sync: %d", len(prod_image_ids))
+
     # 2. Filter dev jobs to sync
     # -------------------------------------------------------------------------
     jobs_to_sync: list[OCRJob] = []
+    orphan_skipped = 0
     for job in dev_jobs:
         # Filter by job type
         if not args.all_job_types and job.job_type != OCRJobType.REGIONAL_REOCR.value:
@@ -207,6 +220,11 @@ def main():
 
         # Filter by image IDs if specified
         if args.image_ids and job.image_id not in args.image_ids:
+            continue
+
+        # Skip jobs whose image is not in prod (would be an orphan)
+        if job.image_id not in prod_image_ids:
+            orphan_skipped += 1
             continue
 
         # Skip if already in prod
@@ -219,7 +237,8 @@ def main():
         jobs_to_sync.append(job)
 
     logger.info(
-        "Jobs to sync: %d (filtered from %d dev jobs)", len(jobs_to_sync), len(dev_jobs)
+        "Jobs to sync: %d (filtered from %d dev jobs; %d skipped as orphans "
+        "with no prod image)", len(jobs_to_sync), len(dev_jobs), orphan_skipped
     )
 
     if not jobs_to_sync:
