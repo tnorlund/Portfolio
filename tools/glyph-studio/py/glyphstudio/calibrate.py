@@ -18,6 +18,29 @@ This is the M1 foundation of the calibration-derivation epic (DERIVATION_EPIC.md
 a cheap measurer the mint-time solver stands on. It is deliberately dependency-
 light: only ``BitmapFont``/``thin_ink_mask`` from the renderer, so it can run
 in the studio without the full synthesis stack.
+
+Scope & units -- what this measures and what it deliberately does NOT
+--------------------------------------------------------------------
+The signal here is *synth-side, tight-ink* density: ink pixels over drawn-glyph
+area, aggregated to match the scorecard's protocol (``scorecard_words`` +
+``median_word_density`` mirror ``_word_scores`` / ``density_ratio_median``). Two
+parts of the scorecard's ABSOLUTE density are layout/pipeline effects that
+cannot be reproduced without a render, and are out of scope by design:
+
+* Padded-crop denominator: ``receipt_line_scorecard.measure_ink`` divides ink by
+  the padded word-crop area (word box + ``synth_margin`` + pad), so its absolute
+  density is margin- and cell-spacing-dominated, not a tight-glyph fraction.
+  This measurer therefore tracks the *shape* of the thin response and the
+  erosion saturation point; it is not a drop-in for the scorecard's absolute
+  number. Absolute agreement between the cheap solve and a real render is
+  established empirically by the M1/M2 validation milestone, and the render-time
+  solver remains the source of truth when they disagree.
+* Stylemap faces/scales: merchants whose stylemap renders header/total/footer
+  rows with a heavy face, a scale multiplier, or a double-strike stamp more ink
+  than a body-``cap_px`` regular glyph. This module samples one regular face at
+  one cap_px, so styled rows are measured light. Exclude those rows from the
+  corpus upstream (``scorecard_words`` handles word-class filtering but not
+  section styling) or calibrate them separately.
 """
 
 from __future__ import annotations
@@ -147,8 +170,103 @@ def text_ink_density(
 
 
 def corpus_text(words: Sequence[Mapping[str, object]]) -> str:
-    """Concatenate the text of OCR ``words`` (the glyph-frequency basis)."""
+    """Concatenate the text of OCR ``words`` (the glyph-frequency basis).
+
+    NOTE: this is the raw char-frequency basis (every token). For a signal that
+    tracks the scorecard's ``density_ratio_median`` -- which the render-time
+    solver actually targets -- filter with ``scorecard_words`` and aggregate
+    with ``median_word_density`` instead of taking one corpus-wide mean.
+    """
     return "".join(str(w.get("text") or "") for w in words)
+
+
+# The scorecard drops two word classes before measuring density
+# (receipt_line_scorecard._word_scores / _is_long_numeric_caption). We mirror
+# the predicates here -- rather than import the synthesis stack this module is
+# deliberately independent of -- so the corpus we measure matches the tokens
+# that actually contribute to ``density_ratio_median``. Spec source:
+# synthesis_loop/receipt_line_scorecard.py (keep in sync if it changes).
+import re as _re  # noqa: E402  (local: keep the module import surface minimal)
+
+_LONG_NUMERIC_RE = _re.compile(r"^[\[\]\(\)\sXx0-9\-]+$")
+
+
+def is_long_numeric_caption(text: str) -> bool:
+    """True for barcode/UPC-style captions the scorecard excludes from density."""
+    glyphs = _re.sub(r"\s+", "", text)
+    digits = sum(ch.isdigit() for ch in glyphs)
+    return (
+        digits >= 14
+        and digits >= 0.75 * max(1, len(glyphs))
+        and bool(_LONG_NUMERIC_RE.match(glyphs))
+    )
+
+
+def scorecard_words(
+    words: Sequence[Mapping[str, object]],
+) -> list[str]:
+    """The word texts that survive the scorecard's density-word filter.
+
+    Drops sub-2-char words and long-numeric captions exactly as
+    ``_word_scores`` does, so per-word density aggregates over the same tokens
+    the scorecard scores. Styled/heavy rows (stylemap sections) are NOT handled
+    here -- see the module "Scope" note; exclude them upstream if a merchant's
+    stylemap renders sections with a different face/scale.
+    """
+    out = []
+    for w in words:
+        text = str(w.get("text") or "").strip()
+        if len(text.replace(" ", "")) < 2:
+            continue
+        if is_long_numeric_caption(text):
+            continue
+        out.append(text)
+    return out
+
+
+def word_ink_densities(
+    font: "BitmapFont",
+    words: Sequence[str],
+    cap_px: int,
+    thin: float,
+    condense: float = 1.0,
+) -> list[float]:
+    """Per-word tight-ink density for each of ``words`` (atlas-covered glyphs).
+
+    One density per word (ink / drawn-glyph area within that word), so a single
+    long dense token cannot dominate the aggregate the way a char-frequency
+    corpus mean lets it. Words with no atlas glyphs are skipped.
+    """
+    out = []
+    for text in words:
+        d = text_ink_density(font, text, cap_px, thin, condense)
+        if d is not None:
+            out.append(d)
+    return out
+
+
+def median_word_density(
+    font: "BitmapFont",
+    words: Sequence[str],
+    cap_px: int,
+    thin: float,
+    condense: float = 1.0,
+) -> float | None:
+    """Median of per-word densities -- the scorecard's aggregation protocol.
+
+    ``ink_calibration.measure_density_ratio`` takes ``median`` over per-word
+    ratios; this mirrors that on the synth side so the cheap signal moves with
+    ``density_ratio_median`` rather than an area-weighted corpus mean. ``None``
+    if no word carries atlas glyphs.
+    """
+    ds = word_ink_densities(font, words, cap_px, thin, condense)
+    if not ds:
+        return None
+    ds.sort()
+    n = len(ds)
+    if n % 2:
+        return ds[n // 2]
+    return (ds[n // 2 - 1] + ds[n // 2]) / 2.0
 
 
 def thin_response_curve(
@@ -209,6 +327,39 @@ def solve_thin_for_density(
     return best
 
 
+def solve_thin_for_word_density(
+    font: "BitmapFont",
+    words: Sequence[str],
+    cap_px: int,
+    target_density: float,
+    *,
+    condense: float = 1.0,
+    thins: Sequence[float] = _SOLVE_THINS,
+) -> tuple[float, float]:
+    """``solve_thin_for_density`` over the median-of-per-word protocol.
+
+    Same plateau-argmin search, but the measured signal is
+    ``median_word_density`` (the scorecard's aggregation) rather than a single
+    char-weighted corpus mean -- so the solved thin tracks
+    ``density_ratio_median`` and is not skewed by one long dense token. Pass
+    ``scorecard_words(words)`` so the corpus matches the tokens the scorecard
+    scores. Raises ValueError if no word carries atlas glyphs.
+    """
+    best: tuple[float, float] | None = None
+    for t in sorted(set(float(x) for x in thins)):
+        d = median_word_density(font, words, cap_px, t, condense)
+        if d is None:
+            continue
+        if (
+            best is None
+            or abs(d - target_density) < abs(best[1] - target_density) - 1e-12
+        ):
+            best = (t, d)
+    if best is None:
+        raise ValueError("no atlas glyphs in words; cannot measure density")
+    return best
+
+
 # --------------------------------------------------------------------------
 # Cap height: the h_ratio knob (ocr_cap_height_ratio), derived not eyeballed.
 #
@@ -251,6 +402,9 @@ def solve_cap_ratio(
     thin: float = 0.0,
     *,
     probe_cap_px: int | None = None,
+    font_px: float | None = None,
+    bitmap_cap_ratio: float | None = None,
+    max_font_px: float | None = None,
 ) -> tuple[float, float]:
     """Derive ocr_cap_height_ratio so the synth cap height matches the real scan.
 
@@ -263,7 +417,17 @@ def solve_cap_ratio(
     fixes the slope: solve for the cap_px whose synth cap height equals the real
     cap height, then ``ratio = cap_px / median_ocr_word_height``. Returns
     ``(ratio, projected_h_ratio)`` where projected_h_ratio is the synth/real
-    height ratio at the (clamped) returned ratio -- 1.0 when unclamped.
+    height ratio the RENDERER will actually produce at the returned ratio --
+    1.0 when nothing binds.
+
+    The renderer does more than clamp the ratio (receipt_renderer.py
+    _derive_bitmap_metrics): it rounds ``measured_cap = round(median * ratio)``,
+    floors it at ``round(base_cap * 0.9)`` where ``base_cap = round(font_px *
+    bitmap_cap_ratio)`` (binds for small text), and caps it at ``max_font_px``
+    (binds for large text). Pass ``font_px``/``bitmap_cap_ratio``/``max_font_px``
+    to project through that exact cap_px so we don't advertise an h_ratio the
+    renderer can't reach when a floor/ceiling binds; omit them to project the
+    unclamped linear cap_px (rounding still applied).
     """
     probe = probe_cap_px or max(6, int(round(font.cap_h)))
     synth_at_probe = cap_glyph_height(font, probe, thin)
@@ -276,8 +440,13 @@ def solve_cap_ratio(
     target_cap_px = real_cap_height_px / slope
     ratio = target_cap_px / median_ocr_word_height_px
     clamped = max(CAP_RATIO_MIN, min(CAP_RATIO_MAX, ratio))
-    # projected h_ratio at the clamped ratio (1.0 if the solve wasn't clamped)
-    achieved_cap_px = clamped * median_ocr_word_height_px
-    projected_synth = slope * achieved_cap_px
+    # Reproduce the renderer's cap_px so the projection matches what it stamps.
+    cap_px = int(round(clamped * median_ocr_word_height_px))
+    if font_px is not None and bitmap_cap_ratio is not None:
+        base_cap = max(6, int(round(float(font_px) * float(bitmap_cap_ratio))))
+        cap_px = max(int(round(base_cap * 0.9)), cap_px)  # small-text floor
+    if max_font_px is not None:
+        cap_px = min(max(6, int(max_font_px)), cap_px)  # large-text ceiling
+    projected_synth = slope * cap_px
     projected_h_ratio = projected_synth / real_cap_height_px
     return clamped, projected_h_ratio

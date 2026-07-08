@@ -121,6 +121,59 @@ def test_corpus_text_concatenates():
     assert calibrate.corpus_text(words) == "AB0"
 
 
+# --- scorecard-faithful word filtering + per-word aggregation ---
+
+
+def test_scorecard_words_drops_short_and_numeric_captions():
+    words = [
+        {"text": "AB"},  # kept
+        {"text": "A"},  # dropped: < 2 non-space chars
+        {"text": "  "},  # dropped: empty after strip
+        {"text": "0123456789012345"},  # dropped: 16-digit numeric caption
+        {"text": "AB0"},  # kept (only 1 digit)
+    ]
+    assert calibrate.scorecard_words(words) == ["AB", "AB0"]
+
+
+def test_is_long_numeric_caption():
+    assert calibrate.is_long_numeric_caption("01234567890123")  # 14 digits
+    assert calibrate.is_long_numeric_caption("X0123456789 0123X")  # 14d/16 ok
+    assert not calibrate.is_long_numeric_caption("0123456789")  # only 10
+    assert not calibrate.is_long_numeric_caption("TOTAL 12.99")  # letters
+    assert not calibrate.is_long_numeric_caption(
+        "(012) 345-678901 [23]"
+    )  # 14 digits but only 14/19 < 0.75 non-space -> not a caption
+
+
+def test_median_word_density_is_not_dominated_by_one_long_token(font):
+    # A char-weighted corpus mean lets one long dense token dominate; the
+    # per-word median does not. 'A' (solid) is dense, '0' (sparse cross) light.
+    words = ["AAAAAAAAAA", "0", "0"]  # one long dense word, two light words
+    corpus = calibrate.text_ink_density(font, "".join(words), 40, 0.0)
+    med = calibrate.median_word_density(font, words, 40, 0.0)
+    # median sits on a light word; corpus mean is pulled up by the long 'A' run.
+    assert med < corpus
+
+
+def test_median_word_density_none_without_atlas_glyphs(font):
+    assert calibrate.median_word_density(font, ["zz", "yy"], 40, 0.0) is None
+
+
+def test_solve_thin_for_word_density_recovers_target(font):
+    words = ["AB0", "AA0"]
+    target = calibrate.median_word_density(font, words, 40, 0.2)
+    thin, achieved = calibrate.solve_thin_for_word_density(
+        font, words, 40, target
+    )
+    assert 0.0 <= thin <= calibrate.SATURATION_THIN
+    assert achieved == pytest.approx(target, abs=1e-6)
+
+
+def test_solve_thin_for_word_density_rejects_empty(font):
+    with pytest.raises(ValueError):
+        calibrate.solve_thin_for_word_density(font, ["zz"], 40, 0.2)
+
+
 # --- M2: cap height ---
 
 
@@ -166,3 +219,30 @@ def test_solve_cap_ratio_clamps_to_band(font):
 def test_solve_cap_ratio_rejects_bad_inputs(font):
     with pytest.raises(ValueError):
         calibrate.solve_cap_ratio(font, 30.0, 0.0)
+
+
+def test_solve_cap_ratio_small_text_floor_binds(font):
+    # slope=1; real cap 30, ocr word box 40 -> unclamped cap_px 30. A large
+    # base_cap floors cap_px above 30, so the renderer stamps taller than the
+    # linear solve promised and projected h_ratio rises above 1.0.
+    _, h_ratio = calibrate.solve_cap_ratio(
+        font,
+        real_cap_height_px=30.0,
+        median_ocr_word_height_px=40.0,
+        font_px=50.0,
+        bitmap_cap_ratio=0.8,  # base_cap=40 -> floor round(40*0.9)=36 > 30
+    )
+    # floored cap_px 36 -> synth 36 vs real 30
+    assert h_ratio == pytest.approx(36.0 / 30.0, abs=1e-3)
+
+
+def test_solve_cap_ratio_max_font_ceiling_binds(font):
+    # Unclamped cap_px 30, but max_font_px caps it at 24 -> renderer stamps
+    # shorter, projected h_ratio drops below 1.0.
+    _, h_ratio = calibrate.solve_cap_ratio(
+        font,
+        real_cap_height_px=30.0,
+        median_ocr_word_height_px=40.0,
+        max_font_px=24.0,
+    )
+    assert h_ratio == pytest.approx(24.0 / 30.0, abs=1e-3)
