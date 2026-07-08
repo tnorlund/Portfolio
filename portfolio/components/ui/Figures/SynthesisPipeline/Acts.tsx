@@ -745,7 +745,7 @@ const FinaleCard: React.FC<{
   );
 };
 
-const FINALE_PAN_MS = 14000; // full left->right pan duration (fits the dwell)
+const FINALE_PAN_MS = 17000; // full left->right pan duration (fits the dwell)
 const FINALE_PAN_DELAY = 1200; // let the cards settle in before panning
 
 const FinaleAct: React.FC<ActProps> = ({
