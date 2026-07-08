@@ -97,13 +97,22 @@ test("figure loads, autoplays, and survives the full act cycle", async ({ page }
     await page.waitForTimeout(250);
   }
 
-  // finale: five merchant cards, each with a currentColor logo mark
+  // finale: one merchant card per merchant, each with a currentColor logo mark
   await dots.nth(n - 1).click();
   await expect(page.getByTestId("finale-card").first()).toBeVisible({
     timeout: 10_000,
   });
-  expect(await page.getByTestId("finale-card").count()).toBe(5);
-  for (const name of ["Sprouts", "Costco", "Vons", "Trader Joe's", "CVS"]) {
+  expect(await page.getByTestId("finale-card").count()).toBe(8);
+  for (const name of [
+    "Sprouts",
+    "Costco",
+    "Vons",
+    "Trader Joe's",
+    "CVS",
+    "Target",
+    "In-N-Out",
+    "Wild Fork",
+  ]) {
     await expect(
       page.getByRole("img", { name: new RegExp(`${name} logo`, "i") }),
     ).toBeAttached();

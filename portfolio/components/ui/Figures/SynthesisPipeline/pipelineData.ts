@@ -17,7 +17,9 @@ export type Merchant =
   | "vons"
   | "traderjoes"
   | "cvs"
-  | "target";
+  | "target"
+  | "innout"
+  | "wildfork";
 
 /** Every merchant the finale fans out to, in card order. */
 export const MERCHANTS: Merchant[] = [
@@ -27,6 +29,8 @@ export const MERCHANTS: Merchant[] = [
   "traderjoes",
   "cvs",
   "target",
+  "innout",
+  "wildfork",
 ];
 
 /** The single merchant acts 1-8 are built from. */
@@ -39,6 +43,8 @@ export const MERCHANT_LABELS: Record<Merchant, string> = {
   traderjoes: "Trader Joe's",
   cvs: "CVS",
   target: "Target",
+  innout: "In-N-Out",
+  wildfork: "Wild Fork",
 };
 
 export const PIPELINE_BASE = "/synthetic-receipts/pipeline";
@@ -100,6 +106,8 @@ export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
   traderjoes: { w: 760, h: 2023 },
   cvs: { w: 760, h: 2771 },
   target: { w: 760, h: 1878 },
+  innout: { w: 760, h: 1958 },
+  wildfork: { w: 760, h: 2678 },
 };
 
 /** Trimmed alpha-mask logo mark, rendered in currentColor (theme-aware). The
@@ -279,7 +287,7 @@ export const ACT_DWELL_MS: Record<ActId, number> = {
   character: 9500, // prints -> pen path + handles -> thermal dots, one beat
   font: 6500, // the hero glyph flies into the atlas — give it room
   assemble: 11000, // parallel section typing, then the label boxes draw on
-  finale: 18000, // slow gallery auto-pan through all the merchant pairs
+  finale: 21000, // slow gallery auto-pan through all the merchant pairs
 };
 
 /** How long autoplay stays paused after a manual interaction, then resumes. */
@@ -296,4 +304,6 @@ export const BOLD_WEIGHT_CALLOUT: Record<Merchant, string> = {
   traderjoes: "the measured heading weight",
   cvs: "the measured heading weight",
   target: "the measured department heading weight",
+  innout: "the measured heading weight",
+  wildfork: "the measured heading weight",
 };
