@@ -139,6 +139,9 @@ S0 seed        CORE_LABELS → section projection (GRAND_TOTAL ⇒ total_line, P
                + stylescan rules where they exist (Costco/Vons/TJ)
 S1 propagate   word-context Chroma NN → section posterior for every word
                → write SECTION_* labels as PENDING → MCP QA sample → VALID
+S1' audit      cross-tab CORE label × consensus section → flag inconsistent
+               word labels NEEDS_REVIEW (update_word_label); report per-label
+               violation rate
 S2 cluster     glyph-crop Chroma collection → family/face clustering
                → the (merchant, section) → (family, face) map, with confidence
 S3 fit         pooled stroke-skeleton fit per (family, face):
@@ -231,7 +234,11 @@ synthesis-v2 handoff is a data dependency, not code.
 
 - **Section propagation accuracy.** Wrong sections poison face grouping.
   → Labels land `PENDING` until QA'd; M1 has a hard measured-accuracy gate;
-  clustering (M2) weights by section confidence.
+  clustering (M2) weights by section confidence. The M1 label↔section
+  consistency audit is the reverse check — it uses the propagated sections to
+  surface mislabeled words (flagged `NEEDS_REVIEW`), and the per-label
+  violation rate is a standing quality metric for both the labels and the
+  sections.
 - **Families don't separate cleanly** (continuum instead of clusters).
   → The IoU probe already shows separation at atlas level; if crops are
   messier, fall back to fewer/coarser families — even 2 families beat 9
@@ -257,3 +264,4 @@ synthesis-v2 handoff is a data dependency, not code.
 | Crop embedding | deterministic pixel+geometry features first | no new API deps, reproducible; upgrade only if clusters demand |
 | Font model | family skeleton + face transform + merchant offset | stroke-space pooling is the diagonal fix; offsets keep printer character |
 | Calibration | v1 `calibrate_merchant` unchanged, downstream | v1 composes; railed-pin disappearance is the epic's acceptance test |
+| Label↔section co-QA | M1 consistency audit flags inconsistent labels `NEEDS_REVIEW`; per-label violation rate is an exit metric | sections and labels are shared ground truth — each QAs the other; propagated sections catch mislabels the original pass missed |
