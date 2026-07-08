@@ -6,6 +6,7 @@
       "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform).",
       "section_scale": {},
       "typography": {
+        "bitmap_thin": 0.0,
         "bitmap_font": {
           "regular": "bitMatrix-C2.glyphs.npz",
           "heavy": "bitMatrix-C2-heavy.glyphs.npz"
@@ -165,6 +166,7 @@
       "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
       "logo": "vons_logo.png",
       "typography": {
+        "bitmap_thin": 0.3,
         "font": "PTMONO",
         "bitmap_font": {
           "regular": "vons.glyphs.npz",
@@ -191,6 +193,7 @@
       "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
       "section_scale": {},
       "typography": {
+        "bitmap_thin": 0.225,
         "font": "PTMONO",
         "stylemap": "sprouts.stylemap.json",
         "bitmap_font": {
@@ -262,6 +265,7 @@
       ],
       "logo": "traderjoes_logo.png",
       "typography": {
+        "bitmap_thin": 0.0,
         "font": "PTMONO",
         "bitmap_font": {
           "regular": "traderjoes.glyphs.npz",
@@ -298,6 +302,7 @@
       ],
       "logo": "cvs_logo.png",
       "typography": {
+        "bitmap_thin": 0.15,
         "font": "PTMONO",
         "bitmap_font": {
           "regular": "cvs.glyphs.npz",
@@ -333,6 +338,7 @@
       "_comment": "Studio-minted from 12 merchant-index receipts / 11 production-loadable receipts. Mixed old/new POS structures share the same Wild Fork thermal body font; newer receipts may crop off the logo and include a footer barcode. Logo is the black/white outline WF mark derived from receipt scans, not the filled color web asset.",
       "logo": "wildfork_logo.png",
       "typography": {
+        "bitmap_thin": 0.6,
         "font": "PTMONO",
         "bitmap_font": {
           "regular": "wildfork.glyphs.npz",
