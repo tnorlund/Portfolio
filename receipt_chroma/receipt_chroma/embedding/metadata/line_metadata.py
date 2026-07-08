@@ -139,8 +139,13 @@ def create_row_metadata(
     row_lines: Sequence[ReceiptLine],
     merchant_name: Optional[str] = None,
     source: str = "openai_embedding_batch",
+    section_label: Optional[str] = None,
 ) -> LineMetadata:
-    """Create metadata for a visual row embedding."""
+    """Create metadata for a visual row embedding.
+
+    ``section_label`` (the row's receipt section, e.g. ``TOTAL_LINE``) is
+    emitted only when set — mirrors ``create_line_metadata``.
+    """
     if not row_lines:
         raise ValueError("Cannot create metadata for empty row")
 
@@ -183,6 +188,9 @@ def create_row_metadata(
 
     if merchant_name:
         metadata["merchant_name"] = merchant_name
+
+    if section_label:
+        metadata["section_label"] = section_label
 
     return metadata
 
