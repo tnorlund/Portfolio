@@ -185,6 +185,14 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     )
     out = {}
     for iid in all_ids:
+        # Deliberately a curated set of STABLE, decision-level fields (text,
+        # labels+status, merchant/place, barcodes, metadata resolution), not the
+        # full entity rows. Volatile fields (timestamps, label/metadata
+        # `reasoning`, per-word confidence) are excluded on purpose: hashing them
+        # would trigger a REPLACE on every re-evaluation even when the mirrored
+        # decision is unchanged. Geometry/bbox changes only ever occur via
+        # re-OCR, which also renumbers word ids/text and is therefore already
+        # captured by `words`.
         payload = {
             "words": sorted(words[iid]),
             "labels": sorted(labels[iid]),
@@ -351,7 +359,11 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
             dev_config,
             prod_config,
             dry_run=False,
-            skip_existing=True,   # replaced images were just deleted
+            # The plan already decided exactly what to copy (adds don't exist,
+            # replaces were just deleted). skip_existing would re-check via an
+            # eventually-consistent read and could wrongly skip a just-deleted
+            # REPLACE image, leaving prod missing it — so force the copy.
+            skip_existing=False,
             skip_empty=True,
         )
         logger.info(

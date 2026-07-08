@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 
 def datetime_handler(obj: Any) -> str:
@@ -74,7 +75,9 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
             )
             if md is not None:
                 receipt_metadatas.append(md)
-        except Exception:  # noqa: BLE001 - metadata is optional per receipt
+        except EntityNotFoundError:
+            # No metadata for this receipt is fine; any other error (throttling,
+            # IAM, etc.) must propagate so we never silently export partial data.
             pass
 
     # Export DynamoDB data as JSON
