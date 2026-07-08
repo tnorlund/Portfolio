@@ -2,6 +2,7 @@ import React from "react";
 import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import ReactMarkdown from "react-markdown";
 import { useSpring, animated, config } from "@react-spring/web";
+import { getReceiptMotionScale } from "./ReceiptFlow/receiptFlowUtils";
 import type {
   QAQuestionData,
   StepType,
@@ -61,6 +62,368 @@ const COFFEE_RECEIPTS: ReceiptEvidence[] = [
     height: 750,
   },
 ];
+
+interface SproutsStackReceipt {
+  imageId: string;
+  receiptId: string;
+  thumbnailKey: string;
+  fallbackKey: string;
+  width: number;
+  height: number;
+}
+
+const SPROUTS_STACK_RECEIPTS: SproutsStackReceipt[] = [
+  {
+    imageId: "0fca7cfd-183e-4109-87a9-2b7b7b94e82d",
+    receiptId: "0fca7cfd-183e-4109-87a9-2b7b7b94e82d-2",
+    thumbnailKey: "assets/0fca7cfd-183e-4109-87a9-2b7b7b94e82d_RECEIPT_00002.webp",
+    fallbackKey: "assets/0fca7cfd-183e-4109-87a9-2b7b7b94e82d_RECEIPT_00002.jpg",
+    width: 830,
+    height: 2827,
+  },
+  {
+    imageId: "c914012e-3fc3-4ba2-b314-fa7d423acac8",
+    receiptId: "c914012e-3fc3-4ba2-b314-fa7d423acac8-2",
+    thumbnailKey: "assets/c914012e-3fc3-4ba2-b314-fa7d423acac8_RECEIPT_00002.webp",
+    fallbackKey: "assets/c914012e-3fc3-4ba2-b314-fa7d423acac8_RECEIPT_00002.jpg",
+    width: 871,
+    height: 2914,
+  },
+  {
+    imageId: "00ded398-af6f-4a49-86f7-c79ccb554e48",
+    receiptId: "00ded398-af6f-4a49-86f7-c79ccb554e48-2",
+    thumbnailKey: "assets/00ded398-af6f-4a49-86f7-c79ccb554e48_RECEIPT_00002.webp",
+    fallbackKey: "assets/00ded398-af6f-4a49-86f7-c79ccb554e48_RECEIPT_00002.jpg",
+    width: 792,
+    height: 2575,
+  },
+  {
+    imageId: "e9ea77d0-3faa-427f-9b59-83e1180826b7",
+    receiptId: "e9ea77d0-3faa-427f-9b59-83e1180826b7-1",
+    thumbnailKey: "assets/e9ea77d0-3faa-427f-9b59-83e1180826b7_RECEIPT_00001.webp",
+    fallbackKey: "assets/e9ea77d0-3faa-427f-9b59-83e1180826b7_RECEIPT_00001.jpg",
+    width: 783,
+    height: 3161,
+  },
+  {
+    imageId: "95718576-7873-4170-9b71-7736a44a2bd1",
+    receiptId: "95718576-7873-4170-9b71-7736a44a2bd1-1",
+    thumbnailKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00001.webp",
+    fallbackKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00001.jpg",
+    width: 828,
+    height: 2978,
+  },
+  {
+    imageId: "95718576-7873-4170-9b71-7736a44a2bd1",
+    receiptId: "95718576-7873-4170-9b71-7736a44a2bd1-2",
+    thumbnailKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00002.webp",
+    fallbackKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00002.jpg",
+    width: 793,
+    height: 2409,
+  },
+  {
+    imageId: "32e93177-6528-4d63-b637-45d53d1cf3f3",
+    receiptId: "32e93177-6528-4d63-b637-45d53d1cf3f3-1",
+    thumbnailKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00001.webp",
+    fallbackKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00001.jpg",
+    width: 794,
+    height: 3165,
+  },
+  {
+    imageId: "32e93177-6528-4d63-b637-45d53d1cf3f3",
+    receiptId: "32e93177-6528-4d63-b637-45d53d1cf3f3-2",
+    thumbnailKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00002.webp",
+    fallbackKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00002.jpg",
+    width: 791,
+    height: 2923,
+  },
+  {
+    imageId: "7c932424-cb54-4fdb-ac2d-465e9b57b7c8",
+    receiptId: "7c932424-cb54-4fdb-ac2d-465e9b57b7c8-1",
+    thumbnailKey: "assets/7c932424-cb54-4fdb-ac2d-465e9b57b7c8_RECEIPT_00001.webp",
+    fallbackKey: "assets/7c932424-cb54-4fdb-ac2d-465e9b57b7c8_RECEIPT_00001.jpg",
+    width: 792,
+    height: 2982,
+  },
+  {
+    imageId: "94676cfe-ac3c-4183-b93a-31ae12f92cf5",
+    receiptId: "94676cfe-ac3c-4183-b93a-31ae12f92cf5-1",
+    thumbnailKey: "assets/94676cfe-ac3c-4183-b93a-31ae12f92cf5_RECEIPT_00001.webp",
+    fallbackKey: "assets/94676cfe-ac3c-4183-b93a-31ae12f92cf5_RECEIPT_00001.jpg",
+    width: 790,
+    height: 2877,
+  },
+  {
+    imageId: "c6b66d97-1e0a-4be4-9e1f-731a7e4be25c",
+    receiptId: "c6b66d97-1e0a-4be4-9e1f-731a7e4be25c-1",
+    thumbnailKey: "assets/c6b66d97-1e0a-4be4-9e1f-731a7e4be25c/1.webp",
+    fallbackKey: "assets/c6b66d97-1e0a-4be4-9e1f-731a7e4be25c/1.jpg",
+    width: 777,
+    height: 2040,
+  },
+  {
+    imageId: "887079fa-bb3e-480a-8202-e759afe63f1a",
+    receiptId: "887079fa-bb3e-480a-8202-e759afe63f1a-1",
+    thumbnailKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00001.webp",
+    fallbackKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00001.jpg",
+    width: 785,
+    height: 2647,
+  },
+  {
+    imageId: "887079fa-bb3e-480a-8202-e759afe63f1a",
+    receiptId: "887079fa-bb3e-480a-8202-e759afe63f1a-2",
+    thumbnailKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00002.webp",
+    fallbackKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00002.jpg",
+    width: 783,
+    height: 3027,
+  },
+  {
+    imageId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
+    receiptId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303-1",
+    thumbnailKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00001.webp",
+    fallbackKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00001.jpg",
+    width: 783,
+    height: 2790,
+  },
+  {
+    imageId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
+    receiptId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303-2",
+    thumbnailKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00002.webp",
+    fallbackKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00002.jpg",
+    width: 784,
+    height: 2292,
+  },
+  {
+    imageId: "a0301717-d765-4f34-a15d-48c362ebf9fd",
+    receiptId: "a0301717-d765-4f34-a15d-48c362ebf9fd-1",
+    thumbnailKey: "assets/a0301717-d765-4f34-a15d-48c362ebf9fd_RECEIPT_00001.webp",
+    fallbackKey: "assets/a0301717-d765-4f34-a15d-48c362ebf9fd_RECEIPT_00001.jpg",
+    width: 799,
+    height: 2814,
+  },
+  {
+    imageId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184",
+    receiptId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184-1",
+    thumbnailKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00001.webp",
+    fallbackKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00001.jpg",
+    width: 785,
+    height: 3054,
+  },
+  {
+    imageId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184",
+    receiptId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184-2",
+    thumbnailKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00002.webp",
+    fallbackKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00002.jpg",
+    width: 782,
+    height: 2998,
+  },
+];
+
+const getStableStackPosition = (
+  id: string,
+  index: number,
+  stackW: number,
+  stackH: number,
+  cardW: number,
+  cardH: number,
+) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+  }
+  const rand = (salt: number) =>
+    (Math.abs(Math.sin(hash * (salt + 1) + index * 97) * 10000) % 1000) / 1000;
+  const maxLeft = Math.max(0, stackW - cardW);
+  const maxTop = Math.max(0, stackH - cardH);
+
+  return {
+    rotation: rand(1) * 26 - 13,
+    left: Math.max(4, Math.min(rand(2) * maxLeft, maxLeft)),
+    top: Math.max(4, Math.min(rand(3) * maxTop, maxTop)),
+  };
+};
+
+const SproutsLogoMark: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
+  const width = compact ? 176 : 220;
+  const height = compact ? 44 : 54;
+
+  return (
+    <svg
+      role="img"
+      aria-label="Sprouts Farmers Market"
+      width={width}
+      height={height}
+      viewBox="0 0 260 60"
+      style={{ display: "block", color: "var(--text-color)" }}
+    >
+      <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+        <path
+          d="M21 42C13 35 11 22 17 12c12 2 22 11 25 25-4 5-12 8-21 5Z"
+          fill="currentColor"
+          strokeWidth="2"
+        />
+        <path d="M24 38C28 27 33 18 41 11" stroke="var(--background-color)" strokeWidth="2.5" />
+      </g>
+      <text
+        x="54"
+        y="31"
+        fill="currentColor"
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontSize="24"
+        fontWeight="800"
+      >
+        SPROUTS
+      </text>
+      <text
+        x="57"
+        y="46"
+        fill="currentColor"
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontSize="10"
+        fontWeight="700"
+        letterSpacing="1.5"
+      >
+        FARMERS MARKET
+      </text>
+    </svg>
+  );
+};
+
+interface SproutsReceiptStackPreviewProps {
+  isVisible: boolean;
+  visible: boolean;
+  variant?: "intro" | "final";
+}
+
+const SproutsReceiptStackPreview: React.FC<SproutsReceiptStackPreviewProps> = ({
+  isVisible,
+  visible,
+  variant = "intro",
+}) => {
+  const motionScale = getReceiptMotionScale();
+  const isIntro = variant === "intro";
+  const receipts = isIntro ? SPROUTS_STACK_RECEIPTS : SPROUTS_STACK_RECEIPTS.slice(0, 12);
+  const stackW = isIntro ? 330 : 190;
+  const stackH = isIntro ? 230 : 215;
+  const cardW = isIntro ? 74 : 64;
+  const cardH = isIntro ? 180 : 165;
+  const delayStep = (isIntro ? 48 : 65) * motionScale;
+  const duration = (isIntro ? 440 : 360) * motionScale;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: isIntro ? "1rem 1.5rem" : "0.45rem",
+        maxHeight: visible ? (isIntro ? "310px" : "285px") : 0,
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(-8px)",
+        overflow: "hidden",
+        pointerEvents: visible ? "auto" : "none",
+        transition: "max-height 0.45s ease, opacity 0.32s ease, transform 0.32s ease",
+        marginBottom: visible && isIntro ? "0.75rem" : 0,
+      }}
+      aria-hidden={!visible}
+    >
+      <div
+        style={{
+          minWidth: isIntro ? "190px" : "150px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.15rem",
+        }}
+      >
+        <SproutsLogoMark compact={!isIntro} />
+        <span
+          style={{
+            fontFamily: "var(--font-mono, monospace)",
+            fontSize: isIntro ? "0.72rem" : "0.64rem",
+            color: "var(--text-color)",
+            opacity: 0.64,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
+          203 receipts
+        </span>
+      </div>
+
+      <div
+        aria-label="Sprouts receipt stack"
+        style={{
+          position: "relative",
+          width: `${stackW}px`,
+          height: `${stackH}px`,
+          flex: `0 1 ${stackW}px`,
+        }}
+      >
+        {receipts.map((receipt, idx) => {
+          const pos = getStableStackPosition(
+            receipt.receiptId,
+            idx,
+            stackW,
+            stackH,
+            cardW,
+            cardH,
+          );
+          return (
+            <div
+              key={receipt.receiptId}
+              style={{
+                position: "absolute",
+                width: `${cardW}px`,
+                left: `${pos.left}px`,
+                top: `${pos.top}px`,
+                zIndex: idx,
+                border: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.22)",
+                backgroundColor: "var(--background-color)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
+                overflow: "hidden",
+                opacity: 0,
+                "--r": `${pos.rotation}deg`,
+                animation: `sproutsReceiptStackIn ${duration}ms ease-out ${idx * delayStep}ms forwards`,
+                animationPlayState: isVisible && visible ? "running" : "paused",
+              } as React.CSSProperties}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${CDN_BASE}/${receipt.thumbnailKey}`}
+                data-fallback={`${CDN_BASE}/${receipt.fallbackKey}`}
+                alt="Sprouts Farmers Market receipt"
+                style={{
+                  width: "100%",
+                  aspectRatio: `${receipt.width} / ${receipt.height}`,
+                  height: "auto",
+                  display: "block",
+                }}
+                onError={(event) => {
+                  const image = event.currentTarget;
+                  const fallback = image.dataset.fallback;
+                  if (fallback && image.src !== fallback) {
+                    image.src = fallback;
+                    return;
+                  }
+                  image.style.display = "none";
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <style>{`
+        @keyframes sproutsReceiptStackIn {
+          from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-18px) scale(0.96); }
+          to { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0) scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+};
 
 // Structured receipt summaries (output of shape node)
 const STRUCTURED_RECEIPTS: StructuredReceipt[] = [
@@ -152,10 +515,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
   const [showAnswer, setShowAnswer] = React.useState(false);
+  const motionScale = getReceiptMotionScale();
 
   // Use real data when available, fall back to example trace
   const trace = questionData?.trace ?? EXAMPLE_TRACE;
-  const stats = questionData?.stats;
 
   // Reset animation when question changes (use index to avoid stale-data issues on mobile)
   const questionIndex = questionData?.questionIndex ?? -1;
@@ -171,15 +534,20 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   // Compute per-step animation durations from durationMs, scaled proportionally
   const stepDurations = React.useMemo(() => {
     const hasTiming = trace.some((s) => s.durationMs != null && s.durationMs > 0);
-    if (!hasTiming) return trace.map(() => DEFAULT_STEP_MS);
+    if (!hasTiming) return trace.map(() => DEFAULT_STEP_MS * motionScale);
 
     const rawMs = trace.map((s) => s.durationMs ?? DEFAULT_STEP_MS);
     const rawTotal = rawMs.reduce((sum, d) => sum + d, 0);
     if (rawTotal === 0) return trace.map(() => DEFAULT_STEP_MS);
 
     const scale = TARGET_TOTAL_MS / rawTotal;
-    return rawMs.map((d) => Math.max(MIN_STEP_MS, Math.min(MAX_STEP_MS, Math.round(d * scale))));
-  }, [trace]);
+    return rawMs.map((d) =>
+      Math.max(
+        MIN_STEP_MS * motionScale,
+        Math.min(MAX_STEP_MS * motionScale, Math.round(d * scale * motionScale)),
+      )
+    );
+  }, [trace, motionScale]);
 
   // Current step's animation duration (for clock-fill sync)
   const currentStepDuration =
@@ -204,19 +572,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         setActiveStep(-1);
         setShowAnswer(false);
         onCycleComplete?.();
-      }, 10000);
+      }, 10000 * motionScale);
       return () => clearTimeout(id);
     }
 
-    const delay = activeStep < 0 ? 400 : stepDurations[activeStep];
+    const delay = activeStep < 0 ? 400 * motionScale : stepDurations[activeStep];
     const id = setTimeout(() => setActiveStep((prev) => prev + 1), delay);
     return () => clearTimeout(id);
-  }, [isPlaying, activeStep, trace.length, stepDurations, showAnswer, onCycleComplete]);
-
-  const questionSpring = useSpring({
-    opacity: 1,
-    config: config.gentle,
-  });
+  }, [isPlaying, activeStep, trace.length, stepDurations, showAnswer, onCycleComplete, motionScale]);
 
   // Measure answer content height and spring the container open
   const answerRef = React.useRef<HTMLDivElement>(null);
@@ -291,6 +654,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   // Determine the loop phase bounds dynamically based on trace content
   const loopEndIdx = trace.length > 0 ? trace.reduce((last, s, i) => (s.type === "agent" || s.type === "tools" ? i : last), -1) : 5;
   const inLoopPhase = activeStep >= 1 && activeStep <= loopEndIdx;
+  const showSproutsIntro = activeStep < 1 && !showAnswer;
 
   return (
     <div
@@ -305,8 +669,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     >
       {/* Flame Graph Timeline + Node Diagram */}
       {(() => {
-        const totalMs = trace.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
-
         const formatMs = (ms: number): string =>
           ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms.toFixed(1)}ms`;
 
@@ -442,21 +804,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           );
         };
 
-        // Helper: pie slice path from 12 o'clock, filling clockwise
-        const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
-          if (progress <= 0) return "";
-          if (progress >= 100) return `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 -${r * 2} 0`;
-          const a = (progress / 100) * 2 * Math.PI;
-          const startAngle = -Math.PI / 2;
-          const endAngle = startAngle + a;
-          const x1 = cx + r * Math.cos(startAngle);
-          const y1 = cy + r * Math.sin(startAngle);
-          const x2 = cx + r * Math.cos(endAngle);
-          const y2 = cy + r * Math.sin(endAngle);
-          const largeArcFlag = progress > 50 ? 1 : 0;
-          return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-        };
-
         return (
           <div
             style={{
@@ -471,6 +818,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           >
             {/* Slot for marquee or other header content */}
             {children}
+
+            <SproutsReceiptStackPreview
+              isVisible={isVisible}
+              visible={showSproutsIntro}
+              variant="intro"
+            />
 
             {/* 5-Node SVG Flow Diagram */}
             <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
@@ -720,7 +1073,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   zIndex: i,
                 };
               });
-
               return (
                 <animated.div
                   ref={containerRef}
@@ -754,50 +1106,67 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                       >
                         <ReactMarkdown>{answerText}</ReactMarkdown>
                       </div>
-                      {uniqueReceipts.length > 0 && (
+                      {uniqueReceipts.length > 0 ? (
                         <div
                           style={{
-                            position: "relative",
-                            width: `${stackW}px`,
-                            height: `${stackH}px`,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "0.35rem",
                             flexShrink: 0,
                             margin: "0 auto",
                           }}
                         >
-                          {uniqueReceipts.map((receipt, idx) => (
-                            <div
-                              key={receipt.imageId}
-                              style={{
-                                position: "absolute",
-                                width: `${cW}px`,
-                                left: `${sPositions[idx].left}px`,
-                                top: `${sPositions[idx].top}px`,
-                                "--r": `${sPositions[idx].rotation}deg`,
-                                zIndex: sPositions[idx].zIndex,
-                                border: "1px solid #ccc",
-                                backgroundColor: "var(--background-color)",
-                                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                                overflow: "hidden",
-                                opacity: 0,
-                                animation: `receiptFadeIn 0.4s ease-out ${idx * 80}ms forwards`,
-                                animationPlayState: isVisible ? "running" : "paused",
-                              } as React.CSSProperties}
-                            >
-                              <img
-                                src={`${CDN_BASE}/${receipt.thumbnailKey}`}
-                                alt={`${receipt.merchant} receipt`}
-                                style={{ width: "100%", height: "auto", display: "block" }}
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                              />
-                            </div>
-                          ))}
-                          <style>{`
-                            @keyframes receiptFadeIn {
-                              from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-20px); }
-                              to   { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0); }
-                            }
-                          `}</style>
+                          <SproutsLogoMark compact />
+                          <div
+                            style={{
+                              position: "relative",
+                              width: `${stackW}px`,
+                              height: `${stackH}px`,
+                            }}
+                          >
+                            {uniqueReceipts.map((receipt, idx) => (
+                              <div
+                                key={receipt.imageId}
+                                style={{
+                                  position: "absolute",
+                                  width: `${cW}px`,
+                                  left: `${sPositions[idx].left}px`,
+                                  top: `${sPositions[idx].top}px`,
+                                  "--r": `${sPositions[idx].rotation}deg`,
+                                  zIndex: sPositions[idx].zIndex,
+                                  border: "1px solid #ccc",
+                                  backgroundColor: "var(--background-color)",
+                                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                                  overflow: "hidden",
+                                  opacity: 0,
+                                  animation: `receiptFadeIn 0.4s ease-out ${idx * 80}ms forwards`,
+                                  animationPlayState: isVisible ? "running" : "paused",
+                                } as React.CSSProperties}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`${CDN_BASE}/${receipt.thumbnailKey}`}
+                                  alt={`${receipt.merchant} receipt`}
+                                  style={{ width: "100%", height: "auto", display: "block" }}
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                              </div>
+                            ))}
+                            <style>{`
+                              @keyframes receiptFadeIn {
+                                from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-20px); }
+                                to   { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0); }
+                              }
+                            `}</style>
+                          </div>
                         </div>
+                      ) : (
+                        <SproutsReceiptStackPreview
+                          isVisible={isVisible}
+                          visible={showAnswer}
+                          variant="final"
+                        />
                       )}
                     </div>
                   ) : null}

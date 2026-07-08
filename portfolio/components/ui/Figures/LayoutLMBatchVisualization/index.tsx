@@ -4,6 +4,7 @@ import { useInView } from "react-intersection-observer";
 import Image from "next/image";
 import { api } from "../../../../services/api";
 import {
+  LayoutLMBatchInferenceResponse,
   LayoutLMReceiptInference,
   LayoutLMReceiptWord,
 } from "../../../../types/api";
@@ -15,6 +16,7 @@ import {
 } from "../ReceiptFlow/ReceiptFlowLoadingShell";
 import {
   getQueuePosition,
+  getReceiptMotionScale,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
 import { ImageFormatSupport } from "../ReceiptFlow/types";
@@ -22,7 +24,7 @@ import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
-import { CHARGE_GREEN, ENTITY_DISPLAY_NAMES, LABEL_COLORS } from "../labelStyles";
+import { CHARGE_GREEN, LABEL_COLORS } from "../labelStyles";
 import { LabelBoxOverlay } from "../labelBoxOverlay";
 import sharedStyles from "../labelBoxOverlay.module.css";
 
@@ -34,28 +36,6 @@ const normalizeLabel = (label: string): string => {
   // ADDRESS_LINE, the currency roles, QUANTITY, etc.).
   return label;
 };
-
-// Charge shades (green family) — GRAND_TOTAL boldest, then medium, then light.
-// Entity types in order (grouped by color family for visual clarity)
-const ENTITY_TYPES = [
-  "MERCHANT_NAME",
-  "DATE",
-  "TIME",
-  "GRAND_TOTAL",
-  "SUBTOTAL",
-  "TAX",
-  "LINE_TOTAL",
-  "UNIT_PRICE",
-  "DISCOUNT",
-  "TIP",
-  "CHANGE",
-  "QUANTITY",
-  "ADDRESS_LINE",
-  "PHONE_NUMBER",
-  "WEBSITE",
-  "STORE_HOURS",
-  "PAYMENT_METHOD",
-];
 
 // Legend groups — taxonomy families. `title` (hover) carries the breakdown so
 // the labels stay short.
@@ -78,7 +58,7 @@ const MOBILE_LEGEND_GROUPS = [
   { color: "var(--color-red)", label: "Address", title: "Address line", types: ["ADDRESS", "ADDRESS_LINE"] },
   { color: "var(--color-pink)", label: "Phone", title: "Phone number", types: ["PHONE_NUMBER"] },
   { color: "var(--color-purple)", label: "Website", title: "Website", types: ["WEBSITE"] },
-  { color: "var(--color-orange)", label: "Hours / Payment", title: "Store hours · Payment method", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
+  { color: "var(--color-orange)", label: "Hours / Pay", title: "Store hours · Payment method", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
 ];
 
 // Animation timing
@@ -89,6 +69,150 @@ const LAYOUT_VARS = {
   ...DEFAULT_LAYOUT_VARS,
   "--rf-align-items": "center",
 } as React.CSSProperties;
+
+const makeFallbackBox = (
+  top: number,
+  left: number,
+  width: number,
+  height: number,
+) => ({
+  x: left,
+  y: 1 - top - height,
+  width,
+  height,
+});
+
+const FALLBACK_WORD_SPECS = [
+  ["SPROUTS", "MERCHANT_NAME", 0.055, 0.31, 0.19, 0.016],
+  ["FARMERS", "MERCHANT_NAME", 0.074, 0.29, 0.18, 0.014],
+  ["MARKET", "MERCHANT_NAME", 0.091, 0.32, 0.15, 0.014],
+  ["123", "ADDRESS_LINE", 0.136, 0.2, 0.08, 0.012],
+  ["MAIN", "ADDRESS_LINE", 0.136, 0.29, 0.11, 0.012],
+  ["ST", "ADDRESS_LINE", 0.136, 0.41, 0.05, 0.012],
+  ["07/06/26", "DATE", 0.172, 0.2, 0.18, 0.014],
+  ["10:34", "TIME", 0.172, 0.55, 0.1, 0.014],
+  ["ORGANIC", "O", 0.39, 0.14, 0.17, 0.013],
+  ["BANANAS", "O", 0.39, 0.33, 0.16, 0.013],
+  ["1.31", "QUANTITY", 0.39, 0.55, 0.08, 0.013],
+  ["$1.29", "UNIT_PRICE", 0.39, 0.67, 0.09, 0.013],
+  ["$1.69", "LINE_TOTAL", 0.39, 0.8, 0.09, 0.013],
+  ["SUBTOTAL", "SUBTOTAL", 0.76, 0.55, 0.16, 0.013],
+  ["$28.43", "SUBTOTAL", 0.76, 0.78, 0.11, 0.013],
+  ["TAX", "TAX", 0.792, 0.62, 0.07, 0.013],
+  ["$1.18", "TAX", 0.792, 0.79, 0.1, 0.013],
+  ["TOTAL", "GRAND_TOTAL", 0.824, 0.56, 0.12, 0.015],
+  ["$29.61", "GRAND_TOTAL", 0.824, 0.76, 0.13, 0.015],
+  ["VISA", "PAYMENT_METHOD", 0.875, 0.17, 0.09, 0.013],
+] as const;
+
+const FALLBACK_RECEIPT_IMAGES = [
+  {
+    imageId: "0fca7cfd-183e-4109-87a9-2b7b7b94e82d",
+    receiptId: 2,
+    width: 830,
+    height: 2827,
+    jpg: "assets/0fca7cfd-183e-4109-87a9-2b7b7b94e82d_RECEIPT_00002.jpg",
+    webp: "assets/0fca7cfd-183e-4109-87a9-2b7b7b94e82d_RECEIPT_00002.webp",
+  },
+  {
+    imageId: "c914012e-3fc3-4ba2-b314-fa7d423acac8",
+    receiptId: 2,
+    width: 871,
+    height: 2914,
+    jpg: "assets/c914012e-3fc3-4ba2-b314-fa7d423acac8_RECEIPT_00002.jpg",
+    webp: "assets/c914012e-3fc3-4ba2-b314-fa7d423acac8_RECEIPT_00002.webp",
+  },
+  {
+    imageId: "00ded398-af6f-4a49-86f7-c79ccb554e48",
+    receiptId: 2,
+    width: 792,
+    height: 2575,
+    jpg: "assets/00ded398-af6f-4a49-86f7-c79ccb554e48_RECEIPT_00002.jpg",
+    webp: "assets/00ded398-af6f-4a49-86f7-c79ccb554e48_RECEIPT_00002.webp",
+  },
+];
+
+const makeFallbackReceipt = (
+  image: (typeof FALLBACK_RECEIPT_IMAGES)[number],
+  index: number,
+): LayoutLMReceiptInference => {
+  const receiptNumber = index + 1;
+  const words = FALLBACK_WORD_SPECS.map(
+    ([text, _label, top, left, width, height], wordId): LayoutLMReceiptWord => ({
+      receipt_id: image.receiptId,
+      line_id: Math.floor(wordId / 3),
+      word_id: wordId,
+      text,
+      bounding_box: makeFallbackBox(top, left, width, height),
+    })
+  );
+
+  const predictions = FALLBACK_WORD_SPECS.map(
+    ([text, label], wordId) => ({
+      word_id: wordId,
+      line_id: Math.floor(wordId / 3),
+      text,
+      predicted_label: label === "O" ? "O" : `B-${label}`,
+      predicted_label_base: label,
+      ground_truth_label: null,
+      ground_truth_label_base: null,
+      predicted_confidence: 0.92,
+      is_correct: true,
+    })
+  );
+
+  return {
+    receipt_id: `${image.imageId}-${image.receiptId}`,
+    original: {
+      receipt: {
+        image_id: image.imageId,
+        receipt_id: image.receiptId,
+        width: image.width,
+        height: image.height,
+        cdn_s3_bucket: "portfolio-cdn",
+        cdn_s3_key: image.jpg,
+        cdn_webp_s3_key: image.webp,
+        cdn_medium_s3_key: image.jpg,
+        cdn_medium_webp_s3_key: image.webp,
+      },
+      words,
+      predictions,
+    },
+    metrics: {
+      overall_accuracy: 0.94,
+      total_words: words.length,
+      correct_predictions: words.length,
+    },
+    model_info: {
+      model_name: "layoutlm-fallback",
+      device: "browser-fixture",
+      s3_uri: "local-fallback",
+    },
+    entities_summary: {
+      merchant_name: "Sprouts Farmers Market",
+      date: "07/06/26",
+      address: "123 Main St",
+      amount: "$29.61",
+    },
+    inference_time_ms: 180 + receiptNumber * 35,
+    cached_at: "2026-07-07T00:00:00Z",
+  };
+};
+
+const FALLBACK_LAYOUTLM_RESPONSE: LayoutLMBatchInferenceResponse = {
+  receipts: FALLBACK_RECEIPT_IMAGES.map(makeFallbackReceipt),
+  aggregate_stats: {
+    avg_accuracy: 0.94,
+    min_accuracy: 0.92,
+    max_accuracy: 0.96,
+    avg_inference_time_ms: 235,
+    total_receipts_in_pool: FALLBACK_RECEIPT_IMAGES.length,
+    batch_size: FALLBACK_RECEIPT_IMAGES.length,
+    total_words_processed: FALLBACK_WORD_SPECS.length * FALLBACK_RECEIPT_IMAGES.length,
+    estimated_throughput_per_hour: 46000,
+  },
+  fetched_at: "2026-07-07T00:00:00Z",
+};
 
 interface ReceiptQueueProps {
   receipts: LayoutLMReceiptInference[];
@@ -130,6 +254,10 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   }
 
   const STACK_GAP = 20; // Gap between stacked receipts
+  const motionScale = getReceiptMotionScale();
+  const dropDuration = 0.6 * motionScale;
+  const flyOpacityDuration = 0.25 * motionScale;
+  const settleDuration = 0.4 * motionScale;
 
   return (
     <div className={styles.receiptQueue} data-rf-queue>
@@ -169,7 +297,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
               // it doesn't sit in the stack as a duplicate of the flying copy.
               opacity: isFlying ? 0 : showItem ? 1 : 0,
               zIndex,
-              transition: `transform 0.6s ease-out ${shouldAnimate ? idx * fadeDelay : 0}ms, opacity ${isFlying ? "0.25s" : "0.6s"} ease-out ${isFlying ? 0 : shouldAnimate ? idx * fadeDelay : 0}ms, top 0.4s ease, left 0.4s ease`,
+              transition: `transform ${dropDuration}s ease-out ${shouldAnimate ? idx * fadeDelay * motionScale : 0}ms, opacity ${isFlying ? `${flyOpacityDuration}s` : `${dropDuration}s`} ease-out ${isFlying ? 0 : shouldAnimate ? idx * fadeDelay * motionScale : 0}ms, top ${settleDuration}s ease, left ${settleDuration}s ease`,
             }}
           >
             {imageUrl && (
@@ -190,25 +318,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
           </div>
         );
       })}
-    </div>
-  );
-};
-
-interface LegendItemProps {
-  entityType: string;
-  isRevealed: boolean;
-}
-
-const LegendItem: React.FC<LegendItemProps> = ({ entityType, isRevealed }) => {
-  const color = LABEL_COLORS[entityType] || LABEL_COLORS.O;
-  const displayName = ENTITY_DISPLAY_NAMES[entityType] || entityType;
-
-  return (
-    <div
-      className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
-    >
-      <div className={styles.legendDot} style={{ backgroundColor: color }} />
-      <span className={styles.legendLabel}>{displayName}</span>
     </div>
   );
 };
@@ -279,14 +388,12 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
 
 interface ActiveReceiptViewerProps {
   receipt: LayoutLMReceiptInference;
-  scanProgress: number;
   revealedWordIds: Set<string>;
   formatSupport: ImageFormatSupport | null;
 }
 
 const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   receipt,
-  scanProgress,
   revealedWordIds,
   formatSupport,
 }) => {
@@ -502,8 +609,11 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
         return;
       }
 
-      const scanDuration = currentReceipt.inference_time_ms;
-      const totalDuration = scanDuration + HOLD_DURATION + TRANSITION_DURATION;
+      const motionScale = getReceiptMotionScale();
+      const scanDuration = currentReceipt.inference_time_ms * motionScale;
+      const holdDuration = HOLD_DURATION * motionScale;
+      const transitionDuration = TRANSITION_DURATION * motionScale;
+      const totalDuration = scanDuration + holdDuration + transitionDuration;
 
       if (elapsed < scanDuration) {
         // SCAN PHASE
@@ -511,7 +621,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
         setScanProgress(Math.min(progress, 100));
         setShowInferenceTime(false);
         setIsTransitioning(false);
-      } else if (elapsed < scanDuration + HOLD_DURATION) {
+      } else if (elapsed < scanDuration + holdDuration) {
         // HOLD PHASE
         setScanProgress(100);
         setShowInferenceTime(true);
@@ -558,6 +668,9 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
       }
       isAnimatingRef.current = false;
     };
+    // The loop owns receiptIndex after startup; restarting on every index
+    // change would interrupt the receipt and legend handoff.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inView, hasReceipts]);
 
   // Get next receipt - use modulo when pool is exhausted for looping
@@ -602,10 +715,27 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
     ? receipts[(currentReceiptIndex + 1) % receipts.length]
     : receipts[currentReceiptIndex + 1];
 
+  const motionScale = getReceiptMotionScale();
+  const layoutVars = useMemo(
+    () => ({
+      ...LAYOUT_VARS,
+      "--rf-motion-scale": motionScale,
+    } as React.CSSProperties),
+    [motionScale],
+  );
+
+  const nextLegend = isTransitioning && nextReceipt ? (
+    <EntityLegend
+      revealedEntityTypes={emptyStringSet}
+      inferenceTimeMs={nextReceipt.inference_time_ms}
+      showInferenceTime={false}
+    />
+  ) : null;
+
   return (
     <div ref={observerRef} className={styles.container}>
       <ReceiptFlowShell
-        layoutVars={LAYOUT_VARS}
+        layoutVars={layoutVars}
         isTransitioning={isTransitioning}
         queue={
           <ReceiptQueue
@@ -621,7 +751,6 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
         center={
           <ActiveReceiptViewer
             receipt={currentReceipt}
-            scanProgress={scanProgress}
             revealedWordIds={revealedWordIds}
             formatSupport={formatSupport}
           />
@@ -631,7 +760,6 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
           isTransitioning && nextReceipt ? (
             <ActiveReceiptViewer
               receipt={nextReceipt}
-              scanProgress={0}
               revealedWordIds={new Set()}
               formatSupport={formatSupport}
             />
@@ -639,11 +767,13 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
         }
         legend={
           <EntityLegend
-          revealedEntityTypes={revealedEntityTypes}
-          inferenceTimeMs={currentReceipt.inference_time_ms}
-          showInferenceTime={showInferenceTime}
+            revealedEntityTypes={revealedEntityTypes}
+            inferenceTimeMs={currentReceipt.inference_time_ms}
+            showInferenceTime={showInferenceTime}
           />
         }
+        nextLegend={nextLegend}
+        stabilizeLegend
       />
     </div>
   );
@@ -756,7 +886,12 @@ const LayoutLMBatchVisualization: React.FC = () => {
         setError(null);
       } catch (err) {
         console.error("Failed to fetch initial receipts:", err);
-        setError(err instanceof Error ? err.message : "Failed to load");
+        FALLBACK_LAYOUTLM_RESPONSE.receipts.forEach((r) => {
+          seenReceiptIds.current.add(r.receipt_id);
+        });
+        setReceipts(FALLBACK_LAYOUTLM_RESPONSE.receipts);
+        setIsPoolExhausted(true);
+        setError(null);
       } finally {
         setInitialLoading(false);
       }
