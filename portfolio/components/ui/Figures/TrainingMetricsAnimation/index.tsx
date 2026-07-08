@@ -17,24 +17,6 @@ const normalizeLabel = (label: string): string => {
   return label;
 };
 
-// Label color mapping for hybrid model
-const LABEL_COLORS: Record<string, string> = {
-  MERCHANT_NAME: "var(--color-yellow)",
-  DATE: "var(--color-blue)",
-  TIME: "var(--color-blue)",
-  AMOUNT: "var(--color-green)",
-  ADDRESS: "var(--color-red)",
-  PHONE_NUMBER: "var(--color-pink)",
-  WEBSITE: "var(--color-purple)",
-  STORE_HOURS: "var(--color-orange)",
-  PAYMENT_METHOD: "var(--color-orange)",
-  O: "var(--color-purple)",
-};
-
-const getLabelColor = (label: string): string => {
-  return LABEL_COLORS[normalizeLabel(label)] || "var(--color-gray, #888)";
-};
-
 // Format label: "MERCHANT_NAME" -> "Merchant Name", "O" -> "None"
 const formatLabel = (label: string): string => {
   const normalized = normalizeLabel(label);
@@ -244,9 +226,8 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
     [epochs.length, onSelectEpoch, svgWidth]
   );
 
-  // Keyboard navigation — required because role="slider" promises AT users
-  // they can change the value (WCAG). Arrow keys step by 1, Home/End jump
-  // to first/last.
+  // Keyboard navigation keeps the chart scrub-friendly without presenting it
+  // as a visible weight/slider control.
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<SVGSVGElement>) => {
       if (epochs.length === 0) return;
@@ -293,7 +274,6 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
   const bestF1 = bestEpoch?.metrics?.val_f1 ?? 0;
   const bx = bestIdx >= 0 ? xScale(bestIdx) : 0;
   const by = bestIdx >= 0 ? yScale(bestF1) : 0;
-  const lastIdx = epochs.length - 1;
   const showBest = bestIdx >= 0 && showBestLabel;
 
   const axisLabels = useMemo(
@@ -315,17 +295,13 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
           onClick={handleClick}
           onKeyDown={handleKeyDown}
           tabIndex={0}
-          role="slider"
-          aria-label={`Training epoch — use arrow keys to scrub, Home/End to jump to first/last`}
-          aria-valuemin={0}
-          aria-valuemax={lastIdx}
-          aria-valuenow={currentIndex}
-          aria-valuetext={
+          role="button"
+          aria-label={
             currentEpoch
               ? `Epoch ${currentEpoch.epoch}${
                   currentIndex === bestIdx ? " (best)" : ""
                 }, F1 ${currentF1.toFixed(3)}`
-              : undefined
+              : "Training epoch curve"
           }
         >
           {/* Convergence curve */}

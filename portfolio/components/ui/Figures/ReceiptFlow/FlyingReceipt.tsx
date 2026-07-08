@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { animated, useSpring, to } from "@react-spring/web";
-import { getQueuePosition } from "./receiptFlowUtils";
+import { getQueuePosition, getReceiptMotionScale } from "./receiptFlowUtils";
 import styles from "./FlyingReceipt.module.css";
 
 // SSR-safe useLayoutEffect
@@ -132,7 +132,7 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   const [springValues, api] = useSpring(() => ({
     ...fallbackFrom,
     opacity: 0,
-    config: { duration: FLY_DURATION_MS, easing: easeOutCubic },
+    config: { duration: FLY_DURATION_MS * getReceiptMotionScale(), easing: easeOutCubic },
   }));
 
   useIsomorphicLayoutEffect(() => {
@@ -140,7 +140,10 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     // Snap to the measured start position while still hidden...
     api.set({ ...from, opacity: 0 });
     // ...then fly to center and fade in together.
-    api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 } });
+    api.start({
+      to: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 },
+      config: { duration: FLY_DURATION_MS * getReceiptMotionScale(), easing: easeOutCubic },
+    });
   }, [receiptId]);
 
   return (
