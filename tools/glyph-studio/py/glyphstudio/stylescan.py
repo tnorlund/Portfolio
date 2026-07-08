@@ -23,6 +23,8 @@ from statistics import median
 
 import numpy as np
 
+from .sections import normalize_stylescan_section
+
 _WORKTREE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
 )
@@ -583,6 +585,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
                 "reverse_video": reverse_video,
                 "text": text[:60],
                 "section": section,
+                "section_canonical": normalize_stylescan_section(section),
                 "cap_px": round(median(caps), 1) if caps else None,
                 "density_med": round(median(dens), 4) if dens else None,
                 "stroke_med": round(median(strokes), 2) if strokes else None,
