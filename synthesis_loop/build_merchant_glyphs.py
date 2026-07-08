@@ -339,13 +339,27 @@ def _collect(merchants, max_receipts):
     # bitMatrix-C1 across Target / Smith's / Vons) -- more samples per character
     # means cleaner averaging, especially for the diagonal glyphs.
     targets = []
-    for m in merchants:
-        places, _ = client.get_receipt_places_by_merchant(m)
-        got = [(str(p.image_id), int(p.receipt_id)) for p in places]
-        if max_receipts:
-            got = got[:max_receipts]
-        print(f"{m}: {len(got)} receipts", flush=True)
-        targets.extend(got)
+    # Opt-in corpus curation: GLYPH_KEYS_JSON points at a JSON list of
+    # [image_id, receipt_id] pairs and REPLACES the merchant query, so a
+    # human-verified subset (excluding mislabeled/doubled/warped receipts that
+    # poison the median-vote consensus) can drive the build. See
+    # ADD_MERCHANT.md step 0.
+    keys_json = os.environ.get("GLYPH_KEYS_JSON")
+    if keys_json:
+        import json  # noqa: PLC0415
+
+        with open(keys_json, encoding="utf-8") as fh:
+            pairs = json.load(fh)
+        targets = [(str(iid), int(rid)) for iid, rid in pairs]
+        print(f"GLYPH_KEYS_JSON: {len(targets)} curated receipts", flush=True)
+    else:
+        for m in merchants:
+            places, _ = client.get_receipt_places_by_merchant(m)
+            got = [(str(p.image_id), int(p.receipt_id)) for p in places]
+            if max_receipts:
+                got = got[:max_receipts]
+            print(f"{m}: {len(got)} receipts", flush=True)
+            targets.extend(got)
 
     # per char: keep individual baseline+center placed sample canvases (bool),
     # capped, so we can phase-align + outlier-reject + vote in main().

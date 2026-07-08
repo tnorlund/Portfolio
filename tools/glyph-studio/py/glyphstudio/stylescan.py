@@ -325,6 +325,56 @@ _WILDFORK_RULES = [
 ]
 
 
+_HOMEDEPOT_RULES = [
+    (
+        "store_header",
+        re.compile(
+            r"How doers|get more done|HOMEDEPOT\.COM|@\s*HOMEDEPOT\.COM",
+            re.I,
+        ),
+    ),
+    (
+        "address",
+        re.compile(
+            r"(BLVD|AVE\b|STREET|\bRD\b|TELLER|VICTORY|WEST HILLS|"
+            r"CA\.?\s*\d{5}|\(\d{3}\)\s*\d{3}|\d{3}[- ]?\d{3}[- ]?\d{4}|"
+            r"STR MGR)",
+            re.I,
+        ),
+    ),
+    (
+        "transaction",
+        re.compile(r"\bSALE\b|CASHIER|^\d{4}\s+\d{5}\s+\d{3}\b", re.I),
+    ),
+    (
+        "discount",
+        re.compile(
+            r"Pro\s*Xtra(?!\s+(MEMBER|[#*]))|Preferred Pricing|"
+            r"MAX REFUND|REFUND\s+VALUE",
+            re.I,
+        ),
+    ),
+    ("total_line", re.compile(r"^\s*TOTAL\b|USD\$", re.I)),
+    ("summary", re.compile(r"SUBTOTAL|SALES TAX|^TAX\b|BALANCE DUE", re.I)),
+    (
+        "payment",
+        re.compile(
+            r"AID|AUTH|APPROVED|DEBIT|CREDIT|VISA|MASTERCARD|PIN|Chip|"
+            r"Verified|XXXXXXXX|NON-DISCO",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"PRO XTRA MEMBER|PRO XTRA .*SUMMARY|PO/JOB|SPEND|CREDIT LINE|"
+            r"Perks|Apply and SAVE|homedepot\.com/credit",
+            re.I,
+        ),
+    ),
+]
+
+
 _MERCHANT_RULES = {
     "sprouts": _RULES,
     "costco": _COSTCO_RULES,
@@ -333,7 +383,8 @@ _MERCHANT_RULES = {
     "cvs": _CVS_RULES,
     "innout": _INNOUT_RULES,
     "target": _TARGET_RULES,
-                   "wildfork": _WILDFORK_RULES,
+    "wildfork": _WILDFORK_RULES,
+    "homedepot": _HOMEDEPOT_RULES,
 }
 
 

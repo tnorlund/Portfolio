@@ -1,0 +1,133 @@
+{
+ "version": 1,
+ "char": "w",
+ "codepoint": 119,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "sprouts.samples.npz",
+  "samples": 9,
+  "consensusHash": "3f3ef611495c",
+  "date": "2026-07-07"
+ },
+ "width": 439.2,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 51.6,
+     "y": 662.0,
+     "type": "corner",
+     "hOut": {
+      "x": 62.586704051605906,
+      "y": 564.0
+     }
+    },
+    {
+     "x": 144.5483169550074,
+     "y": 314.26678447645446,
+     "type": "corner",
+     "hIn": {
+      "x": 36.3445435861,
+      "y": 356.5915950519512
+     }
+    },
+    {
+     "x": 190.6,
+     "y": 329.5,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 376.6,
+     "y": 277.8,
+     "type": "corner"
+    },
+    {
+     "x": 393.2,
+     "y": 38.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 76.6,
+     "y": 146.7,
+     "type": "corner"
+    },
+    {
+     "x": 138.8,
+     "y": 146.7,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 378.6,
+     "y": 322.2,
+     "type": "corner"
+    },
+    {
+     "x": 378.6,
+     "y": 356.46494207119764,
+     "type": "corner"
+    },
+    {
+     "x": 301.46112279772365,
+     "y": 440.97563026746207,
+     "type": "corner"
+    },
+    {
+     "x": 309.48822830390486,
+     "y": 662.0,
+     "type": "corner"
+    },
+    {
+     "x": 315.6,
+     "y": 662.0,
+     "type": "corner"
+    },
+    {
+     "x": 315.6,
+     "y": 662.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 291.6,
+     "y": 446.0,
+     "type": "corner",
+     "hOut": {
+      "x": 186.89024508932343,
+      "y": 412.6203029980509
+     }
+    },
+    {
+     "x": 138.8,
+     "y": 148.9,
+     "type": "corner",
+     "hIn": {
+      "x": 152.8021676126236,
+      "y": 248.27649513959057
+     }
+    }
+   ]
+  }
+ ]
+}
