@@ -159,6 +159,36 @@ that happens to pass. Scorecard BLOCKERs must each be resolved or explained
 with evidence (scan skew gradients are the known benign class); "known
 alignment checks" is not an explanation.
 
+### Render-free pre-calibration (derive, don't eyeball)
+
+Before the slow render loop, derive starting values from the atlas in
+milliseconds with `glyphstudio.calibrate` (the render-time bisection re-renders
+the whole receipt 5-8× per probe; this measures the same ink signal straight
+from the glyphs). Two steps:
+
+1. **Sanity-check the atlas** — confirm its response is well-behaved before
+   spending renders on it:
+   ```bash
+   python -m glyphstudio.validate <compiled>.glyphs.npz --cap-px <synth_h_med>
+   ```
+   `OK True` means density is monotone in thin/weight, erosion saturates (the
+   `saturation thin` is the highest `bitmap_thin` worth trying — probing past it
+   is wasted), and cap height is linear. A merchant whose density is still too
+   high at the saturation thin can't be eroded into range: re-mint lighter
+   rather than chasing `bitmap_thin` (this is why Wild Fork railed at 0.6).
+2. **Derive the knobs** — feed the real-scan measurements (from a first
+   scorecard pass: `real_h_med`, median OCR word-box height, and the real
+   median per-word density as `target_density`) to
+   `calibrate.calibrate_merchant(font, receipts, ...)`. It returns
+   `ocr_cap_height_ratio` (M2), and `weight_iters` + `bitmap_thin` jointly (M3)
+   — starting values, not a substitute for the gate below.
+
+The production render gate (targets above) is still the **must-pass** check —
+the cheap solve's absolute density is in tight-ink units, not the scorecard's
+padded-crop units (see `calibrate.py` "Scope & units"), so always confirm on the
+production path. What this removes is the blind eyeballing: you render to
+*verify* a derived value, not to *search* for it.
+
 Knobs, in order of impact:
 - `font.json params.weight` — thermal prints are BOLD; TJ needed 1.4, CVS
   1.35, Vons 1.2. After changing weight, recompute `condense` (the pitch
