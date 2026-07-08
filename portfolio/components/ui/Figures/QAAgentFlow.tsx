@@ -508,8 +508,13 @@ const MIN_STEP_MS = 600;
 const MAX_STEP_MS = 3500;
 
 const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete, children }) => {
+  // threshold 0 (any pixel intersecting the rootMargin-expanded viewport),
+  // NOT a fraction of the element: the tall intro stack makes a 10% area
+  // threshold unreachable on mobile, which froze the flow on the intro and
+  // never rendered the answer. "In view" should mean "the figure has entered
+  // the viewport," independent of its total height.
   const [flowRef, isVisible] = useRevealInView({
-    threshold: 0.1,
+    threshold: 0,
     rootMargin: "200px",
   });
   const [activeStep, setActiveStep] = React.useState(-1);
