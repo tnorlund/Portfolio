@@ -93,3 +93,50 @@ def test_missing_glyphs_return_none(font):
 def test_corpus_text_concatenates():
     words = [{"text": "AB"}, {"text": "0"}, {"text": None}]
     assert calibrate.corpus_text(words) == "AB0"
+
+
+# --- M2: cap height ---
+
+
+def test_cap_glyph_height_linear_in_cap_px(font):
+    h40 = calibrate.cap_glyph_height(font, 40, 0.0)
+    h80 = calibrate.cap_glyph_height(font, 80, 0.0)
+    assert h40 is not None and h80 is not None
+    assert h80 == pytest.approx(2 * h40, rel=0.05)
+
+
+def test_cap_glyph_height_none_without_cap_refs(tmp_path):
+    from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
+        BitmapFont,
+    )
+
+    digit = np.ones((20, 20), np.uint8)
+    p = tmp_path / "digits.glyphs.npz"
+    np.savez_compressed(p, c48=digit, o48=0)  # only '0', no cap refs
+    f = BitmapFont(str(p))
+    assert calibrate.cap_glyph_height(f, 20, 0.0) is None
+
+
+def test_solve_cap_ratio_hits_unit_h_ratio_when_unclamped(font):
+    # slope=1 (40px cap glyphs, cap_h=40); real cap 30, ocr word box 40
+    # -> ratio 0.75 (in band), projected h_ratio 1.0.
+    ratio, h_ratio = calibrate.solve_cap_ratio(
+        font, real_cap_height_px=30.0, median_ocr_word_height_px=40.0
+    )
+    assert ratio == pytest.approx(0.75, abs=1e-3)
+    assert h_ratio == pytest.approx(1.0, abs=1e-3)
+
+
+def test_solve_cap_ratio_clamps_to_band(font):
+    # real cap == ocr word box -> unclamped ratio 1.0 -> clamped to 0.95,
+    # so the projected h_ratio can no longer reach 1.0.
+    ratio, h_ratio = calibrate.solve_cap_ratio(
+        font, real_cap_height_px=40.0, median_ocr_word_height_px=40.0
+    )
+    assert ratio == pytest.approx(calibrate.CAP_RATIO_MAX)
+    assert h_ratio == pytest.approx(0.95, abs=1e-3)
+
+
+def test_solve_cap_ratio_rejects_bad_inputs(font):
+    with pytest.raises(ValueError):
+        calibrate.solve_cap_ratio(font, 30.0, 0.0)

@@ -43,11 +43,18 @@ if TYPE_CHECKING:  # pragma: no cover
 # thin_ink_mask's ``amount = min(0.9, amount)`` clamp / period floor.
 SATURATION_THIN = 0.5
 
+# Cap-reference glyphs (uppercase without descenders) that define cap height,
+# matching BitmapFont's own cap_h derivation.
+CAP_REF = "ABDEFGHKLMNPRSTUVXZ"
+# The renderer clamps ocr_cap_height_ratio to this band (receipt_renderer.py).
+CAP_RATIO_MIN = 0.65
+CAP_RATIO_MAX = 0.95
 
-def _rendered_glyph_ink(
+
+def _rendered_glyph(
     font: "BitmapFont", ch: str, cap_px: int, thin: float
-) -> tuple[int, int] | None:
-    """(ink_px, total_px) for one glyph at the EXACT pixels the renderer stamps.
+) -> np.ndarray | None:
+    """The eroded ink mask for one glyph at the EXACT pixels the renderer stamps.
 
     Mirrors ``BitmapFont.glyph``: NEAREST scale to ``cap_px`` first, then
     ``thin_ink_mask`` -- the ordering matters, since erosion works on rendered-
@@ -63,7 +70,16 @@ def _rendered_glyph_ink(
         (w, h), Image.NEAREST
     )
     im = thin_ink_mask(im, thin, preserve_top=preserve_top_arc(ch))
-    arr = np.asarray(im) > 0
+    return np.asarray(im) > 0
+
+
+def _rendered_glyph_ink(
+    font: "BitmapFont", ch: str, cap_px: int, thin: float
+) -> tuple[int, int] | None:
+    """(ink_px, total_px) for one glyph at the rendered pixels."""
+    arr = _rendered_glyph(font, ch, cap_px, thin)
+    if arr is None:
+        return None
     return int(arr.sum()), int(arr.size)
 
 
@@ -149,3 +165,77 @@ def solve_thin_for_density(
             hi = mid
     mid = (lo + hi) / 2.0
     return mid, text_ink_density(font, text, cap_px, mid) or target_density
+
+
+# --------------------------------------------------------------------------
+# Cap height: the h_ratio knob (ocr_cap_height_ratio), derived not eyeballed.
+#
+# The renderer sets cap_px = median(real OCR word heights) * ocr_cap_height_ratio,
+# then stamps cap glyphs scaled to cap_px -- so the rendered cap height is a
+# near-linear function of cap_px, and h_ratio (synth cap height / real cap
+# height) is near-linear in the ratio. The hand-tuned spread (0.649 Vons ->
+# 0.95 Target) was linear correction by eye. This solves it directly: measure
+# the synth cap height at a probe cap_px (cheap, from the atlas), and the real
+# cap height once from the scan, then back out the ratio. No synth render.
+# --------------------------------------------------------------------------
+
+
+def cap_glyph_height(
+    font: "BitmapFont", cap_px: int, thin: float
+) -> float | None:
+    """Median rendered ink-height (px) of the cap-reference glyphs at cap_px.
+
+    This is the synth-side cap height the scorecard's ``synth_h_med`` measures,
+    computed from the atlas without rendering a receipt. ``None`` if the atlas
+    carries no cap-reference glyphs.
+    """
+    heights = []
+    for ch in CAP_REF:
+        arr = _rendered_glyph(font, ch, cap_px, thin)
+        if arr is None or not arr.any():
+            continue
+        rows = np.where(arr.any(axis=1))[0]
+        heights.append(int(rows.max() - rows.min() + 1))
+    if not heights:
+        return None
+    heights.sort()
+    return float(heights[len(heights) // 2])
+
+
+def solve_cap_ratio(
+    font: "BitmapFont",
+    real_cap_height_px: float,
+    median_ocr_word_height_px: float,
+    thin: float = 0.0,
+    *,
+    probe_cap_px: int | None = None,
+) -> tuple[float, float]:
+    """Derive ocr_cap_height_ratio so the synth cap height matches the real scan.
+
+    ``real_cap_height_px`` is the real receipt's measured cap-glyph ink height
+    (the scorecard's real_h_med -- measured once from the scan, cheaply).
+    ``median_ocr_word_height_px`` is the median OCR word-box height the renderer
+    feeds into ``cap_px = round(that * ratio)``.
+
+    Rendered cap height is linear in cap_px through the origin, so one probe
+    fixes the slope: solve for the cap_px whose synth cap height equals the real
+    cap height, then ``ratio = cap_px / median_ocr_word_height``. Returns
+    ``(ratio, projected_h_ratio)`` where projected_h_ratio is the synth/real
+    height ratio at the (clamped) returned ratio -- 1.0 when unclamped.
+    """
+    probe = probe_cap_px or max(6, int(round(font.cap_h)))
+    synth_at_probe = cap_glyph_height(font, probe, thin)
+    if synth_at_probe is None or synth_at_probe <= 0:
+        raise ValueError("atlas has no cap-reference glyphs")
+    if median_ocr_word_height_px <= 0:
+        raise ValueError("median OCR word height must be positive")
+    # synth_cap(cap_px) ~= (synth_at_probe / probe) * cap_px  -> solve = real
+    slope = synth_at_probe / probe
+    target_cap_px = real_cap_height_px / slope
+    ratio = target_cap_px / median_ocr_word_height_px
+    clamped = max(CAP_RATIO_MIN, min(CAP_RATIO_MAX, ratio))
+    # projected h_ratio at the clamped ratio (1.0 if the solve wasn't clamped)
+    achieved_cap_px = clamped * median_ocr_word_height_px
+    projected_synth = slope * achieved_cap_px
+    projected_h_ratio = projected_synth / real_cap_height_px
+    return clamped, projected_h_ratio
