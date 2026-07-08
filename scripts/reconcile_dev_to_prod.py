@@ -344,10 +344,21 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
                 export_image(dev_table, iid, str(tmp))
 
         # 2. Now it is safe to delete (pure deletes + the delete half of replaces).
+        # Parallelized — each image is an independent partition and each cascade
+        # delete removes thousands of child items, so serial deletes dominate the
+        # wall clock on a large run.
         logger.info(f"Deleting {len(to_delete)} prod images (pure + replace)...")
-        for iid in to_delete:
+
+        def _del(iid):
             res = prod_client.delete_image_details(iid)
-            logger.info(f"  deleted {iid}: {sum(res.values()) if res else 0} items")
+            return iid, (sum(res.values()) if res else 0)
+
+        done = 0
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            for iid, n in ex.map(_del, to_delete):
+                done += 1
+                if done % 25 == 0 or done == len(to_delete):
+                    logger.info(f"  deleted {done}/{len(to_delete)} (last: {iid} {n} items)")
 
         if not to_copy:
             logger.info("No images to add/replace.")
