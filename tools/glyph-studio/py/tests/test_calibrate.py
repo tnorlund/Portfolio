@@ -160,6 +160,15 @@ def test_is_long_numeric_caption():
     )  # 14 digits but only 14/19 < 0.75 non-space -> not a caption
 
 
+def test_is_long_numeric_caption_matches_scorecard_space_handling():
+    # The scorecard's whitespace strip is a no-op, so it keeps internal spaces
+    # in the length/digit-ratio count. A space-heavy 14-digit token is NOT a
+    # caption there (14 digits / 20 chars < 0.75), so we must keep it too --
+    # stripping spaces would wrongly flag and drop it.
+    spaced = "12 34 56 78 90 12 34"  # 14 digits, len 20 with spaces
+    assert not calibrate.is_long_numeric_caption(spaced)
+
+
 def test_median_word_density_is_not_dominated_by_one_long_token(font):
     # A char-weighted corpus mean lets one long dense token dominate; the
     # per-word median does not. 'A' (solid) is dense, '0' (sparse cross) light.
@@ -265,6 +274,21 @@ def test_solve_weight_and_thin_lightest_already_dense_erodes_down():
     assert w == 0
     assert thin == pytest.approx(0.3)
     assert ach == pytest.approx(0.15)
+
+
+def test_solve_weight_and_thin_prefers_closest_over_least_reachable():
+    # Discrete grid where the "least weight that reaches target" (w1) can only
+    # land far, while a lighter weight just under target (w0) lands much closer.
+    # A least-reachable-then-thin strategy would pick w1; the global argmin must
+    # pick w0 as it is genuinely closest.
+    table = {(0, 0.0): 0.48, (0, 0.3): 0.20, (1, 0.0): 0.90, (1, 0.3): 0.30}
+    dens = lambda w, t: table[(w, round(t, 1))]  # noqa: E731
+    w, thin, ach = calibrate.solve_weight_and_thin(
+        dens, 0.50, weight_iters_options=(0, 1), thins=(0.0, 0.3)
+    )
+    assert w == 0
+    assert thin == pytest.approx(0.0)
+    assert ach == pytest.approx(0.48)  # |0.48-0.50| < |0.30-0.50|
 
 
 def test_solve_weight_and_thin_raises_without_measurable_density():
@@ -397,12 +421,14 @@ def test_calibrate_merchant_emits_full_block(font):
         real_cap_height_px=30.0,
         median_ocr_word_height_px=40.0,
         target_density=target,
+        min_words=3,  # tiny hermetic corpus (3 eligible words)
     )
     assert set(out) >= {
         "ocr_cap_height_ratio",
         "weight_iters",
         "bitmap_thin",
         "cap_px",
+        "measured_words",
         "projected",
         "coverage",
         "provenance",
@@ -410,6 +436,7 @@ def test_calibrate_merchant_emits_full_block(font):
     assert out["ocr_cap_height_ratio"] == pytest.approx(0.75, abs=1e-3)
     assert out["cap_px"] == 30  # round(0.75 * 40)
     assert out["coverage"] == 1.0
+    assert out["measured_words"] == 3
     assert 0.0 <= out["bitmap_thin"] <= calibrate.SATURATION_THIN
     assert out["weight_iters"] == 0  # target = un-weighted density
     assert out["projected"]["density"] == pytest.approx(target, abs=1e-6)
@@ -421,6 +448,19 @@ def test_calibrate_merchant_rejects_empty_corpus(font):
         calibrate.calibrate_merchant(
             font,
             [{"words": [{"text": "A"}]}],  # only sub-2-char -> filtered out
+            real_cap_height_px=30.0,
+            median_ocr_word_height_px=40.0,
+            target_density=0.3,
+        )
+
+
+def test_calibrate_merchant_rejects_tiny_corpus_below_min_words(font):
+    # 3 eligible words but the default min_words=15 floor refuses it.
+    receipts = [{"words": [{"text": "AB0"}, {"text": "BA"}, {"text": "AAB0"}]}]
+    with pytest.raises(ValueError, match="min_words"):
+        calibrate.calibrate_merchant(
+            font,
+            receipts,
             real_cap_height_px=30.0,
             median_ocr_word_height_px=40.0,
             target_density=0.3,

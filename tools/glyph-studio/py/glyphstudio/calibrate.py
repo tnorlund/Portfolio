@@ -276,8 +276,17 @@ _LONG_NUMERIC_RE = _re.compile(r"^[\[\]\(\)\sXx0-9\-]+$")
 
 
 def is_long_numeric_caption(text: str) -> bool:
-    """True for barcode/UPC-style captions the scorecard excludes from density."""
-    glyphs = _re.sub(r"\s+", "", text)
+    """True for barcode/UPC-style captions the scorecard excludes from density.
+
+    Mirrors ``_is_long_numeric_caption`` EXACTLY, including a quirk: the
+    scorecard's ``re.sub(r"\\s+", "", text)`` is a no-op (the raw pattern matches
+    a literal backslash-s, never real whitespace), so it counts digits and
+    length over the text WITH internal spaces retained. We must do the same --
+    stripping whitespace would raise the digit ratio and drop space-separated
+    captions the scorecard still scores, measuring a different corpus than the
+    target density. Keep in lockstep if that scorecard predicate is fixed.
+    """
+    glyphs = text  # scorecard's whitespace strip is a no-op; match it
     digits = sum(ch.isdigit() for ch in glyphs)
     return (
         digits >= 14
@@ -511,21 +520,21 @@ def solve_weight_and_thin(
     """Jointly solve (weight_iters, thin) for density closest to ``target``.
 
     ``density_at(weight_iters, thin) -> float | None`` is injected (cheap model
-    or real render). Un-eroded density (``thin`` at its minimum) is the MOST ink
-    a given weight can produce, so a weight can reach ``target`` by erosion iff
-    its un-eroded density >= target. Strategy (per the epic):
-
-    * Among weights whose un-eroded density >= target, pick the SMALLEST (least
-      thickening), then argmin ``thin`` to fine-tune down to target.
-    * If NO weight reaches target even un-eroded (target too dense), pick the
-      HEAVIEST weight and its closest thin (best effort from below).
+    or real render). Weight raises ink, thin lowers it. Rather than commit to the
+    least weight that *could* reach the target and then thin (which, on the
+    discrete/saturated thin grid, can leave the chosen weight's closest plateau
+    far from target while a lighter weight sits much nearer), evaluate the best
+    thin at EVERY weight and take the global argmin on achieved density,
+    tie-breaking toward the LEAST weight (least thickening). This keeps the
+    epic's "raise weight, then fine-tune thin" intent -- ties still prefer the
+    lighter weight -- without ever returning a worse density than a weight it
+    skipped.
 
     Returns ``(weight_iters, thin, achieved_density)``. Raises ValueError if
     ``density_at`` yields no measurable density for any (weight, thin).
     """
     weights = sorted(set(int(w) for w in weight_iters_options))
     thin_grid = sorted(set(float(t) for t in thins))
-    min_thin = thin_grid[0]
 
     def best_thin_at(weight: int) -> tuple[float, float] | None:
         best: tuple[float, float] | None = None
@@ -541,31 +550,22 @@ def solve_weight_and_thin(
                 best = (t, d)
         return best
 
-    # Un-eroded (max-ink) density per weight, to find which can reach target.
-    reachable: list[int] = []
-    heaviest_uneroded: tuple[int, float] | None = None
-    for w in weights:
-        d0 = density_at(w, min_thin)
-        if d0 is None:
+    best: tuple[int, float, float] | None = None
+    for w in weights:  # ascending, so ties keep the lighter weight
+        bt = best_thin_at(w)
+        if bt is None:
             continue
-        heaviest_uneroded = (w, d0)
-        if d0 >= target_density - 1e-12:
-            reachable.append(w)
+        thin, achieved = bt
+        if (
+            best is None
+            or abs(achieved - target_density)
+            < abs(best[2] - target_density) - 1e-12
+        ):
+            best = (w, thin, achieved)
 
-    if reachable:
-        chosen = min(reachable)  # least thickening that can erode to target
-    elif heaviest_uneroded is not None:
-        chosen = heaviest_uneroded[
-            0
-        ]  # target too dense: heaviest, best effort
-    else:
+    if best is None:
         raise ValueError("density_at yielded no measurable density")
-
-    bt = best_thin_at(chosen)
-    if bt is None:
-        raise ValueError("density_at yielded no measurable density")
-    thin, achieved = bt
-    return chosen, thin, achieved
+    return best
 
 
 # --------------------------------------------------------------------------
@@ -582,17 +582,23 @@ def solve_weight_and_thin(
 
 
 def cap_glyph_height(
-    font: "BitmapFont", cap_px: int, thin: float
+    font: "BitmapFont", cap_px: int, thin: float, weight_iters: int = 0
 ) -> float | None:
     """Median rendered ink-height (px) of the cap-reference glyphs at cap_px.
 
     This is the synth-side cap height the scorecard's ``synth_h_med`` measures,
-    computed from the atlas without rendering a receipt. ``None`` if the atlas
-    carries no cap-reference glyphs.
+    computed from the atlas without rendering a receipt. ``thin``/``weight_iters``
+    match the final render knobs: erosion can strip a cap glyph's boundary rows
+    (sparse/dot-matrix caps render shorter than the un-eroded height) and
+    dilation can add them, so the honest cap height is measured at the same
+    (thin, weight) production will stamp. ``None`` if the atlas carries no
+    cap-reference glyphs.
     """
     heights = []
     for ch in CAP_REF:
-        arr = _rendered_glyph(font, ch, cap_px, thin)
+        arr = _rendered_glyph(
+            font, ch, cap_px, thin, weight_iters=weight_iters
+        )
         if arr is None or not arr.any():
             continue
         rows = np.where(arr.any(axis=1))[0]
@@ -636,6 +642,7 @@ def solve_cap_ratio(
     median_ocr_word_height_px: float,
     thin: float = 0.0,
     *,
+    weight_iters: int = 0,
     probe_cap_px: int | None = None,
     font_px: float | None = None,
     bitmap_cap_ratio: float | None = None,
@@ -665,7 +672,7 @@ def solve_cap_ratio(
     unclamped linear cap_px (rounding still applied).
     """
     probe = probe_cap_px or max(6, int(round(font.cap_h)))
-    synth_at_probe = cap_glyph_height(font, probe, thin)
+    synth_at_probe = cap_glyph_height(font, probe, thin, weight_iters)
     if synth_at_probe is None or synth_at_probe <= 0:
         raise ValueError("atlas has no cap-reference glyphs")
     if median_ocr_word_height_px <= 0:
@@ -714,6 +721,7 @@ def calibrate_merchant(
     font_px: "float | None" = None,
     bitmap_cap_ratio: "float | None" = None,
     max_font_px: "float | None" = None,
+    min_words: int = 15,
     provenance: "str | None" = None,
 ) -> dict:
     """Derive ``{ocr_cap_height_ratio, weight_iters, bitmap_thin}`` in one call.
@@ -731,18 +739,33 @@ def calibrate_merchant(
 
     Returns a dict with the solved knobs plus ``projected`` (h_ratio + achieved
     density the cheap model predicts), ``cap_px``, ``coverage`` (assert 1.0 for
-    an unbiased solve; see ``text_glyph_coverage``), and ``provenance``. The
-    weight is reported as ``weight_iters`` (dilation steps) -- mapping it to the
-    profile's ``weight`` float is the mint-specific step done at M5.
+    an unbiased solve; see ``text_glyph_coverage``), ``measured_words``, and
+    ``provenance``. The weight is reported as ``weight_iters`` (dilation steps)
+    -- mapping it to the profile's ``weight`` float is the mint-specific step
+    done at M5.
 
-    Raises ValueError if the corpus has no scorecard-eligible words with atlas
-    glyphs, or the atlas has no cap-reference glyphs.
+    ``min_words`` mirrors ``ink_calibration.measure_density_ratio``'s 15-word
+    floor: too few measured words gives an overfit median, so calibrating on a
+    handful of tokens is refused. Raises ValueError if fewer than ``min_words``
+    scorecard-eligible words carry atlas glyphs, if the corpus is empty, or if
+    the atlas has no cap-reference glyphs.
     """
     words = scorecard_words(
         [w for r in receipts for w in (r.get("words") or [])]
     )
     if not words:
         raise ValueError("no scorecard-eligible words in receipts")
+    # Words that actually contribute a density measurement (>=1 atlas glyph,
+    # i.e. a non-None per-word density), matching the render-time path's
+    # min_words guard on measured word scores.
+    n_measured = sum(
+        1 for w in words if any(c in font.glyphs for c in w if not c.isspace())
+    )
+    if n_measured < min_words:
+        raise ValueError(
+            f"only {n_measured} measurable words (< min_words={min_words}); "
+            "corpus too small to calibrate reliably"
+        )
 
     # M2: cap-height ratio, then the exact cap_px the renderer will stamp.
     ratio, h_ratio = solve_cap_ratio(
@@ -771,6 +794,28 @@ def calibrate_merchant(
         weight_iters_options=weight_iters_options,
     )
 
+    # Re-project cap height at the SOLVED thin/weight: erosion can strip cap
+    # boundary rows (sparse/dot-matrix caps render shorter) and dilation can add
+    # them, so h_ratio at thin=0 would over-promise. One refinement pass -- the
+    # ratio's feedback onto cap_px (hence thin) is second-order and not iterated.
+    ratio, h_ratio = solve_cap_ratio(
+        font,
+        real_cap_height_px,
+        median_ocr_word_height_px,
+        thin=thin,
+        weight_iters=weight_iters,
+        font_px=font_px,
+        bitmap_cap_ratio=bitmap_cap_ratio,
+        max_font_px=max_font_px,
+    )
+    cap_px = renderer_cap_px(
+        ratio,
+        median_ocr_word_height_px,
+        font_px=font_px,
+        bitmap_cap_ratio=bitmap_cap_ratio,
+        max_font_px=max_font_px,
+    )
+
     coverage = text_glyph_coverage(font, "".join(words))
     n = len(list(receipts))
     return {
@@ -778,6 +823,7 @@ def calibrate_merchant(
         "weight_iters": weight_iters,
         "bitmap_thin": thin,
         "cap_px": cap_px,
+        "measured_words": n_measured,
         "projected": {
             "h_ratio": h_ratio,
             "density": achieved,
