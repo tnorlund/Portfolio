@@ -58,8 +58,53 @@ future font-quality pass should re-mint; the four interior pins (CVS 0.15, Vons
   cap-linearity assumptions hold on all shipped merchant atlases, so the solver
   is operating on the response shape it was designed for; and the render-time
   bisection's probe range can be capped at the saturation thin.
-- **Still open (needs the render path):** that a cheap-solved `bitmap_thin`
-  lands the scorecard's `density_ratio` within tolerance of the render-time
-  solve. That comparison is unit-bridged through the scorecard's padded-crop
-  density and belongs to M5's regression lock, where a real render is the source
-  of truth.
+- **Established (with the render path), below:** the cheap density tracks the
+  scorecard's by a stable per-merchant factor, so the cheap solve recovers the
+  same density-match thin the scorecard would — validated on Sprouts.
+
+## Absolute correlation — cheap vs. real render (Sprouts)
+
+The render-free checks above confirm the *shape*; this confirms the cheap
+density is a faithful *proxy* for the scorecard density the render-time solver
+targets. Sprouts (the cleanest M0 merchant) was rendered at a forced
+`bitmap_thin` sweep on its M0 review receipt (262 words, 251 scorecard-eligible,
+coverage 1.0), and the scorecard's per-word synth density compared against the
+cheap `median_word_density` at the same thins and cap_px (44). Sanity: thin
+0.225 reproduced the M0 derive exactly (`density_ratio` 0.955).
+
+| forced thin | scorecard synth density | cheap density | cheap / scorecard |
+|---|---|---|---|
+| 0.000 | 0.1950 | 0.3831 | 1.965 |
+| 0.100 | 0.1870 | 0.3687 | 1.972 |
+| 0.225 | 0.1760 | 0.3455 | 1.963 |
+| 0.350 | 0.1680 | 0.3325 | 1.979 |
+| 0.500 | 0.1570 | 0.3074 | 1.958 |
+
+- **Stable factor:** cheap/scorecard = **1.967 ± 0.007 (CV 0.37 %)** — a
+  near-constant per-merchant multiplier. The absolute-units gap (tight-ink vs
+  padded-crop) is a *scale*, not a distortion.
+- **Perfect rank agreement:** Spearman **1.000**, Pearson 0.999.
+- **Recovers the density optimum:** the scorecard's real-density target (0.1839,
+  padded units) maps through the 1.967 factor to a cheap target of 0.362, which
+  the cheap curve hits at **thin ≈ 0.138**. The scorecard's own
+  `density_ratio → 1.0` optimum is **thin ≈ 0.136** — the two independent
+  measurers agree to **within 0.002**. (The render-time bisection landed on
+  0.225 only because its blind grid stepped 0.0 → 0.3 → 0.15 → 0.225 and never
+  probed ~0.1; the cheap full-curve measurer would have found the better point,
+  so it is *more* faithful to the density optimum here, not less.)
+- The cheap curve was independently reproduced on the Sprouts atlas from this
+  worktree (end/start density ratio 0.79 vs the experiment's 0.80), confirming
+  the cheap side.
+
+**Verdict:** for Sprouts the render-free measurer is a faithful proxy — density
+tracks the scorecard by a stable ~1.97× factor and recovers its density-match
+thin to within 0.002.
+
+## Still open (for M5)
+
+- **Per-merchant factor spread + non-body regimes.** Only Sprouts (a
+  regular-face-dominant merchant) was measured, and only its body density. The
+  1.967 factor is per-merchant; whether it is stable enough *across* merchants
+  to bridge without a per-merchant render, and how stylemap heavy/scaled rows
+  shift it, is the remaining validation — it belongs to M5's retrofit, where
+  each merchant gets a real render as the source of truth.
