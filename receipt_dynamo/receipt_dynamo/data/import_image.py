@@ -16,7 +16,6 @@ from receipt_dynamo.entities import (
     ReceiptBarcode,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptMetadata,
     ReceiptPlace,
     ReceiptWord,
     ReceiptWordLabel,
@@ -87,10 +86,6 @@ def import_image(table_name: str, json_path: str) -> None:
             ReceiptPlace(**_parse_datetimes(item, ["timestamp"]))
             for item in data.get("receipt_places", [])
         ],
-        "receipt_metadatas": [
-            ReceiptMetadata(**_parse_datetimes(item, ["timestamp"]))
-            for item in data.get("receipt_metadatas", [])
-        ],
         "receipt_barcodes": [
             ReceiptBarcode(**item) for item in data.get("receipt_barcodes", [])
         ],
@@ -143,10 +138,6 @@ def import_image(table_name: str, json_path: str) -> None:
     if entities["receipt_places"]:
         # type: ignore[arg-type]
         dynamo_client.add_receipt_places(entities["receipt_places"])
-
-    if entities["receipt_metadatas"]:
-        # type: ignore[arg-type]
-        dynamo_client.add_receipt_metadatas(entities["receipt_metadatas"])
 
     if entities["receipt_barcodes"]:
         # type: ignore[arg-type]

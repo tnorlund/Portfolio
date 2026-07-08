@@ -103,7 +103,6 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     places = defaultdict(list)     # image_id -> [(receipt_id, merchant, place_id)]
     receipts = defaultdict(set)    # image_id -> {receipt_id}
     barcodes = defaultdict(list)   # image_id -> [(receipt, barcode_id, symbology, text)]
-    metas = defaultdict(list)      # image_id -> [(receipt, merchant, place_id, ...)]
     images = set()                 # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
@@ -156,21 +155,11 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for bc in b
         ],
     )
-    # ReceiptMetadata (merchant/place resolution) is also restored only via
-    # REPLACE, so metadata-only changes must move the fingerprint too.
-    _scan(
-        client.list_receipt_metadatas,
-        lambda b: [
-            metas[m.image_id].append(
-                (
-                    m.receipt_id, m.merchant_name or "", m.place_id or "",
-                    m.merchant_category or "", m.validated_by or "",
-                    getattr(m, "canonical_place_id", "") or "",
-                )
-            )
-            for m in b
-        ],
-    )
+    # NOTE: ReceiptMetadata is intentionally NOT fingerprinted. It is a legacy
+    # entity superseded by ReceiptPlace (nothing in the pipeline writes it now),
+    # so its rows are stale/orphaned and would cause perpetual spurious REPLACEs.
+    # Merchant/place state is mirrored via ReceiptPlace (fingerprinted above).
+
     # Include bare Image rows so childless shells are still ADD/REPLACE/DELETE'd
     # correctly (otherwise a prod Image with no children is invisible here and a
     # skip_existing copy would silently skip it).
@@ -181,7 +170,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
 
     all_ids = (
         set(words) | set(labels) | set(receipts) | set(places)
-        | set(barcodes) | set(metas) | images
+        | set(barcodes) | images
     )
     out = {}
     for iid in all_ids:
@@ -199,7 +188,6 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             "places": sorted(places[iid]),
             "receipts": sorted(receipts[iid]),
             "barcodes": sorted(barcodes[iid]),
-            "metas": sorted(metas[iid]),
         }
         fp = hashlib.sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
