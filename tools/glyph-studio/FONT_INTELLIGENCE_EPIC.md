@@ -164,6 +164,18 @@ unchanged — family fonts are *fitted skeletons*, never copied crops).
   QA loop via MCP. *Exit:* ≥95 % of words carry a section with measured
   accuracy ≥90 % on a held-out hand-checked sample; per-section
   distribution sane on all 9 merchants.
+  - **M1 deliverable — label-section consistency audit (label cleanup).**
+    Sections audit the labels back: after propagation, cross-tab every
+    labeled word's CORE label against its consensus section; violations of
+    the label's expected section footprint (LINE_TOTAL in `payment`,
+    PRODUCT_NAME in `footer`, GRAND_TOTAL outside `total_line`/`summary`,
+    the CHANGE/CASH_BACK-as-LINE_TOTAL class) are marked `NEEDS_REVIEW` via
+    `update_word_label`. Not circular: a word's consensus section comes from
+    its neighbors' geometry/context, not its own label, so a mislabeled word
+    disagrees with its surroundings — that disagreement is the flag.
+    *Exit adds:* per-label violation rates reported; flagged words land in
+    the standard `NEEDS_REVIEW` QA queue. (Also cleans the LayoutLM leg's
+    training labels — shared payoff.)
 - **M2 — Family/face discovery.** Glyph-crop collection; clustering. *Exit:*
   the `(merchant, section) → (family, face)` map with confidence scores;
   cluster count and IoU-style separation reported; Costco isolates as its own
