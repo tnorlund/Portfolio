@@ -22,6 +22,7 @@ export const SAMPLES = {
   wildfork: "/tmp/gridfix/wildfork_studio/wildfork.refined.npz",
   innout: "/tmp/gridfix/innout_studio/innout.refined.npz",
   target: "/tmp/gridfix/target_studio/target.refined.npz",
+  homedepot: "/tmp/gridfix/homedepot_studio/homedepot.refined.npz",
 };
 
 // Font dir -> canonical merchant name. The receipt renderer caches per-merchant
@@ -36,6 +37,7 @@ export const FONT_MERCHANTS = {
   cvs: "CVS",
   wildfork: "Wild Fork",
   innout: "In-N-Out Burger",
+  homedepot: "The Home Depot",
 };
 
 // Mirror _render_cache_path's slug: runs of non-alphanumerics -> single "_".

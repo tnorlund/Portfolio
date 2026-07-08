@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "source": {
+    "receipts": 15,
+    "scan_dir": "/tmp/gridfix/homedepot_studio/scans",
+    "lines_measured": 865,
+    "date": "2026-07-07"
+  },
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=44. cap_rel med 1.125 is the tilted-square THE HOME DEPOT wordmark + slogan, rendered from the logo overlay, not scaled body text. Non-logo header lines are body size."
+    },
+    "address": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=176. Store/address lines body-sized, normal weight (cap_rel med 1.025, stroke_rel med 0.989)."
+    },
+    "transaction": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=17. SALE/CASHIER/register lines body-sized, slightly light (cap_rel med 0.974, stroke_rel med 0.966)."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=82. Item lines are the body baseline (cap_rel med 1.0, stroke_rel med 1.03)."
+    },
+    "discount": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=127. Pro Xtra / MAX REFUND lines body-sized, normal weight (cap_rel med 1.0, stroke_rel med 1.0)."
+    },
+    "summary": {
+      "sizeScale": 0.93,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=24. SUBTOTAL/SALES TAX print slightly smaller (cap_rel med 0.925), normal stroke."
+    },
+    "total_line": {
+      "sizeScale": 0.93,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=21. TOTAL/USD block prints slightly smaller than body (cap_rel med 0.937), normal weight."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=49. Card/auth block body-sized, a touch light (cap_rel med 1.0, stroke_rel med 0.98)."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=46. Pro Xtra footer / credit copy body-sized, normal weight (cap_rel med 0.977, stroke_rel med 0.96)."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.007,
+      "notes": "n=276. Body fallback."
+    }
+  }
+}

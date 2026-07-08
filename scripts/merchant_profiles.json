@@ -96,16 +96,26 @@
       }
     },
     "The Home Depot": {
-      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH, built by synthesis_loop/build_homedepot_logo.py from a clean brand SVG (all 17 real receipts use this slogan, not the older 'More saving. More doing.'). Body font: data-driven glyph font shredded (consistent italic slant + photographed-receipt warp defeats the averaging/registration; queued for the codex glyph loop), so fall back to PTMONO for now. condense/section_scale calibrated from real-vs-synth.",
-      "section_scale": {
-        "HEADER": 0.8
-      },
+      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH (build_homedepot_logo.py from a clean brand asset). Body font studio-minted from 18 verified HD receipts (excluded a doubled two-receipt photo). condense/pitch_ratio measured real-vs-synth; the HD thermal face is bold and wider than Vons/CVS (pitch_ratio 0.637).",
+      "aliases": [
+        "Home Depot"
+      ],
+      "logo": "homedepot_logo.png",
       "typography": {
         "font": "PTMONO",
-        "condense": 0.82,
-        "stroke": 0
+        "bitmap_font": {
+          "regular": "homedepot.glyphs.npz",
+          "heavy": "homedepot-heavy.glyphs.npz"
+        },
+        "condense": 1.152,
+        "mixed_layout": true,
+        "bitmap_cap_ratio": 0.66,
+        "ocr_font_sizing": true,
+        "ocr_cap_height_ratio": 0.86,
+        "stylemap": "homedepot.stylemap.json",
+        "pitch_ratio": 0.66,
+        "bitmap_thin": 0.6
       },
-      "logo": "homedepot_logo.png",
       "logo_anchor": {
         "phrases": [
           "HOWDOERS",
@@ -114,6 +124,7 @@
         "extend_left": true
       },
       "graphics": {
+        "footer_codes": true,
         "inbody_barcode": {
           "max_count": 0
         }
