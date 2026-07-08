@@ -103,6 +103,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     places = defaultdict(list)     # image_id -> [(receipt_id, merchant, place_id)]
     receipts = defaultdict(set)    # image_id -> {receipt_id}
     barcodes = defaultdict(list)   # image_id -> [(receipt, barcode_id, symbology, text)]
+    metas = defaultdict(list)      # image_id -> [(receipt, merchant, place_id, ...)]
     images = set()                 # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
@@ -155,6 +156,21 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for bc in b
         ],
     )
+    # ReceiptMetadata (merchant/place resolution) is also restored only via
+    # REPLACE, so metadata-only changes must move the fingerprint too.
+    _scan(
+        client.list_receipt_metadatas,
+        lambda b: [
+            metas[m.image_id].append(
+                (
+                    m.receipt_id, m.merchant_name or "", m.place_id or "",
+                    m.merchant_category or "", m.validated_by or "",
+                    getattr(m, "canonical_place_id", "") or "",
+                )
+            )
+            for m in b
+        ],
+    )
     # Include bare Image rows so childless shells are still ADD/REPLACE/DELETE'd
     # correctly (otherwise a prod Image with no children is invisible here and a
     # skip_existing copy would silently skip it).
@@ -165,7 +181,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
 
     all_ids = (
         set(words) | set(labels) | set(receipts) | set(places)
-        | set(barcodes) | images
+        | set(barcodes) | set(metas) | images
     )
     out = {}
     for iid in all_ids:
@@ -175,6 +191,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             "places": sorted(places[iid]),
             "receipts": sorted(receipts[iid]),
             "barcodes": sorted(barcodes[iid]),
+            "metas": sorted(metas[iid]),
         }
         fp = hashlib.sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
@@ -300,26 +317,33 @@ def guard_replaces(prod_table: str, replaces: list, max_workers: int = 16) -> tu
 
 
 def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
-    """Execute DELETE, then REPLACE-delete + copy, then ADD copy."""
+    """Export sources FIRST, then DELETE (pure + replace), then copy.
+
+    Exporting before any destructive delete means a transient dev-read failure
+    aborts the run before prod data is removed, rather than leaving prod missing
+    the image until a successful rerun.
+    """
     dev_table = dev_config["table"]
-
-    # 1. Deletes (pure deletes + the delete half of replaces)
-    to_delete = p["delete"] + p["replace"]
-    logger.info(f"Deleting {len(to_delete)} prod images (pure + replace)...")
-    for iid in to_delete:
-        res = prod_client.delete_image_details(iid)
-        logger.info(f"  deleted {iid}: {sum(res.values()) if res else 0} items")
-
-    # 2. Export the dev images we need to (re)create, then copy them whole
     to_copy = p["add"] + p["replace"]
-    if not to_copy:
-        logger.info("No images to add/replace.")
-        return
+    to_delete = p["delete"] + p["replace"]
+
     tmp = Path(tempfile.mkdtemp(prefix="reconcile_export_"))
     try:
-        logger.info(f"Exporting {len(to_copy)} dev images → {tmp}...")
-        for iid in to_copy:
-            export_image(dev_table, iid, str(tmp))
+        # 1. Export every add/replace source up front (no prod writes yet).
+        if to_copy:
+            logger.info(f"Exporting {len(to_copy)} dev images → {tmp}...")
+            for iid in to_copy:
+                export_image(dev_table, iid, str(tmp))
+
+        # 2. Now it is safe to delete (pure deletes + the delete half of replaces).
+        logger.info(f"Deleting {len(to_delete)} prod images (pure + replace)...")
+        for iid in to_delete:
+            res = prod_client.delete_image_details(iid)
+            logger.info(f"  deleted {iid}: {sum(res.values()) if res else 0} items")
+
+        if not to_copy:
+            logger.info("No images to add/replace.")
+            return
         logger.info("Copying to prod...")
         stats = copy_all_images(
             tmp,
@@ -394,9 +418,18 @@ def main():
             shown = p[bucket][: args.limit_list]
             logger.info(f"  {bucket}: {shown}{' ...' if len(p[bucket]) > len(shown) else ''}")
 
-    if not (p["add"] or p["replace"] or p["delete"]):
+    if not (p["add"] or p["replace"] or p["delete"] or guarded):
         logger.info("\n✅ prod already matches dev. Nothing to do.")
         return
+
+    if not (p["add"] or p["replace"] or p["delete"]) and guarded:
+        # Only guarded diffs remain — nothing can be safely applied, but prod is
+        # NOT in sync. Report it as incomplete rather than "matches".
+        logger.error(
+            f"\n❌ Nothing safely actionable, but {len(guarded)} image(s) are "
+            f"guarded and remain stale in prod. Resolve their unrestorable types."
+        )
+        sys.exit(2)
 
     if args.dry_run:
         logger.info("\n✅ Dry run. Re-run with --no-dry-run to apply.")
@@ -412,6 +445,13 @@ def main():
         "\n✅ Reconcile applied. Kick prod embedding step functions "
         "(start_ingestion_prod.sh) and re-run health_gate to confirm drain."
     )
+    if guarded:
+        logger.error(
+            f"\n⚠️  INCOMPLETE: {len(guarded)} image(s) were guarded and left "
+            f"stale in prod (unrestorable entity types). Exiting nonzero so the "
+            f"promotion is not reported as fully successful."
+        )
+        sys.exit(2)
 
 
 if __name__ == "__main__":

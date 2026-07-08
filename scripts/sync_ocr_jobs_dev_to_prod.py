@@ -197,17 +197,24 @@ def main():
     prod_job_keys = {(j.image_id, j.job_id) for j in prod_jobs}
 
     # -------------------------------------------------------------------------
-    # Build the set of image_ids that actually exist in prod, so we never
-    # recreate OCR jobs for images the reconcile step removed or never promoted
-    # (which would leave orphan OCRJob rows with no Image/Receipt).
-    prod_image_ids = set()
-    _lek = None
-    while True:
-        _imgs, _lek = prod_client.list_images(limit=1000, last_evaluated_key=_lek)
-        prod_image_ids.update(im.image_id for im in _imgs)
-        if not _lek:
-            break
-    logger.info("Prod images available for OCR-job sync: %d", len(prod_image_ids))
+    # Only sync OCR jobs for images that actually exist in prod, so we never
+    # recreate orphan OCRJob rows for images the reconcile step removed or never
+    # promoted. Use a STRONGLY CONSISTENT GetItem on the base table (not
+    # list_images, which is backed by the GSITYPE GSI and can lag behind the
+    # Image rows reconcile just wrote in the same promotion run).
+    _ddb = boto3.client("dynamodb", region_name="us-east-1")
+    _exists_cache: dict[str, bool] = {}
+
+    def _prod_image_exists(image_id: str) -> bool:
+        if image_id not in _exists_cache:
+            resp = _ddb.get_item(
+                TableName=prod_table,
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
+                ConsistentRead=True,
+                ProjectionExpression="PK",
+            )
+            _exists_cache[image_id] = "Item" in resp
+        return _exists_cache[image_id]
 
     # 2. Filter dev jobs to sync
     # -------------------------------------------------------------------------
@@ -223,7 +230,7 @@ def main():
             continue
 
         # Skip jobs whose image is not in prod (would be an orphan)
-        if job.image_id not in prod_image_ids:
+        if not _prod_image_exists(job.image_id):
             orphan_skipped += 1
             continue
 

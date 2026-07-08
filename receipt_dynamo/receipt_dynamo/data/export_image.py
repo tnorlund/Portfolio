@@ -63,6 +63,20 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     if not images:
         raise ValueError(f"No image found for image_id {image_id}")
 
+    # ReceiptMetadata is not part of get_image_details, so fetch it per receipt.
+    # It holds merchant/place resolution (merchant_name, place_id, validated_by,
+    # reasoning) and must be exported so a dev→prod copy can restore it.
+    receipt_metadatas = []
+    for receipt in receipts:
+        try:
+            md = dynamo_client.get_receipt_metadata(
+                receipt.image_id, receipt.receipt_id
+            )
+            if md is not None:
+                receipt_metadatas.append(md)
+        except Exception:  # noqa: BLE001 - metadata is optional per receipt
+            pass
+
     # Export DynamoDB data as JSON
     results = {
         "images": [asdict(image) for image in images],
@@ -77,6 +91,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
             asdict(label) for label in receipt_word_labels
         ],
         "receipt_places": [asdict(place) for place in receipt_places],
+        "receipt_metadatas": [asdict(md) for md in receipt_metadatas],
         "receipt_barcodes": [asdict(bc) for bc in receipt_barcodes],
         "ocr_jobs": [asdict(job) for job in ocr_jobs],
         "ocr_routing_decisions": [
