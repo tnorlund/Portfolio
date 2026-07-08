@@ -318,6 +318,7 @@ def _draw_dash_row(
     bitmap_font=None,
     cap_px=None,
     bitmap_thin: float = 0.0,
+    condense_glyphs: bool = False,
 ) -> None:
     """A thermal separator rule printed as a run of actual ``-`` glyphs.
 
@@ -325,7 +326,9 @@ def _draw_dash_row(
     character in the same monospace face as the body (dropped by OCR). Rendering
     them through :func:`draw_token_chars` -- rather than a drawn line -- gives the
     real letterform (bitmap atlas), condense, stroke and ink of the body text, so
-    the rule reads as printed dashes instead of a clean vector line."""
+    the rule reads as printed dashes instead of a clean vector line. ``condense_glyphs``
+    mirrors the body text's per-glyph x-resize so the dashes track the same width.
+    """
     start_col = int(round((x0 - spec.grid_left) / spec.cell_w))
     n = int((x1 - x0) / spec.cell_w)
     if n <= 0:
@@ -343,6 +346,7 @@ def _draw_dash_row(
         bitmap_font=bitmap_font,
         cap_px=cap_px,
         bitmap_thin=bitmap_thin,
+        condense_glyphs=condense_glyphs,
     )
 
 
