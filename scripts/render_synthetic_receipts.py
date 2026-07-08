@@ -1132,6 +1132,7 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
         import hashlib
 
         import boto3
+
         from receipt_dynamo import DynamoClient
 
         table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
@@ -1332,8 +1333,9 @@ def resolve_bitmap_thin(
     from statistics import median
 
     from ink_calibration import derive_bitmap_thin  # noqa: E402
-    from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
     from receipt_line_scorecard import _load_words_and_real  # noqa: E402
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 
     client = DynamoClient(table_name=table, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant)
@@ -1414,14 +1416,36 @@ def _content_texture_seed(receipt: dict) -> int:
     parts = [str(receipt.get("merchant_name") or "")]
     words = receipt.get("words") or []
 
+    def _coerce_id(value):
+        # OCR ids are ints, but synthetic augmentation can carry string ids
+        # (e.g. 'header-clone-40'); keep the int fast-path byte-identical and
+        # fall back to the raw value rather than crashing on the cast.
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return value
+
     def _key(word: dict):
+        line_id = _coerce_id(word.get("line_id"))
+        word_id = _coerce_id(word.get("word_id"))
+        # ints and strings are not mutually orderable; rank ints before strings
+        # so the sort is total and deterministic across mixed id types.
         return (
-            int(word.get("line_id") or 0),
-            int(word.get("word_id") or 0),
+            (
+                (0, line_id, "")
+                if isinstance(line_id, int)
+                else (1, 0, str(line_id))
+            ),
+            (
+                (0, word_id, "")
+                if isinstance(word_id, int)
+                else (1, 0, str(word_id))
+            ),
         )
 
     for word in sorted(words, key=_key):
-        line_id, word_id = _key(word)
+        line_id = _coerce_id(word.get("line_id"))
+        word_id = _coerce_id(word.get("word_id"))
         bbox = word.get("bbox") or []
         bbox_str = ",".join(f"{float(v):.2f}" for v in bbox)
         text = word.get("text", "")
