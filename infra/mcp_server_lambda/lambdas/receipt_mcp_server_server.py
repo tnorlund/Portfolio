@@ -538,7 +538,9 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
 Use this to add a label to a word that doesn't have one yet. For example,
 labeling a "40.00" word as CASH_BACK when no CASH_BACK label exists for it.
 
-The validation_status is set to VALID and label_proposed_by to "mcp-claude-review".
+By default validation_status is VALID and label_proposed_by is "mcp-claude-review".
+Pass validation_status="PENDING" for machine-propagated rows (e.g. SECTION_*
+sections) that still need QA before they count as ground truth.
 
 consolidated_from: Use this when the new label is a CORRECTION of an existing
 wrong label on the same word. Set it to the old label name so we have an audit
@@ -578,6 +580,11 @@ image_id/receipt_id/line_id/word_id/label already exists.""",
                     "consolidated_from": {
                         "type": "string",
                         "description": "The old label name this corrects. Set when replacing a wrong label (e.g., 'PRODUCT_NAME' if that was the incorrect label). Omit when adding a brand new label with no predecessor.",
+                    },
+                    "validation_status": {
+                        "type": "string",
+                        "enum": ["PENDING", "VALID", "INVALID", "NEEDS_REVIEW"],
+                        "description": "Validation status for the new row. Defaults to VALID (human-reviewed). Use PENDING for machine-propagated rows (e.g. SECTION_* sections) that still need QA.",
                     },
                 },
                 "required": ["image_id", "receipt_id", "line_id", "word_id", "label", "reasoning"],
@@ -1249,6 +1256,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 label=arguments["label"],
                 reasoning=arguments["reasoning"],
                 consolidated_from=arguments.get("consolidated_from"),
+                validation_status=arguments.get(
+                    "validation_status", "VALID"
+                ),
             )
         elif name == "compute_reocr_region":
             result = await compute_reocr_region_impl(
@@ -2501,14 +2511,32 @@ async def create_word_label_impl(
     label: str,
     reasoning: str,
     consolidated_from: Optional[str] = None,
+    validation_status: str = "VALID",
 ) -> dict:
-    """Create a new ReceiptWordLabel record in DynamoDB."""
+    """Create a new ReceiptWordLabel record in DynamoDB.
+
+    validation_status defaults to VALID (a human-reviewed label via MCP). Pass
+    PENDING for machine-propagated rows (e.g. SECTION_* sections) that still
+    need QA before they count as ground truth.
+    """
     from datetime import datetime, timezone
 
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
     try:
         normalized_label = label.upper()
+        # Only the four workflow statuses are valid on create; a null/omitted
+        # arg falls back to VALID. NONE is deliberately excluded so a stray
+        # null can't silently persist a non-ground-truth row.
+        normalized_status = str(validation_status or "VALID").upper()
+        allowed = {"PENDING", "VALID", "INVALID", "NEEDS_REVIEW"}
+        if normalized_status not in allowed:
+            return {
+                "error": (
+                    f"Invalid validation_status {validation_status!r}; "
+                    f"expected one of {sorted(allowed)}"
+                )
+            }
         new_label = ReceiptWordLabel(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -2517,7 +2545,7 @@ async def create_word_label_impl(
             label=normalized_label,
             reasoning=reasoning,
             timestamp_added=datetime.now(timezone.utc).isoformat(),
-            validation_status="VALID",
+            validation_status=normalized_status,
             label_proposed_by="mcp-claude-review",
             label_consolidated_from=consolidated_from,
         )
@@ -2531,7 +2559,7 @@ async def create_word_label_impl(
             "line_id": line_id,
             "word_id": word_id,
             "label": normalized_label,
-            "validation_status": "VALID",
+            "validation_status": normalized_status,
             "reasoning": reasoning,
             "label_proposed_by": "mcp-claude-review",
         }
