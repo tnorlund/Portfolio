@@ -111,7 +111,10 @@ class ReceiptSection:
             raise ValueError("model_source must be a string or None")
 
         if self.validation_status is not None:
-            status = str(self.validation_status).upper()
+            status = self.validation_status
+            if isinstance(status, ValidationStatus):
+                status = status.value
+            status = str(status).upper()
             allowed = {s.value for s in ValidationStatus}
             if status not in allowed:
                 raise ValueError(

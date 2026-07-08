@@ -385,3 +385,19 @@ def test_invalid_model_source_rejected():
             created_at=datetime(2023, 1, 1),
             model_source=123,
         )
+
+
+@pytest.mark.unit
+def test_validation_status_accepts_enum_instance():
+    """Passing the ValidationStatus enum (not just its .value) is normalized."""
+    from receipt_dynamo.constants import ValidationStatus
+
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="ITEMS",
+        line_ids=[1],
+        created_at=datetime(2023, 1, 1),
+        validation_status=ValidationStatus.PENDING,
+    )
+    assert s.validation_status == "PENDING"
