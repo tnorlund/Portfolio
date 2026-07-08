@@ -250,9 +250,11 @@ class LineEmbeddingWorkflow(ComponentResource):
                 },
                 "PollBatches": {
                     "Type": "Map",
-                    "Comment": "Poll batches in parallel (100 concurrent)",
+                    "Comment": "Poll batches in parallel — bounded to avoid "
+                    "OpenAI file-download rate limits / circuit breaker on "
+                    "large backlogs",
                     "ItemsPath": "$.poll_batches_data.batch_indices",
-                    "MaxConcurrency": 100,
+                    "MaxConcurrency": 5,
                     "Parameters": {
                         "batch_index.$": "$$.Map.Item.Value",
                         "manifest_s3_key.$": "$.poll_batches_data.manifest_s3_key",
