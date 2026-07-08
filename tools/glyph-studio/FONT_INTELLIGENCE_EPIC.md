@@ -198,6 +198,35 @@ unchanged — family fonts are *fitted skeletons*, never copied crops).
   merchant reaches an in-gate scorecard with no hand-drawn glyphs and no
   hand-tuned constants.
 
+## 6a. Downstream consumers of the section layer
+
+The section layer is pipeline infrastructure, not a font-only artifact. Build
+constraint that follows: **the M1 propagator must be callable per-receipt at
+runtime (a function taking one receipt's words → section posteriors), not only
+as a batch backfill script** — every consumer below except training calls it
+at upload/interaction time.
+
+Surveyed hooks (verified against the code where noted):
+
+| consumer | today's pain | section hook | unlocked by |
+|---|---|---|---|
+| Upload labeling (LayoutLM + LLM refine) | product labels confused by look-alikes anywhere on the page (footer promos as PRODUCT_NAME, payment amounts as LINE_TOTAL) | sections first, then label within section — items-only candidates for PRODUCT_NAME/QTY/UNIT_PRICE/LINE_TOTAL | M1 |
+| Label cleanup | historical mislabels invisible until they bite training | the M1 label-section consistency audit (already a deliverable) | M1 |
+| Product memoization | every upload relabels "ORG BAN 4011" from scratch | items-section words NN-match prior VALIDATED PRODUCT_NAME + MerchantCatalogItem for that merchant; novel items only → review | M1 |
+| `search_product_lines` (MCP) | *(verified)* queries the whole `lines` collection + regex price fallback — header/footer lines pollute spending analysis | section metadata on the collections → filter to `items` at query time | M1 |
+| Re-OCR targeting (`compute_reocr_region`) | *(verified)* caller must already know which line_ids are garbled | "items-section lines with low label confidence" becomes the principled region selector | M1 |
+| Merchant resolution backstop | Places failures → null-merchant uploads | storefront-section words NN-match against known merchants' storefront text | M1 |
+| Dedupe content grouping | (merchant, date, total) key depends on fragile field extraction | totals/date pulled from their known sections → reliable content keys; items-section fingerprint as a secondary signal | M1 |
+| Row grammar / item catalog ingest | name+price on different line_ids matched by y-row, poisoned by header/summary rows | grammar fenced to the items section's rows | M1 |
+| LayoutLM training | position is raw x/y only | section as input feature or auxiliary target; plus section-conditioned synthetic data with correct per-section faces | M1 + M4 |
+| Barcode handling | symbology varies by merchant, position unused | `barcode` section = prior on where barcodes live per merchant | M1 |
+| Scorecard / render QA | one density/height number per receipt | per-section metrics (totals-row density vs body) — sharper gates for multi-face rendering | M4 |
+| Synthesis v2 epic (#1058) | layout structure hand-coded | dense section labels are the training signal for learned layout/content generation | M1 (shared) |
+
+Ranked by leverage: upload labeling, product memoization, and the label audit
+are the near-term wins (all M1); per-section scorecards land with M4; the
+synthesis-v2 handoff is a data dependency, not code.
+
 ## 7. Risks & mitigations
 
 - **Section propagation accuracy.** Wrong sections poison face grouping.
