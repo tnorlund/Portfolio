@@ -395,7 +395,14 @@ def main():
         help="Apply even if the prod compaction chain looks unhealthy",
     )
     ap.add_argument("--limit-list", type=int, default=25, help="Ids to print per bucket")
+    ap.add_argument(
+        "--protect",
+        default="",
+        help="Comma-separated image_ids to NEVER delete (kept in prod even if "
+        "absent from dev). Use to hold prod-only images back for review.",
+    )
     args = ap.parse_args()
+    protected = {x.strip() for x in args.protect.split(",") if x.strip()}
 
     logger.info("Fingerprinting dev...")
     dev_client = DynamoClient(load_env("dev")["dynamodb_table_name"])
@@ -411,6 +418,13 @@ def main():
     prod_table = load_env("prod")["dynamodb_table_name"]
     safe_replace, guarded = guard_replaces(prod_table, p["replace"])
     p["replace"] = safe_replace
+
+    # Hold protected images back from deletion (kept in prod for later review).
+    if protected:
+        held = [i for i in p["delete"] if i in protected]
+        p["delete"] = [i for i in p["delete"] if i not in protected]
+        if held:
+            logger.warning(f"  PROTECTED from delete ({len(held)}): {held}")
 
     logger.info("=" * 60)
     logger.info("RECONCILE PLAN (dev → prod mirror)")

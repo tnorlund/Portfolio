@@ -33,12 +33,14 @@ NC='\033[0m'
 SKIP_SYNC=false
 SKIP_EMBED=false
 DRY_RUN=false
+PROTECT=""
 
 for arg in "$@"; do
   case "$arg" in
     --skip-sync)  SKIP_SYNC=true ;;
     --skip-embed) SKIP_EMBED=true ;;
     --dry-run)    DRY_RUN=true ;;
+    --protect=*)  PROTECT="${arg#*=}" ;;
     --help|-h)
       sed -n '/^# /p' "$0" | sed 's/^# //'
       exit 0
@@ -49,6 +51,10 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+# image_ids to hold back from deletion (kept in prod for later review)
+PROTECT_ARG=()
+[[ -n "$PROTECT" ]] && PROTECT_ARG=(--protect "$PROTECT")
 
 run() {
   if [[ "$DRY_RUN" == "true" ]]; then
@@ -75,9 +81,9 @@ else
   # compaction-queue health before writing (--skip-health-gate to override).
   echo -e "${GREEN}[2/3] Reconciling DynamoDB records (dev → prod mirror)...${NC}"
   if [[ "$DRY_RUN" == "true" ]]; then
-    run python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py"
+    run python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py" "${PROTECT_ARG[@]}"
   else
-    python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py" --no-dry-run
+    python3 "$SCRIPT_DIR/reconcile_dev_to_prod.py" --no-dry-run "${PROTECT_ARG[@]}"
   fi
   echo ""
 
