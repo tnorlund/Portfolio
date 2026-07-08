@@ -2507,13 +2507,15 @@ async def create_word_label_impl(
     """
     from datetime import datetime, timezone
 
-    from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
     try:
         normalized_label = label.upper()
-        normalized_status = str(validation_status).upper()
-        allowed = {s.value for s in ValidationStatus}
+        # Only the four workflow statuses are valid on create; a null/omitted
+        # arg falls back to VALID. NONE is deliberately excluded so a stray
+        # null can't silently persist a non-ground-truth row.
+        normalized_status = str(validation_status or "VALID").upper()
+        allowed = {"PENDING", "VALID", "INVALID", "NEEDS_REVIEW"}
         if normalized_status not in allowed:
             return {
                 "error": (
