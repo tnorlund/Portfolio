@@ -330,9 +330,8 @@ def _vote(samples, ch):
 
 
 def _collect(merchants, max_receipts):
-    from receipt_upload.font_analysis import load_raw_image_from_s3
-
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_upload.font_analysis import load_raw_image_from_s3
 
     client = DynamoClient(table_name=TABLE, region=REGION)
     # Pool receipts across every merchant that shares this font family (e.g.

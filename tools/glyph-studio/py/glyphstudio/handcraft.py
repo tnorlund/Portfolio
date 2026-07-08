@@ -181,12 +181,8 @@ def specs(W: float) -> dict:
                 "closed": False,
                 "nodes": [
                     node(L, CAP),
-                    node(
-                        Rt - 40, 875, h_in=(Rt - 40, CAP), smooth=True
-                    ),
-                    node(
-                        Rt - 40, 630, h_out=(Rt - 40, 520), smooth=True
-                    ),
+                    node(Rt - 40, 875, h_in=(Rt - 40, CAP), smooth=True),
+                    node(Rt - 40, 630, h_out=(Rt - 40, 520), smooth=True),
                     node(L, 520),
                 ],
             },
@@ -200,9 +196,7 @@ def specs(W: float) -> dict:
                 ],
             },
         ],
-        "0": [
-            circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0)
-        ],
+        "0": [circle(M, (CAP + BASE) / 2.0, Rt - M, (CAP - BASE) / 2.0)],
         "2": [
             {
                 "closed": False,
@@ -816,8 +810,8 @@ DEFAULT_W = {
     "g": 520,
     "n": 520,
     "m": 640,
-             "$": 540,
-             "|": 180,
+    "$": 540,
+    "|": 180,
     "q": 520,
     "j": 300,
     "!": 160,

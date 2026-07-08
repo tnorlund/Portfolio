@@ -301,11 +301,19 @@ _WILDFORK_RULES = [
     ("policy", re.compile(r"FEFO|returns|refunds|exchanges", re.I)),
     (
         "transaction",
-        re.compile(r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I),
+        re.compile(
+            r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I
+        ),
     ),
-    ("item_header", re.compile(r"^(Item|Description)\b|Qty|Uty|Price|Total", re.I)),
+    (
+        "item_header",
+        re.compile(r"^(Item|Description)\b|Qty|Uty|Price|Total", re.I),
+    ),
     ("total_line", re.compile(r"^\s*Total\b(?! Tax)|^\s*Subtotal\b", re.I)),
-    ("summary", re.compile(r"Total Tax|quantity purchased|items purchased", re.I)),
+    (
+        "summary",
+        re.compile(r"Total Tax|quantity purchased|items purchased", re.I),
+    ),
     (
         "payment",
         re.compile(
