@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, Mapping, Sequence
 
 import numpy as np
 from PIL import Image
-
 from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
     preserve_top_arc,
     thin_ink_mask,
@@ -52,13 +51,21 @@ CAP_RATIO_MAX = 0.95
 
 
 def _rendered_glyph(
-    font: "BitmapFont", ch: str, cap_px: int, thin: float
+    font: "BitmapFont",
+    ch: str,
+    cap_px: int,
+    thin: float,
+    condense: float = 1.0,
 ) -> np.ndarray | None:
     """The eroded ink mask for one glyph at the EXACT pixels the renderer stamps.
 
     Mirrors ``BitmapFont.glyph``: NEAREST scale to ``cap_px`` first, then
     ``thin_ink_mask`` -- the ordering matters, since erosion works on rendered-
-    size edges, not atlas-resolution edges.
+    size edges, not atlas-resolution edges. When ``condense < 1`` and the
+    merchant enables ``condense_glyphs`` (e.g. In-N-Out at 0.7), the renderer
+    resizes the thinned mask again along x before pasting (receipt_grid.py
+    draw_token_chars / draw_text_run); we replicate that so the measured density
+    matches the pixels actually stamped, not the un-condensed mask.
     """
     g = font.glyphs.get(ch)
     if g is None:
@@ -70,32 +77,66 @@ def _rendered_glyph(
         (w, h), Image.NEAREST
     )
     im = thin_ink_mask(im, thin, preserve_top=preserve_top_arc(ch))
+    if condense < 0.999:
+        im = im.resize(
+            (max(1, int(round(im.width * condense))), im.height),
+            Image.NEAREST,
+        )
     return np.asarray(im) > 0
 
 
 def _rendered_glyph_ink(
-    font: "BitmapFont", ch: str, cap_px: int, thin: float
+    font: "BitmapFont",
+    ch: str,
+    cap_px: int,
+    thin: float,
+    condense: float = 1.0,
 ) -> tuple[int, int] | None:
     """(ink_px, total_px) for one glyph at the rendered pixels."""
-    arr = _rendered_glyph(font, ch, cap_px, thin)
+    arr = _rendered_glyph(font, ch, cap_px, thin, condense)
     if arr is None:
         return None
     return int(arr.sum()), int(arr.size)
 
 
+def text_glyph_coverage(font: "BitmapFont", text: str) -> float:
+    """Fraction of ``text``'s drawn chars present in the atlas (1.0 = full).
+
+    The renderer stamps a TTF fallback for atlas misses rather than dropping
+    them (receipt_grid.py draw_token_chars/draw_text_run), so a measurer that
+    ignores misses is only unbiased at full coverage. In practice the publish
+    gate requires 94/94 coverage, so calibration runs on complete fonts -- this
+    lets a caller assert that rather than assume it.
+    """
+    chars = [c for c in text if not c.isspace()]
+    if not chars:
+        return 1.0
+    present = sum(1 for c in chars if c in font.glyphs)
+    return present / len(chars)
+
+
 def text_ink_density(
-    font: "BitmapFont", text: str, cap_px: int, thin: float
+    font: "BitmapFont",
+    text: str,
+    cap_px: int,
+    thin: float,
+    condense: float = 1.0,
 ) -> float | None:
-    """Frequency-weighted ink fraction of ``text`` rendered at ``cap_px``/``thin``.
+    """Frequency-weighted ink fraction of ``text`` rendered at cap_px/thin.
 
     Sums ink and area over each drawn glyph weighted by its count in ``text``
     (spaces skipped) -- the per-glyph density the renderer would stamp, before
-    the paper-texture pass. ``None`` if no glyph in ``text`` is in the atlas.
+    the paper-texture pass. ``condense`` replicates the ``condense_glyphs``
+    post-thin x-resize for merchants that enable it. ``None`` if no glyph in
+    ``text`` is in the atlas. NOTE: atlas misses are skipped, so at less than
+    full coverage this under-counts the TTF-fallback ink the renderer stamps --
+    check ``text_glyph_coverage`` (the 94/94 publish gate normally guarantees
+    it is 1.0).
     """
     counts = Counter(c for c in text if not c.isspace())
     ink = area = 0
     for ch, n in counts.items():
-        res = _rendered_glyph_ink(font, ch, cap_px, thin)
+        res = _rendered_glyph_ink(font, ch, cap_px, thin, condense)
         if res is None:
             continue
         ink += res[0] * n
@@ -115,14 +156,24 @@ def thin_response_curve(
     text: str,
     cap_px: int,
     thins: Sequence[float] = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5),
+    condense: float = 1.0,
 ) -> list[tuple[float, float]]:
     """[(thin, density)] over ``thins`` -- the full response in one cheap pass."""
     out = []
     for t in thins:
-        d = text_ink_density(font, text, cap_px, t)
+        d = text_ink_density(font, text, cap_px, t, condense)
         if d is not None:
             out.append((float(t), d))
     return out
+
+
+# ``thin_ink_mask`` recomputes drops from the ORIGINAL glyph at
+# period = round(1/thin), so density is a step function of thin AND is NOT
+# guaranteed monotone across period boundaries (a period 3->2 change can re-add
+# pixels for sparse glyphs). Distinct behavior therefore lives only at the
+# period representatives; enumerate them and pick the closest, rather than
+# bisecting on a false monotonicity assumption.
+_SOLVE_THINS = (0.0,) + tuple(round(1.0 / p, 4) for p in range(2, 21))
 
 
 def solve_thin_for_density(
@@ -131,40 +182,31 @@ def solve_thin_for_density(
     cap_px: int,
     target_density: float,
     *,
-    lo: float = 0.0,
-    hi: float = SATURATION_THIN,
-    tol: float = 1e-3,
+    condense: float = 1.0,
+    thins: Sequence[float] = _SOLVE_THINS,
 ) -> tuple[float, float]:
-    """Solve for the ``thin`` whose synth density equals ``target_density``.
+    """Solve for the ``thin`` whose synth density is closest to ``target``.
 
-    Density falls monotonically in thin, so this interpolates the (cheap)
-    response curve rather than re-rendering. Returns ``(thin, achieved_density)``,
-    clamped to [lo, hi]: if even ``lo`` (no erosion) is already at/below target,
-    return ``lo`` (can't add ink); if ``hi`` (saturation) is still above target,
-    return ``hi`` (can't erode more). ``achieved_density`` lets the caller see
-    the residual when the target is unreachable.
+    Evaluates the (cheap) density at each ``thin`` -- one per distinct
+    ``thin_ink_mask`` period plateau -- and returns the ``(thin,
+    achieved_density)`` closest to ``target_density``. This makes no
+    monotonicity assumption (thinning is a non-monotone step function across
+    period boundaries), and among equally-close plateaus prefers the SMALLEST
+    thin so we never over-claim erosion. Ties on density -> least thin.
     """
-    d_lo = text_ink_density(font, text, cap_px, lo)
-    d_hi = text_ink_density(font, text, cap_px, hi)
-    if d_lo is None or d_hi is None:
-        raise ValueError("no atlas glyphs in text; cannot measure density")
-    if d_lo <= target_density:
-        return lo, d_lo
-    if d_hi >= target_density:
-        return hi, d_hi
-    for _ in range(40):
-        mid = (lo + hi) / 2.0
-        d = text_ink_density(font, text, cap_px, mid)
+    best: tuple[float, float] | None = None
+    for t in sorted(set(float(x) for x in thins)):
+        d = text_ink_density(font, text, cap_px, t, condense)
         if d is None:
-            break
-        if abs(d - target_density) <= tol:
-            return mid, d
-        if d > target_density:
-            lo = mid  # too dense -> erode more
-        else:
-            hi = mid
-    mid = (lo + hi) / 2.0
-    return mid, text_ink_density(font, text, cap_px, mid) or target_density
+            continue
+        if (
+            best is None
+            or abs(d - target_density) < abs(best[1] - target_density) - 1e-12
+        ):
+            best = (t, d)
+    if best is None:
+        raise ValueError("no atlas glyphs in text; cannot measure density")
+    return best
 
 
 # --------------------------------------------------------------------------
