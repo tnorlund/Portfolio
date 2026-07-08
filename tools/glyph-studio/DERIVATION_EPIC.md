@@ -1,5 +1,14 @@
 # Epic: Measured font calibration (derive the render knobs, once, at mint time)
 
+> **Status: COMPLETE** (2026-07-08). M0 pins shipped (#1061 + crash fixes
+> #1060); M1-M4 solvers + `calibrate_merchant` shipped (#1059); validation in
+> VALIDATION.md (all structural claims confirmed on real atlases; the cheap
+> measurer tracks the scorecard at CV 0.37 %); M5 retrofit diff + CI regression
+> lock in RETROFIT.md and
+> `receipt_dynamo/tests/unit/test_merchant_profiles_contract.py`.
+> Derived-correction adoption (A/B-gated) and the railed/floor-bound merchants
+> carry forward into FONT_INTELLIGENCE_EPIC.md.
+
 **Thesis.** Today a merchant font is minted by measurement (glyphs, pitch,
 stylemap) but *calibrated by hand* — a human or agent eyeballs `weight`,
 `ocr_cap_height_ratio`, and `bitmap_thin` across many slow renders until the
