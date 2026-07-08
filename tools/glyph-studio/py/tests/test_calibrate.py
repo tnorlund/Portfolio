@@ -360,3 +360,68 @@ def test_solve_cap_ratio_max_font_ceiling_binds(font):
         max_font_px=24.0,
     )
     assert h_ratio == pytest.approx(24.0 / 30.0, abs=1e-3)
+
+
+def test_renderer_cap_px_floor_and_ceiling():
+    # round(0.75*40)=30 unclamped.
+    assert calibrate.renderer_cap_px(0.75, 40.0) == 30
+    # floor: base_cap round(50*0.8)=40 -> round(40*0.9)=36 > 30
+    assert (
+        calibrate.renderer_cap_px(
+            0.75, 40.0, font_px=50.0, bitmap_cap_ratio=0.8
+        )
+        == 36
+    )
+    # ceiling: max_font_px 24 < 30
+    assert calibrate.renderer_cap_px(0.75, 40.0, max_font_px=24.0) == 24
+
+
+# --- M4: calibrate_merchant (one-call orchestration) ---
+
+
+def test_calibrate_merchant_emits_full_block(font):
+    # Words built only from atlas glyphs (A,B,0) so coverage is 1.0; plus a
+    # sub-2-char word and a numeric caption the scorecard filter must drop.
+    receipts = [
+        {"words": [{"text": "AB0"}, {"text": "BA"}, {"text": "A"}]},
+        {"words": [{"text": "0123456789012345"}, {"text": "AAB0"}]},
+    ]
+    words = calibrate.scorecard_words(
+        [w for r in receipts for w in r["words"]]
+    )
+    # Target the un-weighted un-eroded density -> reachable at weight 0.
+    target = calibrate.median_word_density(font, words, 30, 0.0)
+    out = calibrate.calibrate_merchant(
+        font,
+        receipts,
+        real_cap_height_px=30.0,
+        median_ocr_word_height_px=40.0,
+        target_density=target,
+    )
+    assert set(out) >= {
+        "ocr_cap_height_ratio",
+        "weight_iters",
+        "bitmap_thin",
+        "cap_px",
+        "projected",
+        "coverage",
+        "provenance",
+    }
+    assert out["ocr_cap_height_ratio"] == pytest.approx(0.75, abs=1e-3)
+    assert out["cap_px"] == 30  # round(0.75 * 40)
+    assert out["coverage"] == 1.0
+    assert 0.0 <= out["bitmap_thin"] <= calibrate.SATURATION_THIN
+    assert out["weight_iters"] == 0  # target = un-weighted density
+    assert out["projected"]["density"] == pytest.approx(target, abs=1e-6)
+    assert out["provenance"].endswith("2 receipts")
+
+
+def test_calibrate_merchant_rejects_empty_corpus(font):
+    with pytest.raises(ValueError):
+        calibrate.calibrate_merchant(
+            font,
+            [{"words": [{"text": "A"}]}],  # only sub-2-char -> filtered out
+            real_cap_height_px=30.0,
+            median_ocr_word_height_px=40.0,
+            target_density=0.3,
+        )

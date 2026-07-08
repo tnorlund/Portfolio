@@ -603,6 +603,33 @@ def cap_glyph_height(
     return float(heights[len(heights) // 2])
 
 
+def renderer_cap_px(
+    cap_ratio: float,
+    median_ocr_word_height_px: float,
+    *,
+    font_px: float | None = None,
+    bitmap_cap_ratio: float | None = None,
+    max_font_px: float | None = None,
+) -> int:
+    """The ``cap_px`` the renderer stamps, reproducing _derive_bitmap_metrics.
+
+    ``measured_cap = round(median * cap_ratio)``, floored at
+    ``round(base_cap * 0.9)`` (``base_cap = round(font_px * bitmap_cap_ratio)``,
+    the small-text floor) and capped at ``max_font_px`` (the large-text ceiling).
+    Floor/ceiling only apply when their inputs are given; otherwise this is the
+    unclamped rounded linear cap_px. Shared by ``solve_cap_ratio`` (h_ratio
+    projection) and ``calibrate_merchant`` (so the density solve runs at the
+    exact size production renders).
+    """
+    cap_px = int(round(cap_ratio * median_ocr_word_height_px))
+    if font_px is not None and bitmap_cap_ratio is not None:
+        base_cap = max(6, int(round(float(font_px) * float(bitmap_cap_ratio))))
+        cap_px = max(int(round(base_cap * 0.9)), cap_px)  # small-text floor
+    if max_font_px is not None:
+        cap_px = min(max(6, int(max_font_px)), cap_px)  # large-text ceiling
+    return cap_px
+
+
 def solve_cap_ratio(
     font: "BitmapFont",
     real_cap_height_px: float,
@@ -649,12 +676,113 @@ def solve_cap_ratio(
     ratio = target_cap_px / median_ocr_word_height_px
     clamped = max(CAP_RATIO_MIN, min(CAP_RATIO_MAX, ratio))
     # Reproduce the renderer's cap_px so the projection matches what it stamps.
-    cap_px = int(round(clamped * median_ocr_word_height_px))
-    if font_px is not None and bitmap_cap_ratio is not None:
-        base_cap = max(6, int(round(float(font_px) * float(bitmap_cap_ratio))))
-        cap_px = max(int(round(base_cap * 0.9)), cap_px)  # small-text floor
-    if max_font_px is not None:
-        cap_px = min(max(6, int(max_font_px)), cap_px)  # large-text ceiling
+    cap_px = renderer_cap_px(
+        clamped,
+        median_ocr_word_height_px,
+        font_px=font_px,
+        bitmap_cap_ratio=bitmap_cap_ratio,
+        max_font_px=max_font_px,
+    )
     projected_synth = slope * cap_px
     projected_h_ratio = projected_synth / real_cap_height_px
     return clamped, projected_h_ratio
+
+
+# --------------------------------------------------------------------------
+# M4: calibrate_merchant -- one call emits the full calibrated typography block.
+#
+# Composes the three solves (all render-free) into the block ADD_MERCHANT.md
+# step 7 used to reach by eye: ocr_cap_height_ratio (M2), then weight+bitmap_thin
+# jointly (M3) at the exact cap_px the renderer will stamp. The REAL-side
+# measurements (cap height, median OCR word height, target density) are measured
+# once from the scans by the caller/scorecard and injected -- this stays pure and
+# render-free; the render-time solver is only needed for the M5 validation pass.
+# --------------------------------------------------------------------------
+
+
+def calibrate_merchant(
+    font: "BitmapFont",
+    receipts: "Sequence[Mapping[str, object]]",
+    *,
+    real_cap_height_px: float,
+    median_ocr_word_height_px: float,
+    target_density: float,
+    condense: float = 1.0,
+    condense_glyphs: bool = False,
+    weight_iters_options: "Sequence[int]" = (0, 1, 2, 3, 4),
+    cap_probe_thin: float = 0.0,
+    font_px: "float | None" = None,
+    bitmap_cap_ratio: "float | None" = None,
+    max_font_px: "float | None" = None,
+    provenance: "str | None" = None,
+) -> dict:
+    """Derive ``{ocr_cap_height_ratio, weight_iters, bitmap_thin}`` in one call.
+
+    ``receipts`` supplies the corpus (each item is an OCR receipt dict with a
+    ``words`` list of ``{"text": ...}``); it is filtered through
+    ``scorecard_words`` so calibration measures the same tokens the scorecard
+    scores. The real-side scalars are measured once from the scans and injected:
+
+    * ``real_cap_height_px`` -- the scorecard's real_h_med (real cap ink height).
+    * ``median_ocr_word_height_px`` -- median OCR word-box height (the renderer's
+      ``cap_px = round(that * ratio)`` input).
+    * ``target_density`` -- the real receipts' median per-word density (the
+      value the synth density must match; scorecard density_ratio -> 1.0).
+
+    Returns a dict with the solved knobs plus ``projected`` (h_ratio + achieved
+    density the cheap model predicts), ``cap_px``, ``coverage`` (assert 1.0 for
+    an unbiased solve; see ``text_glyph_coverage``), and ``provenance``. The
+    weight is reported as ``weight_iters`` (dilation steps) -- mapping it to the
+    profile's ``weight`` float is the mint-specific step done at M5.
+
+    Raises ValueError if the corpus has no scorecard-eligible words with atlas
+    glyphs, or the atlas has no cap-reference glyphs.
+    """
+    words = scorecard_words(
+        [w for r in receipts for w in (r.get("words") or [])]
+    )
+    if not words:
+        raise ValueError("no scorecard-eligible words in receipts")
+
+    # M2: cap-height ratio, then the exact cap_px the renderer will stamp.
+    ratio, h_ratio = solve_cap_ratio(
+        font,
+        real_cap_height_px,
+        median_ocr_word_height_px,
+        thin=cap_probe_thin,
+        font_px=font_px,
+        bitmap_cap_ratio=bitmap_cap_ratio,
+        max_font_px=max_font_px,
+    )
+    cap_px = renderer_cap_px(
+        ratio,
+        median_ocr_word_height_px,
+        font_px=font_px,
+        bitmap_cap_ratio=bitmap_cap_ratio,
+        max_font_px=max_font_px,
+    )
+
+    # M3: weight + bitmap_thin jointly, measured at that cap_px.
+    eff_condense = effective_condense(condense, condense_glyphs)
+    density_at = weight_density_fn(font, words, cap_px, condense=eff_condense)
+    weight_iters, thin, achieved = solve_weight_and_thin(
+        density_at,
+        target_density,
+        weight_iters_options=weight_iters_options,
+    )
+
+    coverage = text_glyph_coverage(font, "".join(words))
+    n = len(list(receipts))
+    return {
+        "ocr_cap_height_ratio": ratio,
+        "weight_iters": weight_iters,
+        "bitmap_thin": thin,
+        "cap_px": cap_px,
+        "projected": {
+            "h_ratio": h_ratio,
+            "density": achieved,
+            "target_density": target_density,
+        },
+        "coverage": coverage,
+        "provenance": provenance or f"fleet-derived over {n} receipts",
+    }
