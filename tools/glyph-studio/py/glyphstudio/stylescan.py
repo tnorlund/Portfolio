@@ -23,7 +23,10 @@ from statistics import median
 
 import numpy as np
 
-from .sections import normalize_stylescan_section
+try:
+    from .sections import normalize_stylescan_section
+except ImportError:  # bare-script invocation: python glyphstudio/stylescan.py
+    from sections import normalize_stylescan_section
 
 _WORKTREE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
@@ -93,10 +96,10 @@ _BARCODE_RE = re.compile(r"^\d{10,}$")
 
 
 _COSTCO_RULES = [
-    (
-        "self_checkout",
-        re.compile(r"SELF-CHECKOUT|THANK YOU|Please Come Again", re.I),
-    ),
+    # Just the lane header. "THANK YOU"/"Please Come Again" are the footer
+    # trailer and are handled by the footer rule below (else this first rule
+    # shadows it and folds the footer into storefront).
+    ("self_checkout", re.compile(r"SELF-CHECKOUT", re.I)),
     (
         "member",
         re.compile(r"^Member|^\d{12}$|Bottom of Basket|BOB Count", re.I),
@@ -114,7 +117,12 @@ _COSTCO_RULES = [
             re.I,
         ),
     ),
-    ("footer", re.compile(r"OP#|Name:|Whse:|Trm:|Trn:|thank you", re.I)),
+    (
+        "footer",
+        re.compile(
+            r"OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again", re.I
+        ),
+    ),
 ]
 _VONS_RULES = [
     ("store_header", re.compile(r"VONS|Safeway|Store\s?#|Main Street", re.I)),
@@ -307,9 +315,13 @@ _WILDFORK_RULES = [
             r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I
         ),
     ),
+    # Column header row (Item/Description/Qty/Price). "Total" dropped: it
+    # also matched standalone "Total"/"Total Tax" lines, which then folded to
+    # items instead of total_line/summary. The later total_line/summary rules
+    # bind those correctly.
     (
         "item_header",
-        re.compile(r"^(Item|Description)\b|Qty|Uty|Price|Total", re.I),
+        re.compile(r"^(Item|Description)\b|Qty|Uty|Price", re.I),
     ),
     ("total_line", re.compile(r"^\s*Total\b(?! Tax)|^\s*Subtotal\b", re.I)),
     (

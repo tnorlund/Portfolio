@@ -99,14 +99,20 @@ def main(argv=None) -> int:
 
     client = DynamoClient(args.table)
 
-    # enumerate receipts for this merchant
+    # enumerate receipts for this merchant (stop early once --limit is met so a
+    # small sample of a large merchant doesn't page the whole merchant)
     pairs, last_key = [], None
     while True:
+        page_size = 1000
+        if args.limit:
+            page_size = min(1000, args.limit - len(pairs))
         places, last_key = client.get_receipt_places_by_merchant(
-            merchant_name=args.merchant_name, limit=1000, last_evaluated_key=last_key
+            merchant_name=args.merchant_name,
+            limit=page_size,
+            last_evaluated_key=last_key,
         )
         pairs.extend((p.image_id, p.receipt_id) for p in places)
-        if last_key is None:
+        if last_key is None or (args.limit and len(pairs) >= args.limit):
             break
     if args.limit:
         pairs = pairs[: args.limit]

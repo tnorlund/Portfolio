@@ -3,9 +3,12 @@
 Pure functions over synthetic words — no Dynamo, no pixels.
 """
 
+import pytest
+
 from glyphstudio.section_seeds import (
     SeedReport,
     SeedWord,
+    known_stylescan_slugs,
     line_section,
     merchant_slug,
     seed_receipt,
@@ -49,6 +52,49 @@ def test_line_section_uses_stylescan_rules():
     # a priced unruled line -> items
     item = [SeedWord(9, 0, "BANANAS"), SeedWord(9, 1, "1.29")]
     assert line_section(item, "sprouts") == "items"
+
+
+def test_line_section_rejects_unknown_slug():
+    line = [SeedWord(0, 0, "anything")]
+    with pytest.raises(ValueError):
+        line_section(line, "not_a_merchant")
+    with pytest.raises(ValueError):
+        seed_receipt([SeedWord(0, 0, "x")], "typo_slug")
+    # sanity: the nine calibrated merchants are all known
+    assert {"sprouts", "costco", "vons", "traderjoes", "cvs", "innout",
+            "target", "wildfork", "homedepot"} <= known_stylescan_slugs()
+
+
+def test_stylescan_overlap_fixes():
+    # Costco thank-you footer no longer folds to storefront via self_checkout
+    assert line_section([SeedWord(0, 0, "THANK YOU")], "costco") == "footer"
+    assert (
+        line_section([SeedWord(0, 0, "Please"), SeedWord(0, 1, "Come"),
+                      SeedWord(0, 2, "Again")], "costco")
+        == "footer"
+    )
+    # ...but the real lane header still classifies as storefront
+    assert (
+        line_section([SeedWord(0, 0, "SELF-CHECKOUT")], "costco")
+        == "storefront"
+    )
+    # Wild Fork standalone total no longer folds to items via item_header
+    assert (
+        line_section([SeedWord(0, 0, "Total"), SeedWord(0, 1, "45.00")],
+                     "wildfork")
+        == "total_line"
+    )
+    assert (
+        line_section([SeedWord(0, 0, "Total"), SeedWord(0, 1, "Tax"),
+                      SeedWord(0, 2, "3.15")], "wildfork")
+        == "summary"
+    )
+    # ...but the column header row still classifies to items
+    assert (
+        line_section([SeedWord(0, 0, "Item"), SeedWord(0, 1, "Qty"),
+                      SeedWord(0, 2, "Price")], "wildfork")
+        == "items"
+    )
 
 
 def test_seed_receipt_label_wins_over_stylescan():

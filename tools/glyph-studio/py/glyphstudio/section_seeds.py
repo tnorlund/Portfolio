@@ -58,6 +58,13 @@ def merchant_slug(merchant_name: str) -> Optional[str]:
     return MERCHANT_SLUGS.get(merchant_name.strip().lower())
 
 
+def known_stylescan_slugs() -> frozenset[str]:
+    """The slugs stylescan has rules for (keys of ``_MERCHANT_RULES``)."""
+    from .stylescan import _MERCHANT_RULES
+
+    return frozenset(_MERCHANT_RULES)
+
+
 @dataclass(frozen=True)
 class SeedWord:
     """The minimal per-word record the report needs (adapter builds these)."""
@@ -114,9 +121,19 @@ def _line_text_and_price(words: Sequence[SeedWord]) -> tuple[str, bool]:
 
 
 def line_section(words: Sequence[SeedWord], merchant: str) -> Optional[str]:
-    """Canonical section for a line of words via stylescan's rule engine."""
+    """Canonical section for a line of words via stylescan's rule engine.
+
+    Raises ValueError for a slug stylescan has no rules for — otherwise
+    ``_classify`` silently falls back to the Sprouts rules and returns
+    plausible-but-wrong sections for the wrong merchant.
+    """
     from .stylescan import _classify
 
+    if merchant not in known_stylescan_slugs():
+        raise ValueError(
+            f"unknown stylescan slug {merchant!r}; "
+            f"known: {sorted(known_stylescan_slugs())}"
+        )
     text, has_price = _line_text_and_price(words)
     raw = _classify(text, has_price, merchant)
     return normalize_stylescan_section(raw)
@@ -131,8 +148,13 @@ def seed_receipt(
 
     ``merchant`` is the stylescan slug (e.g. ``"costco"``). Returns one
     :class:`WordSeed` per input word, source A (labels) winning over B
-    (stylescan) for ``section_final``.
+    (stylescan) for ``section_final``. Raises ValueError for an unknown slug.
     """
+    if merchant not in known_stylescan_slugs():
+        raise ValueError(
+            f"unknown stylescan slug {merchant!r}; "
+            f"known: {sorted(known_stylescan_slugs())}"
+        )
     words = list(words)
     lines: dict[int, list[SeedWord]] = {}
     for w in words:
