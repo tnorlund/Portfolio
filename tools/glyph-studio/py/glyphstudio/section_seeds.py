@@ -257,3 +257,124 @@ class SeedReport:
             },
             "disagreements_sample": self.disagreements,
         }
+
+
+# --- aggregation to ReceiptSection specs (line-level persistence) ----------
+#
+# ReceiptSection is line-level: one row per (receipt, section) holding its
+# line_ids. Words inherit their line's section, so we collapse the per-word
+# WordSeeds to a single section + confidence per line, then group lines by
+# section. Pure data (no Dynamo) — the write CLI turns these specs into rows.
+
+
+@dataclass(frozen=True)
+class LineSection:
+    line_id: int
+    section: str  # canonical section
+    confidence: float
+
+
+@dataclass(frozen=True)
+class SectionSpec:
+    """One ReceiptSection row's worth of data."""
+
+    section_type: str  # SectionType value (canonical.upper())
+    line_ids: tuple[int, ...]
+    confidence: float
+
+
+def _line_confidence(
+    chosen: str,
+    from_label: bool,
+    label_votes: Sequence[str],
+    style: Optional[str],
+) -> float:
+    """Confidence for a line's chosen section.
+
+    Hand labels are ground truth, so a label-chosen line starts at 0.70 and is
+    lifted by (a) internal label agreement and (b) stylescan corroboration —
+    up to 1.0. A rule-only line (no labels, stylescan alone) is a heuristic:
+    a flat 0.60. This ordering (label > rule) is deliberate; M1 QA recalibrates
+    it from measured per-source precision.
+    """
+    if not from_label:
+        return 0.60  # rule-only, unverified by any label
+    frac = sum(1 for v in label_votes if v == chosen) / len(label_votes)
+    conf = 0.70 + 0.15 * frac + (0.15 if style == chosen else 0.0)
+    return round(min(1.0, conf), 4)
+
+
+def aggregate_line_sections(
+    seeds: Sequence[WordSeed],
+    label_only: bool = False,
+) -> list[LineSection]:
+    """Collapse per-word seeds to one (section, confidence) per line.
+
+    **Labels win the line** — consistent with the per-word ``seed_receipt``
+    policy (source A over B). If any word on the line carries a label-derived
+    section, the line takes the majority of those (hand-validated ground
+    truth); otherwise it falls back to the line-level stylescan rule. A line
+    with neither is dropped.
+
+    ``label_only=True`` additionally withholds rule-only lines (no labels) —
+    used for low-agreement merchants until their disagreements are reviewed.
+    """
+    by_line: dict[int, list[WordSeed]] = {}
+    for s in seeds:
+        by_line.setdefault(s.line_id, []).append(s)
+
+    out: list[LineSection] = []
+    for line_id, ws in sorted(by_line.items()):
+        style = next(
+            (w.section_style for w in ws if w.section_style is not None), None
+        )
+        label_votes = [
+            w.section_label for w in ws if w.section_label is not None
+        ]
+        if label_votes:
+            chosen = Counter(label_votes).most_common(1)[0][0]
+            from_label = True
+        elif style is not None:
+            if label_only:
+                continue  # withhold rule-only line
+            chosen, from_label = style, False
+        else:
+            continue  # no section for this line
+        out.append(
+            LineSection(
+                line_id=line_id,
+                section=chosen,
+                confidence=_line_confidence(
+                    chosen, from_label, label_votes, style
+                ),
+            )
+        )
+    return out
+
+
+def receipt_section_specs(
+    seeds: Sequence[WordSeed], label_only: bool = False
+) -> list[SectionSpec]:
+    """Group a receipt's line sections into per-(receipt, section) specs.
+
+    section_type is the ``SectionType`` value (canonical upper-cased);
+    confidence is the mean of the section's member-line confidences.
+    ``label_only`` withholds stylescan-only lines (see aggregate_line_sections).
+    """
+    lines = aggregate_line_sections(seeds, label_only=label_only)
+    by_section: dict[str, list[LineSection]] = {}
+    for ls in lines:
+        by_section.setdefault(ls.section, []).append(ls)
+
+    specs: list[SectionSpec] = []
+    for section, members in sorted(by_section.items()):
+        line_ids = tuple(sorted({m.line_id for m in members}))
+        conf = round(sum(m.confidence for m in members) / len(members), 4)
+        specs.append(
+            SectionSpec(
+                section_type=section.upper(),
+                line_ids=line_ids,
+                confidence=conf,
+            )
+        )
+    return specs

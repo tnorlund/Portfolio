@@ -159,3 +159,109 @@ def test_report_records_disagreement():
     assert rep.both_agree == 0
     assert rep.disagreements and rep.disagreements[0]["label_section"] == "payment"
     assert rep.disagreements[0]["style_section"] == "summary"
+
+
+# --- aggregation to ReceiptSection specs ----------------------------------
+
+from glyphstudio.section_seeds import (  # noqa: E402
+    WordSeed,
+    aggregate_line_sections,
+    receipt_section_specs,
+)
+
+
+def _w(line_id, word_id, label=None, style=None):
+    final = label if label is not None else style
+    source = "label" if label is not None else ("stylescan" if style else None)
+    return WordSeed(
+        line_id=line_id,
+        word_id=word_id,
+        text="x",
+        section_label=label,
+        section_style=style,
+        section_final=final,
+        source=source,
+    )
+
+
+def test_aggregate_line_stylescan_only_base_confidence():
+    seeds = [_w(1, 0, style="items"), _w(1, 1, style="items")]
+    lines = aggregate_line_sections(seeds)
+    assert len(lines) == 1
+    assert lines[0].section == "items"
+    assert lines[0].confidence == 0.60  # rule-only, no label corroboration
+
+
+def test_aggregate_line_label_corroboration_lifts_confidence():
+    # stylescan says summary; both labeled words agree -> 0.60 + 0.35*1.0
+    seeds = [
+        _w(2, 0, label="summary", style="summary"),
+        _w(2, 1, label="summary", style="summary"),
+    ]
+    lines = aggregate_line_sections(seeds)
+    assert lines[0].section == "summary"
+    assert lines[0].confidence == 1.0  # label + stylescan agree
+
+
+def test_aggregate_line_label_only_when_no_stylescan():
+    seeds = [_w(3, 0, label="total_line"), _w(3, 1, label="total_line")]
+    lines = aggregate_line_sections(seeds)
+    assert lines[0].section == "total_line"
+    # label-chosen, no stylescan corroboration: 0.70 + 0.15
+    assert lines[0].confidence == 0.85
+
+
+def test_aggregate_line_dropped_when_no_section():
+    seeds = [_w(4, 0)]
+    assert aggregate_line_sections(seeds) == []
+
+
+def test_receipt_section_specs_groups_and_uppercases():
+    seeds = [
+        _w(1, 0, style="items"),
+        _w(2, 0, style="items"),
+        _w(3, 0, label="total_line", style="total_line"),
+    ]
+    specs = {s.section_type: s for s in receipt_section_specs(seeds)}
+    assert set(specs) == {"ITEMS", "TOTAL_LINE"}
+    assert specs["ITEMS"].line_ids == (1, 2)
+    assert specs["TOTAL_LINE"].line_ids == (3,)
+    # confidence is the mean of member-line confidences
+    assert 0.0 < specs["ITEMS"].confidence <= 1.0
+
+
+def test_label_only_withholds_stylescan_only_lines():
+    seeds = [
+        _w(1, 0, style="items"),                 # stylescan-only -> withheld
+        _w(2, 0, label="total_line", style="total_line"),  # corroborated -> kept
+        _w(3, 0, label="summary"),               # label-only -> kept
+    ]
+    full = {s.section_type for s in receipt_section_specs(seeds)}
+    lo = {s.section_type for s in receipt_section_specs(seeds, label_only=True)}
+    assert full == {"ITEMS", "TOTAL_LINE", "SUMMARY"}
+    assert lo == {"TOTAL_LINE", "SUMMARY"}  # ITEMS (stylescan-only) withheld
+
+
+def test_labels_win_the_line_on_disagreement():
+    """A labeled word overrides the stylescan section for its whole line
+    (consistent with per-word label-wins). This is the fix for line sections
+    contradicting hand labels."""
+    # word labeled total_line sits on a line stylescan reads as items
+    seeds = [_w(1, 0, label="total_line", style="items")]
+    lines = aggregate_line_sections(seeds)
+    assert lines[0].section == "total_line"  # label wins, not "items"
+    # label-chosen, stylescan disagrees -> 0.70 + 0.15*1.0 (no style bonus)
+    assert lines[0].confidence == 0.85
+
+
+def test_label_only_has_no_rule_only_rows():
+    """label_only lines are all label-chosen -> confidence >= 0.70, never the
+    0.60 rule-only floor (Fable's invariant)."""
+    seeds = [
+        _w(1, 0, style="items"),                       # rule-only -> withheld
+        _w(2, 0, label="summary", style="items"),      # disagreement, label wins
+        _w(3, 0, label="footer"),                      # label-only
+    ]
+    lines = aggregate_line_sections(seeds, label_only=True)
+    assert all(ls.confidence >= 0.70 for ls in lines), lines
+    assert {ls.section for ls in lines} == {"summary", "footer"}
