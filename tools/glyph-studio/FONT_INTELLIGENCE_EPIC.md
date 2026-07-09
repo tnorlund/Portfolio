@@ -204,7 +204,14 @@ unchanged — family fonts are *fitted skeletons*, never copied crops).
   (b) diagonals via **family-level handcraft** (one skeleton set per family,
   reused across members). *Exit (unchanged in spirit):* the railed merchants
   come off the rails on the standing harness `py/m3_acceptance.py`; anti-copy
-  + coverage gates hold.
+  + coverage gates hold. **Validated same day** (M3_FINDINGS.md addendum):
+  skeleton-protected stroke normalization un-rails BOTH railed merchants (WF
+  interior thin 0.333, density 0.137 vs 0.135; Costco interior 0.333, 0.200
+  vs 0.187; full coverage), and the derived parametric weight (WF `1.4 →
+  0.60`, closed-form from stylescan stroke/cap) lands 0.99× target in one
+  step. Root causes differ (WF stroke-width, Costco shape-driven) — the
+  density-targeted bisection is the general form. Visual A/B still required
+  before adoption.
 - **M4 — Multi-face rendering.** Renderer reads the map; per-word face
   stamping. *Exit:* a Costco receipt renders bold totals + regular body from
   family fonts and the production scorecard is in-gate (h/wpc/density within

@@ -82,6 +82,64 @@ evidence" treated the offset as removable noise; it is signal.
    `(merchant, section) → (family, face)` map (M2, shipped) and does not
    depend on pooled atlases.
 
+## Addendum (same day) — the replacement mechanism VALIDATED: acceptance PASS
+
+Following the refutation, the density mechanism was isolated and the fix
+passes the standing harness on **both** railed merchants.
+
+### Diagnosis: two root causes, one cure
+
+| merchant | real stroke/cap | shipped atlas stroke/cap | root cause |
+|---|--:|--:|---|
+| Wild Fork | **0.044** (4.1px @ 92px caps) | 0.100 | strokes **2.25× too wide** — mint-pipeline fattening (±3px jitter + VOTE 0.45 on the soft consensus skirts every edge; the crops themselves carry the true width) |
+| Costco | **0.106** | 0.100 (already correct) | shape/coverage-driven excess (blocky chart-derived letterforms; renders tall) — **not** stroke width |
+
+The chessboard effect explains why nothing else worked: hard-threshold
+thinning (the VOTE sweep) fragments strokes before reaching target
+(coverage 0.999→0.597), and render-time `bitmap_thin` saturates. The fix
+thins in **distance space**: peel boundary pixels but never remove the
+`zhang_suen` skeleton — strokes thin without ever fragmenting.
+
+### Result — skeleton-protected stroke normalization, scored by the harness
+
+| merchant | candidate | thin | verdict | density vs target | coverage |
+|---|---|--:|---|---|--:|
+| Wild Fork | solo shipped | 0.5 | CEILING-RAILED | 0.335 / 0.135 | 0.999 |
+| Wild Fork | **erode2 (2px)** | **0.333** | **interior** | **0.137 / 0.135** | **0.999** |
+| Costco | solo shipped | 0.5 | CEILING-RAILED | 0.308 / 0.187 | 1.000 |
+| Costco | **erode1 (4px)** | **0.333** | **interior** | **0.200 / 0.187** | **1.000** |
+
+Coarse mint-side normalization brings density in range; v1's `bitmap_thin`
+then fine-tunes from the interior — the compose-with-v1 design working as
+intended. **This is the epic's acceptance criterion, met** (pending the
+epic-mandated visual A/B before any profile adoption).
+
+### Production form
+
+The shipped fonts are parametric stroke skeletons whose raster ink is exactly
+`stroke_px ≈ dot.size × weight × cap/1000` — Wild Fork's hand-set
+`weight: 1.4` reproduces the measured 6px atlas stroke, and the derived value
+is `weight = stroke_ratio × 1000 / dot.size ≈ 0.60`. **Validated:** compiling
+`fonts/wildfork` at the derived `weight 0.60` lands projected density
+**0.134 vs target 0.135** (0.99×, from 2.5× over — one closed-form step),
+though at erosion saturation; the production loop adds one bisection step on
+weight for interior headroom. Because Costco shows the excess can be
+shape-driven rather than stroke-driven, the **general derivation targets
+density, not stroke**: bisect the mint-side ink parameter (`weight`, or
+skeleton-protected erosion for crop-minted atlases) against the measured
+per-word density target using v1's render-free cheap measurer. Stroke/cap
+(stylescan `stroke_med`) is the *diagnostic* that says which root cause you
+have.
+
+### SDF-consensus mint (continuous-space idea): promising, not yet fairly tested
+
+A first prototype (chamfer SDFs, sub-pixel alignment, derived threshold)
+scored poorly (density 0.842) — but it averaged **raw, unfiltered** sample
+stacks, skipping the production mint's inlier selection (IoU-ranked top-32).
+That confounds the comparison; the concept (fixes fattening at the source,
+plausibly recovers diagonals and crisp cross-merchant intermediates) needs a
+re-run behind the mint's inlier filter before any verdict.
+
 ## Repro
 
 ```
@@ -96,4 +154,12 @@ python tools/glyph-studio/py/m3_acceptance.py /tmp/m3/railed_family.glyphs.npz
 # diagonal crispness: solo vs pooled stacks
 python tools/glyph-studio/py/m3_crispness.py /tmp/m3/cvs_solo.samples.npz \
   /tmp/m3/vons_solo.samples.npz /tmp/m3/cvs_vons_pooled.samples.npz
+
+# validated fix (addendum): derived parametric weight, scored per merchant
+#   weight = (stylescan stroke_med / cap_px) * 1000 / font.json dot.size
+#   e.g. Wild Fork: 0.044 * 1000 / 73.5 ≈ 0.60  (hand value was 1.4)
+# edit a copy of fonts/wildfork/font.json to the derived weight, then:
+python -m glyphstudio.compile /tmp/wf_font_copy /tmp/wf_derived.glyphs.npz
+python tools/glyph-studio/py/m3_acceptance.py /tmp/wf_derived.glyphs.npz \
+  --merchant "Wild Fork:wildfork"
 ```
