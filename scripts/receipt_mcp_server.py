@@ -1217,7 +1217,8 @@ By default validation_status is VALID (human-reviewed) and model_source is
 
 WARNING: This WRITES to DynamoDB. Will FAIL if a section with the same
 section_type already exists on the receipt — use update_section_status to
-change an existing section instead.""",
+change an existing section instead. Also fails if the receipt does not exist
+or any line_id is not on the receipt.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3331,6 +3332,27 @@ async def get_receipt_sections_impl(
         return {"error": str(e)}
 
 
+def _normalize_section_type(section_type):
+    """Strip/uppercase a section_type and validate it against SectionType.
+
+    Returns (normalized_type, None) on success, or (None, error_dict) when
+    the value is not in the SectionType enum — catching typos like "ITMES"
+    before they become noncanonical SKs or misleading "not found" errors.
+    """
+    from receipt_dynamo.constants import SectionType
+
+    normalized = str(section_type or "").strip().upper()
+    valid_types = {t.value for t in SectionType}
+    if normalized not in valid_types:
+        return None, {
+            "error": (
+                f"Invalid section_type {section_type!r}; "
+                f"expected one of {sorted(valid_types)}"
+            )
+        }
+    return normalized, None
+
+
 async def update_section_status_impl(
     dynamo_client,
     image_id: str,
@@ -3344,7 +3366,9 @@ async def update_section_status_impl(
     from receipt_dynamo.entities.receipt_section import ReceiptSection
 
     try:
-        normalized_type = str(section_type or "").upper()
+        normalized_type, type_error = _normalize_section_type(section_type)
+        if type_error:
+            return type_error
         normalized_status = str(validation_status or "").upper()
         allowed = {s.value for s in ValidationStatus}
         if normalized_status not in allowed:
@@ -3412,11 +3436,14 @@ async def create_receipt_section_impl(
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.data.shared_exceptions import (
         EntityAlreadyExistsError,
+        EntityNotFoundError,
     )
     from receipt_dynamo.entities.receipt_section import ReceiptSection
 
     try:
-        normalized_type = str(section_type or "").upper()
+        normalized_type, type_error = _normalize_section_type(section_type)
+        if type_error:
+            return type_error
         normalized_status = str(validation_status or "VALID").upper()
         allowed = {s.value for s in ValidationStatus}
         if normalized_status not in allowed:
@@ -3433,6 +3460,31 @@ async def create_receipt_section_impl(
             return {"error": "line_ids must be a list of integers"}
         if not normalized_line_ids:
             return {"error": "line_ids must be a non-empty list of integers"}
+
+        # Verify the receipt exists and every line_id belongs to it, so a
+        # typo'd image_id/receipt_id/line_id can't persist an orphan section
+        # or a section pointing at lines the receipt doesn't have.
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} not found for image {image_id}; "
+                    "refusing to create a section for a nonexistent receipt"
+                )
+            }
+        receipt_line_ids = {line.line_id for line in details.lines or []}
+        unknown_line_ids = sorted(
+            set(normalized_line_ids) - receipt_line_ids
+        )
+        if unknown_line_ids:
+            return {
+                "error": (
+                    f"line_ids {unknown_line_ids} do not exist on receipt "
+                    f"{receipt_id} (image {image_id}). Valid line_ids: "
+                    f"{sorted(receipt_line_ids)}"
+                )
+            }
 
         new_section = ReceiptSection(
             receipt_id=receipt_id,
@@ -3478,7 +3530,9 @@ async def delete_receipt_section_impl(
     from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
     try:
-        normalized_type = str(section_type or "").upper()
+        normalized_type, type_error = _normalize_section_type(section_type)
+        if type_error:
+            return type_error
         try:
             dynamo_client.delete_receipt_section(
                 receipt_id=receipt_id,

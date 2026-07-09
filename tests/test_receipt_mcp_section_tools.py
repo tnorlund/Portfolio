@@ -154,3 +154,133 @@ def test_both_servers_expose_identical_section_tool_shape():
         }
 
     assert shape(stdio) == shape(lam)
+
+
+# ---------------------------------------------------------------------------
+# Corruption-path tests: the impls must refuse writes that would persist bad
+# rows (noncanonical section_type SKs, orphan sections, invalid line refs).
+# These exercise the impl functions with a stub dynamo client and need the
+# real receipt_dynamo package for its enums/exceptions.
+# ---------------------------------------------------------------------------
+
+VALID_IMAGE_ID = "3f2a1b0c-4d5e-4f70-8192-a3b4c5d6e7f8"
+
+
+class _StubLine:
+    def __init__(self, line_id):
+        self.line_id = line_id
+        self.text = f"line {line_id}"
+
+
+class _StubDetails:
+    def __init__(self, line_ids):
+        self.lines = [_StubLine(i) for i in line_ids]
+
+
+class _StubDynamoClient:
+    """Stub client recording writes; configurable receipt lines."""
+
+    def __init__(self, line_ids=(1, 2, 3), receipt_exists=True):
+        self._line_ids = line_ids
+        self._receipt_exists = receipt_exists
+        self.added_sections = []
+
+    def get_receipt_details(self, image_id, receipt_id):
+        if not self._receipt_exists:
+            from receipt_dynamo.data.shared_exceptions import (
+                EntityNotFoundError,
+            )
+
+            raise EntityNotFoundError("receipt not found")
+        return _StubDetails(self._line_ids)
+
+    def add_receipt_section(self, section):
+        self.added_sections.append(section)
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_create_rejects_invalid_section_type(label):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    client = _StubDynamoClient()
+    result = asyncio.run(
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, "ITMES", [1, 2]
+        )
+    )
+    assert "error" in result
+    assert "Invalid section_type" in result["error"]
+    assert "ITEMS" in result["error"]  # lists the valid values
+    assert client.added_sections == []
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_create_rejects_line_ids_not_on_receipt(label):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    client = _StubDynamoClient(line_ids=(1, 2, 3))
+    result = asyncio.run(
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, "ITEMS", [2, 99]
+        )
+    )
+    assert "error" in result
+    assert "99" in result["error"]
+    assert "do not exist on receipt" in result["error"]
+    assert client.added_sections == []
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_create_rejects_nonexistent_receipt(label):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    client = _StubDynamoClient(receipt_exists=False)
+    result = asyncio.run(
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 42, "ITEMS", [1]
+        )
+    )
+    assert "error" in result
+    assert "not found" in result["error"]
+    assert client.added_sections == []
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_create_succeeds_for_valid_input(label):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    client = _StubDynamoClient(line_ids=(1, 2, 3))
+    result = asyncio.run(
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, " items ", [1, 2]
+        )
+    )
+    assert result.get("success") is True
+    assert result["section_type"] == "ITEMS"  # stripped + uppercased
+    assert len(client.added_sections) == 1
+    assert client.added_sections[0].section_type == "ITEMS"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+@pytest.mark.parametrize(
+    "impl_name,args",
+    [
+        ("update_section_status_impl", ("ITMES", "VALID")),
+        ("delete_receipt_section_impl", ("ITMES",)),
+    ],
+)
+def test_update_and_delete_reject_invalid_section_type(label, impl_name, args):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    impl = getattr(module, impl_name)
+
+    class _ExplodingClient:
+        def __getattr__(self, name):  # any client call means we validated late
+            raise AssertionError(
+                "client must not be called for an invalid section_type"
+            )
+
+    result = asyncio.run(impl(_ExplodingClient(), VALID_IMAGE_ID, 1, *args))
+    assert "error" in result
+    assert "Invalid section_type" in result["error"]
+    assert "ITEMS" in result["error"]
