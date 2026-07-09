@@ -88,3 +88,13 @@ def test_missing_flagged_with_fleet_support():
 def test_clean_fleet_no_findings():
     findings = audit_normalized(_fleet(), chars="Ol5")
     assert findings == [] or all(f.kind == "MISSING" for f in findings), findings
+
+
+def test_missing_reported_even_without_baseline():
+    # m3 has NO scoreable glyphs at all -> MISSING must still be reported
+    fleet = _fleet()
+    fleet["m3"] = {}
+    from glyphstudio.glyph_gate import audit_normalized as _an
+    findings = _an(fleet, chars="Ol5")
+    missing = [f for f in findings if f.kind == "MISSING" and f.merchant == "m3"]
+    assert {f.char for f in missing} == {"O", "l", "5"}, findings

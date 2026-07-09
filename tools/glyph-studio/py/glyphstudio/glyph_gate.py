@@ -109,16 +109,49 @@ def fleet_consensus(
     normalized: dict[str, dict[int, np.ndarray]], char: str, exclude: str
 ) -> Optional[np.ndarray]:
     """Mean-then-threshold consensus of a char across the fleet (excluding
-    one merchant), in normalized shape space."""
+    one merchant), in normalized shape space.
+
+    The support threshold is exclusion-aware: when the excluded merchant has
+    the char, self-exclusion removes one contributor, so N-1 remaining still
+    represents MIN_FLEET_SUPPORT merchants; when it does not, no contributor
+    was removed and the full MIN_FLEET_SUPPORT is required.
+    """
     stacks = [
         m[ord(char)]
         for name, m in normalized.items()
         if name != exclude and ord(char) in m
     ]
-    if len(stacks) < MIN_FLEET_SUPPORT - 1:
+    excluded_had_char = ord(char) in normalized.get(exclude, {})
+    required = MIN_FLEET_SUPPORT - (1 if excluded_had_char else 0)
+    if len(stacks) < required:
         return None
     mean = np.mean([s.astype(np.float32) for s in stacks], axis=0)
     return mean >= 0.5
+
+
+def _append_missing(
+    findings: list[Finding],
+    normalized: dict[str, dict[int, np.ndarray]],
+    merchant: str,
+    glyphs: dict[int, np.ndarray],
+    chars: str,
+) -> None:
+    """Flag chars the fleet prints but this merchant lacks. Runs even when the
+    merchant has no scoreable glyphs at all (no same-char baseline)."""
+    for ch in chars:
+        if ord(ch) in glyphs:
+            continue
+        support = sum(1 for m in normalized.values() if ord(ch) in m)
+        if support >= MIN_FLEET_SUPPORT:
+            findings.append(
+                Finding(
+                    merchant,
+                    ch,
+                    "MISSING",
+                    f"{support}/{len(normalized)} merchants have it",
+                    float(support),
+                )
+            )
 
 
 def audit_fleet(
@@ -155,12 +188,20 @@ def audit_normalized(
 
     # Pre-compute fleet consensus per char per excluded merchant lazily.
     consensus_cache: dict[tuple[str, str], Optional[np.ndarray]] = {}
+    holes_cache: dict[tuple[str, str], int] = {}
 
     def consensus(char: str, exclude: str) -> Optional[np.ndarray]:
         key = (char, exclude)
         if key not in consensus_cache:
             consensus_cache[key] = fleet_consensus(normalized, char, exclude)
         return consensus_cache[key]
+
+    def consensus_holes(char: str, exclude: str) -> Optional[int]:
+        key = (char, exclude)
+        if key not in holes_cache:
+            cons = consensus(char, exclude)
+            holes_cache[key] = -1 if cons is None else hole_count(cons)
+        return None if holes_cache[key] < 0 else holes_cache[key]
 
     for merchant, glyphs in sorted(normalized.items()):
         # -- per-merchant same-char agreement baseline ---------------------
@@ -174,6 +215,7 @@ def audit_normalized(
                 continue
             same_scores[ch] = glyph_iou(glyphs[cp], cons)
         if not same_scores:
+            _append_missing(findings, normalized, merchant, glyphs, chars)
             continue
         med = median(same_scores.values())
         mad = median(abs(v - med) for v in same_scores.values()) or 1e-6
@@ -196,7 +238,7 @@ def audit_normalized(
                 # fleet-'H' in shape space, but its counter — 1 hole vs 0 —
                 # says it is still an A; a degenerate bar-'A' has 0 holes and
                 # genuinely reads as 'l').
-                if hole_count(cons_o) != own_holes:
+                if consensus_holes(other, merchant) != own_holes:
                     continue
                 iou = glyph_iou(glyphs[ord(ch)], cons_o)
                 if iou > best_other_iou:
@@ -229,21 +271,7 @@ def audit_normalized(
                 )
 
         # -- MISSING: fleet prints it, this merchant doesn't ---------------
-        for ch in chars:
-            cp = ord(ch)
-            if cp in glyphs:
-                continue
-            support = sum(1 for m in normalized.values() if ord(ch) in m)
-            if support >= MIN_FLEET_SUPPORT:
-                findings.append(
-                    Finding(
-                        merchant,
-                        ch,
-                        "MISSING",
-                        f"{support}/{len(normalized)} merchants have it",
-                        float(support),
-                    )
-                )
+        _append_missing(findings, normalized, merchant, glyphs, chars)
 
     findings.sort(key=lambda f: (f.kind != "MISRENDER", -f.score))
     return findings
