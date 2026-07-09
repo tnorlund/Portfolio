@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dependabot Maintainer"
+  short_description: "Review and merge safe Dependabot PRs"
+  default_prompt: "Use $dependabot-maintainer to review open Dependabot PRs, run the guardrails, and merge the safe ones."
