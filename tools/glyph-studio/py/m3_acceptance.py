@@ -126,6 +126,12 @@ def main(argv=None) -> int:
     )
     ap.add_argument("--receipts", type=int, default=4)
     ap.add_argument(
+        "--min-coverage",
+        type=float,
+        default=0.90,
+        help="PASS also requires candidate scorecard glyph coverage >= this",
+    )
+    ap.add_argument(
         "--table",
         default=os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22"),
     )
@@ -160,10 +166,14 @@ def main(argv=None) -> int:
                 f"projected={proj_s} coverage={cov and round(cov, 3)}"
             )
             if label == "CANDIDATE":
-                verdicts[name] = railed
-    # The epic's exit criterion is ALL railed merchants off the rails, not any.
-    all_pass = bool(verdicts) and all(v == "interior" for v in verdicts.values())
-    summary = ", ".join(f"{n}={v}" for n, v in verdicts.items())
+                verdicts[name] = (railed, cov or 0.0)
+    # The epic's exit criterion is ALL railed merchants off the rails, not
+    # any — and a candidate can't buy density by dropping glyphs, so PASS also
+    # requires scorecard coverage >= --min-coverage per merchant.
+    all_pass = bool(verdicts) and all(
+        v == "interior" and c >= args.min_coverage for v, c in verdicts.values()
+    )
+    summary = ", ".join(f"{n}={v}(cov={c:.2f})" for n, (v, c) in verdicts.items())
     print(
         f"\nacceptance: {'PASS (all merchants un-railed)' if all_pass else 'FAIL'}"
         f" [{summary}]"
