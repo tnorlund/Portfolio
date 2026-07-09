@@ -41,9 +41,9 @@ Last updated: 2026-07-09 UTC.
   label/eval contract issues than toward "just train longer."
 - High-confidence product false positives are now treated as a review queue in
   diagnostics. Current v28 artifacts had `527` high-confidence product
-  false-positive tokens; `234` looked like likely item text under strict gold
-  `O`, while the rest split across numeric detail, SKU/code, adjustment/fee,
-  and other model-error buckets.
+  false-positive tokens; a heuristic bucket classified `233` as likely item
+  text pending manual audit, while the rest split across numeric detail,
+  SKU/code, adjustment/fee, and other model-error buckets.
 - Product-detail first-pass hooks: `--item-window-augment` appends train-only
   line-item-band windows; `--checkpoint-metric product_detail_macro_f1` selects
   the product checkpoint; `--product-detail-loss-weight` increases loss pressure

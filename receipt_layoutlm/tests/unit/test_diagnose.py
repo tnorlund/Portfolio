@@ -91,7 +91,7 @@ def test_token_error_rows_classifies_high_confidence_product_false_positive():
                 {
                     "line_id": 1,
                     "word_id": 1,
-                    "text": "Store",
+                    "text": "Bacon",
                     "ground_truth_label": None,
                     "ground_truth_label_base": None,
                     "predicted_label": "B-PRODUCT_NAME",
@@ -148,6 +148,26 @@ def test_product_false_positive_review_separates_adjustments_and_amounts():
     assert adjustment["contract_action"] == "confirm_adjustment_not_product"
     assert amount["bucket"] == "numeric_amount_overprediction"
     assert amount["contract_action"] == "review_amount_column_contract"
+
+
+def test_product_false_positive_review_keeps_codes_and_meta_out_of_product_text():
+    code = _product_false_positive_review(
+        gold="O",
+        guessed="PRODUCT_NAME",
+        text="HDX-123",
+        error_kind="false_positive",
+    )
+    meta = _product_false_positive_review(
+        gold="O",
+        guessed="PRODUCT_NAME",
+        text="APPROVED",
+        error_kind="false_positive",
+    )
+
+    assert code["bucket"] == "product_name_numeric_or_code"
+    assert code["contract_action"] == "audit_sku_or_amount_boundary"
+    assert meta["bucket"] == "receipt_meta_term"
+    assert meta["contract_action"] == "keep_outside_product_contract"
 
 
 def test_resolve_val_receipts_rejects_persisted_hash_mismatch():
@@ -251,6 +271,7 @@ def test_data_targeting_prioritizes_structure_and_contract_queue():
         {
             "receipt_key": "img-a#00001",
             "merchant_name": "HOME DEPOT",
+            "template_signature": "HOME_DEPOT|lines:40+|shape-a",
             "line_item_shape": "items:20-39|qty:1|unit:0|total:0",
             "product_detail_macro_f1": 0.1,
             "has_line_total_column": False,
@@ -259,16 +280,27 @@ def test_data_targeting_prioritizes_structure_and_contract_queue():
         {
             "receipt_key": "img-b#00001",
             "merchant_name": "VONS",
+            "template_signature": "VONS|lines:1-4|shape-b",
             "line_item_shape": "items:1-4|qty:0|unit:0|total:1",
             "product_detail_macro_f1": 0.7,
             "has_line_total_column": True,
             "product_name_line_count": 2,
+        },
+        {
+            "receipt_key": "img-c#00001",
+            "merchant_name": "VONS",
+            "template_signature": "VONS|lines:40+|shape-c",
+            "line_item_shape": "items:1-4|qty:0|unit:0|total:1",
+            "product_detail_macro_f1": 0.0,
+            "has_line_total_column": True,
+            "product_name_line_count": 1,
         },
     ]
     token_errors = [
         {
             "receipt_key": "img-a#00001",
             "merchant_name": "HOME DEPOT",
+            "template_signature": "HOME_DEPOT|lines:40+|shape-a",
             "line_item_shape": "items:20-39|qty:1|unit:0|total:0",
             "error_kind": "false_positive",
             "high_confidence": True,
@@ -278,6 +310,7 @@ def test_data_targeting_prioritizes_structure_and_contract_queue():
         {
             "receipt_key": "img-a#00001",
             "merchant_name": "HOME DEPOT",
+            "template_signature": "HOME_DEPOT|lines:40+|shape-a",
             "line_item_shape": "items:20-39|qty:1|unit:0|total:0",
             "error_kind": "false_positive",
             "high_confidence": True,
@@ -288,7 +321,12 @@ def test_data_targeting_prioritizes_structure_and_contract_queue():
 
     targets = _build_data_targeting(rows, token_errors)
 
-    assert targets["priority_merchant_templates"][0]["merchant_name"] == "HOME DEPOT"
+    assert targets["priority_merchant_templates"][0]["template_signature"] == (
+        "VONS|lines:40+|shape-c"
+    )
+    assert targets["priority_merchant_templates"][1]["template_signature"] == (
+        "HOME_DEPOT|lines:40+|shape-a"
+    )
     assert targets["structural_gaps"]["no_line_total_layouts"]["receipt_count"] == 1
     assert targets["structural_gaps"]["long_item_tables"]["receipt_count"] == 1
     assert targets["label_contract_queue"][

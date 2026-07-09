@@ -60,16 +60,41 @@ PRODUCT_FP_ADJUSTMENT_TERMS = {
 }
 PRODUCT_FP_META_TERMS = {
     "AMOUNT",
+    "APPROVAL",
+    "APPROVED",
+    "AUTH",
     "BALANCE",
     "CARD",
+    "CASHIER",
     "CHANGE",
+    "CLERK",
     "CREDIT",
+    "CUSTOMER",
     "DEBIT",
+    "DISCOVER",
     "ITEM",
+    "MASTERCARD",
+    "MEMBER",
+    "MEMBERSHIP",
+    "ORDER",
     "PAYMENT",
+    "PURCHASE",
     "QTY",
+    "RECEIPT",
+    "REGISTER",
+    "SALE",
+    "SAVINGS",
+    "SERVER",
+    "STORE",
     "SUBTOTAL",
+    "TERMINAL",
+    "THANK",
+    "THANKS",
     "TOTAL",
+    "TRANSACTION",
+    "TRANS",
+    "VISA",
+    "WELCOME",
 }
 
 
@@ -767,7 +792,7 @@ def _product_false_positive_review(
         }
 
     if guessed == "PRODUCT_NAME":
-        if _looks_like_amount_or_quantity(raw_text):
+        if _looks_like_product_code_or_numeric(raw_text):
             return {
                 "bucket": "product_name_numeric_or_code",
                 "contract_action": "audit_sku_or_amount_boundary",
@@ -832,11 +857,26 @@ def _looks_like_amount_or_quantity(text: str) -> bool:
     )
 
 
+def _looks_like_product_code_or_numeric(text: str) -> bool:
+    normalized = _normalize_token_for_review(text)
+    if not normalized:
+        return False
+    if normalized.isdigit():
+        return True
+    if _looks_like_amount_or_quantity(text):
+        return True
+    has_digit = any(ch.isdigit() for ch in normalized)
+    has_alpha = any(ch.isalpha() for ch in normalized)
+    return has_digit and has_alpha
+
+
 def _looks_like_product_text(text: str) -> bool:
     normalized = _normalize_token_for_review(text)
     if len(normalized) < 3:
         return False
     if normalized in PRODUCT_FP_ADJUSTMENT_TERMS or normalized in PRODUCT_FP_META_TERMS:
+        return False
+    if any(ch.isdigit() for ch in normalized):
         return False
     alpha_chars = sum(1 for ch in normalized if ch.isalpha())
     return alpha_chars >= 3
@@ -1284,20 +1324,18 @@ def _build_data_targeting(
         and e.get("predicted_label_base") in PRODUCT_DETAIL_LABELS
     ]
     fp_by_receipt = Counter(str(e.get("receipt_key")) for e in high_conf_product_fp)
-    fp_by_merchant_shape = Counter(
-        (str(e.get("merchant_name")), str(e.get("line_item_shape")))
+    fp_by_template = Counter(
+        _data_target_key(e)
         for e in high_conf_product_fp
     )
 
-    merchant_shape_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    template_groups: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        merchant_shape_groups[
-            (str(row.get("merchant_name")), str(row.get("line_item_shape")))
-        ].append(row)
+        template_groups[_data_target_key(row)].append(row)
 
     priority_templates: List[Dict[str, Any]] = []
-    for (merchant, shape), group in merchant_shape_groups.items():
-        total_fp = int(fp_by_merchant_shape.get((merchant, shape), 0))
+    for (merchant, template_signature, shape), group in template_groups.items():
+        total_fp = int(fp_by_template.get((merchant, template_signature, shape), 0))
         avg_product_f1 = _avg(r.get("product_detail_macro_f1") for r in group)
         if total_fp == 0 and (
             avg_product_f1 is None or avg_product_f1 >= 0.35
@@ -1306,6 +1344,7 @@ def _build_data_targeting(
         priority_templates.append(
             {
                 "merchant_name": merchant,
+                "template_signature": template_signature,
                 "line_item_shape": shape,
                 "receipt_count": len(group),
                 "avg_product_detail_macro_f1": avg_product_f1,
@@ -1331,10 +1370,10 @@ def _build_data_targeting(
 
     priority_templates.sort(
         key=lambda item: (
-            -int(item["total_high_confidence_product_false_positives"]),
             item["avg_product_detail_macro_f1"]
             if item["avg_product_detail_macro_f1"] is not None
             else 1.0,
+            -int(item["total_high_confidence_product_false_positives"]),
             -int(item["receipt_count"]),
         )
     )
@@ -1385,6 +1424,14 @@ def _build_data_targeting(
             },
         ],
     }
+
+
+def _data_target_key(row: Dict[str, Any]) -> Tuple[str, str, str]:
+    return (
+        str(row.get("merchant_name") or "UNKNOWN_MERCHANT"),
+        str(row.get("template_signature") or "UNKNOWN_TEMPLATE"),
+        str(row.get("line_item_shape") or "UNKNOWN_SHAPE"),
+    )
 
 
 def _summarize_target_rows(
@@ -1544,12 +1591,18 @@ def _markdown_report(payload: Dict[str, Any], groups: Dict[str, Any]) -> str:
                 f"- `{group['group']}`: n={group['receipt_count']}, "
                 f"product F1={_fmt(group['avg_product_detail_macro_f1'])}"
             )
-    lines.extend(["", "Worst one-off line-item shapes:"])
-    for group in evidence["line_item_structure"]["worst_line_item_shapes"][:5]:
-        lines.append(
-            f"- `{group['group']}`: n={group['receipt_count']}, "
-            f"product F1={_fmt(group['avg_product_detail_macro_f1'])}"
-        )
+    one_off_shapes = [
+        group
+        for group in evidence["line_item_structure"]["worst_line_item_shapes"]
+        if group["receipt_count"] < ROBUST_GROUP_MIN_RECEIPTS
+    ]
+    if one_off_shapes:
+        lines.extend(["", "Worst one-off line-item shapes:"])
+        for group in one_off_shapes[:5]:
+            lines.append(
+                f"- `{group['group']}`: n={group['receipt_count']}, "
+                f"product F1={_fmt(group['avg_product_detail_macro_f1'])}"
+            )
     lines.extend(
         [
             "",
@@ -1579,7 +1632,7 @@ def _markdown_report(payload: Dict[str, Any], groups: Dict[str, Any]) -> str:
     lines.extend(["", "### Data Targets", ""])
     for item in evidence["data_targeting"]["priority_merchant_templates"][:8]:
         lines.append(
-            f"- `{item['merchant_name']}` / `{item['line_item_shape']}`: "
+            f"- `{item['merchant_name']}` / `{item['template_signature']}`: "
             f"n={item['receipt_count']}, "
             f"product F1={_fmt(item['avg_product_detail_macro_f1'])}, "
             "high-confidence product FP="

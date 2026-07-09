@@ -209,23 +209,23 @@ train snapshot. Receipts with `20-39` item rows averaged product F1 about
 token logs also show label/eval tension: v28 had `527` high-confidence product
 false positive tokens and many `O -> PRODUCT_NAME` product confusions.
 
-Those product false positives are not one failure mode. A review of the current
-v28 diagnostic artifacts split the `527` high-confidence product false-positive
-tokens into:
+Those product false positives are not one failure mode. The current heuristic
+diagnostic buckets split the `527` high-confidence product false-positive tokens
+in the v28 artifacts into:
 
-- `234` likely unlabeled product-text tokens, such as item words predicted as
-  `PRODUCT_NAME` while gold is strict `O`;
+- `233` tokens classified as likely unlabeled product text pending manual
+  audit;
 - `97` numeric amount overpredictions;
 - `96` numeric quantity overpredictions;
-- `54` product-name numeric/code boundary cases;
+- `55` product-name numeric/code boundary cases;
 - `21` refund, fee, discount, tax, or deposit terms;
 - `25` other product-name false positives.
 
 The v29 weighted run was similar: `268` of `556` high-confidence product false
-positives looked like likely unlabeled product text. This does not mean the
-labels are bad or that the metric should be relaxed. It means strict product F1
-must be read alongside a product false-positive review queue before we claim the
-model is hallucinating product names.
+positives landed in the same heuristic likely-product-text bucket. This does
+not mean the labels are bad or that the metric should be relaxed. It means
+strict product F1 must be read alongside a product false-positive review queue
+before we claim the model is hallucinating product names.
 
 ## Product Label/Eval Contract
 
@@ -236,8 +236,8 @@ positive for F1.
 Diagnostics now add a second, explanatory contract for high-confidence product
 false positives:
 
-- `likely_unlabeled_product_text`: audit examples and decide whether we need
-  more real/synthetic coverage, but do not auto-credit the prediction.
+- `likely_unlabeled_product_text`: a heuristic audit queue for examples that
+  may need more real/synthetic coverage, but do not auto-credit the prediction.
 - `product_name_numeric_or_code`: inspect SKU/code boundaries separately from
   product-word boundaries.
 - `numeric_quantity_overprediction` and `numeric_amount_overprediction`: treat
