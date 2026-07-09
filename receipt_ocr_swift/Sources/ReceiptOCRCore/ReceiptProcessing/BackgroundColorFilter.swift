@@ -121,6 +121,17 @@ public func filterDocumentLines(
     let med = median(sats)
     let mad = median(sats.map { abs($0 - med) })
     let threshold = med + max(saturationMargin, 4.0 * 1.4826 * mad)
-    return zip(lines, sats).compactMap { $0.1 < threshold ? $0.0 : nil }
+    let kept = zip(lines, sats).compactMap { $0.1 < threshold ? $0.0 : nil }
+
+    // Drop-fraction cap: if the adaptive threshold would drop more than ~40% of
+    // all lines, DISBELIEVE the filter and keep everything. A receipt sitting
+    // mostly on a colored surface (or with a large colored coupon block)
+    // contaminates the median itself, so "> 40% colored background" means the
+    // baseline is unreliable and its own paper lines would be stripped.
+    let dropped = lines.count - kept.count
+    if CGFloat(dropped) > 0.40 * CGFloat(lines.count) {
+        return lines
+    }
+    return kept
 }
 #endif
