@@ -1,175 +1,159 @@
-# Game plan — font epics: where we are, what's proven, what's next
+# Game plan v2 — font epics after the density saga
 
-**Audience:** the next implementing agents/workflows and Tyler. This is the
-handoff artifact: read this + `FONT_INTELLIGENCE_EPIC.md` + the
-`font-epics-state` memory and you have the full picture. Written 2026-07-09,
-immediately after M0–M2 merged and while the dev deploy was in flight.
+**Audience:** the next implementing agents/workflows and Tyler. Read this +
+`FONT_INTELLIGENCE_EPIC.md` + `M3_FINDINGS.md` + the `font-epics-state` memory
+and you have the full picture. **v2 (2026-07-10)** — rewritten after three
+discoveries invalidated parts of v1 of this plan: the pooling refutation, the
+density-saga closure, and the glyph-quality loop. v1's text is in git history.
 
 ---
 
-## 1. Scoreboard
+## 0. What changed since v1 of this plan
 
-### Epic 1 — measured font calibration (DERIVATION_EPIC.md): **COMPLETE**
+1. **The density crisis never existed.** The epic's acceptance test ("un-rail
+   Wild Fork/Costco") was chasing a measurement artifact: contaminated OCR
+   (duplicate-position word groups → the renderer overprints → density
+   inflated) sat first in the merchant index and poisoned every first-N
+   calibration sample, v1's included. On vetted receipts the fleet is
+   healthy: **all pins stand** (WF median 0.94 — slightly *light*; Costco 0.75
+   light/high-variance — the opposite of the "too dense" story). 6/10 merchant
+   sample windows were contaminated (HD 17/18!). Consequences: single-receipt
+   calibration is dead — vetted-distribution measurement is the standard;
+   #1085 carries the vetting + findings corrections.
+2. **Pixel-space cross-merchant pooling is refuted** (#1083): pooled atlases
+   come out denser AND blurrier — printer offset is signal, not noise.
+   Diagonals improve within-merchant with more samples, not across merchants.
+   Standing harnesses: `m3_acceptance.py` (solo-vs-candidate, the exit test
+   for any future mint) + `m3_crispness.py`.
+3. **The glyph-quality loop is the real "fonts look better" engine, and it's
+   proven.** Fleet-referenced identity gate (`glyph_gate.py`, #1088) ranks
+   broken glyphs → an agent handcrafts skeleton fixes → gate re-verifies →
+   render confirms. Ran on Home Depot: 23 glyphs fixed across two batches
+   (including a bar-shaped 'A' and a '.'-as-hook that corrupted price
+   decimals), gate findings 24→10 (residual = known FP noise floor), final
+   render h 1.000 / density 0.930. Known gate FP classes: 1-hole box letters
+   vs O; bar-glyph l/!/1/I confusion; slant-style divergence.
+4. **Lines pipeline revived** (status-drift reset; #1086 ingest isolation):
+   1,676 LINE_EMBEDDING batches at OpenAI, **not yet ingested** — which means
+   the sequencing windfall is still winnable (next section).
 
-Every render knob (`weight`, `ocr_cap_height_ratio`, `bitmap_thin`) is now
-derived, not eyeballed; `bitmap_thin` is pinned for all bitmap-font merchants
-(CI-locked); the render-time re-derive (10-min cold renders) is dead. Artifacts:
-VALIDATION.md, RETROFIT.md, `glyphstudio/{calibrate,validate}.py`,
-`test_merchant_profiles_contract.py`.
+## 1. P0 — protect the windfall (time-critical, strict order)
 
-### Epic 2 — font intelligence (FONT_INTELLIGENCE_EPIC.md): **front half done**
-
-| milestone | state | evidence |
-|---|---|---|
-| M0 section infra + seeds | ✅ merged, executed | 3,128 `section-seed-v0` rows / 381 receipts in dev; labels-win policy; invariants verified (label-only merchants have zero rule-only rows) |
-| M1a-1 payload plumbing | ✅ merged | section_label flows into row/line metadata when a map is passed; inert until callers wired |
-| M1a-2 caller wiring | 📋 spec'd, not shipped | exact 4-path threading map in `font-epics-state` memory (orchestration A, line_polling B, embedding_processor C, ndjson D) |
-| M1b propagation | ✅ merged, validated | 89.1% cross-receipt / 96.8%@conf≥0.8 on 97,658 real word embeddings; per-receipt-callable |
-| M1b `-v1` write + QA + #1066 audit | ⏳ gated (approval + sequencing) | — |
-| M2 family + face map | ✅ merged, **provisional** | cvs~vons reproduced (IoU 0.620); 67-entry (merchant,section)→(family,face) map; built on refined FONTS, not crops |
-| M3 pooled family fit | 🚧 blocked on crop corpus | refined skeletons unpoolable (3/36 shared topology) — must re-trace from pooled crops |
-| M4 multi-face render, M5 retrofit | 🚧 blocked on M3 + rendered receipts | — |
-
-**Infra state:** prod carries #1070+#1073; dev deploy in flight (Tyler).
-**Line embeddings have never run in either env** (snapshots empty post-reset);
-words are complete (dev 97,658 / prod done). Crop corpus regenerates only after
-line-submit/ingest runs.
-
-## 2. Proven vs. assumed — the honesty ledger
-
-**Proven (evidence-backed, safe to build on):**
-- Erosion saturates at thin **0.40** on every real atlas; cap height linear in
-  cap_px (VALIDATION.md).
-- The cheap measurer tracks the production scorecard by a stable per-merchant
-  factor (Sprouts 1.967, CV 0.37%, Spearman 1.0) and found a *better* thin than
-  the render bisection.
-- Vons/TJ are floor-bound (ratio knob inert); WildFork/Costco density-railed —
-  atlas-quality ceilings, the epic-2 acceptance test.
-- Seed invariants in dev (single source, PENDING, labels-win, guard whitelist).
-- Propagation faithfully extends the seed signal cross-receipt (89.1%).
-- CVS+Vons are one typeface family (holds in both atlas and refined-font space).
-
-**Assumed / pending its gate (do NOT treat as truth yet):**
-- *Propagated sections are correct.* 89.1% measures reproducibility of the
-  seed function, not human truth. Gate: stratified human/agent QA (heavy in
-  the 1,181-row 0.60 rule-only stratum + SECTION_HEADER/TOTAL_LINE/BARCODE).
-- *The family map.* Built on refined fonts as an interim. The outlier flip
-  (atlases: Costco isolates; refined fonts: HomeDepot isolates, Costco
-  converged) may be studio over-regularization. Gate: re-derive families from
-  the raw crop corpus (epic S2) before ANY pooling; crops arbitrate Costco.
-- *Face priors.* Validated only against stylemap.json — itself rule-derived.
-  Gate: M4's production scorecard on real multi-face renders.
-- *Epic-1 derived corrections* (Sprouts ratio 0.691, WildFork 0.736, HD 0.881,
-  Sprouts thin ~0.14). Gate: render A/B per RETROFIT.md before adoption.
-
-## 3. The sequencing windfall — read this before running anything
-
-Lines were **never embedded** after the reset. That turns the deploy delay into
-an opportunity: if the section machinery lands **before** the line pipeline
-runs, 100% of line embeddings carry dense `section_label` metadata on their
-FIRST pass — no metadata-upsert sweep, ever. The strict order is:
+Lines have never been embedded. If the section wiring lands before ingest,
+every line embedding carries `section_label` on first pass — no upsert sweep,
+ever. All 1,676 batches are still PENDING at OpenAI as of this writing. **Do
+not start `line-ingest-sf-dev` until steps 1–3 are done:**
 
 ```
-1. dev `pulumi up`                      (Tyler — in flight)
-2. M1a-2 caller wiring                  (now testable; merge it)
-3. M1b -v1 ReceiptSection write         (Tyler approves; PENDING rows, dense
-                                         line coverage from word propagation)
-4. line-submit-sf-dev → line-ingest-sf-dev   (lines embed WITH sections)
-5. crop corpus regen (build_merchant_glyphs) (M3 unblocks)
+1. Merge #1089 (M1a-2 ingest wiring)           ← open, review + land
+2. Targeted dev deploy (embedding+compaction only — the 28-change recipe in
+   font-epics-state; avoids the auto-mode blast-radius block and the full
+   133-change deploy)
+3. [Tyler gate] -v1 propagation write: run section_propagate over the words
+   snapshot → per-line majority → ReceiptSection rows,
+   model_source="section-propagate-v1", PENDING, additive (seeds cover only
+   ~seeded lines; propagation makes line coverage dense BEFORE stamping)
+4. Start line-ingest-sf-dev → lines snapshot populates WITH sections
+5. Regenerate crop corpus (build_merchant_glyphs — also runs locally from
+   receipt_letters + S3; not actually gated on the pipeline)
 ```
 
-Running step 4 before 2–3 forfeits the windfall and buys a 100k-record
-metadata-upsert task later. Don't.
+## 2. Merge queue
 
-## 4. Workstreams (what can run in parallel, by whom)
+- **#1089** — P0 step 1 above.
+- **#1085** — OCR vetting in `m3_acceptance.gather` + M3_FINDINGS correction
+  (the "WF was never broken" record). Land it before anyone calibrates again.
+- **#1088** — the glyph gate (the engine for W-A below).
 
-**W1 — critical path (one Opus session, serial):** steps 2–5 above, then M3
-(pooled family fit from crops, starting with the crop-based family
-re-derivation), M4 (renderer consumes the map), M5 (retrofit; acceptance =
-railed/floor-bound merchants come out fixed, measured by `calibrate_merchant` +
-production scorecard).
+## 3. Workstreams (post-P0), in value order
 
-**W2 — QA + audit (parallelizable NOW, good Workflow-tool fan-out):** doesn't
-need the pipeline. Stratified QA of the 3,128 v0 seeds via MCP label tools +
-the words snapshot: sample per (merchant × section × confidence-stratum),
-verify against receipt images, promote PENDING→VALID / flag INVALID; measure
-per-source precision (labels vs rules) and recalibrate the confidence formula;
-run the #1066 label↔section audit on seeded lines (its output = NEEDS_REVIEW
-flags on CORE labels — the only permitted label-table writes). A multi-agent
-fan-out (one agent per merchant, adversarial verify pass, aggregate) fits the
-Workflow tool exactly.
+**W-A — fleet glyph-quality sweep (the new headline).** The proven loop has
+run on ONE merchant. Run the gate across all 9, triage each merchant's queue
+(respecting the documented FP classes), agent-handcraft the real breaks, gate
+re-verify, render-confirm. Workflow-shaped: fan out per merchant, adversarial
+verify = the gate itself + a render. Exit: every merchant's gate report at its
+noise floor; before/after renders per fixed merchant. This — not density work —
+is now the primary "fonts look better" deliverable.
 
-**W3 — epic-1 A/B adoption (parallelizable NOW, local renders only):** the
-RETROFIT.md derived corrections each need one render A/B on the merchant's
-review receipt. Local render path works today (no deploy dependency).
-Outcome: adopt or reject each correction with evidence; update
-merchant_profiles.json only on wins.
+**W-B — M4 multi-face rendering.** Unblocked (consumes the M2 map), unowned.
+Renderer reads (merchant, section)→(family, face); per-word face stamping;
+production scorecard gates. Note the M2 map is provisional (refined-font
+families, outlier flip unresolved) — but M4's face switching doesn't depend on
+family correctness, only on the face column, which came from stylemap
+measurements.
 
-**W4 — M4 interface prototyping (optional, after W1 step 2):** the renderer's
-(merchant, section)→(family, face) consumption can be built against the
-provisional 67-entry map behind a flag, so M4 is wiring-ready when M3's real
-fonts land.
+**W-C — contamination detector productization (cross-epic).** The dup-OCR
+vetting (same-row words with >30% x-interval overlap) currently lives in one
+harness. It should gate every consumer of receipt samples: calibration gathers
+(#1085 does this), QA sampling, scorecard review picks, and — highest stakes —
+the **LayoutLM training-data export** (HD is 17/18 contaminated; training on
+overprinted geometry teaches the model garbage). Investigate the HD anomaly
+first: 17/18 may partly be the detector misreading HD's column layout.
+Deliverable: a shared `vet_receipt_ocr()` helper + a per-merchant data-quality
+report + adoption in the training exporter.
 
-## 5. Tyler's decision gates (in order of arrival)
+**W-D — seed QA + label audit (unchanged from v1, still undone).** Stratified
+QA of the 3,128 v0 seeds (heavy in the 1,181-row 0.60 rule-only stratum +
+SECTION_HEADER/TOTAL_LINE/BARCODE), confidence recalibration from measured
+precision, then the #1066 label↔section audit. Unblocked today; pairs
+naturally with -v1 rows once written.
 
-1. ✅ dev `pulumi up` (in flight).
-2. **-v1 propagation write** to dev ReceiptSection (additive, PENDING,
-   `model_source=section-propagate-v1`) — approve before W1 step 3.
-3. **W2 promote/flag batches** — QA writes VALID/INVALID statuses.
-4. **W3 adoptions** — each RETROFIT correction, on A/B evidence.
-5. Eventually: sections dev→prod (rides the existing reconcile mirror — do NOT
-   invent a new path), and prod line re-embed with sections.
+**W-E — small wins & experiments.**
+- WF mild recenter: derive thin on the vetted corpus (0.6→~0.3 candidate) —
+  visual A/B before adoption, per the epic rule (and the A/B canvas rule:
+  vet the receipt's OCR first, match canvas heights).
+- Costco: light + high variance on vetted receipts — monitor, no change.
+- SDF-consensus mint: promising, *unfairly tested* (raw stacks, no inlier
+  filter) — rerun fairly; if it holds, it's the continuous-space v2 mint and
+  may address diagonals + cross-merchant crispness where pooling failed.
+- Height follow-ups: WF height 1.066 (base-cap floor, same mechanism as
+  Vons/TJ) — separate knob work, low priority.
 
-## 6. Landmines (every one has bitten or nearly bitten)
+## 4. Tyler's gates
 
-- **Pulumi:** individual account = no concurrent updates; CI auto-deploys prod
-  on merge to main and holds the lock. Never `pulumi cancel` prod. Targeted
-  dev deploys (`--target embedding+chromadb --target-dependents`) clear the
-  auto-mode blast-radius classifier; full 133-change deploys don't.
-- **Chroma snapshots** need chromadb 1.5.x (`/private/tmp/chroma_venv`); the
-  main venv's 1.3.6 cannot open them. Deltas don't open standalone.
-- **JSON-only policy:** never commit `.npz`/samples/crops. Skeleton JSON is
-  source of truth.
-- **Anti-copy gate** (`_reject_copied_letterforms`) is mandatory in every
-  publish; family fonts are fitted skeletons, never crop copies.
-- **Labels win lines** (the seed-writer policy after the inversion bug); keep
-  it in any re-write.
-- **Confidence provenance:** bump `model_source` whenever the confidence
-  formula changes; cap machine confidence below 1.0 (69 rows at 1.0 exist in
-  v0 — recalibrate in W2).
-- **Case convention:** Chroma metadata carries UPPERCASE SectionType values;
-  glyphstudio canonical vocab is lowercase. Convert at boundaries; don't mix.
-- **Never** `aws s3 sync --delete`; Dynamo deletes/bulk writes need Tyler's
-  approval; dev before prod always.
-- Multiple concurrent sessions edit this plan — check `font-epics-state`
-  memory and open PRs before starting work.
+1. **-v1 propagation write** (P0 step 3) — additive, PENDING, dev.
+2. W-D promote/flag batches (label-table NEEDS_REVIEW writes).
+3. Any font/profile adoption (always render A/B on vetted receipts).
+4. Eventually: prod line embed + sections promotion (rides the existing
+   dev→prod mirror).
 
-## 7. Kickoff prompts
+## 5. Measurement rules (learned the hard way — bind all future work)
 
-**W1 (critical path):**
-> Read tools/glyph-studio/GAMEPLAN.md and FONT_INTELLIGENCE_EPIC.md. Dev is
-> deployed. Execute the sequencing in GAMEPLAN §3 strictly: implement M1a-2
-> using the 4-path threading map in the font-epics-state memory, test against
-> dev, merge; then ask Tyler to approve the -v1 propagation write; then run
-> line-submit-sf-dev → line-ingest-sf-dev; then regenerate the crop corpus.
-> Then M3: re-derive families from crops FIRST (Costco arbitration), then the
-> pooled skeleton fit for the largest family. Commit/push frequently, codex
-> review each part, small PRs.
+1. **Vet OCR before measuring.** Dup-position words → overprint → junk
+   density/layout numbers. `Counter((text, round(y,3)))>1` catches the crude
+   case; the x-overlap detector is the real one. Never calibrate, A/B, or
+   train on an unvetted receipt.
+2. **Distributions, not single receipts.** Same font spans 0.94↔1.48
+   density_ratio across receipts of one merchant. Any claim from n=1 is void.
+3. **Match canvas heights in visual A/Bs** — zoom-crop scale mismatch reads
+   as a rendering bug but is a viewing artifact.
+4. **Cheap-measurer numbers are relative** (stable per-merchant factor):
+   valid for solo-vs-candidate compares, never absolute targets.
+5. **Run `m3_acceptance.py --min-coverage` + `m3_crispness.py` on every mint
+   candidate** — they are the standing exit tests.
+6. Landmines from v1 all still apply (pulumi lock/CI contention, chromadb
+   1.5.x snapshot venv, JSON-only policy, anti-copy gate, labels-win,
+   model_source versioning, case convention, no `s3 sync --delete`, Dynamo
+   writes gated, coordinate across concurrent sessions).
 
-**W2 (QA workflow):**
-> Read GAMEPLAN.md §4-W2. Run a stratified QA of the 3,128 section-seed-v0
-> rows in dev: sample per (merchant × section × confidence stratum), heavy in
-> the 0.60 rule-only stratum and SECTION_HEADER/TOTAL_LINE/BARCODE. Verify
-> each sample against the receipt image, promote/flag via MCP label tools
-> (Tyler approves write batches). Measure per-source precision, recalibrate
-> the confidence formula, and run the #1066 label↔section audit on seeded
-> lines. Use a multi-agent fan-out with an adversarial verify pass.
+## 6. Kickoff prompts
 
-**W3 (A/B adoption):**
-> Read tools/glyph-studio/RETROFIT.md. For each derived correction (Sprouts
-> ratio 0.691, Wild Fork 0.736, Home Depot 0.881, Sprouts thin ~0.14), run a
-> local render A/B against the merchant's review receipt (production render
-> path, RECEIPT_PAPER_STRENGTH=0.3, cold cache). Adopt into
-> merchant_profiles.json only on a scorecard win; report each verdict with
-> the scorecard evidence. Vons/Trader Joe's are floor-bound — skip them
-> (epic-2 fixes those).
+**P0 (critical path, one session):**
+> Read GAMEPLAN.md §1. Review+merge #1089, run the targeted dev deploy
+> (recipe in font-epics-state memory), ask Tyler to approve the -v1
+> propagation write, run it, THEN start line-ingest-sf-dev and watch it
+> populate the lines snapshot with section_label. Then regenerate the crop
+> corpus locally. Do not start ingest before the wiring is deployed.
+
+**W-A (glyph fleet sweep, workflow):**
+> Read GAMEPLAN.md §3 W-A and PR #1088. For each of the 9 merchants: run
+> glyph_gate, triage the queue against the documented FP classes, handcraft
+> real breaks (skeleton JSON only, anti-copy gate), gate re-verify, render a
+> vetted receipt before/after. Fan out per merchant; verify adversarially.
+> HD is done — use it as the reference for what 'at noise floor' looks like.
+
+**W-C (data quality, cross-epic):**
+> Read GAMEPLAN.md §3 W-C and #1085. Extract the dup-OCR vetting into a
+> shared helper, produce a per-merchant contamination report (investigate
+> HD's 17/18 first — detector vs column layout), and wire vetting into the
+> LayoutLM training-data export path. Coordinate with the LayoutLM leg.
