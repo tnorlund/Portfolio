@@ -34,6 +34,57 @@ def _checkpoint_step(path: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+_CHECKPOINT_METRIC_ALIASES = {
+    "f1": "eval_f1",
+    "eval_f1": "eval_f1",
+    "product_detail_macro_f1": "eval_product_detail_macro_f1",
+    "eval_product_detail_macro_f1": "eval_product_detail_macro_f1",
+    "loss": "eval_loss",
+    "eval_loss": "eval_loss",
+    "accuracy": "eval_accuracy",
+    "eval_accuracy": "eval_accuracy",
+}
+
+
+def _checkpoint_metric_for_trainer(metric: str | None) -> str:
+    """Normalize a configured metric to HuggingFace Trainer's eval_* key."""
+    raw = (metric or "f1").strip()
+    if raw in _CHECKPOINT_METRIC_ALIASES:
+        return _CHECKPOINT_METRIC_ALIASES[raw]
+    if raw.startswith("eval_"):
+        return raw
+    return f"eval_{raw}"
+
+
+def _metric_greater_is_better(metric: str) -> bool:
+    """Return whether higher values should win for checkpoint selection."""
+    return not metric.endswith("loss")
+
+
+def _epoch_metric_values(
+    epoch_metrics: List[Dict[str, Any]],
+    metric: str,
+) -> List[Tuple[float, float]]:
+    """Extract (epoch, value) pairs for a metric from run.json entries."""
+    candidates = [metric]
+    if metric.startswith("eval_"):
+        candidates.append(metric.removeprefix("eval_"))
+    else:
+        candidates.append(f"eval_{metric}")
+
+    values: List[Tuple[float, float]] = []
+    for entry in epoch_metrics:
+        epoch = entry.get("epoch")
+        if epoch is None:
+            continue
+        for key in candidates:
+            value = entry.get(key)
+            if isinstance(value, (int, float)):
+                values.append((float(epoch), float(value)))
+                break
+    return values
+
+
 SAGEMAKER_CHECKPOINT_DIR = "/opt/ml/checkpoints"
 _LOCAL_OUTPUT_ROOT = "/tmp/receipt_layoutlm"
 
@@ -170,6 +221,11 @@ class ReceiptLayoutLMTrainer:
                     label_merges=effective_label_merges,
                     allowed_labels=self.data_config.allowed_labels,
                     model_version=self.training_config.model_version,
+                    item_window_augmentation=(
+                        self.data_config.item_window_augmentation
+                    ),
+                    item_window_size=self.data_config.item_window_size,
+                    item_window_stride=self.data_config.item_window_stride,
                 )
         else:
             datasets, split_metadata, merge_info = load_datasets(
@@ -177,6 +233,11 @@ class ReceiptLayoutLMTrainer:
                 label_merges=effective_label_merges,
                 allowed_labels=self.data_config.allowed_labels,
                 model_version=self.training_config.model_version,
+                item_window_augmentation=(
+                    self.data_config.item_window_augmentation
+                ),
+                item_window_size=self.data_config.item_window_size,
+                item_window_stride=self.data_config.item_window_stride,
             )
 
         # Compute dataset counts prior to tokenization for run logging
@@ -404,6 +465,9 @@ class ReceiptLayoutLMTrainer:
         )
         ta_cls = self._transformers.TrainingArguments
         ta_params = inspect.signature(ta_cls.__init__).parameters
+        checkpoint_metric = _checkpoint_metric_for_trainer(
+            self.training_config.checkpoint_metric
+        )
         if "evaluation_strategy" in ta_params:
             args_kwargs["evaluation_strategy"] = "epoch"
         elif "eval_strategy" in ta_params:
@@ -413,13 +477,16 @@ class ReceiptLayoutLMTrainer:
         if "load_best_model_at_end" in ta_params:
             args_kwargs["load_best_model_at_end"] = True
         if "metric_for_best_model" in ta_params:
-            # Check if seqeval is available to determine which metric to use
             try:
                 importlib.import_module("seqeval.metrics")
-                args_kwargs["metric_for_best_model"] = "eval_f1"
             except ModuleNotFoundError:
-                # Fallback to accuracy if seqeval not available
-                args_kwargs["metric_for_best_model"] = "eval_accuracy"
+                # Fallback to accuracy if seqeval-derived metrics are absent.
+                checkpoint_metric = "eval_accuracy"
+            args_kwargs["metric_for_best_model"] = checkpoint_metric
+        if "greater_is_better" in ta_params:
+            args_kwargs["greater_is_better"] = _metric_greater_is_better(
+                checkpoint_metric
+            )
         # Keep only 2 checkpoints locally to minimize disk usage
         # on_save callback syncs to S3 before old checkpoints are deleted
         if "save_total_limit" in ta_params:
@@ -703,6 +770,29 @@ class ReceiptLayoutLMTrainer:
                         if eval_loss is not None:
                             _add_metric("eval_loss", eval_loss, "loss")
 
+                        explanation_scalars = {
+                            "entity_prediction_rate": "val_entity_prediction_rate",
+                            "gold_entity_rate": "val_gold_entity_rate",
+                            "entity_prediction_gold_ratio": (
+                                "val_entity_prediction_gold_ratio"
+                            ),
+                            "entity_token_accuracy": "val_entity_token_accuracy",
+                            "o_token_accuracy": "val_o_token_accuracy",
+                            "product_detail_macro_f1": (
+                                "val_product_detail_macro_f1"
+                            ),
+                            "entropy_mean": "val_entropy_mean",
+                            "entropy_std": "val_entropy_std",
+                            "entropy_p10": "val_entropy_p10",
+                            "entropy_p90": "val_entropy_p90",
+                        }
+                        for source_name, metric_name in explanation_scalars.items():
+                            value = metrics.get(f"eval_{source_name}")
+                            if value is None:
+                                value = metrics.get(source_name)
+                            if value is not None:
+                                _add_metric(metric_name, value, "ratio")
+
                         # Confusion matrix (stored as dict, not scalar)
                         cm_data = metrics.get(
                             "eval_confusion_matrix"
@@ -862,6 +952,7 @@ class ReceiptLayoutLMTrainer:
                     window_size: int,
                     window_stride: int,
                     job_name: str,
+                    job_id: str,
                     s3_bucket: str | None,
                     s3_prefix: str | None,
                     valid_status: str = "VALID",
@@ -875,6 +966,7 @@ class ReceiptLayoutLMTrainer:
                     self.window_size = window_size
                     self.window_stride = window_stride
                     self.job_name = job_name
+                    self.job_id = job_id
                     self.s3_bucket = s3_bucket
                     self.s3_prefix = s3_prefix
                     self.valid_status = valid_status
@@ -897,6 +989,103 @@ class ReceiptLayoutLMTrainer:
                             ]
                     except Exception as e:  # noqa: BLE001
                         print(f"⚠️  Could not seed epochs.json: {e}")
+
+                def _write_live_metrics(
+                    self,
+                    entry: Dict[str, Any],
+                    *,
+                    epoch: Optional[int],
+                    step: int,
+                ) -> None:
+                    def _write(
+                        name: str,
+                        value: Any,
+                        unit: str = "ratio",
+                    ) -> None:
+                        if not isinstance(value, (int, float)):
+                            return
+                        try:
+                            self.dynamo.add_job_metric(
+                                JobMetric(
+                                    job_id=self.job_id,
+                                    metric_name=name,
+                                    value=float(value),
+                                    timestamp=datetime.now(
+                                        timezone.utc
+                                    ).isoformat(),
+                                    unit=unit,
+                                    epoch=epoch,
+                                    step=step,
+                                )
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            print(
+                                "Warning: Failed to write live held-out "
+                                f"metric {name}: {e}"
+                            )
+
+                    _write("heldout_windowed_f1", entry.get("heldout_f1"))
+                    _write(
+                        "heldout_windowed_precision",
+                        entry.get("heldout_precision"),
+                    )
+                    _write(
+                        "heldout_windowed_recall",
+                        entry.get("heldout_recall"),
+                    )
+                    _write(
+                        "heldout_windowed_token_accuracy",
+                        entry.get("token_accuracy"),
+                    )
+                    _write(
+                        "heldout_windowed_product_detail_macro_f1",
+                        entry.get("product_detail_macro_f1"),
+                    )
+                    _write(
+                        "heldout_windowed_entity_prediction_rate",
+                        entry.get("entity_prediction_rate"),
+                    )
+                    _write(
+                        "heldout_windowed_gold_entity_rate",
+                        entry.get("gold_entity_rate"),
+                    )
+                    _write(
+                        "heldout_windowed_f1_delta_vs_training_reported",
+                        entry.get("heldout_f1_delta_vs_training_reported"),
+                    )
+                    _write(
+                        "heldout_windowed_avg_inference_ms",
+                        entry.get("avg_inference_ms"),
+                        "ms",
+                    )
+
+                    per_label_f1 = entry.get("per_label_f1") or {}
+                    per_label_precision = entry.get("per_label_precision") or {}
+                    per_label_recall = entry.get("per_label_recall") or {}
+                    per_label_support = entry.get("per_label_support") or {}
+                    for label in (
+                        "PRODUCT_NAME",
+                        "QUANTITY",
+                        "UNIT_PRICE",
+                        "LINE_TOTAL",
+                    ):
+                        _write(
+                            f"heldout_label_{label}_f1",
+                            per_label_f1.get(label),
+                        )
+                        _write(
+                            f"heldout_label_{label}_precision",
+                            per_label_precision.get(label),
+                        )
+                        _write(
+                            f"heldout_label_{label}_recall",
+                            per_label_recall.get(label),
+                        )
+                        _write(
+                            f"heldout_label_{label}_support",
+                            per_label_support.get(label),
+                            "count",
+                        )
 
                 def _ensure_details(self) -> None:
                     if self._details is not None:
@@ -954,6 +1143,11 @@ class ReceiptLayoutLMTrainer:
                             valid_status=self.valid_status,
                         )
                         self._entries.append(entry)
+                        self._write_live_metrics(
+                            entry,
+                            epoch=epoch_num,
+                            step=int(getattr(state, "global_step", 0)),
+                        )
                         run_s3_uri = (
                             f"s3://{self.s3_bucket}/{self.s3_prefix}"
                             if self.s3_bucket and self.s3_prefix
@@ -1055,6 +1249,7 @@ class ReceiptLayoutLMTrainer:
                             or 150
                         ),
                         job_name=job_name,
+                        job_id=job.job_id,
                         s3_bucket=s3_bucket,
                         s3_prefix=s3_prefix,
                         valid_status=self.data_config.validation_status,
@@ -1333,6 +1528,76 @@ class ReceiptLayoutLMTrainer:
                 except Exception as e:
                     print(f"Warning: Failed to compute entropy metrics: {e}")
 
+                try:
+                    def _base(tag: str) -> str:
+                        if tag == "O":
+                            return "O"
+                        if tag.startswith("B-") or tag.startswith("I-"):
+                            return tag[2:]
+                        return tag
+
+                    total_tokens = 0
+                    gold_entity_tokens = 0
+                    pred_entity_tokens = 0
+                    correct_entity_tokens = 0
+                    gold_o_tokens = 0
+                    correct_o_tokens = 0
+                    for true_seq, pred_seq in zip(y_true, y_pred):
+                        for true_tag, pred_tag in zip(true_seq, pred_seq):
+                            gold = _base(true_tag)
+                            pred = _base(pred_tag)
+                            total_tokens += 1
+                            if gold == "O":
+                                gold_o_tokens += 1
+                                if pred == "O":
+                                    correct_o_tokens += 1
+                            else:
+                                gold_entity_tokens += 1
+                                if gold == pred:
+                                    correct_entity_tokens += 1
+                            if pred != "O":
+                                pred_entity_tokens += 1
+
+                    if total_tokens:
+                        metrics["gold_entity_rate"] = (
+                            gold_entity_tokens / total_tokens
+                        )
+                        metrics["entity_prediction_rate"] = (
+                            pred_entity_tokens / total_tokens
+                        )
+                    if gold_entity_tokens:
+                        metrics["entity_prediction_gold_ratio"] = (
+                            pred_entity_tokens / gold_entity_tokens
+                        )
+                        metrics["entity_token_accuracy"] = (
+                            correct_entity_tokens / gold_entity_tokens
+                        )
+                    if gold_o_tokens:
+                        metrics["o_token_accuracy"] = (
+                            correct_o_tokens / gold_o_tokens
+                        )
+
+                    product_f1_values = [
+                        metrics[f"label_{label}_f1"]
+                        for label in (
+                            "PRODUCT_NAME",
+                            "QUANTITY",
+                            "UNIT_PRICE",
+                            "LINE_TOTAL",
+                        )
+                        if isinstance(
+                            metrics.get(f"label_{label}_f1"), (int, float)
+                        )
+                    ]
+                    if product_f1_values:
+                        metrics["product_detail_macro_f1"] = sum(
+                            product_f1_values
+                        ) / len(product_f1_values)
+                except Exception as e:
+                    print(
+                        f"Warning: Failed to compute explanation metrics: {e}"
+                    )
+
                 # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
                 # with epoch information, so we don't need to store it here
             else:
@@ -1366,6 +1631,12 @@ class ReceiptLayoutLMTrainer:
 
         w_min = _read_float_env("LAYOUTLM_CLASS_WEIGHT_MIN", 0.3)
         w_max = _read_float_env("LAYOUTLM_CLASS_WEIGHT_MAX", 5.0)
+        product_weight = self.training_config.product_detail_loss_weight
+        if product_weight <= 0:
+            raise ValueError(
+                "product_detail_loss_weight must be > 0; "
+                f"got {product_weight}"
+            )
         if not (0 < w_min <= w_max):
             raise ValueError(
                 f"class weight clip range invalid: "
@@ -1388,6 +1659,17 @@ class ReceiptLayoutLMTrainer:
             else:
                 w = total / (n_classes * c)
                 weights.append(max(w_min, min(w, w_max)))
+        if product_weight != 1.0:
+            product_labels = {
+                "PRODUCT_NAME",
+                "QUANTITY",
+                "UNIT_PRICE",
+                "LINE_TOTAL",
+            }
+            for idx, label in enumerate(label_list):
+                base_label = label[2:] if label.startswith(("B-", "I-")) else label
+                if base_label in product_labels:
+                    weights[idx] = min(w_max, weights[idx] * product_weight)
         class_weights_tensor = torch_mod.tensor(
             weights, dtype=torch_mod.float32
         )
@@ -1397,6 +1679,11 @@ class ReceiptLayoutLMTrainer:
                 f"{label_list[i]}={weights[i]:.2f}" for i in range(n_classes)
             )
         )
+        if product_weight != 1.0:
+            print(
+                "[trainer] product detail loss weight multiplier: "
+                f"{product_weight:.3f}"
+            )
 
         TrainerBase = self._transformers.Trainer
 
@@ -1472,54 +1759,55 @@ class ReceiptLayoutLMTrainer:
             # Calculate best epoch and early stopping info
             best_epoch = None
             best_f1 = None
+            best_selection_epoch = None
+            best_selection_metric_value = None
             early_stopping_triggered = False
 
-            # Find best F1 score
-            f1_metrics = [
-                m for m in epoch_metrics if "eval_f1" in m or "f1" in m
-            ]
-            if f1_metrics:
-                # Get F1 value (try eval_f1 first, then f1)
-                f1_with_epochs = [
-                    (m.get("epoch"), m.get("eval_f1") or m.get("f1"))
-                    for m in f1_metrics
-                    if m.get("epoch") is not None
-                    and (
-                        m.get("eval_f1") is not None or m.get("f1") is not None
-                    )
-                ]
-                if f1_with_epochs:
-                    best_epoch, best_f1 = max(
-                        f1_with_epochs,
-                        key=lambda x: x[1] if x[1] is not None else -1,
-                    )
+            # Find best aggregate validation F1 for backwards-compatible
+            # reporting, even when checkpoint selection uses a different metric.
+            f1_with_epochs = _epoch_metric_values(epoch_metrics, "eval_f1")
+            if f1_with_epochs:
+                best_epoch, best_f1 = max(f1_with_epochs, key=lambda x: x[1])
 
-                    # Check if early stopping triggered
-                    # If best epoch is not the last epoch, early stopping likely triggered
-                    if epoch_metrics:
-                        last_epoch = max(
-                            (
-                                m.get("epoch")
-                                for m in epoch_metrics
-                                if m.get("epoch") is not None
-                            ),
-                            default=None,
-                        )
-                        if last_epoch is not None and best_epoch is not None:
-                            # Check if we stopped before max epochs
-                            max_epochs = self.training_config.epochs
-                            patience = (
-                                self.training_config.early_stopping_patience
-                            )
-                            if last_epoch < max_epochs - 1:
-                                # Check if best epoch was more than patience epochs ago
-                                epochs_since_best = last_epoch - best_epoch
-                                if epochs_since_best >= patience:
-                                    early_stopping_triggered = True
+            selection_metric_name = _checkpoint_metric_for_trainer(
+                self.training_config.checkpoint_metric
+            )
+            selection_values = _epoch_metric_values(
+                epoch_metrics, selection_metric_name
+            )
+            if selection_values:
+                selector = max if _metric_greater_is_better(
+                    selection_metric_name
+                ) else min
+                best_selection_epoch, best_selection_metric_value = selector(
+                    selection_values,
+                    key=lambda x: x[1],
+                )
+
+            if epoch_metrics:
+                last_epoch = max(
+                    (
+                        m.get("epoch")
+                        for m in epoch_metrics
+                        if m.get("epoch") is not None
+                    ),
+                    default=None,
+                )
+                if (
+                    last_epoch is not None
+                    and best_selection_epoch is not None
+                    and last_epoch < self.training_config.epochs - 1
+                ):
+                    epochs_since_best = last_epoch - best_selection_epoch
+                    if epochs_since_best >= (
+                        self.training_config.early_stopping_patience
+                    ):
+                        early_stopping_triggered = True
 
             summary_payload = {
                 "type": "run_summary",
                 "epoch_metrics": epoch_metrics,
+                "checkpoint_metric": selection_metric_name,
             }
 
             # Add early stopping information if available
@@ -1546,6 +1834,18 @@ class ReceiptLayoutLMTrainer:
                             if best_epoch is not None
                             else None
                         )
+            if best_selection_epoch is not None:
+                summary_payload["best_checkpoint_metric"] = (
+                    selection_metric_name
+                )
+                summary_payload["best_checkpoint_metric_epoch"] = float(
+                    best_selection_epoch
+                )
+                summary_payload["best_checkpoint_metric_value"] = (
+                    float(best_selection_metric_value)
+                    if best_selection_metric_value is not None
+                    else None
+                )
 
             # Extract checkpoint and training time information from trainer_state.json
             trainer_state_path = os.path.join(output_dir, "trainer_state.json")
@@ -1631,6 +1931,20 @@ class ReceiptLayoutLMTrainer:
                 "best_f1": float(best_f1) if best_f1 is not None else None,
                 "best_epoch": (
                     int(best_epoch) if best_epoch is not None else None
+                ),
+                "best_f1_epoch": (
+                    int(best_epoch) if best_epoch is not None else None
+                ),
+                "checkpoint_metric": selection_metric_name,
+                "best_checkpoint_metric_value": (
+                    float(best_selection_metric_value)
+                    if best_selection_metric_value is not None
+                    else None
+                ),
+                "best_checkpoint_metric_epoch": (
+                    int(best_selection_epoch)
+                    if best_selection_epoch is not None
+                    else None
                 ),
                 "early_stopping_triggered": early_stopping_triggered,
             }

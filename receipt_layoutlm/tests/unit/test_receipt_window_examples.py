@@ -5,6 +5,7 @@ import pytest
 from receipt_layoutlm.data_loader import (
     WordInfo,
     _build_receipt_window_examples,
+    _crop_to_line_item_band,
 )
 
 
@@ -176,3 +177,66 @@ def test_reading_order_sort_top_to_bottom_left_to_right():
         [w_bottom, w_top_right, w_top_left], "k"
     )
     assert out[0].tokens == ["a", "b", "c"]
+
+
+def test_crop_to_line_item_band_keeps_product_rows_between_anchors():
+    words = [
+        WordInfo(
+            word_id=0,
+            text="STORE",
+            bbox=[0, 0, 50, 10],
+            label="MERCHANT_NAME",
+            original_label="MERCHANT_NAME",
+            line_id=1,
+            image_id="img1",
+            receipt_id=1,
+        ),
+        WordInfo(
+            word_id=1,
+            text="555-1111",
+            bbox=[0, 20, 50, 30],
+            label="PHONE_NUMBER",
+            original_label="PHONE_NUMBER",
+            line_id=2,
+            image_id="img1",
+            receipt_id=1,
+        ),
+        WordInfo(
+            word_id=2,
+            text="MILK",
+            bbox=[0, 40, 50, 50],
+            label="PRODUCT_NAME",
+            original_label="PRODUCT_NAME",
+            line_id=3,
+            image_id="img1",
+            receipt_id=1,
+        ),
+        WordInfo(
+            word_id=3,
+            text="$4.29",
+            bbox=[80, 40, 100, 50],
+            label="LINE_TOTAL",
+            original_label="LINE_TOTAL",
+            line_id=3,
+            image_id="img1",
+            receipt_id=1,
+        ),
+        WordInfo(
+            word_id=4,
+            text="TOTAL",
+            bbox=[0, 80, 50, 90],
+            label="GRAND_TOTAL",
+            original_label="GRAND_TOTAL",
+            line_id=4,
+            image_id="img1",
+            receipt_id=1,
+        ),
+    ]
+    label_map = {
+        ("img1", 1, word.line_id, word.word_id): [word.original_label]
+        for word in words
+    }
+
+    out = _crop_to_line_item_band(words, label_map, "img1", 1)
+
+    assert [word.text for word in out] == ["MILK", "$4.29"]

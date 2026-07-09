@@ -1,94 +1,224 @@
-## LayoutLM training: batch size and hyperparameter sweeps
+# LayoutLM Training Strategy
 
-### What batch size does here
+Last updated: 2026-07-09 UTC.
 
-- **Unit**: one training sample is a receipt line (tokens + bboxes + BIO tags).
-- **Batch size**: number of lines per optimizer step.
-- **Effects**:
-  - **Throughput**: larger batch → more tokens/sec, fewer steps/epoch.
-  - **Memory**: grows roughly linearly with batch size. Attention also scales with sequence length.
-  - **Optimization**: very large batches can need a higher learning rate; huge batches can sometimes reduce generalization.
-- **Effective batch**: per_device_batch_size × gradient_accumulation_steps × num_gpus.
+The current receipt model should be improved with controlled parallel
+experiments, not by waiting for one 100-epoch job and guessing from the final
+aggregate F1.
 
-### Suggested defaults (single A10G on g5.xlarge)
+## Current Baseline Recipe
 
-- Mixed precision: enabled (fp16 automatically when CUDA available).
-- TF32: enabled for faster matmul on Ampere (safe for transformers).
-- DataLoader: num_workers 4–8, pin_memory=True.
-- Start batch size high enough to keep GPU-Util ~85–95% without OOM.
+The current v25 adversarial real-only baseline uses:
 
-### Key hyperparameters to sweep
+- pretrained model: `microsoft/layoutlm-base-uncased`
+- model version: `v1`
+- epochs: `100`
+- batch size: `8`
+- learning rate: `1e-5`
+- warmup ratio: `0.1`
+- gradient accumulation: `1`
+- label smoothing: `0.0`
+- early stopping patience: `15`
+- validation split: `adversarial_val_keys_v2_20260708.json`
+- labels: all 22 current core labels
+- live held-out eval: enabled, writes `epochs.json`
 
-- **Learning rate (lr)**: 1e-5 → 5e-5 (log-uniform). Most important.
-- **Weight decay**: 0.0 → 0.1.
-- **Warmup ratio**: 0.0 → 0.2.
-- **Effective batch size**: adjust batch_size and/or gradient_accumulation_steps.
-- **Label smoothing**: 0.0 → 0.1. Can improve recall and stabilize early training.
-- Optional: **max_grad_norm** (0.5–1.0), **early_stopping_patience** (2–4).
+This recipe is intentionally conservative. The low learning rate and 22-label
+head can take many epochs to settle, especially with receipt windows that are
+mostly `O` tokens and with sparse labels such as `LOYALTY_ID`, `DISCOUNT`,
+`REFUND`, `TIP`, and `UNIT_PRICE`.
 
-### Practical sweep recipe
+## Why So Many Epochs
 
-1. Keep data and preprocessing fixed (BIO tagging, receipt-level split).
-2. Limit epochs to 3–5 with early stopping on val_f1 to speed up search.
-3. Run 10–20 trials varying: lr, weight_decay, warmup_ratio, batch_size/grad_accum, label_smoothing.
-4. Select best by val_f1; retrain that config for full epochs (e.g., 10–12).
+Many epochs are needed here because the run is doing several hard things at
+once:
 
-### Example commands
+- adapting a generic LayoutLM base model to receipt-specific OCR geometry;
+- learning a new 22-label BIO head;
+- separating many visually similar numeric fields;
+- learning sparse labels with little support;
+- handling long receipts through sliding windows;
+- training with a low learning rate.
 
-Run a single trial with tuned batch size and defaults:
+More epochs are not a guarantee of better generalization. If held-out F1
+plateaus while training loss keeps falling, more epochs mostly increase
+template memorization and confidence in wrong predictions.
+
+## Labels
+
+The full 22-label model is useful for product search and receipt intelligence,
+but it is harder than the deployed v23 head. Do not compare v23 aggregate F1
+directly to full-core v24/v25 without calling out the label-set difference.
+
+Current weak labels to watch:
+
+- `PRODUCT_NAME`
+- `LOYALTY_ID`
+- `UNIT_PRICE`
+- `DISCOUNT`
+- `REFUND`
+- `TIP`
+- `QUANTITY`
+
+Useful label ablations can run in parallel:
+
+- full-core control: all 22 labels, real receipts only;
+- operational-core model: merchant, date/time, payment, totals, address/phone;
+- line-item model: `PRODUCT_NAME`, `QUANTITY`, `UNIT_PRICE`, `LINE_TOTAL`, plus
+  enough anchors to crop and reconcile;
+- merged-amount model: merge `LINE_TOTAL`, `SUBTOTAL`, `TAX`, and `GRAND_TOTAL`
+  only if the product need is "find any amount" rather than exact field type.
+
+Use `--allowed-label` and `--label-merges` for these ablations. Keep the same
+validation split so the comparison is honest.
+
+## Parallel Experiment Lanes
+
+We can train multiple jobs at once. The useful parallel lanes are:
+
+1. Real-only adversarial control.
+   v25 is complete. The fresh-image v27 control completed with best live
+   held-out F1 about `0.536`.
+
+2. Short hyperparameter sweep.
+   Run 3-5 epoch jobs on the same adversarial split to test learning rate,
+   label smoothing, and O-token downsampling. Pick winners for full retrain.
+
+3. Label-scope ablation.
+   Train a smaller label head to test whether the full 22-label task is hurting
+   high-value extraction.
+
+4. Synthetic-loader port.
+   Port the synthetic training hook from `.worktrees/synth-images-frontend` into
+   main before launching a synthetic SageMaker job.
+
+5. First-pass item-window augmentation.
+   Use `--item-window-augment` on the full 22-label head. This appends cropped
+   line-item-band windows to the training split only, while validation and
+   inference stay full-receipt/windowed. v27 did not beat the control on
+   aggregate F1, but it had the stronger early product-detail checkpoint. v28
+   confirmed that `--checkpoint-metric product_detail_macro_f1` preserves that
+   better product checkpoint: item-window held-out product-detail macro F1 was
+   about `0.390`, compared with the control's `0.363`.
+
+6. Synthetic-augmented run.
+   Use the exact same adversarial validation split, add synthetic rows to the
+   training split only, and exclude heldout merchants from synthetic generation.
+
+Avoid running multiple long jobs that differ only by random seed. That can be
+useful later, but it does not answer the current product question as quickly as
+label, data, and synthesis ablations.
+
+Current concurrency note: as of this update, the account limit for
+`ml.g5.xlarge` training usage is 2 instances. A third concurrent `g5.xlarge`
+job will be rejected unless one run finishes or the quota is increased. Use the
+two slots for meaningfully different experiments.
+
+## Current Improvement Result
+
+The v29 jobs were intentionally different:
+
+- `layoutlm-v29-item-window-prodweight-20260708-145418`: full 22-label head,
+  item-window augmentation, product checkpointing, and
+  `--product-detail-loss-weight 1.5`.
+- `layoutlm-v29-product-only-item-window-20260708-145418`: product-only head
+  with `PRODUCT_NAME`, `QUANTITY`, `UNIT_PRICE`, and `LINE_TOTAL`, plus
+  item-window augmentation.
+
+Both completed below the v28 product-selected item-window checkpoint:
+
+- v28 item-window product-selected: product-detail macro F1 about `0.390`.
+- v29 weighted full-head: product-detail macro F1 about `0.354`.
+- v29 product-only head: product-detail macro F1 about `0.332`.
+
+This rules out two easy fixes for now: simply increasing product-label loss
+weight and simply narrowing the head to product labels. Do not spend more long
+runs on epoch count alone. Move to proof-driven data changes: merchant-template
+slices, synthetic product-row augmentation, label/eval contract review, and
+product-line structural priors.
+
+Merchant layout repetition is useful but easy to fool ourselves with. Report
+seen-merchant and held-out-template metrics separately before deciding that a
+change generalizes.
+
+Use `layoutlm-cli diagnose-run` before launching the next training lane. The
+current v28/v29 diagnostics support these directions:
+
+- Template coverage: unseen merchants scored worse than seen merchants, and
+  product F1 fell as nearest-template distance increased.
+- Line-item structure: missing `LINE_TOTAL` columns and very long item tables
+  are materially weaker slices.
+- Label/eval mismatch: high-confidence product false positives need review
+  before we decide whether they are model errors or unlabeled-but-useful tokens.
+- Model weakness: low-confidence product errors remain, but they are not the
+  only failure mode, so an architecture change should wait until coverage,
+  structure, and labels have been isolated.
+
+## Sweep Knobs
+
+Good first sweep values:
+
+- learning rate: `5e-6`, `1e-5`, `2e-5`, `3e-5`
+- label smoothing: `0.0`, `0.03`, `0.05`
+- O:entity ratio target: unset, `2.0`, `3.0`
+- early stopping patience for sweeps: `3` to `5`
+- epochs for sweeps: `3` to `5`
+
+Keep these fixed during sweeps:
+
+- validation key file;
+- label set for the experiment lane;
+- receipt window size and stride;
+- real-only versus synthetic augmentation status.
+- first-pass item-window augmentation status.
+
+## Command Shape
+
+Local command shape:
 
 ```bash
-export TORCH_ALLOW_TF32=1
-export TOKENIZERS_PARALLELISM=false
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export CUDA_DEVICE_MAX_CONNECTIONS=1
-
-JOB=receipts-$(date +%s); RUNS=~/runs/$JOB; mkdir -p "$RUNS"
-layoutlm-cli train --job-name "$JOB" --dynamo-table "$DYNAMO_TABLE_NAME" \
-  --epochs 5 --batch-size 192 --lr 3e-5 2>&1 | tee "$RUNS/train.log"
+layoutlm-cli train \
+  --job-name <job-name> \
+  --dynamo-table ReceiptsTable-dc5be22 \
+  --epochs 5 \
+  --batch-size 8 \
+  --lr 1e-5 \
+  --warmup-ratio 0.1 \
+  --early-stopping-patience 4 \
+  --val-keys-s3 s3://layoutlm-training-dev-68164770/config/adversarial_val_keys_v2_20260708.json
 ```
 
-Coarse manual sweep sketch (change just the numbers):
+First-pass product-detail experiment:
 
 ```bash
-for lr in 1e-5 2e-5 3e-5 5e-5; do
-  for wd in 0.0 0.01 0.05; do
-    JOB="sweep-$(date +%s)-lr${lr}-wd${wd}"; RUNS=~/runs/$JOB; mkdir -p "$RUNS"
-    layoutlm-cli train --job-name "$JOB" --dynamo-table "$DYNAMO_TABLE_NAME" \
-      --epochs 4 --batch-size 160 --lr $lr 2>&1 | tee "$RUNS/train.log"
-  done
-done
+layoutlm-cli train \
+  --job-name <job-name> \
+  --dynamo-table ReceiptsTable-dc5be22 \
+  --epochs 100 \
+  --batch-size 8 \
+  --lr 1e-5 \
+  --warmup-ratio 0.1 \
+  --early-stopping-patience 15 \
+  --checkpoint-metric product_detail_macro_f1 \
+  --product-detail-loss-weight 1.5 \
+  --val-keys-s3 s3://layoutlm-training-dev-68164770/config/adversarial_val_keys_v2_20260708.json \
+  --item-window-augment
 ```
 
-### Interpreting metrics
+Use `--product-detail-loss-weight` conservatively. Start with `1.5`; values much
+larger than that may improve product recall by spraying product labels into
+non-product regions.
 
-- We report **seqeval** entity-level Precision/Recall/F1 (BIO), ignoring the O tag.
-- Expect low F1 in early epochs, especially with O‑heavy data. It should rise as the head learns.
-- Use `load_best_model_at_end=True` and `metric_for_best_model=f1` (already set) to keep the best checkpoint.
+For SageMaker, pass the same settings as Lambda hyperparameters so the training
+container builds the equivalent `layoutlm-cli train` command.
 
-### Saving and promoting artifacts
+## Promotion Rules
 
-Sync full run directory and best checkpoint to S3 after training:
+Do not promote from aggregate F1 alone. A model is promotable only if:
 
-```bash
-/usr/bin/aws s3 sync /tmp/receipt_layoutlm/$JOB s3://$BUCKET/runs/$JOB/
-if [ -f /tmp/receipt_layoutlm/$JOB/trainer_state.json ]; then
-  BEST=$(python - <<'PY'
-import json,sys
-p=f"/tmp/receipt_layoutlm/{sys.argv[1]}/trainer_state.json"
-print(json.load(open(p)).get("best_model_checkpoint",""))
-PY
-"$JOB")
-  [ -n "$BEST" ] && /usr/bin/aws s3 sync "$BEST" s3://$BUCKET/runs/$JOB/best/
-fi
-```
-
-### Common pitfalls and fixes
-
-- F1 ~0 early on: model predicts mostly O after adding unlabeled tokens; let it train or filter all‑O lines for training only.
-- OOM on big batches: reduce batch size; ensure `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is set.
-- Resume mismatch: changing label set invalidates old checkpoints; start a new run dir (already isolated per job).
-
-### When larger batch is “better”
-
-- Larger batch is primarily a performance lever. Accuracy doesn’t automatically improve. If you go much larger, consider modest LR scaling and monitor val_f1. Use the smallest batch that saturates the GPU and gives stable/improving metrics.
+- it beats the current candidate on the same pinned validation split;
+- the improvement is visible in the slices we care about;
+- weak-label behavior is understood, not hidden by easy-label gains;
+- recent-upload and merchant-template holdout results are reported separately;
+- synthetic training, if used, did not include heldout merchants or templates;
+- CoreML export and inference validation pass for the target runtime.
