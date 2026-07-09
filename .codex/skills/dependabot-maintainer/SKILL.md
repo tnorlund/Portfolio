@@ -49,13 +49,13 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 ## Guardrails
 
 - Do not merge PRs unless the author is a Dependabot bot identity.
-- Do not merge PRs unless every head commit is authored by Dependabot and either committed by Dependabot or has GitHub's verified Dependabot signature shape.
+- Do not merge PRs unless every head commit has a GitHub-mapped Dependabot author and either a GitHub-mapped Dependabot committer or GitHub's verified Dependabot signature shape.
 - Do not merge PRs with source changes outside known dependency manifests, lockfiles, or GitHub workflow files.
 - Do not merge while checks are queued, in progress, failed, cancelled, timed out, or missing.
 - Do not merge unless GitHub reports `MERGEABLE/CLEAN`. Use `rebase`, then wait for the new head SHA and checks.
 - Do not run local dependency installs until the same author, state, file, commit-provenance, and major-version guards pass, then re-check that the fetched PR head is still the guarded SHA.
 - Do not execute npm verification scripts from a PR that changes those script definitions; route those PRs to manual review.
-- Do not treat unclear lockfile version movement as safe. Unknown dependency version diffs require manual review.
+- Do not treat unclear lockfile version movement, opaque non-JSON lockfile edits, or SHA-only action ref updates as safe. Unknown dependency version diffs require manual review.
 - Do not batch unrelated PRs into one local commit. Dependabot PRs should remain individually mergeable and auditable.
 - Keep local work in scratch worktrees so unfinished user work in the main checkout is untouched.
 

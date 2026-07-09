@@ -40,6 +40,11 @@ LOCK_FILE_NAMES = {
     "poetry.lock",
     "Pipfile.lock",
 }
+JSON_LOCK_FILE_NAMES = {
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "Pipfile.lock",
+}
 GITHUB_VERIFIED_COMMITTERS = {"web-flow"}
 NPM_VERIFICATION_SCRIPTS = {"lint", "type-check", "test:ci"}
 RECEIPT_UPLOAD_LOCAL_STACK = (
@@ -63,6 +68,8 @@ RECEIPT_UPLOAD_EXTERNAL_DEPS = (
     "httpx",
     "pydantic",
     "pydantic-settings",
+    "python-barcode>=0.15.0",
+    "segno>=1.6.0",
     "structlog",
     "requests",
     "tenacity",
@@ -91,18 +98,12 @@ def is_lockfile_path(path: str | None) -> bool:
     return bool(path) and Path(path).name in LOCK_FILE_NAMES
 
 
-def is_dependabot_identity(
-    login: str | None,
-    *,
-    email: str = "",
-    name: str = "",
-) -> bool:
-    return (
-        login in DEPENDABOT_AUTHORS
-        or login == "dependabot[bot]"
-        or "dependabot[bot]" in email
-        or name == "dependabot[bot]"
-    )
+def is_json_lockfile_path(path: str | None) -> bool:
+    return bool(path) and Path(path).name in JSON_LOCK_FILE_NAMES
+
+
+def is_dependabot_identity(login: str | None) -> bool:
+    return login in DEPENDABOT_AUTHORS
 
 
 def run(
@@ -240,10 +241,12 @@ def parse_version_pairs(text: str | None) -> list[tuple[str, str]]:
 def version_major_set(version: str | None) -> set[int] | None:
     if not version:
         return None
+    if re.fullmatch(r"[0-9a-fA-F]{40}", version.strip()):
+        return None
     majors = {
         int(match.group(1))
         for match in re.finditer(
-            r"(?<![A-Za-z])v?(\d+)(?:\.\d+)?(?:\.\d+)?",
+            r"(?<![A-Za-z0-9])v?(\d+)(?:\.\d+){0,2}(?![A-Za-z0-9])",
             version,
         )
     }
@@ -314,7 +317,21 @@ def dependency_spec_from_line(
 
 
 def is_version_metadata_line(line: str) -> bool:
-    return bool(re.match(r'\s*"version":\s*"[^"]+"', line))
+    stripped = line.strip()
+    return bool(
+        re.match(r'"version":\s*"[^"]+"', stripped)
+        or re.match(r"version:\s*\S+", stripped)
+        or re.match(r"version\s*=\s*['\"]?[^'\"]+", stripped)
+        or re.match(r"[^\s:]+@\S+:", stripped)
+    )
+
+
+def is_opaque_lockfile_line(path: str | None, line: str) -> bool:
+    if not is_lockfile_path(path) or is_json_lockfile_path(path):
+        return False
+
+    stripped = line.strip()
+    return bool(stripped and not stripped.startswith(("#", "//")))
 
 
 def version_pairs_from_diff(
@@ -372,6 +389,8 @@ def version_pairs_from_diff(
                 unknown_changes.append(
                     f"{current_path}: unparsed removed version line"
                 )
+            elif is_opaque_lockfile_line(current_path, line[1:]):
+                unknown_changes.append(f"{current_path}: opaque removed lockfile line")
             continue
 
         if line.startswith("+"):
@@ -392,6 +411,8 @@ def version_pairs_from_diff(
                 line[1:]
             ):
                 unknown_changes.append(f"{current_path}: unparsed added version line")
+            elif is_opaque_lockfile_line(current_path, line[1:]):
+                unknown_changes.append(f"{current_path}: opaque added lockfile line")
 
     flush_removed()
     return pairs, unknown_changes
@@ -426,6 +447,7 @@ def major_update_reasons(
 
     diff_pairs, unknown_changes = version_pairs_from_diff(diff_text)
     known_non_major = False
+    unknown_pairs: list[str] = []
     for name, before, after in diff_pairs:
         result = pair_is_major(before, after)
         if result is True:
@@ -434,8 +456,10 @@ def major_update_reasons(
             ]
         if result is False:
             known_non_major = True
+        if result is None:
+            unknown_pairs.append(f"{name}: {before} -> {after}")
 
-    if unknown_changes:
+    if unknown_changes or unknown_pairs:
         return ["could not determine update level from every dependency diff"]
 
     if known_non_major:
@@ -453,9 +477,11 @@ def npm_script_change_reasons(diff_text: str | None) -> list[str]:
 
     reasons: list[str] = []
     current_path: str | None = None
+    scripts_depth: int | None = None
     for line in diff_text.splitlines():
         if line.startswith("diff --git "):
             current_path = None
+            scripts_depth = None
             parts = line.split()
             if len(parts) >= 4:
                 current_path = parts[3].removeprefix("b/")
@@ -464,21 +490,47 @@ def npm_script_change_reasons(diff_text: str | None) -> list[str]:
         if not current_path or Path(current_path).name != "package.json":
             continue
 
-        if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
+        if line.startswith("---") or line.startswith("+++"):
             continue
 
-        match = re.match(r'\s*"([^"]+)":', line[1:].strip())
+        line_body = line[1:] if line[:1] in {" ", "+", "-"} else line
+        stripped = line_body.strip()
+        entered_scripts = False
+        if scripts_depth is None and re.match(r'"scripts":\s*\{', stripped):
+            scripts_depth = stripped.count("{") - stripped.count("}")
+            entered_scripts = True
+
+        if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
+            if scripts_depth is not None and not entered_scripts:
+                scripts_depth += stripped.count("{") - stripped.count("}")
+                if scripts_depth <= 0:
+                    scripts_depth = None
+            continue
+
+        match = re.match(r'\s*"([^"]+)":', stripped)
         if not match:
+            if scripts_depth is not None and not entered_scripts:
+                scripts_depth += stripped.count("{") - stripped.count("}")
+                if scripts_depth <= 0:
+                    scripts_depth = None
             continue
 
         key = match.group(1)
-        if (
-            key == "scripts"
-            or key in NPM_VERIFICATION_SCRIPTS
-            or key.startswith("pre")
-            or key.startswith("post")
+        inside_scripts = scripts_depth is not None
+        if key == "scripts" or (
+            inside_scripts
+            and (
+                key in NPM_VERIFICATION_SCRIPTS
+                or key.startswith("pre")
+                or key.startswith("post")
+            )
         ):
             reasons.append(f"npm script changed in {current_path}: {key}")
+
+        if scripts_depth is not None and not entered_scripts:
+            scripts_depth += stripped.count("{") - stripped.count("}")
+            if scripts_depth <= 0:
+                scripts_depth = None
 
     return sorted(set(reasons))
 
@@ -526,11 +578,7 @@ def commit_provenance_reasons(
         github_author = data.get("author") or {}
         github_committer = data.get("committer") or {}
 
-        if not is_dependabot_identity(
-            github_author.get("login"),
-            email=raw_author.get("email") or "",
-            name=raw_author.get("name") or "",
-        ):
+        if not is_dependabot_identity(github_author.get("login")):
             author_label = (
                 github_author.get("login")
                 or raw_author.get("email")
@@ -541,11 +589,7 @@ def commit_provenance_reasons(
             )
 
         if not (
-            is_dependabot_identity(
-                github_committer.get("login"),
-                email=raw_committer.get("email") or "",
-                name=raw_committer.get("name") or "",
-            )
+            is_dependabot_identity(github_committer.get("login"))
             or has_verified_dependabot_signature(data)
         ):
             committer_label = (
