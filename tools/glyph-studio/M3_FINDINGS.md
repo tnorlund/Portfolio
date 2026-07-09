@@ -206,3 +206,30 @@ duplicates overprint and inflate measured synth density. Clean receipts score
 
 *Lesson for every measurement in this epic: vet the corpus before trusting
 first-N samples; one bad receipt at the top of an index shaped two epics.*
+
+## Fleet-wide vetted pin audit (2026-07-10) — no pin needs changing
+
+Current shipped fonts + pins, vetted receipts only (OCR x-overlap ≤ 2),
+render scorecard:
+
+| merchant (pin) | vetted density_ratios | median | verdict |
+|---|---|--:|---|
+| Wild Fork (thin 0.6) | 0.92 / 0.94 / 0.94 / 0.99 | **0.94** | fine — tightest in the fleet |
+| Sprouts (0.225) | 0.75 / 0.97 / 0.97 / 1.09 | **0.97** | fine |
+| CVS (0.15) | 0.75 / 0.81 / 1.00 / 1.02 | **0.91** | fine |
+| Home Depot (0.6) | 0.98 (only one vetted receipt exists) | **0.98** | fine (n=1) |
+| Costco (0.0) | 0.53 / 0.74 / 0.76 / 1.12 | **0.75** | runs LIGHT + high variance — monitor, no change |
+
+Every "railed merchant" narrative dissolves on vetted data. Costco — which
+the epic doc says "rails at the 0.0 floor" (too dense) — actually runs
+*light*, the opposite direction, with too much variance for a confident
+correction. **The epic's M3/M5 acceptance criterion ("the railed merchants
+come off the rails") was chasing measurement artifacts.** The epic's real
+remaining objectives are diagonals (family-level handcraft), multi-face
+rendering (M4, consumes the M2 map), and new-merchant cold start (M6).
+Density calibration is CLOSED: current pins stand.
+
+(Note: Home Depot has exactly one vetted receipt in dev — 17 of its 18
+receipts flag the x-overlap detector. Whether that is genuinely pathological
+OCR corpus-wide or partly detector over-flagging on HD's dense column layout
+deserves a look before trusting any HD-specific conclusion.)
