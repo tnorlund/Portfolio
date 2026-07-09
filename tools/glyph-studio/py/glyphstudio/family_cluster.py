@@ -112,12 +112,19 @@ def pairwise_iou(
 
 
 def cluster_families(
-    merchants: Sequence[str], iou: np.ndarray, threshold: float = 0.65
+    merchants: Sequence[str],
+    iou: np.ndarray,
+    threshold: float = 0.60,
+    shared: Optional[np.ndarray] = None,
+    min_shared: int = 10,
 ) -> list[list[str]]:
     """Single-linkage agglomeration: merchants linked when IoU >= threshold.
 
-    Union-find over pairs above threshold. Same-font pairs (~0.7) merge;
-    different-font pairs (~0.55) and the Costco outlier stay separate.
+    Union-find over pairs above threshold. The default threshold (0.60) is
+    calibrated to this method's IoU distribution on the refined fonts (highest
+    off-diagonal ~0.62). ``shared``/``min_shared`` gate linking on evidence: a
+    pair must share at least ``min_shared`` letterforms, so a partial atlas with
+    one identical glyph (IoU 1.0 over n=1) cannot spuriously merge a family.
     """
     n = len(merchants)
     parent = list(range(n))
@@ -130,7 +137,9 @@ def cluster_families(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if iou[i, j] >= threshold:
+            if iou[i, j] >= threshold and (
+                shared is None or shared[i, j] >= min_shared
+            ):
                 parent[find(i)] = find(j)
 
     groups: dict[int, list[str]] = {}
@@ -166,12 +175,15 @@ def load_normalized_merchant(
 def discover_families(
     font_dirs: dict[str, str],
     chars: str = DEFAULT_CHARS,
-    threshold: float = 0.65,
+    threshold: float = 0.60,
+    min_shared: int = 10,
 ) -> FamilyResult:
     """End-to-end: merchant font dirs -> IoU matrix + families."""
     normalized = {
         name: load_normalized_merchant(d, chars) for name, d in font_dirs.items()
     }
     merchants, iou, shared = pairwise_iou(normalized, chars)
-    families = cluster_families(merchants, iou, threshold)
+    families = cluster_families(
+        merchants, iou, threshold, shared=shared, min_shared=min_shared
+    )
     return FamilyResult(merchants, iou, shared, families, threshold)

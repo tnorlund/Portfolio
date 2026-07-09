@@ -46,3 +46,15 @@ def test_pairwise_symmetric():
     }
     m, iou, shared = pairwise_iou(norm, chars="A")
     assert iou[0, 1] == iou[1, 0] == 1.0 and shared[0, 1] == 1
+
+
+def test_min_shared_gate_blocks_thin_evidence():
+    import numpy as np
+    from glyphstudio.family_cluster import cluster_families
+    merchants = ["a", "b"]
+    iou = np.array([[1.0, 0.99], [0.99, 1.0]])   # high IoU...
+    shared = np.array([[0, 1], [1, 0]])          # ...but only 1 shared glyph
+    fams = cluster_families(merchants, iou, 0.6, shared=shared, min_shared=10)
+    assert ["a"] in fams and ["b"] in fams        # not linked on 1 glyph
+    fams2 = cluster_families(merchants, iou, 0.6, shared=None)
+    assert ["a", "b"] in fams2                     # linked when ungated

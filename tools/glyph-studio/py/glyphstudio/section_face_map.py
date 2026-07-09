@@ -25,30 +25,52 @@ from typing import Optional
 
 from glyphstudio.sections import normalize_stylescan_section
 
-# heaviest wins on a weight tie (emphasis is the salient signal)
 _WEIGHT_ORDER = {"normal": 0, "semibold": 1, "bold": 2}
+
+
+def _underline_rate(attrs: dict) -> float:
+    """stylemap underline -> probability in [0,1].
+
+    Handles the three shapes the renderer uses: ``true`` (always), ``false``
+    (never), and ``"sometimes"`` with an ``underlineRate`` (probabilistic).
+    """
+    u = attrs.get("underline", False)
+    if u is True:
+        return 1.0
+    if u is False or u is None:
+        return float(attrs.get("underlineRate", 0.0) or 0.0)
+    # string like "sometimes" -> use the measured rate
+    return float(attrs.get("underlineRate", 0.0) or 0.0)
 
 
 @dataclass(frozen=True)
 class Face:
     """A section's rendering face."""
 
-    scale: float          # size scale vs body
-    weight: str           # normal | semibold | bold
-    underline: bool
+    scale: float               # size scale vs body
+    weight: str                # normal | semibold | bold
+    underline_rate: float      # 0=never, 1=always, in-between=probabilistic
 
 
 def _aggregate_faces(faces: list[Face]) -> Face:
-    """Combine several stylemap faces that fold to one canonical section."""
+    """Combine several stylemap faces that fold to one canonical section.
+
+    Weight = mode; on a tie prefer the LIGHTER weight so a rare emphasis
+    subface (e.g. a bold ``balance_due`` line folding into ``total_line``)
+    doesn't bold the whole section. underline_rate = max over members.
+    """
     scale = round(median(f.scale for f in faces), 3)
-    # mode weight; tie -> heaviest
     counts = Counter(f.weight for f in faces)
     top = max(counts.values())
-    weight = max(
+    weight = min(
         (w for w, c in counts.items() if c == top),
         key=lambda w: _WEIGHT_ORDER.get(w, 0),
     )
-    return Face(scale=scale, weight=weight, underline=any(f.underline for f in faces))
+    return Face(
+        scale=scale,
+        weight=weight,
+        underline_rate=round(max(f.underline_rate for f in faces), 4),
+    )
 
 
 def load_merchant_faces(font_dir: str) -> dict[str, Face]:
@@ -64,7 +86,7 @@ def load_merchant_faces(font_dir: str) -> dict[str, Face]:
         face = Face(
             scale=float(attrs.get("sizeScale", 1.0)),
             weight=str(attrs.get("weight", "normal")),
-            underline=bool(attrs.get("underline", False)),
+            underline_rate=_underline_rate(attrs),
         )
         by_canon.setdefault(section, []).append(face)
     return {s: _aggregate_faces(fs) for s, fs in by_canon.items()}
