@@ -8,13 +8,19 @@ import CoreGraphics
 /// geometry cannot separate (both are white paper).
 ///
 /// Insight (deterministic): two offset copies of the same purchase have
-/// DUPLICATE text lines, and every true duplicate pair shares approximately the
-/// SAME displacement vector (a rigid translation). A single receipt with
+/// DUPLICATE text lines related by a single RIGID transform — a rotation θ plus
+/// a translation t (two copies tossed on a table are offset by translation AND a
+/// small rotation). Every true duplicate pair a_i (copy A point) -> b_i (copy B
+/// point) then satisfies b_i ≈ R_θ·a_i + t. We recover (θ, t) with a RANSAC over
+/// the duplicate-line correspondences and count inliers; a single receipt with
 /// internally repeated text ("TOTAL"/"SUBTOTAL", repeated SKUs) yields
-/// INCONSISTENT displacement vectors and fails the consensus, so it is never
-/// split. We only split on >= `minConsensusPairs` displacement-consistent
-/// duplicate pairs, and only if both resulting halves independently look like a
-/// receipt — otherwise the cluster is left intact.
+/// INCONSISTENT correspondences and fails the consensus, so it is never split.
+/// (A pure-translation consensus caps out under rotation because the
+/// displacement vector b_i - a_i grows down the receipt, so real anchors at
+/// opposite ends disagree; the rigid model removes that drift.) We only split on
+/// >= `minConsensusPairs` rigid-consistent duplicate pairs, and only if both
+/// resulting halves independently look like a receipt — otherwise the cluster is
+/// left intact.
 ///
 /// This runs on OCR text + geometry only (no pixels), is O(n^2) over a cluster's
 /// lines, and is fully deterministic / unit-testable.
@@ -22,8 +28,13 @@ import CoreGraphics
 private let minConsensusPairs = 3
 private let minTextSimilarity: CGFloat = 0.85
 private let minTextLength = 4
-/// Displacement-vector agreement tolerance (normalized image units).
+/// Positional agreement tolerance (normalized image units). Used both as the
+/// rigid-transform inlier residual threshold and for harmonic-family detection.
 private let dispTolerance: CGFloat = 0.035
+/// Maximum |θ| for a rigid two-copy model (radians, ≈15°). Two copies dropped on
+/// a table have a small relative rotation; a larger estimated rotation is
+/// spurious (e.g. a coincidental match between distant lines) and is rejected.
+private let maxRotation: CGFloat = 15.0 * CGFloat.pi / 180.0
 /// Each split half must keep at least this many lines AND this fraction.
 private let minHalfLines = 5
 private let minHalfFraction: CGFloat = 0.20
@@ -110,27 +121,62 @@ func examineDuplicatePair(
     }
     guard pairs.count >= 2 else { return .single }
 
-    // 2. Displacement consensus: the vector most pairs agree on.
+    // 2. Rigid-transform consensus (RANSAC). Each pair is a correspondence
+    //    a_i (copy A point) -> b_i (copy B point). From any two correspondences
+    //    estimate a rotation θ and translation t, reject models whose |θ| is too
+    //    large to be two dropped copies, then count inlier correspondences k for
+    //    which |R_θ·a_k + t - b_k| <= dispTolerance. The model with the most
+    //    inliers wins, and those inliers are the anchor set. This subsumes the
+    //    old pure-translation consensus (a periodic list still fits a θ≈0 model),
+    //    but recovers the rotated two-copy case a translation-only model misses.
+    let aPts = pairs.map { cents[$0.a] }
+    let bPts = pairs.map { cents[$0.b] }
     var bestConsensus: [Pair] = []
-    for candidate in pairs {
-        let agree = pairs.filter {
-            let ex = $0.disp.dx - candidate.disp.dx
-            let ey = $0.disp.dy - candidate.disp.dy
-            return (ex * ex + ey * ey).squareRoot() <= dispTolerance
+    for i in 0..<pairs.count {
+        for j in 0..<pairs.count where j != i {
+            let vAx = aPts[j].x - aPts[i].x
+            let vAy = aPts[j].y - aPts[i].y
+            let vBx = bPts[j].x - bPts[i].x
+            let vBy = bPts[j].y - bPts[i].y
+            let magA = (vAx * vAx + vAy * vAy).squareRoot()
+            let magB = (vBx * vBx + vBy * vBy).squareRoot()
+            if magA < 1e-6 || magB < 1e-6 { continue }
+            // θ = atan2(b_j - b_i) - atan2(a_j - a_i), wrapped to (-π, π].
+            var theta = atan2(vBy, vBx) - atan2(vAy, vAx)
+            while theta > CGFloat.pi { theta -= 2 * CGFloat.pi }
+            while theta <= -CGFloat.pi { theta += 2 * CGFloat.pi }
+            if abs(theta) > maxRotation { continue }
+            let c = cos(theta), s = sin(theta)
+            // t = b_i - R_θ·a_i.
+            let tx = bPts[i].x - (c * aPts[i].x - s * aPts[i].y)
+            let ty = bPts[i].y - (s * aPts[i].x + c * aPts[i].y)
+            var inliers: [Pair] = []
+            for k in 0..<pairs.count {
+                let rx = c * aPts[k].x - s * aPts[k].y + tx
+                let ry = s * aPts[k].x + c * aPts[k].y + ty
+                let ex = rx - bPts[k].x
+                let ey = ry - bPts[k].y
+                if (ex * ex + ey * ey).squareRoot() <= dispTolerance {
+                    inliers.append(pairs[k])
+                }
+            }
+            if inliers.count > bestConsensus.count { bestConsensus = inliers }
         }
-        if agree.count > bestConsensus.count { bestConsensus = agree }
     }
-    // Not even two duplicate anchors agree on a displacement — single receipt.
+    // Not even two duplicate anchors fit one rigid transform — single receipt.
     guard bestConsensus.count >= 2 else { return .single }
 
     // Some duplicate-anchor evidence but below the confident-split threshold
-    // (e.g. a faded second copy yields only 2 clean anchors, or rotation makes
-    // a pure translation cap out). Flag for review; never split on this.
+    // (e.g. a faded second copy yields only 2 clean anchors). Flag for review;
+    // never split on this.
     guard bestConsensus.count >= minConsensusPairs else {
         return .suspicious(anchorPairs: bestConsensus.count)
     }
 
-    // Consensus displacement (median of agreeing vectors).
+    // Representative translation of the winning model (median inlier
+    // displacement). With the small rotations seen between two copies this is
+    // close to t, and for a periodic list (θ≈0) it is the single pitch — which
+    // keeps the harmonic guard below working unchanged.
     let bestVec = CGVector(
         dx: median(bestConsensus.map { $0.disp.dx }),
         dy: median(bestConsensus.map { $0.disp.dy })
