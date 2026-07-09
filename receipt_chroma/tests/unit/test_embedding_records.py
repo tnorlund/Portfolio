@@ -384,3 +384,27 @@ class TestSectionLabelWiring:
         s_high = Mock(line_ids=[2], section_type="TOTAL_LINE", confidence=0.95)
         m = sections_to_line_map([s_low, s_high])
         assert m == {1: "ITEMS", 2: "TOTAL_LINE"}  # line 2: higher conf wins
+
+
+class TestSectionGuards:
+    """Codex P2s: skip INVALID sections; don't stamp on a tie."""
+
+    def test_sections_to_line_map_skips_invalid(self):
+        from receipt_chroma.embedding.records import sections_to_line_map
+        good = Mock(line_ids=[1], section_type="ITEMS", confidence=0.9,
+                    validation_status="PENDING")
+        bad = Mock(line_ids=[2], section_type="PAYMENT", confidence=0.9,
+                   validation_status="INVALID")
+        m = sections_to_line_map([good, bad])
+        assert m == {1: "ITEMS"}          # line 2 (INVALID) omitted
+
+    def test_row_payload_no_stamp_on_tie(self):
+        l1 = create_mock_line("img1", 1, 1, "L1")
+        l2 = create_mock_line("img1", 1, 2, "L2")
+        record = RowEmbeddingRecord(row_lines=(l1, l2), embedding=[0.1, 0.2])
+        # 1 vote ITEMS, 1 vote SUMMARY -> tie -> no section_label
+        payload = build_row_payload(
+            records=[record], all_words=[],
+            section_by_line={1: "ITEMS", 2: "SUMMARY"},
+        )
+        assert "section_label" not in payload["metadatas"][0]

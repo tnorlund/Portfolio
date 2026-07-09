@@ -127,6 +127,9 @@ def sections_to_line_map(sections: Sequence[Any]) -> Dict[int, str]:
     out: Dict[int, str] = {}
     best: Dict[int, float] = {}
     for s in sections or []:
+        # skip QA-rejected rows — an INVALID section must not stamp a line
+        if str(getattr(s, "validation_status", "") or "").upper() == "INVALID":
+            continue
         conf = getattr(s, "confidence", None) or 0.0
         for line_id in getattr(s, "line_ids", []) or []:
             if line_id not in out or conf > best.get(line_id, -1.0):
@@ -290,8 +293,10 @@ def build_row_payload(
                 for lid in record.line_ids
                 if lid in section_by_line
             )
-            if votes:
-                row_section = votes.most_common(1)[0][0]
+            top = votes.most_common(2)
+            # only stamp on a clear plurality; a tie is ambiguous -> leave unset
+            if top and (len(top) == 1 or top[0][1] > top[1][1]):
+                row_section = top[0][0]
 
         # Create row metadata
         row_metadata = create_row_metadata(
