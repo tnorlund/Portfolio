@@ -8,7 +8,7 @@
 
 > **trackWebVital**(`metric`): `void`
 
-Defined in: [utils/analytics.ts:311](https://github.com/tnorlund/Portfolio/blob/72da64094cb3aa3484673875d227dac091bb0da3/portfolio/utils/analytics.ts#L311)
+Defined in: [utils/analytics.ts:311](https://github.com/tnorlund/Portfolio/blob/f4e60c226016784bc3931ccd20968de61107dd34/portfolio/utils/analytics.ts#L311)
 
 ## Parameters
 
