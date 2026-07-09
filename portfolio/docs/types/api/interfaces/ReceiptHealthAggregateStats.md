@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthAggregateStats
 
-Defined in: [types/api.ts:1054](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1054)
+Defined in: [types/api.ts:1054](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1054)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:1054](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **batch\_size**: `number`
 
-Defined in: [types/api.ts:1056](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1056)
+Defined in: [types/api.ts:1056](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1056)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1056](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **failed**: `number`
 
-Defined in: [types/api.ts:1059](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1059)
+Defined in: [types/api.ts:1059](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1059)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1059](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **needs\_review**: `number`
 
-Defined in: [types/api.ts:1058](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1058)
+Defined in: [types/api.ts:1058](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1058)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:1058](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **not\_applicable**: `number`
 
-Defined in: [types/api.ts:1060](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1060)
+Defined in: [types/api.ts:1060](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1060)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:1060](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **passed**: `number`
 
-Defined in: [types/api.ts:1057](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1057)
+Defined in: [types/api.ts:1057](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1057)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:1057](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **receipts\_with\_issues**: `number`
 
-Defined in: [types/api.ts:1061](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1061)
+Defined in: [types/api.ts:1061](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1061)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:1061](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **total\_issues**: `number`
 
-Defined in: [types/api.ts:1062](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1062)
+Defined in: [types/api.ts:1062](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1062)
 
 ***
 
@@ -70,4 +70,4 @@ Defined in: [types/api.ts:1062](https://github.com/tnorlund/Portfolio/blob/097af
 
 > **total\_receipts\_in\_pool**: `number`
 
-Defined in: [types/api.ts:1055](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/types/api.ts#L1055)
+Defined in: [types/api.ts:1055](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/types/api.ts#L1055)

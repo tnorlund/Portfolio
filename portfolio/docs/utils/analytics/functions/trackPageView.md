@@ -8,7 +8,7 @@
 
 > **trackPageView**(`url`): `void`
 
-Defined in: [utils/analytics.ts:296](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/utils/analytics.ts#L296)
+Defined in: [utils/analytics.ts:296](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/utils/analytics.ts#L296)
 
 ## Parameters
 

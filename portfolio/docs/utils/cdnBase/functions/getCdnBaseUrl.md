@@ -8,7 +8,7 @@
 
 > **getCdnBaseUrl**(): `string`
 
-Defined in: [utils/cdnBase.ts:11](https://github.com/tnorlund/Portfolio/blob/097af74adeef29147321a2774433b43f54eb2a85/portfolio/utils/cdnBase.ts#L11)
+Defined in: [utils/cdnBase.ts:11](https://github.com/tnorlund/Portfolio/blob/689ae8a6d021123648ec326d0ff6caec3cee7e99/portfolio/utils/cdnBase.ts#L11)
 
 Base URL for receipt image assets (CDN), resolved at build time.
 
