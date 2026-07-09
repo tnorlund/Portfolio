@@ -47,9 +47,9 @@ def _underline_rate(attrs: dict) -> float:
 class Face:
     """A section's rendering face."""
 
-    scale: float               # size scale vs body
-    weight: str                # normal | semibold | bold
-    underline_rate: float      # 0=never, 1=always, in-between=probabilistic
+    scale: float  # size scale vs body
+    weight: str  # normal | semibold | bold
+    underline_rate: float  # 0=never, 1=always, in-between=probabilistic
 
 
 def _aggregate_faces(faces: list[Face]) -> Face:

@@ -1,15 +1,20 @@
 """Unit tests for M2 family clustering (synthetic glyphs)."""
+
 import numpy as np
 from glyphstudio.family_cluster import (
-    normalize_glyph, glyph_iou, merchant_iou, pairwise_iou, cluster_families,
+    normalize_glyph,
+    glyph_iou,
+    merchant_iou,
+    pairwise_iou,
+    cluster_families,
 )
 
 
 def test_normalize_crops_and_resizes():
     b = np.zeros((10, 10), dtype=bool)
-    b[4:6, 4:6] = True                 # 2x2 ink block
+    b[4:6, 4:6] = True  # 2x2 ink block
     n = normalize_glyph(b, size=8)
-    assert n.shape == (8, 8) and n.all()   # crop->2x2 all-ink, resize->all-ink
+    assert n.shape == (8, 8) and n.all()  # crop->2x2 all-ink, resize->all-ink
 
 
 def test_normalize_empty():
@@ -17,8 +22,10 @@ def test_normalize_empty():
 
 
 def test_glyph_iou_identical_and_disjoint():
-    a = np.zeros((8, 8), dtype=bool); a[:4] = True
-    b = np.zeros((8, 8), dtype=bool); b[4:] = True
+    a = np.zeros((8, 8), dtype=bool)
+    a[:4] = True
+    b = np.zeros((8, 8), dtype=bool)
+    b[4:] = True
     assert glyph_iou(a, a) == 1.0
     assert glyph_iou(a, b) == 0.0
 
@@ -27,7 +34,7 @@ def test_merchant_iou_shared_only():
     A = {ord("A"): np.ones((4, 4), bool), ord("B"): np.ones((4, 4), bool)}
     B = {ord("A"): np.ones((4, 4), bool), ord("C"): np.ones((4, 4), bool)}
     iou, n = merchant_iou(A, B, chars="ABC")
-    assert n == 1 and iou == 1.0     # only "A" shared
+    assert n == 1 and iou == 1.0  # only "A" shared
 
 
 def test_cluster_families_threshold():
@@ -51,10 +58,11 @@ def test_pairwise_symmetric():
 def test_min_shared_gate_blocks_thin_evidence():
     import numpy as np
     from glyphstudio.family_cluster import cluster_families
+
     merchants = ["a", "b"]
-    iou = np.array([[1.0, 0.99], [0.99, 1.0]])   # high IoU...
-    shared = np.array([[0, 1], [1, 0]])          # ...but only 1 shared glyph
+    iou = np.array([[1.0, 0.99], [0.99, 1.0]])  # high IoU...
+    shared = np.array([[0, 1], [1, 0]])  # ...but only 1 shared glyph
     fams = cluster_families(merchants, iou, 0.6, shared=shared, min_shared=10)
-    assert ["a"] in fams and ["b"] in fams        # not linked on 1 glyph
+    assert ["a"] in fams and ["b"] in fams  # not linked on 1 glyph
     fams2 = cluster_families(merchants, iou, 0.6, shared=None)
-    assert ["a", "b"] in fams2                     # linked when ungated
+    assert ["a", "b"] in fams2  # linked when ungated

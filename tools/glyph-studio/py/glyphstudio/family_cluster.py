@@ -44,16 +44,16 @@ def normalize_glyph(bitmap: np.ndarray, size: int = 32) -> np.ndarray:
     if not b.any():
         return np.zeros((size, size), dtype=bool)
     ys, xs = np.where(b)
-    crop = b[ys.min(): ys.max() + 1, xs.min(): xs.max() + 1]
+    crop = b[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
     h, w = crop.shape
-    scale = size / max(h, w)                       # fit the longer side
+    scale = size / max(h, w)  # fit the longer side
     th, tw = max(1, round(h * scale)), max(1, round(w * scale))
     yi = np.minimum((np.arange(th) * h) // th, h - 1)
     xi = np.minimum((np.arange(tw) * w) // tw, w - 1)
     resized = crop[np.ix_(yi, xi)]
     out = np.zeros((size, size), dtype=bool)
-    y0, x0 = (size - th) // 2, (size - tw) // 2    # center
-    out[y0: y0 + th, x0: x0 + tw] = resized
+    y0, x0 = (size - th) // 2, (size - tw) // 2  # center
+    out[y0 : y0 + th, x0 : x0 + tw] = resized
     return out
 
 
@@ -86,9 +86,9 @@ def merchant_iou(
 @dataclass
 class FamilyResult:
     merchants: list[str]
-    iou: np.ndarray                 # (n, n) symmetric mean-IoU matrix
-    shared: np.ndarray              # (n, n) shared-letterform counts
-    families: list[list[str]]       # clustered merchant groups
+    iou: np.ndarray  # (n, n) symmetric mean-IoU matrix
+    shared: np.ndarray  # (n, n) shared-letterform counts
+    families: list[list[str]]  # clustered merchant groups
     threshold: float
 
 
