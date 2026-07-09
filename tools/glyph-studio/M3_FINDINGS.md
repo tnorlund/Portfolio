@@ -119,11 +119,13 @@ epic-mandated visual A/B before any profile adoption).
 The shipped fonts are parametric stroke skeletons whose raster ink is exactly
 `stroke_px ≈ dot.size × weight × cap/1000` — Wild Fork's hand-set
 `weight: 1.4` reproduces the measured 6px atlas stroke, and the derived value
-is `weight = stroke_ratio × 1000 / dot.size ≈ 0.60`. **Validated:** compiling
+is `weight = stroke_ratio × 1000 / dot.size ≈ 0.60`. **Validated end-to-end:** compiling
 `fonts/wildfork` at the derived `weight 0.60` lands projected density
-**0.134 vs target 0.135** (0.99×, from 2.5× over — one closed-form step),
-though at erosion saturation; the production loop adds one bisection step on
-weight for interior headroom. Because Costco shows the excess can be
+**0.134 vs target 0.135** (0.99×, from 2.5× over — one closed-form step) at
+erosion saturation, and one bisection step lower (`weight 0.50`) gives
+**thin 0.333 interior, density 0.135 — exactly on target — coverage 0.999**.
+The production fix for Wild Fork is a one-line `font.json` change, fully
+derived from measurements. Because Costco shows the excess can be
 shape-driven rather than stroke-driven, the **general derivation targets
 density, not stroke**: bisect the mint-side ink parameter (`weight`, or
 skeleton-protected erosion for crop-minted atlases) against the measured
