@@ -554,18 +554,28 @@ public struct VisionOCREngine: OCREngineProtocol {
 
                 // Cluster based on image type
                 if let classResult = classification {
+                    // Drop lines that sit on a colored (non-document)
+                    // background — e.g. a menu/flyer behind the receipt — so
+                    // they can't be clustered into the receipt. NATIVE fills
+                    // the frame with a single receipt, so it is left untouched.
+                    let docLines: [Line]
+                    if classResult.imageType != .native, let img = loadedImage {
+                        docLines = filterDocumentLines(mutableLines, image: img)
+                    } else {
+                        docLines = mutableLines
+                    }
                     switch classResult.imageType {
                     case .native:
                         // Single receipt, no clustering needed
-                        clustering = ClusteringResult(clusters: [1: Array(0..<mutableLines.count)])
+                        clustering = ClusteringResult(clusters: [1: Array(0..<docLines.count)])
                     case .photo:
                         // Use 2D DBSCAN for photos
-                        let avgDiagonal = clusterer.averageDiagonalLength(lines: mutableLines)
+                        let avgDiagonal = clusterer.averageDiagonalLength(lines: docLines)
                         let eps = avgDiagonal * 2  // Dynamic eps based on line size
-                        clustering = clusterer.dbscanLines(lines: mutableLines, eps: eps, minSamples: 10)
+                        clustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
                     case .scan:
                         // Use X-axis clustering for scans
-                        clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
+                        clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
                     }
 
                     // Process receipts if we have clustering (PHOTO or SCAN)
@@ -575,7 +585,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                         let receiptProcessor = ReceiptProcessor()
                         let processedReceipts = receiptProcessor.process(
                             image: cgImage,
-                            lines: mutableLines,
+                            lines: docLines,
                             classification: classResult,
                             clustering: clusterResult
                         )
@@ -792,15 +802,22 @@ public struct VisionOCREngine: OCREngineProtocol {
             )
 
             if let classResult = classification {
+                // Drop colored-background (non-document) lines before clustering.
+                let docLines: [Line]
+                if classResult.imageType != .native, let img = loadedImage {
+                    docLines = filterDocumentLines(mutableLines, image: img)
+                } else {
+                    docLines = mutableLines
+                }
                 switch classResult.imageType {
                 case .native:
-                    clustering = ClusteringResult(clusters: [1: Array(0..<mutableLines.count)])
+                    clustering = ClusteringResult(clusters: [1: Array(0..<docLines.count)])
                 case .photo:
-                    let avgDiagonal = clusterer.averageDiagonalLength(lines: mutableLines)
+                    let avgDiagonal = clusterer.averageDiagonalLength(lines: docLines)
                     let eps = avgDiagonal * 2
-                    clustering = clusterer.dbscanLines(lines: mutableLines, eps: eps, minSamples: 10)
+                    clustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
                 case .scan:
-                    clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
+                    clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
                 }
 
                 if classResult.imageType != .native,
@@ -809,7 +826,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                     let receiptProcessor = ReceiptProcessor()
                     let processedReceipts = receiptProcessor.process(
                         image: cgImage,
-                        lines: mutableLines,
+                        lines: docLines,
                         classification: classResult,
                         clustering: clusterResult
                     )
