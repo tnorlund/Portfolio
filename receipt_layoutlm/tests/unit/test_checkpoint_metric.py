@@ -37,6 +37,20 @@ def test_checkpoint_metric_fallback_preserves_seqeval_free_metrics():
     )
 
 
+def test_fallback_checkpoint_metric_reads_accuracy_epoch_values():
+    metric = _checkpoint_metric_for_available_metrics(
+        "product_detail_macro_f1",
+        seqeval_available=False,
+    )
+    rows = [
+        {"epoch": 1, "eval_accuracy": 0.71},
+        {"epoch": 2, "eval_accuracy": 0.73},
+    ]
+
+    assert metric == "eval_accuracy"
+    assert _epoch_metric_values(rows, metric) == [(1.0, 0.71), (2.0, 0.73)]
+
+
 def test_metric_greater_is_better_treats_loss_as_lower_better():
     assert _metric_greater_is_better("eval_f1")
     assert not _metric_greater_is_better("eval_loss")

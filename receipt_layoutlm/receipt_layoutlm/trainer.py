@@ -1806,9 +1806,8 @@ class ReceiptLayoutLMTrainer:
             if f1_with_epochs:
                 best_epoch, best_f1 = max(f1_with_epochs, key=lambda x: x[1])
 
-            selection_metric_name = _checkpoint_metric_for_trainer(
-                self.training_config.checkpoint_metric
-            )
+            # Match the metric actually handed to TrainingArguments above.
+            selection_metric_name = checkpoint_metric
             selection_values = _epoch_metric_values(
                 epoch_metrics, selection_metric_name
             )
