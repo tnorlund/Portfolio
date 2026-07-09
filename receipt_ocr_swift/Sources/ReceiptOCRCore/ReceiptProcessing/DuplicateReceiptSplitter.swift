@@ -166,13 +166,6 @@ func examineDuplicatePair(
     // Not even two duplicate anchors fit one rigid transform — single receipt.
     guard bestConsensus.count >= 2 else { return .single }
 
-    // Some duplicate-anchor evidence but below the confident-split threshold
-    // (e.g. a faded second copy yields only 2 clean anchors). Flag for review;
-    // never split on this.
-    guard bestConsensus.count >= minConsensusPairs else {
-        return .suspicious(anchorPairs: bestConsensus.count)
-    }
-
     // Representative translation of the winning model (median inlier
     // displacement). With the small rotations seen between two copies this is
     // close to t, and for a periodic list (θ≈0) it is the single pitch — which
@@ -189,6 +182,52 @@ func examineDuplicatePair(
     // copies has exactly ONE rigid displacement, anchored by DISTINCTIVE text
     // SCATTERED across the whole receipt; a periodic item list does not. All
     // three guards must pass before we may split. ---
+    //
+    // The distinctive-anchor and anchor-spread predicates are hoisted here so
+    // the sub-threshold (2-inlier) review flag can be gated on the SAME quality
+    // bar as the confident-split path (see the minConsensusPairs branch below).
+
+    // Distinctive anchors: at least two consensus pairs must be anchored by real
+    // alphabetic text, NOT a pure price / quantity / money token ("3.50",
+    // "$5.00", "2 X", "#4"). Repeated SKUs and prices do not count toward this.
+    let distinctiveAnchors = bestConsensus.filter {
+        isDistinctiveAnchorText(texts[$0.a])
+    }.count
+    let anchorsDistinctive = distinctiveAnchors >= 2
+
+    // Anchor spatial spread: the consensus anchors must be scattered across the
+    // receipt's long axis (the displacement direction, ~vertical for stacked
+    // copies), not locally consecutive. Require both the "A" and "B" members to
+    // span >= 40% of the whole cluster's extent on that axis.
+    let projA = bestConsensus.map { proj(cents[$0.a], dUnit) }
+    let projB = bestConsensus.map { proj(cents[$0.b], dUnit) }
+    let clusterProj = cents.map { proj($0, dUnit) }
+    let clusterExtent = (clusterProj.max() ?? 0) - (clusterProj.min() ?? 0)
+    let spanA = (projA.max() ?? 0) - (projA.min() ?? 0)
+    let spanB = (projB.max() ?? 0) - (projB.min() ?? 0)
+    let minSpread: CGFloat = 0.40 * clusterExtent
+    let anchorsSpread =
+        clusterExtent > 1e-6 && spanA >= minSpread && spanB >= minSpread
+
+    // Some duplicate-anchor evidence but below the confident-split threshold
+    // (e.g. a faded second copy yields only 2 clean anchors). Flag for review
+    // ONLY when those anchors are themselves a plausible two-copy signal, held
+    // to the SAME distinctive-anchor / anchor-spread guards the split path uses
+    // and with the split path's OWN outcomes:
+    //   - non-distinctive anchors (a single clean receipt's repeated money/qty
+    //     tokens, "$20.00"/"TOTAL", which form rigid-consistent but meaningless
+    //     correspondences) -> .single, exactly as the split path's distinctive
+    //     guard returns .single;
+    //   - distinctive anchors that are merely bunched (not spread) -> the split
+    //     path already downgrades that from a split to .suspicious, so a 2-inlier
+    //     distinctive consensus is at most .suspicious here too.
+    // This removes the old blanket needs_review on any 2-inlier consensus (which
+    // fired on every receipt that repeats a price) while keeping genuine
+    // distinctive partial-duplicate evidence flagged. Never split on this.
+    guard bestConsensus.count >= minConsensusPairs else {
+        guard anchorsDistinctive else { return .single }
+        return .suspicious(anchorPairs: bestConsensus.count)
+    }
 
     // Guard 3 (cheapest disqualifier, checked first): reject a
     // harmonic/periodic displacement family. Evenly spaced repeats yield not
@@ -206,38 +245,21 @@ func examineDuplicatePair(
         return .single
     }
 
-    // Guard 2: distinctive anchors. At least two consensus pairs must be
-    // anchored by real alphabetic text, NOT a pure price / quantity / money
-    // token ("3.50", "$5.00", "2 X", "#4"). Repeated SKUs and prices do not
-    // count toward this requirement.
-    let distinctiveAnchors = bestConsensus.filter {
-        isDistinctiveAnchorText(texts[$0.a])
-    }.count
-    guard distinctiveAnchors >= 2 else {
+    // Guard 2: distinctive anchors (computed above).
+    guard anchorsDistinctive else {
         // Only prices / quantities line up: no evidence of duplicated content.
         return .single
     }
 
-    // 3. Seeded assignment: anchors A (tail) and B (head) define the boundary;
-    //    assign every line by which side of it (along the displacement) it sits.
-    let projA = bestConsensus.map { proj(cents[$0.a], dUnit) }
-    let projB = bestConsensus.map { proj(cents[$0.b], dUnit) }
-
-    // Guard 1: anchor spatial spread. The consensus anchors must be scattered
-    // across the receipt's long axis (the displacement direction, ~vertical for
-    // stacked copies), not locally consecutive. Require both the "A" and "B"
-    // members to span >= 40% of the whole cluster's extent on that axis.
-    let clusterProj = cents.map { proj($0, dUnit) }
-    let clusterExtent = (clusterProj.max() ?? 0) - (clusterProj.min() ?? 0)
-    let spanA = (projA.max() ?? 0) - (projA.min() ?? 0)
-    let spanB = (projB.max() ?? 0) - (projB.min() ?? 0)
-    let minSpread: CGFloat = 0.40 * clusterExtent
-    guard clusterExtent > 1e-6, spanA >= minSpread, spanB >= minSpread else {
+    // Guard 1: anchor spatial spread (computed above).
+    guard anchorsSpread else {
         // Distinctive, non-harmonic anchors exist but are bunched together, not
         // clearly two copies. Some evidence: flag for review, but do not split.
         return .suspicious(anchorPairs: bestConsensus.count)
     }
 
+    // 3. Seeded assignment: anchors A (tail) and B (head) define the boundary;
+    //    assign every line by which side of it (along the displacement) it sits.
     let boundary = (mean(projA) + mean(projB)) / 2.0
 
     var groupA: [Int] = []
