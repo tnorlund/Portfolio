@@ -123,11 +123,35 @@ def lambda_handler(
                 dynamo_client, BatchType.LINE_EMBEDDING
             )
 
+        total_pending = len(pending_batches)
         logger.info(
             "Found %d pending %s embedding batches",
-            len(pending_batches),
+            total_pending,
             batch_type,
         )
+
+        # Cap the number of batches processed per run so the PollBatches Map's
+        # aggregate result stays under the Step Functions 256KB state-payload
+        # limit. The remaining PENDING batches are picked up by the next run.
+        # Controlled by event["max_batches"] or MAX_BATCHES_PER_RUN env var
+        # (0/unset = no cap). See infra/embedding_step_functions for the
+        # long-term fix (offload poll results to S3 instead of inline).
+        try:
+            max_batches = int(
+                event.get("max_batches")
+                or os.environ.get("MAX_BATCHES_PER_RUN", 0)
+            )
+        except (TypeError, ValueError):
+            max_batches = 0
+        if max_batches and total_pending > max_batches:
+            pending_batches = pending_batches[:max_batches]
+            logger.info(
+                "Capping this run to %d of %d pending batches "
+                "(remaining %d will be handled by subsequent runs)",
+                max_batches,
+                total_pending,
+                total_pending - max_batches,
+            )
 
         # Format response for Step Function
         batch_list = [

@@ -9,6 +9,7 @@ import os
 import shutil
 import tempfile
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -1341,14 +1342,10 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             total_chunks=original_count,
             database=database_name,
         )
-        return {
-            "statusCode": 500,
-            "error": error_msg,
-            "batch_id": batch_id,
-            "message": "Final merge failed - no valid intermediate snapshots to merge",
-            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
-            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
-        }
+        # RAISE instead of returning statusCode 500: returning here (while
+        # passing poll_results through) previously let MarkBatchesComplete mark
+        # the batches COMPLETE even though nothing merged -> silent data loss.
+        raise RuntimeError(error_msg)
 
     # Use filtered results
     chunk_results = valid_chunk_results
@@ -1742,26 +1739,27 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             )
             raise  # Re-raise so Step Functions treats it as a task failure and retries
 
-        # For other RuntimeErrors, log and return error response
-        logger.error("Final merge failed with RuntimeError", error=error_msg)
-        return {
-            "statusCode": 500,
-            "error": error_msg,
-            "batch_id": batch_id,
-            "message": "Final merge failed",
-            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
-            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
-        }
+        # For other RuntimeErrors: RE-RAISE so Step Functions treats this as a
+        # task failure (triggers the FinalMerge Retry, and on exhaustion the
+        # Catch -> Fail). Previously this returned statusCode 500 while passing
+        # poll_results through, which let MarkBatchesComplete run anyway and
+        # marked batches COMPLETE despite an empty/failed merge -> silent data
+        # loss. Never mark batches complete when the merge did not succeed.
+        logger.error(
+            "Final merge failed with RuntimeError",
+            error=error_msg,
+            traceback=traceback.format_exc(),
+        )
+        raise
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Final merge failed", error=str(e))
-        return {
-            "statusCode": 500,
-            "error": str(e),
-            "batch_id": batch_id,
-            "message": "Final merge failed",
-            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
-            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
-        }
+        # RE-RAISE (see note above): a failed merge must NOT be reported as a
+        # success, or batches get marked COMPLETE with no vectors landed.
+        logger.error(
+            "Final merge failed",
+            error=str(e),
+            traceback=traceback.format_exc(),
+        )
+        raise
     finally:
         # Stop heartbeat and release lock
         lock_manager.stop_heartbeat()
@@ -2883,42 +2881,54 @@ def perform_final_merge(
                 if not use_predownloaded:
                     shutil.rmtree(chunk_temp, ignore_errors=True)
 
-        # Sync to Chroma Cloud (if enabled)
-        cloud_config = CloudConfig.from_env()
+        # Sync to Chroma Cloud (if enabled). This is INTENTIONALLY non-blocking:
+        # the local S3 snapshot is the source of truth, and a cloud outage (or a
+        # deleted/absent cloud collection) must never fail the merge. The whole
+        # block is wrapped so that even an exception at cloud-client construction
+        # (e.g. tenant/database validation) is swallowed here rather than
+        # propagating up to final_merge_handler, which now re-raises on error.
         cloud_sync_result = None
+        try:
+            cloud_config = CloudConfig.from_env()
 
-        if cloud_config:
-            sync_collection_name = database_name or "words"
-            logger.info(
-                "Syncing collection to Chroma Cloud",
-                collection=sync_collection_name,
-                total_embeddings=total_embeddings,
-            )
-
-            cloud_sync_result = sync_collection_to_cloud(
-                local_client=chroma_client,
-                collection_name=sync_collection_name,
-                cloud_config=cloud_config,
-                batch_size=250,  # Within Chroma Cloud quota limit (300)
-                max_workers=4,
-                logger=logger,
-            )
-
-            if cloud_sync_result.success:
+            if cloud_config:
+                sync_collection_name = database_name or "words"
                 logger.info(
-                    "Cloud sync completed",
+                    "Syncing collection to Chroma Cloud",
                     collection=sync_collection_name,
-                    uploaded=cloud_sync_result.uploaded,
-                    cloud_count=cloud_sync_result.cloud_count,
-                    duration_seconds=cloud_sync_result.duration_seconds,
+                    total_embeddings=total_embeddings,
                 )
-            else:
-                logger.error(
-                    "Cloud sync failed (non-blocking)",
-                    collection=sync_collection_name,
-                    error=cloud_sync_result.error,
-                    failed_batches=cloud_sync_result.failed_batches,
+
+                cloud_sync_result = sync_collection_to_cloud(
+                    local_client=chroma_client,
+                    collection_name=sync_collection_name,
+                    cloud_config=cloud_config,
+                    batch_size=250,  # Within Chroma Cloud quota limit (300)
+                    max_workers=4,
+                    logger=logger,
                 )
+
+                if cloud_sync_result.success:
+                    logger.info(
+                        "Cloud sync completed",
+                        collection=sync_collection_name,
+                        uploaded=cloud_sync_result.uploaded,
+                        cloud_count=cloud_sync_result.cloud_count,
+                        duration_seconds=cloud_sync_result.duration_seconds,
+                    )
+                else:
+                    logger.error(
+                        "Cloud sync failed (non-blocking)",
+                        collection=sync_collection_name,
+                        error=cloud_sync_result.error,
+                        failed_batches=cloud_sync_result.failed_batches,
+                    )
+        except Exception as cloud_err:  # pylint: disable=broad-exception-caught
+            logger.error(
+                "Cloud sync raised (non-blocking) - continuing with local snapshot",
+                error=str(cloud_err),
+                traceback=traceback.format_exc(),
+            )
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
         close_chromadb_client(chroma_client, collection_name="final_merge")

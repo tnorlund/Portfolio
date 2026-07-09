@@ -217,6 +217,11 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             "batch_type": "word",
                             "execution_id.$": "$$.Execution.Name",
+                            # Cap batches per run so the PollWordBatches Map
+                            # aggregate result stays under the SFN 256KB state
+                            # limit. Remaining PENDING batches drain on the next
+                            # run. (Long-term: offload poll results to S3.)
+                            "max_batches": 250,
                         },
                         "ResultPath": "$.list_result",
                         "Next": "CheckPendingWordBatches",
@@ -254,7 +259,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "OpenAI file-download rate limits / circuit breaker on "
                         "large backlogs",
                         "ItemsPath": "$.poll_batches_data.batch_indices",
-                        "MaxConcurrency": 5,
+                        "MaxConcurrency": 50,
                         "Parameters": {
                             "batch_index.$": "$$.Map.Item.Value",
                             "manifest_s3_key.$": "$.poll_batches_data.manifest_s3_key",
@@ -289,6 +294,26 @@ class WordEmbeddingWorkflow(ComponentResource):
                                             "IntervalSeconds": 10,
                                             "MaxAttempts": 5,
                                             "BackoffRate": 2.0,
+                                        },
+                                        {
+                                            # OpenAI circuit breaker opened under
+                                            # burst load (higher MaxConcurrency).
+                                            # The poll handler surfaces this as a
+                                            # RuntimeError ("Circuit breaker
+                                            # openai_api is open"), i.e.
+                                            # States.TaskFailed to SFN (NOT a
+                                            # CircuitBreakerOpenError name). Wait
+                                            # out the breaker's 60s recovery
+                                            # window (+ jitter so retries don't
+                                            # re-burst in lockstep) instead of
+                                            # failing the whole poll Map.
+                                            "ErrorEquals": [
+                                                "States.TaskFailed"
+                                            ],
+                                            "IntervalSeconds": 60,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 1.5,
+                                            "JitterStrategy": "FULL",
                                         },
                                     ],
                                 },
