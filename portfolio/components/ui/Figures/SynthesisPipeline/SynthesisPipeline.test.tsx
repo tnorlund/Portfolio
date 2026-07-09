@@ -112,9 +112,14 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(screen.queryByTestId("merchant-costco")).not.toBeInTheDocument();
     // Autoplay opens on the raw-material fan.
     expect(screen.getByTestId("act-raw")).toBeInTheDocument();
+    const sproutsLogo = screen.getByRole("img", { name: /sprouts logo/i });
+    expect(sproutsLogo.tagName.toLowerCase()).toBe("svg");
+    expect(sproutsLogo).toHaveAttribute("viewBox", "0 0 1800 468");
     expect(
-      screen.getByRole("img", { name: /sprouts logo/i }),
-    ).toBeInTheDocument();
+      Array.from(sproutsLogo.querySelectorAll("path")).every(
+        (path) => path.getAttribute("fill") === "currentColor",
+      ),
+    ).toBe(true);
     expect(screen.getAllByRole("img", { name: /real sprouts receipt scan/i }))
       .toHaveLength(3);
   });
