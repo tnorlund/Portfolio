@@ -74,6 +74,17 @@ public struct ReceiptProcessor {
         let imageWidth = CGFloat(image.width)
         let imageHeight = CGFloat(image.height)
 
+        // If a cluster is two overlapping copies of one receipt (customer +
+        // merchant copy), split it into two clusters via duplicate-content
+        // consensus. Clusters that look like multiple receipts but can't be
+        // confidently split are flagged for review (never silently guessed).
+        let (splitClustering, reviewClusterIds) =
+            splitDuplicateReceiptClusters(clustering, lines: lines)
+        for cid in reviewClusterIds {
+            logger.warning("Cluster \(cid): probable overlapping receipts (duplicate anchors below confident-split threshold) - flagged for review, not split")
+        }
+        let clustering = splitClustering
+
         for (clusterId, lineIndices) in clustering.clusters {
             // Skip noise cluster
             guard clusterId != -1 else { continue }
@@ -84,10 +95,28 @@ public struct ReceiptProcessor {
                 continue
             }
 
-            // Get lines for this cluster
-            let clusterLines = lineIndices.compactMap { idx -> Line? in
-                guard idx >= 0 && idx < lines.count else { return nil }
-                return lines[idx]
+            // Get lines for this cluster (keep line/index arrays parallel).
+            var clusterLines: [Line] = []
+            var effectiveIndices: [Int] = []
+            for idx in lineIndices {
+                guard idx >= 0 && idx < lines.count else { continue }
+                clusterLines.append(lines[idx])
+                effectiveIndices.append(idx)
+            }
+
+            // Trim cross-axis outliers: an adjacent menu pressed against the
+            // edge, or a second overlapping receipt, that sticks out sideways
+            // from this receipt's column. Never trims below 3 lines.
+            let inlierMask = crossAxisInlierMask(clusterLines)
+            if inlierMask.contains(false) {
+                let keptLines = zip(clusterLines, inlierMask)
+                    .compactMap { $0.1 ? $0.0 : nil }
+                let keptIndices = zip(effectiveIndices, inlierMask)
+                    .compactMap { $0.1 ? $0.0 : nil }
+                if keptLines.count >= 3 {
+                    clusterLines = keptLines
+                    effectiveIndices = keptIndices
+                }
             }
 
             guard clusterLines.count >= 3 else { continue }
@@ -200,7 +229,7 @@ public struct ReceiptProcessor {
                 warpedImage: warpedImage,
                 warpedWidth: warpedWidth,
                 warpedHeight: warpedHeight,
-                lineIndices: lineIndices
+                lineIndices: effectiveIndices
             )
             results.append(processed)
 
