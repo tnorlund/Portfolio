@@ -135,11 +135,13 @@ def _ensure_receipt_place(
     if not fix_place_fn:
         raise RuntimeError("FIX_PLACE_LAMBDA_NAME environment variable not set")
 
-    payload = json.dumps({
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "reason": "Missing place detected during line embedding ingest",
-    }).encode()
+    payload = json.dumps(
+        {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "reason": "Missing place detected during line embedding ingest",
+        }
+    ).encode()
 
     try:
         response = _fix_place_lambda_client.invoke(
@@ -309,9 +311,7 @@ def _handle_internal(
             collected_metrics.get("LinePollingErrors", 0) + 1
         )
         metric_dimensions["error_type"] = type(e).__name__
-        error_types[type(e).__name__] = (
-            error_types.get(type(e).__name__, 0) + 1
-        )
+        error_types[type(e).__name__] = error_types.get(type(e).__name__, 0) + 1
         tracer.add_annotation("error", type(e).__name__)
         tracer.add_metadata(
             "error_details", {"message": str(e), "type": type(e).__name__}
@@ -525,9 +525,16 @@ def _handle_internal_core(
                     row_line_ids=[line.line_id for line in target_row],
                 )
             else:
-                raise ValueError(
-                    f"No visual row found with primary line_id {primary_line_id} "
-                    f"in receipt {receipt_id} from image {image_id}"
+                # Skip, don't raise: pathological OCR (overlapping lines) can
+                # make visual-row grouping order-sensitive between submit and
+                # poll, so one stale primary id must not kill the whole ingest
+                # run (this stalled the dev lines pipeline, 2026-07-09). The
+                # affected lines simply stay un-marked and get resubmitted.
+                logger.warning(
+                    "Skipping status update: no visual row found",
+                    primary_line_id=primary_line_id,
+                    receipt_id=receipt_id,
+                    image_id=image_id,
                 )
 
         # Update lines individually to avoid transaction conflicts when multiple
@@ -549,13 +556,9 @@ def _handle_internal_core(
 
     # Check the batch status with monitoring and circuit breaker protection
     with trace_openai_batch_poll(batch_id, openai_batch_id):
-        with operation_with_timeout(
-            "get_openai_batch_status", max_duration=60
-        ):
+        with operation_with_timeout("get_openai_batch_status", max_duration=60):
             with openai_circuit_breaker().call():
-                batch_status = get_openai_batch_status(
-                    openai_batch_id, openai_client
-                )
+                batch_status = get_openai_batch_status(openai_batch_id, openai_client)
 
     logger.info(
         "Retrieved batch status from OpenAI",
@@ -582,10 +585,7 @@ def _handle_internal_core(
         )
 
     # Process based on the action determined by status handler
-    if (
-        status_result["action"] == "process_results"
-        and batch_status == "completed"
-    ):
+    if status_result["action"] == "process_results" and batch_status == "completed":
         logger.info("Processing completed batch results")
 
         # Check timeout before processing
@@ -595,9 +595,7 @@ def _handle_internal_core(
                 collected_metrics.get("LinePollingTimeouts", 0) + 1
             )
             metric_dimensions["timeout_stage"] = "pre_results"
-            error_types["TimeoutError"] = (
-                error_types.get("TimeoutError", 0) + 1
-            )
+            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -605,9 +603,7 @@ def _handle_internal_core(
                 dimensions=metric_dimensions if metric_dimensions else None,
                 properties={"error_types": error_types},
             )
-            raise TimeoutError(
-                "Lambda timeout detected before result processing"
-            )
+            raise TimeoutError("Lambda timeout detected before result processing")
 
         # Download the batch results with monitoring and circuit breaker protection
         with tracer.subsegment("OpenAI.DownloadResults", namespace="remote"):
@@ -725,12 +721,8 @@ def _handle_internal_core(
             }
 
         # Get receipt details with timeout protection
-        with operation_with_timeout(
-            "get_receipt_descriptions", max_duration=60
-        ):
-            descriptions, skipped_receipts = _get_receipt_descriptions(
-                results
-            )
+        with operation_with_timeout("get_receipt_descriptions", max_duration=60):
+            descriptions, skipped_receipts = _get_receipt_descriptions(results)
 
         # Filter out results for skipped (missing) receipts
         if skipped_receipts:
@@ -801,9 +793,7 @@ def _handle_internal_core(
                 collected_metrics.get("LinePollingTimeouts", 0) + 1
             )
             metric_dimensions["timeout_stage"] = "pre_save"
-            error_types["TimeoutError"] = (
-                error_types.get("TimeoutError", 0) + 1
-            )
+            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -829,9 +819,7 @@ def _handle_internal_core(
                     with chromadb_circuit_breaker().call():
                         # Check for graceful shutdown during long operation
                         if should_stop():
-                            logger.warning(
-                                "Save operation cancelled due to shutdown"
-                            )
+                            logger.warning("Save operation cancelled due to shutdown")
                             raise RuntimeError(
                                 "Operation cancelled during graceful shutdown"
                             )
@@ -857,9 +845,7 @@ def _handle_internal_core(
                                 # Validation failed after retries
                                 validation_success = False
                                 validation_attempts = 3  # max_retries default
-                                validation_retries = (
-                                    2  # retries = attempts - 1
-                                )
+                                validation_retries = 2  # retries = attempts - 1
                             raise
 
         delta_save_duration = time.time() - delta_save_start_time
@@ -891,9 +877,7 @@ def _handle_internal_core(
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
                 "action": "delta_save_failed",
-                "error": delta_result.get(
-                    "error", "Failed to save embedding delta"
-                ),
+                "error": delta_result.get("error", "Failed to save embedding delta"),
                 "results_count": len(results),
             }
 
@@ -909,15 +893,11 @@ def _handle_internal_core(
 
         # Collect metrics (aggregated, not per-call)
         collected_metrics["SavedEmbeddings"] = embedding_count
-        collected_metrics["DeltasSaved"] = (
-            collected_metrics.get("DeltasSaved", 0) + 1
-        )
+        collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
         collected_metrics["DeltaValidationAttempts"] = validation_attempts
         if validation_retries > 0:
             collected_metrics["DeltaValidationRetries"] = validation_retries
-        collected_metrics["DeltaValidationSuccess"] = (
-            1 if validation_success else 0
-        )
+        collected_metrics["DeltaValidationSuccess"] = 1 if validation_success else 0
         collected_metrics["DeltaSaveDuration"] = (
             delta_save_duration  # Includes upload + validation
         )
@@ -937,9 +917,7 @@ def _handle_internal_core(
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
-            with operation_with_timeout(
-                "mark_batch_complete", max_duration=30
-            ):
+            with operation_with_timeout("mark_batch_complete", max_duration=30):
                 _mark_batch_complete(batch_id)
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
@@ -1022,18 +1000,13 @@ def _handle_internal_core(
             "result_s3_bucket": bucket,
         }
 
-    elif (
-        status_result["action"] == "process_partial"
-        and batch_status == "expired"
-    ):
+    elif status_result["action"] == "process_partial" and batch_status == "expired":
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info(
-                "Processing partial results", count=len(partial_results)
-            )
+            logger.info("Processing partial results", count=len(partial_results))
 
             # Ensure receipt_place exists for partial results
             skipped_orphans_partial: set[tuple[str, int]] = set()
@@ -1086,9 +1059,7 @@ def _handle_internal_core(
                 partial_results = filtered_partial_place
 
             # Get receipt details for successful results
-            descriptions, skipped_partial = _get_receipt_descriptions(
-                partial_results
-            )
+            descriptions, skipped_partial = _get_receipt_descriptions(partial_results)
             if skipped_partial:
                 filtered_partial: list[dict] = []
                 for r in partial_results:
@@ -1114,15 +1085,11 @@ def _handle_internal_core(
                 # Get configuration from environment
                 bucket_name = os.environ.get("CHROMADB_BUCKET")
                 if not bucket_name:
-                    raise ValueError(
-                        "CHROMADB_BUCKET environment variable not set"
-                    )
+                    raise ValueError("CHROMADB_BUCKET environment variable not set")
 
                 # Determine SQS queue URL based on skip_sqs flag
                 if skip_sqs:
-                    logger.info(
-                        "Skipping SQS notification for partial delta"
-                    )
+                    logger.info("Skipping SQS notification for partial delta")
                     sqs_queue_url = None
                 else:
                     sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
@@ -1224,9 +1191,7 @@ def _handle_internal_core(
     elif status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
         collected_metrics[f"LinePolling{status_result['action'].title()}"] = (
-            collected_metrics.get(
-                f"LinePolling{status_result['action'].title()}", 0
-            )
+            collected_metrics.get(f"LinePolling{status_result['action'].title()}", 0)
             + 1
         )
 
@@ -1261,9 +1226,7 @@ def _handle_internal_core(
             collected_metrics.get("LinePollingErrors", 0) + 1
         )
         metric_dimensions["error_type"] = "unknown_action"
-        error_types["unknown_action"] = (
-            error_types.get("unknown_action", 0) + 1
-        )
+        error_types["unknown_action"] = error_types.get("unknown_action", 0) + 1
         tracer.add_annotation("error", "unknown_action")
 
         # Log metrics via EMF

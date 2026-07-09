@@ -7,6 +7,7 @@ Supports row-based embeddings where multiple ReceiptLine entities that appear
 on the same visual row are grouped into a single embedding.
 """
 
+import logging
 from typing import Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
@@ -20,6 +21,8 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
     enrich_row_metadata_with_labels,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LineMetadataBase(TypedDict):
@@ -140,10 +143,19 @@ def save_line_embeddings_as_delta(
         rows_map = get_visual_rows_map(image_id, receipt_id, lines)
         target_row = rows_map.get(primary_line_id)
         if not target_row:
-            raise ValueError(
-                f"No visual row found with primary_line_id={primary_line_id} "
-                f"for image_id={image_id}, receipt_id={receipt_id}"
+            # Stale/mismatched result: pathological OCR (overlapping lines)
+            # can make visual-row grouping order-sensitive, so a submit-time
+            # primary id may not exist at poll time. Skip THIS result rather
+            # than raising — one bad row must not kill the whole ingest run
+            # (that failure mode stalled the dev lines pipeline, 2026-07-09).
+            logger.warning(
+                "Skipping result: no visual row with primary_line_id=%s "
+                "for image_id=%s receipt_id=%s",
+                primary_line_id,
+                image_id,
+                receipt_id,
             )
+            continue
 
         # Get all words for lines in this row
         row_line_ids = {line.line_id for line in target_row}
@@ -167,14 +179,10 @@ def save_line_embeddings_as_delta(
         )
 
         # Anchor-only enrichment: attach anchor fields from all words in row
-        row_metadata = enrich_row_metadata_with_anchors(
-            row_metadata, row_words
-        )
+        row_metadata = enrich_row_metadata_with_anchors(row_metadata, row_words)
 
         # Label enrichment: aggregate VALID/INVALID labels from all words in row
-        row_metadata = enrich_row_metadata_with_labels(
-            row_metadata, row_words, labels
-        )
+        row_metadata = enrich_row_metadata_with_labels(row_metadata, row_words, labels)
 
         # Document is the formatted visual row text
         document = format_visual_row(target_row)

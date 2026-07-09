@@ -61,3 +61,67 @@ class TestParseWordId:
         custom_id = "IMAGE#img123#RECEIPT#456#LINE#789#EXTRA#123"
         with pytest.raises(ValueError, match="line embedding"):
             _parse_metadata_from_custom_id(custom_id)
+
+
+class TestStaleResultSkip:
+    """A result whose primary_line_id has no visual row is skipped, not fatal."""
+
+    def test_missing_visual_row_skips_result(self, monkeypatch):
+        from unittest.mock import Mock, patch
+
+        from receipt_chroma.embedding.delta import line_delta
+
+        line = Mock()
+        line.line_id = 1
+        line.image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        line.receipt_id = 1
+        place = Mock()
+        place.merchant_name = "Test Mart"
+        descriptions = {
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3": {
+                1: {
+                    "lines": [line],
+                    "words": [],
+                    "labels": [],
+                    "place": place,
+                }
+            }
+        }
+        results = [
+            {
+                # primary_line_id=99 will not exist in the grouped rows
+                "custom_id": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00099",
+                "embedding": [0.1, 0.2],
+            }
+        ]
+        captured = {}
+
+        def fake_produce(**kwargs):
+            captured.update(kwargs)
+            return {
+                "delta_id": "d",
+                "delta_key": "k",
+                "embedding_count": len(kwargs["ids"]),
+            }
+
+        with (
+            patch.object(
+                line_delta, "produce_embedding_delta", side_effect=fake_produce
+            ),
+            patch.object(
+                line_delta,
+                "group_lines_into_visual_rows",
+                return_value=[[line]],
+            ),
+            patch.object(line_delta, "get_primary_line_id", return_value=1),
+        ):
+            out = line_delta.save_line_embeddings_as_delta(
+                results=results,
+                descriptions=descriptions,
+                batch_id="b1",
+                bucket_name="bucket",
+                sqs_queue_url=None,
+            )
+        # the stale result was skipped: empty delta, no exception
+        assert captured["ids"] == []
+        assert out["embedding_count"] == 0
