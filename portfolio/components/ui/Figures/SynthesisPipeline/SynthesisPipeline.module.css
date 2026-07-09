@@ -209,24 +209,61 @@
 
 /* ==== Act 1: raw material ============================================= */
 
-.thumbFan {
+.rawMaterialStage {
   position: relative;
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(220px, 1.1fr);
   align-items: center;
+  gap: clamp(1rem, 5vw, 3.75rem);
   width: 100%;
   height: 100%;
-  padding: 1rem;
+  padding: clamp(0.75rem, 3vw, 1.5rem);
+}
+
+.rawLogoPane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: var(--text-color);
+}
+
+.rawLogo {
+  display: block;
+  width: min(100%, 330px);
+  aspect-ratio: 1800 / 468;
+  color: var(--text-color);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+}
+
+.rawLogoPrimary {
+  opacity: 0.9;
+}
+
+.rawLogoAccent {
+  opacity: 0.62;
+}
+
+.thumbFan {
+  position: relative;
+  width: min(100%, 360px);
+  height: min(92%, 400px);
+  min-height: 260px;
+  justify-self: center;
 }
 
 .thumb {
-  width: clamp(78px, 22%, 130px);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(106px, 34%, 146px);
   aspect-ratio: 1 / 2.4;
   object-fit: cover;
   border-radius: 4px;
   background: var(--background-color, #fff);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
-  margin: 0 -1.4%;
   transform-origin: bottom center;
   transition:
     transform 0.5s ease,
@@ -241,6 +278,27 @@
   color: rgba(var(--text-color-rgb), 0.5);
   font-size: 0.7rem;
   text-align: center;
+}
+
+@media (max-width: 560px) {
+  .rawMaterialStage {
+    grid-template-columns: minmax(0, 0.72fr) minmax(176px, 1.28fr);
+    gap: 0.45rem;
+    padding: 0.35rem;
+  }
+
+  .rawLogo {
+    width: min(100%, 132px);
+  }
+
+  .thumbFan {
+    width: 100%;
+    min-height: 230px;
+  }
+
+  .thumb {
+    width: clamp(74px, 36%, 96px);
+  }
 }
 
 /* ==== Act 2: one character (prints -> pen path + handles -> dots) ===== */
