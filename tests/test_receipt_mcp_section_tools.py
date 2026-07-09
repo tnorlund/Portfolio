@@ -284,3 +284,43 @@ def test_update_and_delete_reject_invalid_section_type(label, impl_name, args):
     assert "error" in result
     assert "Invalid section_type" in result["error"]
     assert "ITEMS" in result["error"]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+@pytest.mark.parametrize(
+    "legacy_type", ["HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"]
+)
+def test_create_rejects_deprecated_section_types(label, legacy_type):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    client = _StubDynamoClient(line_ids=(1, 2, 3))
+    result = asyncio.run(
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, legacy_type, [1]
+        )
+    )
+    assert "error" in result
+    assert "deprecated" in result["error"]
+    assert client.added_sections == []
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_delete_still_accepts_deprecated_section_types(label):
+    """QA must be able to remove stray legacy rows even though create can't
+    mint new ones."""
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+
+    deleted = []
+
+    class _DeleteClient:
+        def delete_receipt_section(self, receipt_id, image_id, section_type):
+            deleted.append((receipt_id, image_id, section_type))
+
+    result = asyncio.run(
+        module.delete_receipt_section_impl(
+            _DeleteClient(), VALID_IMAGE_ID, 1, "HEADER"
+        )
+    )
+    assert result.get("success") is True
+    assert deleted == [(1, VALID_IMAGE_ID, "HEADER")]

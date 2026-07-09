@@ -3346,17 +3346,36 @@ async def get_receipt_sections_impl(
         return {"error": str(e)}
 
 
-def _normalize_section_type(section_type):
+# Legacy SectionType values from the superseded 2025-05 experiment. Kept in
+# the enum so old rows still parse, but new MCP-created sections must use the
+# canonical vocabulary. update/delete still accept them so QA can demote or
+# remove stray legacy rows.
+_DEPRECATED_SECTION_TYPES = {"HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"}
+
+
+def _normalize_section_type(section_type, canonical_only=False):
     """Strip/uppercase a section_type and validate it against SectionType.
 
     Returns (normalized_type, None) on success, or (None, error_dict) when
     the value is not in the SectionType enum — catching typos like "ITMES"
     before they become noncanonical SKs or misleading "not found" errors.
+    With canonical_only=True the deprecated legacy values are also rejected,
+    so new rows can't be created with a superseded vocabulary.
     """
     from receipt_dynamo.constants import SectionType
 
     normalized = str(section_type or "").strip().upper()
     valid_types = {t.value for t in SectionType}
+    if canonical_only:
+        valid_types -= _DEPRECATED_SECTION_TYPES
+        if normalized in _DEPRECATED_SECTION_TYPES:
+            return None, {
+                "error": (
+                    f"section_type {normalized!r} is deprecated (superseded "
+                    "2025-05 experiment); use one of "
+                    f"{sorted(valid_types)}"
+                )
+            }
     if normalized not in valid_types:
         return None, {
             "error": (
@@ -3455,7 +3474,9 @@ async def create_receipt_section_impl(
     from receipt_dynamo.entities.receipt_section import ReceiptSection
 
     try:
-        normalized_type, type_error = _normalize_section_type(section_type)
+        normalized_type, type_error = _normalize_section_type(
+            section_type, canonical_only=True
+        )
         if type_error:
             return type_error
         normalized_status = str(validation_status or "VALID").upper()
