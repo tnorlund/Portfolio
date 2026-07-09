@@ -122,6 +122,9 @@ class TestStaleResultSkip:
                 bucket_name="bucket",
                 sqs_queue_url=None,
             )
-        # the stale result was skipped: empty delta, no exception
-        assert captured["ids"] == []
+        # all results stale: no delta produced, receipt reported for reset
+        assert captured == {}  # produce_embedding_delta never called
         assert out["embedding_count"] == 0
+        assert out["stale_receipts"] == [
+            ["3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1]
+        ]

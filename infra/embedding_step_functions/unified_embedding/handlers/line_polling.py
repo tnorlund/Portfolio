@@ -454,6 +454,7 @@ def _handle_internal_core(
     def _update_line_embedding_status_to_success(
         results: List[dict],
         descriptions: dict[str, dict[int, dict]],
+        stale_receipts: Optional[List[list]] = None,
     ) -> None:
         """
         Update the embedding status of ALL lines in each visual row to SUCCESS.
@@ -462,10 +463,19 @@ def _handle_internal_core(
         (leftmost) line's ID. We need to update ALL lines in that visual row,
         not just the primary line.
 
+        Receipts in ``stale_receipts`` (regrouped since submit; their results
+        were dropped from the delta) are skipped for SUCCESS marking, and their
+        still-PENDING lines are reset to NONE so the next submit pass picks
+        them up — otherwise they strand forever (submit marks PENDING but
+        discovery only selects NONE).
+
         Args:
             results: The list of embedding results.
             descriptions: The nested dict of receipt descriptions.
+            stale_receipts: [image_id, receipt_id] pairs to reset, from
+                save_line_embeddings_as_delta.
         """
+        stale = {tuple(t) for t in (stale_receipts or [])}
         # Group lines by receipt for efficient updates
         lines_by_receipt: dict[str, dict[int, list]] = {}
 
@@ -495,6 +505,9 @@ def _handle_internal_core(
             image_id = meta["image_id"]
             receipt_id = meta["receipt_id"]
             primary_line_id = meta["line_id"]
+
+            if (image_id, receipt_id) in stale:
+                continue  # regrouped receipt: handled by the reset pass below
 
             # Get visual rows for this receipt
             visual_rows = get_visual_rows(image_id, receipt_id)
@@ -536,6 +549,27 @@ def _handle_internal_core(
                     receipt_id=receipt_id,
                     image_id=image_id,
                 )
+
+        # Reset stale receipts' PENDING lines to NONE so the next submit pass
+        # re-embeds them under the current grouping (their results were
+        # dropped from the delta).
+        for image_id, receipt_id in stale:
+            receipt_lines = descriptions[image_id][receipt_id]["lines"]
+            reset = []
+            for line in receipt_lines:
+                if line.embedding_status == EmbeddingStatus.PENDING.value:
+                    line.embedding_status = EmbeddingStatus.NONE.value
+                    reset.append(line)
+            if reset:
+                logger.warning(
+                    "Reset stale receipt lines PENDING->NONE for resubmit",
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    reset_count=len(reset),
+                )
+                lines_by_receipt.setdefault(image_id, {}).setdefault(
+                    receipt_id, []
+                ).extend(reset)
 
         # Update lines individually to avoid transaction conflicts when multiple
         # batches are processed concurrently
@@ -911,7 +945,11 @@ def _handle_internal_core(
         with operation_with_timeout(
             "update_line_embedding_status_to_success", max_duration=60
         ):
-            _update_line_embedding_status_to_success(results, descriptions)
+            _update_line_embedding_status_to_success(
+                results,
+                descriptions,
+                stale_receipts=delta_result.get("stale_receipts"),
+            )
         logger.info("Updated line embedding status to SUCCESS")
 
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
@@ -1114,7 +1152,9 @@ def _handle_internal_core(
                 else:
                     # Update status for successful lines if delta was saved
                     _update_line_embedding_status_to_success(
-                        partial_results, descriptions
+                        partial_results,
+                        descriptions,
+                        stale_receipts=delta_result.get("stale_receipts"),
                     )
                     logger.info(
                         "Processed partial line embedding results",

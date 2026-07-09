@@ -126,12 +126,41 @@ def save_line_embeddings_as_delta(
             }
         return visual_rows_cache[cache_key]
 
+    # First pass: find receipts whose submit-time row grouping no longer
+    # matches poll-time grouping (any result's primary id missing from the
+    # current visual rows — pathological OCR with overlapping lines makes
+    # grouping order-sensitive). ALL of such a receipt's results are stale:
+    # their embeddings were computed for the OLD row texts, so saving any of
+    # them would attach mismatched vectors to the new rows. The caller resets
+    # those receipts' lines to NONE for clean resubmission. One bad receipt
+    # must not kill the whole ingest run (stalled dev pipeline, 2026-07-09).
+    parsed = []
+    stale_receipts: set = set()
     for result in results:
-        # Parse metadata from custom_id
         meta = _parse_metadata_from_line_id(result["custom_id"])
+        parsed.append((result, meta))
+        image_id = meta["image_id"]
+        receipt_id = meta["receipt_id"]
+        lines = descriptions[image_id][receipt_id]["lines"]
+        rows_map = get_visual_rows_map(image_id, receipt_id, lines)
+        if meta["line_id"] not in rows_map:
+            if (image_id, receipt_id) not in stale_receipts:
+                logger.warning(
+                    "Receipt regrouped since submit; treating ALL its results "
+                    "as stale: image_id=%s receipt_id=%s (first missing "
+                    "primary_line_id=%s)",
+                    image_id,
+                    receipt_id,
+                    meta["line_id"],
+                )
+            stale_receipts.add((image_id, receipt_id))
+
+    for result, meta in parsed:
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
         primary_line_id = meta["line_id"]
+        if (image_id, receipt_id) in stale_receipts:
+            continue
 
         # Get receipt details
         receipt_details = descriptions[image_id][receipt_id]
@@ -139,23 +168,9 @@ def save_line_embeddings_as_delta(
         words = receipt_details["words"]
         place = receipt_details["place"]
 
-        # Get visual rows and find the target row
+        # Guaranteed present: stale receipts were filtered above
         rows_map = get_visual_rows_map(image_id, receipt_id, lines)
-        target_row = rows_map.get(primary_line_id)
-        if not target_row:
-            # Stale/mismatched result: pathological OCR (overlapping lines)
-            # can make visual-row grouping order-sensitive, so a submit-time
-            # primary id may not exist at poll time. Skip THIS result rather
-            # than raising — one bad row must not kill the whole ingest run
-            # (that failure mode stalled the dev lines pipeline, 2026-07-09).
-            logger.warning(
-                "Skipping result: no visual row with primary_line_id=%s "
-                "for image_id=%s receipt_id=%s",
-                primary_line_id,
-                image_id,
-                receipt_id,
-            )
-            continue
+        target_row = rows_map[primary_line_id]
 
         # Get all words for lines in this row
         row_line_ids = {line.line_id for line in target_row}
@@ -193,6 +208,24 @@ def save_line_embeddings_as_delta(
         metadatas.append(row_metadata)
         documents.append(document)
 
+    stale_list = [list(t) for t in sorted(stale_receipts)]
+
+    if not ids:
+        # Every result was stale — don't produce an empty delta (ChromaDB
+        # rejects empty embeddings, which would re-fail the batch instead of
+        # isolating it). The caller resets the stale receipts for resubmit.
+        logger.warning(
+            "All %d results stale for batch %s; skipping delta production",
+            len(results),
+            batch_id,
+        )
+        return {
+            "delta_id": None,
+            "delta_key": None,
+            "embedding_count": 0,
+            "stale_receipts": stale_list,
+        }
+
     # Produce the delta file
     delta_result = produce_embedding_delta(
         ids=ids,
@@ -205,5 +238,6 @@ def save_line_embeddings_as_delta(
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )
+    delta_result["stale_receipts"] = stale_list
 
     return delta_result
