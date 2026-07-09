@@ -4,8 +4,9 @@ These lightweight dataclasses keep embedding payloads (id, document text,
 metadata) aligned with the same schema used for persisted snapshots/deltas.
 """
 
+from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from receipt_chroma.embedding.formatting.line_format import (
     LineLike,
@@ -116,11 +117,33 @@ class RowEmbeddingRecord:
         return [line.line_id for line in self.row_lines]
 
 
+def sections_to_line_map(sections: Sequence[Any]) -> Dict[int, str]:
+    """Build a ``line_id -> section_type`` map from ReceiptSection rows.
+
+    Each section holds its ``line_ids``; sections partition a receipt's lines,
+    but if a line appears in more than one (e.g. overlapping seed generations)
+    the higher-confidence section wins.
+    """
+    out: Dict[int, str] = {}
+    best: Dict[int, float] = {}
+    for s in sections or []:
+        # skip QA-rejected rows — an INVALID section must not stamp a line
+        if str(getattr(s, "validation_status", "") or "").upper() == "INVALID":
+            continue
+        conf = getattr(s, "confidence", None) or 0.0
+        for line_id in getattr(s, "line_ids", []) or []:
+            if line_id not in out or conf > best.get(line_id, -1.0):
+                out[line_id] = s.section_type
+                best[line_id] = conf
+    return out
+
+
 def build_line_payload(
     records: Iterable[LineEmbeddingRecord],
     all_lines: List[ReceiptLine],
     all_words: List[ReceiptWord],
     merchant_name: Optional[str] = None,
+    section_by_line: Optional[Dict[int, str]] = None,
 ) -> Dict[str, List]:
     """Create Chroma-ready payloads (ids/embeddings/docs/metadatas) for lines.
 
@@ -144,7 +167,11 @@ def build_line_payload(
         embedding_input = format_line_context_embedding_input(line, all_lines)
         prev_line, next_line = parse_prev_next_from_formatted(embedding_input)
 
-        section_label = getattr(line, "section_label", None) or None
+        section_label = (
+            (section_by_line or {}).get(line.line_id)
+            or getattr(line, "section_label", None)
+            or None
+        )
         line_metadata = create_line_metadata(
             line=line,
             prev_line=prev_line,
@@ -230,6 +257,7 @@ def build_row_payload(
     all_words: List[ReceiptWord],
     all_labels: Optional[List[ReceiptWordLabel]] = None,
     merchant_name: Optional[str] = None,
+    section_by_line: Optional[Dict[int, str]] = None,
 ) -> Dict[str, List]:
     """Create Chroma-ready payloads for row-based line embeddings.
 
@@ -256,11 +284,26 @@ def build_row_payload(
         row_line_ids = set(record.line_ids)
         row_words = [w for w in all_words if w.line_id in row_line_ids]
 
+        # Row section = majority section among the row's lines (a row can span
+        # multiple ReceiptLines; sections are line-level).
+        row_section: Optional[str] = None
+        if section_by_line:
+            votes = Counter(
+                section_by_line[lid]
+                for lid in record.line_ids
+                if lid in section_by_line
+            )
+            top = votes.most_common(2)
+            # only stamp on a clear plurality; a tie is ambiguous -> leave unset
+            if top and (len(top) == 1 or top[0][1] > top[1][1]):
+                row_section = top[0][0]
+
         # Create row metadata
         row_metadata = create_row_metadata(
             row_lines=list(record.row_lines),
             merchant_name=merchant_name,
             source="openai_embedding_batch",
+            section_label=row_section,
         )
 
         # Enrich with anchors from all words in the row
