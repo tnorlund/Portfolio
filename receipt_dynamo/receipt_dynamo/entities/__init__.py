@@ -102,15 +102,9 @@ from receipt_dynamo.entities.receipt_bundle import (
     ReceiptBundle,
     ReceiptBundlePage,
 )
-from receipt_dynamo.entities.receipt_chatgpt_validation import (  # noqa: F401
-    ReceiptChatGPTValidation,
-    item_to_receipt_chat_gpt_validation,
-)
 from receipt_dynamo.entities.receipt_details import (  # noqa: F401
     ReceiptDetails,
 )
-from receipt_dynamo.entities.receipt_field import ReceiptField  # noqa: F401
-from receipt_dynamo.entities.receipt_field import item_to_receipt_field
 from receipt_dynamo.entities.receipt_label_analysis import (  # noqa: F401
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
@@ -124,10 +118,6 @@ from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_line_item_analysis import (  # noqa: F401
     ReceiptLineItemAnalysis,
     item_to_receipt_line_item_analysis,
-)
-from receipt_dynamo.entities.receipt_metadata import (
-    ReceiptMetadata,
-    item_to_receipt_metadata,
 )
 from receipt_dynamo.entities.receipt_place import (
     ReceiptPlace,
@@ -258,19 +248,16 @@ __all__ = [
     "Receipt",
     "ReceiptAnalysis",
     "ReceiptBarcode",
-    "ReceiptChatGPTValidation",
     "ReceiptBundle",
     "ReceiptBundlePage",
     "MonetaryTotals",
     "ReceiptSummary",
     "ReceiptSummaryRecord",
     "ReceiptDetails",
-    "ReceiptField",
     "ReceiptLabelAnalysis",
     "ReceiptLetter",
     "ReceiptLine",
     "ReceiptLineItemAnalysis",
-    "ReceiptMetadata",
     "ReceiptPlace",
     "ReceiptSection",
     "ReceiptStructureAnalysis",
@@ -313,14 +300,11 @@ __all__ = [
     "item_to_queue_job",
     "item_to_receipt",
     "item_to_receipt_barcode",
-    "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_summary_record",
-    "item_to_receipt_field",
     "item_to_receipt_label_analysis",
     "item_to_receipt_letter",
     "item_to_receipt_line",
     "item_to_receipt_line_item_analysis",
-    "item_to_receipt_metadata",
     "item_to_receipt_place",
     "item_to_receipt_section",
     "item_to_receipt_structure_analysis",

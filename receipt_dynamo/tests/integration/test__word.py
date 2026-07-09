@@ -19,7 +19,6 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
-    EntityValidationError,
     OperationError,
 )
 

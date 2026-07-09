@@ -5,7 +5,6 @@ This module tests the ReceiptWordLabelSpatialAnalysis-related methods of
 DynamoClient, including add, get, update, delete, and query operations.
 """
 
-import time
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Type
 from unittest.mock import patch

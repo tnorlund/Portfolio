@@ -1,7 +1,6 @@
-import uuid
 from copy import deepcopy
-from typing import Any, Dict, List, Literal, Optional, Type
-from unittest.mock import MagicMock, call, patch
+from typing import Any, Dict, Literal, Type
+from unittest.mock import MagicMock
 
 import pytest
 from botocore.exceptions import ClientError

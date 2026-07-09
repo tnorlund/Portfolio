@@ -1,17 +1,12 @@
 import uuid
 from datetime import datetime
-from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
-from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
@@ -751,7 +746,6 @@ def test_getResourceById_raises_client_error(job_resource_dynamo, mocker):
     )
 
     # Call the method and verify it raises the expected exception
-    from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
     with pytest.raises(
         OperationError,

@@ -7,7 +7,6 @@ from receipt_dynamo.constants import (
     MerchantValidationStatus,
     ValidationMethod,
 )
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 

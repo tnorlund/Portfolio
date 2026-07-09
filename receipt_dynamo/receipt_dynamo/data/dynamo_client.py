@@ -28,17 +28,12 @@ from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
-from receipt_dynamo.data._receipt_chatgpt_validation import (
-    _ReceiptChatGPTValidation,
-)
-from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item_analysis import (
     _ReceiptLineItemAnalysis,
 )
-from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
 from receipt_dynamo.data._receipt_place import _ReceiptPlace
 from receipt_dynamo.data._receipt_section import _ReceiptSection
 from receipt_dynamo.data._receipt_structure_analysis import (
@@ -99,17 +94,14 @@ class DynamoClient(
     _LabelCountCache,
     _ReceiptWordLabel,
     _ReceiptWordLabelSpatialAnalysis,
-    _ReceiptField,
     _ReceiptLabelAnalysis,
     _ReceiptStructureAnalysis,
     _ReceiptLineItemAnalysis,
     _ReceiptValidationResult,
     _ReceiptValidationCategory,
     _ReceiptValidationSummary,
-    _ReceiptChatGPTValidation,
     _BatchSummary,
     _EmbeddingBatchResult,
-    _ReceiptMetadata,
     _ReceiptPlace,
     _CompletionBatchResult,
     _MerchantFont,

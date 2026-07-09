@@ -1,8 +1,5 @@
 from dataclasses import dataclass
 
-from receipt_dynamo.entities.receipt_chatgpt_validation import (
-    ReceiptChatGPTValidation,
-)
 from receipt_dynamo.entities.receipt_label_analysis import ReceiptLabelAnalysis
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
@@ -45,8 +42,6 @@ class ReceiptAnalysis:
             validation by category
         validation_results (list[ReceiptValidationResult]): Individual
             validation results
-        chatgpt_validations (list[ReceiptChatGPTValidation]): ChatGPT
-            validation results
     """
 
     image_id: str
@@ -57,7 +52,6 @@ class ReceiptAnalysis:
     validation_summary: ReceiptValidationSummary | None = None
     validation_categories: list[ReceiptValidationCategory] | None = None
     validation_results: list[ReceiptValidationResult] | None = None
-    chatgpt_validations: list[ReceiptChatGPTValidation] | None = None
 
     def __post_init__(self):
         """Initialize empty lists for collection fields if they are None."""
@@ -65,8 +59,6 @@ class ReceiptAnalysis:
             self.validation_categories = []
         if self.validation_results is None:
             self.validation_results = []
-        if self.chatgpt_validations is None:
-            self.chatgpt_validations = []
 
     def __repr__(self) -> str:
         """Return a string representation of the ReceiptAnalysis object."""
@@ -86,10 +78,6 @@ class ReceiptAnalysis:
         if self.validation_results:
             available_analyses.append(
                 f"validation_results({len(self.validation_results)})"
-            )
-        if self.chatgpt_validations:
-            available_analyses.append(
-                f"chatgpt_validations({len(self.chatgpt_validations)})"
             )
 
         analyses_str = (

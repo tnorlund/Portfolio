@@ -1,7 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/import_image.py
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient

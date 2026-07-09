@@ -8,9 +8,8 @@ for ReceiptWord operations.
 Based on successful patterns from test__receipt_line.py parameterization.
 """
 
-import uuid
-from typing import Any, Dict, List, Literal
-from unittest.mock import MagicMock, patch
+from typing import Any, List, Literal
+from unittest.mock import patch
 
 import pytest
 from botocore.exceptions import ClientError

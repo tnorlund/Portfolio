@@ -2,7 +2,6 @@
 Integration tests for CompactionLock operations in DynamoDB.
 """
 
-import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Type
 from unittest.mock import patch

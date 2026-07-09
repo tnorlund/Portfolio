@@ -1,18 +1,12 @@
 import uuid
 from datetime import datetime, timedelta
-from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
-from pytest_mock import MockerFixture
 
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
-    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.job_dependency import JobDependency

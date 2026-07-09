@@ -1,12 +1,10 @@
-import json
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Literal, Optional, Type, Union
+from typing import Literal
 
 import boto3
 import pytest
 from botocore.exceptions import ClientError
-from moto import mock_aws
 from pytest_mock import MockerFixture
 
 from receipt_dynamo import DynamoClient, ReceiptLineItemAnalysis

@@ -1,18 +1,12 @@
-import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
-from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
