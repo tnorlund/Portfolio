@@ -8,6 +8,7 @@ on the same visual row are grouped into a single embedding.
 """
 
 import logging
+from collections import Counter
 from typing import Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
@@ -21,6 +22,7 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
     enrich_row_metadata_with_labels,
 )
+from receipt_chroma.embedding.records import sections_to_line_map
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +113,19 @@ def save_line_embeddings_as_delta(
     metadatas = []
     documents = []
 
-    # Cache visual rows per receipt to avoid recomputing
+    # Cache visual rows + section maps per receipt to avoid recomputing
     visual_rows_cache: Dict[tuple, Dict[int, list]] = {}
+    section_map_cache: Dict[tuple, Dict[int, str]] = {}
+
+    def get_section_map(
+        image_id: str, receipt_id: int, receipt_details: dict
+    ) -> Dict[int, str]:
+        key = (image_id, receipt_id)
+        if key not in section_map_cache:
+            section_map_cache[key] = sections_to_line_map(
+                receipt_details.get("sections") or []
+            )
+        return section_map_cache[key]
 
     def get_visual_rows_map(
         image_id: str, receipt_id: int, lines: list
@@ -186,11 +199,28 @@ def save_line_embeddings_as_delta(
             )
         merchant_name = place.merchant_name
 
+        # Row section from the receipt's ReceiptSection rows (M1a-2):
+        # majority section across the row's line_ids; ties/unknown stay unset.
+        section_by_line = get_section_map(
+            image_id, receipt_id, receipt_details
+        )
+        row_section = None
+        if section_by_line:
+            votes = Counter(
+                section_by_line[line.line_id]
+                for line in target_row
+                if line.line_id in section_by_line
+            )
+            top = votes.most_common(2)
+            if top and (len(top) == 1 or top[0][1] > top[1][1]):
+                row_section = top[0][0]
+
         # Build row metadata for ChromaDB
         row_metadata = create_row_metadata(
             row_lines=target_row,
             merchant_name=merchant_name,
             source="openai_embedding_batch",
+            section_label=row_section,
         )
 
         # Anchor-only enrichment: attach anchor fields from all words in row
