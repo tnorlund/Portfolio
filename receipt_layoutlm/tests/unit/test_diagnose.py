@@ -4,10 +4,12 @@ from receipt_layoutlm.diagnose import (
     _build_data_targeting,
     _build_train_context,
     _build_evidence_summary,
+    _nearest_train_template,
     _product_false_positive_review,
     _receipt_features,
     _resolve_val_receipts,
     _summarize_groups,
+    _template_distance,
     _token_error_rows,
 )
 
@@ -219,6 +221,82 @@ def test_build_train_context_excludes_full_validation_split():
     assert [feature["receipt_key"] for feature in context["features"]] == [
         "train#00001"
     ]
+
+
+def test_build_train_context_max_receipts_uses_deterministic_sample():
+    def details_for(image_id, receipt_id):
+        return SimpleNamespace(
+            receipt=SimpleNamespace(image_id=image_id, receipt_id=receipt_id),
+            place=SimpleNamespace(merchant_name=f"merchant-{image_id}"),
+            lines=[],
+            words=[],
+            labels=[],
+        )
+
+    class FakeDynamo:
+        def list_receipt_word_labels_with_status(self, *_args, **_kwargs):
+            labels = [
+                SimpleNamespace(image_id=f"img-{suffix}", receipt_id=1)
+                for suffix in ["a", "b", "c", "d", "e"]
+            ]
+            return labels, None
+
+        def get_receipt_details(self, image_id, receipt_id):
+            return details_for(image_id, receipt_id)
+
+    context = _build_train_context(
+        FakeDynamo(),
+        [],
+        split_meta={},
+        valid_status="VALID",
+        max_receipts=2,
+    )
+
+    assert [feature["receipt_key"] for feature in context["features"]] == [
+        "img-d#00001",
+        "img-e#00001",
+    ]
+
+
+def test_template_distance_applies_merchant_mismatch_penalty():
+    target = {"merchant_key": "VONS", "template_vector": [0.0, 0.0]}
+    same_merchant_near = {"merchant_key": "VONS", "template_vector": [0.5, 0.0]}
+    other_merchant_same_vector = {
+        "merchant_key": "TARGET",
+        "template_vector": [0.0, 0.0],
+    }
+
+    assert _template_distance(target, same_merchant_near) == 0.5
+    assert _template_distance(target, other_merchant_same_vector) == 0.75
+    assert _template_distance(target, same_merchant_near) < _template_distance(
+        target, other_merchant_same_vector
+    )
+
+
+def test_nearest_train_template_returns_closest_candidate_with_rounded_distance():
+    target = {"merchant_key": "VONS", "template_vector": [0.0, 0.0]}
+    train_features = [
+        {
+            "merchant_key": "TARGET",
+            "template_vector": [0.0, 0.0],
+            "receipt_key": "target#00001",
+            "merchant_name": "TARGET",
+        },
+        {
+            "merchant_key": "VONS",
+            "template_vector": [0.333333, 0.0],
+            "receipt_key": "vons#00001",
+            "merchant_name": "VONS",
+        },
+    ]
+
+    nearest = _nearest_train_template(target, train_features)
+
+    assert nearest == {
+        "distance": 0.3333,
+        "receipt_key": "vons#00001",
+        "merchant_name": "VONS",
+    }
 
 
 def test_evidence_summary_compares_seen_and_unseen_slices():

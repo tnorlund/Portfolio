@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import random
 import re
 import shutil
 from collections import Counter, defaultdict
@@ -440,7 +441,8 @@ def _build_train_context(
         )
         source = "current_VALID_corpus_minus_full_validation_split"
     if max_receipts is not None:
-        train_keys = train_keys[:max_receipts]
+        sample_size = max(0, min(max_receipts, len(train_keys)))
+        train_keys = sorted(random.Random(0).sample(train_keys, sample_size))
 
     features: List[Dict[str, Any]] = []
     merchant_counts: Counter[str] = Counter()

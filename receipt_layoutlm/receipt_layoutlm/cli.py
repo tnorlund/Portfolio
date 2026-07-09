@@ -1,7 +1,8 @@
 import argparse
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from .config import MODEL_DEFAULTS, MERGE_PRESETS, DataConfig, ModelVersion, TrainingConfig
 from .inference import LayoutLMInference
@@ -58,6 +59,36 @@ def _build_label_merges(
             result["ADDRESS"] = ["PHONE_NUMBER", "ADDRESS_LINE"]
 
     return result if result else None
+
+
+def _resolve_run_s3(
+    dyn: Any,
+    run_s3_uri: Optional[str],
+    job_name: Optional[str],
+) -> Tuple[str, str, str, str]:
+    """Resolve a run S3 location from an explicit URI or DynamoDB job name."""
+    if not run_s3_uri:
+        if not job_name:
+            raise SystemExit("Provide --run-s3-uri or --job-name to locate the run")
+        jobs, _ = dyn.get_job_by_name(job_name, limit=1)
+        if not jobs:
+            raise SystemExit(f"No job found with name '{job_name}'")
+        job = jobs[0]
+        run_s3_uri = job.s3_uri_for_prefix("run_root_prefix")
+        if not run_s3_uri:
+            best = (job.results or {}).get("best_checkpoint_s3_path")
+            if best:
+                run_s3_uri = best.rstrip("/").rsplit("/", 1)[0] + "/"
+        if not run_s3_uri:
+            raise SystemExit(
+                f"Could not resolve run S3 location for job '{job_name}'. "
+                f"Pass --run-s3-uri explicitly."
+            )
+    if not job_name:
+        job_name = run_s3_uri.rstrip("/").rsplit("/", 1)[-1]
+
+    parsed = urlparse(run_s3_uri)
+    return run_s3_uri, job_name, parsed.netloc, parsed.path.lstrip("/")
 
 
 def main() -> None:
@@ -845,7 +876,6 @@ def main() -> None:
 
     elif args.cmd == "eval-checkpoints":
         import logging
-        from urllib.parse import urlparse
 
         from receipt_dynamo import DynamoClient
 
@@ -863,37 +893,9 @@ def main() -> None:
 
         dyn = DynamoClient(table_name=args.dynamo_table, region=args.region)
 
-        # Resolve the run's S3 location: explicit URI wins, else look it up by
-        # job name (newest match) via the Job entity's storage prefixes.
-        run_s3_uri = args.run_s3_uri
-        job_name = args.job_name
-        if not run_s3_uri:
-            if not job_name:
-                raise SystemExit(
-                    "Provide --run-s3-uri or --job-name to locate the run"
-                )
-            jobs, _ = dyn.get_job_by_name(job_name, limit=1)
-            if not jobs:
-                raise SystemExit(f"No job found with name '{job_name}'")
-            job = jobs[0]
-            run_s3_uri = job.s3_uri_for_prefix("run_root_prefix")
-            if not run_s3_uri:
-                best = (job.results or {}).get("best_checkpoint_s3_path")
-                if best:
-                    # Strip a trailing best/ or checkpoint-*/ to get the run root
-                    trimmed = best.rstrip("/").rsplit("/", 1)[0]
-                    run_s3_uri = trimmed + "/"
-            if not run_s3_uri:
-                raise SystemExit(
-                    f"Could not resolve run S3 location for job '{job_name}'. "
-                    f"Pass --run-s3-uri explicitly."
-                )
-        if not job_name:
-            job_name = run_s3_uri.rstrip("/").rsplit("/", 1)[-1]
-
-        parsed = urlparse(run_s3_uri)
-        bucket = parsed.netloc
-        run_prefix = parsed.path.lstrip("/")
+        _, job_name, bucket, run_prefix = _resolve_run_s3(
+            dyn, args.run_s3_uri, args.job_name
+        )
 
         payload = evaluate_run(
             dynamo=dyn,
@@ -936,7 +938,6 @@ def main() -> None:
         )
     elif args.cmd == "diagnose-run":
         import logging
-        from urllib.parse import urlparse
 
         from receipt_dynamo import DynamoClient
 
@@ -954,33 +955,9 @@ def main() -> None:
 
         dyn = DynamoClient(table_name=args.dynamo_table, region=args.region)
 
-        run_s3_uri = args.run_s3_uri
-        job_name = args.job_name
-        if not run_s3_uri:
-            if not job_name:
-                raise SystemExit(
-                    "Provide --run-s3-uri or --job-name to locate the run"
-                )
-            jobs, _ = dyn.get_job_by_name(job_name, limit=1)
-            if not jobs:
-                raise SystemExit(f"No job found with name '{job_name}'")
-            job = jobs[0]
-            run_s3_uri = job.s3_uri_for_prefix("run_root_prefix")
-            if not run_s3_uri:
-                best = (job.results or {}).get("best_checkpoint_s3_path")
-                if best:
-                    run_s3_uri = best.rstrip("/").rsplit("/", 1)[0] + "/"
-            if not run_s3_uri:
-                raise SystemExit(
-                    f"Could not resolve run S3 location for job '{job_name}'. "
-                    f"Pass --run-s3-uri explicitly."
-                )
-        if not job_name:
-            job_name = run_s3_uri.rstrip("/").rsplit("/", 1)[-1]
-
-        parsed = urlparse(run_s3_uri)
-        bucket = parsed.netloc
-        run_prefix = parsed.path.lstrip("/")
+        _, job_name, bucket, run_prefix = _resolve_run_s3(
+            dyn, args.run_s3_uri, args.job_name
+        )
 
         payload = diagnose_run(
             dynamo=dyn,

@@ -6,6 +6,7 @@ from receipt_layoutlm.data_loader import (
     WordInfo,
     _build_receipt_window_examples,
     _crop_to_line_item_band,
+    _env_positive_int,
 )
 
 
@@ -240,3 +241,10 @@ def test_crop_to_line_item_band_keeps_product_rows_between_anchors():
     out = _crop_to_line_item_band(words, label_map, "img1", 1)
 
     assert [word.text for word in out] == ["MILK", "$4.29"]
+
+
+@pytest.mark.parametrize("bad_value", ["not-an-int", "0", "-4"])
+def test_env_positive_int_falls_back_for_bad_values(monkeypatch, bad_value):
+    monkeypatch.setenv("LAYOUTLM_ITEM_WINDOW_SIZE", bad_value)
+
+    assert _env_positive_int("LAYOUTLM_ITEM_WINDOW_SIZE", 200) == 200

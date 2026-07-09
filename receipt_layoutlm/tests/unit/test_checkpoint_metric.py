@@ -1,4 +1,5 @@
 from receipt_layoutlm.trainer import (
+    _add_explanation_metrics,
     _checkpoint_metric_for_available_metrics,
     _checkpoint_metric_for_trainer,
     _epoch_metric_values,
@@ -66,3 +67,26 @@ def test_epoch_metric_values_reads_prefixed_and_unprefixed_keys():
     assert _epoch_metric_values(
         rows, "eval_product_detail_macro_f1"
     ) == [(1.0, 0.2), (2.0, 0.3)]
+
+
+def test_explanation_metrics_always_emit_product_macro_f1():
+    metrics = {}
+
+    _add_explanation_metrics(
+        metrics,
+        [["B-MERCHANT_NAME"]],
+        [["O"]],
+    )
+
+    assert metrics["product_detail_macro_f1"] == 0.0
+
+
+def test_explanation_metrics_average_available_product_label_f1s():
+    metrics = {
+        "label_PRODUCT_NAME_f1": 0.5,
+        "label_QUANTITY_f1": 1.0,
+    }
+
+    _add_explanation_metrics(metrics, [[]], [[]])
+
+    assert metrics["product_detail_macro_f1"] == 0.75

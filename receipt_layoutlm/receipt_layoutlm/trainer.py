@@ -45,6 +45,12 @@ _CHECKPOINT_METRIC_ALIASES = {
     "eval_accuracy": "eval_accuracy",
 }
 _SEQEVAL_FREE_CHECKPOINT_METRICS = {"eval_accuracy", "eval_loss"}
+_PRODUCT_DETAIL_LABELS = (
+    "PRODUCT_NAME",
+    "QUANTITY",
+    "UNIT_PRICE",
+    "LINE_TOTAL",
+)
 
 
 def _checkpoint_metric_for_trainer(metric: str | None) -> str:
@@ -96,6 +102,70 @@ def _epoch_metric_values(
                 values.append((float(epoch), float(value)))
                 break
     return values
+
+
+def _base_tag_label(tag: str) -> str:
+    if tag == "O":
+        return "O"
+    if tag.startswith("B-") or tag.startswith("I-"):
+        return tag[2:]
+    return tag
+
+
+def _add_explanation_metrics(
+    metrics: Dict[str, Any],
+    y_true: List[List[str]],
+    y_pred: List[List[str]],
+) -> None:
+    """Add explanatory token metrics used by diagnostics/checkpoint selection."""
+    metrics["product_detail_macro_f1"] = 0.0
+    try:
+        total_tokens = 0
+        gold_entity_tokens = 0
+        pred_entity_tokens = 0
+        correct_entity_tokens = 0
+        gold_o_tokens = 0
+        correct_o_tokens = 0
+        for true_seq, pred_seq in zip(y_true, y_pred, strict=False):
+            for true_tag, pred_tag in zip(true_seq, pred_seq, strict=False):
+                gold = _base_tag_label(true_tag)
+                pred = _base_tag_label(pred_tag)
+                total_tokens += 1
+                if gold == "O":
+                    gold_o_tokens += 1
+                    if pred == "O":
+                        correct_o_tokens += 1
+                else:
+                    gold_entity_tokens += 1
+                    if gold == pred:
+                        correct_entity_tokens += 1
+                if pred != "O":
+                    pred_entity_tokens += 1
+
+        if total_tokens:
+            metrics["gold_entity_rate"] = gold_entity_tokens / total_tokens
+            metrics["entity_prediction_rate"] = pred_entity_tokens / total_tokens
+        if gold_entity_tokens:
+            metrics["entity_prediction_gold_ratio"] = (
+                pred_entity_tokens / gold_entity_tokens
+            )
+            metrics["entity_token_accuracy"] = (
+                correct_entity_tokens / gold_entity_tokens
+            )
+        if gold_o_tokens:
+            metrics["o_token_accuracy"] = correct_o_tokens / gold_o_tokens
+
+        product_f1_values = [
+            metrics[f"label_{label}_f1"]
+            for label in _PRODUCT_DETAIL_LABELS
+            if isinstance(metrics.get(f"label_{label}_f1"), (int, float))
+        ]
+        if product_f1_values:
+            metrics["product_detail_macro_f1"] = sum(product_f1_values) / len(
+                product_f1_values
+            )
+    except Exception as e:
+        print(f"Warning: Failed to compute explanation metrics: {e}")
 
 
 SAGEMAKER_CHECKPOINT_DIR = "/opt/ml/checkpoints"
@@ -1435,10 +1505,10 @@ class ReceiptLayoutLMTrainer:
             id2label_local = id2label
             y_true: List[List[str]] = []
             y_pred: List[List[str]] = []
-            for true_row, pred_row in zip(labels, preds):
+            for true_row, pred_row in zip(labels, preds, strict=False):
                 t_tags: List[str] = []
                 p_tags: List[str] = []
-                for t, p in zip(true_row, pred_row):
+                for t, p in zip(true_row, pred_row, strict=False):
                     if int(t) == -100:
                         continue
                     t_tags.append(id2label_local.get(int(t), "O"))
@@ -1449,8 +1519,10 @@ class ReceiptLayoutLMTrainer:
             total_valid_tokens = sum(len(seq) for seq in y_true)
             correct_valid_tokens = sum(
                 1
-                for true_seq, pred_seq in zip(y_true, y_pred)
-                for true_tag, pred_tag in zip(true_seq, pred_seq)
+                for true_seq, pred_seq in zip(y_true, y_pred, strict=False)
+                for true_tag, pred_tag in zip(
+                    true_seq, pred_seq, strict=False
+                )
                 if true_tag == pred_tag
             )
             metrics = {
@@ -1555,75 +1627,7 @@ class ReceiptLayoutLMTrainer:
                 except Exception as e:
                     print(f"Warning: Failed to compute entropy metrics: {e}")
 
-                try:
-                    def _base(tag: str) -> str:
-                        if tag == "O":
-                            return "O"
-                        if tag.startswith("B-") or tag.startswith("I-"):
-                            return tag[2:]
-                        return tag
-
-                    total_tokens = 0
-                    gold_entity_tokens = 0
-                    pred_entity_tokens = 0
-                    correct_entity_tokens = 0
-                    gold_o_tokens = 0
-                    correct_o_tokens = 0
-                    for true_seq, pred_seq in zip(y_true, y_pred):
-                        for true_tag, pred_tag in zip(true_seq, pred_seq):
-                            gold = _base(true_tag)
-                            pred = _base(pred_tag)
-                            total_tokens += 1
-                            if gold == "O":
-                                gold_o_tokens += 1
-                                if pred == "O":
-                                    correct_o_tokens += 1
-                            else:
-                                gold_entity_tokens += 1
-                                if gold == pred:
-                                    correct_entity_tokens += 1
-                            if pred != "O":
-                                pred_entity_tokens += 1
-
-                    if total_tokens:
-                        metrics["gold_entity_rate"] = (
-                            gold_entity_tokens / total_tokens
-                        )
-                        metrics["entity_prediction_rate"] = (
-                            pred_entity_tokens / total_tokens
-                        )
-                    if gold_entity_tokens:
-                        metrics["entity_prediction_gold_ratio"] = (
-                            pred_entity_tokens / gold_entity_tokens
-                        )
-                        metrics["entity_token_accuracy"] = (
-                            correct_entity_tokens / gold_entity_tokens
-                        )
-                    if gold_o_tokens:
-                        metrics["o_token_accuracy"] = (
-                            correct_o_tokens / gold_o_tokens
-                        )
-
-                    product_f1_values = [
-                        metrics[f"label_{label}_f1"]
-                        for label in (
-                            "PRODUCT_NAME",
-                            "QUANTITY",
-                            "UNIT_PRICE",
-                            "LINE_TOTAL",
-                        )
-                        if isinstance(
-                            metrics.get(f"label_{label}_f1"), (int, float)
-                        )
-                    ]
-                    if product_f1_values:
-                        metrics["product_detail_macro_f1"] = sum(
-                            product_f1_values
-                        ) / len(product_f1_values)
-                except Exception as e:
-                    print(
-                        f"Warning: Failed to compute explanation metrics: {e}"
-                    )
+                _add_explanation_metrics(metrics, y_true, y_pred)
 
                 # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
                 # with epoch information, so we don't need to store it here

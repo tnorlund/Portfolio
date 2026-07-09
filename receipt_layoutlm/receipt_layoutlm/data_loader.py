@@ -490,6 +490,37 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(
+            f"[data_loader] WARN: {name}={raw!r} is not a valid int; "
+            f"falling back to {default}"
+        )
+        return default
+    if value <= 0:
+        print(
+            f"[data_loader] WARN: {name}={raw!r} must be positive; "
+            f"falling back to {default}"
+        )
+        return default
+    return value
+
+
+def _positive_int_or_default(name: str, value: int, default: int) -> int:
+    if value > 0:
+        return value
+    print(
+        f"[data_loader] WARN: {name}={value!r} must be positive; "
+        f"falling back to {default}"
+    )
+    return default
+
+
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
@@ -642,19 +673,27 @@ def load_datasets(
     # full multi-line word sequences — not pre-segmented same-label blocks.
     examples: List[LineExample] = []
     item_window_examples_by_receipt: Dict[str, List[LineExample]] = {}
-    window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
-    window_stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
+    window_size = _env_positive_int("LAYOUTLM_WINDOW_SIZE", 200)
+    window_stride = _env_positive_int("LAYOUTLM_WINDOW_STRIDE", 150)
     if item_window_augmentation is None:
         item_window_augmentation = _env_flag(
             "LAYOUTLM_ITEM_WINDOW_AUGMENT", False
         )
     if item_window_size is None:
-        item_window_size = int(
-            os.getenv("LAYOUTLM_ITEM_WINDOW_SIZE", str(window_size))
+        item_window_size = _env_positive_int(
+            "LAYOUTLM_ITEM_WINDOW_SIZE", window_size
+        )
+    else:
+        item_window_size = _positive_int_or_default(
+            "item_window_size", item_window_size, window_size
         )
     if item_window_stride is None:
-        item_window_stride = int(
-            os.getenv("LAYOUTLM_ITEM_WINDOW_STRIDE", str(window_stride))
+        item_window_stride = _env_positive_int(
+            "LAYOUTLM_ITEM_WINDOW_STRIDE", window_stride
+        )
+    else:
+        item_window_stride = _positive_int_or_default(
+            "item_window_stride", item_window_stride, window_stride
         )
     scope = os.getenv("LAYOUTLM_SCOPE", "full")
 
@@ -667,7 +706,7 @@ def load_datasets(
             )
             if not words_in_receipt:
                 continue
-        elif item_window_augmentation:
+        elif scope == "full" and item_window_augmentation:
             # First-pass augmentation: keep full-receipt examples for the real
             # inference distribution, but prepare extra item-band examples that
             # will be appended to TRAIN only after the receipt split. This gives
@@ -825,11 +864,11 @@ def load_datasets(
     )
 
     ds_mod = importlib.import_module("datasets")
-    Dataset = getattr(ds_mod, "Dataset")
-    DatasetDict = getattr(ds_mod, "DatasetDict")
-    Features = getattr(ds_mod, "Features")
-    Sequence = getattr(ds_mod, "Sequence")
-    Value = getattr(ds_mod, "Value")
+    Dataset = ds_mod.Dataset
+    DatasetDict = ds_mod.DatasetDict
+    Features = ds_mod.Features
+    Sequence = ds_mod.Sequence
+    Value = ds_mod.Value
 
     features = Features(
         {
