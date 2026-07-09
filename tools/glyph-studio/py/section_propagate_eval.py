@@ -29,13 +29,19 @@ def load_words(snapshot: str, section_map: dict):
     import chromadb
 
     client = chromadb.PersistentClient(path=snapshot)
-    coll = [c for c in client.list_collections() if c.name == "words"][0]
+    coll = next(
+        (c for c in client.list_collections() if c.name == "words"), None
+    )
+    if coll is None:
+        raise ValueError(f"no 'words' collection in snapshot {snapshot}")
     n = coll.count()
     emb, labels, receipts = [], [], []
-    B = 5000
-    for off in range(0, n, B):
-        r = coll.get(limit=B, offset=off, include=["metadatas", "embeddings"])
-        for md, e in zip(r["metadatas"], r["embeddings"]):
+    batch_size = 5000
+    for off in range(0, n, batch_size):
+        r = coll.get(
+            limit=batch_size, offset=off, include=["metadatas", "embeddings"]
+        )
+        for md, e in zip(r["metadatas"], r["embeddings"], strict=True):
             k = f"{md.get('image_id')}|{md.get('receipt_id')}|{md.get('line_id')}"
             emb.append(e)
             labels.append(section_map.get(k))
@@ -50,7 +56,8 @@ def main(argv=None) -> int:
     ap.add_argument("--k", type=int, default=15)
     args = ap.parse_args(argv)
 
-    section_map = json.load(open(args.section_map))
+    with open(args.section_map, encoding="utf-8") as fh:
+        section_map = json.load(fh)
     emb, labels, receipts = load_words(args.snapshot, section_map)
     labeled = sum(1 for s in labels if s is not None)
     print(
