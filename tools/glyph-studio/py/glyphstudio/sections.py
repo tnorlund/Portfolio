@@ -160,6 +160,9 @@ STYLESCAN_TO_SECTION: dict[str, Optional[str]] = {
     "items_sold": "summary",  # Costco "ITEMS SOLD" count line near totals
     # --- total ---
     "total_line": "total_line",
+    "balance_due": "total_line",  # stylemap: the balance/total line
+    # --- date box (scattered: header / transaction / payment) -> no section ---
+    "date_box": None,
     # --- payment ---
     "payment": "payment",
     # --- survey ---
