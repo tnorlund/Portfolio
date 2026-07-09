@@ -29,18 +29,14 @@ def load_words(snapshot: str, section_map: dict):
     import chromadb
 
     client = chromadb.PersistentClient(path=snapshot)
-    coll = next(
-        (c for c in client.list_collections() if c.name == "words"), None
-    )
+    coll = next((c for c in client.list_collections() if c.name == "words"), None)
     if coll is None:
         raise ValueError(f"no 'words' collection in snapshot {snapshot}")
     n = coll.count()
     emb, labels, receipts = [], [], []
     batch_size = 5000
     for off in range(0, n, batch_size):
-        r = coll.get(
-            limit=batch_size, offset=off, include=["metadatas", "embeddings"]
-        )
+        r = coll.get(limit=batch_size, offset=off, include=["metadatas", "embeddings"])
         for md, e in zip(r["metadatas"], r["embeddings"], strict=True):
             k = f"{md.get('image_id')}|{md.get('receipt_id')}|{md.get('line_id')}"
             emb.append(e)
@@ -66,8 +62,10 @@ def main(argv=None) -> int:
         file=sys.stderr,
     )
     ev = evaluate_cross_receipt(emb, labels, receipts, k=args.k)
-    print(f"\ncross-receipt KNN (k={args.k}) accuracy: {ev.accuracy:.1%} "
-          f"(n_test={ev.n_test})")
+    print(
+        f"\ncross-receipt KNN (k={args.k}) accuracy: {ev.accuracy:.1%} "
+        f"(n_test={ev.n_test})"
+    )
     print("per-section (support | recall):")
     for s, (sup, rec) in sorted(ev.per_section_recall.items()):
         print(f"  {s:15s} {sup:5d}  {rec:.1%}")
