@@ -199,3 +199,167 @@ class TestSectionWiring:
                 sqs_queue_url=None,
             )
         assert captured["metadatas"][0].get("section_label") == "TOTAL_LINE"
+
+    @staticmethod
+    def _run_delta(sections):
+        from unittest.mock import Mock, patch
+
+        from receipt_chroma.embedding.delta import line_delta
+
+        line = Mock()
+        line.line_id = 1
+        line.image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        line.receipt_id = 1
+        line.text = "TOTAL 20.94"
+        line.confidence = 0.99
+        line.bounding_box = {"x": 0.1, "y": 0.5, "width": 0.8, "height": 0.02}
+        place = Mock()
+        place.merchant_name = "Test Mart"
+        descriptions = {
+            line.image_id: {
+                1: {
+                    "lines": [line],
+                    "words": [],
+                    "labels": [],
+                    "place": place,
+                    "sections": sections,
+                }
+            }
+        }
+        results = [
+            {
+                "custom_id": (
+                    f"IMAGE#{line.image_id}#RECEIPT#00001#LINE#00001"
+                ),
+                "embedding": [0.1, 0.2],
+            }
+        ]
+        captured = {}
+
+        def fake_produce(**kwargs):
+            captured.update(kwargs)
+            return {
+                "delta_id": "d",
+                "delta_key": "k",
+                "embedding_count": len(kwargs["ids"]),
+            }
+
+        with (
+            patch.object(
+                line_delta, "produce_embedding_delta", side_effect=fake_produce
+            ),
+            patch.object(
+                line_delta,
+                "group_lines_into_visual_rows",
+                return_value=[[line]],
+            ),
+            patch.object(line_delta, "get_primary_line_id", return_value=1),
+        ):
+            line_delta.save_line_embeddings_as_delta(
+                results=results,
+                descriptions=descriptions,
+                batch_id="b1",
+                bucket_name="bucket",
+                sqs_queue_url=None,
+            )
+        return captured
+
+    def test_no_section_mapping_leaves_label_unset(self):
+        captured = self._run_delta(sections=[])
+        assert "section_label" not in captured["metadatas"][0]
+
+    def test_section_tie_leaves_label_unset(self):
+        from unittest.mock import Mock
+
+        # A visual row spanning two lines, each claimed by a different
+        # section: the row-level plurality vote ties 1-1, so no label.
+        line2 = Mock()
+        line2.line_id = 2
+        sec_a = Mock(
+            line_ids=[1],
+            section_type="TOTAL_LINE",
+            confidence=0.9,
+            validation_status="PENDING",
+        )
+        sec_b = Mock(
+            line_ids=[2],
+            section_type="PAYMENT",
+            confidence=0.9,
+            validation_status="PENDING",
+        )
+        from unittest.mock import patch
+
+        from receipt_chroma.embedding.delta import line_delta
+
+        line1 = Mock()
+        line1.line_id = 1
+        line1.image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        line1.receipt_id = 1
+        line1.text = "TOTAL 20.94"
+        line1.confidence = 0.99
+        line1.bounding_box = {
+            "x": 0.1,
+            "y": 0.5,
+            "width": 0.8,
+            "height": 0.02,
+        }
+        line2.image_id = line1.image_id
+        line2.receipt_id = 1
+        line2.text = "VISA 20.94"
+        line2.confidence = 0.99
+        line2.bounding_box = {
+            "x": 0.1,
+            "y": 0.52,
+            "width": 0.8,
+            "height": 0.02,
+        }
+        place = Mock()
+        place.merchant_name = "Test Mart"
+        descriptions = {
+            line1.image_id: {
+                1: {
+                    "lines": [line1, line2],
+                    "words": [],
+                    "labels": [],
+                    "place": place,
+                    "sections": [sec_a, sec_b],
+                }
+            }
+        }
+        results = [
+            {
+                "custom_id": (
+                    f"IMAGE#{line1.image_id}#RECEIPT#00001#LINE#00001"
+                ),
+                "embedding": [0.1, 0.2],
+            }
+        ]
+        captured = {}
+
+        def fake_produce(**kwargs):
+            captured.update(kwargs)
+            return {
+                "delta_id": "d",
+                "delta_key": "k",
+                "embedding_count": len(kwargs["ids"]),
+            }
+
+        with (
+            patch.object(
+                line_delta, "produce_embedding_delta", side_effect=fake_produce
+            ),
+            patch.object(
+                line_delta,
+                "group_lines_into_visual_rows",
+                return_value=[[line1, line2]],
+            ),
+            patch.object(line_delta, "get_primary_line_id", return_value=1),
+        ):
+            line_delta.save_line_embeddings_as_delta(
+                results=results,
+                descriptions=descriptions,
+                batch_id="b1",
+                bucket_name="bucket",
+                sqs_queue_url=None,
+            )
+        assert "section_label" not in captured["metadatas"][0]
