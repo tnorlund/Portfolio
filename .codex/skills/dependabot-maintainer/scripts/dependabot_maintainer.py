@@ -30,6 +30,14 @@ DEPENDENCY_FILE_PATTERNS = (
     re.compile(r"^\.github/workflows/[^/]+\.(ya?ml)$"),
     re.compile(r"^\.github/dependabot\.yml$"),
 )
+VERSION_PAIR_RE = re.compile(
+    r"\bfrom\s+`?([^`\s]+)`?\s+to\s+`?([^`\s]+)`?",
+    re.IGNORECASE,
+)
+
+
+def is_dependency_path(path: str | None) -> bool:
+    return bool(path) and is_dependency_file(path)
 
 
 def run(
@@ -101,6 +109,8 @@ def pr_view(root: Path, repo: str, number: int) -> dict[str, Any]:
                 [
                     "author",
                     "baseRefName",
+                    "body",
+                    "commits",
                     "files",
                     "headRefName",
                     "headRefOid",
@@ -142,34 +152,177 @@ def checks_green(pr: dict[str, Any]) -> tuple[bool, list[str]]:
     return not blockers, blockers
 
 
-def parse_versions(title: str) -> tuple[str | None, str | None]:
-    match = re.search(r"\bfrom\s+([^ ]+)\s+to\s+([^ ]+)", title)
-    if not match:
-        return None, None
-    return match.group(1).strip("`., "), match.group(2).strip("`., ")
+def parse_version_pairs(text: str | None) -> list[tuple[str, str]]:
+    if not text:
+        return []
+    return [
+        (before.strip("`., "), after.strip("`., "))
+        for before, after in VERSION_PAIR_RE.findall(text)
+    ]
 
 
 def leading_major(version: str | None) -> int | None:
     if not version:
         return None
-    match = re.search(r"(\d+)(?:\.\d+)?(?:\.\d+)?", version)
+    for token in re.split(r"[, ]+", version):
+        token = token.strip()
+        if not token or token.startswith("<"):
+            continue
+        match = re.search(r"(?:[>=~^=]*\s*v?)(\d+)(?:\.\d+)?", token)
+        if match:
+            return int(match.group(1))
+
+    match = re.search(r"v?(\d+)(?:\.\d+)?(?:\.\d+)?", version)
     if not match:
         return None
     return int(match.group(1))
 
 
-def is_major_update(title: str) -> bool:
-    before, after = parse_versions(title)
+def pair_is_major(before: str, after: str) -> bool | None:
     before_major = leading_major(before)
     after_major = leading_major(after)
-    return (
-        before_major is not None
-        and after_major is not None
-        and before_major != after_major
+    if before_major is None or after_major is None:
+        return None
+    return before_major != after_major
+
+
+def dependency_spec_from_line(line: str) -> tuple[str, str] | None:
+    stripped = line.strip().rstrip(",")
+    if not stripped:
+        return None
+
+    uses_match = re.search(r"\buses:\s+([^@\s]+)@([^\s#]+)", stripped)
+    if uses_match:
+        return uses_match.group(1), uses_match.group(2)
+
+    json_match = re.match(r'"([^"]+)":\s*"([^"]+)"$', stripped)
+    metadata_keys = {"integrity", "license", "name", "resolved", "version"}
+    if json_match and json_match.group(1) not in metadata_keys:
+        return json_match.group(1), json_match.group(2)
+
+    quoted_match = re.match(r'"([^"<>=~!,\s\[]+)([^"]*)"$', stripped)
+    if quoted_match:
+        name = quoted_match.group(1)
+        spec = quoted_match.group(2).strip()
+        return name, spec or name
+
+    req_match = re.match(r"([A-Za-z0-9_.-]+)\s*([<>=!~].*)$", stripped)
+    if req_match:
+        return req_match.group(1), req_match.group(2)
+
+    return None
+
+
+def version_pairs_from_diff(diff_text: str) -> list[tuple[str, str, str]]:
+    pairs: list[tuple[str, str, str]] = []
+    current_path: str | None = None
+    removed_specs: dict[str, str] = {}
+
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            current_path = None
+            removed_specs = {}
+            parts = line.split()
+            if len(parts) >= 4:
+                current_path = parts[3].removeprefix("b/")
+            continue
+
+        if not is_dependency_path(current_path):
+            continue
+
+        if line.startswith("---") or line.startswith("+++"):
+            continue
+
+        if line.startswith("-"):
+            parsed = dependency_spec_from_line(line[1:])
+            if parsed:
+                removed_specs[parsed[0]] = parsed[1]
+            continue
+
+        if line.startswith("+"):
+            parsed = dependency_spec_from_line(line[1:])
+            if parsed and parsed[0] in removed_specs:
+                pairs.append((parsed[0], removed_specs[parsed[0]], parsed[1]))
+
+    return pairs
+
+
+def pr_diff(root: Path, repo: str, number: int) -> str:
+    completed = run(
+        ["gh", "pr", "diff", str(number), "--repo", repo, "--patch"],
+        cwd=root,
+        capture=True,
     )
+    return completed.stdout
 
 
-def classify(pr: dict[str, Any], *, allow_major: bool = False) -> tuple[str, list[str]]:
+def major_update_reasons(
+    pr: dict[str, Any],
+    *,
+    diff_text: str | None,
+) -> list[str]:
+    text_pairs = parse_version_pairs(pr.get("title")) + parse_version_pairs(
+        pr.get("body")
+    )
+    for before, after in text_pairs:
+        result = pair_is_major(before, after)
+        if result is True:
+            return [f"major-version update detected: {before} -> {after}"]
+
+    if diff_text is None:
+        if any(is_dependency_file(path) for path in changed_paths(pr)):
+            return ["could not prove update is non-major without dependency diff"]
+        return ["could not prove update is non-major without dependency diff"]
+
+    diff_pairs = version_pairs_from_diff(diff_text)
+    known_non_major = False
+    for name, before, after in diff_pairs:
+        result = pair_is_major(before, after)
+        if result is True:
+            return [
+                f"major-version update detected for {name}: {before} -> {after}"
+            ]
+        if result is False:
+            known_non_major = True
+
+    if known_non_major:
+        return []
+
+    if any(is_dependency_file(path) for path in changed_paths(pr)):
+        return ["could not determine update level from dependency diff"]
+
+    return []
+
+
+def commit_authors_are_dependabot(pr: dict[str, Any]) -> tuple[bool, list[str]]:
+    commits = pr.get("commits") or []
+    if not commits:
+        return False, ["missing head commit metadata"]
+
+    reasons: list[str] = []
+    for commit in commits:
+        oid = (commit.get("oid") or "unknown")[:12]
+        authors = commit.get("authors") or []
+        if not authors:
+            reasons.append(f"commit {oid} has no author metadata")
+            continue
+        for author in authors:
+            login = author.get("login")
+            email = author.get("email") or ""
+            name = author.get("name") or ""
+            if (
+                login not in DEPENDABOT_AUTHORS
+                and "dependabot[bot]" not in email
+                and name != "dependabot[bot]"
+            ):
+                reasons.append(
+                    f"commit {oid} author is {login or email or name!r}"
+                )
+
+    return not reasons, reasons
+
+
+def base_guard_reasons(pr: dict[str, Any]) -> list[str]:
     reasons: list[str] = []
 
     author = (pr.get("author") or {}).get("login")
@@ -187,24 +340,47 @@ def classify(pr: dict[str, Any], *, allow_major: bool = False) -> tuple[str, lis
     if disallowed:
         reasons.append("non-dependency files changed: " + ", ".join(disallowed))
 
+    commits_ok, commit_reasons = commit_authors_are_dependabot(pr)
+    if not commits_ok:
+        reasons.extend(commit_reasons)
+
+    return reasons
+
+
+def classify(
+    pr: dict[str, Any],
+    *,
+    allow_major: bool = False,
+    diff_text: str | None = None,
+) -> tuple[str, list[str]]:
+    reasons = base_guard_reasons(pr)
+
     mergeable = pr.get("mergeable")
     merge_state = pr.get("mergeStateStatus")
-    if mergeable == "CONFLICTING" or merge_state == "DIRTY":
-        reasons.append(f"PR has merge conflicts: {mergeable}/{merge_state}")
-    elif mergeable not in ("MERGEABLE", "UNKNOWN"):
-        reasons.append(f"mergeability is {mergeable}/{merge_state}")
+    if mergeable != "MERGEABLE" or merge_state != "CLEAN":
+        reasons.append(
+            "mergeability must be MERGEABLE/CLEAN; "
+            f"got {mergeable}/{merge_state}"
+        )
 
     green, blockers = checks_green(pr)
     if not green:
         reasons.extend(blockers)
 
-    if is_major_update(pr.get("title", "")) and not allow_major:
-        reasons.append("major-version update requires manual approval")
+    if not allow_major:
+        reasons.extend(major_update_reasons(pr, diff_text=diff_text))
 
     if not reasons:
         return "ready", []
 
-    if any("pending" in reason or "QUEUED" in reason or "IN_PROGRESS" in reason for reason in reasons):
+    if any(
+        "pending" in reason
+        or "QUEUED" in reason
+        or "IN_PROGRESS" in reason
+        or "UNKNOWN" in reason
+        or "UNSTABLE" in reason
+        for reason in reasons
+    ):
         return "wait", reasons
 
     if any("missing checks" in reason for reason in reasons):
@@ -303,7 +479,7 @@ def npm_scripts(package_json: Path) -> dict[str, str]:
 
 def verify_npm_dir(worktree: Path, rel_dir: Path) -> None:
     package_dir = worktree / rel_dir
-    run(["npm", "ci", "--prefer-offline"], cwd=package_dir)
+    run(["npm", "ci", "--ignore-scripts", "--prefer-offline"], cwd=package_dir)
     scripts = npm_scripts(package_dir / "package.json")
     for script in ("lint", "type-check", "test:ci"):
         if script in scripts:
@@ -340,7 +516,12 @@ def command_report(args: argparse.Namespace) -> int:
 
     for listed in prs:
         pr = pr_view(root, repo, listed["number"])
-        status, reasons = classify(pr, allow_major=args.allow_major)
+        diff_text = pr_diff(root, repo, pr["number"])
+        status, reasons = classify(
+            pr,
+            allow_major=args.allow_major,
+            diff_text=diff_text,
+        )
         paths = changed_paths(pr)
         print(f"## PR #{pr['number']}: {pr['title']}")
         print(f"URL: {pr['url']}")
@@ -361,7 +542,12 @@ def command_guard(args: argparse.Namespace) -> int:
     root = repo_root()
     repo = args.repo or repo_full_name(root)
     pr = pr_view(root, repo, args.pr_number)
-    status, reasons = classify(pr, allow_major=args.allow_major)
+    diff_text = pr_diff(root, repo, args.pr_number)
+    status, reasons = classify(
+        pr,
+        allow_major=args.allow_major,
+        diff_text=diff_text,
+    )
     print(f"PR #{pr['number']} status: {status}")
     for reason in reasons:
         print(f"- {reason}")
@@ -372,9 +558,11 @@ def command_rebase(args: argparse.Namespace) -> int:
     root = repo_root()
     repo = args.repo or repo_full_name(root)
     pr = pr_view(root, repo, args.pr_number)
-    author = (pr.get("author") or {}).get("login")
-    if author not in DEPENDABOT_AUTHORS:
-        print(f"Refusing to comment: author is {author!r}", file=sys.stderr)
+    reasons = base_guard_reasons(pr)
+    if reasons:
+        print(f"Refusing to rebase PR #{args.pr_number}", file=sys.stderr)
+        for reason in reasons:
+            print(f"- {reason}", file=sys.stderr)
         return 1
     run(
         [
@@ -396,6 +584,16 @@ def command_verify(args: argparse.Namespace) -> int:
     root = repo_root()
     repo = args.repo or repo_full_name(root)
     pr = pr_view(root, repo, args.pr_number)
+    diff_text = pr_diff(root, repo, args.pr_number)
+    reasons = base_guard_reasons(pr)
+    if not args.allow_major:
+        reasons.extend(major_update_reasons(pr, diff_text=diff_text))
+    if reasons:
+        print(f"Refusing to verify PR #{args.pr_number}", file=sys.stderr)
+        for reason in reasons:
+            print(f"- {reason}", file=sys.stderr)
+        return 1
+
     paths = changed_paths(pr)
     dirs = dependency_dirs(paths)
 
@@ -428,7 +626,12 @@ def command_merge(args: argparse.Namespace) -> int:
     root = repo_root()
     repo = args.repo or repo_full_name(root)
     pr = pr_view(root, repo, args.pr_number)
-    status, reasons = classify(pr, allow_major=args.allow_major)
+    diff_text = pr_diff(root, repo, args.pr_number)
+    status, reasons = classify(
+        pr,
+        allow_major=args.allow_major,
+        diff_text=diff_text,
+    )
     if status != "ready":
         print(f"Refusing to merge PR #{args.pr_number}: {status}", file=sys.stderr)
         for reason in reasons:
@@ -482,6 +685,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify", help="Run local dependency checks for a PR")
     verify.add_argument("pr_number", type=int)
     verify.add_argument("--keep-worktree", action="store_true")
+    verify.add_argument("--allow-major", action="store_true")
     verify.set_defaults(func=command_verify)
 
     rebase = subparsers.add_parser("rebase", help="Ask Dependabot to rebase a PR")
