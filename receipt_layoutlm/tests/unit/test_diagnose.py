@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 
 from receipt_layoutlm.diagnose import (
+    _build_data_targeting,
     _build_train_context,
     _build_evidence_summary,
+    _product_false_positive_review,
     _receipt_features,
     _resolve_val_receipts,
     _summarize_groups,
@@ -120,7 +122,32 @@ def test_token_error_rows_classifies_high_confidence_product_false_positive():
     assert errors[0]["product_related"] is True
     assert errors[0]["confidence"] == 0.91
     assert errors[0]["bio_confidence"] == 0.41
+    assert errors[0]["product_fp_review_bucket"] == "likely_unlabeled_product_text"
+    assert errors[0]["product_fp_contract_action"] == "audit_gold_or_add_coverage"
     assert summary["high_confidence_product_false_positives"] == 1
+    assert summary[
+        "high_confidence_product_false_positive_review_bucket_counts"
+    ] == {"likely_unlabeled_product_text": 1}
+
+
+def test_product_false_positive_review_separates_adjustments_and_amounts():
+    adjustment = _product_false_positive_review(
+        gold="O",
+        guessed="PRODUCT_NAME",
+        text="REFUND",
+        error_kind="false_positive",
+    )
+    amount = _product_false_positive_review(
+        gold="O",
+        guessed="LINE_TOTAL",
+        text="12.96",
+        error_kind="false_positive",
+    )
+
+    assert adjustment["bucket"] == "adjustment_or_fee_term"
+    assert adjustment["contract_action"] == "confirm_adjustment_not_product"
+    assert amount["bucket"] == "numeric_amount_overprediction"
+    assert amount["contract_action"] == "review_amount_column_contract"
 
 
 def test_resolve_val_receipts_rejects_persisted_hash_mismatch():
@@ -217,3 +244,53 @@ def test_evidence_summary_compares_seen_and_unseen_slices():
     assert evidence["template_coverage"]["unseen_merchant_avg_product_macro_f1"] == 0.2
     assert evidence["template_coverage"]["context_is_training_snapshot"] is False
     assert groups[0]["group"] == "False"
+
+
+def test_data_targeting_prioritizes_structure_and_contract_queue():
+    rows = [
+        {
+            "receipt_key": "img-a#00001",
+            "merchant_name": "HOME DEPOT",
+            "line_item_shape": "items:20-39|qty:1|unit:0|total:0",
+            "product_detail_macro_f1": 0.1,
+            "has_line_total_column": False,
+            "product_name_line_count": 22,
+        },
+        {
+            "receipt_key": "img-b#00001",
+            "merchant_name": "VONS",
+            "line_item_shape": "items:1-4|qty:0|unit:0|total:1",
+            "product_detail_macro_f1": 0.7,
+            "has_line_total_column": True,
+            "product_name_line_count": 2,
+        },
+    ]
+    token_errors = [
+        {
+            "receipt_key": "img-a#00001",
+            "merchant_name": "HOME DEPOT",
+            "line_item_shape": "items:20-39|qty:1|unit:0|total:0",
+            "error_kind": "false_positive",
+            "high_confidence": True,
+            "predicted_label_base": "PRODUCT_NAME",
+            "product_fp_review_bucket": "likely_unlabeled_product_text",
+        },
+        {
+            "receipt_key": "img-a#00001",
+            "merchant_name": "HOME DEPOT",
+            "line_item_shape": "items:20-39|qty:1|unit:0|total:0",
+            "error_kind": "false_positive",
+            "high_confidence": True,
+            "predicted_label_base": "LINE_TOTAL",
+            "product_fp_review_bucket": "numeric_amount_overprediction",
+        },
+    ]
+
+    targets = _build_data_targeting(rows, token_errors)
+
+    assert targets["priority_merchant_templates"][0]["merchant_name"] == "HOME DEPOT"
+    assert targets["structural_gaps"]["no_line_total_layouts"]["receipt_count"] == 1
+    assert targets["structural_gaps"]["long_item_tables"]["receipt_count"] == 1
+    assert targets["label_contract_queue"][
+        "likely_unlabeled_product_text_tokens"
+    ] == 1

@@ -207,6 +207,23 @@ Do not treat high-confidence false positives as automatic bad labels. They are
 review prompts: either the label/eval contract is too strict, the receipt has
 unlabeled valid entities, or the model is confidently wrong.
 
+For product details, diagnostics now split high-confidence product false
+positives into review buckets while leaving strict F1 unchanged:
+
+- `likely_unlabeled_product_text`;
+- `product_name_numeric_or_code`;
+- `numeric_quantity_overprediction`;
+- `numeric_amount_overprediction`;
+- `adjustment_or_fee_term`;
+- `receipt_meta_term`;
+- other inspection buckets.
+
+Use those buckets to decide whether the next action is label-contract review,
+real receipt collection, synthetic structural coverage, or model architecture
+work. The same diagnostic run also emits `data_targeting` in `summary.json` so
+missing merchant templates, long item tables, and no-line-total layouts are
+visible as data targets rather than buried in token errors.
+
 ## DynamoDB Records
 
 When enabled, training writes:

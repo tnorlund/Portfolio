@@ -209,6 +209,47 @@ train snapshot. Receipts with `20-39` item rows averaged product F1 about
 token logs also show label/eval tension: v28 had `527` high-confidence product
 false positive tokens and many `O -> PRODUCT_NAME` product confusions.
 
+Those product false positives are not one failure mode. A review of the current
+v28 diagnostic artifacts split the `527` high-confidence product false-positive
+tokens into:
+
+- `234` likely unlabeled product-text tokens, such as item words predicted as
+  `PRODUCT_NAME` while gold is strict `O`;
+- `97` numeric amount overpredictions;
+- `96` numeric quantity overpredictions;
+- `54` product-name numeric/code boundary cases;
+- `21` refund, fee, discount, tax, or deposit terms;
+- `25` other product-name false positives.
+
+The v29 weighted run was similar: `268` of `556` high-confidence product false
+positives looked like likely unlabeled product text. This does not mean the
+labels are bad or that the metric should be relaxed. It means strict product F1
+must be read alongside a product false-positive review queue before we claim the
+model is hallucinating product names.
+
+## Product Label/Eval Contract
+
+Strict evaluation stays strict: only VALID gold spans count as correct. A token
+that looks like an item but is labeled `O` is still an `O -> PRODUCT_NAME` false
+positive for F1.
+
+Diagnostics now add a second, explanatory contract for high-confidence product
+false positives:
+
+- `likely_unlabeled_product_text`: audit examples and decide whether we need
+  more real/synthetic coverage, but do not auto-credit the prediction.
+- `product_name_numeric_or_code`: inspect SKU/code boundaries separately from
+  product-word boundaries.
+- `numeric_quantity_overprediction` and `numeric_amount_overprediction`: treat
+  as column-structure errors unless the gold contract explicitly labels that
+  numeric role.
+- `adjustment_or_fee_term` and `receipt_meta_term`: keep outside
+  `PRODUCT_NAME` unless the business contract changes.
+
+This gives us two truths at once: strict F1 remains comparable across jobs, and
+the review queue explains whether false positives point to contract ambiguity,
+missing template coverage, or actual model weakness.
+
 ## How To Interpret Scores
 
 High `DATE`, `TIME`, `PAYMENT_METHOD`, `MERCHANT_NAME`, and totals performance

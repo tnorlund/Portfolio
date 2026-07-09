@@ -45,6 +45,32 @@ PRODUCT_DETAIL_LABELS = (
     "LINE_TOTAL",
 )
 ROBUST_GROUP_MIN_RECEIPTS = 3
+PRODUCT_FP_ADJUSTMENT_TERMS = {
+    "BAG",
+    "BOTTLE",
+    "COUPON",
+    "CRV",
+    "DEPOSIT",
+    "DISC",
+    "DISCOUNT",
+    "FEE",
+    "REFUND",
+    "RETURN",
+    "TAX",
+}
+PRODUCT_FP_META_TERMS = {
+    "AMOUNT",
+    "BALANCE",
+    "CARD",
+    "CHANGE",
+    "CREDIT",
+    "DEBIT",
+    "ITEM",
+    "PAYMENT",
+    "QTY",
+    "SUBTOTAL",
+    "TOTAL",
+}
 
 
 def diagnose_run(
@@ -706,6 +732,116 @@ def _template_distance(a: Dict[str, Any], b: Dict[str, Any]) -> float:
     return dist
 
 
+def _product_false_positive_review(
+    *,
+    gold: str,
+    guessed: str,
+    text: Optional[str],
+    error_kind: str,
+) -> Dict[str, Optional[str]]:
+    """Classify product-detail false positives without changing strict eval."""
+    if (
+        error_kind != "false_positive"
+        or gold != "O"
+        or guessed not in PRODUCT_DETAIL_LABELS
+    ):
+        return {
+            "bucket": None,
+            "contract_action": None,
+            "reason": None,
+        }
+
+    raw_text = (text or "").strip()
+    normalized = _normalize_token_for_review(raw_text)
+    if normalized in PRODUCT_FP_ADJUSTMENT_TERMS:
+        return {
+            "bucket": "adjustment_or_fee_term",
+            "contract_action": "confirm_adjustment_not_product",
+            "reason": "token is a refund, discount, fee, tax, or deposit term",
+        }
+    if normalized in PRODUCT_FP_META_TERMS:
+        return {
+            "bucket": "receipt_meta_term",
+            "contract_action": "keep_outside_product_contract",
+            "reason": "token names receipt metadata rather than an item",
+        }
+
+    if guessed == "PRODUCT_NAME":
+        if _looks_like_amount_or_quantity(raw_text):
+            return {
+                "bucket": "product_name_numeric_or_code",
+                "contract_action": "audit_sku_or_amount_boundary",
+                "reason": "numeric/alphanumeric token predicted as product name",
+            }
+        if _looks_like_product_text(raw_text):
+            return {
+                "bucket": "likely_unlabeled_product_text",
+                "contract_action": "audit_gold_or_add_coverage",
+                "reason": "alphabetic token looks like item text under strict gold O",
+            }
+        return {
+            "bucket": "other_product_name_fp",
+            "contract_action": "inspect_model_error",
+            "reason": "product-name false positive needs manual inspection",
+        }
+
+    if guessed == "QUANTITY":
+        return {
+            "bucket": (
+                "numeric_quantity_overprediction"
+                if _looks_like_amount_or_quantity(raw_text)
+                else "other_quantity_fp"
+            ),
+            "contract_action": "review_quantity_column_contract",
+            "reason": "quantity prediction on a strict gold O token",
+        }
+
+    if guessed in {"UNIT_PRICE", "LINE_TOTAL"}:
+        return {
+            "bucket": (
+                "numeric_amount_overprediction"
+                if _looks_like_amount_or_quantity(raw_text)
+                else "other_amount_fp"
+            ),
+            "contract_action": "review_amount_column_contract",
+            "reason": f"{guessed.lower()} prediction on a strict gold O token",
+        }
+
+    return {
+        "bucket": "other_product_detail_fp",
+        "contract_action": "inspect_model_error",
+        "reason": "product-detail false positive needs manual inspection",
+    }
+
+
+def _normalize_token_for_review(text: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", text.upper())
+
+
+def _looks_like_amount_or_quantity(text: str) -> bool:
+    stripped = text.strip().replace(",", "")
+    if not stripped:
+        return False
+    if re.fullmatch(r"\$?-?\d+(?:\.\d{1,2})?(?:/[0-9]+)?[A-Z]?", stripped):
+        return True
+    if re.fullmatch(r"\d+\s*@\s*\$?\d+(?:\.\d{1,2})?", stripped):
+        return True
+    return bool(
+        re.search(r"\d", stripped)
+        and not re.search(r"[A-Z]{3,}", stripped.upper())
+    )
+
+
+def _looks_like_product_text(text: str) -> bool:
+    normalized = _normalize_token_for_review(text)
+    if len(normalized) < 3:
+        return False
+    if normalized in PRODUCT_FP_ADJUSTMENT_TERMS or normalized in PRODUCT_FP_META_TERMS:
+        return False
+    alpha_chars = sum(1 for ch in normalized if ch.isalpha())
+    return alpha_chars >= 3
+
+
 def _token_error_rows(
     record: Dict[str, Any],
     *,
@@ -715,6 +851,9 @@ def _token_error_rows(
     errors: List[Dict[str, Any]] = []
     counts: Counter[str] = Counter()
     product_counts: Counter[str] = Counter()
+    product_fp_review_counts: Counter[str] = Counter()
+    high_conf_product_fp_review_counts: Counter[str] = Counter()
+    high_conf_product_fp_action_counts: Counter[str] = Counter()
     confidence_sum = 0.0
     incorrect_count = 0
     high_conf_incorrect_count = 0
@@ -738,6 +877,12 @@ def _token_error_rows(
             continue
 
         kind = _error_kind(gold, guessed, base_correct)
+        product_fp_review = _product_false_positive_review(
+            gold=gold,
+            guessed=guessed,
+            text=pred.get("text"),
+            error_kind=kind,
+        )
         counts[kind] += 1
         incorrect_count += 1
         confidence_sum += confidence
@@ -746,12 +891,22 @@ def _token_error_rows(
         product_related = gold in PRODUCT_DETAIL_LABELS or guessed in PRODUCT_DETAIL_LABELS
         if product_related:
             product_counts[kind] += 1
+        if product_fp_review["bucket"]:
+            product_fp_review_counts[str(product_fp_review["bucket"])] += 1
         if (
             gold == "O"
             and guessed in PRODUCT_DETAIL_LABELS
             and confidence >= confidence_threshold
         ):
             high_conf_product_fp += 1
+            if product_fp_review["bucket"]:
+                high_conf_product_fp_review_counts[
+                    str(product_fp_review["bucket"])
+                ] += 1
+            if product_fp_review["contract_action"]:
+                high_conf_product_fp_action_counts[
+                    str(product_fp_review["contract_action"])
+                ] += 1
 
         top_probs = sorted(
             (
@@ -784,6 +939,11 @@ def _token_error_rows(
                 "error_kind": kind,
                 "product_related": product_related,
                 "high_confidence": confidence >= confidence_threshold,
+                "product_fp_review_bucket": product_fp_review["bucket"],
+                "product_fp_contract_action": product_fp_review[
+                    "contract_action"
+                ],
+                "product_fp_review_reason": product_fp_review["reason"],
                 "top_probabilities": top_probs,
             }
         )
@@ -797,6 +957,15 @@ def _token_error_rows(
         "high_confidence_product_false_positives": high_conf_product_fp,
         "error_kind_counts": dict(counts),
         "product_error_kind_counts": dict(product_counts),
+        "product_false_positive_review_bucket_counts": dict(
+            product_fp_review_counts
+        ),
+        "high_confidence_product_false_positive_review_bucket_counts": dict(
+            high_conf_product_fp_review_counts
+        ),
+        "high_confidence_product_false_positive_contract_action_counts": dict(
+            high_conf_product_fp_action_counts
+        ),
     }
 
 
@@ -969,7 +1138,25 @@ def _build_evidence_summary(
                 "ground_truth_label_base",
             ),
             "top_high_confidence_false_positive_examples": high_conf_fp[:25],
+            "product_false_positive_review": {
+                "bucket_counts": _top_field_counts(
+                    high_conf_product_fp, "product_fp_review_bucket"
+                ),
+                "contract_action_counts": _top_field_counts(
+                    high_conf_product_fp, "product_fp_contract_action"
+                ),
+                "top_merchants": _top_field_counts(
+                    high_conf_product_fp, "merchant_name"
+                ),
+                "top_line_item_shapes": _top_field_counts(
+                    high_conf_product_fp, "line_item_shape"
+                ),
+                "examples_by_bucket": _examples_by_bucket(
+                    high_conf_product_fp, "product_fp_review_bucket"
+                ),
+            },
         },
+        "data_targeting": _build_data_targeting(rows, token_errors),
         "model_weakness": {
             "product_error_tokens": len(product_errors),
             "low_confidence_product_error_tokens": len(low_conf_product_errors),
@@ -1049,6 +1236,178 @@ def _top_label_counts(
     ]
 
 
+def _top_field_counts(
+    rows: Iterable[Dict[str, Any]], field: str, limit: int = 20
+) -> List[Dict[str, Any]]:
+    counts = Counter(
+        str(row.get(field) or "UNKNOWN")
+        for row in rows
+        if row.get(field) is not None
+    )
+    return [
+        {"value": value, "count": count}
+        for value, count in counts.most_common(limit)
+    ]
+
+
+def _examples_by_bucket(
+    rows: Iterable[Dict[str, Any]], field: str, *, limit_per_bucket: int = 5
+) -> Dict[str, List[Dict[str, Any]]]:
+    out: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        bucket = row.get(field)
+        if not bucket or len(out[str(bucket)]) >= limit_per_bucket:
+            continue
+        out[str(bucket)].append(
+            {
+                "receipt_key": row.get("receipt_key"),
+                "merchant_name": row.get("merchant_name"),
+                "line_item_shape": row.get("line_item_shape"),
+                "text": row.get("text"),
+                "predicted_label_base": row.get("predicted_label_base"),
+                "confidence": row.get("confidence"),
+                "contract_action": row.get("product_fp_contract_action"),
+                "reason": row.get("product_fp_review_reason"),
+            }
+        )
+    return dict(out)
+
+
+def _build_data_targeting(
+    rows: List[Dict[str, Any]], token_errors: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    high_conf_product_fp = [
+        e
+        for e in token_errors
+        if e.get("error_kind") == "false_positive"
+        and e.get("high_confidence")
+        and e.get("predicted_label_base") in PRODUCT_DETAIL_LABELS
+    ]
+    fp_by_receipt = Counter(str(e.get("receipt_key")) for e in high_conf_product_fp)
+    fp_by_merchant_shape = Counter(
+        (str(e.get("merchant_name")), str(e.get("line_item_shape")))
+        for e in high_conf_product_fp
+    )
+
+    merchant_shape_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        merchant_shape_groups[
+            (str(row.get("merchant_name")), str(row.get("line_item_shape")))
+        ].append(row)
+
+    priority_templates: List[Dict[str, Any]] = []
+    for (merchant, shape), group in merchant_shape_groups.items():
+        total_fp = int(fp_by_merchant_shape.get((merchant, shape), 0))
+        avg_product_f1 = _avg(r.get("product_detail_macro_f1") for r in group)
+        if total_fp == 0 and (
+            avg_product_f1 is None or avg_product_f1 >= 0.35
+        ):
+            continue
+        priority_templates.append(
+            {
+                "merchant_name": merchant,
+                "line_item_shape": shape,
+                "receipt_count": len(group),
+                "avg_product_detail_macro_f1": avg_product_f1,
+                "total_high_confidence_product_false_positives": total_fp,
+                "no_line_total_receipts": sum(
+                    1 for r in group if not r.get("has_line_total_column")
+                ),
+                "long_item_table_receipts": sum(
+                    1 for r in group if _is_long_item_table(r)
+                ),
+                "example_receipts": [
+                    r.get("receipt_key")
+                    for r in sorted(
+                        group,
+                        key=lambda row: int(
+                            fp_by_receipt.get(str(row.get("receipt_key")), 0)
+                        ),
+                        reverse=True,
+                    )[:3]
+                ],
+            }
+        )
+
+    priority_templates.sort(
+        key=lambda item: (
+            -int(item["total_high_confidence_product_false_positives"]),
+            item["avg_product_detail_macro_f1"]
+            if item["avg_product_detail_macro_f1"] is not None
+            else 1.0,
+            -int(item["receipt_count"]),
+        )
+    )
+
+    no_line_total_rows = [
+        row for row in rows if not row.get("has_line_total_column")
+    ]
+    long_item_rows = [row for row in rows if _is_long_item_table(row)]
+    likely_unlabeled_fp = [
+        e
+        for e in high_conf_product_fp
+        if e.get("product_fp_review_bucket") == "likely_unlabeled_product_text"
+    ]
+
+    return {
+        "priority_merchant_templates": priority_templates[:15],
+        "structural_gaps": {
+            "no_line_total_layouts": _summarize_target_rows(
+                no_line_total_rows, fp_by_receipt
+            ),
+            "long_item_tables": _summarize_target_rows(
+                long_item_rows, fp_by_receipt
+            ),
+        },
+        "label_contract_queue": {
+            "likely_unlabeled_product_text_tokens": len(likely_unlabeled_fp),
+            "top_merchants": _top_field_counts(likely_unlabeled_fp, "merchant_name"),
+            "top_examples": likely_unlabeled_fp[:25],
+        },
+        "synthesis_guidance": [
+            {
+                "target": "merchant_template_variants",
+                "source": "real uploads or synthetic structural analogs",
+                "constraint": (
+                    "do not synthesize held-out merchant names/templates when "
+                    "using the current adversarial split"
+                ),
+            },
+            {
+                "target": "long_item_tables",
+                "source": "synthetic item tables plus real receipts with 20+ rows",
+                "constraint": "vary product text length, SKU/code prefixes, and discounts",
+            },
+            {
+                "target": "no_line_total_layouts",
+                "source": "real receipts first, synthetic analogs second",
+                "constraint": "include receipts where item rows omit explicit line totals",
+            },
+        ],
+    }
+
+
+def _summarize_target_rows(
+    rows: List[Dict[str, Any]], fp_by_receipt: Counter[str]
+) -> Dict[str, Any]:
+    return {
+        "receipt_count": len(rows),
+        "avg_product_detail_macro_f1": _avg(
+            row.get("product_detail_macro_f1") for row in rows
+        ),
+        "total_high_confidence_product_false_positives": sum(
+            int(fp_by_receipt.get(str(row.get("receipt_key")), 0))
+            for row in rows
+        ),
+        "top_merchants": _top_field_counts(rows, "merchant_name", limit=10),
+    }
+
+
+def _is_long_item_table(row: Dict[str, Any]) -> bool:
+    count = int(row.get("product_name_line_count") or 0)
+    return count >= 20
+
+
 def _write_outputs(
     *,
     output_dir: str,
@@ -1102,6 +1461,8 @@ def _write_receipt_csv(path: str, rows: List[Dict[str, Any]]) -> None:
         "nearest_template_distance_bucket",
         "incorrect_token_count",
         "high_confidence_product_false_positives",
+        "high_confidence_product_false_positive_review_bucket_counts",
+        "high_confidence_product_false_positive_contract_action_counts",
     ]
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -1202,6 +1563,10 @@ def _markdown_report(payload: Dict[str, Any], groups: Dict[str, Any]) -> str:
             f"`{evidence['label_eval_mismatch']['error_kind_counts']}`",
             "- product token error kinds: "
             f"`{evidence['label_eval_mismatch']['product_error_kind_counts']}`",
+            "- product FP review buckets: "
+            f"`{evidence['label_eval_mismatch']['product_false_positive_review']['bucket_counts']}`",
+            "- product FP contract actions: "
+            f"`{evidence['label_eval_mismatch']['product_false_positive_review']['contract_action_counts']}`",
             "",
             "Top product confusions:",
             "",
@@ -1211,6 +1576,33 @@ def _markdown_report(payload: Dict[str, Any], groups: Dict[str, Any]) -> str:
         lines.append(
             f"- `{item['gold']}` -> `{item['predicted']}`: {item['count']}"
         )
+    lines.extend(["", "### Data Targets", ""])
+    for item in evidence["data_targeting"]["priority_merchant_templates"][:8]:
+        lines.append(
+            f"- `{item['merchant_name']}` / `{item['line_item_shape']}`: "
+            f"n={item['receipt_count']}, "
+            f"product F1={_fmt(item['avg_product_detail_macro_f1'])}, "
+            "high-confidence product FP="
+            f"{item['total_high_confidence_product_false_positives']}"
+        )
+    structural = evidence["data_targeting"]["structural_gaps"]
+    no_total = structural["no_line_total_layouts"]
+    long_tables = structural["long_item_tables"]
+    lines.extend(
+        [
+            "",
+            "- no-line-total layouts: "
+            f"n={no_total['receipt_count']}, "
+            f"product F1={_fmt(no_total['avg_product_detail_macro_f1'])}, "
+            "high-confidence product FP="
+            f"{no_total['total_high_confidence_product_false_positives']}",
+            "- long item tables: "
+            f"n={long_tables['receipt_count']}, "
+            f"product F1={_fmt(long_tables['avg_product_detail_macro_f1'])}, "
+            "high-confidence product FP="
+            f"{long_tables['total_high_confidence_product_false_positives']}",
+        ]
+    )
     lines.extend(
         [
             "",

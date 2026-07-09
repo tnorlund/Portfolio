@@ -155,6 +155,34 @@ current v28/v29 diagnostics support these directions:
   only failure mode, so an architecture change should wait until coverage,
   structure, and labels have been isolated.
 
+## Next Product-Detail Data Lane
+
+The next useful data change is targeted, not broad. Current diagnostics point at
+three data targets:
+
+- merchant-template variants for `THE HOME DEPOT`, `COSTCO WHOLESALE`,
+  `WILD FORK`, and `VONS` style layouts;
+- long item tables, especially `20-39` item rows, where v28 averaged product
+  F1 about `0.125`;
+- no-line-total layouts, where v28 averaged product F1 about `0.108` versus
+  about `0.470` when a line-total column was present.
+
+For the current adversarial split, do not synthesize exact held-out merchant
+names or copied held-out templates. Use real uploads for those merchants when
+the goal is production coverage, then create a new honest split. Use synthetic
+receipts for structural analogs: warehouse-club layouts without line totals,
+hardware-store SKU/code rows, grocery/butcher long item tables, and item rows
+with discounts/refunds/fees that are explicitly not product names.
+
+The next train job should be launched only after one of these inputs changes:
+
+- a reviewed real-receipt batch is added for the missing merchant/template
+  shapes;
+- a synthetic training bundle is wired into main and excludes held-out
+  merchants/templates;
+- or the product label/eval contract changes and is reflected in both training
+  labels and diagnostics.
+
 ## Sweep Knobs
 
 Good first sweep values:

@@ -39,6 +39,11 @@ Last updated: 2026-07-09 UTC.
   `s3://layoutlm-training-dev-68164770/diagnostics/`. The current evidence
   points more toward merchant/template coverage, line-item structure, and
   label/eval contract issues than toward "just train longer."
+- High-confidence product false positives are now treated as a review queue in
+  diagnostics. Current v28 artifacts had `527` high-confidence product
+  false-positive tokens; `234` looked like likely item text under strict gold
+  `O`, while the rest split across numeric detail, SKU/code, adjustment/fee,
+  and other model-error buckets.
 - Product-detail first-pass hooks: `--item-window-augment` appends train-only
   line-item-band windows; `--checkpoint-metric product_detail_macro_f1` selects
   the product checkpoint; `--product-detail-loss-weight` increases loss pressure
@@ -73,6 +78,12 @@ merchant-template coverage, line-item structure, label/eval mismatch, or actual
 model weakness. Use `diagnose-run` to produce that evidence before choosing
 between synthetic template augmentation, line-item structural features, label
 contract cleanup, or a model architecture change.
+
+The immediate data targets are missing merchant-template variants, long item
+tables, and layouts without explicit line totals. For the current adversarial
+split, synthetic data should use structural analogs rather than exact held-out
+merchant names/templates; exact held-out merchant coverage should come with a
+new honest split.
 
 ## What The Model Learns
 
