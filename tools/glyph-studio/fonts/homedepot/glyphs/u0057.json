@@ -3,7 +3,7 @@
  "char": "W",
  "codepoint": 87,
  "provenance": "edited",
- "width": 250.0,
+ "width": 480.0,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -11,12 +11,12 @@
    "closed": false,
    "nodes": [
     {
-     "x": 50.0,
+     "x": 55.0,
      "y": 950.0,
      "type": "corner"
     },
     {
-     "x": 91.2,
+     "x": 150.0,
      "y": 50.0,
      "type": "corner"
     }
@@ -26,13 +26,13 @@
    "closed": false,
    "nodes": [
     {
-     "x": 91.2,
+     "x": 150.0,
      "y": 50.0,
      "type": "corner"
     },
     {
-     "x": 125.0,
-     "y": 560,
+     "x": 255.0,
+     "y": 600.0,
      "type": "corner"
     }
    ]
@@ -41,12 +41,12 @@
    "closed": false,
    "nodes": [
     {
-     "x": 125.0,
-     "y": 560,
+     "x": 255.0,
+     "y": 600.0,
      "type": "corner"
     },
     {
-     "x": 158.8,
+     "x": 360.0,
      "y": 50.0,
      "type": "corner"
     }
@@ -56,12 +56,12 @@
    "closed": false,
    "nodes": [
     {
-     "x": 158.8,
+     "x": 360.0,
      "y": 50.0,
      "type": "corner"
     },
     {
-     "x": 200.0,
+     "x": 455.0,
      "y": 950.0,
      "type": "corner"
     }
