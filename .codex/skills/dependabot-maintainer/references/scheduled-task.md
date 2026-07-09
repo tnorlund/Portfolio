@@ -20,7 +20,7 @@ Review all open Dependabot PRs. For each PR:
 2. Inspect the diff and changed files.
 3. Run local verification for changed dependency manifests when appropriate.
 4. If a PR is conflicting, ask Dependabot to rebase it and wait for the new checks.
-5. Merge only Dependabot-authored, Dependabot-committed, manifest-only PRs with green CI, stable head SHAs, and `MERGEABLE/CLEAN` merge state.
+5. Merge only Dependabot-authored, verified Dependabot-committed, manifest-only PRs with green CI, stable head SHAs, and `MERGEABLE/CLEAN` merge state.
 6. Do not merge major-version updates unless the skill's guardrails say they are explicitly allowed by the prompt or prior user approval.
 7. After any merge, wait for the resulting main-branch CI run and summarize the outcome.
 
@@ -39,7 +39,7 @@ python .codex/skills/dependabot-maintainer/scripts/dependabot_maintainer.py guar
 
 The hook should run immediately before any merge action. A non-zero exit means the agent must stop and report the reason instead of merging. Keep this guard in the prompt or hook configuration rather than relying on model judgment alone.
 
-Local verification also has a guard before any PR code is fetched into a worktree and installed. The npm verification path uses `npm ci --ignore-scripts` before running trusted project test commands.
+Local verification also has a guard before any PR code is fetched into a worktree and installed. After fetching, the resolved ref must still match the guarded head SHA. The npm verification path uses `npm ci --ignore-scripts` and refuses PRs that change the npm script definitions it would run. `receipt_upload` verification installs the same local sibling package stack used by CI.
 
 ## Optional Claude Routine
 

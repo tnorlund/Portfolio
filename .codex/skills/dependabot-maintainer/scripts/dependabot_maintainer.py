@@ -15,6 +15,7 @@ from typing import Any
 
 
 PASSING_CONCLUSIONS = {"SUCCESS", "SKIPPED", "NEUTRAL"}
+PASSING_STATES = {"SUCCESS"}
 DEPENDABOT_AUTHORS = {"dependabot[bot]", "app/dependabot"}
 DEPENDENCY_FILE_PATTERNS = (
     re.compile(r"(^|/)pyproject\.toml$"),
@@ -30,6 +31,52 @@ DEPENDENCY_FILE_PATTERNS = (
     re.compile(r"^\.github/workflows/[^/]+\.(ya?ml)$"),
     re.compile(r"^\.github/dependabot\.yml$"),
 )
+LOCK_FILE_NAMES = {
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "uv.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+}
+GITHUB_VERIFIED_COMMITTERS = {"web-flow"}
+NPM_VERIFICATION_SCRIPTS = {"lint", "type-check", "test:ci"}
+RECEIPT_UPLOAD_LOCAL_STACK = (
+    "receipt_dynamo",
+    "receipt_dynamo_stream",
+    "receipt_chroma",
+    "receipt_places",
+    "receipt_agent",
+    "receipt_upload",
+)
+RECEIPT_UPLOAD_EXTERNAL_DEPS = (
+    "boto3",
+    "chromadb",
+    "openai>=2.8.1,<3.0.0",
+    "Pillow",
+    "pillow-avif-plugin",
+    "langsmith",
+    "langgraph",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "httpx",
+    "pydantic",
+    "pydantic-settings",
+    "structlog",
+    "requests",
+    "tenacity",
+)
+PYTHON_TEST_DEPS = (
+    "pytest",
+    "pytest-mock",
+    "pytest-cov",
+    "pytest-xdist",
+    "pytest-timeout",
+    "pytest-rerunfailures",
+    "moto",
+    "responses",
+)
 VERSION_PAIR_RE = re.compile(
     r"\bfrom\s+`?([^`\s]+)`?\s+to\s+`?([^`\s]+)`?",
     re.IGNORECASE,
@@ -38,6 +85,24 @@ VERSION_PAIR_RE = re.compile(
 
 def is_dependency_path(path: str | None) -> bool:
     return bool(path) and is_dependency_file(path)
+
+
+def is_lockfile_path(path: str | None) -> bool:
+    return bool(path) and Path(path).name in LOCK_FILE_NAMES
+
+
+def is_dependabot_identity(
+    login: str | None,
+    *,
+    email: str = "",
+    name: str = "",
+) -> bool:
+    return (
+        login in DEPENDABOT_AUTHORS
+        or login == "dependabot[bot]"
+        or "dependabot[bot]" in email
+        or name == "dependabot[bot]"
+    )
 
 
 def run(
@@ -144,9 +209,20 @@ def checks_green(pr: dict[str, Any]) -> tuple[bool, list[str]]:
 
     blockers: list[str] = []
     for check in checks:
+        name = (
+            check.get("name")
+            or check.get("workflowName")
+            or check.get("context")
+            or "unknown"
+        )
+        if check.get("__typename") == "StatusContext":
+            state = check.get("state")
+            if state not in PASSING_STATES:
+                blockers.append(f"{name}: {state or 'pending'}")
+            continue
+
         status = check.get("status")
         conclusion = check.get("conclusion") or ""
-        name = check.get("name") or check.get("workflowName") or "unknown"
         if status != "COMPLETED" or conclusion not in PASSING_CONCLUSIONS:
             blockers.append(f"{name}: {status}/{conclusion or 'pending'}")
     return not blockers, blockers
@@ -161,32 +237,53 @@ def parse_version_pairs(text: str | None) -> list[tuple[str, str]]:
     ]
 
 
-def leading_major(version: str | None) -> int | None:
+def version_major_set(version: str | None) -> set[int] | None:
     if not version:
         return None
-    for token in re.split(r"[, ]+", version):
-        token = token.strip()
-        if not token or token.startswith("<"):
-            continue
-        match = re.search(r"(?:[>=~^=]*\s*v?)(\d+)(?:\.\d+)?", token)
-        if match:
-            return int(match.group(1))
+    majors = {
+        int(match.group(1))
+        for match in re.finditer(
+            r"(?<![A-Za-z])v?(\d+)(?:\.\d+)?(?:\.\d+)?",
+            version,
+        )
+    }
+    return majors or None
 
-    match = re.search(r"v?(\d+)(?:\.\d+)?(?:\.\d+)?", version)
-    if not match:
+
+def leading_major(version: str | None) -> int | None:
+    majors = version_major_set(version)
+    if not majors:
         return None
-    return int(match.group(1))
+    return min(majors)
 
 
 def pair_is_major(before: str, after: str) -> bool | None:
-    before_major = leading_major(before)
-    after_major = leading_major(after)
-    if before_major is None or after_major is None:
+    before_majors = version_major_set(before)
+    after_majors = version_major_set(after)
+    if before_majors is None or after_majors is None:
         return None
-    return before_major != after_major
+    return before_majors != after_majors
 
 
-def dependency_spec_from_line(line: str) -> tuple[str, str] | None:
+def lockfile_package_name_from_line(line: str) -> str | None:
+    stripped = line.strip().rstrip(",")
+    match = re.match(r'"([^"]+)":\s*\{$', stripped)
+    if not match:
+        return None
+
+    key = match.group(1)
+    if not key or key in {"dependencies", "devDependencies", "packages"}:
+        return None
+    if key.startswith("node_modules/"):
+        return key.removeprefix("node_modules/")
+    return key
+
+
+def dependency_spec_from_line(
+    line: str,
+    *,
+    current_lock_name: str | None = None,
+) -> tuple[str, str] | None:
     stripped = line.strip().rstrip(",")
     if not stripped:
         return None
@@ -196,6 +293,9 @@ def dependency_spec_from_line(line: str) -> tuple[str, str] | None:
         return uses_match.group(1), uses_match.group(2)
 
     json_match = re.match(r'"([^"]+)":\s*"([^"]+)"$', stripped)
+    if json_match and json_match.group(1) == "version" and current_lock_name:
+        return current_lock_name, json_match.group(2)
+
     metadata_keys = {"integrity", "license", "name", "resolved", "version"}
     if json_match and json_match.group(1) not in metadata_keys:
         return json_match.group(1), json_match.group(2)
@@ -213,14 +313,32 @@ def dependency_spec_from_line(line: str) -> tuple[str, str] | None:
     return None
 
 
-def version_pairs_from_diff(diff_text: str) -> list[tuple[str, str, str]]:
+def is_version_metadata_line(line: str) -> bool:
+    return bool(re.match(r'\s*"version":\s*"[^"]+"', line))
+
+
+def version_pairs_from_diff(
+    diff_text: str,
+) -> tuple[list[tuple[str, str, str]], list[str]]:
     pairs: list[tuple[str, str, str]] = []
+    unknown_changes: list[str] = []
     current_path: str | None = None
+    current_lock_name: str | None = None
     removed_specs: dict[str, str] = {}
+
+    def flush_removed() -> None:
+        for name in sorted(removed_specs):
+            unknown_changes.append(
+                f"{current_path}: removed dependency spec for {name} "
+                "without matching addition"
+            )
+        removed_specs.clear()
 
     for line in diff_text.splitlines():
         if line.startswith("diff --git "):
+            flush_removed()
             current_path = None
+            current_lock_name = None
             removed_specs = {}
             parts = line.split()
             if len(parts) >= 4:
@@ -233,18 +351,50 @@ def version_pairs_from_diff(diff_text: str) -> list[tuple[str, str, str]]:
         if line.startswith("---") or line.startswith("+++"):
             continue
 
+        line_body = line[1:] if line[:1] in {" ", "+", "-"} else line
+        if is_lockfile_path(current_path):
+            lock_name = lockfile_package_name_from_line(line_body)
+            if lock_name:
+                current_lock_name = lock_name
+
         if line.startswith("-"):
-            parsed = dependency_spec_from_line(line[1:])
+            parsed = dependency_spec_from_line(
+                line[1:],
+                current_lock_name=current_lock_name
+                if is_lockfile_path(current_path)
+                else None,
+            )
             if parsed:
                 removed_specs[parsed[0]] = parsed[1]
+            elif is_lockfile_path(current_path) and is_version_metadata_line(
+                line[1:]
+            ):
+                unknown_changes.append(
+                    f"{current_path}: unparsed removed version line"
+                )
             continue
 
         if line.startswith("+"):
-            parsed = dependency_spec_from_line(line[1:])
+            parsed = dependency_spec_from_line(
+                line[1:],
+                current_lock_name=current_lock_name
+                if is_lockfile_path(current_path)
+                else None,
+            )
             if parsed and parsed[0] in removed_specs:
                 pairs.append((parsed[0], removed_specs[parsed[0]], parsed[1]))
+                del removed_specs[parsed[0]]
+            elif parsed:
+                unknown_changes.append(
+                    f"{current_path}: added dependency spec for {parsed[0]} without matching removal"
+                )
+            elif is_lockfile_path(current_path) and is_version_metadata_line(
+                line[1:]
+            ):
+                unknown_changes.append(f"{current_path}: unparsed added version line")
 
-    return pairs
+    flush_removed()
+    return pairs, unknown_changes
 
 
 def pr_diff(root: Path, repo: str, number: int) -> str:
@@ -274,7 +424,7 @@ def major_update_reasons(
             return ["could not prove update is non-major without dependency diff"]
         return ["could not prove update is non-major without dependency diff"]
 
-    diff_pairs = version_pairs_from_diff(diff_text)
+    diff_pairs, unknown_changes = version_pairs_from_diff(diff_text)
     known_non_major = False
     for name, before, after in diff_pairs:
         result = pair_is_major(before, after)
@@ -285,6 +435,9 @@ def major_update_reasons(
         if result is False:
             known_non_major = True
 
+    if unknown_changes:
+        return ["could not determine update level from every dependency diff"]
+
     if known_non_major:
         return []
 
@@ -294,35 +447,120 @@ def major_update_reasons(
     return []
 
 
-def commit_authors_are_dependabot(pr: dict[str, Any]) -> tuple[bool, list[str]]:
+def npm_script_change_reasons(diff_text: str | None) -> list[str]:
+    if not diff_text:
+        return []
+
+    reasons: list[str] = []
+    current_path: str | None = None
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            current_path = None
+            parts = line.split()
+            if len(parts) >= 4:
+                current_path = parts[3].removeprefix("b/")
+            continue
+
+        if not current_path or Path(current_path).name != "package.json":
+            continue
+
+        if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
+            continue
+
+        match = re.match(r'\s*"([^"]+)":', line[1:].strip())
+        if not match:
+            continue
+
+        key = match.group(1)
+        if (
+            key == "scripts"
+            or key in NPM_VERIFICATION_SCRIPTS
+            or key.startswith("pre")
+            or key.startswith("post")
+        ):
+            reasons.append(f"npm script changed in {current_path}: {key}")
+
+    return sorted(set(reasons))
+
+
+def commit_view(root: Path, repo: str, oid: str) -> dict[str, Any]:
+    return run_json(["gh", "api", f"repos/{repo}/commits/{oid}"], cwd=root)
+
+
+def has_verified_dependabot_signature(commit_data: dict[str, Any]) -> bool:
+    commit = commit_data.get("commit") or {}
+    raw_committer = commit.get("committer") or {}
+    verification = commit.get("verification") or {}
+    payload = verification.get("payload") or ""
+    github_committer = commit_data.get("committer") or {}
+    return (
+        github_committer.get("login") in GITHUB_VERIFIED_COMMITTERS
+        and raw_committer.get("name") == "GitHub"
+        and raw_committer.get("email") == "noreply@github.com"
+        and verification.get("verified") is True
+        and "Signed-off-by: dependabot[bot]" in payload
+    )
+
+
+def commit_provenance_reasons(
+    root: Path,
+    repo: str,
+    pr: dict[str, Any],
+) -> list[str]:
     commits = pr.get("commits") or []
     if not commits:
-        return False, ["missing head commit metadata"]
+        return ["missing head commit metadata"]
 
     reasons: list[str] = []
     for commit in commits:
         oid = (commit.get("oid") or "unknown")[:12]
-        authors = commit.get("authors") or []
-        if not authors:
-            reasons.append(f"commit {oid} has no author metadata")
+        full_oid = commit.get("oid")
+        if not full_oid:
+            reasons.append("commit has no oid")
             continue
-        for author in authors:
-            login = author.get("login")
-            email = author.get("email") or ""
-            name = author.get("name") or ""
-            if (
-                login not in DEPENDABOT_AUTHORS
-                and "dependabot[bot]" not in email
-                and name != "dependabot[bot]"
-            ):
-                reasons.append(
-                    f"commit {oid} author is {login or email or name!r}"
-                )
 
-    return not reasons, reasons
+        data = commit_view(root, repo, full_oid)
+        commit_payload = data.get("commit") or {}
+        raw_author = commit_payload.get("author") or {}
+        raw_committer = commit_payload.get("committer") or {}
+        github_author = data.get("author") or {}
+        github_committer = data.get("committer") or {}
+
+        if not is_dependabot_identity(
+            github_author.get("login"),
+            email=raw_author.get("email") or "",
+            name=raw_author.get("name") or "",
+        ):
+            author_label = (
+                github_author.get("login")
+                or raw_author.get("email")
+                or raw_author.get("name")
+            )
+            reasons.append(
+                f"commit {oid} author is {author_label!r}"
+            )
+
+        if not (
+            is_dependabot_identity(
+                github_committer.get("login"),
+                email=raw_committer.get("email") or "",
+                name=raw_committer.get("name") or "",
+            )
+            or has_verified_dependabot_signature(data)
+        ):
+            committer_label = (
+                github_committer.get("login")
+                or raw_committer.get("email")
+                or raw_committer.get("name")
+            )
+            reasons.append(
+                f"commit {oid} committer is {committer_label!r}"
+            )
+
+    return reasons
 
 
-def base_guard_reasons(pr: dict[str, Any]) -> list[str]:
+def base_guard_reasons(root: Path, repo: str, pr: dict[str, Any]) -> list[str]:
     reasons: list[str] = []
 
     author = (pr.get("author") or {}).get("login")
@@ -340,20 +578,20 @@ def base_guard_reasons(pr: dict[str, Any]) -> list[str]:
     if disallowed:
         reasons.append("non-dependency files changed: " + ", ".join(disallowed))
 
-    commits_ok, commit_reasons = commit_authors_are_dependabot(pr)
-    if not commits_ok:
-        reasons.extend(commit_reasons)
+    reasons.extend(commit_provenance_reasons(root, repo, pr))
 
     return reasons
 
 
 def classify(
+    root: Path,
+    repo: str,
     pr: dict[str, Any],
     *,
     allow_major: bool = False,
     diff_text: str | None = None,
 ) -> tuple[str, list[str]]:
-    reasons = base_guard_reasons(pr)
+    reasons = base_guard_reasons(root, repo, pr)
 
     mergeable = pr.get("mergeable")
     merge_state = pr.get("mergeStateStatus")
@@ -369,6 +607,8 @@ def classify(
 
     if not allow_major:
         reasons.extend(major_update_reasons(pr, diff_text=diff_text))
+
+    reasons.extend(npm_script_change_reasons(diff_text))
 
     if not reasons:
         return "ready", []
@@ -441,6 +681,37 @@ def python_bin() -> str:
     return shutil.which("python3.12") or shutil.which("python3") or sys.executable
 
 
+def verify_receipt_upload_dir(worktree: Path, venv_python: Path) -> None:
+    run(
+        [str(venv_python), "-m", "pip", "install", "-e", "receipt_dynamo"],
+        cwd=worktree,
+    )
+    for package in RECEIPT_UPLOAD_LOCAL_STACK[1:]:
+        run(
+            [str(venv_python), "-m", "pip", "install", "--no-deps", "-e", package],
+            cwd=worktree,
+        )
+    run(
+        [str(venv_python), "-m", "pip", "install", *RECEIPT_UPLOAD_EXTERNAL_DEPS],
+        cwd=worktree,
+    )
+    run(
+        [str(venv_python), "-m", "pip", "install", *PYTHON_TEST_DEPS],
+        cwd=worktree,
+    )
+    run(
+        [
+            str(venv_python),
+            "-m",
+            "pip",
+            "install",
+            "black==26.5.1",
+            "isort==8.0.1",
+        ],
+        cwd=worktree,
+    )
+
+
 def verify_python_dir(worktree: Path, rel_dir: Path) -> None:
     package_dir = worktree / rel_dir
     venv = package_dir / ".venv-depbot"
@@ -455,8 +726,10 @@ def verify_python_dir(worktree: Path, rel_dir: Path) -> None:
 
     run([str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "wheel"], cwd=package_dir)
 
-    pyproject = package_dir / "pyproject.toml"
-    if pyproject.exists():
+    if rel_dir == Path("receipt_upload"):
+        verify_receipt_upload_dir(worktree, venv_python)
+    elif (package_dir / "pyproject.toml").exists():
+        pyproject = package_dir / "pyproject.toml"
         extras = pyproject_extras(pyproject)
         target = f".[{extras}]" if extras else "."
         run([str(venv_python), "-m", "pip", "install", "-e", target], cwd=package_dir)
@@ -486,7 +759,7 @@ def verify_npm_dir(worktree: Path, rel_dir: Path) -> None:
             run(["npm", "run", script], cwd=package_dir)
 
 
-def fetch_pr_ref(root: Path, repo: str, number: int) -> str:
+def fetch_pr_ref(root: Path, repo: str, number: int, expected_oid: str) -> str:
     ref = f"refs/remotes/origin/dependabot-maintainer-pr-{number}"
     run(
         [
@@ -497,7 +770,14 @@ def fetch_pr_ref(root: Path, repo: str, number: int) -> str:
         ],
         cwd=root,
     )
-    return ref
+    completed = run(["git", "rev-parse", ref], cwd=root, capture=True)
+    fetched_oid = completed.stdout.strip()
+    if fetched_oid != expected_oid:
+        raise RuntimeError(
+            "fetched PR head does not match guarded head: "
+            f"expected {expected_oid}, got {fetched_oid}"
+        )
+    return fetched_oid
 
 
 def create_pr_worktree(root: Path, ref: str) -> Path:
@@ -518,6 +798,8 @@ def command_report(args: argparse.Namespace) -> int:
         pr = pr_view(root, repo, listed["number"])
         diff_text = pr_diff(root, repo, pr["number"])
         status, reasons = classify(
+            root,
+            repo,
             pr,
             allow_major=args.allow_major,
             diff_text=diff_text,
@@ -544,6 +826,8 @@ def command_guard(args: argparse.Namespace) -> int:
     pr = pr_view(root, repo, args.pr_number)
     diff_text = pr_diff(root, repo, args.pr_number)
     status, reasons = classify(
+        root,
+        repo,
         pr,
         allow_major=args.allow_major,
         diff_text=diff_text,
@@ -558,7 +842,7 @@ def command_rebase(args: argparse.Namespace) -> int:
     root = repo_root()
     repo = args.repo or repo_full_name(root)
     pr = pr_view(root, repo, args.pr_number)
-    reasons = base_guard_reasons(pr)
+    reasons = base_guard_reasons(root, repo, pr)
     if reasons:
         print(f"Refusing to rebase PR #{args.pr_number}", file=sys.stderr)
         for reason in reasons:
@@ -585,9 +869,10 @@ def command_verify(args: argparse.Namespace) -> int:
     repo = args.repo or repo_full_name(root)
     pr = pr_view(root, repo, args.pr_number)
     diff_text = pr_diff(root, repo, args.pr_number)
-    reasons = base_guard_reasons(pr)
+    reasons = base_guard_reasons(root, repo, pr)
     if not args.allow_major:
         reasons.extend(major_update_reasons(pr, diff_text=diff_text))
+    reasons.extend(npm_script_change_reasons(diff_text))
     if reasons:
         print(f"Refusing to verify PR #{args.pr_number}", file=sys.stderr)
         for reason in reasons:
@@ -601,7 +886,12 @@ def command_verify(args: argparse.Namespace) -> int:
         print("No local dependency directories detected. Rely on CI for this PR.")
         return 0
 
-    ref = fetch_pr_ref(root, repo, args.pr_number)
+    try:
+        ref = fetch_pr_ref(root, repo, args.pr_number, pr["headRefOid"])
+    except RuntimeError as exc:
+        print(f"Refusing to verify PR #{args.pr_number}: {exc}", file=sys.stderr)
+        return 1
+
     worktree = create_pr_worktree(root, ref)
     print(f"Created verification worktree: {worktree}")
     try:
@@ -628,6 +918,8 @@ def command_merge(args: argparse.Namespace) -> int:
     pr = pr_view(root, repo, args.pr_number)
     diff_text = pr_diff(root, repo, args.pr_number)
     status, reasons = classify(
+        root,
+        repo,
         pr,
         allow_major=args.allow_major,
         diff_text=diff_text,
