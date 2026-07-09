@@ -1144,6 +1144,159 @@ broken down by validation status (VALID, INVALID, PENDING, NEEDS_REVIEW, NONE).
 Use this to understand training data balance and identify under-represented labels.""",
             inputSchema={"type": "object", "properties": {}},
         ),
+        Tool(
+            name="get_receipt_sections",
+            description="""List a receipt's classified sections for QA review.
+
+Returns every ReceiptSection on the receipt with its section_type, line_ids,
+confidence, model_source, and validation_status. For each section it also
+includes the text of every line it covers, so you can QA a section without a
+second get_receipt call.
+
+model_source distinguishes generations of rows (e.g. "section-seed-v0" for
+hand/heuristic seeds, "section-knn-v1" for KNN-propagated rows). KNN-propagated
+rows land with validation_status=PENDING and need review before they count as
+ground truth.
+
+Use this to inspect sections, then update_section_status to mark each one
+VALID / INVALID / NEEDS_REVIEW.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
+        Tool(
+            name="update_section_status",
+            description="""Update the validation_status of an existing ReceiptSection.
+
+Sets validation_status on a section already present on the receipt. The
+ValidationStatus enum enforces only valid values: NONE, PENDING, VALID,
+INVALID, NEEDS_REVIEW. Errors clearly if the section does not exist.
+
+Use this AFTER reviewing a section with get_receipt_sections. This is the QA
+loop for machine-propagated (e.g. section-knn-v1) PENDING rows: promote correct
+ones to VALID and reject wrong ones as INVALID.
+
+WARNING: This WRITES to DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "section_type": {
+                        "type": "string",
+                        "description": "The section_type to update (e.g. ITEMS, TOTAL_LINE, PAYMENT)",
+                    },
+                    "validation_status": {
+                        "type": "string",
+                        "enum": ["VALID", "INVALID", "NEEDS_REVIEW", "PENDING", "NONE"],
+                        "description": "The new validation status to set",
+                    },
+                },
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "section_type",
+                    "validation_status",
+                ],
+            },
+        ),
+        Tool(
+            name="create_receipt_section",
+            description="""Create a NEW ReceiptSection on a receipt.
+
+Use this to add a section that a reviewer identified but no model seeded, e.g.
+marking lines 20-24 as PAYMENT. section_type must be one of the canonical
+SectionType values (STOREFRONT, ADDRESS, ITEMS, SECTION_HEADER, SUMMARY,
+TOTAL_LINE, PAYMENT, SURVEY, FOOTER, BARCODE).
+
+By default validation_status is VALID (human-reviewed) and model_source is
+"mcp-claude-review".
+
+WARNING: This WRITES to DynamoDB. Will FAIL if a section with the same
+section_type already exists on the receipt — use update_section_status to
+change an existing section instead. Also fails if the receipt does not exist
+or any line_id is not on the receipt.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "section_type": {
+                        "type": "string",
+                        "description": "The canonical section type (e.g. ITEMS, PAYMENT, FOOTER)",
+                    },
+                    "line_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "minItems": 1,
+                        "description": "The line IDs that make up this section",
+                    },
+                    "validation_status": {
+                        "type": "string",
+                        "enum": ["VALID", "INVALID", "NEEDS_REVIEW", "PENDING", "NONE"],
+                        "description": "Validation status for the new section. Defaults to VALID.",
+                    },
+                    "model_source": {
+                        "type": "string",
+                        "description": "Source tag for the row. Defaults to 'mcp-claude-review'.",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "section_type", "line_ids"],
+            },
+        ),
+        Tool(
+            name="delete_receipt_section",
+            description="""Delete a single ReceiptSection row from a receipt.
+
+Removes one section (identified by section_type) from the receipt, leaving the
+rest of the receipt and its other sections intact. Use this to drop a spurious
+or mis-typed section.
+
+Errors clearly if the section does not exist.
+
+WARNING: This WRITES to DynamoDB and is irreversible for that row.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "section_type": {
+                        "type": "string",
+                        "description": "The section_type to delete (e.g. BARCODE, SURVEY)",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "section_type"],
+            },
+        ),
     ]
 
 
@@ -1298,6 +1451,39 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 dry_run=arguments.get("dry_run", True),
+            )
+        elif name == "get_receipt_sections":
+            result = await get_receipt_sections_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+            )
+        elif name == "update_section_status":
+            result = await update_section_status_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                section_type=arguments["section_type"],
+                validation_status=arguments["validation_status"],
+            )
+        elif name == "create_receipt_section":
+            result = await create_receipt_section_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                section_type=arguments["section_type"],
+                line_ids=arguments["line_ids"],
+                validation_status=arguments.get("validation_status", "VALID"),
+                model_source=arguments.get(
+                    "model_source", "mcp-claude-review"
+                ),
+            )
+        elif name == "delete_receipt_section":
+            result = await delete_receipt_section_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                section_type=arguments["section_type"],
             )
         elif name == "list_training_jobs":
             result = await list_training_jobs_impl(
@@ -3099,6 +3285,314 @@ async def delete_receipt_impl(
 
     except Exception as e:
         logger.exception("Error deleting receipt")
+        return {"error": str(e)}
+
+
+async def get_receipt_sections_impl(
+    dynamo_client, image_id: str, receipt_id: int
+) -> dict:
+    """List a receipt's sections with the text of each section's lines."""
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    try:
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} not found for image {image_id}"
+                )
+            }
+
+        # line_id -> text so a reviewer can QA sections without a second call
+        line_text = {line.line_id: line.text for line in details.lines or []}
+
+        sections = dynamo_client.get_receipt_sections_from_receipt(
+            image_id, receipt_id
+        )
+
+        section_dicts = []
+        for section in sorted(
+            sections,
+            key=lambda s: (
+                min(s.line_ids) if s.line_ids else 0,
+                s.section_type,
+            ),
+        ):
+            lines = [
+                {"line_id": lid, "text": line_text.get(lid, "")}
+                for lid in section.line_ids
+            ]
+            section_dicts.append(
+                {
+                    "section_type": section.section_type,
+                    "line_ids": section.line_ids,
+                    "confidence": section.confidence,
+                    "model_source": section.model_source,
+                    "validation_status": section.validation_status or "NONE",
+                    "lines": lines,
+                }
+            )
+
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "section_count": len(section_dicts),
+            "sections": section_dicts,
+        }
+
+    except Exception as e:
+        logger.exception("Error getting receipt sections")
+        return {"error": str(e)}
+
+
+# Legacy SectionType values from the superseded 2025-05 experiment. Kept in
+# the enum so old rows still parse, but new MCP-created sections must use the
+# canonical vocabulary. update/delete still accept them so QA can demote or
+# remove stray legacy rows.
+_DEPRECATED_SECTION_TYPES = {"HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"}
+
+
+def _normalize_section_type(section_type, canonical_only=False):
+    """Strip/uppercase a section_type and validate it against SectionType.
+
+    Returns (normalized_type, None) on success, or (None, error_dict) when
+    the value is not in the SectionType enum — catching typos like "ITMES"
+    before they become noncanonical SKs or misleading "not found" errors.
+    With canonical_only=True the deprecated legacy values are also rejected,
+    so new rows can't be created with a superseded vocabulary.
+    """
+    from receipt_dynamo.constants import SectionType
+
+    normalized = str(section_type or "").strip().upper()
+    valid_types = {t.value for t in SectionType}
+    if canonical_only:
+        valid_types -= _DEPRECATED_SECTION_TYPES
+        if normalized in _DEPRECATED_SECTION_TYPES:
+            return None, {
+                "error": (
+                    f"section_type {normalized!r} is deprecated (superseded "
+                    "2025-05 experiment); use one of "
+                    f"{sorted(valid_types)}"
+                )
+            }
+    if normalized not in valid_types:
+        return None, {
+            "error": (
+                f"Invalid section_type {section_type!r}; "
+                f"expected one of {sorted(valid_types)}"
+            )
+        }
+    return normalized, None
+
+
+async def update_section_status_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    section_type: str,
+    validation_status: str,
+) -> dict:
+    """Set the validation_status of an existing ReceiptSection."""
+    from receipt_dynamo.constants import ValidationStatus
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+    from receipt_dynamo.entities.receipt_section import ReceiptSection
+
+    try:
+        normalized_type, type_error = _normalize_section_type(section_type)
+        if type_error:
+            return type_error
+        normalized_status = str(validation_status or "").upper()
+        allowed = {s.value for s in ValidationStatus}
+        if normalized_status not in allowed:
+            return {
+                "error": (
+                    f"Invalid validation_status {validation_status!r}; "
+                    f"expected one of {sorted(allowed)}"
+                )
+            }
+
+        try:
+            existing = dynamo_client.get_receipt_section(
+                receipt_id=receipt_id,
+                image_id=image_id,
+                section_type=normalized_type,
+            )
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Section {normalized_type!r} not found on receipt "
+                    f"{receipt_id} (image {image_id}). Use "
+                    "get_receipt_sections to list existing sections."
+                )
+            }
+
+        old_status = existing.validation_status or "NONE"
+        updated = ReceiptSection(
+            receipt_id=existing.receipt_id,
+            image_id=existing.image_id,
+            section_type=existing.section_type,
+            line_ids=existing.line_ids,
+            created_at=existing.created_at,
+            confidence=existing.confidence,
+            model_source=existing.model_source,
+            validation_status=normalized_status,
+        )
+        dynamo_client.update_receipt_section(updated)
+
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "section_type": normalized_type,
+            "old_status": old_status,
+            "new_status": normalized_status,
+        }
+
+    except Exception as e:
+        logger.exception("Error updating section status")
+        return {"error": str(e)}
+
+
+async def create_receipt_section_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    section_type: str,
+    line_ids: list,
+    validation_status: str = "VALID",
+    model_source: str = "mcp-claude-review",
+) -> dict:
+    """Create a new ReceiptSection; fail if the section_type already exists."""
+    from datetime import datetime, timezone
+
+    from receipt_dynamo.constants import ValidationStatus
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityAlreadyExistsError,
+        EntityNotFoundError,
+    )
+    from receipt_dynamo.entities.receipt_section import ReceiptSection
+
+    try:
+        normalized_type, type_error = _normalize_section_type(
+            section_type, canonical_only=True
+        )
+        if type_error:
+            return type_error
+        normalized_status = str(validation_status or "VALID").upper()
+        allowed = {s.value for s in ValidationStatus}
+        if normalized_status not in allowed:
+            return {
+                "error": (
+                    f"Invalid validation_status {validation_status!r}; "
+                    f"expected one of {sorted(allowed)}"
+                )
+            }
+
+        try:
+            normalized_line_ids = [int(lid) for lid in (line_ids or [])]
+        except (TypeError, ValueError):
+            return {"error": "line_ids must be a list of integers"}
+        if not normalized_line_ids:
+            return {"error": "line_ids must be a non-empty list of integers"}
+
+        # Verify the receipt exists and every line_id belongs to it, so a
+        # typo'd image_id/receipt_id/line_id can't persist an orphan section
+        # or a section pointing at lines the receipt doesn't have.
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} not found for image {image_id}; "
+                    "refusing to create a section for a nonexistent receipt"
+                )
+            }
+        receipt_line_ids = {line.line_id for line in details.lines or []}
+        unknown_line_ids = sorted(
+            set(normalized_line_ids) - receipt_line_ids
+        )
+        if unknown_line_ids:
+            return {
+                "error": (
+                    f"line_ids {unknown_line_ids} do not exist on receipt "
+                    f"{receipt_id} (image {image_id}). Valid line_ids: "
+                    f"{sorted(receipt_line_ids)}"
+                )
+            }
+
+        new_section = ReceiptSection(
+            receipt_id=receipt_id,
+            image_id=image_id,
+            section_type=normalized_type,
+            line_ids=normalized_line_ids,
+            created_at=datetime.now(timezone.utc),
+            model_source=model_source,
+            validation_status=normalized_status,
+        )
+
+        try:
+            dynamo_client.add_receipt_section(new_section)
+        except EntityAlreadyExistsError:
+            return {
+                "error": (
+                    f"Section {normalized_type!r} already exists on receipt "
+                    f"{receipt_id} (image {image_id}). Use "
+                    "update_section_status to change it, or "
+                    "delete_receipt_section first."
+                )
+            }
+
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "section_type": normalized_type,
+            "line_ids": normalized_line_ids,
+            "validation_status": normalized_status,
+            "model_source": model_source,
+        }
+
+    except Exception as e:
+        logger.exception("Error creating receipt section")
+        return {"error": str(e)}
+
+
+async def delete_receipt_section_impl(
+    dynamo_client, image_id: str, receipt_id: int, section_type: str
+) -> dict:
+    """Delete a single ReceiptSection row from a receipt."""
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    try:
+        normalized_type, type_error = _normalize_section_type(section_type)
+        if type_error:
+            return type_error
+        try:
+            dynamo_client.delete_receipt_section(
+                receipt_id=receipt_id,
+                image_id=image_id,
+                section_type=normalized_type,
+            )
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Section {normalized_type!r} not found on receipt "
+                    f"{receipt_id} (image {image_id}). Use "
+                    "get_receipt_sections to list existing sections."
+                )
+            }
+
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "section_type": normalized_type,
+            "deleted": True,
+        }
+
+    except Exception as e:
+        logger.exception("Error deleting receipt section")
         return {"error": str(e)}
 
 
