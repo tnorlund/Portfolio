@@ -184,9 +184,11 @@ one selected checkpoint on the frozen validation receipts and writes:
 
 The four hypotheses should be separated this way:
 
-- Template coverage: unseen merchants/templates should score worse than seen
-  merchants/templates, and nearest-template distance should correlate
-  negatively with product F1.
+- Template coverage: context-unseen merchants/templates should score worse than
+  context-seen merchants/templates, and nearest-template distance should
+  correlate negatively with product F1. Treat this as training coverage only
+  when the diagnostic context comes from persisted train receipt keys; otherwise
+  it is current-corpus coverage.
 - Line-item structure: repeated item-count or column-presence buckets should
   show consistent weak slices, such as no `LINE_TOTAL` column or very long item
   tables.
@@ -198,12 +200,14 @@ The four hypotheses should be separated this way:
   the blocker.
 
 Current v28/v29 diagnostics support template and structure effects. For v28,
-seen merchants averaged product F1 about `0.472`, unseen merchants about
-`0.375`, and nearest-template distance correlated with product F1 at about
-`-0.315`. Receipts with `20-39` item rows averaged product F1 about `0.125`,
-and receipts without a `LINE_TOTAL` column averaged about `0.108`. The token
-logs also show label/eval tension: v28 had `527` high-confidence product false
-positive tokens and many `O -> PRODUCT_NAME` product confusions.
+context-seen merchants averaged product F1 about `0.472`, context-unseen
+merchants about `0.375`, and nearest-template distance correlated with product
+F1 at about `-0.315`. These v28/v29 diagnostics used current VALID corpus
+context excluding the full frozen validation split, not a persisted historical
+train snapshot. Receipts with `20-39` item rows averaged product F1 about
+`0.125`, and receipts without a `LINE_TOTAL` column averaged about `0.108`. The
+token logs also show label/eval tension: v28 had `527` high-confidence product
+false positive tokens and many `O -> PRODUCT_NAME` product confusions.
 
 ## How To Interpret Scores
 

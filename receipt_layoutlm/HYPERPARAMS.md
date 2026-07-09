@@ -138,14 +138,15 @@ slices, synthetic product-row augmentation, label/eval contract review, and
 product-line structural priors.
 
 Merchant layout repetition is useful but easy to fool ourselves with. Report
-seen-merchant and held-out-template metrics separately before deciding that a
-change generalizes.
+context-seen and held-out-template metrics separately before deciding that a
+change generalizes; call it training-seen only when the diagnostic context comes
+from persisted train receipt keys.
 
 Use `layoutlm-cli diagnose-run` before launching the next training lane. The
 current v28/v29 diagnostics support these directions:
 
-- Template coverage: unseen merchants scored worse than seen merchants, and
-  product F1 fell as nearest-template distance increased.
+- Template coverage: context-unseen merchants scored worse than context-seen
+  merchants, and product F1 fell as nearest-template distance increased.
 - Line-item structure: missing `LINE_TOTAL` columns and very long item tables
   are materially weaker slices.
 - Label/eval mismatch: high-confidence product false positives need review

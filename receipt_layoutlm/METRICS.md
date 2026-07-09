@@ -101,7 +101,9 @@ questions depend on these fields.
 Track these gaps:
 
 - train-sample F1 versus held-out F1;
-- seen-merchant F1 versus unseen-merchant F1;
+- context-seen merchant F1 versus context-unseen merchant F1, or
+  training-seen versus training-unseen when the context is a persisted train
+  split;
 - canonical random split F1 versus adversarial split F1;
 - recent-upload F1 when recent uploads are held out versus when they were in
   training;

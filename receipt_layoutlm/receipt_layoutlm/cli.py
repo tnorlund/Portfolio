@@ -610,15 +610,15 @@ def main() -> None:
         "--skip-train-context",
         action="store_true",
         help=(
-            "Skip loading current train-set context. Faster, but disables "
-            "seen-merchant/template and nearest-template evidence."
+            "Skip loading coverage context. Faster, but disables "
+            "context-seen merchant/template and nearest-template evidence."
         ),
     )
     diagnose_p.add_argument(
         "--max-train-context-receipts",
         type=int,
         default=None,
-        help="Optional cap for train-context receipts loaded from DynamoDB",
+        help="Optional cap for coverage-context receipts loaded from DynamoDB",
     )
     diagnose_p.add_argument(
         "--error-confidence-threshold",

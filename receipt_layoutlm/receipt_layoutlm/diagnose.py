@@ -98,15 +98,16 @@ def diagnose_run(
     os.environ["LAYOUTLM_WINDOW_SIZE"] = str(resolved_ws)
     os.environ["LAYOUTLM_WINDOW_STRIDE"] = str(resolved_stride)
 
-    val_receipts, val_hash, hash_verified, val_source, seed = _resolve_val_receipts(
+    all_val_receipts, val_hash, hash_verified, val_source, seed = _resolve_val_receipts(
         dynamo=dynamo,
         split_meta=split_meta,
         recorded_hash=recorded_hash,
         recorded_seed=recorded_seed,
         allow_hash_mismatch=allow_hash_mismatch,
     )
+    val_receipts = all_val_receipts
     if max_receipts is not None:
-        val_receipts = val_receipts[:max_receipts]
+        val_receipts = all_val_receipts[:max_receipts]
 
     logger.info("Loading %d validation receipts", len(val_receipts))
     details_by_receipt = _load_receipt_details(dynamo, val_receipts)
@@ -131,7 +132,8 @@ def diagnose_run(
     if include_train_context:
         train_context = _build_train_context(
             dynamo,
-            val_receipts,
+            all_val_receipts,
+            split_meta=split_meta,
             valid_status=valid_status,
             max_receipts=max_train_context_receipts,
         )
@@ -160,11 +162,11 @@ def diagnose_run(
         "place": _summarize_groups(rows, "place_id"),
         "template": _summarize_groups(rows, "template_signature"),
         "line_item_shape": _summarize_groups(rows, "line_item_shape"),
-        "merchant_seen_in_training": _summarize_groups(
-            rows, "merchant_seen_in_training"
+        "merchant_seen_in_context": _summarize_groups(
+            rows, "merchant_seen_in_context"
         ),
-        "template_seen_in_training": _summarize_groups(
-            rows, "template_seen_in_training"
+        "template_seen_in_context": _summarize_groups(
+            rows, "template_seen_in_context"
         ),
         "nearest_template_distance_bucket": _summarize_groups(
             rows, "nearest_template_distance_bucket"
@@ -179,6 +181,7 @@ def diagnose_run(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "validation": {
             "source": val_source,
+            "num_receipts_in_split": len(all_val_receipts),
             "num_receipts_requested": len(val_receipts),
             "num_receipts_loaded": len(details_by_receipt),
             "hash": val_hash,
@@ -196,9 +199,10 @@ def diagnose_run(
             "diagnostics": aggregate_diagnostics,
             "token_accuracy": _token_accuracy(aggregate_true, aggregate_pred),
         },
-        "train_context": {
+        "coverage_context": {
             "enabled": include_train_context,
-            "num_train_receipts_loaded": len(train_context.get("features", [])),
+            "num_context_receipts_loaded": len(train_context.get("features", [])),
+            "is_training_snapshot": bool(train_context.get("is_training_snapshot")),
             "source": train_context.get("source"),
         },
         "evidence": evidence,
@@ -265,6 +269,11 @@ def _resolve_val_receipts(
         val_receipts = [_parse_receipt_key(k) for k in persisted_keys]
         computed_hash = _hash_receipt_keys(list(persisted_keys))
         hash_verified = computed_hash == recorded_hash if recorded_hash else True
+        if recorded_hash and not hash_verified and not allow_hash_mismatch:
+            raise ValueError(
+                f"Validation hash mismatch: recorded={recorded_hash} "
+                f"computed={computed_hash}. Pass --allow-hash-mismatch to proceed."
+            )
         return (
             val_receipts,
             computed_hash,
@@ -351,22 +360,34 @@ def _build_train_context(
     dynamo: Any,
     val_receipts: List[Tuple[str, int]],
     *,
+    split_meta: Dict[str, Any],
     valid_status: Any,
     max_receipts: Optional[int] = None,
 ) -> Dict[str, Any]:
     from receipt_dynamo.constants import ValidationStatus
 
     val_keys = {f"{image_id}#{receipt_id:05d}" for image_id, receipt_id in val_receipts}
-    labels, _ = dynamo.list_receipt_word_labels_with_status(
-        ValidationStatus.VALID, limit=None, last_evaluated_key=None
-    )
-    train_keys = sorted(
-        {
-            (label.image_id, label.receipt_id)
-            for label in labels
-            if f"{label.image_id}#{label.receipt_id:05d}" not in val_keys
-        }
-    )
+    persisted_train_keys = split_meta.get("train_receipt_keys")
+    is_training_snapshot = bool(persisted_train_keys)
+    if persisted_train_keys:
+        train_keys = sorted(
+            key
+            for key in (_parse_receipt_key(k) for k in persisted_train_keys)
+            if f"{key[0]}#{key[1]:05d}" not in val_keys
+        )
+        source = "persisted_train_receipt_keys"
+    else:
+        labels, _ = dynamo.list_receipt_word_labels_with_status(
+            ValidationStatus.VALID, limit=None, last_evaluated_key=None
+        )
+        train_keys = sorted(
+            {
+                (label.image_id, label.receipt_id)
+                for label in labels
+                if f"{label.image_id}#{label.receipt_id:05d}" not in val_keys
+            }
+        )
+        source = "current_VALID_corpus_minus_full_validation_split"
     if max_receipts is not None:
         train_keys = train_keys[:max_receipts]
 
@@ -377,7 +398,7 @@ def _build_train_context(
         try:
             details = dynamo.get_receipt_details(image_id, receipt_id)
         except Exception as e:  # noqa: BLE001
-            logger.debug("Could not load train context %s#%05d: %s", image_id, receipt_id, e)
+            logger.debug("Could not load coverage context %s#%05d: %s", image_id, receipt_id, e)
             continue
         f = _receipt_features(details, valid_status=valid_status)
         features.append(f)
@@ -385,7 +406,8 @@ def _build_train_context(
         template_counts[f["template_signature"]] += 1
 
     return {
-        "source": "current_VALID_labels_minus_validation_receipts",
+        "source": source,
+        "is_training_snapshot": is_training_snapshot,
         "features": features,
         "merchant_counts": dict(merchant_counts),
         "template_counts": dict(template_counts),
@@ -407,6 +429,7 @@ def _diagnose_receipts(
     train_features = train_context.get("features") or []
     merchant_counts = train_context.get("merchant_counts") or {}
     template_counts = train_context.get("template_counts") or {}
+    is_training_snapshot = bool(train_context.get("is_training_snapshot"))
 
     for (image_id, receipt_id), details in details_by_receipt.items():
         record, y_true, y_pred = build_receipt_record(
@@ -427,8 +450,8 @@ def _diagnose_receipts(
         )
         nearest = _nearest_train_template(features, train_features)
 
-        merchant_train_count = int(merchant_counts.get(features["merchant_name"], 0))
-        template_train_count = int(template_counts.get(features["template_signature"], 0))
+        merchant_context_count = int(merchant_counts.get(features["merchant_name"], 0))
+        template_context_count = int(template_counts.get(features["template_signature"], 0))
         row = {
             **features,
             "heldout_f1": scores["f1"],
@@ -451,12 +474,32 @@ def _diagnose_receipts(
                 "predicted_entity_token_rate"
             ],
             "gold_entity_rate": diagnostics["rates"]["gold_entity_token_rate"],
-            "merchant_train_receipts": merchant_train_count,
-            "template_train_receipts": template_train_count,
-            "merchant_seen_in_training": merchant_train_count > 0,
-            "template_seen_in_training": template_train_count > 0,
-            "nearest_train_receipt_key": nearest.get("receipt_key"),
-            "nearest_train_merchant": nearest.get("merchant_name"),
+            "context_source": train_context.get("source"),
+            "context_is_training_snapshot": is_training_snapshot,
+            "merchant_context_receipts": merchant_context_count,
+            "template_context_receipts": template_context_count,
+            "merchant_seen_in_context": merchant_context_count > 0,
+            "template_seen_in_context": template_context_count > 0,
+            "merchant_train_receipts": (
+                merchant_context_count if is_training_snapshot else None
+            ),
+            "template_train_receipts": (
+                template_context_count if is_training_snapshot else None
+            ),
+            "merchant_seen_in_training": (
+                merchant_context_count > 0 if is_training_snapshot else None
+            ),
+            "template_seen_in_training": (
+                template_context_count > 0 if is_training_snapshot else None
+            ),
+            "nearest_context_receipt_key": nearest.get("receipt_key"),
+            "nearest_context_merchant": nearest.get("merchant_name"),
+            "nearest_train_receipt_key": (
+                nearest.get("receipt_key") if is_training_snapshot else None
+            ),
+            "nearest_train_merchant": (
+                nearest.get("merchant_name") if is_training_snapshot else None
+            ),
             "nearest_template_distance": nearest.get("distance"),
             "nearest_template_distance_bucket": _distance_bucket(
                 nearest.get("distance")
@@ -475,10 +518,12 @@ def _receipt_features(details: Any, *, valid_status: Any) -> Dict[str, Any]:
     receipt = details.receipt
     image_id = receipt.image_id
     receipt_id = receipt.receipt_id
-    merchant_name = _merchant_name(details)
     place_id = getattr(details.place, "place_id", None) if details.place else None
     labels_by_word = _valid_labels_by_word(details, valid_status)
     words_by_key = {(w.line_id, w.word_id): w for w in details.words}
+    merchant_name = _merchant_name(
+        details, labels_by_word=labels_by_word, words_by_key=words_by_key
+    )
 
     line_product_labels: Dict[int, set[str]] = defaultdict(set)
     label_centers_x: Dict[str, List[float]] = defaultdict(list)
@@ -557,12 +602,28 @@ def _valid_labels_by_word(details: Any, valid_status: Any) -> Dict[Tuple[int, in
     return out
 
 
-def _merchant_name(details: Any) -> str:
+def _merchant_name(
+    details: Any,
+    *,
+    labels_by_word: Optional[Dict[Tuple[int, int], List[str]]] = None,
+    words_by_key: Optional[Dict[Tuple[int, int], Any]] = None,
+) -> str:
     if details.place and getattr(details.place, "merchant_name", None):
         return str(details.place.merchant_name).upper()
-    for label in details.labels:
-        if _normalize_base_label(label.label) == "MERCHANT_NAME":
-            return "LABELED_MERCHANT"
+    labeled_words: List[Tuple[int, int, str]] = []
+    labels_by_word = labels_by_word or _valid_labels_by_word(details, "VALID")
+    words_by_key = words_by_key or {(w.line_id, w.word_id): w for w in details.words}
+    for key, labels in labels_by_word.items():
+        if not any(_normalize_base_label(label) == "MERCHANT_NAME" for label in labels):
+            continue
+        word = words_by_key.get(key)
+        if word is not None and getattr(word, "text", None):
+            labeled_words.append((key[0], key[1], str(word.text)))
+    if labeled_words:
+        text = " ".join(
+            text for _line_id, _word_id, text in sorted(labeled_words)
+        )
+        return text.upper()
     return "UNKNOWN_MERCHANT"
 
 
@@ -663,7 +724,14 @@ def _token_error_rows(
     for pred in predictions:
         gold = pred.get("ground_truth_label_base") or "O"
         guessed = pred.get("predicted_label_base") or "O"
-        confidence = float(pred.get("predicted_confidence") or 0.0)
+        probs = pred.get("all_class_probabilities_base") or {}
+        bio_confidence = float(pred.get("predicted_confidence") or 0.0)
+        base_probability = probs.get(guessed)
+        confidence = (
+            float(base_probability)
+            if isinstance(base_probability, (int, float))
+            else bio_confidence
+        )
         base_correct = gold == guessed
         bio_correct = bool(pred.get("is_correct"))
         if base_correct and bio_correct:
@@ -685,7 +753,6 @@ def _token_error_rows(
         ):
             high_conf_product_fp += 1
 
-        probs = pred.get("all_class_probabilities_base") or {}
         top_probs = sorted(
             (
                 {"label": label, "probability": float(prob)}
@@ -713,6 +780,7 @@ def _token_error_rows(
                     "ground_truth_label_original"
                 ),
                 "confidence": confidence,
+                "bio_confidence": bio_confidence,
                 "error_kind": kind,
                 "product_related": product_related,
                 "high_confidence": confidence >= confidence_threshold,
@@ -790,10 +858,10 @@ def _summarize_groups(rows: List[Dict[str, Any]], key: str) -> List[Dict[str, An
 def _build_evidence_summary(
     rows: List[Dict[str, Any]], token_errors: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
-    seen = [r for r in rows if r.get("merchant_seen_in_training")]
-    unseen = [r for r in rows if not r.get("merchant_seen_in_training")]
-    template_seen = [r for r in rows if r.get("template_seen_in_training")]
-    template_unseen = [r for r in rows if not r.get("template_seen_in_training")]
+    seen = [r for r in rows if r.get("merchant_seen_in_context")]
+    unseen = [r for r in rows if not r.get("merchant_seen_in_context")]
+    template_seen = [r for r in rows if r.get("template_seen_in_context")]
+    template_unseen = [r for r in rows if not r.get("template_seen_in_context")]
     distances = [
         r.get("nearest_template_distance")
         for r in rows
@@ -836,6 +904,10 @@ def _build_evidence_summary(
 
     return {
         "template_coverage": {
+            "context_source": rows[0].get("context_source") if rows else None,
+            "context_is_training_snapshot": bool(
+                rows[0].get("context_is_training_snapshot")
+            ) if rows else False,
             "seen_merchant_receipts": len(seen),
             "unseen_merchant_receipts": len(unseen),
             "seen_merchant_avg_product_macro_f1": _avg(
@@ -1014,10 +1086,18 @@ def _write_receipt_csv(path: str, rows: List[Dict[str, Any]]) -> None:
         "token_accuracy",
         "product_gold_entities",
         "product_predicted_entities",
+        "context_source",
+        "context_is_training_snapshot",
+        "merchant_context_receipts",
+        "template_context_receipts",
+        "merchant_seen_in_context",
+        "template_seen_in_context",
         "merchant_train_receipts",
         "template_train_receipts",
         "merchant_seen_in_training",
         "template_seen_in_training",
+        "nearest_context_receipt_key",
+        "nearest_context_merchant",
         "nearest_template_distance",
         "nearest_template_distance_bucket",
         "incorrect_token_count",
@@ -1041,25 +1121,28 @@ def _markdown_report(payload: Dict[str, Any], groups: Dict[str, Any]) -> str:
         f"- validation receipts: `{payload['validation']['num_receipts_loaded']}`",
         f"- held-out F1: `{_fmt(aggregate.get('f1'))}`",
         f"- product-detail macro F1: `{_fmt(product.get('macro_f1'))}`",
+        f"- coverage context: `{evidence['template_coverage'].get('context_source')}`",
+        "- coverage is training snapshot: "
+        f"`{evidence['template_coverage'].get('context_is_training_snapshot')}`",
         "",
         "## Hypothesis Evidence",
         "",
         "### Template Coverage",
         "",
         _bullet_metric(
-            "Seen merchant avg product F1",
+            "Context-seen merchant avg product F1",
             evidence["template_coverage"].get("seen_merchant_avg_product_macro_f1"),
         ),
         _bullet_metric(
-            "Unseen merchant avg product F1",
+            "Context-unseen merchant avg product F1",
             evidence["template_coverage"].get("unseen_merchant_avg_product_macro_f1"),
         ),
         _bullet_metric(
-            "Seen template avg product F1",
+            "Context-seen template avg product F1",
             evidence["template_coverage"].get("seen_template_avg_product_macro_f1"),
         ),
         _bullet_metric(
-            "Unseen template avg product F1",
+            "Context-unseen template avg product F1",
             evidence["template_coverage"].get("unseen_template_avg_product_macro_f1"),
         ),
         _bullet_metric(

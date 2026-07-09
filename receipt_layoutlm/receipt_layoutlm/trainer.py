@@ -44,6 +44,7 @@ _CHECKPOINT_METRIC_ALIASES = {
     "accuracy": "eval_accuracy",
     "eval_accuracy": "eval_accuracy",
 }
+_SEQEVAL_FREE_CHECKPOINT_METRICS = {"eval_accuracy", "eval_loss"}
 
 
 def _checkpoint_metric_for_trainer(metric: str | None) -> str:
@@ -54,6 +55,18 @@ def _checkpoint_metric_for_trainer(metric: str | None) -> str:
     if raw.startswith("eval_"):
         return raw
     return f"eval_{raw}"
+
+
+def _checkpoint_metric_for_available_metrics(
+    metric: str | None, *, seqeval_available: bool
+) -> str:
+    checkpoint_metric = _checkpoint_metric_for_trainer(metric)
+    if (
+        not seqeval_available
+        and checkpoint_metric not in _SEQEVAL_FREE_CHECKPOINT_METRICS
+    ):
+        return "eval_accuracy"
+    return checkpoint_metric
 
 
 def _metric_greater_is_better(metric: str) -> bool:
@@ -465,8 +478,14 @@ class ReceiptLayoutLMTrainer:
         )
         ta_cls = self._transformers.TrainingArguments
         ta_params = inspect.signature(ta_cls.__init__).parameters
-        checkpoint_metric = _checkpoint_metric_for_trainer(
-            self.training_config.checkpoint_metric
+        seqeval_available = True
+        try:
+            importlib.import_module("seqeval.metrics")
+        except ModuleNotFoundError:
+            seqeval_available = False
+        checkpoint_metric = _checkpoint_metric_for_available_metrics(
+            self.training_config.checkpoint_metric,
+            seqeval_available=seqeval_available,
         )
         if "evaluation_strategy" in ta_params:
             args_kwargs["evaluation_strategy"] = "epoch"
@@ -477,11 +496,6 @@ class ReceiptLayoutLMTrainer:
         if "load_best_model_at_end" in ta_params:
             args_kwargs["load_best_model_at_end"] = True
         if "metric_for_best_model" in ta_params:
-            try:
-                importlib.import_module("seqeval.metrics")
-            except ModuleNotFoundError:
-                # Fallback to accuracy if seqeval-derived metrics are absent.
-                checkpoint_metric = "eval_accuracy"
             args_kwargs["metric_for_best_model"] = checkpoint_metric
         if "greater_is_better" in ta_params:
             args_kwargs["greater_is_better"] = _metric_greater_is_better(
@@ -1432,12 +1446,25 @@ class ReceiptLayoutLMTrainer:
                 y_true.append(t_tags)
                 y_pred.append(p_tags)
 
-            metrics = {}
+            total_valid_tokens = sum(len(seq) for seq in y_true)
+            correct_valid_tokens = sum(
+                1
+                for true_seq, pred_seq in zip(y_true, y_pred)
+                for true_tag, pred_tag in zip(true_seq, pred_seq)
+                if true_tag == pred_tag
+            )
+            metrics = {
+                "accuracy": (
+                    correct_valid_tokens / total_valid_tokens
+                    if total_valid_tokens
+                    else 0.0
+                )
+            }
             if seqeval:
                 f1 = float(f1_fn(y_true, y_pred))
                 prec = float(precision_fn(y_true, y_pred))
                 rec = float(recall_fn(y_true, y_pred))
-                metrics = {"f1": f1, "precision": prec, "recall": rec}
+                metrics.update({"f1": f1, "precision": prec, "recall": rec})
 
                 # Get per-label metrics if classification_report is available
                 # Flatten into scalar keys so HuggingFace Trainer passes them to callbacks
@@ -1604,8 +1631,13 @@ class ReceiptLayoutLMTrainer:
                 # Token accuracy fallback
                 import numpy as _np
 
-                correct = (preds == labels).astype(float)
-                acc = float(_np.mean(correct))
+                mask = labels != -100
+                correct = (preds == labels) & mask
+                acc = (
+                    float(_np.sum(correct) / _np.sum(mask))
+                    if _np.sum(mask)
+                    else 0.0
+                )
                 metrics = {"accuracy": acc}
 
             return metrics
@@ -1660,6 +1692,7 @@ class ReceiptLayoutLMTrainer:
                 w = total / (n_classes * c)
                 weights.append(max(w_min, min(w, w_max)))
         if product_weight != 1.0:
+            product_cap = w_max * max(product_weight, 1.0)
             product_labels = {
                 "PRODUCT_NAME",
                 "QUANTITY",
@@ -1669,7 +1702,10 @@ class ReceiptLayoutLMTrainer:
             for idx, label in enumerate(label_list):
                 base_label = label[2:] if label.startswith(("B-", "I-")) else label
                 if base_label in product_labels:
-                    weights[idx] = min(w_max, weights[idx] * product_weight)
+                    weights[idx] = max(
+                        w_min,
+                        min(weights[idx] * product_weight, product_cap),
+                    )
         class_weights_tensor = torch_mod.tensor(
             weights, dtype=torch_mod.float32
         )
@@ -1682,7 +1718,8 @@ class ReceiptLayoutLMTrainer:
         if product_weight != 1.0:
             print(
                 "[trainer] product detail loss weight multiplier: "
-                f"{product_weight:.3f}"
+                f"{product_weight:.3f} (effective product cap "
+                f"{product_cap:.3f})"
             )
 
         TrainerBase = self._transformers.Trainer
