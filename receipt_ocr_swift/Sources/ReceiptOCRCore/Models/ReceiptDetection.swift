@@ -70,13 +70,19 @@ public struct ProcessedReceipt {
     /// Line indices from the original lines array that belong to this receipt
     public let lineIndices: [Int]
 
+    /// True when this cluster looks like multiple overlapping receipts but could
+    /// not be confidently split (e.g. a faded second copy) — surface for human
+    /// review rather than trusting the crop.
+    public let needsReview: Bool
+
     public init(
         clusterId: Int,
         bounds: ReceiptBounds,
         warpedImage: CGImage,
         warpedWidth: Int,
         warpedHeight: Int,
-        lineIndices: [Int]
+        lineIndices: [Int],
+        needsReview: Bool = false
     ) {
         self.clusterId = clusterId
         self.bounds = bounds
@@ -84,6 +90,7 @@ public struct ProcessedReceipt {
         self.warpedWidth = warpedWidth
         self.warpedHeight = warpedHeight
         self.lineIndices = lineIndices
+        self.needsReview = needsReview
     }
 }
 
@@ -122,6 +129,10 @@ public struct ReceiptOutput: Codable {
     /// the warped crop, matching `lines`).
     public var barcodes: [Barcode]?
 
+    /// True when this crop probably contains multiple overlapping receipts that
+    /// couldn't be confidently split — flag for human review.
+    public let needsReview: Bool
+
     public init(
         clusterId: Int,
         bounds: ReceiptBounds,
@@ -131,7 +142,8 @@ public struct ReceiptOutput: Codable {
         lineIndices: [Int],
         lines: [Line]? = nil,
         layoutlmPredictions: [LinePrediction]? = nil,
-        barcodes: [Barcode]? = nil
+        barcodes: [Barcode]? = nil,
+        needsReview: Bool = false
     ) {
         self.clusterId = clusterId
         self.bounds = bounds
@@ -142,6 +154,7 @@ public struct ReceiptOutput: Codable {
         self.lines = lines
         self.layoutlmPredictions = layoutlmPredictions
         self.barcodes = barcodes
+        self.needsReview = needsReview
     }
 
     /// Create from a ProcessedReceipt
@@ -155,6 +168,7 @@ public struct ReceiptOutput: Codable {
         self.lines = lines
         self.layoutlmPredictions = layoutlmPredictions
         self.barcodes = barcodes
+        self.needsReview = processed.needsReview
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -167,6 +181,7 @@ public struct ReceiptOutput: Codable {
         case lines
         case layoutlmPredictions = "layoutlm_predictions"
         case barcodes
+        case needsReview = "needs_review"
     }
 }
 

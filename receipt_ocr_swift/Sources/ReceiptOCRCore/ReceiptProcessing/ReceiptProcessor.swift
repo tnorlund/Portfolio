@@ -229,7 +229,8 @@ public struct ReceiptProcessor {
                 warpedImage: warpedImage,
                 warpedWidth: warpedWidth,
                 warpedHeight: warpedHeight,
-                lineIndices: effectiveIndices
+                lineIndices: effectiveIndices,
+                needsReview: reviewClusterIds.contains(clusterId)
             )
             results.append(processed)
 
