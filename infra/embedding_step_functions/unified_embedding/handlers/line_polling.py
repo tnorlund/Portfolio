@@ -492,44 +492,10 @@ def _handle_internal_core(
                 )
             return visual_rows_cache[cache_key]
 
-        def reset_rows_for_primaries(
-            image_id: str, receipt_id: int, primary_ids: set[int]
-        ) -> list:
-            """Reset the CURRENT visual rows that contain ``primary_ids``.
-
-            A stale/unmatched primary id no longer heads a row, but the line
-            itself still exists as a member of some current row. Reset every
-            PENDING line in the current rows containing those ids back to NONE
-            so the next submit pass re-embeds exactly those rows. Scoping to
-            this batch's own primary ids (rather than every PENDING line in the
-            receipt) avoids resetting rows that belong to another in-flight
-            batch for the same receipt: receipts with >50 lines are split
-            across batches, so a receipt-wide reset would resubmit unrelated
-            rows and create duplicate in-flight embeddings.
-            """
-            visual_rows = get_visual_rows(image_id, receipt_id)
-            line_to_row: dict[int, list] = {}
-            for row in visual_rows:
-                if not row:
-                    continue
-                for line in row:
-                    line_to_row[line.line_id] = row
-            reset_lines: list = []
-            seen_rows: set[int] = set()
-            for pid in primary_ids:
-                row = line_to_row.get(pid)
-                if not row or id(row) in seen_rows:
-                    continue
-                seen_rows.add(id(row))
-                for line in row:
-                    if line.embedding_status == EmbeddingStatus.PENDING.value:
-                        line.embedding_status = EmbeddingStatus.NONE.value
-                        reset_lines.append(line)
-            return reset_lines
-
-        # Track this batch's primary ids per stale receipt so the reset below
-        # is scoped to rows this batch actually submitted.
-        stale_primaries: dict[tuple[str, int], set[int]] = {}
+        # Receipts we must reset because a submit-time primary no longer heads
+        # any current row. Seeded with the receipt-level stale set from the
+        # delta save; the SUCCESS loop adds any receipt that slips past it.
+        stale_to_reset: set[tuple[str, int]] = set(stale)
 
         for result in results:
             try:
@@ -546,12 +512,7 @@ def _handle_internal_core(
             primary_line_id = meta["line_id"]
 
             if (image_id, receipt_id) in stale:
-                # regrouped receipt: rows are reset by the pass below. Remember
-                # this batch's primary so the reset stays scoped to our rows.
-                stale_primaries.setdefault((image_id, receipt_id), set()).add(
-                    primary_line_id
-                )
-                continue
+                continue  # regrouped receipt: handled by the reset pass below
 
             # Get visual rows for this receipt
             visual_rows = get_visual_rows(image_id, receipt_id)
@@ -586,34 +547,38 @@ def _handle_internal_core(
                 # make visual-row grouping order-sensitive between submit and
                 # poll, so one stale primary id must not kill the whole ingest
                 # run (this stalled the dev lines pipeline, 2026-07-09).
-                # Receipt-level staleness normally routes these through the
-                # reset pass below, but reset this row's PENDING lines to NONE
-                # here too so a primary that slips through is re-embedded on the
-                # next submit pass rather than stranded in PENDING (discovery
-                # only selects NONE).
+                # Receipt-level staleness normally catches this in the delta
+                # save; if it slips through, treat the receipt as stale so the
+                # reset pass below re-embeds it rather than stranding lines in
+                # PENDING (discovery only selects NONE).
                 logger.warning(
                     "Skipping status update: no visual row found",
                     primary_line_id=primary_line_id,
                     receipt_id=receipt_id,
                     image_id=image_id,
                 )
-                reset = reset_rows_for_primaries(
-                    image_id, receipt_id, {primary_line_id}
-                )
-                if reset:
-                    lines_by_receipt.setdefault(image_id, {}).setdefault(
-                        receipt_id, []
-                    ).extend(reset)
+                stale_to_reset.add((image_id, receipt_id))
 
         # Reset stale receipts' PENDING lines to NONE so the next submit pass
-        # re-embeds them under the current grouping (their results were
-        # dropped from the delta). Scope the reset to the current rows that
-        # contain THIS batch's stale primaries so a concurrent in-flight batch
-        # for the same receipt (>50-line receipts split across batches) is not
-        # disturbed.
-        for image_id, receipt_id in stale:
-            primary_ids = stale_primaries.get((image_id, receipt_id), set())
-            reset = reset_rows_for_primaries(image_id, receipt_id, primary_ids)
+        # re-embeds them under the current grouping (their results were dropped
+        # from the delta). Reset ALL of the receipt's PENDING lines, not just
+        # the rows containing this batch's primaries: submit marks every line
+        # in a visual row PENDING, and a row that regrouped can split its
+        # members across different current rows, so a primary-scoped reset would
+        # strand the split-off members in PENDING forever (discovery only
+        # selects NONE). Re-embedding is keyed by primary custom_id (idempotent
+        # upsert), and a sibling in-flight batch whose rows also regrouped is
+        # itself dropped as stale, so the broader reset does not create
+        # duplicate or orphaned vectors, only (at worst) redundant re-embeds.
+        for image_id, receipt_id in stale_to_reset:
+            receipt_lines = descriptions[image_id][receipt_id]["lines"]
+            reset = [
+                line
+                for line in receipt_lines
+                if line.embedding_status == EmbeddingStatus.PENDING.value
+            ]
+            for line in reset:
+                line.embedding_status = EmbeddingStatus.NONE.value
             if reset:
                 logger.warning(
                     "Reset stale receipt lines PENDING->NONE for resubmit",
