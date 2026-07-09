@@ -14,9 +14,9 @@ candidates (e.g. density-calibrated mints).
 
 Usage:
   python m3_acceptance.py CANDIDATE.glyphs.npz \
-      [--merchant "Wild Fork" --solo wildfork_shipped.glyphs.npz] ...
-  (default: Wild Fork + Costco Wholesale against fonts/{wildfork,costco},
-   compiling the solo baselines to a temp dir if needed)
+      [--merchant "Wild Fork:wildfork"] [--merchant "Costco Wholesale:costco"]
+  (default merchants: Wild Fork + Costco Wholesale; each solo baseline is
+   compiled fresh from fonts/<slug> into a temp dir)
 """
 
 from __future__ import annotations
