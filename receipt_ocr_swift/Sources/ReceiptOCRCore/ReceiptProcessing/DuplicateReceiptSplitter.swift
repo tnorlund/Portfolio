@@ -131,17 +131,67 @@ func examineDuplicatePair(
     }
 
     // Consensus displacement (median of agreeing vectors).
-    let dUnit = normalize(
-        CGVector(
-            dx: median(bestConsensus.map { $0.disp.dx }),
-            dy: median(bestConsensus.map { $0.disp.dy })
-        )
+    let bestVec = CGVector(
+        dx: median(bestConsensus.map { $0.disp.dx }),
+        dy: median(bestConsensus.map { $0.disp.dy })
     )
+    let dUnit = normalize(bestVec)
+
+    // --- FIX 1 guards: reject a false split of a SINGLE receipt whose
+    // internally repeated rows (6x "TACO 3.50", identical SKUs) forge an
+    // evenly spaced, single-pitch "consensus". A genuine pair of overlapping
+    // copies has exactly ONE rigid displacement, anchored by DISTINCTIVE text
+    // SCATTERED across the whole receipt; a periodic item list does not. All
+    // three guards must pass before we may split. ---
+
+    // Guard 3 (cheapest disqualifier, checked first): reject a
+    // harmonic/periodic displacement family. Evenly spaced repeats yield not
+    // only a 1-pitch consensus but also a 2-pitch (3-pitch, ...) family. Two
+    // real copies have exactly ONE displacement and no ~2x harmonic. If a
+    // second consensus vector (>= 2 agreeing pairs) sits at ~2x the best
+    // vector, this is a list, not two copies.
+    let twoVec = CGVector(dx: 2 * bestVec.dx, dy: 2 * bestVec.dy)
+    let harmonicCount = pairs.filter {
+        let ex = $0.disp.dx - twoVec.dx
+        let ey = $0.disp.dy - twoVec.dy
+        return (ex * ex + ey * ey).squareRoot() <= 2 * dispTolerance
+    }.count
+    if harmonicCount >= 2 {
+        return .single
+    }
+
+    // Guard 2: distinctive anchors. At least two consensus pairs must be
+    // anchored by real alphabetic text, NOT a pure price / quantity / money
+    // token ("3.50", "$5.00", "2 X", "#4"). Repeated SKUs and prices do not
+    // count toward this requirement.
+    let distinctiveAnchors = bestConsensus.filter {
+        isDistinctiveAnchorText(texts[$0.a])
+    }.count
+    guard distinctiveAnchors >= 2 else {
+        // Only prices / quantities line up: no evidence of duplicated content.
+        return .single
+    }
 
     // 3. Seeded assignment: anchors A (tail) and B (head) define the boundary;
     //    assign every line by which side of it (along the displacement) it sits.
     let projA = bestConsensus.map { proj(cents[$0.a], dUnit) }
     let projB = bestConsensus.map { proj(cents[$0.b], dUnit) }
+
+    // Guard 1: anchor spatial spread. The consensus anchors must be scattered
+    // across the receipt's long axis (the displacement direction, ~vertical for
+    // stacked copies), not locally consecutive. Require both the "A" and "B"
+    // members to span >= 40% of the whole cluster's extent on that axis.
+    let clusterProj = cents.map { proj($0, dUnit) }
+    let clusterExtent = (clusterProj.max() ?? 0) - (clusterProj.min() ?? 0)
+    let spanA = (projA.max() ?? 0) - (projA.min() ?? 0)
+    let spanB = (projB.max() ?? 0) - (projB.min() ?? 0)
+    let minSpread: CGFloat = 0.40 * clusterExtent
+    guard clusterExtent > 1e-6, spanA >= minSpread, spanB >= minSpread else {
+        // Distinctive, non-harmonic anchors exist but are bunched together, not
+        // clearly two copies. Some evidence: flag for review, but do not split.
+        return .suspicious(anchorPairs: bestConsensus.count)
+    }
+
     let boundary = (mean(projA) + mean(projB)) / 2.0
 
     var groupA: [Int] = []
@@ -176,6 +226,26 @@ func normalizedText(_ s: String) -> String {
     let collapsed = upper.split(whereSeparator: { $0 == " " || $0 == "\t" })
         .joined(separator: " ")
     return collapsed.trimmingCharacters(in: .whitespaces)
+}
+
+/// True if `t` (already normalized / uppercased) carries real alphabetic
+/// content and is NOT a pure price / quantity / money token. The money alphabet
+/// is digits, spaces, '.', ',', '$', 'X'/'x' (a quantity multiplier), and '#'.
+/// Repeated SKUs and prices ("3.50", "$5.00", "2 X", "#4") therefore do not
+/// qualify as distinctive anchors, while item names ("TACO 3.50") do.
+func isDistinctiveAnchorText(_ t: String) -> Bool {
+    var hasLetter = false
+    var hasNonMoney = false
+    for c in t.unicodeScalars {
+        if c.value >= 65 && c.value <= 90 { hasLetter = true }  // A-Z (uppercased)
+        switch c {
+        case "0"..."9", " ", ".", ",", "$", "X", "x", "#":
+            continue
+        default:
+            hasNonMoney = true
+        }
+    }
+    return hasLetter && hasNonMoney
 }
 
 /// Normalized Levenshtein similarity in [0, 1].
