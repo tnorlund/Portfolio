@@ -128,3 +128,74 @@ class TestStaleResultSkip:
         assert out["stale_receipts"] == [
             ["3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1]
         ]
+
+
+class TestSectionWiring:
+    """M1a-2: ReceiptSection rows flow into row metadata as section_label."""
+
+    def test_section_label_lands_in_delta_metadata(self):
+        from unittest.mock import Mock, patch
+
+        from receipt_chroma.embedding.delta import line_delta
+
+        line = Mock()
+        line.line_id = 1
+        line.image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        line.receipt_id = 1
+        line.text = "TOTAL 20.94"
+        line.confidence = 0.99
+        line.bounding_box = {"x": 0.1, "y": 0.5, "width": 0.8, "height": 0.02}
+        place = Mock()
+        place.merchant_name = "Test Mart"
+        section = Mock(
+            line_ids=[1],
+            section_type="TOTAL_LINE",
+            confidence=0.9,
+            validation_status="PENDING",
+        )
+        descriptions = {
+            line.image_id: {
+                1: {
+                    "lines": [line],
+                    "words": [],
+                    "labels": [],
+                    "place": place,
+                    "sections": [section],
+                }
+            }
+        }
+        results = [
+            {
+                "custom_id": f"IMAGE#{line.image_id}#RECEIPT#00001#LINE#00001",
+                "embedding": [0.1, 0.2],
+            }
+        ]
+        captured = {}
+
+        def fake_produce(**kwargs):
+            captured.update(kwargs)
+            return {
+                "delta_id": "d",
+                "delta_key": "k",
+                "embedding_count": len(kwargs["ids"]),
+            }
+
+        with (
+            patch.object(
+                line_delta, "produce_embedding_delta", side_effect=fake_produce
+            ),
+            patch.object(
+                line_delta,
+                "group_lines_into_visual_rows",
+                return_value=[[line]],
+            ),
+            patch.object(line_delta, "get_primary_line_id", return_value=1),
+        ):
+            line_delta.save_line_embeddings_as_delta(
+                results=results,
+                descriptions=descriptions,
+                batch_id="b1",
+                bucket_name="bucket",
+                sqs_queue_url=None,
+            )
+        assert captured["metadatas"][0].get("section_label") == "TOTAL_LINE"
