@@ -112,6 +112,11 @@ describe("SynthesisPipeline (autoplay mode)", () => {
     expect(screen.queryByTestId("merchant-costco")).not.toBeInTheDocument();
     // Autoplay opens on the raw-material fan.
     expect(screen.getByTestId("act-raw")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /sprouts logo/i }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /real sprouts receipt scan/i }))
+      .toHaveLength(3);
   });
 
   test("chrome is gone: no visible caption/eyebrow, act label is sr-only", async () => {

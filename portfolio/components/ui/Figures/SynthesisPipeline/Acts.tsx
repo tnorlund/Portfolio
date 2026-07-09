@@ -77,41 +77,73 @@ const RawMaterialAct: React.FC<ActProps> = ({
   const shownProgress = reducedMotion ? 1 : progress;
   const indices = Array.from({ length: REAL_THUMB_COUNT }, (_, i) => i);
   const mid = (REAL_THUMB_COUNT - 1) / 2;
+  const logoVisible = shownProgress > 0.03;
 
   return (
-    <div className={styles.thumbFan} data-testid="act-raw">
-      {indices.map((i) => {
-        const revealed = shownProgress > (i / REAL_THUMB_COUNT) * 0.8;
-        const rotate = (i - mid) * 9;
-        const lift = Math.abs(i - mid) * -6;
-        const style: React.CSSProperties = {
-          transform: `rotate(${rotate}deg) translateY(${lift}px)`,
-          opacity: revealed ? 1 : 0,
-        };
-        if (failed[i]) {
+    <div className={styles.rawMaterialStage} data-testid="act-raw">
+      <div className={styles.rawLogoPane}>
+        <svg
+          role="img"
+          aria-label={`${MERCHANT_LABELS[merchant]} logo`}
+          viewBox="0 0 1800 468"
+          preserveAspectRatio="xMidYMid meet"
+          className={styles.rawLogo}
+          style={
+            {
+              opacity: logoVisible ? 1 : 0,
+              transform: logoVisible ? "translateY(0)" : "translateY(10px)",
+            } as React.CSSProperties
+          }
+        >
+          <path className={styles.rawLogoCanopy} d="M0 0h1800v329c-43 0-79 0-118-11-29-8-63-8-93-14-18-4-24-18-42-17-50 3-78 37-129 29-31-5-52-20-84-17-37 3-63 29-101 28-32-1-55-18-82-30-40-18-87-26-126-2-30 18-49 44-84 42-44-3-74-39-118-41-42-2-70 27-113 22-33-4-57-30-91-27-38 4-61 36-100 33-45-4-74-42-118-36-32 4-55 26-88 26-43 0-72-33-115-30-32 2-58 22-91 19-45-4-73-43-119-38-35 4-60 31-96 30-37-2-64-28-101-25-50 4-83 45-134 43-38-2-68-28-106-28-41 0-69 30-110 34C76 335 42 341 0 341V0Z" />
+          <path className={styles.rawLogoGround} d="M0 341c42 0 76-6 119-21 41-4 69-34 110-34 38 0 68 26 106 28 51 2 84-39 134-43 37-3 64 23 101 25 36 1 61-26 96-30 46-5 74 34 119 38 33 3 59-17 91-19 43-3 72 26 115 30 33 0 56-22 88-26 44-6 73 32 118 36 39 3 62-29 100-33 34-3 58 23 91 27 43 5 71-24 113-22 44 2 74 38 118 41 35 2 54-24 84-42 39-24 86-16 126 2 27 12 50 29 82 30 38 1 64-25 101-28 32-3 53 12 84 17 51 8 79-26 129-29 18-1 24 13 42 17 30 6 64 6 93 14 39 11 75 11 118 11v139H0V341Z" />
+          <path className={styles.rawLogoStem} d="M836 0h128c-5 31 2 48 31 76 39 38 53 94 48 160l-12 54h-64c-5-40-29-65-63-96l-47-43 22-51-22-27C841 53 834 28 836 0Z" />
+          <path className={styles.rawLogoStemLight} d="M965 0h34c-4 24 7 43 31 67 31 31 43 78 38 137l-15 86h-85c-4-40-27-66-59-95l24-48-31-37c25-44 47-71 63-110Z" />
+          <path className={styles.rawLogoLeaf} d="M807 104h69c19 0 30 20 20 36l-29 48c-16 25-47 52-92 82-34 23-54 50-61 83h-83c-3-68 29-118 88-151 42-24 73-57 95-98Z" />
+          <path className={styles.rawLogoCut} d="M809 104h61c14 0 22 14 15 26l-10 17h-58c-23 0-30-43-8-43Z" />
+        </svg>
+      </div>
+
+      <div className={styles.thumbFan} aria-label="Real Sprouts receipt scans">
+        {indices.map((i) => {
+          const revealed = shownProgress > 0.08 + i * 0.04;
+          const rotate = (i - mid) * 10;
+          const x = (i - mid) * 46;
+          const y = Math.abs(i - mid) * 18 - 12;
+          const scale = i === mid ? 1 : 0.94;
+          const revealY = revealed ? 0 : 20;
+          const style: React.CSSProperties = {
+            transform: `translate(-50%, -50%) translate(${x}px, ${
+              y + revealY
+            }px) rotate(${rotate}deg) scale(${scale})`,
+            opacity: revealed ? 1 : 0,
+            zIndex: i === mid ? indices.length + 1 : i + 1,
+          };
+          if (failed[i]) {
+            return (
+              <div
+                key={i}
+                className={`${styles.thumb} ${styles.thumbMissing}`}
+                style={style}
+              >
+                scan {i + 1}
+              </div>
+            );
+          }
           return (
-            <div
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
               key={i}
-              className={`${styles.thumb} ${styles.thumbMissing}`}
+              src={realThumbSrc(merchant, i)}
+              alt={`Real ${MERCHANT_LABELS[merchant]} receipt scan ${i + 1}`}
+              className={styles.thumb}
               style={style}
-            >
-              scan {i + 1}
-            </div>
+              loading="lazy"
+              onError={() => setFailed((prev) => ({ ...prev, [i]: true }))}
+            />
           );
-        }
-        return (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={i}
-            src={realThumbSrc(merchant, i)}
-            alt={`Real ${merchant} receipt scan ${i + 1}`}
-            className={styles.thumb}
-            style={style}
-            loading="lazy"
-            onError={() => setFailed((prev) => ({ ...prev, [i]: true }))}
-          />
-        );
-      })}
+        })}
+      </div>
     </div>
   );
 };

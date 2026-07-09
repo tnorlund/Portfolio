@@ -1,5 +1,4 @@
 import React from "react";
-import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import ReactMarkdown from "react-markdown";
 import { useSpring, animated, config } from "@react-spring/web";
 import { getReceiptMotionScale } from "./ReceiptFlow/receiptFlowUtils";
@@ -7,7 +6,6 @@ import type {
   QAQuestionData,
   StepType,
   TraceStep,
-  ReceiptEvidence,
   StructuredReceipt,
 } from "../../../hooks/qaTypes";
 import { useRevealInView } from "../../../hooks/useOptimizedInView";
@@ -23,411 +21,9 @@ interface QAAgentFlowProps {
   children?: React.ReactNode;
 }
 
-// Real receipts with coffee products from the database
-const COFFEE_RECEIPTS: ReceiptEvidence[] = [
-  {
-    imageId: "750e0675-f318-4d1d-994c-c330ff6cb3f3",
-    merchant: "Sprouts",
-    item: "ORG BIRCHWOOD COFFEE",
-    amount: 15.99,
-    thumbnailKey: "assets/750e0675-f318-4d1d-994c-c330ff6cb3f3_RECEIPT_00002.webp",
-    width: 350,
-    height: 900,
-  },
-  {
-    imageId: "a762ca4d-860c-4116-abb1-e25f61145294",
-    merchant: "La La Land",
-    item: "Cappuccino + Americano",
-    amount: 10.00,
-    thumbnailKey: "assets/a762ca4d-860c-4116-abb1-e25f61145294_RECEIPT_00002.webp",
-    width: 300,
-    height: 550,
-  },
-  {
-    imageId: "6f874726-d8fd-40a9-9023-91f56fda7dd2",
-    merchant: "Blue Bottle",
-    item: "Pour Over",
-    amount: 5.25,
-    thumbnailKey: "assets/6f874726-d8fd-40a9-9023-91f56fda7dd2_RECEIPT_00001.webp",
-    width: 320,
-    height: 600,
-  },
-  {
-    imageId: "b50ba18b-7511-4a85-87cd-74aa5e147e10",
-    merchant: "Le Pain Quotidien",
-    item: "Iced Latte + Americano",
-    amount: 11.25,
-    thumbnailKey: "assets/b50ba18b-7511-4a85-87cd-74aa5e147e10_RECEIPT_00002.webp",
-    width: 340,
-    height: 750,
-  },
-];
-
-interface SproutsStackReceipt {
-  imageId: string;
-  receiptId: string;
-  thumbnailKey: string;
-  fallbackKey: string;
-  width: number;
-  height: number;
-}
-
-const SPROUTS_STACK_RECEIPTS: SproutsStackReceipt[] = [
-  {
-    imageId: "0fca7cfd-183e-4109-87a9-2b7b7b94e82d",
-    receiptId: "0fca7cfd-183e-4109-87a9-2b7b7b94e82d-2",
-    thumbnailKey: "assets/0fca7cfd-183e-4109-87a9-2b7b7b94e82d_RECEIPT_00002.webp",
-    fallbackKey: "assets/0fca7cfd-183e-4109-87a9-2b7b7b94e82d_RECEIPT_00002.jpg",
-    width: 830,
-    height: 2827,
-  },
-  {
-    imageId: "c914012e-3fc3-4ba2-b314-fa7d423acac8",
-    receiptId: "c914012e-3fc3-4ba2-b314-fa7d423acac8-2",
-    thumbnailKey: "assets/c914012e-3fc3-4ba2-b314-fa7d423acac8_RECEIPT_00002.webp",
-    fallbackKey: "assets/c914012e-3fc3-4ba2-b314-fa7d423acac8_RECEIPT_00002.jpg",
-    width: 871,
-    height: 2914,
-  },
-  {
-    imageId: "00ded398-af6f-4a49-86f7-c79ccb554e48",
-    receiptId: "00ded398-af6f-4a49-86f7-c79ccb554e48-2",
-    thumbnailKey: "assets/00ded398-af6f-4a49-86f7-c79ccb554e48_RECEIPT_00002.webp",
-    fallbackKey: "assets/00ded398-af6f-4a49-86f7-c79ccb554e48_RECEIPT_00002.jpg",
-    width: 792,
-    height: 2575,
-  },
-  {
-    imageId: "e9ea77d0-3faa-427f-9b59-83e1180826b7",
-    receiptId: "e9ea77d0-3faa-427f-9b59-83e1180826b7-1",
-    thumbnailKey: "assets/e9ea77d0-3faa-427f-9b59-83e1180826b7_RECEIPT_00001.webp",
-    fallbackKey: "assets/e9ea77d0-3faa-427f-9b59-83e1180826b7_RECEIPT_00001.jpg",
-    width: 783,
-    height: 3161,
-  },
-  {
-    imageId: "95718576-7873-4170-9b71-7736a44a2bd1",
-    receiptId: "95718576-7873-4170-9b71-7736a44a2bd1-1",
-    thumbnailKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00001.webp",
-    fallbackKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00001.jpg",
-    width: 828,
-    height: 2978,
-  },
-  {
-    imageId: "95718576-7873-4170-9b71-7736a44a2bd1",
-    receiptId: "95718576-7873-4170-9b71-7736a44a2bd1-2",
-    thumbnailKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00002.webp",
-    fallbackKey: "assets/95718576-7873-4170-9b71-7736a44a2bd1_RECEIPT_00002.jpg",
-    width: 793,
-    height: 2409,
-  },
-  {
-    imageId: "32e93177-6528-4d63-b637-45d53d1cf3f3",
-    receiptId: "32e93177-6528-4d63-b637-45d53d1cf3f3-1",
-    thumbnailKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00001.webp",
-    fallbackKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00001.jpg",
-    width: 794,
-    height: 3165,
-  },
-  {
-    imageId: "32e93177-6528-4d63-b637-45d53d1cf3f3",
-    receiptId: "32e93177-6528-4d63-b637-45d53d1cf3f3-2",
-    thumbnailKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00002.webp",
-    fallbackKey: "assets/32e93177-6528-4d63-b637-45d53d1cf3f3_RECEIPT_00002.jpg",
-    width: 791,
-    height: 2923,
-  },
-  {
-    imageId: "7c932424-cb54-4fdb-ac2d-465e9b57b7c8",
-    receiptId: "7c932424-cb54-4fdb-ac2d-465e9b57b7c8-1",
-    thumbnailKey: "assets/7c932424-cb54-4fdb-ac2d-465e9b57b7c8_RECEIPT_00001.webp",
-    fallbackKey: "assets/7c932424-cb54-4fdb-ac2d-465e9b57b7c8_RECEIPT_00001.jpg",
-    width: 792,
-    height: 2982,
-  },
-  {
-    imageId: "94676cfe-ac3c-4183-b93a-31ae12f92cf5",
-    receiptId: "94676cfe-ac3c-4183-b93a-31ae12f92cf5-1",
-    thumbnailKey: "assets/94676cfe-ac3c-4183-b93a-31ae12f92cf5_RECEIPT_00001.webp",
-    fallbackKey: "assets/94676cfe-ac3c-4183-b93a-31ae12f92cf5_RECEIPT_00001.jpg",
-    width: 790,
-    height: 2877,
-  },
-  {
-    imageId: "c6b66d97-1e0a-4be4-9e1f-731a7e4be25c",
-    receiptId: "c6b66d97-1e0a-4be4-9e1f-731a7e4be25c-1",
-    thumbnailKey: "assets/c6b66d97-1e0a-4be4-9e1f-731a7e4be25c/1.webp",
-    fallbackKey: "assets/c6b66d97-1e0a-4be4-9e1f-731a7e4be25c/1.jpg",
-    width: 777,
-    height: 2040,
-  },
-  {
-    imageId: "887079fa-bb3e-480a-8202-e759afe63f1a",
-    receiptId: "887079fa-bb3e-480a-8202-e759afe63f1a-1",
-    thumbnailKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00001.webp",
-    fallbackKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00001.jpg",
-    width: 785,
-    height: 2647,
-  },
-  {
-    imageId: "887079fa-bb3e-480a-8202-e759afe63f1a",
-    receiptId: "887079fa-bb3e-480a-8202-e759afe63f1a-2",
-    thumbnailKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00002.webp",
-    fallbackKey: "assets/887079fa-bb3e-480a-8202-e759afe63f1a_RECEIPT_00002.jpg",
-    width: 783,
-    height: 3027,
-  },
-  {
-    imageId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
-    receiptId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303-1",
-    thumbnailKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00001.webp",
-    fallbackKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00001.jpg",
-    width: 783,
-    height: 2790,
-  },
-  {
-    imageId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
-    receiptId: "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303-2",
-    thumbnailKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00002.webp",
-    fallbackKey: "assets/4cd9dd6d-ecd8-4e6f-928f-18440e4ad303_RECEIPT_00002.jpg",
-    width: 784,
-    height: 2292,
-  },
-  {
-    imageId: "a0301717-d765-4f34-a15d-48c362ebf9fd",
-    receiptId: "a0301717-d765-4f34-a15d-48c362ebf9fd-1",
-    thumbnailKey: "assets/a0301717-d765-4f34-a15d-48c362ebf9fd_RECEIPT_00001.webp",
-    fallbackKey: "assets/a0301717-d765-4f34-a15d-48c362ebf9fd_RECEIPT_00001.jpg",
-    width: 799,
-    height: 2814,
-  },
-  {
-    imageId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184",
-    receiptId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184-1",
-    thumbnailKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00001.webp",
-    fallbackKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00001.jpg",
-    width: 785,
-    height: 3054,
-  },
-  {
-    imageId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184",
-    receiptId: "f30c3d0f-a13a-4a8e-9367-1136e9a51184-2",
-    thumbnailKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00002.webp",
-    fallbackKey: "assets/f30c3d0f-a13a-4a8e-9367-1136e9a51184_RECEIPT_00002.jpg",
-    width: 782,
-    height: 2998,
-  },
-];
-
-const getStableStackPosition = (
-  id: string,
-  index: number,
-  stackW: number,
-  stackH: number,
-  cardW: number,
-  cardH: number,
-) => {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
-  }
-  const rand = (salt: number) =>
-    (Math.abs(Math.sin(hash * (salt + 1) + index * 97) * 10000) % 1000) / 1000;
-  const maxLeft = Math.max(0, stackW - cardW);
-  const maxTop = Math.max(0, stackH - cardH);
-
-  return {
-    rotation: rand(1) * 26 - 13,
-    left: Math.max(4, Math.min(rand(2) * maxLeft, maxLeft)),
-    top: Math.max(4, Math.min(rand(3) * maxTop, maxTop)),
-  };
-};
-
-const SproutsLogoMark: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
-  const width = compact ? 176 : 220;
-  const height = compact ? 44 : 54;
-
-  return (
-    <svg
-      role="img"
-      aria-label="Sprouts Farmers Market"
-      width={width}
-      height={height}
-      viewBox="0 0 260 60"
-      style={{ display: "block", color: "var(--text-color)" }}
-    >
-      <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-        <path
-          d="M21 42C13 35 11 22 17 12c12 2 22 11 25 25-4 5-12 8-21 5Z"
-          fill="currentColor"
-          strokeWidth="2"
-        />
-        <path d="M24 38C28 27 33 18 41 11" stroke="var(--background-color)" strokeWidth="2.5" />
-      </g>
-      <text
-        x="54"
-        y="31"
-        fill="currentColor"
-        fontFamily="Arial, Helvetica, sans-serif"
-        fontSize="24"
-        fontWeight="800"
-      >
-        SPROUTS
-      </text>
-      <text
-        x="57"
-        y="46"
-        fill="currentColor"
-        fontFamily="Arial, Helvetica, sans-serif"
-        fontSize="10"
-        fontWeight="700"
-        letterSpacing="1.5"
-      >
-        FARMERS MARKET
-      </text>
-    </svg>
-  );
-};
-
-interface SproutsReceiptStackPreviewProps {
-  isVisible: boolean;
-  visible: boolean;
-  variant?: "intro" | "final";
-}
-
-const SproutsReceiptStackPreview: React.FC<SproutsReceiptStackPreviewProps> = ({
-  isVisible,
-  visible,
-  variant = "intro",
-}) => {
-  const motionScale = getReceiptMotionScale();
-  const isIntro = variant === "intro";
-  const receipts = isIntro ? SPROUTS_STACK_RECEIPTS : SPROUTS_STACK_RECEIPTS.slice(0, 12);
-  const stackW = isIntro ? 330 : 190;
-  const stackH = isIntro ? 230 : 215;
-  const cardW = isIntro ? 74 : 64;
-  const cardH = isIntro ? 180 : 165;
-  const delayStep = (isIntro ? 48 : 65) * motionScale;
-  const duration = (isIntro ? 440 : 360) * motionScale;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: isIntro ? "1rem 1.5rem" : "0.45rem",
-        maxHeight: visible ? (isIntro ? "310px" : "285px") : 0,
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(-8px)",
-        overflow: "hidden",
-        pointerEvents: visible ? "auto" : "none",
-        transition: "max-height 0.45s ease, opacity 0.32s ease, transform 0.32s ease",
-        marginBottom: visible && isIntro ? "0.75rem" : 0,
-      }}
-      aria-hidden={!visible}
-    >
-      <div
-        style={{
-          minWidth: isIntro ? "190px" : "150px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "0.15rem",
-        }}
-      >
-        <SproutsLogoMark compact={!isIntro} />
-        <span
-          style={{
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: isIntro ? "0.72rem" : "0.64rem",
-            color: "var(--text-color)",
-            opacity: 0.64,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-          }}
-        >
-          203 receipts
-        </span>
-      </div>
-
-      <div
-        aria-label="Sprouts receipt stack"
-        style={{
-          position: "relative",
-          width: `${stackW}px`,
-          height: `${stackH}px`,
-          flex: `0 1 ${stackW}px`,
-        }}
-      >
-        {receipts.map((receipt, idx) => {
-          const pos = getStableStackPosition(
-            receipt.receiptId,
-            idx,
-            stackW,
-            stackH,
-            cardW,
-            cardH,
-          );
-          return (
-            <div
-              key={receipt.receiptId}
-              style={{
-                position: "absolute",
-                width: `${cardW}px`,
-                left: `${pos.left}px`,
-                top: `${pos.top}px`,
-                zIndex: idx,
-                border: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.22)",
-                backgroundColor: "var(--background-color)",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
-                overflow: "hidden",
-                opacity: 0,
-                "--r": `${pos.rotation}deg`,
-                animation: `sproutsReceiptStackIn ${duration}ms ease-out ${idx * delayStep}ms forwards`,
-                animationPlayState: isVisible && visible ? "running" : "paused",
-              } as React.CSSProperties}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`${CDN_BASE}/${receipt.thumbnailKey}`}
-                data-fallback={`${CDN_BASE}/${receipt.fallbackKey}`}
-                alt="Sprouts Farmers Market receipt"
-                style={{
-                  width: "100%",
-                  aspectRatio: `${receipt.width} / ${receipt.height}`,
-                  height: "auto",
-                  display: "block",
-                }}
-                onError={(event) => {
-                  const image = event.currentTarget;
-                  const fallback = image.dataset.fallback;
-                  if (fallback && image.src !== fallback) {
-                    image.src = fallback;
-                    return;
-                  }
-                  image.style.display = "none";
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
-
-      <style>{`
-        @keyframes sproutsReceiptStackIn {
-          from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-18px) scale(0.96); }
-          to { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0) scale(1); }
-        }
-      `}</style>
-    </div>
-  );
-};
-
 // Structured receipt summaries (output of shape node)
 const STRUCTURED_RECEIPTS: StructuredReceipt[] = [
-  { merchant: "Sprouts", items: [{ name: "ORG BIRCHWOOD COFFEE", amount: 15.99 }] },
+  { merchant: "Neighborhood Market", items: [{ name: "WHOLE BEAN COFFEE", amount: 15.99 }] },
   { merchant: "La La Land", items: [{ name: "Large Americano", amount: 4.70 }, { name: "Cappuccino", amount: 5.30 }] },
   { merchant: "Blue Bottle", items: [{ name: "Pour Over", amount: 5.25 }] },
   { merchant: "Le Pain Quotidien", items: [{ name: "Iced Latte", amount: 6.25 }, { name: "Iced Americano", amount: 5.00 }] },
@@ -451,7 +47,7 @@ const EXAMPLE_TRACE: TraceStep[] = [
   {
     type: "tools",
     content: 'search_receipts("COFFEE", "text") → 8 matches',
-    detail: "Text search finds grocery store coffee",
+    detail: "Text search finds packaged coffee purchases",
     durationMs: 800,
   },
   {
@@ -484,7 +80,6 @@ const EXAMPLE_TRACE: TraceStep[] = [
     content: "You spent $58.38 on coffee",
     detail: "5 receipts with coffee items identified",
     durationMs: 5200,
-    receipts: COFFEE_RECEIPTS,
   },
 ];
 
@@ -496,7 +91,6 @@ const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string
   synthesize: { color: "var(--color-red)", label: "Synthesize", icon: "✓", node: "5", description: "Composing the final answer with evidence citations" },
 };
 
-const CDN_BASE = getCdnBaseUrl();
 
 /** Default step duration (ms) when durationMs is not available */
 const DEFAULT_STEP_MS = 1500;
@@ -659,7 +253,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   // Determine the loop phase bounds dynamically based on trace content
   const loopEndIdx = trace.length > 0 ? trace.reduce((last, s, i) => (s.type === "agent" || s.type === "tools" ? i : last), -1) : 5;
   const inLoopPhase = activeStep >= 1 && activeStep <= loopEndIdx;
-  const showSproutsIntro = activeStep < 1 && !showAnswer;
 
   return (
     <div
@@ -823,12 +416,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           >
             {/* Slot for marquee or other header content */}
             {children}
-
-            <SproutsReceiptStackPreview
-              isVisible={isVisible}
-              visible={showSproutsIntro}
-              variant="intro"
-            />
 
             {/* 5-Node SVG Flow Diagram */}
             <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
@@ -1052,32 +639,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                 .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
                 .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
                 .trim() || undefined;
-              const allReceipts = synthesizeStep?.receipts ?? [];
-              const uniqueReceipts: ReceiptEvidence[] = [];
-              const seenIds = new Set<string>();
-              for (const r of allReceipts) {
-                // Skip receipts with null/undefined imageId (incomplete data from API)
-                if (!r.imageId) continue;
-                if (!seenIds.has(r.imageId)) {
-                  seenIds.add(r.imageId);
-                  uniqueReceipts.push(r);
-                }
-              }
-
-              const stackW = 200, stackH = 250, cW = 80, cH = 200, rBuf = 20;
-              const mLeft = stackW - cW - rBuf;
-              const mTop = Math.max(0, stackH - cH - rBuf);
-              const sPositions = uniqueReceipts.map((r, i) => {
-                let h = 0;
-                for (let c = 0; c < r.imageId.length; c++) h = ((h << 5) - h + r.imageId.charCodeAt(c)) | 0;
-                const p = (n: number) => ((Math.abs(h * (n + 1) * 2654435761) % 1000) / 1000);
-                return {
-                  rotation: p(1) * 24 - 12,
-                  left: Math.max(rBuf / 2, Math.min(p(2) * mLeft, mLeft)),
-                  top: Math.max(rBuf / 2, Math.min(p(3) * mTop, mTop)),
-                  zIndex: i,
-                };
-              });
               return (
                 <animated.div
                   ref={containerRef}
@@ -1111,68 +672,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                       >
                         <ReactMarkdown>{answerText}</ReactMarkdown>
                       </div>
-                      {uniqueReceipts.length > 0 ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "0.35rem",
-                            flexShrink: 0,
-                            margin: "0 auto",
-                          }}
-                        >
-                          <SproutsLogoMark compact />
-                          <div
-                            style={{
-                              position: "relative",
-                              width: `${stackW}px`,
-                              height: `${stackH}px`,
-                            }}
-                          >
-                            {uniqueReceipts.map((receipt, idx) => (
-                              <div
-                                key={receipt.imageId}
-                                style={{
-                                  position: "absolute",
-                                  width: `${cW}px`,
-                                  left: `${sPositions[idx].left}px`,
-                                  top: `${sPositions[idx].top}px`,
-                                  "--r": `${sPositions[idx].rotation}deg`,
-                                  zIndex: sPositions[idx].zIndex,
-                                  border: "1px solid #ccc",
-                                  backgroundColor: "var(--background-color)",
-                                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                                  overflow: "hidden",
-                                  opacity: 0,
-                                  animation: `receiptFadeIn 0.4s ease-out ${idx * 80}ms forwards`,
-                                  animationPlayState: isVisible ? "running" : "paused",
-                                } as React.CSSProperties}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={`${CDN_BASE}/${receipt.thumbnailKey}`}
-                                  alt={`${receipt.merchant} receipt`}
-                                  style={{ width: "100%", height: "auto", display: "block" }}
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                />
-                              </div>
-                            ))}
-                            <style>{`
-                              @keyframes receiptFadeIn {
-                                from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-20px); }
-                                to   { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0); }
-                              }
-                            `}</style>
-                          </div>
-                        </div>
-                      ) : (
-                        <SproutsReceiptStackPreview
-                          isVisible={isVisible}
-                          visible={showAnswer}
-                          variant="final"
-                        />
-                      )}
                     </div>
                   ) : null}
                 </animated.div>
