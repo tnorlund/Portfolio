@@ -10,6 +10,7 @@ payload size limits.
 import json
 import logging
 import os
+import random
 import tempfile
 import uuid
 from datetime import datetime
@@ -144,9 +145,17 @@ def lambda_handler(
         except (TypeError, ValueError):
             max_batches = 0
         if max_batches and total_pending > max_batches:
+            # Randomly sample the slice instead of always taking the first
+            # `max_batches` from the status GSI. A fixed prefix would let a few
+            # permanently-stuck batches (e.g. orphaned batches referencing
+            # deleted words, which poll but never mark COMPLETE) sit at the
+            # front and starve every later batch forever. Random sampling lets
+            # the healthy batches drain (they get marked COMPLETE and leave the
+            # PENDING set), so the backlog actually converges.
+            random.shuffle(pending_batches)
             pending_batches = pending_batches[:max_batches]
             logger.info(
-                "Capping this run to %d of %d pending batches "
+                "Capping this run to a random %d of %d pending batches "
                 "(remaining %d will be handled by subsequent runs)",
                 max_batches,
                 total_pending,
