@@ -540,11 +540,16 @@ public struct VisionOCREngine: OCREngineProtocol {
             var receiptOutputs: [ReceiptOutput]?
 
             if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
+                // Load pixels once: used both for scan-vs-photo classification
+                // (histogram signal) and, for non-native types, receipt
+                // extraction below.
+                let loadedImage = loadCGImage(from: imageURL)
                 // Classify the image
                 classification = classifier.classify(
                     lines: mutableLines,
                     imageWidth: imageDimensions.width,
-                    imageHeight: imageDimensions.height
+                    imageHeight: imageDimensions.height,
+                    image: loadedImage
                 )
 
                 // Cluster based on image type
@@ -566,7 +571,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                     // Process receipts if we have clustering (PHOTO or SCAN)
                     if classResult.imageType != .native,
                        let clusterResult = clustering,
-                       let cgImage = loadCGImage(from: imageURL) {
+                       let cgImage = loadedImage {
                         let receiptProcessor = ReceiptProcessor()
                         let processedReceipts = receiptProcessor.process(
                             image: cgImage,
@@ -778,10 +783,12 @@ public struct VisionOCREngine: OCREngineProtocol {
         var receiptOutputs: [ReceiptOutput]?
 
         if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
+            let loadedImage = loadCGImage(from: imageURL)
             classification = classifier.classify(
                 lines: mutableLines,
                 imageWidth: imageDimensions.width,
-                imageHeight: imageDimensions.height
+                imageHeight: imageDimensions.height,
+                image: loadedImage
             )
 
             if let classResult = classification {
@@ -798,7 +805,7 @@ public struct VisionOCREngine: OCREngineProtocol {
 
                 if classResult.imageType != .native,
                    let clusterResult = clustering,
-                   let cgImage = loadCGImage(from: imageURL) {
+                   let cgImage = loadedImage {
                     let receiptProcessor = ReceiptProcessor()
                     let processedReceipts = receiptProcessor.process(
                         image: cgImage,

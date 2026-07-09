@@ -141,7 +141,8 @@ public struct ImageClassifier {
     public func classify(
         lines: [Line],
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        image: CGImage? = nil
     ) -> ClassificationResult {
         let margins = findMargins(lines: lines)
 
@@ -165,7 +166,21 @@ public struct ImageClassifier {
         if margins.allBelow(marginThreshold) {
             // Text fills the image - single receipt
             imageType = .native
+        } else if let image = image, let feat = pixelFeatures(image: image) {
+            // PRIMARY signal: a SCAN is a white document that fills the frame,
+            // so its border is overwhelmingly near-white with ~0 saturation.
+            // A PHOTO has a table/scene background -> low border-white, higher
+            // saturation. This is resolution-invariant, unlike comparing pixel
+            // dimensions to fixed references (which mislabels downscaled photos
+            // as scans). Calibrated margin is huge: real scans ~0.9-1.0
+            // border-white, photos <0.01.
+            if feat.borderWhite > 0.5 && feat.meanSat < 0.05 {
+                imageType = .scan
+            } else {
+                imageType = .photo
+            }
         } else if scanDistance < photoDistance {
+            // Fallback (no pixels available): dimension heuristic.
             imageType = .scan
         } else {
             // When scanDistance == photoDistance, defaults to .photo
@@ -180,6 +195,76 @@ public struct ImageClassifier {
             imageWidth: imageWidth,
             imageHeight: imageHeight
         )
+    }
+
+    /// Cheap pixel-histogram features for scan-vs-photo discrimination.
+    ///
+    /// Downscales the image to a 64x64 thumbnail (one draw, ~4k pixels) and
+    /// measures how "document-like" the frame is:
+    ///   - borderWhite: fraction of near-white, near-zero-saturation pixels in
+    ///     the outer 12% border. A scanned document fills the frame in white
+    ///     paper (~0.9-1.0); a photo shows a table/scene background (~0).
+    ///   - meanSat: mean HSV saturation over the whole thumbnail. Scans are
+    ///     grayscale paper+ink (~0); photos have color (>0.1).
+    ///
+    /// Returns nil if a bitmap context can't be created.
+    private func pixelFeatures(
+        image: CGImage
+    ) -> (borderWhite: CGFloat, meanSat: CGFloat)? {
+        let side = 64
+        let bytesPerRow = side * 4
+        var data = [UInt8](repeating: 0, count: side * side * 4)
+        guard
+            let ctx = CGContext(
+                data: &data,
+                width: side,
+                height: side,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else { return nil }
+        ctx.interpolationQuality = .low
+        ctx.draw(
+            image,
+            in: CGRect(x: 0, y: 0, width: side, height: side)
+        )
+
+        let borderPx = max(1, Int(CGFloat(side) * 0.12))
+        var whiteBorder = 0
+        var borderCount = 0
+        var satSum: CGFloat = 0
+
+        for y in 0..<side {
+            for x in 0..<side {
+                let i = (y * side + x) * 4
+                let r = CGFloat(data[i]) / 255.0
+                let g = CGFloat(data[i + 1]) / 255.0
+                let b = CGFloat(data[i + 2]) / 255.0
+                let mx = max(r, max(g, b))
+                let mn = min(r, min(g, b))
+                let sat = mx > 0 ? (mx - mn) / mx : 0
+                let lum = 0.299 * r + 0.587 * g + 0.114 * b
+                satSum += sat
+
+                let isBorder =
+                    x < borderPx || x >= side - borderPx
+                    || y < borderPx || y >= side - borderPx
+                if isBorder {
+                    borderCount += 1
+                    if lum > 0.85 && sat < 0.12 {
+                        whiteBorder += 1
+                    }
+                }
+            }
+        }
+
+        let borderWhite =
+            borderCount > 0
+            ? CGFloat(whiteBorder) / CGFloat(borderCount) : 0
+        let meanSat = satSum / CGFloat(side * side)
+        return (borderWhite, meanSat)
     }
 }
 #endif
