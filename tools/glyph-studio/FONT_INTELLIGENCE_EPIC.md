@@ -190,10 +190,21 @@ unchanged — family fonts are *fitted skeletons*, never copied crops).
   the `(merchant, section) → (family, face)` map with confidence scores;
   cluster count and IoU-style separation reported; Costco isolates as its own
   family (known-answer check).
-- **M3 — Pooled family font (Font A pilot).** Hierarchical skeleton fit for
-  the largest family; compile regular + bold faces. *Exit:* diagonal-glyph A/B
-  beats every constituent merchant's current atlas; passes the anti-copy gate
-  and the 94/94 coverage gate.
+- **M3 — Pooled family font (Font A pilot). ⚠ AMENDED — see M3_FINDINGS.md.**
+  Measured 2026-07-09: pixel-space cross-merchant pooling **fails both epic
+  criteria** — the pooled railed-family atlas is *denser* than the solo
+  atlases (WF 0.335→0.404, Costco 0.308→0.402 vs targets 0.135/0.187; both
+  still ceiling-railed) and every hard diagonal's consensus *blurs* (W −0.163
+  … M −0.043) despite 2–17× the samples. Root cause: the merchant printer
+  offset is signal, not noise — median-voting across letterforms adds edge
+  ink. Pooling survives only for **coverage** (+5 glyphs, rare-glyph recovery,
+  M6 cold start). Revised M3: (a) **density-calibrated minting per merchant**
+  (derive the mint's vote/erosion against the measured real density with the
+  v1 cheap measurer — "re-mint lighter", derived instead of eyeballed);
+  (b) diagonals via **family-level handcraft** (one skeleton set per family,
+  reused across members). *Exit (unchanged in spirit):* the railed merchants
+  come off the rails on the standing harness `py/m3_acceptance.py`; anti-copy
+  + coverage gates hold.
 - **M4 — Multi-face rendering.** Renderer reads the map; per-word face
   stamping. *Exit:* a Costco receipt renders bold totals + regular body from
   family fonts and the production scorecard is in-gate (h/wpc/density within
