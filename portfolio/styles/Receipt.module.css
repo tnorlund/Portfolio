@@ -40,9 +40,23 @@
 }
 
 .figureBoundary {
+  min-height: var(--figure-intrinsic-size, 600px);
   content-visibility: auto;
   contain-intrinsic-size: auto var(--figure-intrinsic-size, 600px);
   overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .figureBoundary {
+    min-height: var(
+      --figure-mobile-intrinsic-size,
+      var(--figure-intrinsic-size, 600px)
+    );
+    contain-intrinsic-size: auto var(
+      --figure-mobile-intrinsic-size,
+      var(--figure-intrinsic-size, 600px)
+    );
+  }
 }
 
 @supports not (content-visibility: auto) {

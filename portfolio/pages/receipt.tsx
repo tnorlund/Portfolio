@@ -53,14 +53,18 @@ interface ReceiptPageProps {
 
 interface FigureBoundaryProps {
   children: React.ReactNode;
-  intrinsicSize?: string;
+  name: string;
+  intrinsicSize: string;
+  mobileIntrinsicSize?: string;
 }
 
 const FIGURE_LAZY_ROOT_MARGIN = "1000px 0px";
 
 const FigureBoundary = ({
   children,
-  intrinsicSize = "600px",
+  name,
+  intrinsicSize,
+  mobileIntrinsicSize = intrinsicSize,
 }: FigureBoundaryProps) => {
   const { ref, inView } = useInView({
     rootMargin: FIGURE_LAZY_ROOT_MARGIN,
@@ -79,11 +83,12 @@ const FigureBoundary = ({
     <div
       ref={ref}
       className={styles.figureBoundary}
+      data-figure-boundary={name}
       data-lazy-pending={shouldRender ? undefined : "true"}
       style={
         {
           "--figure-intrinsic-size": intrinsicSize,
-          minHeight: shouldRender ? undefined : intrinsicSize,
+          "--figure-mobile-intrinsic-size": mobileIntrinsicSize,
         } as React.CSSProperties
       }
     >
@@ -283,7 +288,7 @@ M1LK 2%           1    $4.4g`}</code>
         piece of paper with words on it.
       </p>
 
-      <FigureBoundary intrinsicSize="520px">
+      <FigureBoundary name="page-curl" intrinsicSize="160px">
         <ClientOnly>
           <PageCurlLetter />
         </ClientOnly>
@@ -294,7 +299,11 @@ M1LK 2%           1    $4.4g`}</code>
         paper with words on it out of the image.
       </p>
 
-      <FigureBoundary intrinsicSize="760px">
+      <FigureBoundary
+        name="receipt-bounding-box-grid"
+        intrinsicSize="960px"
+        mobileIntrinsicSize="440px"
+      >
         <ReceiptBoundingBoxGrid />
       </FigureBoundary>
 
@@ -302,7 +311,7 @@ M1LK 2%           1    $4.4g`}</code>
         This flattened receipt is now as clean as it can be.
       </p>
 
-      <FigureBoundary intrinsicSize="760px">
+      <FigureBoundary name="receipt-stack" intrinsicSize="800px">
         <ReceiptStack />
       </FigureBoundary>
 
@@ -317,11 +326,13 @@ M1LK 2%           1    $4.4g`}</code>
         receipt came from.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <GoogleMapsLogo />
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary name="google-maps-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <GoogleMapsLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         First idea: Google Maps. Feed it an address, phone number, website,
@@ -330,11 +341,13 @@ M1LK 2%           1    $4.4g`}</code>
         a better way to group the receipts by store without wasting another $8.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <ChromaLogo />
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary name="chroma-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <ChromaLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         So I added Chroma, a vector database. Great, another database. But
@@ -343,7 +356,11 @@ M1LK 2%           1    $4.4g`}</code>
         this address before?"
       </p>
 
-      <FigureBoundary intrinsicSize="520px">
+      <FigureBoundary
+        name="address-similarity"
+        intrinsicSize="460px"
+        mobileIntrinsicSize="360px"
+      >
         <ClientOnly>
           <AddressSimilaritySideBySide />
         </ClientOnly>
@@ -364,7 +381,11 @@ M1LK 2%           1    $4.4g`}</code>
         formats it differently. I needed a shared vocabulary.
       </p>
 
-      <FigureBoundary intrinsicSize="560px">
+      <FigureBoundary
+        name="label-word-cloud"
+        intrinsicSize="580px"
+        mobileIntrinsicSize="400px"
+      >
         <ClientOnly>
           <LabelWordCloud />
         </ClientOnly>
@@ -377,7 +398,7 @@ M1LK 2%           1    $4.4g`}</code>
         and the arithmetic on the totals.
       </p>
 
-      <FigureBoundary intrinsicSize="780px">
+      <FigureBoundary name="receipt-health" intrinsicSize="660px">
         <ClientOnly>
           <ReceiptHealthExplorer />
         </ClientOnly>
@@ -388,7 +409,11 @@ M1LK 2%           1    $4.4g`}</code>
         results by asking AI to verify them. And again. And again.
       </p>
 
-      <FigureBoundary intrinsicSize="420px">
+      <FigureBoundary
+        name="label-validation"
+        intrinsicSize="900px"
+        mobileIntrinsicSize="900px"
+      >
         <ClientOnly>
           <LabelValidationTimeline />
         </ClientOnly>
@@ -421,7 +446,7 @@ M1LK 2%           1    $4.4g`}</code>
         MILKs" You can't crank both to 100%.
       </p>
 
-      <FigureBoundary intrinsicSize="500px">
+      <FigureBoundary name="precision-recall" intrinsicSize="440px">
         <PrecisionRecallDartboard />
       </FigureBoundary>
 
@@ -431,13 +456,17 @@ M1LK 2%           1    $4.4g`}</code>
         is called hyper-parameter tuning.
       </p>
 
-      <FigureBoundary intrinsicSize="640px">
+      <FigureBoundary
+        name="training-metrics"
+        intrinsicSize="640px"
+        mobileIntrinsicSize="560px"
+      >
         <ClientOnly>
           <TrainingMetricsAnimation />
         </ClientOnly>
       </FigureBoundary>
 
-      <FigureBoundary intrinsicSize="720px">
+      <FigureBoundary name="layoutlm-inference" intrinsicSize="640px">
         <ClientOnly>
           <LayoutLMInferenceVisualization />
         </ClientOnly>
@@ -452,7 +481,7 @@ M1LK 2%           1    $4.4g`}</code>
         failure case. Free labels.
       </p>
 
-      <FigureBoundary intrinsicSize="720px">
+      <FigureBoundary name="synthesis-pipeline" intrinsicSize="640px">
         <ClientOnly>
           <SynthesisPipeline />
         </ClientOnly>
@@ -473,7 +502,7 @@ M1LK 2%           1    $4.4g`}</code>
         afford to find out about the milk.
       </p>
 
-      <FigureBoundary intrinsicSize="260px">
+      <FigureBoundary name="aws-flow" intrinsicSize="240px">
         <ClientOnly>
           <AWSFlowDiagram />
         </ClientOnly>
@@ -491,7 +520,11 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
 
-      <FigureBoundary intrinsicSize="280px">
+      <FigureBoundary
+        name="query-transform"
+        intrinsicSize="160px"
+        mobileIntrinsicSize="120px"
+      >
         <ClientOnly>
           <QueryLabelTransform
             query="How much did I spend on milk?"
@@ -505,7 +538,11 @@ M1LK 2%           1    $4.4g`}</code>
         them up.
       </p>
 
-      <FigureBoundary intrinsicSize="900px">
+      <FigureBoundary
+        name="word-similarity"
+        intrinsicSize="1080px"
+        mobileIntrinsicSize="980px"
+      >
         <ClientOnly>
           <WordSimilarity />
         </ClientOnly>
@@ -524,11 +561,13 @@ M1LK 2%           1    $4.4g`}</code>
         doesn't exist? I need to find out.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <LangChainLogo />
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary name="langchain-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <LangChainLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         LangChain lets me wire up the whole pipeline: question in, answer out.
@@ -536,7 +575,11 @@ M1LK 2%           1    $4.4g`}</code>
         the system to see what breaks.
       </p>
 
-      <FigureBoundary intrinsicSize="760px">
+      <FigureBoundary
+        name="qa-agent"
+        intrinsicSize="1040px"
+        mobileIntrinsicSize="1280px"
+      >
         <ClientOnly>
           <QAAgentFigure />
         </ClientOnly>
@@ -546,11 +589,13 @@ M1LK 2%           1    $4.4g`}</code>
         Some work. Some don't. That's the point.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <LangSmithLogo />
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary name="langsmith-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <LangSmithLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         LangSmith records what happened: which questions worked, which failed,
@@ -558,7 +603,7 @@ M1LK 2%           1    $4.4g`}</code>
         it went wrong, and plan a new experiment.
       </p>
 
-      <FigureBoundary intrinsicSize="360px">
+      <FigureBoundary name="cicd-loop" intrinsicSize="320px">
         <ClientOnly>
           <CICDLoop />
         </ClientOnly>
@@ -589,48 +634,60 @@ M1LK 2%           1    $4.4g`}</code>
         spend more time reviewing changes than writing code.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "2rem",
-              flexWrap: "wrap",
-              margin: "2rem 0",
-            }}
-          >
-            <CursorLogo />
-            <ClaudeLogo />
-          </div>
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary
+        name="cursor-claude-logos"
+        intrinsicSize="220px"
+        mobileIntrinsicSize="400px"
+      >
+        <ClientOnly>
+          <AnimatedInView>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "2rem",
+                flexWrap: "wrap",
+                margin: "2rem 0",
+              }}
+            >
+              <CursorLogo />
+              <ClaudeLogo />
+            </div>
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         GitHub Actions let me experiment fast: push a change, watch it break,
         fix it, repeat. Cheap iteration without breaking production.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "2rem",
-              flexWrap: "wrap",
-              margin: "2rem 0",
-            }}
-          >
-            <GithubLogo />
-            <GithubActionsLogo />
-          </div>
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary
+        name="github-logos"
+        intrinsicSize="220px"
+        mobileIntrinsicSize="400px"
+      >
+        <ClientOnly>
+          <AnimatedInView>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "2rem",
+                flexWrap: "wrap",
+                margin: "2rem 0",
+              }}
+            >
+              <GithubLogo />
+              <GithubActionsLogo />
+            </div>
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         I've used Terraform before, but this time I tried Pulumi. It lets me
@@ -638,11 +695,13 @@ M1LK 2%           1    $4.4g`}</code>
         tools I already know.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <PulumiLogo />
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary name="pulumi-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <PulumiLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         This project has a lot of docker containers. My Pulumi hack bundles and
@@ -650,13 +709,19 @@ M1LK 2%           1    $4.4g`}</code>
         melting my laptop.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <DockerLogo />
-        </AnimatedInView>
-      </ClientOnly>
+      <FigureBoundary name="docker-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <DockerLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
 
-      <FigureBoundary intrinsicSize="460px">
+      <FigureBoundary
+        name="codebuild-diagram"
+        intrinsicSize="260px"
+        mobileIntrinsicSize="460px"
+      >
         <ClientOnly>
           <CodeBuildDiagram chars={codeBuildDiagramChars} />
         </ClientOnly>
@@ -668,7 +733,7 @@ M1LK 2%           1    $4.4g`}</code>
         to it.
       </p>
 
-      <FigureBoundary intrinsicSize="240px">
+      <FigureBoundary name="dynamo-stream" intrinsicSize="160px">
         <ClientOnly>
           <DynamoStreamAnimation />
         </ClientOnly>
@@ -679,7 +744,7 @@ M1LK 2%           1    $4.4g`}</code>
         a Lambda picks it up, Chroma gets updated. No polling, no cron jobs.
       </p>
 
-      <FigureBoundary intrinsicSize="360px">
+      <FigureBoundary name="stream-bits-routing" intrinsicSize="360px">
         <ClientOnly>
           <StreamBitsRoutingDiagram />
         </ClientOnly>
@@ -690,7 +755,7 @@ M1LK 2%           1    $4.4g`}</code>
         Things fail, things retry, nothing gets lost.
       </p>
 
-      <FigureBoundary intrinsicSize="360px">
+      <FigureBoundary name="upload-diagram" intrinsicSize="360px">
         <ClientOnly>
           <UploadDiagram chars={uploadDiagramChars} />
         </ClientOnly>
