@@ -55,12 +55,14 @@ def main(argv=None) -> int:
         print(f"  family {k}: {fam}")
 
     # known-answer: cvs & vons are the epic's tightest same-font pair
-    cvs_vons_together = any(
-        "cvs" in f and "vons" in f for f in res.families
-    )
-    i, j = m.index("cvs"), m.index("vons")
-    print(f"\nknown-answer cvs~vons IoU={res.iou[i, j]:.3f}, "
-          f"same family: {cvs_vons_together}")
+    # (only meaningful when both are in the font set — custom --fonts may not be)
+    if "cvs" in m and "vons" in m:
+        cvs_vons_together = any(
+            "cvs" in f and "vons" in f for f in res.families
+        )
+        i, j = m.index("cvs"), m.index("vons")
+        print(f"\nknown-answer cvs~vons IoU={res.iou[i, j]:.3f}, "
+              f"same family: {cvs_vons_together}")
     return 0
 
 
