@@ -165,3 +165,44 @@ python -m glyphstudio.compile /tmp/wf_font_copy /tmp/wf_derived.glyphs.npz
 python tools/glyph-studio/py/m3_acceptance.py /tmp/wf_derived.glyphs.npz \
   --merchant "Wild Fork:wildfork"
 ```
+
+## Correction (2026-07-10) — the Wild Fork "railing" was a measurement artifact
+
+Tyler's visual review of the render A/B caught broken layout in the synth;
+tracing it invalidated the addendum's ship recommendation.
+
+**Root cause:** receipt `058b662d#1` — used by the render A/B, by this
+harness's first-N `gather()`, and plausibly by v1's original calibration —
+has **44 same-row x-overlapping OCR word pairs** (doubled/fragmented OCR) and
+~2× the corpus's cap scale. The renderer stamps every OCR word faithfully, so
+duplicates overprint and inflate measured synth density. Clean receipts score
+0–2 on this metric.
+
+**Vetted 6-receipt distribution (dup-free, render scorecard):**
+
+| | shipped font | derived w=0.60 candidate |
+|---|--:|--:|
+| range | 0.831 – 0.991 | 0.616 – 0.788 |
+| median | **0.87 — in/near gate** | **0.66 — regression** |
+
+**Conclusions:**
+1. **The shipped Wild Fork font was never density-broken** on real receipts
+   (slightly *light* if anything). No weight change ships. The derived-weight
+   candidate is permanently withdrawn.
+2. The "rails at bitmap_thin 0.6, ~48% too dense" narrative — the epic's
+   flagship motivation — was the pathological receipt, not the font. v1's
+   RETROFIT figures for Wild Fork (and possibly Costco, whose acceptance
+   `gather()` shared the contaminated sampling) should be re-derived on a
+   vetted corpus.
+3. **What stands:** the pooling refutation (relative, same corpus both
+   sides), the diagnostic toolchain (stroke/cap measurement, skeleton-
+   protected erosion, the closed-form weight↔stroke mapping), and this
+   harness — now with OCR vetting (`ocr_overlap_score`, receipts above
+   `--max-overlaps` excluded) so first-N sampling can't poison future
+   measurements.
+4. Optional derived win, properly measured this time: the shipped font's
+   vetted median 0.87 suggests reducing the `bitmap_thin` pin (0.6 → ~0.3)
+   would center density at ~1.0 — needs a vetted-corpus derivation + A/B.
+
+*Lesson for every measurement in this epic: vet the corpus before trusting
+first-N samples; one bad receipt at the top of an index shaped two epics.*
