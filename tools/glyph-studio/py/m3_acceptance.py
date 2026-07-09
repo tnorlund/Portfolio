@@ -84,8 +84,7 @@ def gather(client, merchant_name: str, n_receipts: int) -> dict:
 def solve(font_path: str, g: dict):
     from glyphstudio.calibrate import calibrate_merchant
 
-    from receipt_agent.agents.label_evaluator.rendering.bitmap_font import \
-        BitmapFont
+    from receipt_agent.agents.label_evaluator.rendering.bitmap_font import BitmapFont
 
     result = calibrate_merchant(
         BitmapFont(font_path),
@@ -138,7 +137,7 @@ def main(argv=None) -> int:
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
     client = DynamoClient(args.table)
-    any_pass = False
+    verdicts: dict[str, str] = {}
     for pair in pairs:
         name, _, slug = pair.partition(":")
         solo = _compile_solo(slug or name.lower().replace(" ", ""))
@@ -160,12 +159,16 @@ def main(argv=None) -> int:
                 f"  {label:13s} thin={thin} [{railed}] "
                 f"projected={proj_s} coverage={cov and round(cov, 3)}"
             )
-            if label == "CANDIDATE" and railed == "interior":
-                any_pass = True
+            if label == "CANDIDATE":
+                verdicts[name] = railed
+    # The epic's exit criterion is ALL railed merchants off the rails, not any.
+    all_pass = bool(verdicts) and all(v == "interior" for v in verdicts.values())
+    summary = ", ".join(f"{n}={v}" for n, v in verdicts.items())
     print(
-        f"\nacceptance: {'PASS (candidate un-rails)' if any_pass else 'FAIL (still railed)'}"
+        f"\nacceptance: {'PASS (all merchants un-railed)' if all_pass else 'FAIL'}"
+        f" [{summary}]"
     )
-    return 0
+    return 0 if all_pass else 1
 
 
 if __name__ == "__main__":
