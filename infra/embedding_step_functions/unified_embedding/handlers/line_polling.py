@@ -773,6 +773,15 @@ def _handle_internal_core(
                 "All results filtered out due to orphaned receipts; "
                 "marking batch complete with no embeddings saved"
             )
+            # Build/upload the envelope BEFORE marking complete: if the
+            # upload fails, the batch must stay unmarked so a retry is safe.
+            skipped_result = build_skipped_all_s3_result(
+                s3_client,
+                batch_id,
+                openai_batch_id,
+                len(skipped_orphans),
+                "orphaned_receipts",
+            )
             if not skip_sqs:
                 _mark_batch_complete(batch_id)
             else:
@@ -781,13 +790,7 @@ def _handle_internal_core(
                     "(step function mode - will mark after compaction)",
                     batch_id=batch_id,
                 )
-            return build_skipped_all_s3_result(
-                s3_client,
-                batch_id,
-                openai_batch_id,
-                len(skipped_orphans),
-                "orphaned_receipts",
-            )
+            return skipped_result
 
         # Get receipt details with timeout protection
         with operation_with_timeout(
@@ -829,6 +832,15 @@ def _handle_internal_core(
                 "All results filtered out due to missing receipts; "
                 "marking batch complete with no embeddings saved"
             )
+            # Build/upload the envelope BEFORE marking complete: if the
+            # upload fails, the batch must stay unmarked so a retry is safe.
+            skipped_result = build_skipped_all_s3_result(
+                s3_client,
+                batch_id,
+                openai_batch_id,
+                len(skipped_receipts),
+                "missing_receipts",
+            )
             if not skip_sqs:
                 _mark_batch_complete(batch_id)
             else:
@@ -837,13 +849,7 @@ def _handle_internal_core(
                     "(step function mode - will mark after compaction)",
                     batch_id=batch_id,
                 )
-            return build_skipped_all_s3_result(
-                s3_client,
-                batch_id,
-                openai_batch_id,
-                len(skipped_receipts),
-                "missing_receipts",
-            )
+            return skipped_result
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
