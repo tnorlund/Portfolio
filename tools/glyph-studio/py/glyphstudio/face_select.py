@@ -123,7 +123,13 @@ def _next_band_bleeds(line: Mapping[str, Any], nxt: Mapping[str, Any]) -> bool:
 
 
 def _cap_spread(heights: list[float]) -> float:
-    """Relative p10-p90 spread of the cap-letter heights."""
+    """Relative decile spread of the cap-letter heights.
+
+    Symmetric trim: n//10 samples are skipped at EACH end, so one outlier
+    per end is ignored from n=10 up (a plain p90 index only starts skipping
+    the top sample at n=20, leaving a single over-tall OCR box able to veto
+    a genuine enlarged row).
+    """
     hs = sorted(heights)
     n = len(hs)
     if n < 2:
@@ -131,7 +137,8 @@ def _cap_spread(heights: list[float]) -> float:
     med = hs[n // 2]
     if med <= 0:
         return 0.0
-    return (hs[(9 * n) // 10] - hs[n // 10]) / med
+    trim = n // 10
+    return (hs[n - 1 - trim] - hs[trim]) / med
 
 
 def is_wordmark_line(
@@ -139,13 +146,19 @@ def is_wordmark_line(
     body_cap: Optional[float],
     body_box_h: Optional[float],
 ) -> bool:
-    """True when the row's print is logo artwork, not sizable text."""
+    """True when the row's print is logo artwork, not sizable text.
+
+    Cap and box signals are BOTH consulted: a wordmark row whose letter
+    boxes are clipped below the threshold can still show a wordmark-tall
+    line box, and thin letter stats would otherwise fall through to the box
+    rung and recreate the duplicate-logo render this guard prevents.
+    """
     cap = line.get("cap_px")
-    if cap and body_cap:
-        return float(cap) / float(body_cap) >= WORDMARK_SCALE
+    if cap and body_cap and float(cap) / float(body_cap) >= WORDMARK_SCALE:
+        return True
     box = line.get("box_h")
-    if box and body_box_h:
-        return float(box) / float(body_box_h) >= WORDMARK_SCALE
+    if box and body_box_h and float(box) / float(body_box_h) >= WORDMARK_SCALE:
+        return True
     return False
 
 

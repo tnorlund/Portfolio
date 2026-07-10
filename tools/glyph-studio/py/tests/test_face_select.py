@@ -187,6 +187,40 @@ def test_single_outlier_letter_does_not_block_sizing():
     assert faces[normalize_face_key("SELF-CHECKOUT")]["scale"] == 1.48
 
 
+def test_single_high_outlier_at_ten_samples_does_not_block_sizing():
+    # Symmetric decile trim: one over-tall OCR box among ten samples must
+    # not veto a genuine enlarged row (a plain p90 index only skips the top
+    # sample from n=20).
+    heights = [63.0] * 9 + [95.0]
+    letters = [{"ch": "S", "h": h} for h in heights]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("SELF-CHECKOUT", cap=63.0, stroke=4.6, letters=letters)],
+            body_cap=42.5,
+            body_stroke=4.4,
+        )
+    )
+    assert faces[normalize_face_key("SELF-CHECKOUT")]["scale"] == 1.48
+
+
+def test_wordmark_box_beats_clipped_cap_signal():
+    # A wordmark row whose letter boxes are clipped below the threshold but
+    # whose LINE box is wordmark-tall must still be dropped (the box rung
+    # would otherwise re-inflate it).
+    line = _line(
+        "COSTCO",
+        cap=90.0,  # clipped: 1.8x body, below WORDMARK_SCALE
+        n=3,  # thin letter stats -> letters rung declines
+        letters=[{"ch": "C", "h": 90.0}] * 3,
+        box_h=160.0,
+    )
+    faces, stats = select_row_faces(
+        _measurement([line], body_cap=50.0, body_box_h=60.0)
+    )
+    assert normalize_face_key("COSTCO") not in faces
+    assert stats["wordmark"] == 1
+
+
 def test_consistent_large_row_still_scales():
     # Costco's VOID stamp: all four cap samples 79px on a 46px body ->
     # a genuine 1.72x row the rules miss entirely.
