@@ -1,17 +1,18 @@
 """
 Pulumi infrastructure for Receipt MCP Server Lambda.
 
-This component creates a container-based Lambda with a Function URL
-that exposes the receipt MCP server for remote MCP access.  The
+This component creates a container-based Lambda with an IAM-protected
+Function URL for signed access. The shared MCP auth gateway exposes it to
+OAuth clients. The
 ``run-mcp-servers-with-aws-lambda`` (mcp_lambda) adapter translates
 incoming HTTP requests into stdio MCP messages.
 
-The Function URL uses ``RESPONSE_STREAM`` invoke mode so MCP
-streaming works end-to-end without API Gateway.
+The Function URL uses ``RESPONSE_STREAM`` invoke mode for signed internal
+callers. It is never anonymously invokable.
 
 Architecture:
 - Container Lambda with all receipt_* packages + mcp_lambda adapter
-- Lambda Function URL (no API Gateway) for HTTP streaming
+- IAM-protected Lambda Function URL for signed HTTP streaming
 - IAM permissions for DynamoDB, S3, SQS, Lambda invoke
 """
 
@@ -45,11 +46,11 @@ chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 class McpServerLambda(ComponentResource):
     """
-    Container Lambda exposing the receipt MCP server via Function URL.
+    Container Lambda that hosts the receipt MCP server.
 
     Uses ``run-mcp-servers-with-aws-lambda`` to bridge HTTP <-> stdio
     so that any MCP client (Claude Desktop, ``mcp-remote``, etc.) can
-    reach the server over HTTPS.
+    reach the server over HTTPS through the shared OAuth gateway.
 
     Exports:
     - lambda_function: The Lambda function resource
@@ -284,12 +285,12 @@ class McpServerLambda(ComponentResource):
         self.lambda_function = docker_image.lambda_function
 
         # ============================================================
-        # Lambda Function URL (streaming, no API Gateway)
+        # Signed Function URL for internal callers and emergency access.
         # ============================================================
         function_url = aws.lambda_.FunctionUrl(
             f"{name}-function-url",
             function_name=self.lambda_function.name,
-            authorization_type="NONE",
+            authorization_type="AWS_IAM",
             invoke_mode="RESPONSE_STREAM",
             opts=ResourceOptions(parent=self),
         )
