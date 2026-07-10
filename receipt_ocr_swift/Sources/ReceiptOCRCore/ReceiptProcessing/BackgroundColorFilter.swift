@@ -24,15 +24,42 @@ import CoreGraphics
 ///     line must sit to be dropped as non-document (floors the MAD-based, spread-
 ///     adaptive threshold). Keeps uniform warm/cream paper (~0.22) while still
 ///     removing a colored menu background (~0.35-0.47).
+///   - minColoredSaturation: Absolute saturation floor below which a line is
+///     NEVER dropped, regardless of the adaptive threshold. Guards the bimodal
+///     degenerate case (see below). Sits between cream paper (~0.22) and a
+///     colored menu (~0.35+).
 /// - Returns: The subset of `lines` on a document background.
 public func filterDocumentLines(
     _ lines: [Line],
     image: CGImage,
-    saturationMargin: CGFloat = 0.15
+    saturationMargin: CGFloat = 0.15,
+    minColoredSaturation: CGFloat = 0.28
 ) -> [Line] {
+    let keep = documentLineKeepIndices(
+        lines,
+        image: image,
+        saturationMargin: saturationMargin,
+        minColoredSaturation: minColoredSaturation
+    )
+    return keep.map { lines[$0] }
+}
+
+/// The document/background separation used by `filterDocumentLines`, returning
+/// the KEPT line indices (into `lines`) rather than the lines themselves.
+///
+/// Callers that filter BEFORE clustering use these indices to remap the
+/// downstream cluster / receipt line indices back to the original, unfiltered
+/// line array — otherwise the compacted (filtered) index space silently
+/// diverges from the serialized full `lines` array.
+public func documentLineKeepIndices(
+    _ lines: [Line],
+    image: CGImage,
+    saturationMargin: CGFloat = 0.15,
+    minColoredSaturation: CGFloat = 0.28
+) -> [Int] {
     let w = image.width
     let h = image.height
-    guard w > 0, h > 0, !lines.isEmpty else { return lines }
+    guard w > 0, h > 0, !lines.isEmpty else { return Array(0..<lines.count) }
 
     // Downscale so the long side is <= maxSide. We sample sparsely, so a small
     // buffer is plenty and cuts memory ~10-15x (a full 4032x3024 RGBA buffer is
@@ -55,7 +82,7 @@ public func filterDocumentLines(
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )
     else {
-        return lines
+        return Array(0..<lines.count)
     }
     ctx.interpolationQuality = .low
     ctx.draw(image, in: CGRect(x: 0, y: 0, width: bw, height: bh))
@@ -121,17 +148,28 @@ public func filterDocumentLines(
     let med = median(sats)
     let mad = median(sats.map { abs($0 - med) })
     let threshold = med + max(saturationMargin, 4.0 * 1.4826 * mad)
-    let kept = zip(lines, sats).compactMap { $0.1 < threshold ? $0.0 : nil }
+    // A line is dropped only if its background saturation clears BOTH the
+    // adaptive threshold AND an absolute floor. The floor prevents a degenerate
+    // BIMODAL case from erasing an entire second receipt: an image holding a
+    // white-paper receipt (sat ~0) plus a cream-paper receipt (sat ~0.22) has
+    // median 0 and MAD 0, so the adaptive threshold collapses to
+    // `saturationMargin` (0.15) and would strip every cream line while the
+    // 40% cap does not fire (the cream receipt is the minority). Real colored
+    // menu/photo backgrounds sit at ~0.35+, well above cream paper, so an
+    // absolute floor between them keeps warm/cream paper intact while still
+    // removing a colored background.
+    let effectiveThreshold = max(threshold, minColoredSaturation)
+    let keptIndices = sats.indices.filter { sats[$0] < effectiveThreshold }
 
-    // Drop-fraction cap: if the adaptive threshold would drop more than ~40% of
+    // Drop-fraction cap: if the adaptive threshold would drop at least ~40% of
     // all lines, DISBELIEVE the filter and keep everything. A receipt sitting
     // mostly on a colored surface (or with a large colored coupon block)
-    // contaminates the median itself, so "> 40% colored background" means the
+    // contaminates the median itself, so ">= 40% colored background" means the
     // baseline is unreliable and its own paper lines would be stripped.
-    let dropped = lines.count - kept.count
-    if CGFloat(dropped) > 0.40 * CGFloat(lines.count) {
-        return lines
+    let dropped = lines.count - keptIndices.count
+    if CGFloat(dropped) >= 0.40 * CGFloat(lines.count) {
+        return Array(0..<lines.count)
     }
-    return kept
+    return keptIndices
 }
 #endif

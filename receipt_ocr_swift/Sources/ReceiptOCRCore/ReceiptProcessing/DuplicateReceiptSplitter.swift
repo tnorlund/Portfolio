@@ -121,6 +121,18 @@ func examineDuplicatePair(
     }
     guard pairs.count >= 2 else { return .single }
 
+    // Pathological-explosion guard (bounds the O(P^2) consensus search below).
+    // A genuine pair of overlapping copies yields O(n) spatially-disjoint
+    // duplicate correspondences (each distinctive line matched to its twin). A
+    // long list of near-identical rows (e.g. 60 repeated SKU lines) instead
+    // yields O(n^2) candidate pairs — C(60,2)=1770 — and the pairwise model
+    // search is O(P^2) hypotheses x O(P) inliers = O(P^3), which would stall an
+    // OCR worker for seconds before the harmonic guard ever runs. Such a blow-up
+    // is definitionally a periodic list, not two copies, so treat it as a single
+    // receipt rather than attempt the (doomed, expensive) consensus.
+    let maxPairs = 300
+    if pairs.count > maxPairs { return .single }
+
     // 2. Rigid-transform consensus (RANSAC). Each pair is a correspondence
     //    a_i (copy A point) -> b_i (copy B point). From any two correspondences
     //    estimate a rotation θ and translation t, reject models whose |θ| is too
@@ -261,6 +273,21 @@ func examineDuplicatePair(
     // 3. Seeded assignment: anchors A (tail) and B (head) define the boundary;
     //    assign every line by which side of it (along the displacement) it sits.
     let boundary = (mean(projA) + mean(projB)) / 2.0
+
+    // The boundary can only separate two copies that are largely DISJOINT along
+    // the displacement axis (one copy stacked below the other). If the copies
+    // overlap so heavily that the midpoint slices through both, a positional
+    // split scatters each copy's lines across both halves, yielding two mixed
+    // partial crops rather than the two copies. Detect that: for a clean stacked
+    // pair every anchor's A-member (tail copy) sits below the boundary and its
+    // B-member (head copy) above it. If the anchor correspondences don't cleanly
+    // straddle the boundary, don't split — flag for review.
+    let straddling = zip(projA, projB).filter {
+        $0.0 < boundary && $0.1 >= boundary
+    }.count
+    guard CGFloat(straddling) >= 0.75 * CGFloat(bestConsensus.count) else {
+        return .suspicious(anchorPairs: bestConsensus.count)
+    }
 
     var groupA: [Int] = []
     var groupB: [Int] = []

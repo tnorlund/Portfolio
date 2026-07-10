@@ -69,7 +69,26 @@ public func crossAxisInlierMask(_ lines: [Line], k: CGFloat = 4.0) -> [Bool] {
     // split was tried and regressed clean tilted receipts (it cut real header/
     // footer content), so that case is left to a content-based pass.
     let reject = k * 1.4826 * mad
-    return offsets.map { abs($0 - medOff) <= reject }
+    var mask = offsets.map { abs($0 - medOff) <= reject }
+
+    // Protect the longitudinal extremes. The top-most and bottom-most lines
+    // along the receipt's stacking axis anchor the crop's vertical extent — the
+    // store header and, critically, the grand TOTAL/TAX. A short, right- or
+    // left-aligned total or header line has an off-center cross-axis centroid
+    // and can read as an outlier of an otherwise tightly-aligned column; trimming
+    // it would exclude it from the hull and shrink the warped crop past real
+    // content. Never drop the two extreme lines on the stacking axis. (Sideways
+    // background bleed is handled by the color filter and the duplicate splitter,
+    // not here.)
+    let lx = -ay
+    let ly = ax
+    let longit = centroids.map { $0.0 * lx + $0.1 * ly }
+    if let minIdx = longit.indices.min(by: { longit[$0] < longit[$1] }),
+        let maxIdx = longit.indices.max(by: { longit[$0] < longit[$1] }) {
+        mask[minIdx] = true
+        mask[maxIdx] = true
+    }
+    return mask
 }
 
 /// Median of a non-empty array (returns 0 for empty).

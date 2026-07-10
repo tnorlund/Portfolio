@@ -4,6 +4,25 @@ import Foundation
 import AppKit
 import Vision
 
+/// Remap cluster line indices from a filtered (compacted) line array back to the
+/// original line array. `keptIndices[i]` is the original index of the i-th kept
+/// line. Cluster keys (including the -1 noise cluster) are preserved. Used after
+/// `documentLineKeepIndices` drops colored-background lines so that the
+/// serialized clustering / receipt `line_indices` stay in the same index space
+/// as the full, unfiltered `lines` array in the output.
+private func remapClusterIndices(
+    _ clustering: ClusteringResult,
+    _ keptIndices: [Int]
+) -> ClusteringResult {
+    var out: [Int: [Int]] = [:]
+    for (key, vals) in clustering.clusters {
+        out[key] = vals.compactMap {
+            $0 >= 0 && $0 < keptIndices.count ? keptIndices[$0] : nil
+        }
+    }
+    return ClusteringResult(clusters: out)
+}
+
 // NOTE: Code Duplication with OCRSwift.swift
 //
 // This file contains duplicated code (data models, helper functions, and OCR logic)
@@ -558,12 +577,16 @@ public struct VisionOCREngine: OCREngineProtocol {
                     // background — e.g. a menu/flyer behind the receipt — so
                     // they can't be clustered into the receipt. NATIVE fills
                     // the frame with a single receipt, so it is left untouched.
-                    let docLines: [Line]
+                    // Keep the ORIGINAL indices of the surviving lines so the
+                    // cluster/receipt indices can be remapped back to the full
+                    // `mutableLines` array (which is what the output serializes).
+                    let keptIndices: [Int]
                     if classResult.imageType != .native, let img = loadedImage {
-                        docLines = filterDocumentLines(mutableLines, image: img)
+                        keptIndices = documentLineKeepIndices(mutableLines, image: img)
                     } else {
-                        docLines = mutableLines
+                        keptIndices = Array(0..<mutableLines.count)
                     }
+                    let docLines = keptIndices.map { mutableLines[$0] }
                     switch classResult.imageType {
                     case .native:
                         // Single receipt, no clustering needed
@@ -578,6 +601,14 @@ public struct VisionOCREngine: OCREngineProtocol {
                         clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
                     }
 
+                    // Filtering compacted the line array; remap cluster indices
+                    // back to the original `mutableLines` space so receipt
+                    // processing (below) and the serialized clustering both index
+                    // the same array the top-level `lines` is serialized from.
+                    if keptIndices.count != mutableLines.count, let c = clustering {
+                        clustering = remapClusterIndices(c, keptIndices)
+                    }
+
                     // Process receipts if we have clustering (PHOTO or SCAN)
                     if classResult.imageType != .native,
                        let clusterResult = clustering,
@@ -585,7 +616,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                         let receiptProcessor = ReceiptProcessor()
                         let processedReceipts = receiptProcessor.process(
                             image: cgImage,
-                            lines: docLines,
+                            lines: mutableLines,
                             classification: classResult,
                             clustering: clusterResult
                         )
@@ -803,12 +834,16 @@ public struct VisionOCREngine: OCREngineProtocol {
 
             if let classResult = classification {
                 // Drop colored-background (non-document) lines before clustering.
-                let docLines: [Line]
+                // Keep the ORIGINAL indices of the surviving lines so cluster /
+                // receipt indices can be remapped back to the full `mutableLines`
+                // array that the output serializes.
+                let keptIndices: [Int]
                 if classResult.imageType != .native, let img = loadedImage {
-                    docLines = filterDocumentLines(mutableLines, image: img)
+                    keptIndices = documentLineKeepIndices(mutableLines, image: img)
                 } else {
-                    docLines = mutableLines
+                    keptIndices = Array(0..<mutableLines.count)
                 }
+                let docLines = keptIndices.map { mutableLines[$0] }
                 switch classResult.imageType {
                 case .native:
                     clustering = ClusteringResult(clusters: [1: Array(0..<docLines.count)])
@@ -820,13 +855,18 @@ public struct VisionOCREngine: OCREngineProtocol {
                     clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
                 }
 
+                // Remap filtered cluster indices back to the original line space.
+                if keptIndices.count != mutableLines.count, let c = clustering {
+                    clustering = remapClusterIndices(c, keptIndices)
+                }
+
                 if classResult.imageType != .native,
                    let clusterResult = clustering,
                    let cgImage = loadedImage {
                     let receiptProcessor = ReceiptProcessor()
                     let processedReceipts = receiptProcessor.process(
                         image: cgImage,
-                        lines: docLines,
+                        lines: mutableLines,
                         classification: classResult,
                         clustering: clusterResult
                     )
