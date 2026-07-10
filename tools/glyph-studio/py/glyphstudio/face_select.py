@@ -49,12 +49,32 @@ LARGE_CAP = 1.30
 # Sanity clamp for measured scales (the WF logo measures ~4.2x but is drawn
 # by the logo overlay, not text).
 SCALE_MAX = 2.5
+# At/above this cap ratio a row is the merchant WORDMARK, not text: Costco's
+# OCR'd "COSTCO" logo line measures cap_rel 2.30-3.32 across the pilot
+# corpus while its largest genuine text heading (SELF-CHECKOUT) is ~1.5 and
+# WF's store header tops out at 2.0. The renderer draws the wordmark via the
+# logo overlay; a measured entry would ALSO scale the OCR text row into a
+# giant duplicate (hand-checked: 165b9d15/20576ddd renders grew a second
+# clipped COSTCO above the pasted logo). Such rows get NO entry at all --
+# they fall through to the production rules.
+WORDMARK_SCALE = 2.1
 # Fewer measured letters than this = unreliable stats -> next rung.
 MIN_LETTERS = 4
 # Cap height needs >= this many upper/digit letter samples to size a row
 # (WF's "Tender:" has ONE cap sample, an OCR smear read as 1.34x body --
 # hand-checked as plain body height).
 MIN_CAP_SAMPLES = 3
+# Sizing also requires CONSISTENT cap samples: relative p10-p90 spread <=
+# this. Deciles, not quartiles: contamination is often bimodal-minority (a
+# green marker stroke through 165b9d15's "ORG ATAULFO" row inflated part of
+# the row to 44-85px and rendered a body item line at 1.6x; 5592edb9's
+# masked-PAN line merged boxed-amount digits, 27px x4 vs 44px x16, which an
+# IQR misses because both quartiles land on the majority mode). Genuine
+# enlarged rows measure <= 0.02 (SELF-CHECKOUT all 63px, VOID all 79px,
+# Items Sold 63-64px) while the hand-checked false positives sit at
+# 0.39-0.52; a single OCR-clipped letter on a well-sampled row still passes
+# (the deciles skip one outlier per end from n=10 up).
+CAP_SPREAD_MAX = 0.12
 
 
 def normalize_face_key(text: str) -> str:
@@ -67,29 +87,67 @@ def normalize_face_key(text: str) -> str:
     return " ".join(str(text).upper().split())[:60]
 
 
-def _cap_samples(line: Mapping[str, Any]) -> int:
-    return sum(
-        1
+def _cap_heights(line: Mapping[str, Any]) -> list[float]:
+    return [
+        float(c.get("h") or 0)
         for c in line.get("letters") or ()
         if str(c.get("ch", ""))[:1].isupper() or str(c.get("ch", ""))[:1].isdigit()
-    )
+    ]
+
+
+def _cap_spread(heights: list[float]) -> float:
+    """Relative p10-p90 spread of the cap-letter heights."""
+    hs = sorted(heights)
+    n = len(hs)
+    if n < 2:
+        return 0.0
+    med = hs[n // 2]
+    if med <= 0:
+        return 0.0
+    return (hs[(9 * n) // 10] - hs[n // 10]) / med
+
+
+def is_wordmark_line(
+    line: Mapping[str, Any],
+    body_cap: Optional[float],
+    body_box_h: Optional[float],
+) -> bool:
+    """True when the row's print is logo artwork, not sizable text."""
+    cap = line.get("cap_px")
+    if cap and body_cap:
+        return float(cap) / float(body_cap) >= WORDMARK_SCALE
+    box = line.get("box_h")
+    if box and body_box_h:
+        return float(box) / float(body_box_h) >= WORDMARK_SCALE
+    return False
 
 
 def measured_style_for_line(
     line: Mapping[str, Any],
     body_cap: Optional[float],
     body_stroke: Optional[float],
+    *,
+    next_reverse: bool = False,
 ) -> Optional[dict[str, Any]]:
     """The letters rung: per-letter cap/stroke measurements -> row style.
 
     Returns None when the line's letter statistics are too thin to trust
-    (callers fall to the box rung / section prior / stylemap rules). Also
-    the pilot's ground-truth extractor, so truth and selector cannot drift.
+    (callers fall to the box rung / section prior / stylemap rules) or when
+    the row is wordmark artwork (see :func:`is_wordmark_line`). Also the
+    pilot's ground-truth extractor, so truth and selector cannot drift.
+
+    ``next_reverse``: whether the FOLLOWING visual line is reverse-video --
+    the underline probe's window extends below the row bottom, so a black
+    band on the next row reads as an underline (hand-checked: 57cb7f2c's
+    "INSTANT SAVINGS" sits directly above Costco's boxed date row; the real
+    print has no rule under it).
     """
     cap = line.get("cap_px")
     if not cap or not body_cap or (line.get("n_letters") or 0) < MIN_LETTERS:
         return None
     cap_rel = float(cap) / float(body_cap)
+    if cap_rel >= WORDMARK_SCALE:
+        return None
     stroke = line.get("stroke_med")
     stroke_rel = float(stroke) / float(body_stroke) if stroke and body_stroke else None
     heavy = bool(
@@ -98,7 +156,12 @@ def measured_style_for_line(
         and stroke_rel / max(cap_rel, 1e-6) >= BOLD_STROKE_TO_CAP
     )
     scale = 1.0
-    if cap_rel >= LARGE_CAP and _cap_samples(line) >= MIN_CAP_SAMPLES:
+    caps = _cap_heights(line)
+    if (
+        cap_rel >= LARGE_CAP
+        and len(caps) >= MIN_CAP_SAMPLES
+        and _cap_spread(caps) <= CAP_SPREAD_MAX
+    ):
         scale = round(min(cap_rel, SCALE_MAX), 2)
     underline = bool(line.get("underline"))
     reverse = bool(line.get("reverse_video"))
@@ -108,6 +171,10 @@ def measured_style_for_line(
     # reverse video, so treat the pair as one artifact.
     if underline and reverse and not heavy:
         underline = reverse = False
+    # The next row's reverse-video band bleeds into this row's underline
+    # probe window (see docstring).
+    if underline and next_reverse and not reverse:
+        underline = False
     return {
         "face": "heavy" if heavy else "regular",
         "scale": scale,
@@ -194,14 +261,26 @@ def select_row_faces(
         "prior": 0,
         "skipped": 0,
         "conflicts": 0,
+        "wordmark": 0,
     }
     out: dict[str, dict[str, Any] | None] = {}
-    for line in measurement.get("lines") or ():
+    lines = list(measurement.get("lines") or ())
+    for idx, line in enumerate(lines):
         key = normalize_face_key(line.get("text") or "")
         if not key:
             stats["skipped"] += 1
             continue
-        style = measured_style_for_line(line, body_cap, body_stroke)
+        if is_wordmark_line(line, body_cap, body_box_h):
+            # Logo artwork: no rung may size it (the box rung would re-inflate
+            # what the letters rung just refused); production rules own it.
+            stats["wordmark"] += 1
+            continue
+        next_reverse = bool(
+            idx + 1 < len(lines) and lines[idx + 1].get("reverse_video")
+        )
+        style = measured_style_for_line(
+            line, body_cap, body_stroke, next_reverse=next_reverse
+        )
         if style is None:
             style = _style_from_box(line, body_box_h)
         if style is None and section_priors:
