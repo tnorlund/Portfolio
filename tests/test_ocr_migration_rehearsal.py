@@ -344,3 +344,59 @@ def test_set_member_reorder_not_mutated(tmp_path: Path):
     after = write_snapshot(tmp_path / "after.sqlite3", [word_with_tags(["x", "y"])])
     diff = reh.diff_rows(reh.load_rows(before), reh.load_rows(after))
     assert len(diff.mutated) == 0
+
+
+def test_surplus_label_detected_id_collision(tmp_path: Path):
+    # forgot-to-delete: the OLD label survives on a re-read word (so NO orphan),
+    # and the label is ALSO re-applied to a new word -> 2 copies where 1 existed.
+    # The orphan check is blind to this; the surplus check must catch it.
+    before = write_snapshot(
+        tmp_path / "before.sqlite3",
+        [word_item("img1", 1, 1, 1, "A"), label_item("img1", 1, 1, 1, "GT")],
+    )
+    after = write_snapshot(
+        tmp_path / "after.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "A2"),  # re-read; stale label still valid
+            label_item("img1", 1, 1, 1, "GT"),  # stale label NOT deleted
+            word_item("img1", 1, 2, 2, "B"),  # regenerated word
+            label_item("img1", 1, 2, 2, "GT"),  # re-applied here too
+        ],
+    )
+    report = reh.check_label_preservation(
+        reh.load_rows(before), reh.load_rows(after), ["img1"]
+    )
+    assert report.has_surplus
+    assert not report.has_real_loss
+    assert reh.find_orphan_label_keys(reh.load_rows(after), ["img1"]) == []
+    diff = reh.run_diff(before, after, ["img1"])
+    assert diff["ok"] is False
+    assert diff["labels"]["receipts_with_surplus_labels"] == 1
+
+
+def test_targets_without_word_changes_flags_mixed_endpoint(tmp_path: Path):
+    # Only a benign receipt-metadata row changed locally; the word/label writes
+    # went to real dev (endpoint bypass). unchanged_targets is satisfied (a row
+    # changed) but the stronger word-level check must flag the bypass.
+    before = write_snapshot(
+        tmp_path / "before.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "A"),
+            label_item("img1", 1, 1, 1, "GT"),
+            other_item("IMAGE#img1", "RECEIPT#00001", "v1"),
+        ],
+    )
+    after = write_snapshot(
+        tmp_path / "after.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "A"),
+            label_item("img1", 1, 1, 1, "GT"),
+            other_item("IMAGE#img1", "RECEIPT#00001", "v2"),  # only meta changed
+        ],
+    )
+    diff = reh.diff_rows(reh.load_rows(before), reh.load_rows(after))
+    assert reh.unchanged_targets(diff.changed_pks, ["img1"]) == []  # a row changed
+    assert reh.targets_without_word_changes(diff, ["img1"]) == ["img1"]
+    report = reh.run_diff(before, after, ["img1"])
+    assert report["ok"] is False
+    assert report["invariants"]["targets_without_word_changes"] == ["img1"]
