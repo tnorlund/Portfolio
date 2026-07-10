@@ -125,3 +125,22 @@ def test_multi_label_word_rides_together_and_split_receipts_correspond():
     # fallback pass on the split receipt rather than being dropped.
     assert ("PAYMENT_METHOD", (2, 1, 1)) in moved
     assert not plan.parks
+
+
+def test_centroid_handles_dynamodb_decimals():
+    # Live Dynamo reads deserialize numbers as decimal.Decimal; the planner
+    # must not blow up on Decimal / float (the first dry-run failed on this).
+    from decimal import Decimal
+
+    d = {
+        "top_left": {"x": Decimal("0.2"), "y": Decimal("0.9")},
+        "bottom_right": {"x": Decimal("0.4"), "y": Decimal("0.8")},
+    }
+    cx, cy = app._centroid(d)
+    assert isinstance(cx, float) and isinstance(cy, float)
+    assert abs(cx - 0.3) < 1e-9
+    old_words = {(1, 1, 1): {"text": "TOTAL", "c": app._centroid(d)}}
+    old_labels = {(1, 1, 1): [label_row("GRAND_TOTAL")]}
+    new_words = {(1, 1, 1): {"text": "TOTAL", "c": (0.3, 0.85)}}
+    plan = app.plan_label_moves(old_words, old_labels, new_words)
+    assert len(plan.moves) == 1

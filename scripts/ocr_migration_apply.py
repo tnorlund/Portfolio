@@ -79,9 +79,11 @@ def _norm(t: str | None) -> str:
 
 
 def _centroid(d: dict[str, Any]) -> tuple[float, float]:
+    # float() everything: rows read live from DynamoDB deserialize numbers as
+    # decimal.Decimal, and Decimal / float raises TypeError.
     return (
-        (d["top_left"]["x"] + d["bottom_right"]["x"]) / 2.0,
-        (d["top_left"]["y"] + d["bottom_right"]["y"]) / 2.0,
+        (float(d["top_left"]["x"]) + float(d["bottom_right"]["x"])) / 2.0,
+        (float(d["top_left"]["y"]) + float(d["bottom_right"]["y"])) / 2.0,
     )
 
 
