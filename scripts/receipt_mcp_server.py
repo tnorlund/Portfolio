@@ -900,7 +900,7 @@ using get_receipt or get_receipt_image_url.""",
             },
         ),
         Tool(
-            name="analytics_auto",
+            name="analytics",
             description="""Unified production visitor analytics across live and durable data.
 
 Use this as the default tool when a question may span current and historical
@@ -955,7 +955,7 @@ event details, edge geo, referrer, and UTM attribution. By default excludes
 bots, Cloudflare WARP traffic, and datacenter-hosting traffic. `minutes` is
 clamped to the live table's 90-day retention window. Results contain at most
 the newest 5,000 events and 250 sessions; `truncated` reports omitted data.
-Prefer `analytics_auto` unless a Dynamo-only diagnostic is explicitly needed.""",
+Prefer `analytics` unless a Dynamo-only diagnostic is explicitly needed.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -984,7 +984,7 @@ campaign result starts at its tagged landing event and continues until another
 tagged campaign begins. Returns pages/events, edge geo, referrer, and UTM
 fields. At least one of `campaign` or `since` is required. Results contain at
 most the newest 5,000 events and 250 sessions; `truncated` reports omitted
-data. Prefer `analytics_auto` when attribution may include durable history.""",
+data. Prefer `analytics` when attribution may include durable history.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1600,8 +1600,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_label_distribution":
             result = await get_label_distribution_impl(dynamo_client)
-        elif name == "analytics_auto":
-            result = await analytics_auto_impl(
+        elif name == "analytics":
+            result = await analytics_impl(
                 minutes=arguments.get("minutes"),
                 since=arguments.get("since"),
                 until=arguments.get("until"),
@@ -3726,8 +3726,8 @@ ANALYTICS_LIVE_TABLE = os.environ.get(
 ANALYTICS_LIVE_MAX_MINUTES = 90 * 24 * 60
 ANALYTICS_LIVE_MAX_EVENTS = 5000
 ANALYTICS_LIVE_MAX_SESSIONS = 250
-ANALYTICS_AUTO_MAX_MINUTES = 365 * 24 * 60
-ANALYTICS_AUTO_REPAIR_OVERLAP_DAYS = 4
+ANALYTICS_MAX_MINUTES = 365 * 24 * 60
+ANALYTICS_REPAIR_OVERLAP_DAYS = 4
 ANALYTICS_WATERMARK_CACHE_SECONDS = 300
 _analytics_watermark_cache = {"checked_at": 0.0, "value": None}
 
@@ -4239,7 +4239,7 @@ def _athena_run(sql: str, max_wait: int = 90, max_rows: int = 5000) -> list:
     return rows
 
 
-def _analytics_auto_window(
+def _analytics_window(
     minutes=None, since=None, until=None, campaign=None, now=None
 ):
     """Return a validated UTC [start, end) interval for routed analytics."""
@@ -4270,14 +4270,14 @@ def _analytics_auto_window(
         except (TypeError, ValueError) as exc:
             raise ValueError("minutes must be an integer") from exc
         effective_minutes = max(
-            1, min(effective_minutes, ANALYTICS_AUTO_MAX_MINUTES)
+            1, min(effective_minutes, ANALYTICS_MAX_MINUTES)
         )
         start = end - timedelta(minutes=effective_minutes)
 
     if start >= end:
         raise ValueError("since must be earlier than until")
-    if end - start > timedelta(minutes=ANALYTICS_AUTO_MAX_MINUTES):
-        raise ValueError("analytics_auto interval cannot exceed 365 days")
+    if end - start > timedelta(minutes=ANALYTICS_MAX_MINUTES):
+        raise ValueError("analytics interval cannot exceed 365 days")
     return start, end, current, effective_minutes
 
 
@@ -4422,7 +4422,7 @@ LIMIT {row_limit}
     return [_analytics_normalize_durable_event(row) for row in rows], truncated
 
 
-def _analytics_auto_merge_events(events: list[dict]):
+def _analytics_merge_events(events: list[dict]):
     """Deduplicate non-empty eids while retaining both sources' best fields."""
     durable_authoritative = {
         "dt",
@@ -4522,7 +4522,7 @@ def _analytics_auto_merge_events(events: list[dict]):
     return merged_events, deduplicated, len(without_eid)
 
 
-def _analytics_auto_unqueried_ranges(start, end, queried_ranges):
+def _analytics_unqueried_ranges(start, end, queried_ranges):
     """Return uncovered UTC intervals after merging successful source ranges."""
     cursor = start
     gaps = []
@@ -4541,7 +4541,7 @@ def _analytics_auto_unqueried_ranges(start, end, queried_ranges):
     return gaps
 
 
-async def analytics_auto_impl(
+async def analytics_impl(
     minutes=None,
     since=None,
     until=None,
@@ -4555,7 +4555,7 @@ async def analytics_auto_impl(
 
     try:
         campaign = str(campaign or "").strip()
-        start, end, current, effective_minutes = _analytics_auto_window(
+        start, end, current, effective_minutes = _analytics_window(
             minutes=minutes,
             since=since,
             until=until,
@@ -4573,7 +4573,7 @@ async def analytics_auto_impl(
         try:
             latest_durable = _analytics_latest_durable_event()
         except Exception as exc:
-            logger.exception("analytics_auto durable watermark failed")
+            logger.exception("analytics durable watermark failed")
             source_errors["watermark"] = str(exc)
 
         durable_range = None
@@ -4584,7 +4584,7 @@ async def analytics_auto_impl(
                 durable_range = (start, durable_end)
 
             overlap_start = latest_durable - timedelta(
-                days=ANALYTICS_AUTO_REPAIR_OVERLAP_DAYS
+                days=ANALYTICS_REPAIR_OVERLAP_DAYS
             )
             live_start = max(start, overlap_start, live_floor)
             if live_start < end:
@@ -4607,7 +4607,7 @@ async def analytics_auto_impl(
                 truncated = truncated or durable_truncated
                 queried_ranges.append(("durable", *durable_range))
             except Exception as exc:
-                logger.exception("analytics_auto durable query failed")
+                logger.exception("analytics durable query failed")
                 source_errors["durable"] = str(exc)
                 fallback_start = max(start, live_floor)
                 if fallback_start < end:
@@ -4631,10 +4631,10 @@ async def analytics_auto_impl(
                 truncated = truncated or live_truncated
                 queried_ranges.append(("live", *live_range))
             except Exception as exc:
-                logger.exception("analytics_auto live query failed")
+                logger.exception("analytics live query failed")
                 source_errors["live"] = str(exc)
 
-        events, deduplicated, undeduplicable = _analytics_auto_merge_events(
+        events, deduplicated, undeduplicable = _analytics_merge_events(
             all_events
         )
         if len(events) > ANALYTICS_LIVE_MAX_EVENTS:
@@ -4654,7 +4654,7 @@ async def analytics_auto_impl(
             truncated = True
         sessions = sessions[:limit]
 
-        unqueried_ranges = _analytics_auto_unqueried_ranges(
+        unqueried_ranges = _analytics_unqueried_ranges(
             start, end, queried_ranges
         )
         successful_sources = sorted({item[0] for item in queried_ranges})
@@ -4724,7 +4724,7 @@ async def analytics_auto_impl(
             "sessions": sessions,
         }
     except Exception as exc:
-        logger.exception("analytics_auto failed")
+        logger.exception("analytics failed")
         return {"error": str(exc)}
 
 

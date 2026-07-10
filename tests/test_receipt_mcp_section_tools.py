@@ -37,7 +37,7 @@ EXPECTED_SECTION_TOOLS = {
 }
 
 EXPECTED_LIVE_ANALYTICS_TOOLS = {
-    "analytics_auto",
+    "analytics",
     "analytics_live",
     "analytics_attribution",
 }
@@ -172,8 +172,8 @@ def test_live_analytics_tools_present_with_valid_schema(label):
     missing = EXPECTED_LIVE_ANALYTICS_TOOLS - set(by_name)
     assert not missing, f"missing live analytics tools in {label}: {missing}"
 
-    auto_schema = by_name["analytics_auto"].inputSchema
-    assert auto_schema["type"] == "object"
+    analytics_schema = by_name["analytics"].inputSchema
+    assert analytics_schema["type"] == "object"
     assert {
         "minutes",
         "since",
@@ -181,10 +181,10 @@ def test_live_analytics_tools_present_with_valid_schema(label):
         "campaign",
         "humans_only",
         "limit",
-    } <= set(auto_schema["properties"])
-    assert auto_schema["properties"]["minutes"]["maximum"] == 525600
-    assert auto_schema["properties"]["humans_only"]["default"] is True
-    assert auto_schema["properties"]["limit"]["maximum"] == 250
+    } <= set(analytics_schema["properties"])
+    assert analytics_schema["properties"]["minutes"]["maximum"] == 525600
+    assert analytics_schema["properties"]["humans_only"]["default"] is True
+    assert analytics_schema["properties"]["limit"]["maximum"] == 250
 
     live_schema = by_name["analytics_live"].inputSchema
     assert live_schema["type"] == "object"
@@ -227,7 +227,7 @@ def test_live_analytics_tools_are_dispatched(label):
     dispatch = source.split("async def call_tool", 1)[1].split(
         "async def search_receipts_impl", 1
     )[0]
-    assert 'elif name == "analytics_auto"' in dispatch
+    assert 'elif name == "analytics"' in dispatch
     assert 'elif name == "analytics_live"' in dispatch
     assert 'elif name == "analytics_attribution"' in dispatch
 
@@ -470,11 +470,11 @@ def _live_test_event(ts, sid, campaign=None):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_auto_window_is_exclusive_and_campaign_defaults_to_24h(label):
+def test_analytics_window_is_exclusive_and_campaign_defaults_to_24h(label):
     module = _load_module(label, SERVER_FILES[label])
     now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
 
-    start, end, current, minutes = module._analytics_auto_window(
+    start, end, current, minutes = module._analytics_window(
         campaign="launch", now=now
     )
 
@@ -484,13 +484,13 @@ def test_auto_window_is_exclusive_and_campaign_defaults_to_24h(label):
     assert minutes == 24 * 60
 
     with pytest.raises(ValueError, match="earlier than until"):
-        module._analytics_auto_window(
+        module._analytics_window(
             since="2026-07-10T12:00:00Z",
             until="2026-07-10T12:00:00Z",
             now=now,
         )
     with pytest.raises(ValueError, match="cannot exceed 365 days"):
-        module._analytics_auto_window(
+        module._analytics_window(
             since=(now - timedelta(days=366)).isoformat(),
             until=now.isoformat(),
             now=now,
@@ -591,7 +591,7 @@ def test_durable_query_normalizes_existing_feed_without_schema_changes(
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_auto_merge_prefers_durable_classification_and_keeps_live_geo(label):
+def test_analytics_merge_prefers_durable_classification_and_keeps_live_geo(label):
     module = _load_module(label, SERVER_FILES[label])
     ts = datetime(2026, 7, 8, 12, tzinfo=timezone.utc)
     durable = _live_test_event(ts, "shared")
@@ -620,7 +620,7 @@ def test_auto_merge_prefers_durable_classification_and_keeps_live_geo(label):
     no_eid_b = _live_test_event(ts, "no-eid-b")
     no_eid_b.update({"eid": "", "_source": "live"})
 
-    events, deduplicated, undeduplicable = module._analytics_auto_merge_events(
+    events, deduplicated, undeduplicable = module._analytics_merge_events(
         [live, no_eid_a, durable, no_eid_b]
     )
 
@@ -637,7 +637,7 @@ def test_auto_merge_prefers_durable_classification_and_keeps_live_geo(label):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_auto_merge_keeps_live_order_for_same_second_campaign_events(label):
+def test_analytics_merge_keeps_live_order_for_same_second_campaign_events(label):
     module = _load_module(label, SERVER_FILES[label])
     second = datetime(2026, 7, 8, 12, tzinfo=timezone.utc)
     landing_live_ts = second + timedelta(milliseconds=100)
@@ -680,7 +680,7 @@ def test_auto_merge_keeps_live_order_for_same_second_campaign_events(label):
         }
     )
 
-    merged, deduplicated, _ = module._analytics_auto_merge_events(
+    merged, deduplicated, _ = module._analytics_merge_events(
         [durable_follow, durable_landing, live_follow, live_landing]
     )
     attributed = module._analytics_live_campaign_events(merged, "launch")
@@ -693,7 +693,7 @@ def test_auto_merge_keeps_live_order_for_same_second_campaign_events(label):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_routes_recent_window_to_live_only(label, monkeypatch):
+def test_analytics_routes_recent_window_to_live_only(label, monkeypatch):
     module = _load_module(label, SERVER_FILES[label])
     now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
     before_end = _live_test_event(
@@ -723,7 +723,7 @@ def test_analytics_auto_routes_recent_window_to_live_only(label, monkeypatch):
     )
 
     result = asyncio.run(
-        module.analytics_auto_impl(minutes=60, humans_only=False, _now=now)
+        module.analytics_impl(minutes=60, humans_only=False, _now=now)
     )
 
     assert result["source"] == "live"
@@ -739,7 +739,7 @@ def test_analytics_auto_routes_recent_window_to_live_only(label, monkeypatch):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_routes_old_window_to_durable_only(label, monkeypatch):
+def test_analytics_routes_old_window_to_durable_only(label, monkeypatch):
     module = _load_module(label, SERVER_FILES[label])
     now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
     event = _live_test_event(
@@ -768,7 +768,7 @@ def test_analytics_auto_routes_old_window_to_durable_only(label, monkeypatch):
     )
 
     result = asyncio.run(
-        module.analytics_auto_impl(
+        module.analytics_impl(
             since="2026-06-01T00:00:00Z",
             until="2026-06-02T00:00:00Z",
             humans_only=False,
@@ -788,7 +788,7 @@ def test_analytics_auto_routes_old_window_to_durable_only(label, monkeypatch):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_merges_overlap_and_campaign_across_sources(
+def test_analytics_merges_overlap_and_campaign_across_sources(
     label, monkeypatch
 ):
     module = _load_module(label, SERVER_FILES[label])
@@ -835,7 +835,7 @@ def test_analytics_auto_merges_overlap_and_campaign_across_sources(
     monkeypatch.setattr(module, "_analytics_live_query", _live)
 
     result = asyncio.run(
-        module.analytics_auto_impl(
+        module.analytics_impl(
             since="2026-07-01T00:00:00Z",
             campaign="launch",
             humans_only=True,
@@ -867,7 +867,7 @@ def test_analytics_auto_merges_overlap_and_campaign_across_sources(
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_marks_live_fallback_partial_on_durable_error(
+def test_analytics_marks_live_fallback_partial_on_durable_error(
     label, monkeypatch
 ):
     module = _load_module(label, SERVER_FILES[label])
@@ -894,7 +894,7 @@ def test_analytics_auto_marks_live_fallback_partial_on_durable_error(
     )
 
     result = asyncio.run(
-        module.analytics_auto_impl(
+        module.analytics_impl(
             since="2026-07-01T12:00:00Z",
             humans_only=False,
             _now=now,
@@ -909,7 +909,7 @@ def test_analytics_auto_marks_live_fallback_partial_on_durable_error(
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_reports_retention_gap_without_durable_data(
+def test_analytics_reports_retention_gap_without_durable_data(
     label, monkeypatch
 ):
     module = _load_module(label, SERVER_FILES[label])
@@ -928,7 +928,7 @@ def test_analytics_auto_reports_retention_gap_without_durable_data(
     )
 
     result = asyncio.run(
-        module.analytics_auto_impl(
+        module.analytics_impl(
             since=start.isoformat(), humans_only=False, _now=now
         )
     )
@@ -947,7 +947,7 @@ def test_analytics_auto_reports_retention_gap_without_durable_data(
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_caps_combined_sources_to_newest_events(
+def test_analytics_caps_combined_sources_to_newest_events(
     label, monkeypatch
 ):
     module = _load_module(label, SERVER_FILES[label])
@@ -985,7 +985,7 @@ def test_analytics_auto_caps_combined_sources_to_newest_events(
     )
 
     result = asyncio.run(
-        module.analytics_auto_impl(
+        module.analytics_impl(
             since="2026-07-08T00:00:00Z",
             humans_only=False,
             _now=now,
@@ -1001,7 +1001,7 @@ def test_analytics_auto_caps_combined_sources_to_newest_events(
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_analytics_auto_returns_error_when_both_sources_fail(label, monkeypatch):
+def test_analytics_returns_error_when_both_sources_fail(label, monkeypatch):
     module = _load_module(label, SERVER_FILES[label])
     now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
     monkeypatch.setattr(
@@ -1015,7 +1015,7 @@ def test_analytics_auto_returns_error_when_both_sources_fail(label, monkeypatch)
         lambda *_args: (_ for _ in ()).throw(RuntimeError("Dynamo down")),
     )
 
-    result = asyncio.run(module.analytics_auto_impl(_now=now))
+    result = asyncio.run(module.analytics_impl(_now=now))
 
     assert result["error"] == "all analytics sources failed"
     assert result["source_errors"] == {

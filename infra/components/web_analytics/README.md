@@ -22,7 +22,7 @@ BROWSER     /analytics/pixel.txt (one canonical eid-bearing request)
               → CloudFront standard logs in S3
               → unchanged daily transform + ip_geo enrichment
               → web_events (Parquet) → existing analytics_* tools ─┤
-                                                                  └→ analytics_auto
+                                                                  └→ analytics
 ```
 
 ## What this creates
@@ -127,9 +127,9 @@ rather than spanning the intervening visit.
 Examples:
 
 ```
-analytics_auto(minutes=60)
-analytics_auto(since="2026-07-01T00:00:00Z")
-analytics_auto(campaign="arthur-babylist")
+analytics(minutes=60)
+analytics(since="2026-07-01T00:00:00Z")
+analytics(campaign="arthur-babylist")
 analytics_live(minutes=60, humans_only=true)
 analytics_attribution(campaign="arthur-babylist")
 analytics_attribution(since="2026-07-10T17:00:00Z")
@@ -141,7 +141,7 @@ durable analysis.
 
 ### Unified MCP routing
 
-`analytics_auto` is the default read surface when a visitor question may cross
+`analytics` is the default read surface when a visitor question may cross
 the live/durable boundary. It accepts a UTC `[since, until)` interval (or a
 minute lookback), then:
 
@@ -180,7 +180,7 @@ in lockstep in `scripts/receipt_mcp_server.py` and
 
 | Tool | Purpose |
 |---|---|
-| `analytics_auto(minutes, since, until, campaign, humans_only=true)` | default unified visitor/session query; routes and merges live DynamoDB with durable Athena data |
+| `analytics(minutes, since, until, campaign, humans_only=true)` | default unified visitor/session query; routes and merges live DynamoDB with durable Athena data |
 | `analytics_live(minutes=60, humans_only=true)` | request-time sessions from `web_events_live`, with edge geo, referrer, UTM fields, pages, and events |
 | `analytics_attribution(campaign, since, humans_only=true)` | exact live campaign/time-window attribution with full-session page timelines |
 | `analytics_traffic(start, end)` | per-PT-day requests, outside-human vs WARP vs bot, human sessions/pageviews |
@@ -290,7 +290,7 @@ can omit detailed geo fields for AWS viewers.
    country; assert region/city when CloudFront supplies them.
 3. Call `analytics_attribution(campaign="smoke-<UTC epoch>",
    humans_only=false)` and assert the same session, referrer, and campaign.
-4. Call `analytics_auto(campaign="smoke-<UTC epoch>", humans_only=false)` and
+4. Call `analytics(campaign="smoke-<UTC epoch>", humans_only=false)` and
    assert `source` includes `live`, no unexpected unqueried range is reported,
    and the same session is returned.
 5. Check the collector Lambda `Errors` metric and log group, then verify the
