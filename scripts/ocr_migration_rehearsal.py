@@ -781,17 +781,69 @@ def _read_image_ids(path: Path) -> list[str]:
     return ids
 
 
+def reconcile_parked(
+    labels: LabelReport, expect_parked: dict[str, int]
+) -> dict[str, Any]:
+    """Cancel loss/surplus pairs explained by PARKING, in place.
+
+    A parked label legitimately transitions (label, ORIG_STATUS) ->
+    (label, NEEDS_REVIEW) on its image, which the raw multiset check reads as
+    one loss plus one surplus. For each image, cancel each lost (label, S)
+    against available (label, NEEDS_REVIEW) surplus, capped by the apply
+    report's parked count for that image. Anything left after reconciliation
+    is REAL loss/surplus and still fails the verdict.
+    """
+    reconciled: dict[str, int] = {}
+    for img in list(labels.lost_labels.keys()):
+        budget = expect_parked.get(img, 0)
+        if budget <= 0:
+            continue
+        lost = dict(labels.lost_labels[img])
+        surplus = dict(labels.surplus_labels.get(img, []))
+        nr_avail = {lab: n for (lab, st), n in surplus.items() if st == "NEEDS_REVIEW"}
+        used = 0
+        new_lost = {}
+        for (lab, st), n in lost.items():
+            take = min(n, nr_avail.get(lab, 0), budget - used)
+            if take > 0:
+                nr_avail[lab] -= take
+                surplus[(lab, "NEEDS_REVIEW")] -= take
+                used += take
+            if n - take > 0:
+                new_lost[(lab, st)] = n - take
+        reconciled[img] = used
+        if new_lost:
+            labels.lost_labels[img] = sorted(new_lost.items())
+        else:
+            del labels.lost_labels[img]
+        remaining_surplus = {k: v for k, v in surplus.items() if v > 0}
+        if remaining_surplus:
+            labels.surplus_labels[img] = sorted(remaining_surplus.items())
+        else:
+            labels.surplus_labels.pop(img, None)
+    return reconciled
+
+
 def run_diff(
     before_path: Path,
     after_path: Path,
     target_image_ids: list[str],
+    expect_parked: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     before = load_rows(before_path)
     after = load_rows(after_path)
     row_diff = diff_rows(before, after)
     violations = blast_radius_violations(row_diff.changed_pks, target_image_ids)
     labels = check_label_preservation(before, after, target_image_ids)
-    orphans = find_orphan_label_keys(after, target_image_ids)
+    reconciled = reconcile_parked(labels, expect_parked) if expect_parked else {}
+    # Orphan DELTA: pre-existing dangling labels (word already missing BEFORE
+    # the migration) must not fail the run — only orphans the migration CREATED.
+    before_orphans = set(find_orphan_label_keys(before, target_image_ids))
+    orphans = [
+        o
+        for o in find_orphan_label_keys(after, target_image_ids)
+        if o not in before_orphans
+    ]
     wiped = wiped_images(before, after, target_image_ids)
     unchanged = unchanged_targets(row_diff.changed_pks, target_image_ids)
     word_bypass = targets_without_word_changes(row_diff, target_image_ids)
@@ -830,12 +882,15 @@ def run_diff(
             "images_with_surplus_labels": len(labels.surplus_labels),
             "surplus": dict(labels.surplus_labels),
             "images_with_churn_only": len(labels.churn_only),
+            "reconciled_parked": sum(reconciled.values()),
+            "images_reconciled": len(reconciled),
         },
         "invariants": {
             "orphan_labels": [
                 f"{img}#{rid}#{lid}#{wid}#{label}"
                 for (img, rid, lid, wid, label) in orphans
             ],
+            "pre_existing_orphans": len(before_orphans),
             "wiped_images": wiped,
             "unchanged_targets": unchanged,
             "targets_without_word_changes": word_bypass,
@@ -865,7 +920,8 @@ def _print_report(report: dict[str, Any]) -> None:
     )
     print(
         f"  images_with_lost_labels={lb['images_with_lost_labels']} "
-        f"images_with_churn_only={lb['images_with_churn_only']}"
+        f"images_with_churn_only={lb['images_with_churn_only']} "
+        f"reconciled_parked={lb.get('reconciled_parked', 0)}"
     )
     for rk, items in list(lb["lost"].items())[:20]:
         print(f"    LOST {rk}: {items}")
@@ -914,6 +970,13 @@ def main(argv: list[str] | None = None) -> int:
         help="file of migration target image_ids (one per line)",
     )
     d.add_argument("--json", type=Path, default=None, help="write full report JSON")
+    d.add_argument(
+        "--expect-parked",
+        type=Path,
+        default=None,
+        help="apply-report JSON; reconciles (label,S)->(label,NEEDS_REVIEW) "
+        "transitions up to each image's reported parked count",
+    )
 
     pull = sub.add_parser(
         "pull", help="scoped BEFORE snapshot: Query only the listed images from dev"
@@ -1024,7 +1087,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "diff":
         target_ids = _read_image_ids(args.images)
-        report = run_diff(args.before, args.after, target_ids)
+        expect_parked = None
+        if args.expect_parked:
+            apply_report = json.loads(args.expect_parked.read_text())
+            expect_parked = {
+                img: int(r.get("parked", 0))
+                for img, r in apply_report.items()
+                if isinstance(r, dict) and r.get("status") == "ok"
+            }
+        report = run_diff(args.before, args.after, target_ids, expect_parked)
         if args.json:
             args.json.write_text(json.dumps(report, indent=2))
         _print_report(report)

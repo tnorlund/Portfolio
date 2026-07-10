@@ -476,3 +476,75 @@ def test_local_endpoint_guardrail():
         reh._make_client("https://dynamodb.us-east-1.amazonaws.com", None, False)
     with pytest.raises(SystemExit):
         reh._make_client(None, None, False)
+
+
+# --------------------------------------------------------------------------- #
+# Parked reconciliation + orphan delta                                         #
+# --------------------------------------------------------------------------- #
+
+
+def test_parked_reconciliation_clears_verdict(tmp_path: Path):
+    # One label parked: (GT, VALID) -> (GT, NEEDS_REVIEW) on a re-read word.
+    before = write_snapshot(
+        tmp_path / "b.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "TOTAL"),
+            label_item("img1", 1, 1, 1, "GT", status="VALID"),
+        ],
+    )
+    after = write_snapshot(
+        tmp_path / "a.sqlite3",
+        [
+            word_item("img1", 1, 2, 2, "TOTAI"),  # re-read word
+            label_item("img1", 1, 2, 2, "GT", status="NEEDS_REVIEW"),  # parked
+        ],
+    )
+    # Without reconciliation: loss + surplus -> FAIL.
+    assert reh.run_diff(before, after, ["img1"])["ok"] is False
+    # With the apply report vouching for 1 parked label -> PASS.
+    report = reh.run_diff(before, after, ["img1"], expect_parked={"img1": 1})
+    assert report["ok"] is True
+    assert report["labels"]["reconciled_parked"] == 1
+
+
+def test_parked_reconciliation_never_hides_real_loss(tmp_path: Path):
+    # Two labels: one parked, one genuinely dropped. Reconciliation may cancel
+    # only the parked pair; the drop must still FAIL.
+    before = write_snapshot(
+        tmp_path / "b.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "TOTAL"),
+            label_item("img1", 1, 1, 1, "GT", status="VALID"),
+            word_item("img1", 1, 2, 1, "VISA"),
+            label_item("img1", 1, 2, 1, "PAYMENT", status="VALID"),  # dropped
+        ],
+    )
+    after = write_snapshot(
+        tmp_path / "a.sqlite3",
+        [
+            word_item("img1", 1, 3, 3, "TOTAI"),
+            label_item("img1", 1, 3, 3, "GT", status="NEEDS_REVIEW"),  # parked
+            word_item("img1", 1, 4, 1, "VISA"),  # word survives, label gone
+        ],
+    )
+    report = reh.run_diff(before, after, ["img1"], expect_parked={"img1": 1})
+    assert report["ok"] is False
+    lost = report["labels"]["lost"]["img1"]
+    assert any(lab == "PAYMENT" for ((lab, _st), _n) in lost)
+
+
+def test_orphan_delta_ignores_pre_existing(tmp_path: Path):
+    # img1 already has a dangling label BEFORE the migration. If the migration
+    # neither fixes nor worsens it, the orphan invariant must not fail.
+    pre_orphan = label_item("img1", 1, 9, 9, "GT")  # word (1,9,9) never exists
+    before = write_snapshot(
+        tmp_path / "b.sqlite3",
+        [word_item("img1", 1, 1, 1, "A"), pre_orphan],
+    )
+    after = write_snapshot(
+        tmp_path / "a.sqlite3",
+        [word_item("img1", 1, 2, 2, "A"), pre_orphan],  # word re-keyed; orphan kept
+    )
+    report = reh.run_diff(before, after, ["img1"])
+    assert report["invariants"]["orphan_labels"] == []
+    assert report["invariants"]["pre_existing_orphans"] == 1
