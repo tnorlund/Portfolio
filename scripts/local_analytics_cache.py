@@ -228,9 +228,15 @@ def _parse_components(value: str) -> set[str]:
 class DynamoSQLiteWriter:
     """Thread-safe batched writer used by parallel DynamoDB scan workers."""
 
-    def __init__(self, path: Path, raw_bucket_override: str | None = None):
+    def __init__(
+        self,
+        path: Path,
+        raw_bucket_override: str | None = None,
+        raw_bucket_fallback: str | None = None,
+    ):
         self.path = path
         self.raw_bucket_override = raw_bucket_override
+        self.raw_bucket_fallback = raw_bucket_fallback
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             path.unlink()
@@ -304,8 +310,10 @@ class DynamoSQLiteWriter:
         rows = [self._row(item) for item in items]
         image_rows: list[tuple[str, str, str | None]] = []
         for item in items:
-            bucket = self.raw_bucket_override or _string_attribute(
-                item, "raw_s3_bucket"
+            bucket = (
+                self.raw_bucket_override
+                or _string_attribute(item, "raw_s3_bucket")
+                or self.raw_bucket_fallback
             )
             key = _string_attribute(item, "raw_s3_key")
             sha256 = _string_attribute(item, "sha256")
@@ -415,10 +423,15 @@ def sync_dynamodb(
     segments: int,
     consistent_read: bool,
     raw_bucket_override: str | None,
+    raw_bucket_fallback: str | None,
 ) -> dict[str, Any]:
     LOG.info("Scanning DynamoDB table %s with %d segments", table_name, segments)
     table = client.describe_table(TableName=table_name)["Table"]
-    writer = DynamoSQLiteWriter(destination, raw_bucket_override)
+    writer = DynamoSQLiteWriter(
+        destination,
+        raw_bucket_override=raw_bucket_override,
+        raw_bucket_fallback=raw_bucket_fallback,
+    )
     segment_stats: list[dict[str, float | int]] = []
     try:
         with ThreadPoolExecutor(max_workers=segments) as executor:
@@ -869,6 +882,7 @@ def sync_cache(args: argparse.Namespace) -> dict[str, Any]:
                 args.scan_segments,
                 args.consistent_read,
                 raw_bucket_override,
+                sources.raw_bucket,
             )
 
         if "raw_images" in components:
@@ -1133,7 +1147,7 @@ def _import_local_dynamo(
             if len(pending) >= workers * 4:
                 imported += sum(future.result() for future in pending)
                 pending.clear()
-                LOG.info("DynamoDB Local import: %,d items", imported)
+                LOG.info("DynamoDB Local import: %s items", f"{imported:,}")
         imported += sum(future.result() for future in pending)
     return imported
 
