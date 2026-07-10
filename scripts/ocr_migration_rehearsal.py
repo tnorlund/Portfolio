@@ -156,10 +156,26 @@ def diff_rows(before: list[Row], after: list[Row]) -> RowDiff:
     return diff
 
 
+def _canonicalize(obj: Any) -> Any:
+    """Recursively sort DynamoDB set members (SS/NS/BS are unordered) so an
+    otherwise-identical item does not read as 'mutated' from set reordering."""
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if k in ("SS", "NS", "BS") and isinstance(v, list):
+                out[k] = sorted(v)
+            else:
+                out[k] = _canonicalize(v)
+        return out
+    if isinstance(obj, list):
+        return [_canonicalize(v) for v in obj]
+    return obj
+
+
 def _canonical(wire_json: str) -> str:
     """Order-insensitive canonical form of a wire-JSON item for comparison."""
     try:
-        return json.dumps(json.loads(wire_json), sort_keys=True)
+        return json.dumps(_canonicalize(json.loads(wire_json)), sort_keys=True)
     except (TypeError, json.JSONDecodeError):
         return wire_json
 
@@ -221,7 +237,9 @@ def build_label_index(rows: list[Row]) -> tuple[LabelIndex, LabelIndex]:
             continue
         rid, lid, wid, label = parsed
         status = r.native.get("validation_status")
-        status = "" if status is None else str(status)
+        # Normalize case so an off-cased legacy row can't false-FAIL. Entities
+        # already normalize via normalize_enum; this hardens against raw rows.
+        status = "" if status is None else str(status).upper()
         word_text = words.get((image_id, rid, lid, wid), "")
         key = (image_id, rid)
         tuple_index.setdefault(key, Counter())[(label, word_text, status)] += 1
@@ -261,13 +279,14 @@ def check_label_preservation(
     """
     targets = set(target_image_ids) if target_image_ids is not None else None
     before_tuples, before_counts = build_label_index(before)
-    _, after_counts = build_label_index(after)
-    after_tuples, _ = build_label_index(after)
+    after_tuples, after_counts = build_label_index(after)
+
+    def _in_scope(key: tuple[str, int]) -> bool:
+        return targets is None or key[0] in targets
 
     report = LabelReport()
     for key, before_counter in before_counts.items():
-        image_id, _rid = key
-        if targets is not None and image_id not in targets:
+        if not _in_scope(key):
             continue
         report.receipts_checked += 1
         report.labels_before += sum(before_counter.values())
@@ -279,15 +298,98 @@ def check_label_preservation(
         if lost:
             report.lost_labels[key] = sorted(lost.items())
 
-        # Churn (informational): a (label, text, status) tuple vanished but the
-        # (label, status) count was preserved -> the label moved to a re-read word.
+        # Churn (informational): a (label, word_text, status) tuple vanished but
+        # its (label, status) count is preserved -> the label moved to a re-read
+        # word. Test EACH tuple's (label, status) against the real-loss set, not
+        # the receipt-level truthiness of `lost`.
         tuple_lost = before_tuples.get(key, Counter()) - after_tuples.get(
             key, Counter()
         )
-        churn = [item for item in tuple_lost.items() if not lost]
+        churn = [
+            item for item in tuple_lost.items() if (item[0][0], item[0][2]) not in lost
+        ]
         if churn:
             report.churn_only[key] = sorted(churn)
+
+    # Count labels on receipts that exist only in AFTER (so labels_after is a true
+    # total, not just the before-receipts' contribution).
+    for key, after_counter in after_counts.items():
+        if _in_scope(key) and key not in before_counts:
+            report.labels_after += sum(after_counter.values())
     return report
+
+
+def find_orphan_label_keys(
+    rows: list[Row], target_image_ids: Iterable[str] | None = None
+) -> list[tuple[str, int, int, int, str]]:
+    """AFTER label rows whose (image, receipt, line, word) has no word row.
+
+    A migration that regenerates words under new ids but fails to delete the OLD
+    label rows leaves dangling labels: they still parse and would be counted as
+    'preserved' by the multiset check even though they point at a word that no
+    longer exists. Every label must have its word.
+    """
+    targets = set(target_image_ids) if target_image_ids is not None else None
+    words = build_word_text_map(rows)
+    orphans: list[tuple[str, int, int, int, str]] = []
+    for r in rows:
+        image_id = r.image_id or image_id_from_pk(r.pk)
+        if image_id is None or (targets is not None and image_id not in targets):
+            continue
+        parsed = parse_label_sk(r.sk)
+        if parsed is None:
+            continue
+        rid, lid, wid, label = parsed
+        if (image_id, rid, lid, wid) not in words:
+            orphans.append((image_id, rid, lid, wid, label))
+    return sorted(orphans)
+
+
+def _word_counts(rows: list[Row], targets: set[str] | None) -> Counter:
+    """(image_id, receipt_id) -> number of ReceiptWord rows."""
+    counts: Counter = Counter()
+    for r in rows:
+        image_id = r.image_id or image_id_from_pk(r.pk)
+        if image_id is None or (targets is not None and image_id not in targets):
+            continue
+        parsed = parse_word_sk(r.sk)
+        if parsed is not None:
+            counts[(image_id, parsed[0])] += 1
+    return counts
+
+
+def wiped_receipts(
+    before: list[Row],
+    after: list[Row],
+    target_image_ids: Iterable[str] | None = None,
+) -> list[tuple[str, int]]:
+    """Target receipts that had words BEFORE but have zero AFTER.
+
+    Catches a wholesale nuke that the label check alone misses for receipts that
+    carried no labels (nothing to 'lose'), yet whose words all vanished.
+    """
+    targets = set(target_image_ids) if target_image_ids is not None else None
+    before_wc = _word_counts(before, targets)
+    after_wc = _word_counts(after, targets)
+    return sorted(
+        key for key, n in before_wc.items() if n > 0 and after_wc.get(key, 0) == 0
+    )
+
+
+def unchanged_targets(
+    changed_pks: Iterable[str], target_image_ids: Iterable[str]
+) -> list[str]:
+    """Target images with NO changed row at all.
+
+    A silent no-op, a migration that crashed before writing, or a driver that
+    bypassed DYNAMODB_ENDPOINT_URL (writing to REAL dev instead) all leave the
+    local table untouched -> an empty diff that would otherwise print PASS. A
+    genuine re-OCR of every target must touch every target.
+    """
+    changed_images = {
+        pk.split("#", 1)[1] for pk in changed_pks if pk.startswith("IMAGE#")
+    }
+    return sorted(i for i in target_image_ids if i not in changed_images)
 
 
 # --------------------------------------------------------------------------- #
@@ -466,8 +568,17 @@ def run_diff(
     row_diff = diff_rows(before, after)
     violations = blast_radius_violations(row_diff.changed_pks, target_image_ids)
     labels = check_label_preservation(before, after, target_image_ids)
+    orphans = find_orphan_label_keys(after, target_image_ids)
+    wiped = wiped_receipts(before, after, target_image_ids)
+    unchanged = unchanged_targets(row_diff.changed_pks, target_image_ids)
 
-    ok = not violations and not labels.has_real_loss
+    ok = (
+        not violations
+        and not labels.has_real_loss
+        and not orphans
+        and not wiped
+        and not unchanged
+    )
     return {
         "ok": ok,
         "row_diff": {
@@ -494,6 +605,14 @@ def run_diff(
                 for (img, rid), items in labels.lost_labels.items()
             },
             "receipts_with_churn_only": len(labels.churn_only),
+        },
+        "invariants": {
+            "orphan_labels": [
+                f"{img}#{rid}#{lid}#{wid}#{label}"
+                for (img, rid, lid, wid, label) in orphans
+            ],
+            "wiped_receipts": [f"{img}#{rid}" for (img, rid) in wiped],
+            "unchanged_targets": unchanged,
         },
     }
 
@@ -524,6 +643,19 @@ def _print_report(report: dict[str, Any]) -> None:
     )
     for rk, items in list(lb["lost"].items())[:20]:
         print(f"    LOST {rk}: {items}")
+    inv = report["invariants"]
+    print("=== Invariants ===")
+    print(
+        f"  orphan_labels={len(inv['orphan_labels'])} "
+        f"wiped_receipts={len(inv['wiped_receipts'])} "
+        f"unchanged_targets={len(inv['unchanged_targets'])}"
+    )
+    for o in inv["orphan_labels"][:10]:
+        print(f"    ORPHAN LABEL (no word): {o}")
+    for w in inv["wiped_receipts"][:10]:
+        print(f"    WIPED RECEIPT (words->0): {w}")
+    for u in inv["unchanged_targets"][:10]:
+        print(f"    UNCHANGED TARGET (no writes — no-op/bypass?): {u}")
     print("=== VERDICT ===")
     print("  PASS" if report["ok"] else "  FAIL")
 
