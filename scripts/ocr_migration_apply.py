@@ -447,6 +447,11 @@ def apply_image(
                 }
         lkey = reh.parse_label_sk(sk)
         if lkey:
+            # The label string lives ONLY in the SK — label rows carry no
+            # separate "label" attribute. Inject the parsed value so the
+            # planner and the rebuilt entity always have it.
+            native = dict(native)
+            native["label"] = lkey[3]
             old_labels[(lkey[0], lkey[1], lkey[2])].append(native)
         if etype == "RECEIPT_PLACE":
             place_rows.append(native)
