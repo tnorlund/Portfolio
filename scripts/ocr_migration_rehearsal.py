@@ -17,11 +17,14 @@ workflow (built on top of ``scripts/local_analytics_cache.py`` / PR #1097):
 
 Why label-preservation is not simple key-equality: re-OCR reassigns line/word
 ids, so a label's PK/SK (``...#LINE#..#WORD#..#LABEL#..``) changes even when the
-label is faithfully re-applied. We therefore compare, per (image_id, receipt_id),
+label is faithfully re-applied. It can also RE-SEGMENT an image (split/merge
+receipts), moving labels between receipt_ids. We therefore compare per IMAGE
+(pooled across the image's receipts, so re-segmentation is not counted as loss)
 the MULTISET of (label, word_text, validation_status) - joining each label to its
 word's text - and separately the word-text-INSENSITIVE (label, validation_status)
 counts. A tuple that disappears only because a word was re-read to different text
-is churn; a drop in the word-text-insensitive count is a real lost label.
+is churn; a drop in the word-text-insensitive count is a real lost label, and an
+increase is a surplus (a duplicated/mis-attached label).
 
 The ``diff`` command is pure Python over two SQLite files and needs no Docker or
 AWS; only ``snapshot`` talks to the live local container.
@@ -196,8 +199,9 @@ def blast_radius_violations(
 # Label preservation                                                          #
 # --------------------------------------------------------------------------- #
 
-# Per (image_id, receipt_id): Counter over an identity tuple.
-LabelIndex = dict[tuple[str, int], Counter]
+# Per image_id: Counter over an identity tuple, pooled across the image's
+# receipts (robust to re-OCR re-segmentation reassigning receipt_ids).
+LabelIndex = dict[str, Counter]
 
 
 def build_word_text_map(rows: list[Row]) -> dict[tuple[str, int, int, int], str]:
@@ -217,7 +221,14 @@ def build_word_text_map(rows: list[Row]) -> dict[tuple[str, int, int, int], str]
 
 
 def build_label_index(rows: list[Row]) -> tuple[LabelIndex, LabelIndex]:
-    """Build two per-receipt label indexes.
+    """Build two per-IMAGE label indexes (aggregated across the image's receipts).
+
+    Keyed by image_id, NOT (image_id, receipt_id): re-OCR can RE-SEGMENT an image
+    (our splitter can turn one receipt into two, or merge two), which reassigns
+    words - and their labels - to different receipt_ids. A per-receipt invariant
+    would then read that legitimate movement as loss-in-one + surplus-in-another.
+    Pooling per image makes "no label was lost from this image" the invariant,
+    which is what actually matters, while still catching a genuine drop.
 
     Returns (tuple_index, count_index):
       - tuple_index counts (label, word_text, validation_status) - sensitive to a
@@ -241,29 +252,22 @@ def build_label_index(rows: list[Row]) -> tuple[LabelIndex, LabelIndex]:
         # already normalize via normalize_enum; this hardens against raw rows.
         status = "" if status is None else str(status).upper()
         word_text = words.get((image_id, rid, lid, wid), "")
-        key = (image_id, rid)
-        tuple_index.setdefault(key, Counter())[(label, word_text, status)] += 1
-        count_index.setdefault(key, Counter())[(label, status)] += 1
+        tuple_index.setdefault(image_id, Counter())[(label, word_text, status)] += 1
+        count_index.setdefault(image_id, Counter())[(label, status)] += 1
     return tuple_index, count_index
 
 
 @dataclass
 class LabelReport:
-    # (image_id, receipt_id) -> list of lost identity tuples with counts
-    lost_labels: dict[tuple[str, int], list[tuple[Any, int]]] = field(
-        default_factory=dict
-    )
-    churn_only: dict[tuple[str, int], list[tuple[Any, int]]] = field(
-        default_factory=dict
-    )
-    # (image_id, receipt_id) -> (label, status) counts that INCREASED. A clean
-    # re-apply preserves counts exactly; a surplus means the migration failed to
+    # image_id -> list of lost identity tuples with counts (pooled per image)
+    lost_labels: dict[str, list[tuple[Any, int]]] = field(default_factory=dict)
+    churn_only: dict[str, list[tuple[Any, int]]] = field(default_factory=dict)
+    # image_id -> (label, status) counts that INCREASED. A clean re-apply
+    # preserves per-image counts exactly; a surplus means the migration failed to
     # delete an old label row whose (line,word) id collided with a regenerated
     # word (so the orphan check can't see it) -> a duplicated, mis-attached label.
-    surplus_labels: dict[tuple[str, int], list[tuple[Any, int]]] = field(
-        default_factory=dict
-    )
-    receipts_checked: int = 0
+    surplus_labels: dict[str, list[tuple[Any, int]]] = field(default_factory=dict)
+    images_checked: int = 0
     labels_before: int = 0
     labels_after: int = 0
 
@@ -281,61 +285,61 @@ def check_label_preservation(
     after: list[Row],
     target_image_ids: Iterable[str] | None = None,
 ) -> LabelReport:
-    """Assert every pre-migration label survives (per receipt, multiset >=).
+    """Assert every pre-migration label survives (per IMAGE, multiset >=).
 
-    A real loss is a decrease in the word-text-INSENSITIVE (label,
-    validation_status) count for a receipt. A tuple that only disappears from the
-    word-text-SENSITIVE view (same label+status count preserved) is churn from a
-    re-read word and is reported separately, not as loss.
+    Labels are pooled per image (not per receipt) so a re-OCR that re-segments an
+    image and moves labels between receipt_ids reads as preserved. A real loss is
+    a decrease in the word-text-INSENSITIVE (label, validation_status) count for
+    an image; a surplus is an increase (duplicated/mis-attached label). A tuple
+    that only disappears from the word-text-SENSITIVE view (same (label,status)
+    count) is churn from a re-read word, reported separately, not as loss.
     """
     targets = set(target_image_ids) if target_image_ids is not None else None
     before_tuples, before_counts = build_label_index(before)
     after_tuples, after_counts = build_label_index(after)
 
-    def _in_scope(key: tuple[str, int]) -> bool:
-        return targets is None or key[0] in targets
+    def _in_scope(image_id: str) -> bool:
+        return targets is None or image_id in targets
 
     report = LabelReport()
-    for key, before_counter in before_counts.items():
-        if not _in_scope(key):
+    for image_id, before_counter in before_counts.items():
+        if not _in_scope(image_id):
             continue
-        report.receipts_checked += 1
+        report.images_checked += 1
         report.labels_before += sum(before_counter.values())
-        after_counter = after_counts.get(key, Counter())
+        after_counter = after_counts.get(image_id, Counter())
         report.labels_after += sum(after_counter.values())
 
         # Real loss: word-text-insensitive (label, status) count dropped.
         lost = before_counter - after_counter  # only positive residuals
         if lost:
-            report.lost_labels[key] = sorted(lost.items())
+            report.lost_labels[image_id] = sorted(lost.items())
 
-        # Surplus: (label, status) count INCREASED for a receipt present in both.
-        # A faithful re-apply keeps counts equal; a surplus is a duplicated label
-        # -- the stale-label id-collision case the orphan check can't see (the
-        # stale row lands on a regenerated word at the same id). Scoped to shared
-        # receipts so re-segmentation (labels moving to a new receipt_id) is not
-        # counted here -- that is handled per-image, see module notes.
+        # Surplus: (label, status) count INCREASED for an image present in both.
+        # A faithful re-apply keeps per-image counts equal; a surplus is a
+        # duplicated label -- the stale-label id-collision the orphan check can't
+        # see (the stale row lands on a regenerated word at the same id).
         surplus = after_counter - before_counter
         if surplus:
-            report.surplus_labels[key] = sorted(surplus.items())
+            report.surplus_labels[image_id] = sorted(surplus.items())
 
         # Churn (informational): a (label, word_text, status) tuple vanished but
         # its (label, status) count is preserved -> the label moved to a re-read
         # word. Test EACH tuple's (label, status) against the real-loss set, not
-        # the receipt-level truthiness of `lost`.
-        tuple_lost = before_tuples.get(key, Counter()) - after_tuples.get(
-            key, Counter()
+        # the image-level truthiness of `lost`.
+        tuple_lost = before_tuples.get(image_id, Counter()) - after_tuples.get(
+            image_id, Counter()
         )
         churn = [
             item for item in tuple_lost.items() if (item[0][0], item[0][2]) not in lost
         ]
         if churn:
-            report.churn_only[key] = sorted(churn)
+            report.churn_only[image_id] = sorted(churn)
 
-    # Count labels on receipts that exist only in AFTER (so labels_after is a true
-    # total, not just the before-receipts' contribution).
-    for key, after_counter in after_counts.items():
-        if _in_scope(key) and key not in before_counts:
+    # Count labels on images that exist only in AFTER (so labels_after is a true
+    # total, not just the before-images' contribution).
+    for image_id, after_counter in after_counts.items():
+        if _in_scope(image_id) and image_id not in before_counts:
             report.labels_after += sum(after_counter.values())
     return report
 
@@ -367,33 +371,37 @@ def find_orphan_label_keys(
 
 
 def _word_counts(rows: list[Row], targets: set[str] | None) -> Counter:
-    """(image_id, receipt_id) -> number of ReceiptWord rows."""
+    """image_id -> number of ReceiptWord rows (pooled across receipts).
+
+    Per image, not per receipt: re-OCR can re-segment (merge receipts), so a
+    single receipt_id dropping to zero words is legitimate movement, whereas an
+    IMAGE dropping to zero words is a genuine wipe.
+    """
     counts: Counter = Counter()
     for r in rows:
         image_id = r.image_id or image_id_from_pk(r.pk)
         if image_id is None or (targets is not None and image_id not in targets):
             continue
-        parsed = parse_word_sk(r.sk)
-        if parsed is not None:
-            counts[(image_id, parsed[0])] += 1
+        if parse_word_sk(r.sk) is not None:
+            counts[image_id] += 1
     return counts
 
 
-def wiped_receipts(
+def wiped_images(
     before: list[Row],
     after: list[Row],
     target_image_ids: Iterable[str] | None = None,
-) -> list[tuple[str, int]]:
-    """Target receipts that had words BEFORE but have zero AFTER.
+) -> list[str]:
+    """Target images that had words BEFORE but have zero AFTER.
 
-    Catches a wholesale nuke that the label check alone misses for receipts that
-    carried no labels (nothing to 'lose'), yet whose words all vanished.
+    Catches a wholesale nuke the label check misses for an image whose receipts
+    carried no labels (nothing to 'lose') yet whose words all vanished.
     """
     targets = set(target_image_ids) if target_image_ids is not None else None
     before_wc = _word_counts(before, targets)
     after_wc = _word_counts(after, targets)
     return sorted(
-        key for key, n in before_wc.items() if n > 0 and after_wc.get(key, 0) == 0
+        img for img, n in before_wc.items() if n > 0 and after_wc.get(img, 0) == 0
     )
 
 
@@ -611,7 +619,7 @@ def run_diff(
     violations = blast_radius_violations(row_diff.changed_pks, target_image_ids)
     labels = check_label_preservation(before, after, target_image_ids)
     orphans = find_orphan_label_keys(after, target_image_ids)
-    wiped = wiped_receipts(before, after, target_image_ids)
+    wiped = wiped_images(before, after, target_image_ids)
     unchanged = unchanged_targets(row_diff.changed_pks, target_image_ids)
     word_bypass = targets_without_word_changes(row_diff, target_image_ids)
 
@@ -641,27 +649,21 @@ def run_diff(
             "violations": violations,
         },
         "labels": {
-            "receipts_checked": labels.receipts_checked,
+            "images_checked": labels.images_checked,
             "labels_before": labels.labels_before,
             "labels_after": labels.labels_after,
-            "receipts_with_lost_labels": len(labels.lost_labels),
-            "lost": {
-                f"{img}#{rid}": items
-                for (img, rid), items in labels.lost_labels.items()
-            },
-            "receipts_with_surplus_labels": len(labels.surplus_labels),
-            "surplus": {
-                f"{img}#{rid}": items
-                for (img, rid), items in labels.surplus_labels.items()
-            },
-            "receipts_with_churn_only": len(labels.churn_only),
+            "images_with_lost_labels": len(labels.lost_labels),
+            "lost": dict(labels.lost_labels),
+            "images_with_surplus_labels": len(labels.surplus_labels),
+            "surplus": dict(labels.surplus_labels),
+            "images_with_churn_only": len(labels.churn_only),
         },
         "invariants": {
             "orphan_labels": [
                 f"{img}#{rid}#{lid}#{wid}#{label}"
                 for (img, rid, lid, wid, label) in orphans
             ],
-            "wiped_receipts": [f"{img}#{rid}" for (img, rid) in wiped],
+            "wiped_images": wiped,
             "unchanged_targets": unchanged,
             "targets_without_word_changes": word_bypass,
         },
@@ -683,14 +685,14 @@ def _print_report(report: dict[str, Any]) -> None:
     )
     for pk in br["violations"][:20]:
         print(f"    OUT-OF-SCOPE CHANGE: {pk}")
-    print("=== Label preservation ===")
+    print("=== Label preservation (per image) ===")
     print(
-        f"  receipts_checked={lb['receipts_checked']} "
+        f"  images_checked={lb['images_checked']} "
         f"labels_before={lb['labels_before']} labels_after={lb['labels_after']}"
     )
     print(
-        f"  receipts_with_lost_labels={lb['receipts_with_lost_labels']} "
-        f"receipts_with_churn_only={lb['receipts_with_churn_only']}"
+        f"  images_with_lost_labels={lb['images_with_lost_labels']} "
+        f"images_with_churn_only={lb['images_with_churn_only']}"
     )
     for rk, items in list(lb["lost"].items())[:20]:
         print(f"    LOST {rk}: {items}")
@@ -700,14 +702,14 @@ def _print_report(report: dict[str, Any]) -> None:
     print("=== Invariants ===")
     print(
         f"  orphan_labels={len(inv['orphan_labels'])} "
-        f"wiped_receipts={len(inv['wiped_receipts'])} "
+        f"wiped_images={len(inv['wiped_images'])} "
         f"unchanged_targets={len(inv['unchanged_targets'])} "
         f"targets_without_word_changes={len(inv['targets_without_word_changes'])}"
     )
     for o in inv["orphan_labels"][:10]:
         print(f"    ORPHAN LABEL (no word): {o}")
-    for w in inv["wiped_receipts"][:10]:
-        print(f"    WIPED RECEIPT (words->0): {w}")
+    for w in inv["wiped_images"][:10]:
+        print(f"    WIPED IMAGE (words->0): {w}")
     for u in inv["unchanged_targets"][:10]:
         print(f"    UNCHANGED TARGET (no writes — no-op/bypass?): {u}")
     for u in inv["targets_without_word_changes"][:10]:

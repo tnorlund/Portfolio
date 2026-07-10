@@ -145,7 +145,7 @@ def test_label_preservation_detects_dropped_label(tmp_path: Path):
         reh.load_rows(before), reh.load_rows(after), ["img1"]
     )
     assert report.has_real_loss
-    assert ("img1", 1) in report.lost_labels
+    assert "img1" in report.lost_labels
     assert report.labels_before == 1
     assert report.labels_after == 0
 
@@ -172,7 +172,7 @@ def test_text_reread_is_churn_not_loss(tmp_path: Path):
     # No REAL loss (label+status count preserved) ...
     assert not report.has_real_loss
     # ... but the word-text-sensitive tuple changed -> reported as churn.
-    assert ("img1", 1) in report.churn_only
+    assert "img1" in report.churn_only
 
 
 def test_reassigned_ids_same_text_preserved(tmp_path: Path):
@@ -212,7 +212,7 @@ def test_run_diff_verdict_fails_on_loss(tmp_path: Path):
     )
     report = reh.run_diff(before, after, ["img1"])
     assert report["ok"] is False
-    assert report["labels"]["receipts_with_lost_labels"] == 1
+    assert report["labels"]["images_with_lost_labels"] == 1
 
 
 def test_run_diff_verdict_passes_on_clean_reocr(tmp_path: Path):
@@ -265,7 +265,7 @@ def test_churn_reported_even_with_other_real_loss(tmp_path: Path):
         reh.load_rows(before), reh.load_rows(after), ["img1"]
     )
     assert report.has_real_loss  # A
-    churn_labels = {t[0][0] for t in report.churn_only[("img1", 1)]}
+    churn_labels = {t[0][0] for t in report.churn_only["img1"]}
     assert "B" in churn_labels  # churn still surfaced despite A's loss
     assert "A" not in churn_labels  # A is real loss, not churn
 
@@ -312,7 +312,7 @@ def test_wiped_receipt_detected(tmp_path: Path):
         tmp_path / "after.sqlite3",
         [other_item("IMAGE#img1", "RECEIPT#00001", "meta-only")],  # words gone
     )
-    assert ("img1", 1) in reh.wiped_receipts(
+    assert "img1" in reh.wiped_images(
         reh.load_rows(before), reh.load_rows(after), ["img1"]
     )
     report = reh.run_diff(before, after, ["img1"])
@@ -371,7 +371,7 @@ def test_surplus_label_detected_id_collision(tmp_path: Path):
     assert reh.find_orphan_label_keys(reh.load_rows(after), ["img1"]) == []
     diff = reh.run_diff(before, after, ["img1"])
     assert diff["ok"] is False
-    assert diff["labels"]["receipts_with_surplus_labels"] == 1
+    assert diff["labels"]["images_with_surplus_labels"] == 1
 
 
 def test_targets_without_word_changes_flags_mixed_endpoint(tmp_path: Path):
@@ -400,3 +400,34 @@ def test_targets_without_word_changes_flags_mixed_endpoint(tmp_path: Path):
     report = reh.run_diff(before, after, ["img1"])
     assert report["ok"] is False
     assert report["invariants"]["targets_without_word_changes"] == ["img1"]
+
+
+# --------------------------------------------------------------------------- #
+# Per-image aggregation (re-segmentation robustness)                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_resegmentation_label_moved_between_receipts_preserved(tmp_path: Path):
+    # Re-OCR re-segments the image: a label that was on receipt 1 is now on
+    # receipt 2 (same word text). A per-receipt check would see loss-in-1 +
+    # surplus-in-2; per-image pooling must read it as fully preserved.
+    before = write_snapshot(
+        tmp_path / "before.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "VISA"),
+            label_item("img1", 1, 1, 1, "PAYMENT_METHOD"),
+        ],
+    )
+    after = write_snapshot(
+        tmp_path / "after.sqlite3",
+        [
+            word_item("img1", 2, 1, 1, "VISA"),  # now under receipt 2
+            label_item("img1", 2, 1, 1, "PAYMENT_METHOD"),
+        ],
+    )
+    report = reh.check_label_preservation(
+        reh.load_rows(before), reh.load_rows(after), ["img1"]
+    )
+    assert not report.has_real_loss
+    assert not report.has_surplus
+    assert reh.run_diff(before, after, ["img1"])["ok"] is True
