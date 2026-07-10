@@ -285,7 +285,6 @@ def main(argv=None) -> int:
         measurement = measure(iid, rid, merchant=slug)
         row_faces, stats = select_row_faces(measurement, section_priors=priors)
         rows = _agreement(measurement, row_faces, typ.get("stylemap"))
-        all_rows.extend(rows)
 
         # A/B renders at identical canvas size (locked rule: same heights).
         wt = 760
@@ -346,6 +345,9 @@ def main(argv=None) -> int:
             m: _scorecard(real_m, im, words)
             for m, im in (("stylemap", syn_a), ("measured", syn_b))
         }
+        # Pool agreement rows only for receipts that made it all the way
+        # (else pooled vs per-receipt describe different populations).
+        all_rows.extend(rows)
         per_receipt[tag] = {
             "image_id": iid,
             "receipt_id": rid,

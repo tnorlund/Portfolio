@@ -91,3 +91,18 @@ def test_measured_row_style_hit_maps_face_to_bold():
 
 def test_measured_row_style_miss_returns_none_for_stylemap_fallback():
     assert measured_row_style({}, "ANY ROW") is None
+
+
+def test_measured_row_style_clamps_malformed_scale():
+    for bad, expect in (
+        (float("nan"), 1.0),
+        (float("inf"), 1.0),
+        (-1.0, 0.25),
+        (99.0, 4.0),
+        ("junk", 1.0),
+    ):
+        style = measured_row_style(
+            {normalize_face_key("ROW"): {"face": "regular", "scale": bad}},
+            "ROW",
+        )
+        assert style["scale"] == expect

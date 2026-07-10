@@ -16,6 +16,7 @@ barcode captions are smaller/lighter; everything else is single-weight.
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from typing import Any, Mapping
 
@@ -93,7 +94,8 @@ _RULES: list[tuple[str, re.Pattern]] = [
     (
         "transaction",
         re.compile(
-            r"Ticket\s?#|Station:|Sales Rep|User:|" r"^\d{1,2}/\d{1,2}/\d{4}",
+            r"Ticket\s?#|Station:|Sales Rep|User:|"
+            r"^\d{1,2}/\d{1,2}/\d{4}",
             re.I,
         ),
     ),
@@ -171,6 +173,17 @@ def normalize_face_key(text: str) -> str:
     return " ".join(str(text).upper().split())[:60]
 
 
+def _safe_scale(value: Any) -> float:
+    """row_faces is an external API boundary: clamp scale to sane, finite."""
+    try:
+        scale = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(scale):
+        return 1.0
+    return max(0.25, min(4.0, scale))
+
+
 def measured_row_style(
     row_faces: Mapping[str, Any],
     row_text: str,
@@ -188,7 +201,7 @@ def measured_row_style(
     if entry is None:
         return None
     return {
-        "scale": float(entry.get("scale", 1.0)),
+        "scale": _safe_scale(entry.get("scale", 1.0)),
         "bold": str(entry.get("face", "regular")).lower() == "heavy",
         "underline": bool(entry.get("underline", False)),
     }

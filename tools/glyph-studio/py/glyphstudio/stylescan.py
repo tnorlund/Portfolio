@@ -69,7 +69,9 @@ _RULES = [
     ("total_line", re.compile(r"^Total:", re.I)),
     (
         "summary",
-        re.compile(r"BALANCE DUE|CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I),
+        re.compile(
+            r"BALANCE DUE|CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I
+        ),
     ),
     (
         "payment",
@@ -117,14 +119,18 @@ _COSTCO_RULES = [
     ),
     (
         "footer",
-        re.compile(r"OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again", re.I),
+        re.compile(
+            r"OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again", re.I
+        ),
     ),
 ]
 _VONS_RULES = [
     ("store_header", re.compile(r"VONS|Safeway|Store\s?#|Main Street", re.I)),
     (
         "savings",
-        re.compile(r"SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings", re.I),
+        re.compile(
+            r"SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings", re.I
+        ),
     ),
     (
         "section_header",
@@ -220,7 +226,9 @@ _INNOUT_RULES = [
     ),
     (
         "transaction",
-        re.compile(r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I),
+        re.compile(
+            r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I
+        ),
     ),
     ("note", re.compile(r"^NOTE\b|^tes$", re.I)),
     (
@@ -295,14 +303,17 @@ _WILDFORK_RULES = [
     (
         "address",
         re.compile(
-            r"(Westlake|Blvd\.?|,\s*CA\s+\d{5}|^\d{3}\s*S\.|" r"1-833-300-9453)",
+            r"(Westlake|Blvd\.?|,\s*CA\s+\d{5}|^\d{3}\s*S\.|"
+            r"1-833-300-9453)",
             re.I,
         ),
     ),
     ("policy", re.compile(r"FEFO|returns|refunds|exchanges", re.I)),
     (
         "transaction",
-        re.compile(r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I),
+        re.compile(
+            r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I
+        ),
     ),
     # Column header row (Item/Description/Qty/Price). "Total" dropped: it
     # also matched standalone "Total"/"Total Tax" lines, which then folded to
@@ -429,15 +440,20 @@ def _run_widths(mask: np.ndarray) -> list[int]:
         padded = np.concatenate([[0], row.view(np.uint8), [0]])
         starts = np.where(np.diff(padded) == 1)[0]
         ends = np.where(np.diff(padded) == -1)[0]
-        out.extend(int(e - s) for s, e in zip(starts, ends) if 1 <= e - s <= 20)
+        out.extend(
+            int(e - s) for s, e in zip(starts, ends) if 1 <= e - s <= 20
+        )
     return out
 
 
 def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
-    from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_line_scorecard import _load_words_and_real
 
-    real, words = _load_words_and_real("Sprouts Farmers Market", image_id, receipt_id)
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+
+    # _load_words_and_real ignores its merchant arg (loads purely by
+    # image/receipt id); pass the caller's merchant through for clarity.
+    real, words = _load_words_and_real(merchant, image_id, receipt_id)
     gray = np.asarray(real.convert("L"))
     H, W = gray.shape
 
@@ -446,7 +462,9 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     )
     details = client.get_image_details(image_id)
     letters = [
-        l for l in details.receipt_letters if str(l.receipt_id) == str(receipt_id)
+        l
+        for l in details.receipt_letters
+        if str(l.receipt_id) == str(receipt_id)
     ]
 
     def box_px(obj):
@@ -480,7 +498,11 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     ws.sort(key=lambda w: w["cy"])
     lines: list[list[dict]] = []
     for w in ws:
-        if lines and abs(w["cy"] - median(x["cy"] for x in lines[-1])) < w["h"] * 0.6:
+        if (
+            lines
+            and abs(w["cy"] - median(x["cy"] for x in lines[-1]))
+            < w["h"] * 0.6
+        ):
             lines[-1].append(w)
         else:
             lines.append([w])
@@ -540,7 +562,9 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
                     {
                         "ch": ch,
                         "density": round(float(mask.mean()), 4),
-                        "stroke": (round(float(np.mean(runs)), 2) if runs else None),
+                        "stroke": (
+                            round(float(np.mean(runs)), 2) if runs else None
+                        ),
                         "h": int(yi1 - yi0),
                     }
                 )
@@ -591,26 +615,33 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     body_caps = [
         l["cap_px"]
         for l in out_lines
-        if l["section"] in ("item", "other", "footer", "survey") and l["cap_px"]
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["cap_px"]
     ]
     body_strokes = [
         l["stroke_med"]
         for l in out_lines
-        if l["section"] in ("item", "other", "footer", "survey") and l["stroke_med"]
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["stroke_med"]
     ]
     body_cap = median(body_caps) if body_caps else None
     body_stroke = median(body_strokes) if body_strokes else None
     body_boxes = [
         l["box_h"]
         for l in out_lines
-        if l["section"] in ("item", "other", "footer", "survey") and l["box_h"] > 0
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["box_h"] > 0
     ]
     body_box_h = median(body_boxes) if body_boxes else None
     for l in out_lines:
         tier = "normal"
         if body_cap and l["cap_px"] and l["cap_px"] >= 1.45 * body_cap:
             tier = "large"
-        elif body_stroke and l["stroke_med"] and l["stroke_med"] >= 1.30 * body_stroke:
+        elif (
+            body_stroke
+            and l["stroke_med"]
+            and l["stroke_med"] >= 1.30 * body_stroke
+        ):
             tier = "bold"
         l["tier"] = tier
 

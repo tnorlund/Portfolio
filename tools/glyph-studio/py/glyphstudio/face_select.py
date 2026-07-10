@@ -180,6 +180,10 @@ def select_row_faces(
     normalized text collides with a DIFFERENT style are dropped entirely
     (both fall back to the stylemap rules) -- a text key must be unambiguous
     to be trusted.
+
+    Stats are KEY-level over the returned map (``measured``/``measured_box``
+    /``prior`` count retained keys; ``conflicts`` counts dropped keys), plus
+    line-level ``skipped`` for lines no rung could style.
     """
     body_cap = measurement.get("body_cap_px")
     body_stroke = measurement.get("body_stroke_px")
@@ -207,12 +211,14 @@ def select_row_faces(
         if style is None:
             stats["skipped"] += 1
             continue
-        stats[style["source"]] += 1
         if key in out:
             prev = out[key]
             if prev is not None and not _same_style(prev, style):
                 out[key] = None  # ambiguous key -> stylemap fallback
-                stats["conflicts"] += 1
         else:
             out[key] = style
-    return {k: v for k, v in out.items() if v is not None}, stats
+    kept = {k: v for k, v in out.items() if v is not None}
+    for style in kept.values():
+        stats[style["source"]] += 1
+    stats["conflicts"] = len(out) - len(kept)
+    return kept, stats
