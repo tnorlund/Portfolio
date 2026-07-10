@@ -8,6 +8,7 @@ from receipt_chroma.compaction.deltas import merge_compaction_deltas
 from receipt_chroma.compaction.labels import apply_label_updates
 from receipt_chroma.compaction.metadata import apply_place_updates
 from receipt_chroma.compaction.models import CollectionUpdateResult
+from receipt_chroma.compaction.sections import apply_section_updates
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -28,6 +29,7 @@ def process_collection_updates(
     1. Delta merges (COMPACTION_RUN) - must be applied first
     2. Place updates (RECEIPT_PLACE)
     3. Label updates (RECEIPT_WORD_LABEL)
+    4. Section updates (RECEIPT_SECTION, LINES collection only)
 
     The caller is responsible for:
     - Downloading the snapshot
@@ -53,6 +55,11 @@ def process_collection_updates(
     label_msgs = [
         m for m in stream_messages if m.entity_type == "RECEIPT_WORD_LABEL"
     ]
+    # Section changes trigger a per-receipt recompute of row
+    # section_label metadata; INSERT/MODIFY/REMOVE are all recomputes
+    section_msgs = [
+        m for m in stream_messages if m.entity_type == "RECEIPT_SECTION"
+    ]
     delta_msgs = [
         m for m in stream_messages if m.entity_type == "COMPACTION_RUN"
     ]
@@ -74,6 +81,7 @@ def process_collection_updates(
         total_messages=len(stream_messages),
         place_count=len(place_msgs),
         label_count=len(label_msgs),
+        section_count=len(section_msgs),
         delta_count=len(delta_msgs),
         entity_deletion_count=len(entity_deletion_msgs),
     )
@@ -150,7 +158,29 @@ def process_collection_updates(
             message_count=len(label_results),
         )
 
-    # 4. Apply entity deletions (receipts, words, lines)
+    # 4. Apply section updates (after deltas so freshly-merged rows are
+    # restamped with current section state)
+    section_results = apply_section_updates(
+        chroma_client=chroma_client,
+        section_messages=section_msgs,
+        collection=collection,
+        logger=logger,
+        metrics=metrics,
+        dynamo_client=dynamo_client,
+    )
+
+    if section_results:
+        total_sections = sum(
+            r.updated_count for r in section_results if r.error is None
+        )
+        logger.info(
+            "Applied section updates",
+            collection=collection.value,
+            total_updated=total_sections,
+            receipt_count=len(section_results),
+        )
+
+    # 5. Apply entity deletions (receipts, words, lines)
     deletion_results = apply_receipt_deletions(
         chroma_client=chroma_client,
         receipt_messages=entity_deletion_msgs,
@@ -179,6 +209,7 @@ def process_collection_updates(
         delta_merge_count=delta_count,
         delta_merge_results=delta_results,
         receipt_deletions=deletion_results,
+        section_updates=section_results,
     )
 
     # Log summary
@@ -187,6 +218,7 @@ def process_collection_updates(
         collection=collection.value,
         metadata_updated=result.total_metadata_updated,
         labels_updated=result.total_labels_updated,
+        sections_updated=result.total_sections_updated,
         deltas_merged=delta_count,
         embeddings_deleted=result.total_deletions,
         has_errors=result.has_errors,
