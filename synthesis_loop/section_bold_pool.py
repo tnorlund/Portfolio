@@ -60,12 +60,25 @@ def valid_sections(table: str, region: str = "us-east-1"):
         for s in rows:
             if s.validation_status == "VALID":
                 key = (str(s.image_id), int(s.receipt_id))
-                out.setdefault(key, {})[s.section_type] = [
-                    int(x) for x in s.line_ids
-                ]
+                # Merge (don't overwrite) if a receipt somehow carries more
+                # than one row of the same section type.
+                bucket = out.setdefault(key, {}).setdefault(s.section_type, [])
+                bucket.extend(
+                    lid for lid in map(int, s.line_ids) if lid not in bucket
+                )
         if not lek:
             break
     return out
+
+
+def merchant_receipts(merchant: str, table: str, region: str = "us-east-1"):
+    """The merchant's (image_id, receipt_id) set, so a shared scan dir can't
+    leak another merchant's receipts into the pools."""
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+
+    client = DynamoClient(table_name=table, region=region)
+    places, _ = client.get_receipt_places_by_merchant(merchant)
+    return {(str(p.image_id), int(p.receipt_id)) for p in places}
 
 
 def build(scan_dir, slug, valid, max_ocr_overlap=2):
@@ -139,6 +152,8 @@ def main(argv=None) -> int:
     os.makedirs(args.out_dir, exist_ok=True)
 
     valid = valid_sections(args.table, args.region)
+    mine = merchant_receipts(args.merchant, args.table, args.region)
+    valid = {k: v for k, v in valid.items() if k in mine}
     heavy, body, stats, sect, charhist = build(
         args.scan_dir, args.slug, valid, args.max_ocr_overlap
     )

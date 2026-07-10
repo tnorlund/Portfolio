@@ -30,7 +30,8 @@ from collections import Counter
 import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_HERE, "py"))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 from glyphstudio.family_cluster import normalize_glyph  # noqa: E402
 from glyphstudio.glyph_gate import GATE_CHARS, audit_normalized  # noqa: E402
@@ -50,12 +51,23 @@ def load_npz_normalized(path: str, size: int = 32) -> dict[int, np.ndarray]:
     return out
 
 
-def build_fleet(fleet_dir: str) -> dict[str, dict[int, np.ndarray]]:
+def build_fleet(
+    fleet_dir: str, exclude_paths: tuple[str, ...] = ()
+) -> dict[str, dict[int, np.ndarray]]:
+    """Regular faces in ``fleet_dir``, minus any path in ``exclude_paths``.
+
+    The candidate/baseline usually live in the same directory; loading them
+    both as a fleet member AND under their explicit name would double-count
+    identical glyphs in the consensus and mask identity defects.
+    """
+    skip = {os.path.realpath(p) for p in exclude_paths}
     fleet: dict[str, dict[int, np.ndarray]] = {}
     for p in sorted(glob.glob(os.path.join(fleet_dir, "*.glyphs.npz"))):
         base = os.path.basename(p)[: -len(".glyphs.npz")]
         if base.endswith("-heavy"):
             continue  # regular faces only in the reference fleet
+        if os.path.realpath(p) in skip:
+            continue
         fleet[base] = load_npz_normalized(p)
     return fleet
 
@@ -71,7 +83,8 @@ def main(argv=None) -> int:
     ap.add_argument("--baseline", nargs=2, metavar=("NPZ", "NAME"), default=None)
     args = ap.parse_args(argv)
 
-    normalized = build_fleet(args.fleet_dir)
+    exclude = [args.candidate] + ([args.baseline[0]] if args.baseline else [])
+    normalized = build_fleet(args.fleet_dir, exclude_paths=tuple(exclude))
     normalized[args.candidate_name] = load_npz_normalized(args.candidate)
     focus = {args.candidate_name}
     if args.baseline:
@@ -95,7 +108,28 @@ def main(argv=None) -> int:
     for f in findings:
         if f.merchant in focus:
             print(f"  [{f.merchant}] {f.char!r} {f.kind}: {f.detail}")
-    return 0
+
+    # Gate policy: MISSING is a coverage report, not a defect (a partial data
+    # mint legitimately lacks chars; the renderer falls back). QUALITY findings
+    # (MISRENDER + LOW_AGREEMENT) must not exceed the baseline's when one is
+    # given, and must include no MISRENDER when auditing without a baseline.
+    cand = by_m.get(args.candidate_name, Counter())
+    cand_quality = cand["MISRENDER"] + cand["LOW_AGREEMENT"]
+    if args.baseline:
+        base = by_m.get(args.baseline[1], Counter())
+        base_quality = base["MISRENDER"] + base["LOW_AGREEMENT"]
+        verdict = cand_quality <= base_quality
+        print(
+            f"\ngate: candidate quality findings {cand_quality} vs baseline "
+            f"{base_quality} -> {'PASS' if verdict else 'FAIL'}"
+        )
+    else:
+        verdict = cand["MISRENDER"] == 0
+        print(
+            f"\ngate: candidate MISRENDER {cand['MISRENDER']} "
+            f"-> {'PASS' if verdict else 'FAIL'}"
+        )
+    return 0 if verdict else 1
 
 
 if __name__ == "__main__":

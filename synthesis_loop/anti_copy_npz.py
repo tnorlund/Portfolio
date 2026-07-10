@@ -39,6 +39,10 @@ def main():
             print(f"ANTI-COPY FAIL: {len(same)}/{len(mine)} substantial glyphs byte-identical "
                   f"to {os.path.basename(other)} (e.g. {sorted(same)[:6]})")
             return 1
+    if worst is None:
+        # Fail closed: with no reference atlases the check proved nothing.
+        print(f"ANTI-COPY INCONCLUSIVE: no reference *.glyphs.npz in {args.fleet_dir}")
+        return 1
     print(f"anti-copy PASS: worst overlap {worst[1]:.0%} with {worst[0]} "
           f"({len(worst[2])}/{len(mine)} identical)")
     return 0

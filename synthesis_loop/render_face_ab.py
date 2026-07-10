@@ -5,6 +5,10 @@ Renders one real receipt through the standard profile/stylemap pipeline three
 times, differing only in the profile's ``bitmap_font.heavy`` slot:
 
   A) heavy := regular       -> stylemap-bold rows fall back to 1px double-strike
+                               (receipt_renderer only routes a bold row to the
+                               heavy face when bitmap_font["heavy"] differs from
+                               bitmap_font["regular"]; pointing both slots at
+                               the same file is exactly the double-strike path)
   B) heavy := CANDIDATE     -> bold rows draw the candidate face (chars the
                                candidate lacks fall through to the TTF fallback)
   C) heavy := $COMPOSITE_HEAVY_NPZ (optional env) -> e.g. candidate glyphs
