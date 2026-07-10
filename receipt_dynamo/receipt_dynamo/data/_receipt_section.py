@@ -327,6 +327,12 @@ class _ReceiptSection(FlattenedStandardMixin):
                     ":pk": {"S": expected_pk},
                     ":sk": {"S": start_of_sk},
                 },
+                # Strongly consistent: the ChromaDB stream consumer
+                # recomputes section_label from this read immediately
+                # after a section write and then acknowledges the event,
+                # so a stale eventually-consistent read could persist
+                # wrong metadata with no later event to correct it.
+                ConsistentRead=True,
             )
             return [
                 item_to_receipt_section(item) for item in response["Items"]
