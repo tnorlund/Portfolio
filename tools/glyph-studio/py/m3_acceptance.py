@@ -43,8 +43,42 @@ for _p in (
 SATURATION = 0.40  # erosion saturates here on all real atlases (VALIDATION.md)
 
 
-def gather(client, merchant_name: str, n_receipts: int) -> dict:
-    """Real-side scalars + scorecard corpus from the merchant's own scans."""
+def ocr_overlap_score(words) -> int:
+    """Count same-row word pairs whose x-intervals overlap >30%.
+
+    Pathological OCR (doubled passes, fragmented tokens) stamps words on top
+    of each other; the renderer reproduces that faithfully, inflating measured
+    density. Same TEXT repeating on a row is legitimate (price + total
+    columns) — only geometric x-overlap flags. Receipt 058b662d (Wild Fork)
+    scores 44 on this metric and single-handedly created the 'WF rails ~48%
+    too dense' artifact; clean receipts score 0-2.
+    """
+    rows: dict[float, list[tuple[float, float]]] = {}
+    for w in words:
+        bb = w.get("bbox") or ()
+        if len(bb) != 4:
+            continue
+        y_center = round((bb[1] + bb[3]) / 2000.0, 2)
+        x0, x1 = sorted((bb[0], bb[2]))
+        rows.setdefault(y_center, []).append((x0, x1))
+    bad = 0
+    for spans in rows.values():
+        spans.sort()
+        for (a0, a1), (b0, b1) in zip(spans, spans[1:]):
+            inter = min(a1, b1) - max(a0, b0)
+            if inter > 0.3 * min(a1 - a0, b1 - b0):
+                bad += 1
+    return bad
+
+
+def gather(client, merchant_name: str, n_receipts: int, max_overlaps: int = 2) -> dict:
+    """Real-side scalars + scorecard corpus from the merchant's own scans.
+
+    Receipts whose OCR is pathological (``ocr_overlap_score`` >
+    ``max_overlaps``) are excluded — unvetted first-N sampling is how the
+    Wild Fork density artifact contaminated both v1's and this epic's
+    measurements.
+    """
     from glyph_review import _ink_metrics
     from receipt_line_scorecard import _load_words_and_real
 
@@ -58,6 +92,14 @@ def gather(client, merchant_name: str, n_receipts: int) -> dict:
         try:
             real, words = _load_words_and_real(merchant_name, p.image_id, p.receipt_id)
         except Exception:  # noqa: BLE001 - missing image/receipt: skip
+            continue
+        overlaps = ocr_overlap_score(words)
+        if overlaps > max_overlaps:
+            print(
+                f"  [vet] skipping {p.image_id[:8]}#{p.receipt_id}: "
+                f"{overlaps} x-overlapping OCR pairs",
+                file=sys.stderr,
+            )
             continue
         m = _ink_metrics(real, words)
         if not m:
