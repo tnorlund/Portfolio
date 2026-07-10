@@ -52,7 +52,7 @@ npm install
 # Build production bundle
 NEXT_PUBLIC_GA_MEASUREMENT_ID=G-7TT64C825N \
 NEXT_PUBLIC_GTM_ID=GTM-PBZWT6NS \
-NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/pixel.txt \
+NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/collect \
 npm run build
 
 # Deploy to S3
@@ -226,10 +226,12 @@ After deployment:
 ## Analytics Join Notes
 
 The portfolio sends pseudonymous `analytics_session_id` and
-`analytics_event_id` parameters to GA/GTM and to the static
-`/analytics/pixel.txt` beacon. CloudFront standard logs capture that
-beacon request and query string, which makes GA4 BigQuery events
-joinable to CloudFront request logs without adding a runtime API.
+`analytics_event_id` parameters to GA/GTM and to the real-time
+`/analytics/collect` beacon. Each event is also mirrored to the static
+`/analytics/pixel.txt` beacon so CloudFront standard logs remain the durable
+batch source if the collector is unavailable. The collector uses `live_eid`
+while the static mirror keeps canonical `eid`, preventing the unchanged batch
+dedup from racing the two request paths and preserving GA4 BigQuery joins.
 
 Reader-speed comparisons call `POST /reader_summary` after a visitor
 reaches the bottom of a long page. The Lambda writes per-page

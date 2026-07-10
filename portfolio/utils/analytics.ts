@@ -46,6 +46,11 @@ export const CLOUDFRONT_ANALYTICS_BEACON_PATH = getCloudFrontBeaconPath(
 const SCROLL_THRESHOLDS = [25, 50, 75, 90];
 const ANALYTICS_SESSION_ID_KEY = "tnor.analyticsSessionId";
 const ANALYTICS_PAGE_VIEW_COUNT_KEY = "tnor.analyticsPageViews";
+const BEACON_UTM_PARAM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+] as const;
 
 const CLOUDFRONT_BEACON_PARAM_KEYS = [
   "page_path",
@@ -61,6 +66,8 @@ const CLOUDFRONT_BEACON_PARAM_KEYS = [
   "baseline_sample_size",
   "session_page_views",
   "quick_jump",
+  ...BEACON_UTM_PARAM_KEYS,
+  "ref",
 ];
 
 export type AnalyticsParams = Record<
@@ -94,6 +101,25 @@ function getSessionStorage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+function getBeaconAttributionParams(): AnalyticsParams {
+  const attribution: AnalyticsParams = {};
+  const searchParams = new URLSearchParams(window.location.search);
+
+  BEACON_UTM_PARAM_KEYS.forEach((key) => {
+    const value = searchParams.get(key);
+
+    if (value) {
+      attribution[key] = value;
+    }
+  });
+
+  if (document.referrer) {
+    attribution.ref = document.referrer;
+  }
+
+  return attribution;
 }
 
 function createAnalyticsId(prefix: string): string {
@@ -206,6 +232,34 @@ function appendBeaconParam(
   url.searchParams.set(key, stringValue.slice(0, 120));
 }
 
+function getStaticBeaconMirrorUrl(url: URL): URL | null {
+  const mirrorUrl = new URL(
+    DEFAULT_CLOUDFRONT_ANALYTICS_BEACON_PATH,
+    window.location.origin
+  );
+
+  if (
+    mirrorUrl.origin === url.origin &&
+    mirrorUrl.pathname === url.pathname
+  ) {
+    return null;
+  }
+
+  mirrorUrl.search = url.search;
+  mirrorUrl.searchParams.delete("live_eid");
+  return mirrorUrl;
+}
+
+function sendImageBeacon(url: URL): void {
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url.toString();
+  } catch {
+    // Analytics should never affect the page experience.
+  }
+}
+
 function sendCloudFrontBeacon(
   event: string,
   params: AnalyticsParams,
@@ -235,9 +289,21 @@ function sendCloudFrontBeacon(
     appendBeaconParam(url, "path", getBeaconPagePath());
     appendBeaconParam(url, "ts", Date.now());
 
+    const beaconParams = {
+      ...params,
+      ...getBeaconAttributionParams(),
+    };
+
     CLOUDFRONT_BEACON_PARAM_KEYS.forEach((key) => {
-      appendBeaconParam(url, key, params[key]);
+      appendBeaconParam(url, key, beaconParams[key]);
     });
+
+    const mirrorUrl = getStaticBeaconMirrorUrl(url);
+    if (mirrorUrl) {
+      url.searchParams.delete("eid");
+      appendBeaconParam(url, "live_eid", meta.eventId);
+      sendImageBeacon(mirrorUrl);
+    }
 
     if (typeof window.fetch === "function") {
       window
@@ -247,16 +313,12 @@ function sendCloudFrontBeacon(
           cache: "no-store",
         })
         .catch(() => {
-          const image = new Image();
-          image.decoding = "async";
-          image.src = url.toString();
+          // The static mirror already preserves the durable event.
         });
       return;
     }
 
-    const image = new Image();
-    image.decoding = "async";
-    image.src = url.toString();
+    sendImageBeacon(url);
   } catch {
     // Analytics should never affect the page experience.
   }

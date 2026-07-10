@@ -2,6 +2,17 @@ type AnalyticsModule = typeof import("./analytics");
 
 const originalEnv = process.env;
 const originalCrypto = window.crypto;
+const originalFetch = window.fetch;
+const originalImage = window.Image;
+const originalReferrerDescriptor = Object.getOwnPropertyDescriptor(
+  document,
+  "referrer"
+);
+
+type MockImageInstance = {
+  decoding: string;
+  src: string;
+};
 
 function loadAnalytics(env: Record<string, string | undefined> = {}) {
   jest.resetModules();
@@ -30,6 +41,54 @@ function mockCryptoIds(...ids: string[]): jest.Mock {
   });
 
   return randomUUID;
+}
+
+function setDocumentReferrer(value: string): void {
+  Object.defineProperty(document, "referrer", {
+    configurable: true,
+    value,
+  });
+}
+
+function mockImageRequests(): MockImageInstance[] {
+  const instances: MockImageInstance[] = [];
+
+  Object.defineProperty(window, "Image", {
+    configurable: true,
+    value: jest.fn(() => {
+      const image: MockImageInstance = {
+        decoding: "",
+        src: "",
+      };
+      instances.push(image);
+      return image;
+    }),
+  });
+
+  return instances;
+}
+
+async function flushBeaconPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+function expectCollectorAndMirrorIds(
+  collectorUrl: URL,
+  mirrorUrl: URL
+): void {
+  expect(collectorUrl.pathname).toBe("/analytics/collect");
+  expect(collectorUrl.searchParams.get("live_eid")).toBe("evt_event-id");
+  expect(collectorUrl.searchParams.has("eid")).toBe(false);
+  expect(mirrorUrl.pathname).toBe("/analytics/pixel.txt");
+  expect(mirrorUrl.searchParams.get("eid")).toBe("evt_event-id");
+  expect(mirrorUrl.searchParams.has("live_eid")).toBe(false);
+
+  const collectorParams = new URLSearchParams(collectorUrl.search);
+  const mirrorParams = new URLSearchParams(mirrorUrl.search);
+  collectorParams.delete("live_eid");
+  mirrorParams.delete("eid");
+  expect(collectorParams.toString()).toBe(mirrorParams.toString());
 }
 
 function setViewport({
@@ -71,6 +130,7 @@ describe("analytics utilities", () => {
     window.dataLayer = [];
     window.gtag = jest.fn();
     window.fetch = jest.fn().mockResolvedValue({ ok: true }) as jest.Mock;
+    setDocumentReferrer("");
     jest.spyOn(Date, "now").mockReturnValue(1781889000000);
     mockCryptoIds("session-id", "event-id", "second-event-id");
     setViewport();
@@ -84,6 +144,25 @@ describe("analytics utilities", () => {
       configurable: true,
       value: originalCrypto,
     });
+    Object.defineProperty(window, "fetch", {
+      configurable: true,
+      value: originalFetch,
+      writable: true,
+    });
+    Object.defineProperty(window, "Image", {
+      configurable: true,
+      value: originalImage,
+      writable: true,
+    });
+    if (originalReferrerDescriptor) {
+      Object.defineProperty(
+        document,
+        "referrer",
+        originalReferrerDescriptor
+      );
+    } else {
+      delete (document as unknown as { referrer?: string }).referrer;
+    }
     delete window.gtag;
     delete window.dataLayer;
   });
@@ -127,10 +206,50 @@ describe("analytics utilities", () => {
     expect(beaconUrl.searchParams.get("event")).toBe("reader_summary");
     expect(beaconUrl.searchParams.get("sid")).toBe("ses_session-id");
     expect(beaconUrl.searchParams.get("eid")).toBe("evt_event-id");
+    expect(beaconUrl.searchParams.has("live_eid")).toBe(false);
     expect(beaconUrl.searchParams.get("page_path")).toBe("/receipt");
     expect(beaconUrl.searchParams.get("quick_jump")).toBe("false");
     expect(beaconUrl.searchParams.has("metric_value")).toBe(false);
     expect(beaconUrl.searchParams.has("omitted")).toBe(false);
+    expect(beaconUrl.searchParams.has("utm_source")).toBe(false);
+    expect(beaconUrl.searchParams.has("utm_medium")).toBe(false);
+    expect(beaconUrl.searchParams.has("utm_campaign")).toBe(false);
+    expect(beaconUrl.searchParams.has("ref")).toBe(false);
+  });
+
+  test("CloudFront beacons capture UTM attribution and referrer", () => {
+    const imageRequests = mockImageRequests();
+    setViewport({
+      search:
+        "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
+    });
+    setDocumentReferrer("https://www.linkedin.com/in/recruiter");
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "/analytics/collect",
+    });
+
+    analytics.trackEvent("scroll_depth", {
+      page_path: "/receipt",
+      percent_scrolled: 25,
+    });
+
+    const beaconUrl = new URL((window.fetch as jest.Mock).mock.calls[0][0]);
+    expect(beaconUrl.pathname).toBe("/analytics/collect");
+    expect(beaconUrl.searchParams.get("path")).toBe("/receipt");
+    expect(beaconUrl.searchParams.get("utm_source")).toBe("li");
+    expect(beaconUrl.searchParams.get("utm_medium")).toBe("dm");
+    expect(beaconUrl.searchParams.get("utm_campaign")).toBe(
+      "arthur-babylist"
+    );
+    expect(beaconUrl.searchParams.get("ref")).toBe(
+      "https://www.linkedin.com/in/recruiter"
+    );
+    expect(imageRequests).toHaveLength(1);
+    const mirrorUrl = new URL(imageRequests[0].src);
+    expectCollectorAndMirrorIds(beaconUrl, mirrorUrl);
+    expect(window.dataLayer?.[0]).not.toHaveProperty("utm_campaign");
+    expect(window.dataLayer?.[0]).not.toHaveProperty("ref");
   });
 
   test("trackPageView increments the anonymous session page count", () => {
@@ -253,5 +372,102 @@ describe("analytics utilities", () => {
     expect(beaconUrl.origin).toBe(window.location.origin);
     expect(beaconUrl.pathname).toBe("/custom/pixel.txt");
     expect(beaconUrl.searchParams.get("source")).toBe("analytics");
+  });
+
+  test("collector network failures do not duplicate the static mirror", async () => {
+    const imageRequests = mockImageRequests();
+    (window.fetch as jest.Mock).mockRejectedValueOnce(
+      new TypeError("collector unavailable")
+    );
+    setViewport({
+      search:
+        "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
+    });
+    setDocumentReferrer("https://www.linkedin.com/");
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "/analytics/collect",
+    });
+
+    analytics.trackEvent("page_view", { page_path: "/receipt" });
+    await flushBeaconPromises();
+
+    expect(imageRequests).toHaveLength(1);
+    const collectorUrl = new URL(
+      (window.fetch as jest.Mock).mock.calls[0][0]
+    );
+    const mirrorUrl = new URL(imageRequests[0].src);
+    expectCollectorAndMirrorIds(collectorUrl, mirrorUrl);
+    expect(mirrorUrl.searchParams.get("event")).toBe("page_view");
+    expect(mirrorUrl.searchParams.get("sid")).toBe("ses_session-id");
+    expect(mirrorUrl.searchParams.get("eid")).toBe("evt_event-id");
+    expect(mirrorUrl.searchParams.get("utm_campaign")).toBe(
+      "arthur-babylist"
+    );
+    expect(mirrorUrl.searchParams.get("ref")).toBe(
+      "https://www.linkedin.com/"
+    );
+  });
+
+  test("non-ok collector responses keep exactly one static mirror", async () => {
+    const imageRequests = mockImageRequests();
+    (window.fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "/analytics/collect",
+    });
+
+    analytics.trackEvent("page_view", { page_path: "/receipt" });
+    await flushBeaconPromises();
+
+    expect(imageRequests).toHaveLength(1);
+    expectCollectorAndMirrorIds(
+      new URL((window.fetch as jest.Mock).mock.calls[0][0]),
+      new URL(imageRequests[0].src)
+    );
+  });
+
+  test("successful collector responses still preserve the static mirror", async () => {
+    const imageRequests = mockImageRequests();
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "/analytics/collect",
+    });
+
+    analytics.trackEvent("page_view", { page_path: "/receipt" });
+    await flushBeaconPromises();
+
+    expect(imageRequests).toHaveLength(1);
+    expectCollectorAndMirrorIds(
+      new URL((window.fetch as jest.Mock).mock.calls[0][0]),
+      new URL(imageRequests[0].src)
+    );
+  });
+
+  test("image transport sends the collector and one static mirror", () => {
+    const imageRequests = mockImageRequests();
+    Object.defineProperty(window, "fetch", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "/analytics/collect",
+    });
+
+    analytics.trackEvent("page_view", { page_path: "/receipt" });
+
+    expect(imageRequests).toHaveLength(2);
+    const requestUrls = imageRequests.map(({ src }) => new URL(src));
+    const collectorUrl = requestUrls.find(
+      ({ pathname }) => pathname === "/analytics/collect"
+    );
+    const mirrorUrl = requestUrls.find(
+      ({ pathname }) => pathname === "/analytics/pixel.txt"
+    );
+    expect(collectorUrl).toBeDefined();
+    expect(mirrorUrl).toBeDefined();
+    expectCollectorAndMirrorIds(collectorUrl!, mirrorUrl!);
   });
 });

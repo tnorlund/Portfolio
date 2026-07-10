@@ -243,7 +243,7 @@ jobs:
           cd infra
           echo "NEXT_PUBLIC_GA_MEASUREMENT_ID=$(pulumi config get portfolio:googleAnalyticsMeasurementId --stack tnorlund/portfolio/prod)" >> "$GITHUB_ENV"
           echo "NEXT_PUBLIC_GTM_ID=$(pulumi config get portfolio:googleTagManagerId --stack tnorlund/portfolio/prod)" >> "$GITHUB_ENV"
-          echo "NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/pixel.txt" >> "$GITHUB_ENV"
+          echo "NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/collect" >> "$GITHUB_ENV"
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
