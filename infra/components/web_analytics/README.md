@@ -1,26 +1,41 @@
-# Web Analytics (Glue + Athena over CloudFront logs)
+# Web Analytics (real-time DynamoDB + durable CloudFront batch)
 
-Makes the production CloudFront access logs **queryable** so Claude (via the
-`analytics_*` MCP tools) can answer "how much real traffic did the site get,
-who visited, from where" without hand-parsing gzip logs.
+Provides two complementary production analytics layers so the `analytics_*`
+MCP tools can answer both "who is here now?" and durable historical questions
+without hand-parsing CloudFront logs:
 
-No new data pipeline — it's a thin query layer over logs that already exist.
+- **Live overlay:** request-time collection into TTL'd DynamoDB, queryable in
+  seconds with edge geo and UTM/referrer attribution.
+- **Durable batch:** the existing daily CloudFront-log transform into curated
+  Parquet. This remains the source of truth and is not replaced by DynamoDB.
 
-## Architecture (ETL + serving)
+## Architecture
 
 ```
-INGEST     CloudFront → s3://<logs-bucket>/cloudfront/prod/   (already exists)
-              │
-TRANSFORM   transform Lambda (scheduled daily + backfillable), Athena INSERT:
-              parse beacon · dedup(request_id) · classify warp/bot · PT-ready
-              → web_events  (Parquet, partitioned by UTC `dt`)   [single source of truth]
-              │
-SERVE       analytics_* MCP tools SELECT from web_events (partition-pruned)
+BROWSER     /analytics/pixel.txt (one canonical eid-bearing request)
+              → CloudFront viewer headers + caching disabled
+              → origin group
+                   ├─ primary: signed Function URL → collector Lambda
+                   │    → web_events_live (DynamoDB, ~90-day TTL)
+                   │    → analytics_live / analytics_attribution
+                   └─ failover: existing static S3 pixel (always 200)
+              → CloudFront standard logs in S3
+              → unchanged daily transform + ip_geo enrichment
+              → web_events (Parquet) → existing analytics_* tools
 ```
 
 ## What this creates
 
 - **Glue database** `portfolio_analytics`
+- **Live DynamoDB table** `web_events_live` — on-demand capacity, UTC date
+  partition key (`dt`), time/session/event sort key (`sk`), `sid-index`, and
+  an `expires_at` TTL of approximately 90 days
+- **Collector Lambda + Function URL** — invoked only through a SigV4-signed
+  CloudFront origin access control; writes one request-time event to DynamoDB
+- **CloudFront `/analytics/pixel.txt` behavior + origin group** — caching
+  disabled; the Lambda URL is primary and the existing static S3 object is the
+  failover; query strings are forwarded without cookies and viewer geo/ASN
+  headers are added at the edge
 - **Raw external table** `cloudfront_logs_prod` over
   `s3://<cloudfront-logs-bucket>/cloudfront/prod/` (gzip TSV, 2 header lines
   skipped; AWS CloudFront standard log column order) — the transform's input
@@ -31,8 +46,10 @@ SERVE       analytics_* MCP tools SELECT from web_events (partition-pruned)
   `{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}` to backfill
 - **Athena workgroup** `portfolio_analytics` + a **results bucket** (30-day expiry)
 - A **curated bucket** for the Parquet output
-- **IAM policies** — read-only Athena/Glue/S3 for the MCP Lambda role; a
-  read-raw / write-curated / manage-partitions policy for the transform Lambda
+- **IAM policies** — Athena/Glue/S3 plus live-table `Query`/`GetItem` for the
+  MCP Lambda role; live-table `PutItem` only for the collector; and the
+  existing read-raw / write-curated / manage-partitions policy for the
+  transform Lambda
 
 ## Transform details
 
@@ -57,19 +74,75 @@ aws lambda invoke --function-name <web-analytics-transform> \
   --payload '{"start":"2026-06-19","end":"2026-06-30"}' /dev/stdout
 ```
 
-## Why the logic lives in the MCP tools, not a Glue view
+## Real-time collection and attribution
 
-Beacon parsing, bot/WARP classification, and PT-timezone bucketing are encoded
-as SQL **inside the `analytics_*` MCP tools** (`scripts/receipt_mcp_server.py`
-and `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`), not as a
-Glue/Athena view. That keeps the analytics logic version-controlled,
-diff-reviewable, and testable, and avoids managing Athena view definitions in
-IaC.
+Production builds keep
+`NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/pixel.txt`. The browser
+automatically adds `utm_source`, `utm_medium`, `utm_campaign`, and
+`document.referrer` (`ref`) to each live beacon. Outreach links should use a
+stable campaign name, for example:
+
+```
+https://tylernorlund.com/receipt?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist
+```
+
+The canonical pixel path is intentional. A separate collector path would need
+a second pixel request to preserve the unchanged batch pipeline, inflating
+existing request/IP/top metrics. Origin failover keeps one request and retains
+the static object's non-breaking 200 response.
+
+CloudFront forwards the query string, user agent, viewer address/ASN, and the
+`CloudFront-Viewer-Country`, `-Country-Region`, `-City`, `-Latitude`,
+`-Longitude`, and `-Time-Zone` headers. The collector percent-decodes and
+persists those fields directly; it performs **no external geo lookup**. The
+edge ASN is also checked against a conservative set of the datacenter/cloud
+providers represented by the batch classifier.
+
+Each event makes one same-origin, fire-and-forget request. CloudFront first
+tries the signed collector Function URL; on configured 4xx/5xx failures it
+retries the same GET against the existing S3 origin, where the static pixel
+returns 200. The collector also treats writes as best-effort and returns a
+cache-disabled 1x1 GIF with status 200 after malformed input or a DynamoDB
+failure. CloudFront standard logging records that same canonical request for
+the unchanged batch pipeline, so the live overlay neither doubles nor steals
+events from existing metrics.
+
+Live items use `dt` (UTC) and
+`sk=<13-digit epoch_ms>#<sid>#<eid>`, plus a `sid-index` for session access.
+`analytics_live` queries only the intersecting UTC date partitions with
+strongly consistent DynamoDB reads. `analytics_attribution` rolls up the full
+session before campaign filtering, so pages visited after the landing URL
+drops its UTM parameters remain attributed.
+
+Examples:
+
+```
+analytics_live(minutes=60, humans_only=true)
+analytics_attribution(campaign="arthur-babylist")
+analytics_attribution(since="2026-07-10T17:00:00Z")
+```
+
+The live table is an operational overlay, not a historical replacement. TTL
+removes old items; use `web_events` and the existing Athena-backed tools for
+durable analysis.
+
+## Where classification and query logic live
+
+The durable transform owns batch beacon parsing, deduplication, geo enrichment,
+and bot/WARP/hosting classification. Existing Athena-backed MCP tools query the
+materialized `web_events` fields. The collector mirrors the same WARP, bot-UA,
+known-scanner, and datacenter-provider intent at request time using only edge
+data; the two live MCP tools explicitly exclude `is_bot`, `is_warp`, and
+`is_hosting` when `humans_only=true`. All tool definitions remain duplicated
+in lockstep in `scripts/receipt_mcp_server.py` and
+`infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`.
 
 ## MCP tools
 
 | Tool | Purpose |
 |---|---|
+| `analytics_live(minutes=60, humans_only=true)` | request-time sessions from `web_events_live`, with edge geo, referrer, UTM fields, pages, and events |
+| `analytics_attribution(campaign, since, humans_only=true)` | exact live campaign/time-window attribution with full-session page timelines |
 | `analytics_traffic(start, end)` | per-PT-day requests, outside-human vs WARP vs bot, human sessions/pageviews |
 | `analytics_sessions(start, end, humans_only)` | reconstructed beacon sessions with **org / city / country / is_hosting** inline (pages, scroll, reader-summaries) |
 | `analytics_top(dimension, start, end)` | top `page` / `referrer` / `ip` / `country` / `org` |
@@ -117,13 +190,17 @@ GA applies Google's own bot filtering but is blocked by adblock/ITP (it
 under-counts); the beacon is complete but raw. `analytics_reconcile` puts them
 side by side per day — beacon > GA usually means adblock loss.
 
-## Classification rules (in the tool SQL)
+## Classification rules
 
 - **WARP / "us":** client IP in `104.28.0.0/16` or `2a09:bac…` (Cloudflare WARP egress)
 - **Bot:** user-agent matches a bot/crawler/scanner regex, or the known scanner
   subnet `185.177.72.0/24`
+- **Hosting:** batch uses the materialized `ip_geo` hosting/proxy/owner signal;
+  live collection uses `CloudFront-Viewer-ASN` and a conservative provider ASN
+  set because CloudFront does not expose org/ISP or a hosting flag
 - **Human session:** an analytics-beacon (`/analytics/pixel.txt`) session id,
-  excluding WARP + bots
+  excluding WARP + bots/hosting in batch; live tools explicitly exclude all
+  three flags
 
 > Note: IP org/geo/hosting is now a **materialized column** on `web_events`
 > (enriched once per IP into `ip_geo`), and both `is_hosting` and `is_bot` fold
@@ -148,6 +225,11 @@ side by side per day — beacon > GA usually means adblock loss.
 
 - **Dev** is deployed manually (`pulumi up` on the dev stack); **prod** deploys
   via CI on merge to `main`.
+- The live table, collector, and `/analytics/pixel.txt` origin-group behavior
+  are production only. The browser path does not change during rollout.
+- Keep `portfolio/public/analytics/pixel.txt`. It is both the no-op fallback
+  and the canonical path captured by durable logs; removing it breaks
+  non-breaking origin failover.
 - The Glue DB/table may already exist from validation — if `pulumi up` reports a
   conflict, `pulumi import` the two Glue resources (or delete them) so Pulumi
   can manage them.
@@ -157,5 +239,7 @@ side by side per day — beacon > GA usually means adblock loss.
 
 ## Cost
 
-Negligible. Athena bills per TB scanned; the logs are KB–MB/day. Results expire
+Negligible at portfolio traffic: DynamoDB uses on-demand capacity, the
+collector is one small Lambda invocation per event, and Athena scans
+KB–MB/day. Live items expire after approximately 90 days; Athena results expire
 after 30 days.

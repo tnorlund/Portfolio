@@ -1330,16 +1330,20 @@ glyph_mcp_server = GlyphMcpLambda("glyph-mcp")
 pulumi.export("glyph_mcp_server_url", glyph_mcp_server.function_url)
 pulumi.export("glyph_mcp_server_lambda_arn", glyph_mcp_server.lambda_arn)
 
-# Web analytics query layer: Glue + Athena over the CloudFront access logs,
-# read by the analytics_* MCP tools. No new pipeline — just a queryable view
-# of logs that already exist.
+# Web analytics: the durable Glue + Athena layer over CloudFront access logs,
+# plus the request-time DynamoDB overlay read by the live analytics MCP tools.
 # Glue/Athena names are account-global, and the analytics source is the prod
 # CloudFront logs — so only build this on the prod stack to avoid dev/prod
 # collisions. The MCP tools use a fixed DB name and query via account-level
 # creds, so they work regardless of which stack the caller runs in.
 if pulumi.get_stack() == "prod":
     from components.web_analytics import WebAnalytics  # noqa: E402
-    from s3_website import cloudfront_logs_bucket  # noqa: E402
+    from s3_website import (  # noqa: E402
+        cloudfront_logs_bucket,
+        live_web_analytics,
+    )
+
+    assert live_web_analytics is not None
 
     # GA4 second source is optional: the extractor Lambda is only built when
     # both the service-account key (secret) and property id are configured.
@@ -1360,6 +1364,7 @@ if pulumi.get_stack() == "prod":
         ga_property_id=_analytics_cfg.get("gaPropertyId"),
         github_token=_analytics_cfg.get_secret("githubTrafficToken"),
         github_repos=_analytics_cfg.get("githubTrafficRepos"),
+        live_table_arn=live_web_analytics.table_arn,
     )
     # Let the MCP Lambda role run Athena/Glue/S3 reads for the analytics tools.
     aws.iam.RolePolicyAttachment(

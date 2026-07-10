@@ -178,6 +178,15 @@ cloudfront_logs_lifecycle = aws.s3.BucketLifecycleConfiguration(
     ],
 )
 
+# The live collector must exist before the distribution is declared so its
+# Function URL can be wired as a custom origin. Fixed analytics names are kept
+# production-only, matching the durable WebAnalytics component.
+live_web_analytics = None
+if stack == "prod":
+    from components.web_analytics import LiveWebAnalytics
+
+    live_web_analytics = LiveWebAnalytics("web-analytics-live")
+
 ########################
 # 6) CloudFront Function (Enhanced for Performance)
 ########################
@@ -324,19 +333,82 @@ cors_response_headers_policy = aws.cloudfront.ResponseHeadersPolicy(
     },
 )
 
-cdn = aws.cloudfront.Distribution(
-    "cdn",
-    origins=[
+cdn_origins = [
+    {
+        # Use S3 REST API endpoint instead of website hosting for better AVIF support
+        "domainName": site_bucket.bucket_domain_name,
+        "originId": site_bucket.id,
+        "originAccessControlId": origin_access_control.id,
+        "s3OriginConfig": {
+            "originAccessIdentity": "",  # Required but empty when using OAC
+        },
+    }
+]
+live_cache_behaviors = []
+origin_groups = []
+if live_web_analytics is not None:
+    live_origin_id = "web-analytics-live-collector"
+    live_origin_group_id = "web-analytics-live-failover"
+    cdn_origins.append(
         {
-            # Use S3 REST API endpoint instead of website hosting for better AVIF support
-            "domainName": site_bucket.bucket_domain_name,
-            "originId": site_bucket.id,
-            "originAccessControlId": origin_access_control.id,
-            "s3OriginConfig": {
-                "originAccessIdentity": "",  # Required but empty when using OAC
+            "domainName": live_web_analytics.function_url_domain,
+            "originId": live_origin_id,
+            "connectionAttempts": 1,
+            "connectionTimeout": 2,
+            "originAccessControlId": (
+                live_web_analytics.origin_access_control_id
+            ),
+            "customOriginConfig": {
+                "httpPort": 80,
+                "httpsPort": 443,
+                "originProtocolPolicy": "https-only",
+                "originSslProtocols": ["TLSv1.2"],
+                "originReadTimeout": 6,
             },
         }
-    ],
+    )
+    origin_groups.append(
+        {
+            "originId": live_origin_group_id,
+            "failoverCriteria": {
+                "statusCodes": [
+                    400,
+                    403,
+                    404,
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                ]
+            },
+            "members": [
+                {"originId": live_origin_id},
+                {"originId": site_bucket.id},
+            ],
+        }
+    )
+    live_cache_behaviors.append(
+        {
+            "pathPattern": "/analytics/pixel.txt",
+            "targetOriginId": live_origin_group_id,
+            "viewerProtocolPolicy": "redirect-to-https",
+            "allowedMethods": ["GET", "HEAD"],
+            "cachedMethods": ["GET", "HEAD"],
+            # AWS-managed CachingDisabled policy. Query strings are forwarded
+            # separately by the narrow origin policy and are never cached.
+            "cachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            "originRequestPolicyId": (
+                live_web_analytics.origin_request_policy_id
+            ),
+            "compress": False,
+        }
+    )
+
+cdn = aws.cloudfront.Distribution(
+    "cdn",
+    origins=cdn_origins,
+    origin_groups=origin_groups,
     enabled=True,
     default_root_object="index.html",
     logging_config=aws.cloudfront.DistributionLoggingConfigArgs(
@@ -348,6 +420,7 @@ cdn = aws.cloudfront.Distribution(
     http_version="http2and3",
     # Optimized cache behaviors for different content types
     ordered_cache_behaviors=[
+        *live_cache_behaviors,
         {
             # Cache behavior for receipt images (AVIF, WebP, JPEG) - With CORS support
             "pathPattern": "/assets/*",
@@ -479,6 +552,34 @@ cdn = aws.cloudfront.Distribution(
 
 pulumi.export("cdn_distribution_id", cdn.id)
 
+if live_web_analytics is not None:
+    # New Function URLs (October 2025 onward) require both resource-policy
+    # actions. Scope both to this distribution and URL-only invocation.
+    aws.lambda_.Permission(
+        "web-analytics-live-cloudfront-url-permission",
+        action="lambda:InvokeFunctionUrl",
+        function=live_web_analytics.collector_lambda.name,
+        principal="cloudfront.amazonaws.com",
+        source_arn=cdn.arn,
+        function_url_auth_type="AWS_IAM",
+        opts=pulumi.ResourceOptions(
+            parent=live_web_analytics.collector_lambda,
+            depends_on=[cdn],
+        ),
+    )
+    aws.lambda_.Permission(
+        "web-analytics-live-cloudfront-invoke-permission",
+        action="lambda:InvokeFunction",
+        function=live_web_analytics.collector_lambda.name,
+        principal="cloudfront.amazonaws.com",
+        source_arn=cdn.arn,
+        invoked_via_function_url=True,
+        opts=pulumi.ResourceOptions(
+            parent=live_web_analytics.collector_lambda,
+            depends_on=[cdn],
+        ),
+    )
+
 # S3 bucket policy for Origin Access Control (now that CDN is defined)
 bucket_policy = aws.s3.BucketPolicy(
     "bucketPolicy",
@@ -536,6 +637,13 @@ for domain in site_domains:
 ########################
 pulumi.export("cdn_bucket_name", site_bucket.bucket)
 pulumi.export("cloudfront_logs_bucket_name", cloudfront_logs_bucket.bucket)
+if live_web_analytics is not None:
+    pulumi.export("web_events_live_table_name", live_web_analytics.table_name)
+    pulumi.export(
+        "web_analytics_collector_lambda_name",
+        live_web_analytics.collector_lambda.name,
+    )
+    pulumi.export("web_analytics_collector_path", "/analytics/pixel.txt")
 pulumi.export(
     "cloudfront_log_retention_days", cloudfront_log_retention_days
 )

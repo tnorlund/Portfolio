@@ -1,19 +1,18 @@
-"""
-Web Analytics query layer (Glue + Athena over CloudFront access logs).
+"""Portfolio web analytics infrastructure.
 
-Makes the raw CloudFront access logs queryable without any new data pipeline:
+Adds a request-time DynamoDB collector in front of the canonical beacon and
+keeps the existing Glue + Athena layer over CloudFront access logs:
 
 - Glue Catalog database + external table over the existing CloudFront log
   bucket (gzip TSV, 2 header lines skipped).
 - Athena workgroup with a dedicated results bucket (results expire on a
   lifecycle rule).
-- A managed IAM policy granting read-only Athena/Glue/S3 access, intended to be
-  attached to the MCP server's Lambda role so the ``analytics_*`` MCP tools can
-  run queries.
+- A managed IAM policy granting Athena/Glue/S3 plus live-table read access,
+  intended to be attached to the MCP server's Lambda role.
 
-All beacon-parsing / bot+WARP classification / timezone bucketing lives in the
-MCP tool SQL (see ``receipt_mcp_server`` ``analytics_*`` tools), not in a Glue
-view, so the logic stays version-controlled and reviewable.
+Durable beacon parsing and timezone bucketing remain in the existing transform
+and MCP SQL. The collector mirrors bot/WARP/hosting classification from edge
+data for the live tools.
 
 CloudFront standard log field order is fixed by AWS; the column list below
 matches it exactly.
@@ -22,6 +21,7 @@ matches it exactly.
 import json
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit
 
 import pulumi
 import pulumi_aws as aws
@@ -30,6 +30,9 @@ from pulumi import ComponentResource, Input, Output, ResourceOptions
 _HANDLER_DIR = str(Path(__file__).resolve().parent / "transform_lambda")
 _GH_HANDLER_DIR = str(
     Path(__file__).resolve().parent / "github_extract_lambda"
+)
+_COLLECTOR_HANDLER_FILE = str(
+    Path(__file__).resolve().parent / "collector_lambda" / "handler.py"
 )
 
 # Short aliases for verbose pulumi_aws Args classes (keeps lines <= 79 cols).
@@ -75,6 +78,180 @@ _CLOUDFRONT_COLUMNS = [
 ]
 
 
+class LiveWebAnalytics(ComponentResource):
+    """Request-time analytics table and CloudFront-backed collector."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        table_name: str = "web_events_live",
+        ttl_days: int = 90,
+        opts: Optional[ResourceOptions] = None,
+    ):
+        super().__init__(
+            "portfolio:analytics:LiveWebAnalytics", name, None, opts
+        )
+        child = ResourceOptions(parent=self)
+        stack = pulumi.get_stack()
+
+        self.table = aws.dynamodb.Table(
+            f"{name}-table",
+            name=table_name,
+            billing_mode="PAY_PER_REQUEST",
+            hash_key="dt",
+            range_key="sk",
+            attributes=[
+                aws.dynamodb.TableAttributeArgs(name="dt", type="S"),
+                aws.dynamodb.TableAttributeArgs(name="sk", type="S"),
+                aws.dynamodb.TableAttributeArgs(name="sid", type="S"),
+                aws.dynamodb.TableAttributeArgs(name="ts", type="S"),
+            ],
+            global_secondary_indexes=[
+                aws.dynamodb.TableGlobalSecondaryIndexArgs(
+                    name="sid-index",
+                    hash_key="sid",
+                    range_key="ts",
+                    projection_type="ALL",
+                )
+            ],
+            ttl=aws.dynamodb.TableTtlArgs(
+                attribute_name="expires_at",
+                enabled=True,
+            ),
+            tags={
+                "Environment": stack,
+                "Name": table_name,
+                "Purpose": "real-time web analytics",
+            },
+            opts=child,
+        )
+
+        collector_role = aws.iam.Role(
+            f"{name}-collector-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=child,
+        )
+        collector_basic = aws.iam.RolePolicyAttachment(
+            f"{name}-collector-basic",
+            role=collector_role.name,
+            policy_arn=(
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
+            ),
+            opts=ResourceOptions(parent=collector_role),
+        )
+        collector_write = aws.iam.RolePolicy(
+            f"{name}-collector-write",
+            role=collector_role.id,
+            policy=self.table.arn.apply(_collector_policy_json),
+            opts=ResourceOptions(parent=collector_role),
+        )
+
+        self.collector_lambda = aws.lambda_.Function(
+            f"{name}-collector",
+            name=f"{name}-{stack}-collector",
+            runtime="python3.12",
+            handler="handler.handler",
+            code=pulumi.AssetArchive(
+                {"handler.py": pulumi.FileAsset(_COLLECTOR_HANDLER_FILE)}
+            ),
+            role=collector_role.arn,
+            timeout=5,
+            memory_size=128,
+            reserved_concurrent_executions=5,
+            environment=aws.lambda_.FunctionEnvironmentArgs(
+                variables={
+                    "WEB_EVENTS_LIVE_TABLE_NAME": self.table.name,
+                    "WEB_EVENTS_LIVE_TTL_DAYS": str(ttl_days),
+                }
+            ),
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[collector_basic, collector_write],
+            ),
+        )
+        self.function_url_resource = aws.lambda_.FunctionUrl(
+            f"{name}-collector-url",
+            function_name=self.collector_lambda.name,
+            authorization_type="AWS_IAM",
+            invoke_mode="BUFFERED",
+            opts=ResourceOptions(parent=self.collector_lambda),
+        )
+
+        # Sign CloudFront -> Function URL requests without making the Function
+        # URL public.  Distribution-scoped Lambda permissions are added after
+        # the distribution exists in s3_website.py.
+        self.origin_access_control = aws.cloudfront.OriginAccessControl(
+            f"{name}-collector-oac",
+            name=f"{name}-{stack}-collector-oac",
+            description="SigV4 access for the live analytics Lambda URL",
+            origin_access_control_origin_type="lambda",
+            signing_behavior="always",
+            signing_protocol="sigv4",
+            opts=child,
+        )
+        self.origin_request_policy = aws.cloudfront.OriginRequestPolicy(
+            f"{name}-collector-origin-request",
+            name=f"{name}-{stack}-collector-origin-request",
+            comment=(
+                "Forward analytics query parameters, viewer UA, and "
+                "CloudFront geo headers"
+            ),
+            cookies_config={"cookie_behavior": "none"},
+            headers_config={
+                "header_behavior": "whitelist",
+                "headers": {
+                    "items": [
+                        "User-Agent",
+                        "CloudFront-Viewer-Address",
+                        "CloudFront-Viewer-ASN",
+                        "CloudFront-Viewer-Country",
+                        "CloudFront-Viewer-Country-Region",
+                        "CloudFront-Viewer-City",
+                        "CloudFront-Viewer-Latitude",
+                        "CloudFront-Viewer-Longitude",
+                        "CloudFront-Viewer-Time-Zone",
+                    ]
+                },
+            },
+            query_strings_config={"query_string_behavior": "all"},
+            opts=child,
+        )
+
+        self.table_name = self.table.name
+        self.table_arn = self.table.arn
+        self.function_url = self.function_url_resource.function_url
+        self.function_url_domain = self.function_url.apply(
+            lambda url: urlsplit(url).netloc
+        )
+        self.origin_access_control_id = self.origin_access_control.id
+        self.origin_request_policy_id = self.origin_request_policy.id
+
+        self.register_outputs(
+            {
+                "table_name": self.table_name,
+                "table_arn": self.table_arn,
+                "collector_lambda_name": self.collector_lambda.name,
+                "function_url": self.function_url,
+                "function_url_domain": self.function_url_domain,
+                "origin_access_control_id": self.origin_access_control_id,
+                "origin_request_policy_id": self.origin_request_policy_id,
+            }
+        )
+
+
 class WebAnalytics(ComponentResource):
     """Glue + Athena query layer over CloudFront access logs."""
 
@@ -91,6 +268,7 @@ class WebAnalytics(ComponentResource):
         ga_property_id: Optional[str] = None,
         github_token: Optional[Input[str]] = None,
         github_repos: Optional[str] = None,
+        live_table_arn: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__("portfolio:analytics:WebAnalytics", name, None, opts)
@@ -658,9 +836,14 @@ class WebAnalytics(ComponentResource):
                 bucket_name,
                 self.results_bucket.arn,
                 self.curated_bucket.arn,
+                (
+                    Output.from_input(live_table_arn)
+                    if live_table_arn is not None
+                    else Output.from_input("")
+                ),
             ).apply(
                 lambda args: _policy_json(
-                    args[0], args[1], args[2], glue_resources
+                    args[0], args[1], args[2], glue_resources, args[3]
                 )
             ),
             opts=child,
@@ -684,69 +867,101 @@ def _policy_json(
     results_bucket_arn: str,
     curated_bucket_arn: str,
     glue_resources: list,
+    live_table_arn: str = "",
 ) -> str:
+    statements = [
+        {
+            "Sid": "Athena",
+            "Effect": "Allow",
+            "Action": [
+                "athena:StartQueryExecution",
+                "athena:StopQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:GetQueryResults",
+                "athena:GetWorkGroup",
+            ],
+            "Resource": "*",
+        },
+        {
+            "Sid": "GlueCatalog",
+            "Effect": "Allow",
+            "Action": [
+                "glue:GetDatabase",
+                "glue:GetDatabases",
+                "glue:GetTable",
+                "glue:GetTables",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:BatchGetPartition",
+            ],
+            "Resource": glue_resources,
+        },
+        {
+            "Sid": "ReadLogsAndCurated",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+            ],
+            "Resource": [
+                f"arn:aws:s3:::{logs_bucket}",
+                f"arn:aws:s3:::{logs_bucket}/*",
+                curated_bucket_arn,
+                f"{curated_bucket_arn}/*",
+            ],
+        },
+        {
+            "Sid": "ReadWriteResults",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts",
+                "s3:ListBucketMultipartUploads",
+            ],
+            "Resource": [
+                results_bucket_arn,
+                f"{results_bucket_arn}/*",
+            ],
+        },
+    ]
+    if live_table_arn:
+        statements.append(
+            {
+                "Sid": "ReadLiveEvents",
+                "Effect": "Allow",
+                "Action": ["dynamodb:GetItem", "dynamodb:Query"],
+                "Resource": [
+                    live_table_arn,
+                    f"{live_table_arn}/index/*",
+                ],
+            }
+        )
+
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": statements,
+        }
+    )
+
+
+def _collector_policy_json(table_arn: str) -> str:
+    """Least-privilege collector permission: append events to one table."""
     return json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
                 {
-                    "Sid": "Athena",
+                    "Sid": "WriteLiveEvents",
                     "Effect": "Allow",
-                    "Action": [
-                        "athena:StartQueryExecution",
-                        "athena:StopQueryExecution",
-                        "athena:GetQueryExecution",
-                        "athena:GetQueryResults",
-                        "athena:GetWorkGroup",
-                    ],
-                    "Resource": "*",
-                },
-                {
-                    "Sid": "GlueCatalog",
-                    "Effect": "Allow",
-                    "Action": [
-                        "glue:GetDatabase",
-                        "glue:GetDatabases",
-                        "glue:GetTable",
-                        "glue:GetTables",
-                        "glue:GetPartition",
-                        "glue:GetPartitions",
-                        "glue:BatchGetPartition",
-                    ],
-                    "Resource": glue_resources,
-                },
-                {
-                    "Sid": "ReadLogsAndCurated",
-                    "Effect": "Allow",
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:ListBucket",
-                        "s3:GetBucketLocation",
-                    ],
-                    "Resource": [
-                        f"arn:aws:s3:::{logs_bucket}",
-                        f"arn:aws:s3:::{logs_bucket}/*",
-                        curated_bucket_arn,
-                        f"{curated_bucket_arn}/*",
-                    ],
-                },
-                {
-                    "Sid": "ReadWriteResults",
-                    "Effect": "Allow",
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:PutObject",
-                        "s3:ListBucket",
-                        "s3:GetBucketLocation",
-                        "s3:AbortMultipartUpload",
-                        "s3:ListMultipartUploadParts",
-                        "s3:ListBucketMultipartUploads",
-                    ],
-                    "Resource": [
-                        results_bucket_arn,
-                        f"{results_bucket_arn}/*",
-                    ],
-                },
+                    "Action": "dynamodb:PutItem",
+                    "Resource": table_arn,
+                }
             ],
         }
     )
