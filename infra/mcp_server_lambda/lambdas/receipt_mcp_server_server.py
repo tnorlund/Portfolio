@@ -920,7 +920,8 @@ using get_receipt or get_receipt_image_url.""",
 Reads DynamoDB directly and rolls beacon events into sessions with pages,
 event details, edge geo, referrer, and UTM attribution. By default excludes
 bots, Cloudflare WARP traffic, and datacenter-hosting traffic. `minutes` is
-clamped to the live table's 90-day retention window.""",
+clamped to the live table's 90-day retention window. Results contain at most
+the newest 5,000 events and 250 sessions; `truncated` reports omitted data.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -946,7 +947,8 @@ clamped to the live table's 90-day retention window.""",
 Filter live beacon events by exact `utm_campaign`, an ISO-8601 UTC `since`
 timestamp, or both. Campaign-only queries default to the last 24 hours. Returns
 session pages/events, first/last seen, edge geo, referrer, and UTM fields. At
-least one of `campaign` or `since` is required.""",
+least one of `campaign` or `since` is required. Results contain at most the
+newest 5,000 events and 250 sessions; `truncated` reports omitted data.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3665,10 +3667,10 @@ async def delete_receipt_section_impl(
 
 
 # ---------------------------------------------------------------------------
-# Web analytics — Athena over CloudFront access logs.
-# Glue table + workgroup are created by infra/components/web_analytics.
-# All beacon parsing / WARP+bot classification / PT bucketing lives here in
-# SQL so the logic stays version-controlled rather than in a Glue view.
+# Web analytics — live DynamoDB overlay + durable CloudFront/Athena batch.
+# infra/components/web_analytics creates both query surfaces. The batch
+# transform owns durable parsing/classification/materialization; the collector
+# owns request-time flags. This server only reads and rolls up those records.
 # ---------------------------------------------------------------------------
 ANALYTICS_DB = "portfolio_analytics"
 ANALYTICS_WORKGROUP = "portfolio_analytics"
@@ -3677,6 +3679,8 @@ ANALYTICS_LIVE_TABLE = os.environ.get(
     "WEB_EVENTS_LIVE_TABLE_NAME", "web_events_live"
 )
 ANALYTICS_LIVE_MAX_MINUTES = 90 * 24 * 60
+ANALYTICS_LIVE_MAX_EVENTS = 5000
+ANALYTICS_LIVE_MAX_SESSIONS = 250
 
 
 def _analytics_normalize_dynamo(value):
@@ -3766,8 +3770,8 @@ def _analytics_live_epoch_ms(item: dict) -> int:
         return 0
 
 
-def _analytics_live_query(start, end) -> list[dict]:
-    """Query each UTC date partition intersecting [start, end]; never scan."""
+def _analytics_live_query(start, end) -> tuple[list[dict], bool]:
+    """Return the newest bounded event suffix and whether data was unread."""
     from datetime import datetime, timedelta, timezone
 
     import boto3
@@ -3779,8 +3783,10 @@ def _analytics_live_query(start, end) -> list[dict]:
     start_ms = int(start.timestamp() * 1000)
     end_ms = int(end.timestamp() * 1000)
     items = []
-    day = start.date()
-    while day <= end.date():
+    first_day = start.date()
+    day = end.date()
+    truncated = False
+    while day >= first_day and len(items) < ANALYTICS_LIVE_MAX_EVENTS:
         day_start = datetime.combine(day, datetime.min.time(), timezone.utc)
         next_day = day_start + timedelta(days=1)
         lower_ms = max(start_ms, int(day_start.timestamp() * 1000))
@@ -3794,15 +3800,25 @@ def _analytics_live_query(start, end) -> list[dict]:
             ),
             # The real-time tool should observe a just-written beacon.
             "ConsistentRead": True,
+            "ScanIndexForward": False,
         }
         while True:
+            query_args["Limit"] = ANALYTICS_LIVE_MAX_EVENTS - len(items)
             response = table.query(**query_args)
             items.extend(response.get("Items", []))
             last_key = response.get("LastEvaluatedKey")
             if not last_key:
                 break
+            if len(items) >= ANALYTICS_LIVE_MAX_EVENTS:
+                truncated = True
+                break
             query_args["ExclusiveStartKey"] = last_key
-        day += timedelta(days=1)
+        if truncated:
+            break
+        day -= timedelta(days=1)
+        if len(items) >= ANALYTICS_LIVE_MAX_EVENTS and day >= first_day:
+            truncated = True
+            break
 
     normalized = [_analytics_normalize_dynamo(item) for item in items]
     # The SK range is authoritative; the second check protects against malformed
@@ -3812,12 +3828,16 @@ def _analytics_live_query(start, end) -> list[dict]:
         for item in normalized
         if start_ms <= _analytics_live_epoch_ms(item) <= end_ms
     ]
-    return sorted(
-        normalized,
-        key=lambda item: (
-            _analytics_live_epoch_ms(item),
-            str(item.get("sk") or ""),
+    return (
+        sorted(
+            normalized,
+            key=lambda item: (
+                _analytics_live_epoch_ms(item),
+                str(item.get("sk") or ""),
+            ),
+            reverse=True,
         ),
+        truncated,
     )
 
 
@@ -3981,16 +4001,20 @@ async def analytics_live_impl(minutes=60, humans_only=True) -> dict:
         effective_minutes = max(
             1, min(int(minutes), ANALYTICS_LIVE_MAX_MINUTES)
         )
-        events = _analytics_live_query(start, end)
+        events, truncated = _analytics_live_query(start, end)
         if humans_only:
             events = [event for event in events if _analytics_live_is_human(event)]
         sessions = _analytics_live_rollup(events)
+        if len(sessions) > ANALYTICS_LIVE_MAX_SESSIONS:
+            truncated = True
+        sessions = sessions[:ANALYTICS_LIVE_MAX_SESSIONS]
         return {
             "since": _analytics_live_iso(start),
             "as_of": _analytics_live_iso(end),
             "minutes": effective_minutes,
             "timezone": "UTC",
             "humans_only": bool(humans_only),
+            "truncated": truncated,
             "event_count": len(events),
             "session_count": len(sessions),
             "sessions": sessions,
@@ -4015,7 +4039,7 @@ async def analytics_attribution_impl(
             minutes=24 * 60,
             since=since or None,
         )
-        events = _analytics_live_query(start, end)
+        events, truncated = _analytics_live_query(start, end)
         if humans_only:
             events = [event for event in events if _analytics_live_is_human(event)]
         attributed_sids = {
@@ -4030,6 +4054,9 @@ async def analytics_attribution_impl(
                 for session in sessions
                 if session["sid"] in attributed_sids
             ]
+        if len(sessions) > ANALYTICS_LIVE_MAX_SESSIONS:
+            truncated = True
+        sessions = sessions[:ANALYTICS_LIVE_MAX_SESSIONS]
         attributed_event_count = sum(
             session["beacons"] for session in sessions
         )
@@ -4039,6 +4066,7 @@ async def analytics_attribution_impl(
             "as_of": _analytics_live_iso(end),
             "timezone": "UTC",
             "humans_only": bool(humans_only),
+            "truncated": truncated,
             "event_count": attributed_event_count,
             "session_count": len(sessions),
             "sessions": sessions,

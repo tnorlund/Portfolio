@@ -11,6 +11,7 @@ import asyncio
 import importlib.util
 import sys
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -280,7 +281,7 @@ def test_attribution_keeps_full_session_after_campaign_landing(
     monkeypatch.setattr(
         module,
         "_analytics_live_query",
-        lambda _start, _end: events,
+        lambda _start, _end: (events, False),
     )
 
     result = asyncio.run(
@@ -289,6 +290,7 @@ def test_attribution_keeps_full_session_after_campaign_landing(
 
     assert result["session_count"] == 1
     assert result["event_count"] == 2
+    assert result["truncated"] is False
     session = result["sessions"][0]
     assert session["sid"] == "session-1"
     assert session["pages"] == ["/receipt", "/resume"]
@@ -306,8 +308,231 @@ def test_live_query_uses_partition_queries_not_scan(label):
     assert 'Key("dt").eq' in query_source
     assert 'Key("sk").between' in query_source
     assert '"ConsistentRead": True' in query_source
+    assert '"ScanIndexForward": False' in query_source
+    assert 'query_args["Limit"]' in query_source
     assert "table.query(" in query_source
     assert "scan(" not in query_source
+
+
+class _FakeDynamoCondition:
+    def __init__(self, parts):
+        self.parts = list(parts)
+
+    def __and__(self, other):
+        return _FakeDynamoCondition(self.parts + other.parts)
+
+
+def _install_fake_boto3_query(monkeypatch, table, queried_days):
+    class _FakeKey:
+        def __init__(self, name):
+            self.name = name
+
+        def eq(self, value):
+            if self.name == "dt":
+                queried_days.append(value)
+            return _FakeDynamoCondition([(self.name, "eq", value)])
+
+        def between(self, lower, upper):
+            return _FakeDynamoCondition(
+                [(self.name, "between", lower, upper)]
+            )
+
+    boto3_module = types.ModuleType("boto3")
+    dynamodb_module = types.ModuleType("boto3.dynamodb")
+    conditions_module = types.ModuleType("boto3.dynamodb.conditions")
+    conditions_module.Key = _FakeKey
+    dynamodb_module.conditions = conditions_module
+    boto3_module.dynamodb = dynamodb_module
+    boto3_module.resource = lambda *_args, **_kwargs: types.SimpleNamespace(
+        Table=lambda _name: table
+    )
+    monkeypatch.setitem(sys.modules, "boto3", boto3_module)
+    monkeypatch.setitem(sys.modules, "boto3.dynamodb", dynamodb_module)
+    monkeypatch.setitem(
+        sys.modules, "boto3.dynamodb.conditions", conditions_module
+    )
+
+
+def _live_test_event(ts, sid, campaign=None):
+    epoch_ms = int(ts.timestamp() * 1000)
+    event = {
+        "dt": ts.date().isoformat(),
+        "sk": f"{epoch_ms:013d}#{sid}#event",
+        "epoch_ms": epoch_ms,
+        "ts": ts.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "sid": sid,
+        "eid": f"{sid}-event",
+        "event": "page_view",
+        "path": f"/{sid}",
+    }
+    if campaign is not None:
+        event["utm_campaign"] = campaign
+    return event
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_query_caps_newest_page_and_reports_unread_page(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setattr(module, "ANALYTICS_LIVE_MAX_EVENTS", 3)
+    queried_days = []
+    responses = [
+        {
+            "Items": [
+                _live_test_event(
+                    datetime(2026, 7, 10, 12, 3, tzinfo=timezone.utc),
+                    "newest",
+                ),
+                _live_test_event(
+                    datetime(2026, 7, 10, 12, 2, tzinfo=timezone.utc),
+                    "middle",
+                ),
+            ],
+            "LastEvaluatedKey": {"dt": "2026-07-10", "sk": "page-2"},
+        },
+        {
+            "Items": [
+                _live_test_event(
+                    datetime(2026, 7, 10, 12, 1, tzinfo=timezone.utc),
+                    "oldest-returned",
+                )
+            ],
+            "LastEvaluatedKey": {"dt": "2026-07-10", "sk": "unread"},
+        },
+    ]
+
+    class _FakeTable:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, **kwargs):
+            self.calls.append(kwargs)
+            return responses.pop(0)
+
+    table = _FakeTable()
+    _install_fake_boto3_query(monkeypatch, table, queried_days)
+    start = datetime(2026, 7, 9, tzinfo=timezone.utc)
+    end = datetime(2026, 7, 10, 23, 59, tzinfo=timezone.utc)
+
+    events, truncated = module._analytics_live_query(start, end)
+
+    assert truncated is True
+    assert [event["sid"] for event in events] == [
+        "newest",
+        "middle",
+        "oldest-returned",
+    ]
+    assert queried_days == ["2026-07-10"]
+    assert [call["Limit"] for call in table.calls] == [3, 1]
+    assert all(call["ConsistentRead"] is True for call in table.calls)
+    assert all(call["ScanIndexForward"] is False for call in table.calls)
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_query_reports_unread_older_date_at_exact_cap(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setattr(module, "ANALYTICS_LIVE_MAX_EVENTS", 2)
+    queried_days = []
+
+    class _FakeTable:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "Items": [
+                    _live_test_event(
+                        datetime(2026, 7, 10, 12, 2, tzinfo=timezone.utc),
+                        "newest",
+                    ),
+                    _live_test_event(
+                        datetime(2026, 7, 10, 12, 1, tzinfo=timezone.utc),
+                        "next",
+                    ),
+                ]
+            }
+
+    table = _FakeTable()
+    _install_fake_boto3_query(monkeypatch, table, queried_days)
+    start = datetime(2026, 7, 9, tzinfo=timezone.utc)
+    end = datetime(2026, 7, 10, 23, 59, tzinfo=timezone.utc)
+
+    events, truncated = module._analytics_live_query(start, end)
+
+    assert len(events) == 2
+    assert truncated is True
+    assert queried_days == ["2026-07-10"]
+    assert len(table.calls) == 1
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_live_caps_to_newest_sessions(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setattr(module, "ANALYTICS_LIVE_MAX_SESSIONS", 2)
+    events = [
+        _live_test_event(
+            datetime(2026, 7, 10, 12, minute, tzinfo=timezone.utc),
+            sid,
+        )
+        for minute, sid in [(1, "oldest"), (2, "middle"), (3, "newest")]
+    ]
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda _start, _end: (events, False),
+    )
+
+    result = asyncio.run(module.analytics_live_impl(humans_only=False))
+
+    assert result["truncated"] is True
+    assert result["event_count"] == 3
+    assert result["session_count"] == 2
+    assert [session["sid"] for session in result["sessions"]] == [
+        "newest",
+        "middle",
+    ]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_attribution_filters_then_caps_to_newest_campaign_sessions(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setattr(module, "ANALYTICS_LIVE_MAX_SESSIONS", 2)
+    events = [
+        _live_test_event(
+            datetime(2026, 7, 10, 12, minute, tzinfo=timezone.utc),
+            sid,
+            campaign,
+        )
+        for minute, sid, campaign in [
+            (1, "campaign-oldest", "launch"),
+            (2, "campaign-middle", "launch"),
+            (3, "campaign-newest", "launch"),
+            (4, "unrelated-newest", "other"),
+        ]
+    ]
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda _start, _end: (events, False),
+    )
+
+    result = asyncio.run(
+        module.analytics_attribution_impl(
+            campaign="launch", humans_only=False
+        )
+    )
+
+    assert result["truncated"] is True
+    assert result["event_count"] == 2
+    assert result["session_count"] == 2
+    assert [session["sid"] for session in result["sessions"]] == [
+        "campaign-newest",
+        "campaign-middle",
+    ]
 
 
 # ---------------------------------------------------------------------------
