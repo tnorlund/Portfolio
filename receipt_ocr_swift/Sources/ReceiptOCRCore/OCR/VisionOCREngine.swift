@@ -605,8 +605,14 @@ public struct VisionOCREngine: OCREngineProtocol {
                         // with a low minSamples so the receipt is recovered rather
                         // than silently dropped. (Only fires when the normal pass
                         // produced nothing, so it can't regress working images.)
+                        // Floor at 5 lines: a handful (2-4) of labels on a
+                        // uniformly-colored sign/menu that slipped past the color
+                        // filter must not be clustered into a fabricated receipt;
+                        // a real small receipt has a merchant + a few items + a
+                        // total. (A stricter low-saturation paper gate is a noted
+                        // follow-up.)
                         if !photoClustering.clusters.contains(where: { $0.key != -1 && !$0.value.isEmpty }),
-                           docLines.count >= 3, docLines.count < 12 {
+                           docLines.count >= 5, docLines.count < 12 {
                             photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 3)
                         }
                         clustering = photoClustering
@@ -866,9 +872,11 @@ public struct VisionOCREngine: OCREngineProtocol {
                     let eps = avgDiagonal * 2
                     var photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
                     // Small-receipt recovery (see async path): recover a small
-                    // receipt that minSamples 10 leaves entirely as noise.
+                    // receipt that minSamples 10 leaves entirely as noise. Floor
+                    // at 5 lines so a few labels on a colored sign aren't
+                    // fabricated into a receipt.
                     if !photoClustering.clusters.contains(where: { $0.key != -1 && !$0.value.isEmpty }),
-                       docLines.count >= 3, docLines.count < 12 {
+                       docLines.count >= 5, docLines.count < 12 {
                         photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 3)
                     }
                     clustering = photoClustering

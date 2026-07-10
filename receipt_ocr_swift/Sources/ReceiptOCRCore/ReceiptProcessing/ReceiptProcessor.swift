@@ -104,27 +104,17 @@ public struct ReceiptProcessor {
                 effectiveIndices.append(idx)
             }
 
-            // Trim cross-axis outliers: an adjacent menu pressed against the
-            // edge, or a second overlapping receipt, that sticks out sideways
-            // from this receipt's column. Never trims below 3 lines. A cluster
-            // FLAGGED FOR REVIEW (probable overlapping copies that couldn't be
-            // confidently split) is exempt: the reviewer must see the full,
-            // untrimmed crop, not one from which a sideways-offset minority copy
-            // was already removed.
-            let inlierMask =
-                reviewClusterIds.contains(clusterId)
-                ? Array(repeating: true, count: clusterLines.count)
-                : crossAxisInlierMask(clusterLines)
-            if inlierMask.contains(false) {
-                let keptLines = zip(clusterLines, inlierMask)
-                    .compactMap { $0.1 ? $0.0 : nil }
-                let keptIndices = zip(effectiveIndices, inlierMask)
-                    .compactMap { $0.1 ? $0.0 : nil }
-                if keptLines.count >= 3 {
-                    clusterLines = keptLines
-                    effectiveIndices = keptIndices
-                }
-            }
+            // NOTE: cross-axis geometric trimming was intentionally removed here.
+            // Deciding a line is "sideways background" from geometry ALONE is
+            // unsafe: a right-aligned TOTAL, or a separately-recognized price /
+            // amount column, is cross-axis-disjoint from the description column
+            // yet is real receipt content — trimming it silently drops totals.
+            // The two cases trimming targeted are handled with actual evidence
+            // instead: a colored menu/flyer background is removed pre-clustering
+            // by the pixel-based BackgroundColorFilter, and two overlapping
+            // copies are separated (or flagged) by the duplicate splitter. A
+            // white adjacent document that survives both is kept in the crop
+            // (a slightly larger crop) rather than risking loss of real content.
 
             guard clusterLines.count >= 3 else { continue }
 

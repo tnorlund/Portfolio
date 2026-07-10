@@ -212,13 +212,20 @@ func examineDuplicatePair(
     // the sub-threshold (2-inlier) review flag can be gated on the SAME quality
     // bar as the confident-split path (see the minConsensusPairs branch below).
 
-    // Distinctive anchors: at least two consensus pairs must be anchored by real
-    // alphabetic text, NOT a pure price / quantity / money token ("3.50",
-    // "$5.00", "2 X", "#4"). Repeated SKUs and prices do not count toward this.
-    let distinctiveAnchors = bestConsensus.filter {
-        isDistinctiveAnchorText(texts[$0.a])
-    }.count
-    let anchorsDistinctive = distinctiveAnchors >= 2
+    // Distinctive anchors: the consensus must be anchored by at least two
+    // DISTINCT pieces of real alphabetic text — not a pure price / quantity /
+    // money token ("3.50", "$5.00", "2 X", "#4"), and not the SAME string
+    // repeated. Two genuine copies duplicate several *different* unique lines
+    // (merchant, address, total); a single receipt with an evenly-spaced
+    // repeated alphabetic row ("TACO 3.50" x50) yields many "distinctive"
+    // anchors that are all the identical string and can forge a rigid,
+    // non-harmonic consensus — requiring two DISTINCT texts rejects that.
+    let distinctiveTexts = Set(
+        bestConsensus.compactMap {
+            isDistinctiveAnchorText(texts[$0.a]) ? texts[$0.a] : nil
+        }
+    )
+    let anchorsDistinctive = distinctiveTexts.count >= 2
 
     // Anchor spatial spread: the consensus anchors must be scattered across the
     // receipt's long axis (the displacement direction, ~vertical for stacked
@@ -310,6 +317,19 @@ func examineDuplicatePair(
         $0.0 < boundary && $0.1 >= boundary
     }.count
     guard CGFloat(straddling) >= 0.75 * CGFloat(bestConsensus.count) else {
+        return .suspicious(anchorPairs: bestConsensus.count)
+    }
+
+    // Require a real line-free gap AT the boundary. `maxProjA < minProjB` proves
+    // only that the matched ANCHORS are disjoint; an unmatched header/footer of
+    // one copy can still extend across the boundary and be assigned to the wrong
+    // copy. If the nearest lines on either side of the cut are closer than ~half
+    // a line height (no gap), the split would bisect content — flag instead.
+    let medHeight = median(heights)
+    let belowBoundary = clusterProj.filter { $0 <= boundary }.max()
+    let aboveBoundary = clusterProj.filter { $0 > boundary }.min()
+    if medHeight > 1e-6, let bb = belowBoundary, let ab = aboveBoundary,
+        (ab - bb) < 0.5 * medHeight {
         return .suspicious(anchorPairs: bestConsensus.count)
     }
 
