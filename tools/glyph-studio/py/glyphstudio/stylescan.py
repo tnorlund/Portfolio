@@ -519,6 +519,13 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         text = " ".join(w["text"] for w in line)
         has_price = bool(price_re.search(line[-1]["text"]))
         section = _classify(text, has_price, merchant)
+        # OCR line_ids covered by this visual line (words carry line_id). Lets a
+        # caller join each measured row to a QA'd ReceiptSection (which stores
+        # line_ids), so tiers can be pooled per section -- see
+        # section-conditioned heavy-atlas mint.
+        line_ids = sorted(
+            {int(w["line_id"]) for w in line if w.get("line_id") is not None}
+        )
         lt = min(w["t"] for w in line)
         lb = max(w["b"] for w in line)
         ll = min(w["l"] for w in line)
@@ -596,6 +603,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
             {
                 "reverse_video": reverse_video,
                 "text": text[:60],
+                "line_ids": line_ids,
                 "section": section,
                 "section_canonical": normalize_stylescan_section(section),
                 "cap_px": round(median(caps), 1) if caps else None,
