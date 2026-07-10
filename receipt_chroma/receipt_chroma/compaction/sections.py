@@ -96,11 +96,18 @@ def apply_section_updates(
         return results
 
     if dynamo_client is None:
-        # A missing client is a wiring bug, not a transient failure —
-        # retrying the messages cannot help, so warn loudly and skip.
+        if section_messages:
+            # A missing client with real stream work is a wiring bug —
+            # raise so the batch retries/DLQs visibly instead of the
+            # messages being silently acknowledged and lost.
+            raise ValueError(
+                "dynamo_client is required to process RECEIPT_SECTION "
+                f"messages ({len(section_messages)} queued)"
+            )
+        # extra_receipts-only callers (e.g. delta merges run without a
+        # DynamoDB client in local tooling) degrade to a warned no-op.
         logger.warning(
-            "No DynamoDB client; skipping section recompute",
-            message_count=len(section_messages),
+            "No DynamoDB client; skipping delta-driven section recompute"
         )
         return results
 
@@ -232,10 +239,9 @@ def _recompute_receipt_section_labels(
         )
         return 0
 
-    # The base-table query is eventually consistent; by the time a
-    # stream event has traversed DynamoDB Streams -> Lambda -> SQS ->
-    # this handler (seconds), replication lag (sub-second) has passed —
-    # the same trade-off the label path makes.
+    # Strongly consistent read (ConsistentRead=True inside the client):
+    # this recompute acknowledges the event immediately afterwards, so a
+    # stale read could persist wrong metadata with nothing to fix it.
     sections = dynamo_client.get_receipt_sections_from_receipt(
         image_id=image_id,
         receipt_id=receipt_id,

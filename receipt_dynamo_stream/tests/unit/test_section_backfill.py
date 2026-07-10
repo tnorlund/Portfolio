@@ -80,3 +80,22 @@ def test_publish_no_receipts_is_noop() -> None:
         sent = publish_section_backfill(receipts=[])
     assert sent == 0
     publish.assert_not_called()
+
+
+def test_publish_chunks_large_receipt_sets() -> None:
+    """The full set is never materialized; publishes go out per chunk."""
+    receipts = [(IMAGE_ID, i) for i in range(1, 8)]
+    with patch(
+        "receipt_dynamo_stream.backfill.publish_messages",
+        side_effect=lambda msgs, metrics=None: len(msgs),
+    ) as publish:
+        sent = publish_section_backfill(receipts=iter(receipts), chunk_size=3)
+    assert sent == 7
+    assert publish.call_count == 3  # 3 + 3 + 1
+    chunk_sizes = [len(c.args[0]) for c in publish.call_args_list]
+    assert chunk_sizes == [3, 3, 1]
+
+
+def test_publish_rejects_invalid_chunk_size() -> None:
+    with pytest.raises(ValueError):
+        publish_section_backfill(receipts=[(IMAGE_ID, 1)], chunk_size=0)

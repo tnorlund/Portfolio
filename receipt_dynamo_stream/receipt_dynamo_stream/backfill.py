@@ -112,19 +112,30 @@ def publish_section_backfill(
     receipts: Optional[Iterable[tuple[str, int]]] = None,
     dynamo_client: Any = None,
     metrics: Optional[MetricsRecorder] = None,
+    chunk_size: int = 500,
 ) -> int:
     """Queue section recomputes for receipts via the lines SQS queue.
+
+    Publishes in chunks while iterating so the full receipt set is
+    never materialized in memory and progress survives a partial
+    failure (re-runs are idempotent — already-correct rows are not
+    rewritten by the consumer).
 
     Args:
         receipts: Explicit (image_id, receipt_id) pairs to recompute.
             If omitted, every receipt owning at least one ReceiptSection
-            row is discovered via ``dynamo_client``.
+            row is discovered via ``dynamo_client``. Receipts whose last
+            section was deleted (nothing left to discover) can be passed
+            explicitly here to strip their stale labels.
         dynamo_client: Required when ``receipts`` is omitted.
         metrics: Optional metrics recorder.
+        chunk_size: Receipts per publish call.
 
     Returns:
         Number of SQS messages successfully published.
     """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
     if receipts is None:
         if dynamo_client is None:
             raise ValueError(
@@ -132,15 +143,29 @@ def publish_section_backfill(
             )
         receipts = iter_section_receipts(dynamo_client)
 
-    messages = build_section_backfill_messages(receipts)
-    if not messages:
-        logger.info("Section backfill found no receipts to publish")
-        return 0
+    sent = 0
+    total = 0
+    chunk: list[tuple[str, int]] = []
 
-    sent = publish_messages(messages, metrics)
-    logger.info(
-        "Section backfill published %s/%s messages", sent, len(messages)
-    )
+    def flush() -> None:
+        nonlocal sent, total
+        if not chunk:
+            return
+        messages = build_section_backfill_messages(chunk)
+        sent += publish_messages(messages, metrics)
+        total += len(messages)
+        chunk.clear()
+
+    for receipt in receipts:
+        chunk.append(receipt)
+        if len(chunk) >= chunk_size:
+            flush()
+    flush()
+
+    if total == 0:
+        logger.info("Section backfill found no receipts to publish")
+    else:
+        logger.info("Section backfill published %s/%s messages", sent, total)
     return sent
 
 

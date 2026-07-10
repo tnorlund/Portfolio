@@ -300,6 +300,37 @@ def test_missing_collection_is_noop():
 
 
 @pytest.mark.unit
+def test_missing_dynamo_client_with_messages_raises():
+    """Section messages without a DynamoDB client is a wiring bug —
+    it must surface as a batch failure, not a silent ack."""
+    chroma = Mock()
+    with pytest.raises(ValueError):
+        apply_section_updates(
+            chroma_client=chroma,
+            section_messages=[_message()],
+            collection=ChromaDBCollection.LINES,
+            logger=Mock(),
+            dynamo_client=None,
+        )
+
+
+@pytest.mark.unit
+def test_missing_dynamo_client_extra_receipts_only_skips():
+    """Delta-driven recompute without a client degrades to a no-op
+    (local tooling may merge deltas without DynamoDB access)."""
+    chroma = Mock()
+    results = apply_section_updates(
+        chroma_client=chroma,
+        section_messages=[],
+        collection=ChromaDBCollection.LINES,
+        logger=Mock(),
+        dynamo_client=None,
+        extra_receipts=[(IMAGE_ID, 1)],
+    )
+    assert results == []
+
+
+@pytest.mark.unit
 def test_unexpected_get_collection_error_propagates():
     """Transient/unknown Chroma failures must NOT be acknowledged as a
     missing collection; they propagate so the batch retries."""
