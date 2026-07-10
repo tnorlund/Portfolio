@@ -1,10 +1,10 @@
-"""Tests for the ReceiptSection QA tools on both MCP server implementations.
+"""Cross-server contract tests for duplicated Receipt MCP implementations.
 
 The two servers (stdio `scripts/receipt_mcp_server.py` and the Lambda
 `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`) must expose the
 same tool surface. These tests import each module with a minimal fake `mcp`
-package (the real dependency is not installed in CI) and assert the four
-section tools are registered with valid input schemas and matching impls.
+package (the real dependency is not installed in CI) and assert the section
+and real-time analytics tools have matching schemas, dispatch, and impls.
 """
 
 import asyncio
@@ -33,6 +33,11 @@ EXPECTED_SECTION_TOOLS = {
     "update_section_status",
     "create_receipt_section",
     "delete_receipt_section",
+}
+
+EXPECTED_LIVE_ANALYTICS_TOOLS = {
+    "analytics_live",
+    "analytics_attribution",
 }
 
 
@@ -154,6 +159,155 @@ def test_both_servers_expose_identical_section_tool_shape():
         }
 
     assert shape(stdio) == shape(lam)
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_analytics_tools_present_with_valid_schema(label):
+    module = _load_module(label, SERVER_FILES[label])
+    tools = asyncio.run(module.list_tools())
+    by_name = {tool.name: tool for tool in tools}
+
+    missing = EXPECTED_LIVE_ANALYTICS_TOOLS - set(by_name)
+    assert not missing, f"missing live analytics tools in {label}: {missing}"
+
+    live_schema = by_name["analytics_live"].inputSchema
+    assert live_schema["type"] == "object"
+    assert live_schema["properties"]["minutes"]["default"] == 60
+    assert live_schema["properties"]["minutes"]["minimum"] == 1
+    assert live_schema["properties"]["minutes"]["maximum"] == 129600
+    assert live_schema["properties"]["humans_only"]["default"] is True
+
+    attribution_schema = by_name["analytics_attribution"].inputSchema
+    assert attribution_schema["type"] == "object"
+    assert {"campaign", "since", "humans_only"} <= set(
+        attribution_schema["properties"]
+    )
+    assert attribution_schema["anyOf"] == [
+        {"required": ["campaign"]},
+        {"required": ["since"]},
+    ]
+
+    for name in EXPECTED_LIVE_ANALYTICS_TOOLS:
+        assert callable(getattr(module, f"{name}_impl", None))
+
+
+def test_both_servers_share_identical_tool_and_impl_suffix():
+    """Only get_clients differs; tool schemas/routes/impls must stay in sync."""
+
+    def common_suffix(path):
+        source = path.read_text(encoding="utf-8")
+        marker = "@server.list_tools()"
+        assert marker in source
+        return source[source.index(marker):]
+
+    assert common_suffix(SERVER_FILES["stdio"]) == common_suffix(
+        SERVER_FILES["lambda"]
+    )
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_analytics_tools_are_dispatched(label):
+    source = SERVER_FILES[label].read_text(encoding="utf-8")
+    dispatch = source.split("async def call_tool", 1)[1].split(
+        "async def search_receipts_impl", 1
+    )[0]
+    assert 'elif name == "analytics_live"' in dispatch
+    assert 'elif name == "analytics_attribution"' in dispatch
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_human_filter_and_dynamo_normalization(label):
+    from decimal import Decimal
+
+    module = _load_module(label, SERVER_FILES[label])
+    assert module._analytics_live_is_human({}) is True
+    assert module._analytics_live_is_human({"is_bot": True}) is False
+    assert module._analytics_live_is_human({"is_warp": "true"}) is False
+    assert module._analytics_live_is_human({"is_hosting": Decimal("1")}) is False
+
+    normalized = module._analytics_normalize_dynamo(
+        {"whole": Decimal("42"), "fraction": Decimal("1.25")}
+    )
+    assert normalized == {"whole": 42, "fraction": 1.25}
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_attribution_keeps_full_session_after_campaign_landing(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    events = [
+        {
+            "dt": "2026-07-10",
+            "sk": "1783700000000#session-1#landing",
+            "epoch_ms": 1783700000000,
+            "ts": "2026-07-10T00:13:20.000Z",
+            "sid": "session-1",
+            "eid": "landing",
+            "event": "page_view",
+            "path": "/receipt",
+            "ref": "https://www.linkedin.com/messaging/thread/123",
+            "utm_source": "li",
+            "utm_medium": "dm",
+            "utm_campaign": "arthur-babylist",
+            "country": "US",
+            "region": "WA",
+            "city": "Vancouver",
+        },
+        {
+            "dt": "2026-07-10",
+            "sk": "1783700060000#session-1#next-page",
+            "epoch_ms": 1783700060000,
+            "ts": "2026-07-10T00:14:20.000Z",
+            "sid": "session-1",
+            "eid": "next-page",
+            "event": "page_view",
+            "path": "/resume",
+        },
+        {
+            "dt": "2026-07-10",
+            "sk": "1783700070000#hosting-session#blocked",
+            "epoch_ms": 1783700070000,
+            "ts": "2026-07-10T00:14:30.000Z",
+            "sid": "hosting-session",
+            "eid": "blocked",
+            "event": "page_view",
+            "path": "/receipt",
+            "utm_campaign": "arthur-babylist",
+            "is_hosting": True,
+        },
+    ]
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda _start, _end: events,
+    )
+
+    result = asyncio.run(
+        module.analytics_attribution_impl(campaign="arthur-babylist")
+    )
+
+    assert result["session_count"] == 1
+    assert result["event_count"] == 2
+    session = result["sessions"][0]
+    assert session["sid"] == "session-1"
+    assert session["pages"] == ["/receipt", "/resume"]
+    assert session["utm_campaign"] == "arthur-babylist"
+    assert session["referrer_host"] == "www.linkedin.com"
+    assert session["referrer_path"] == "/messaging/thread/123"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_query_uses_partition_queries_not_scan(label):
+    source = SERVER_FILES[label].read_text(encoding="utf-8")
+    query_source = source.split("def _analytics_live_query", 1)[1].split(
+        "def _analytics_live_flag", 1
+    )[0]
+    assert 'Key("dt").eq' in query_source
+    assert 'Key("sk").between' in query_source
+    assert '"ConsistentRead": True' in query_source
+    assert "table.query(" in query_source
+    assert "scan(" not in query_source
 
 
 # ---------------------------------------------------------------------------

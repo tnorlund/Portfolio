@@ -900,6 +900,63 @@ using get_receipt or get_receipt_image_url.""",
             },
         ),
         Tool(
+            name="analytics_live",
+            description="""Recent production web visits from the real-time beacon collector.
+
+Reads DynamoDB directly and rolls beacon events into sessions with pages,
+event details, edge geo, referrer, and UTM attribution. By default excludes
+bots, Cloudflare WARP traffic, and datacenter-hosting traffic. `minutes` is
+clamped to the live table's 90-day retention window.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "default": 60,
+                        "minimum": 1,
+                        "maximum": 129600,
+                        "description": "Lookback in minutes (default 60, max 129600)",
+                    },
+                    "humans_only": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Exclude bots, WARP, and hosting traffic",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="analytics_attribution",
+            description="""Real-time campaign and outreach attribution.
+
+Filter live beacon events by exact `utm_campaign`, an ISO-8601 UTC `since`
+timestamp, or both. Campaign-only queries default to the last 24 hours. Returns
+session pages/events, first/last seen, edge geo, referrer, and UTM fields. At
+least one of `campaign` or `since` is required.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "campaign": {
+                        "type": "string",
+                        "description": "Exact utm_campaign value",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "ISO-8601 timestamp (naive values are UTC)",
+                    },
+                    "humans_only": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Exclude bots, WARP, and hosting traffic",
+                    },
+                },
+                "anyOf": [
+                    {"required": ["campaign"]},
+                    {"required": ["since"]},
+                ],
+            },
+        ),
+        Tool(
             name="analytics_traffic",
             description="""Per-day production web traffic (CloudFront logs via Athena).
 
@@ -1491,6 +1548,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_label_distribution":
             result = await get_label_distribution_impl(dynamo_client)
+        elif name == "analytics_live":
+            result = await analytics_live_impl(
+                minutes=arguments.get("minutes", 60),
+                humans_only=arguments.get("humans_only", True),
+            )
+        elif name == "analytics_attribution":
+            result = await analytics_attribution_impl(
+                campaign=arguments.get("campaign"),
+                since=arguments.get("since"),
+                humans_only=arguments.get("humans_only", True),
+            )
         elif name == "analytics_traffic":
             result = await analytics_traffic_impl(
                 start_date=arguments["start_date"],
@@ -3591,6 +3659,379 @@ async def delete_receipt_section_impl(
 ANALYTICS_DB = "portfolio_analytics"
 ANALYTICS_WORKGROUP = "portfolio_analytics"
 ANALYTICS_REGION = "us-east-1"
+ANALYTICS_LIVE_TABLE = os.environ.get(
+    "WEB_EVENTS_LIVE_TABLE_NAME", "web_events_live"
+)
+ANALYTICS_LIVE_MAX_MINUTES = 90 * 24 * 60
+
+
+def _analytics_normalize_dynamo(value):
+    """Return a JSON-safe copy of a value produced by boto3 DynamoDB."""
+    from decimal import Decimal
+
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+    if isinstance(value, dict):
+        return {
+            key: _analytics_normalize_dynamo(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_analytics_normalize_dynamo(item) for item in value]
+    if isinstance(value, set):
+        return [
+            _analytics_normalize_dynamo(item)
+            for item in sorted(value, key=str)
+        ]
+    return value
+
+
+def _analytics_live_iso(dt) -> str:
+    return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _analytics_live_parse_since(value: str):
+    from datetime import datetime, timezone
+
+    text = (value or "").strip()
+    if not text:
+        raise ValueError("since must be a non-empty ISO-8601 timestamp")
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"since must be an ISO-8601 timestamp, got {value!r}"
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _analytics_live_window(minutes=60, since=None, now=None):
+    from datetime import datetime, timedelta, timezone
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    earliest = current - timedelta(minutes=ANALYTICS_LIVE_MAX_MINUTES)
+
+    if since is not None and str(since).strip():
+        start = _analytics_live_parse_since(str(since))
+        if start > current:
+            raise ValueError("since cannot be in the future")
+        return max(start, earliest), current
+
+    try:
+        lookback = int(minutes)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("minutes must be an integer") from exc
+    lookback = max(1, min(lookback, ANALYTICS_LIVE_MAX_MINUTES))
+    return current - timedelta(minutes=lookback), current
+
+
+def _analytics_live_epoch_ms(item: dict) -> int:
+    raw_epoch = item.get("epoch_ms")
+    if raw_epoch is not None:
+        try:
+            return int(raw_epoch)
+        except (TypeError, ValueError):
+            pass
+
+    sk_epoch = str(item.get("sk") or "").split("#", 1)[0]
+    if sk_epoch.isdigit():
+        return int(sk_epoch)
+
+    try:
+        return int(_analytics_live_parse_since(str(item.get("ts"))).timestamp() * 1000)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _analytics_live_query(start, end) -> list[dict]:
+    """Query each UTC date partition intersecting [start, end]; never scan."""
+    from datetime import datetime, timedelta, timezone
+
+    import boto3
+    from boto3.dynamodb.conditions import Key
+
+    table = boto3.resource("dynamodb", region_name=ANALYTICS_REGION).Table(
+        ANALYTICS_LIVE_TABLE
+    )
+    start_ms = int(start.timestamp() * 1000)
+    end_ms = int(end.timestamp() * 1000)
+    items = []
+    day = start.date()
+    while day <= end.date():
+        day_start = datetime.combine(day, datetime.min.time(), timezone.utc)
+        next_day = day_start + timedelta(days=1)
+        lower_ms = max(start_ms, int(day_start.timestamp() * 1000))
+        upper_ms = min(end_ms, int(next_day.timestamp() * 1000) - 1)
+        query_args = {
+            "KeyConditionExpression": (
+                Key("dt").eq(day.isoformat())
+                & Key("sk").between(
+                    f"{lower_ms:013d}#", f"{upper_ms:013d}#\uffff"
+                )
+            ),
+            # The real-time tool should observe a just-written beacon.
+            "ConsistentRead": True,
+        }
+        while True:
+            response = table.query(**query_args)
+            items.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            query_args["ExclusiveStartKey"] = last_key
+        day += timedelta(days=1)
+
+    normalized = [_analytics_normalize_dynamo(item) for item in items]
+    # The SK range is authoritative; the second check protects against malformed
+    # test/manual rows and keeps rollups deterministic.
+    normalized = [
+        item
+        for item in normalized
+        if start_ms <= _analytics_live_epoch_ms(item) <= end_ms
+    ]
+    return sorted(
+        normalized,
+        key=lambda item: (
+            _analytics_live_epoch_ms(item),
+            str(item.get("sk") or ""),
+        ),
+    )
+
+
+def _analytics_live_flag(item: dict, key: str) -> bool:
+    value = item.get(key, False)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
+def _analytics_live_is_human(item: dict) -> bool:
+    # Batch `is_bot` already folds hosting into bots. Live checks all three
+    # explicitly so classification cannot drift if one stored flag is wrong.
+    return not any(
+        _analytics_live_flag(item, key)
+        for key in ("is_bot", "is_warp", "is_hosting")
+    )
+
+
+def _analytics_live_first(events: list[dict], key: str):
+    for event in events:
+        value = event.get(key)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _analytics_live_referrer_parts(ref):
+    from urllib.parse import urlsplit
+
+    if not ref:
+        return None, None
+    text = str(ref)
+    try:
+        parsed = urlsplit(text)
+    except ValueError:
+        return None, text
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    return parsed.netloc or None, path
+
+
+_ANALYTICS_LIVE_EVENT_METRICS = (
+    "page_path",
+    "percent_scrolled",
+    "metric_name",
+    "metric_value",
+    "time_to_bottom_ms",
+    "active_scroll_ms",
+    "page_height",
+    "scrollable_pixels",
+    "screens_per_minute",
+    "reader_delta_percent",
+    "baseline_sample_size",
+    "session_page_views",
+    "quick_jump",
+)
+
+
+def _analytics_live_event_summary(item: dict) -> dict:
+    summary = {
+        "ts": item.get("ts"),
+        "eid": item.get("eid"),
+        "event": item.get("event"),
+        "path": item.get("path") or item.get("page_path"),
+    }
+    for key in _ANALYTICS_LIVE_EVENT_METRICS:
+        value = item.get(key)
+        if value is not None and value != "":
+            summary[key] = value
+    return {key: value for key, value in summary.items() if value is not None}
+
+
+def _analytics_live_rollup(events: list[dict]) -> list[dict]:
+    grouped = defaultdict(list)
+    for event in events:
+        sid = str(event.get("sid") or "").strip()
+        if sid:
+            grouped[sid].append(event)
+
+    sessions = []
+    for sid, session_events in grouped.items():
+        session_events.sort(
+            key=lambda event: (
+                _analytics_live_epoch_ms(event),
+                str(event.get("sk") or ""),
+            )
+        )
+        first_epoch = _analytics_live_epoch_ms(session_events[0])
+        last_epoch = _analytics_live_epoch_ms(session_events[-1])
+        pages = []
+        event_counts = {}
+        for event in session_events:
+            page = event.get("path") or event.get("page_path")
+            if page and page not in pages:
+                pages.append(page)
+            event_name = str(event.get("event") or "unknown")
+            event_counts[event_name] = event_counts.get(event_name, 0) + 1
+
+        ref = _analytics_live_first(session_events, "ref")
+        referrer_host, referrer_path = _analytics_live_referrer_parts(ref)
+        session = {
+            "sid": sid,
+            "first_seen": session_events[0].get("ts"),
+            "last_seen": session_events[-1].get("ts"),
+            "duration_seconds": max(0, (last_epoch - first_epoch) // 1000),
+            "ip": _analytics_live_first(session_events, "ip"),
+            "ua": _analytics_live_first(session_events, "ua"),
+            "country": _analytics_live_first(session_events, "country"),
+            "region": _analytics_live_first(session_events, "region"),
+            "city": _analytics_live_first(session_events, "city"),
+            "latitude": _analytics_live_first(session_events, "latitude"),
+            "longitude": _analytics_live_first(session_events, "longitude"),
+            "timezone": _analytics_live_first(session_events, "timezone"),
+            "asn": _analytics_live_first(session_events, "asn"),
+            "ref": ref,
+            "referrer_host": referrer_host,
+            "referrer_path": referrer_path,
+            "utm_source": _analytics_live_first(session_events, "utm_source"),
+            "utm_medium": _analytics_live_first(session_events, "utm_medium"),
+            "utm_campaign": _analytics_live_first(
+                session_events, "utm_campaign"
+            ),
+            "is_warp": any(
+                _analytics_live_flag(event, "is_warp")
+                for event in session_events
+            ),
+            "is_bot": any(
+                _analytics_live_flag(event, "is_bot")
+                for event in session_events
+            ),
+            "is_hosting": any(
+                _analytics_live_flag(event, "is_hosting")
+                for event in session_events
+            ),
+            "pages": pages,
+            "pageviews": event_counts.get("page_view", 0),
+            "beacons": len(session_events),
+            "event_counts": event_counts,
+            "events": [
+                _analytics_live_event_summary(event)
+                for event in session_events
+            ],
+            "_last_epoch": last_epoch,
+        }
+        sessions.append(session)
+
+    sessions.sort(
+        key=lambda session: (session["_last_epoch"], session["sid"]),
+        reverse=True,
+    )
+    for session in sessions:
+        session.pop("_last_epoch", None)
+    return sessions
+
+
+async def analytics_live_impl(minutes=60, humans_only=True) -> dict:
+    try:
+        start, end = _analytics_live_window(minutes=minutes)
+        effective_minutes = max(
+            1, min(int(minutes), ANALYTICS_LIVE_MAX_MINUTES)
+        )
+        events = _analytics_live_query(start, end)
+        if humans_only:
+            events = [event for event in events if _analytics_live_is_human(event)]
+        sessions = _analytics_live_rollup(events)
+        return {
+            "since": _analytics_live_iso(start),
+            "as_of": _analytics_live_iso(end),
+            "minutes": effective_minutes,
+            "timezone": "UTC",
+            "humans_only": bool(humans_only),
+            "event_count": len(events),
+            "session_count": len(sessions),
+            "sessions": sessions,
+        }
+    except Exception as exc:
+        logger.exception("analytics_live failed")
+        return {"error": str(exc)}
+
+
+async def analytics_attribution_impl(
+    campaign=None, since=None, humans_only=True
+) -> dict:
+    try:
+        campaign = str(campaign or "").strip()
+        since = str(since or "").strip()
+        if not campaign and not since:
+            return {"error": "campaign or since is required"}
+
+        # Campaign-only is optimized for the outreach use case; explicit since
+        # can reach back as far as the live table's 90-day TTL.
+        start, end = _analytics_live_window(
+            minutes=24 * 60,
+            since=since or None,
+        )
+        events = _analytics_live_query(start, end)
+        if humans_only:
+            events = [event for event in events if _analytics_live_is_human(event)]
+        attributed_sids = {
+            str(event.get("sid") or "")
+            for event in events
+            if str(event.get("utm_campaign") or "") == campaign
+        }
+        sessions = _analytics_live_rollup(events)
+        if campaign:
+            sessions = [
+                session
+                for session in sessions
+                if session["sid"] in attributed_sids
+            ]
+        attributed_event_count = sum(
+            session["beacons"] for session in sessions
+        )
+        return {
+            "campaign": campaign or None,
+            "since": _analytics_live_iso(start),
+            "as_of": _analytics_live_iso(end),
+            "timezone": "UTC",
+            "humans_only": bool(humans_only),
+            "event_count": attributed_event_count,
+            "session_count": len(sessions),
+            "sessions": sessions,
+        }
+    except Exception as exc:
+        logger.exception("analytics_attribution failed")
+        return {"error": str(exc)}
 
 
 
