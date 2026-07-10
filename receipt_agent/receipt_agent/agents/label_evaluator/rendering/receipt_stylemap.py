@@ -93,8 +93,7 @@ _RULES: list[tuple[str, re.Pattern]] = [
     (
         "transaction",
         re.compile(
-            r"Ticket\s?#|Station:|Sales Rep|User:|"
-            r"^\d{1,2}/\d{1,2}/\d{4}",
+            r"Ticket\s?#|Station:|Sales Rep|User:|" r"^\d{1,2}/\d{1,2}/\d{4}",
             re.I,
         ),
     ),
@@ -160,6 +159,39 @@ def classify_row(text: str, merchant: str | None = None) -> str:
         if rx.search(compact):
             return name
     return "other"
+
+
+def normalize_face_key(text: str) -> str:
+    """Canonical row key shared by the renderer and the M4 face selector.
+
+    Uppercase, whitespace-collapsed, truncated to 60 chars (stylescan stores
+    measured line text truncated to 60). Both sides MUST use this exact
+    function or measured rows silently miss and fall back to text rules.
+    """
+    return " ".join(str(text).upper().split())[:60]
+
+
+def measured_row_style(
+    row_faces: Mapping[str, Any],
+    row_text: str,
+) -> dict[str, Any] | None:
+    """Resolve one row's MEASURED style from an M4 ``row_faces`` map.
+
+    ``row_faces`` maps :func:`normalize_face_key` keys to entries built by
+    ``glyphstudio.face_select`` from stylescan measurements of the real
+    receipt being mimicked: ``{"face": "regular"|"heavy", "scale": float,
+    "underline": bool}``. Returns the same shape as :func:`row_style`
+    (``{"scale", "bold", "underline"}``) or ``None`` when the row has no
+    measurement (caller falls back to the stylemap text rules).
+    """
+    entry = row_faces.get(normalize_face_key(row_text))
+    if entry is None:
+        return None
+    return {
+        "scale": float(entry.get("scale", 1.0)),
+        "bold": str(entry.get("face", "regular")).lower() == "heavy",
+        "underline": bool(entry.get("underline", False)),
+    }
 
 
 def row_style(

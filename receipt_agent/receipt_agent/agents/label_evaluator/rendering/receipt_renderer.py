@@ -54,6 +54,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     section_for_labels,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
+    measured_row_style,
     row_style,
 )
 
@@ -203,6 +204,15 @@ class RenderConfig:
     # BINDS for fonts with lower bitmap_cap_ratio (Vons: floor 0.73x cap vs
     # true 0.538x cap -> cells ~35% wide -> truncated item names).
     pitch_ratio: float | None = None
+    # M4 pilot (opt-in): per-ROW typography MEASURED from the real receipt
+    # being mimicked, instead of the stylemap's text rules. ``face_source``
+    # stays "stylemap" by default (production behavior byte-identical);
+    # "measured" consumes ``row_faces`` -- a {normalize_face_key(row_text):
+    # {"face": "regular"|"heavy", "scale": float, "underline": bool}} map
+    # built by glyphstudio.face_select from stylescan measurements. Rows
+    # without a measured entry fall back to the stylemap rules.
+    face_source: str = "stylemap"
+    row_faces: Mapping[str, Any] | None = None
 
 
 def render_receipt(
@@ -280,9 +290,7 @@ def render_receipt(
         # fusing it into the neighbour or clipping it off the paper margin).
         eff_condense = _fit_condense(draw, text, font, box_w, condense)
         # Vertically center the glyph in its box; left-align horizontally.
-        _draw_text(
-            image, draw, (left, top + box_h / 2), text, font, ink, eff_condense
-        )
+        _draw_text(image, draw, (left, top + box_h / 2), text, font, ink, eff_condense)
 
     return image
 
@@ -398,9 +406,7 @@ def _ocr_grid_metrics(
         return None, None
 
     cap_ratio = max(0.65, min(0.95, float(config.ocr_cap_height_ratio)))
-    base_cap = max(
-        6, int(round(sizing.font_px * float(config.bitmap_cap_ratio)))
-    )
+    base_cap = max(6, int(round(sizing.font_px * float(config.bitmap_cap_ratio))))
     measured_cap = int(round(median(heights) * cap_ratio))
     cap_px = max(int(round(base_cap * 0.9)), measured_cap)
     cap_px = min(max(6, int(config.max_font_px)), cap_px)
@@ -490,9 +496,7 @@ def _render_grid(
 
         bitmap_thin = max(0.0, min(0.9, float(config.bitmap_thin or 0.0)))
         bmf = BitmapFont(config.bitmap_font["regular"], thin=bitmap_thin)
-        heavy_path = config.bitmap_font.get(
-            "heavy", config.bitmap_font["regular"]
-        )
+        heavy_path = config.bitmap_font.get("heavy", config.bitmap_font["regular"])
         bmf_heavy = BitmapFont(heavy_path, thin=bitmap_thin)
         cap_ratio = max(0.5, min(1.0, float(config.bitmap_cap_ratio)))
         cap_px = max(6, int(round(sizing.font_px * cap_ratio)))
@@ -505,9 +509,7 @@ def _render_grid(
         advance = bmf.advance(cap_px) * float(config.condense)
         if ocr_advance is not None:
             advance = ocr_advance
-    spec = build_grid_spec(
-        profile, inner_w, inner_h, config, char_advance_px=advance
-    )
+    spec = build_grid_spec(profile, inner_w, inner_h, config, char_advance_px=advance)
     # "1" => 1-bit (no anti-aliasing): glyphs render as hard on/off dots, which
     # is what a thermal/dot-matrix head actually lays down.
     draw.fontmode = "1"
@@ -541,8 +543,7 @@ def _render_grid(
         heading_rules = [(k.upper(), float(v)) for k, v in raw_head.items()]
     else:
         heading_rules = [
-            (str(h).upper(), float(config.heading_scale or 1.0))
-            for h in raw_head
+            (str(h).upper(), float(config.heading_scale or 1.0)) for h in raw_head
         ]
     # The big bottom item-count date line inherits its heading phrase's scale
     # (Costco's "ITEMS SOLD:"); the anchor phrase comes from the merchant profile.
@@ -675,9 +676,7 @@ def _render_grid(
             if is_total_row or is_amount_date:
                 dash_after_rows.add(k)
             for phrase in config.dash_around_phrases or ():
-                if t.startswith(phrase.upper()) and any(
-                    ch.isdigit() for ch in t
-                ):
+                if t.startswith(phrase.upper()) and any(ch.isdigit() for ch in t):
                     dash_after_rows.add(k)
                     if k > 0:
                         dash_after_rows.add(k - 1)
@@ -702,9 +701,7 @@ def _render_grid(
         # heavy + enlarged; the heavy face is NOT applied to the whole TOTALS zone
         # (real Costco totals are body weight -- only headings, the reverse-video
         # total, and the bottom block stand out).
-        hscale = next(
-            (sc for pat, sc in heading_rules if pat in row_text), None
-        )
+        hscale = next((sc for pat, sc in heading_rules if pat in row_text), None)
         # Bottom date line: the big date right after "Items Sold:" (distinct from
         # the reverse-video date after "TOTAL NUMBER OF ITEMS SOLD").
         if (
@@ -737,10 +734,16 @@ def _render_grid(
         # Measured stylemap pass (no-op when config.stylemap is None): size
         # scale multiplies the row cap; bold double-strikes; underline draws
         # a rule under the row. Headings keep their own treatment.
+        # M4 opt-in (face_source="measured"): a per-row style measured from
+        # the real receipt overrides the text rules for the rows it covers;
+        # uncovered rows keep the stylemap fallback.
         sm_style = None
-        if config.stylemap is not None and not is_heading:
-            sm_style = row_style(config.stylemap, row_text, seed=str(baseline))
-            if sm_style["scale"] != 1.0:
+        if not is_heading:
+            if config.face_source == "measured" and config.row_faces:
+                sm_style = measured_row_style(config.row_faces, row_text)
+            if sm_style is None and config.stylemap is not None:
+                sm_style = row_style(config.stylemap, row_text, seed=str(baseline))
+            if sm_style is not None and sm_style["scale"] != 1.0:
                 sc = sc * sm_style["scale"]
         if _is_asterisk_rule(row_text):
             n = int(content_cw / spec.cell_w)
@@ -760,9 +763,7 @@ def _render_grid(
                 bitmap_thin=config.bitmap_thin,
             )
             continue
-        sm_extra = bool(
-            sm_style and (sm_style["bold"] or sm_style["underline"])
-        )
+        sm_extra = bool(sm_style and (sm_style["bold"] or sm_style["underline"]))
         if sc == 1.0 and not fpath and not sm_extra:
             run = _run_layout(line, center_to)
             if run is not None:
@@ -821,9 +822,7 @@ def _render_grid(
                 row_adv = bf_row.advance(row_cap) * float(config.condense)
             else:
                 row_cap = None
-                row_adv = glyph_advance(draw, row_font) * float(
-                    config.condense
-                )
+                row_adv = glyph_advance(draw, row_font) * float(config.condense)
             row_spec = GridSpec(
                 cell_w=row_adv,
                 cell_h=spec.cell_h,
@@ -835,21 +834,13 @@ def _render_grid(
         row_spec, row_font, row_cap = cached
         # Lane only applies when the row shares the base cell grid (scale 1.0).
         lane = amount_lane if sc == 1.0 else None
-        cp = (
-            row_cap
-            if row_cap
-            else (int(round(cap_px * sc)) if cap_px else None)
-        )
+        cp = row_cap if row_cap else (int(round(cap_px * sc)) if cap_px else None)
         sm_bold = bool(sm_style and sm_style["bold"])
         sm_underline = bool(sm_style and sm_style["underline"])
         # A genuinely-compiled heavy face beats a 1px double-strike; fall back
         # to double-strike only when the profile's heavy is the regular file.
         bfp = config.bitmap_font or {}
-        if (
-            sm_bold
-            and bmf_heavy is not None
-            and bfp.get("heavy") != bfp.get("regular")
-        ):
+        if sm_bold and bmf_heavy is not None and bfp.get("heavy") != bfp.get("regular"):
             bf_row = bmf_heavy
             sm_bold = False
         run = _run_layout(line, center_to)
@@ -905,9 +896,7 @@ def _render_grid(
             ul_right = int(round(max(w.right for w in line)))
             ul_h = max(1, int(round((cp or spec.font_px) * 0.07)))
             ul_y = int(round(baseline + max(2, ul_h)))
-            draw.rectangle(
-                [ul_left, ul_y, ul_right, ul_y + ul_h - 1], fill=line[0].ink
-            )
+            draw.rectangle([ul_left, ul_y, ul_right, ul_y + ul_h - 1], fill=line[0].ink)
 
     # Dashed section rules, printed as a run of real ``-`` glyphs in the reserved
     # gap below each anchor row. Use the merchant's bitmap face when it carries a
@@ -981,9 +970,7 @@ def save_receipt_png(
     coord_max: float | None = None,
 ) -> str:
     """Render ``receipt`` and write it to ``path`` (PNG). Returns ``path``."""
-    image = render_receipt(
-        receipt, profile=profile, config=config, coord_max=coord_max
-    )
+    image = render_receipt(receipt, profile=profile, config=config, coord_max=coord_max)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.save(path, format="PNG")
     return path
@@ -1159,9 +1146,7 @@ def _draw_text(
     image.paste(layer, (int(left), paste_y), layer)
 
 
-def _ink_for(
-    word: Mapping[str, Any], config: RenderConfig
-) -> tuple[int, int, int]:
+def _ink_for(word: Mapping[str, Any], config: RenderConfig) -> tuple[int, int, int]:
     if not config.color_by_label:
         custom = getattr(config, "ink", None)
         if custom is not None:
