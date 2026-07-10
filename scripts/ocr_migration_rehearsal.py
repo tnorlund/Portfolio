@@ -40,6 +40,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+import boto3
+
 # Reuse the cache tooling from PR #1097 for an identical SQLite schema/normalization.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts import local_analytics_cache as cache  # noqa: E402
@@ -327,6 +329,120 @@ def snapshot_local_table(
 
 
 # --------------------------------------------------------------------------- #
+# Scoped pull (live: Query real dev for a handful of images -> BEFORE snapshot) #
+# --------------------------------------------------------------------------- #
+
+
+def _index_summary(index: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "IndexName": index["IndexName"],
+        "KeySchema": index["KeySchema"],
+        "Projection": index["Projection"],
+    }
+
+
+def pull_scoped_images(
+    client: Any,
+    table_name: str,
+    image_ids: list[str],
+    dest_path: Path,
+) -> dict[str, Any]:
+    """Query ALL rows for the given images into a serve-compatible cache SQLite.
+
+    Instead of scanning the full ~2M-item table, Query PK=IMAGE#<id> per image.
+    Every entity of a receipt hierarchy (image, receipts, lines, words, letters,
+    labels) shares PK=IMAGE#<id>, so one Query per image captures it whole. The
+    output ``dynamodb.sqlite3`` + returned component dict match what the full
+    ``local_analytics_cache`` sync produces, so ``serve`` can hydrate it and the
+    diff can treat it as the exact BEFORE snapshot.
+    """
+    table = client.describe_table(TableName=table_name)["Table"]
+    writer = cache.DynamoSQLiteWriter(dest_path)
+    scanned = 0
+    try:
+        for image_id in image_ids:
+            kwargs: dict[str, Any] = {
+                "TableName": table_name,
+                "KeyConditionExpression": "PK = :pk",
+                "ExpressionAttributeValues": {":pk": {"S": f"IMAGE#{image_id}"}},
+                "ConsistentRead": True,
+            }
+            while True:
+                resp = client.query(**kwargs)
+                items = resp.get("Items", [])
+                writer.add(items)
+                scanned += len(items)
+                lek = resp.get("LastEvaluatedKey")
+                if not lek:
+                    break
+                kwargs["ExclusiveStartKey"] = lek
+        synced_at = cache._utc_now()
+        entity_counts = writer.finalize(
+            {
+                "table_name": table_name,
+                "table_arn": table.get("TableArn"),
+                "synced_at": synced_at,
+                "scan": {"scanned": scanned},
+                "scoped_image_ids": image_ids,
+            }
+        )
+    except Exception:
+        writer.abort()
+        raise
+    return {
+        "valid": True,
+        "path": "dynamodb.sqlite3",
+        "table_name": table_name,
+        "table_arn": table.get("TableArn"),
+        "row_count": writer.row_count,
+        "entity_counts": entity_counts,
+        "scoped_image_ids": image_ids,
+        "scan": {"scanned": scanned},
+        "consistent_read": True,
+        "table_schema": {
+            "KeySchema": table["KeySchema"],
+            "AttributeDefinitions": table["AttributeDefinitions"],
+            "GlobalSecondaryIndexes": [
+                _index_summary(i) for i in table.get("GlobalSecondaryIndexes", [])
+            ],
+            "LocalSecondaryIndexes": [
+                _index_summary(i) for i in table.get("LocalSecondaryIndexes", [])
+            ],
+        },
+        "synced_at": synced_at,
+    }
+
+
+def run_pull(
+    env: str,
+    cache_dir: Path,
+    table_name: str,
+    image_ids: list[str],
+    region: str | None = None,
+    profile: str | None = None,
+) -> dict[str, Any]:
+    """Scoped pull into ``<cache_dir>/<env>/dynamodb.sqlite3`` + a serve manifest."""
+    cache_root = cache_dir.expanduser().resolve() / env
+    cache_root.mkdir(parents=True, exist_ok=True)
+    client = boto3.Session(profile_name=profile, region_name=region).client("dynamodb")
+    component = pull_scoped_images(
+        client, table_name, image_ids, cache_root / "dynamodb.sqlite3"
+    )
+    manifest = cache._load_manifest(cache_root)
+    manifest.setdefault("components", {})
+    manifest["components"]["dynamodb"] = component
+    manifest["schema_version"] = cache.SCHEMA_VERSION
+    manifest["environment"] = env
+    manifest["cache_root"] = str(cache_root)
+    manifest["scoped"] = True
+    now = cache._utc_now()
+    manifest["updated_at"] = now
+    manifest.setdefault("created_at", now)
+    cache._write_manifest(cache_root, manifest)
+    return {"cache_root": str(cache_root), "component": component}
+
+
+# --------------------------------------------------------------------------- #
 # Reporting / CLI                                                             #
 # --------------------------------------------------------------------------- #
 
@@ -436,8 +552,44 @@ def main(argv: list[str] | None = None) -> int:
     )
     d.add_argument("--json", type=Path, default=None, help="write full report JSON")
 
+    pull = sub.add_parser(
+        "pull", help="scoped BEFORE snapshot: Query only the listed images from dev"
+    )
+    pull.add_argument("--env", default="dev")
+    pull.add_argument("--cache-dir", type=Path, default=cache.DEFAULT_CACHE_DIR)
+    pull.add_argument("--table-name", required=True)
+    pull.add_argument(
+        "--images", type=Path, required=True, help="image_ids to pull, one per line"
+    )
+    pull.add_argument("--region", default=None)
+    pull.add_argument("--profile", default=None)
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=args.log_level.upper())
+
+    if args.command == "pull":
+        ids = _read_image_ids(args.images)
+        result = run_pull(
+            args.env,
+            args.cache_dir,
+            args.table_name,
+            ids,
+            args.region,
+            args.profile,
+        )
+        comp = result["component"]
+        print(
+            json.dumps(
+                {
+                    "cache_root": result["cache_root"],
+                    "images": len(ids),
+                    "row_count": comp["row_count"],
+                    "entity_counts": comp["entity_counts"],
+                },
+                indent=2,
+            )
+        )
+        return 0
 
     if args.command == "snapshot":
         result = snapshot_local_table(
