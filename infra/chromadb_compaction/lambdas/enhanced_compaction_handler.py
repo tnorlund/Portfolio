@@ -260,8 +260,12 @@ def _collect_failed_message_ids(
     """
     failed_ids: list[str] = []
 
-    # Check metadata update failures
-    for meta_result in result.metadata_updates:
+    # Check metadata update failures (place updates + section recomputes
+    # both key results by image_id/receipt_id)
+    metadata_style_results = list(result.metadata_updates) + list(
+        result.section_updates or []
+    )
+    for meta_result in metadata_style_results:
         if meta_result.error:
             for msg in messages:
                 entity_data = msg.entity_data
@@ -424,6 +428,7 @@ def process_collection(  # pylint: disable=too-many-locals
                     "message_count": len(messages),
                     "metadata_updates": result.total_metadata_updated,
                     "label_updates": result.total_labels_updated,
+                    "section_updates": result.total_sections_updated,
                     "delta_merges": result.delta_merge_count,
                 },
             )

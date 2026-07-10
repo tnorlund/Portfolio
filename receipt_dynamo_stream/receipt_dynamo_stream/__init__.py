@@ -11,6 +11,10 @@ so Lambdas can stay minimal while sharing business logic with other services.
 
 __version__ = "0.1.0"
 
+from receipt_dynamo_stream.backfill import (
+    build_section_backfill_messages,
+    publish_section_backfill,
+)
 from receipt_dynamo_stream.change_detection.detector import (
     CHROMADB_RELEVANT_FIELDS,
     get_chromadb_relevant_changes,
@@ -64,6 +68,7 @@ __all__ = [
     "StreamRecordContext",
     "TargetQueue",
     "build_messages_from_records",
+    "build_section_backfill_messages",
     "detect_entity_type",
     "get_chromadb_relevant_changes",
     "is_compaction_run",
@@ -72,6 +77,7 @@ __all__ = [
     "parse_entity",
     "parse_stream_record",
     "publish_messages",
+    "publish_section_backfill",
     "send_batch_to_queue",
     # Type definitions
     "APIGatewayResponse",
