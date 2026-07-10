@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""M4 pilot driver: A/B stylemap text rules vs MEASURED typography (Wild Fork).
+"""M4 pilot driver: A/B production text rules vs MEASURED typography.
+
+Pilot 1: Wild Fork (stylemap-rules merchant). Pilot 2: Costco (mixed-face
+merchant whose rules are display_headings + logo overlay, not a stylemap).
 
 For every vetted receipt of the merchant (OCR x-overlap score <= 2, the M3
 vetting rule), this:
@@ -47,16 +50,20 @@ MAX_OVERLAPS = 2  # M3 vetting threshold
 LARGE = 1.30  # scale bucket boundary (matches face_select.LARGE_CAP)
 
 
-def _truth_from_line(line, body_cap, body_stroke):
+def _truth_from_line(line, body_cap, body_stroke, next_reverse=False):
     """Measured (large, heavy, underline) truth triple, or None.
 
     Truth comes from the selector's LETTERS rung only (the strongest
     evidence, noise-guarded and hand-checked); lines it cannot measure are
     excluded from agreement scoring rather than judged against weak rungs.
+    Wordmark rows (logo artwork) return None: neither path draws them as
+    sized text, so they carry no face-selection truth.
     """
     from glyphstudio.face_select import measured_style_for_line
 
-    style = measured_style_for_line(line, body_cap, body_stroke)
+    style = measured_style_for_line(
+        line, body_cap, body_stroke, next_reverse=next_reverse
+    )
     if style is None:
         return None
     return (
@@ -74,24 +81,106 @@ def _pred_from_style(style):
     )
 
 
-def _agreement(measurement, row_faces, stylemap_json):
-    """Per-line agreement of both paths against the measured truth."""
+def _heading_rules(typography):
+    """Mirror the renderer's display-heading normalization.
+
+    ``display_headings`` is the rules path for merchants WITHOUT a stylemap
+    (Costco): a substring hit renders heavy + enlarged, and the row after
+    ``heading_bleed_phrase`` inherits that phrase's scale (the big bottom
+    date). Scoring Costco's rules path as all-body (a missing stylemap)
+    would misstate production, which DOES style these rows.
+    """
+    raw = typography.get("display_headings") or ()
+    if hasattr(raw, "items"):
+        rules = [(str(k).upper(), float(v)) for k, v in raw.items()]
+    else:
+        scale = float(typography.get("heading_scale") or 1.0)
+        rules = [(str(h).upper(), scale) for h in raw]
+    bleed = str(typography.get("heading_bleed_phrase") or "").upper() or None
+    bleed_scale = (
+        next((sc for pat, sc in rules if bleed in pat), None) if bleed else None
+    )
+    return rules, bleed, bleed_scale
+
+
+def _heading_scale(rules, bleed, bleed_scale, row_text, prev_text):
+    """The renderer's per-row heading resolution (first match wins)."""
+    sc = next((s for pat, s in rules if pat in row_text), None)
+    if sc is None and bleed_scale is not None and bleed in prev_text:
+        sc = bleed_scale
+    return sc
+
+
+def _is_logo_anchor_line(line, anchor_phrases, image_h):
+    """Mirror _phrase_logo_placement: the renderer DROPS these rows (the
+    pasted logo depicts them), so they carry no face truth in either path."""
+    if not anchor_phrases:
+        return False
+    norm = "".join(ch for ch in str(line.get("text") or "").upper() if ch.isalnum())
+    if not norm or not any(p in norm for p in anchor_phrases):
+        return False
+    box = line.get("bbox")
+    if not box or not image_h:
+        return True
+    # Renderer accepts only header-band lines (receipt-coord y > 780 ==
+    # top 22% of the image).
+    return (box[1] + box[3]) / 2.0 / float(image_h) < 0.22
+
+
+def _agreement(measurement, row_faces, typography, logo_phrases=()):
+    """Per-line agreement of both paths against the measured truth.
+
+    Heading rows (display_headings hit or the bleed date row) keep the
+    heading treatment in BOTH paths -- the renderer skips the measured pass
+    for them -- so they score identically and the A/B isolates the rows
+    measured selection can actually change. Logo-anchor rows are excluded:
+    the renderer suppresses their text entirely and pastes the logo.
+    """
     from glyphstudio.face_select import normalize_face_key
 
     from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (  # noqa: E501
-        measured_row_style,
-        row_style,
-    )
+        measured_row_style, row_style)
 
+    stylemap_json = typography.get("stylemap")
+    rules, bleed, bleed_scale = _heading_rules(typography)
     body_cap = measurement.get("body_cap_px")
     body_stroke = measurement.get("body_stroke_px")
+    image_h = (measurement.get("image_size") or [None, None])[1]
+    anchor_norm = [
+        "".join(ch for ch in str(p).upper() if ch.isalnum()) for p in logo_phrases if p
+    ]
     rows = []
-    for line in measurement.get("lines") or ():
-        truth = _truth_from_line(line, body_cap, body_stroke)
+    prev_text = ""
+    lines = list(measurement.get("lines") or ())
+    for idx, line in enumerate(lines):
+        text = line.get("text") or ""
+        row_text = text.upper()
+        hscale = _heading_scale(rules, bleed, bleed_scale, row_text, prev_text)
+        prev_text = row_text
+        if _is_logo_anchor_line(line, anchor_norm, image_h):
+            continue
+        next_reverse = bool(
+            idx + 1 < len(lines) and lines[idx + 1].get("reverse_video")
+        )
+        truth = _truth_from_line(line, body_cap, body_stroke, next_reverse=next_reverse)
         if truth is None:
             continue
-        text = line.get("text") or ""
-        rule = row_style(stylemap_json, text.upper())
+        if hscale is not None:
+            # Display heading: heavy face + enlarged, no underline, in both
+            # paths (renderer: is_heading rows bypass stylemap AND measured).
+            pred = (float(hscale) >= LARGE, True, False)
+            rows.append(
+                {
+                    "text": text,
+                    "bbox": line.get("bbox"),
+                    "truth": truth,
+                    "stylemap": pred,
+                    "measured": pred,
+                    "measured_source": "heading",
+                }
+            )
+            continue
+        rule = row_style(stylemap_json, row_text)
         # The measured render's effective style: covered row -> measured
         # entry; uncovered (conflict-dropped/skipped) -> stylemap fallback,
         # exactly what the renderer does.
@@ -101,6 +190,7 @@ def _agreement(measurement, row_faces, stylemap_json):
         rows.append(
             {
                 "text": text,
+                "bbox": line.get("bbox"),
                 "truth": truth,
                 "stylemap": _pred_from_style(rule),
                 "measured": _pred_from_style(meas if meas else rule),
@@ -211,6 +301,51 @@ def _panelize(images, labels, out_png, panel_w=400):
     crop.save(os.path.splitext(out_png)[0] + ".zoom_header.png")
 
 
+def _row_evidence(real, syn_a, syn_b, rows, image_size, out_dir, tag):
+    """One labeled strip (real | stylemap | measured) per DISAGREEING row.
+
+    The real bbox is in real-image pixels; the synth renders share the real
+    aspect, so the same y-fraction band shows the corresponding synth rows.
+    Returns {row_text: png_path} for the summary JSON.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    try:
+        lab = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 14)
+    except OSError:
+        lab = ImageFont.load_default()
+    W, H = image_size
+    out = {}
+    n = 0
+    for r in rows:
+        if r["stylemap"] == r["truth"] and r["measured"] == r["truth"]:
+            continue
+        box = r.get("bbox")
+        if not box:
+            continue
+        _, t, _, b = box
+        pad = max(6, int((b - t) * 0.6))
+        f0, f1 = max(0, t - pad) / H, min(H, b + pad) / H
+        strips = []
+        for name, im in (("REAL", real), ("STYLEMAP", syn_a), ("MEASURED", syn_b)):
+            band = im.crop((0, int(f0 * im.height), im.width, int(f1 * im.height)))
+            band = band.resize((560, max(1, int(band.height * 560 / band.width))))
+            strips.append((name, band))
+        hh = sum(s.height + 20 for _, s in strips) + 10
+        cv = Image.new("RGB", (580, hh), (235, 235, 235))
+        dd = ImageDraw.Draw(cv)
+        y = 5
+        for name, s in strips:
+            dd.text((10, y), name, fill=(200, 0, 0), font=lab)
+            cv.paste(s, (10, y + 17))
+            y += s.height + 20
+        path = os.path.join(out_dir, f"{tag}.row{n:02d}.png")
+        cv.save(path)
+        out[r["text"]] = path
+        n += 1
+    return out
+
+
 def _scorecard(real, syn, words):
     from glyph_review import _ink_metrics
     from receipt_line_scorecard import score_receipt_images
@@ -251,6 +386,7 @@ def main(argv=None) -> int:
     from glyphstudio.stylescan import measure
     from m3_acceptance import ocr_overlap_score
     from PIL import Image
+
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
     table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
@@ -261,6 +397,9 @@ def main(argv=None) -> int:
     prof = rsr.cached_font_profile(table, merchant, region=region, max_receipts=12)
     ss = rsr.section_scale_for_merchant(merchant)
     typ = rsr.merchant_typography(merchant)
+    logo_phrases = (rsr.get_merchant_profile(merchant).get("logo_anchor") or {}).get(
+        "phrases"
+    ) or ()
     priors = load_merchant_faces(
         os.path.join(_ROOT, "tools", "glyph-studio", "fonts", slug)
     )
@@ -284,7 +423,7 @@ def main(argv=None) -> int:
 
         measurement = measure(iid, rid, merchant=slug)
         row_faces, stats = select_row_faces(measurement, section_priors=priors)
-        rows = _agreement(measurement, row_faces, typ.get("stylemap"))
+        rows = _agreement(measurement, row_faces, typ, logo_phrases)
 
         # A/B renders at identical canvas size (locked rule: same heights).
         wt = 760
@@ -345,6 +484,15 @@ def main(argv=None) -> int:
             m: _scorecard(real_m, im, words)
             for m, im in (("stylemap", syn_a), ("measured", syn_b))
         }
+        evidence = _row_evidence(
+            real,
+            syn_a,
+            syn_b,
+            rows,
+            measurement["image_size"],
+            args.out_dir,
+            tag,
+        )
         # Pool agreement rows only for receipts that made it all the way
         # (else pooled vs per-receipt describe different populations).
         all_rows.extend(rows)
@@ -353,6 +501,21 @@ def main(argv=None) -> int:
             "receipt_id": rid,
             "selector_stats": stats,
             "agreement": _summarize(rows),
+            "disagreements": [
+                {
+                    k: r[k]
+                    for k in (
+                        "text",
+                        "truth",
+                        "stylemap",
+                        "measured",
+                        "measured_source",
+                    )
+                }
+                for r in rows
+                if r["stylemap"] != r["truth"] or r["measured"] != r["truth"]
+            ],
+            "row_evidence": evidence,
             "scorecard": cards,
             "side_by_side": side,
         }
