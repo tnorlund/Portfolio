@@ -17,6 +17,7 @@ from typing import Callable, Iterable, Optional
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.change_detection import (
@@ -40,6 +41,12 @@ from receipt_dynamo_stream.stream_types import (
 
 logger = logging.getLogger(__name__)
 
+# Entity types whose INSERT events must also produce change messages.
+# ReceiptSection INSERTs matter because creating a section changes the
+# correct ``section_label`` for the receipt's rows in ChromaDB; other
+# entity INSERTs are covered by the embedding pipeline itself.
+_INSERT_SYNCED_ENTITY_TYPES = frozenset({"RECEIPT_SECTION"})
+
 
 def build_messages_from_records(
     records: Iterable[DynamoDBStreamRecord],
@@ -54,6 +61,12 @@ def build_messages_from_records(
         event_name = record.get("eventName")
         if event_name == "INSERT":
             messages.extend(build_compaction_run_messages(record, metrics))
+            # Section INSERTs (e.g. QA creating a section) must trigger a
+            # section_label recompute; build_entity_change_message drops
+            # INSERTs for all other entity types.
+            entity_message = build_entity_change_message(record, metrics)
+            if entity_message:
+                messages.append(entity_message)
         elif event_name in {"MODIFY", "REMOVE"}:
             # Note: CompactionRun MODIFY events (embeddings completed) are
             # intentionally ignored.  The merge Lambda polls DynamoDB
@@ -147,6 +160,12 @@ def build_entity_change_message(
         entity_type = parsed_record.entity_type
         old_entity = parsed_record.old_entity
         new_entity = parsed_record.new_entity
+
+        if (
+            record.get("eventName") == "INSERT"
+            and entity_type not in _INSERT_SYNCED_ENTITY_TYPES
+        ):
+            return None
 
         changes = get_chromadb_relevant_changes(
             entity_type, old_entity, new_entity
@@ -247,6 +266,25 @@ def _extract_receipt_word_label(
     ]
 
 
+def _extract_receipt_section(
+    entity: ReceiptSection,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    """Extract section data targeting the LINES collection only.
+
+    ``section_label`` lives on LINES (visual-row) metadata. The message
+    carries only (image_id, receipt_id): the consumer recomputes labels
+    from the receipt's *current* section set in DynamoDB, so the event
+    image is deliberately not trusted (see compaction sections module).
+    ``section_type`` is included only for within-batch deduplication.
+    """
+    return {
+        "entity_type": "RECEIPT_SECTION",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "section_type": str(entity.section_type),
+    }, [ChromaDBCollection.LINES]
+
+
 def _extract_receipt(
     entity: Receipt,
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
@@ -282,7 +320,12 @@ def _extract_receipt_line(
 
 # Type alias for entity extractor functions
 _EntityType = (
-    Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel
+    Receipt
+    | ReceiptLine
+    | ReceiptPlace
+    | ReceiptSection
+    | ReceiptWord
+    | ReceiptWordLabel
 )
 _ExtractorFunc = Callable[
     [_EntityType],
@@ -293,6 +336,7 @@ _ExtractorFunc = Callable[
 _ENTITY_EXTRACTORS: dict[str, tuple[type, _ExtractorFunc]] = {
     "RECEIPT_PLACE": (ReceiptPlace, _extract_receipt_place),
     "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
+    "RECEIPT_SECTION": (ReceiptSection, _extract_receipt_section),
     "RECEIPT": (Receipt, _extract_receipt),
     "RECEIPT_WORD": (ReceiptWord, _extract_receipt_word),
     "RECEIPT_LINE": (ReceiptLine, _extract_receipt_line),
@@ -301,14 +345,7 @@ _ENTITY_EXTRACTORS: dict[str, tuple[type, _ExtractorFunc]] = {
 
 def _extract_entity_data(
     entity_type: str,
-    entity: (
-        Receipt
-        | ReceiptLine
-        | ReceiptPlace
-        | ReceiptWord
-        | ReceiptWordLabel
-        | None
-    ),
+    entity: _EntityType | None,
 ) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
     """Extract entity data and determine target collections/queues."""
     if not entity:
