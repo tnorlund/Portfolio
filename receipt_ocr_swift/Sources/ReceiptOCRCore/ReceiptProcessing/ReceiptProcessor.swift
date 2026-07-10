@@ -106,8 +106,15 @@ public struct ReceiptProcessor {
 
             // Trim cross-axis outliers: an adjacent menu pressed against the
             // edge, or a second overlapping receipt, that sticks out sideways
-            // from this receipt's column. Never trims below 3 lines.
-            let inlierMask = crossAxisInlierMask(clusterLines)
+            // from this receipt's column. Never trims below 3 lines. A cluster
+            // FLAGGED FOR REVIEW (probable overlapping copies that couldn't be
+            // confidently split) is exempt: the reviewer must see the full,
+            // untrimmed crop, not one from which a sideways-offset minority copy
+            // was already removed.
+            let inlierMask =
+                reviewClusterIds.contains(clusterId)
+                ? Array(repeating: true, count: clusterLines.count)
+                : crossAxisInlierMask(clusterLines)
             if inlierMask.contains(false) {
                 let keptLines = zip(clusterLines, inlierMask)
                     .compactMap { $0.1 ? $0.0 : nil }
@@ -273,7 +280,20 @@ public struct ReceiptProcessor {
             iouThreshold: 0.01
         )
 
-        for (clusterId, lineIndices) in mergedClusters {
+        // Two stacked / overlapping copies on a flatbed share the same X-range,
+        // so X-axis DBSCAN + overlap-join collapse them into ONE cluster. Run the
+        // same duplicate-content consensus the photo path uses to split them
+        // (or, when not confidently separable, flag for review) instead of
+        // emitting a single combined crop.
+        let (splitResult, reviewClusterIds) =
+            splitDuplicateReceiptClusters(
+                ClusteringResult(clusters: mergedClusters), lines: lines
+            )
+        for cid in reviewClusterIds {
+            logger.warning("SCAN cluster \(cid): probable overlapping copies (duplicate anchors below confident-split threshold) - flagged for review, not split")
+        }
+
+        for (clusterId, lineIndices) in splitResult.clusters {
             guard clusterId != -1 else { continue }
             guard !lineIndices.isEmpty else { continue }
 
@@ -344,7 +364,8 @@ public struct ReceiptProcessor {
                 warpedImage: warpedImage,
                 warpedWidth: w,
                 warpedHeight: h,
-                lineIndices: lineIndices
+                lineIndices: lineIndices,
+                needsReview: reviewClusterIds.contains(clusterId)
             )
             results.append(processed)
 

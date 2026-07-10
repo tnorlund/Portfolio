@@ -595,7 +595,21 @@ public struct VisionOCREngine: OCREngineProtocol {
                         // Use 2D DBSCAN for photos
                         let avgDiagonal = clusterer.averageDiagonalLength(lines: docLines)
                         let eps = avgDiagonal * 2  // Dynamic eps based on line size
-                        clustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
+                        var photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
+                        // Small-receipt recovery: minSamples 10 is tuned for
+                        // full-resolution photos with many lines. A genuine small
+                        // receipt (or one reduced below 10 lines by the background
+                        // filter) leaves every line in the noise cluster and would
+                        // yield NO receipt. When the standard pass finds nothing
+                        // but a modest number of coherent lines remain, retry once
+                        // with a low minSamples so the receipt is recovered rather
+                        // than silently dropped. (Only fires when the normal pass
+                        // produced nothing, so it can't regress working images.)
+                        if !photoClustering.clusters.contains(where: { $0.key != -1 && !$0.value.isEmpty }),
+                           docLines.count >= 3, docLines.count < 12 {
+                            photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 3)
+                        }
+                        clustering = photoClustering
                     case .scan:
                         // Use X-axis clustering for scans
                         clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
@@ -850,7 +864,14 @@ public struct VisionOCREngine: OCREngineProtocol {
                 case .photo:
                     let avgDiagonal = clusterer.averageDiagonalLength(lines: docLines)
                     let eps = avgDiagonal * 2
-                    clustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
+                    var photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
+                    // Small-receipt recovery (see async path): recover a small
+                    // receipt that minSamples 10 leaves entirely as noise.
+                    if !photoClustering.clusters.contains(where: { $0.key != -1 && !$0.value.isEmpty }),
+                       docLines.count >= 3, docLines.count < 12 {
+                        photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 3)
+                    }
+                    clustering = photoClustering
                 case .scan:
                     clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
                 }

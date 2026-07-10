@@ -68,27 +68,35 @@ public func crossAxisInlierMask(_ lines: [Line], k: CGFloat = 4.0) -> [Bool] {
     // deliberately does NOT try to split two overlapping receipts — a gap-based
     // split was tried and regressed clean tilted receipts (it cut real header/
     // footer content), so that case is left to a content-based pass.
-    let reject = k * 1.4826 * mad
-    var mask = offsets.map { abs($0 - medOff) <= reject }
-
-    // Protect the longitudinal extremes. The top-most and bottom-most lines
-    // along the receipt's stacking axis anchor the crop's vertical extent — the
-    // store header and, critically, the grand TOTAL/TAX. A short, right- or
-    // left-aligned total or header line has an off-center cross-axis centroid
-    // and can read as an outlier of an otherwise tightly-aligned column; trimming
-    // it would exclude it from the hull and shrink the warped crop past real
-    // content. Never drop the two extreme lines on the stacking axis. (Sideways
-    // background bleed is handled by the color filter and the duplicate splitter,
-    // not here.)
-    let lx = -ay
-    let ly = ax
-    let longit = centroids.map { $0.0 * lx + $0.1 * ly }
-    if let minIdx = longit.indices.min(by: { longit[$0] < longit[$1] }),
-        let maxIdx = longit.indices.max(by: { longit[$0] < longit[$1] }) {
-        mask[minIdx] = true
-        mask[maxIdx] = true
+    // Interval-based rejection (conservative). Centroid distance alone would drop
+    // a short, off-center but legitimate line — e.g. a right-aligned TOTAL whose
+    // centroid sits far from the column median even though its text still lies
+    // WITHIN the receipt's column, or a centered header on a receipt with a
+    // tight body. Instead, reject a line only when its cross-axis EXTENT is
+    // wholly DISJOINT from the receipt column envelope: a menu / adjacent-document
+    // line pressed sideways against the receipt. A total/header overlaps the
+    // column and is kept; a truly sideways line is dropped even when it is the
+    // top-most or bottom-most line (which a longitudinal-extreme exception would
+    // have wrongly protected, re-admitting menu bleed).
+    let intervals = lines.map { line -> (CGFloat, CGFloat) in
+        let ps = [
+            line.topLeft.x * ax + line.topLeft.y * ay,
+            line.topRight.x * ax + line.topRight.y * ay,
+            line.bottomLeft.x * ax + line.bottomLeft.y * ay,
+            line.bottomRight.x * ax + line.bottomRight.y * ay,
+        ]
+        return (ps.min() ?? 0, ps.max() ?? 0)
     }
-    return mask
+    let medLow = median(intervals.map { $0.0 })
+    let medHigh = median(intervals.map { $0.1 })
+    let colWidth = max(0, medHigh - medLow)
+    // Generous envelope: half the column width on each side, floored at the
+    // MAD-based reject distance. A line is an outlier only if its whole cross-
+    // axis interval lies beyond this envelope (no overlap).
+    let tol = max(0.5 * colWidth, k * 1.4826 * mad)
+    let loBound = medLow - tol
+    let hiBound = medHigh + tol
+    return intervals.map { $0.1 >= loBound && $0.0 <= hiBound }
 }
 
 /// Median of a non-empty array (returns 0 for empty).

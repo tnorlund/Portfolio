@@ -122,16 +122,29 @@ func examineDuplicatePair(
     guard pairs.count >= 2 else { return .single }
 
     // Pathological-explosion guard (bounds the O(P^2) consensus search below).
-    // A genuine pair of overlapping copies yields O(n) spatially-disjoint
-    // duplicate correspondences (each distinctive line matched to its twin). A
-    // long list of near-identical rows (e.g. 60 repeated SKU lines) instead
-    // yields O(n^2) candidate pairs — C(60,2)=1770 — and the pairwise model
-    // search is O(P^2) hypotheses x O(P) inliers = O(P^3), which would stall an
-    // OCR worker for seconds before the harmonic guard ever runs. Such a blow-up
-    // is definitionally a periodic list, not two copies, so treat it as a single
-    // receipt rather than attempt the (doomed, expensive) consensus.
+    // A long list of near-identical rows (e.g. 60 repeated SKU lines) yields
+    // O(n^2) candidate pairs — C(60,2)=1770 — and the pairwise model search is
+    // O(P^2) hypotheses x O(P) inliers = O(P^3), which would stall an OCR worker
+    // for seconds. Rather than discard the decision entirely (a huge pair count
+    // is USUALLY a periodic single receipt, but two copies of a long repeated
+    // list can also overflow), deterministically keep the most INFORMATIVE
+    // candidates — distinctive-text anchors first (they carry the real two-copy
+    // signal, not repeated prices), then the widest displacements (spread) — and
+    // run the normal consensus + guards on that bounded set. A periodic list's
+    // pairs still trip the harmonic guard (-> .single); a genuine split's
+    // distinctive anchors survive the cull (-> .split / .suspicious).
     let maxPairs = 300
-    if pairs.count > maxPairs { return .single }
+    if pairs.count > maxPairs {
+        pairs.sort { lhs, rhs in
+            let ld = isDistinctiveAnchorText(texts[lhs.a]) ? 1 : 0
+            let rd = isDistinctiveAnchorText(texts[rhs.a]) ? 1 : 0
+            if ld != rd { return ld > rd }
+            let lm = lhs.disp.dx * lhs.disp.dx + lhs.disp.dy * lhs.disp.dy
+            let rm = rhs.disp.dx * rhs.disp.dx + rhs.disp.dy * rhs.disp.dy
+            return lm > rm
+        }
+        pairs = Array(pairs.prefix(maxPairs))
+    }
 
     // 2. Rigid-transform consensus (RANSAC). Each pair is a correspondence
     //    a_i (copy A point) -> b_i (copy B point). From any two correspondences
@@ -270,9 +283,20 @@ func examineDuplicatePair(
         return .suspicious(anchorPairs: bestConsensus.count)
     }
 
-    // 3. Seeded assignment: anchors A (tail) and B (head) define the boundary;
-    //    assign every line by which side of it (along the displacement) it sits.
-    let boundary = (mean(projA) + mean(projB)) / 2.0
+    // 3. Seeded assignment: anchors A (tail copy) and B (head copy) define the
+    //    boundary; assign every line by which side of it (along the displacement)
+    //    it sits. When the two copies are DISJOINT along the axis (max A-anchor
+    //    below min B-anchor) place the boundary in that gap, so every anchor
+    //    straddles it. Only when they interleave (overlapping copies) fall back
+    //    to the mean — where the straddle check below will (correctly) reject the
+    //    split as unseparable. Using the mean unconditionally would misplace the
+    //    boundary for a clean but asymmetric stacking and reject a valid split.
+    let maxProjA = projA.max() ?? 0
+    let minProjB = projB.min() ?? 0
+    let boundary =
+        maxProjA < minProjB
+        ? (maxProjA + minProjB) / 2.0
+        : (mean(projA) + mean(projB)) / 2.0
 
     // The boundary can only separate two copies that are largely DISJOINT along
     // the displacement axis (one copy stacked below the other). If the copies
