@@ -595,6 +595,163 @@ def run_pull(
 
 
 # --------------------------------------------------------------------------- #
+# Backup / restore (rollback)                                                  #
+# --------------------------------------------------------------------------- #
+
+LOCAL_ENDPOINT_HINTS = ("127.0.0.1", "localhost", "http://192.168.")
+
+
+def _is_local_endpoint(endpoint_url: str | None) -> bool:
+    return bool(endpoint_url) and any(h in endpoint_url for h in LOCAL_ENDPOINT_HINTS)
+
+
+def _make_client(endpoint_url: str | None, region: str | None, allow_aws: bool):
+    """Local-first guardrail: a real-AWS client requires an explicit opt-in."""
+    if _is_local_endpoint(endpoint_url):
+        return cache._local_dynamo_client(endpoint_url, region)
+    if not allow_aws:
+        raise SystemExit(
+            "REFUSING to touch a non-local endpoint without --allow-aws. "
+            f"(endpoint_url={endpoint_url!r}) Pass --endpoint-url http://127.0.0.1:8000 "
+            "for the local table, or add --allow-aws to deliberately target real AWS."
+        )
+    return boto3.Session(region_name=region).client("dynamodb")
+
+
+def backup_images(
+    client: Any,
+    table_name: str,
+    image_ids: list[str],
+    out_path: Path,
+) -> dict[str, Any]:
+    """Wire-exact snapshot of the given IMAGE partitions (rollback source)."""
+    component = pull_scoped_images(client, table_name, image_ids, out_path)
+    return {
+        "path": str(out_path),
+        "rows": component["row_count"],
+        "images": len(image_ids),
+    }
+
+
+def compute_restore_plan(
+    backup_rows: list[Row],
+    current_rows: list[Row],
+    image_ids: list[str],
+) -> tuple[list[Row], list[tuple[str, str]]]:
+    """(puts, deletes) that return the target partitions to the backup state.
+
+    puts    = every backup row (wire-exact overwrite; unchanged rows are no-ops)
+    deletes = (pk, sk) present now but absent from the backup (rows the
+              migration added), scoped to the target images only.
+    """
+    targets = {f"IMAGE#{i}" for i in image_ids}
+    backup_keys = {(r.pk, r.sk) for r in backup_rows if r.pk in targets}
+    puts = [r for r in backup_rows if r.pk in targets]
+    deletes = [
+        (r.pk, r.sk)
+        for r in current_rows
+        if r.pk in targets and (r.pk, r.sk) not in backup_keys
+    ]
+    return puts, deletes
+
+
+def _query_partition(client: Any, table_name: str, pk: str) -> list[dict[str, Any]]:
+    items, kwargs = [], {
+        "TableName": table_name,
+        "KeyConditionExpression": "PK = :pk",
+        "ExpressionAttributeValues": {":pk": {"S": pk}},
+        "ConsistentRead": True,
+    }
+    while True:
+        resp = client.query(**kwargs)
+        items.extend(resp.get("Items", []))
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            return items
+        kwargs["ExclusiveStartKey"] = lek
+
+
+def _batch_write(client: Any, table_name: str, requests: list[dict[str, Any]]) -> None:
+    for i in range(0, len(requests), 25):
+        chunk = {table_name: requests[i : i + 25]}
+        for _ in range(8):
+            resp = client.batch_write_item(RequestItems=chunk)
+            chunk = resp.get("UnprocessedItems") or {}
+            if not chunk:
+                break
+        if chunk:
+            raise RuntimeError("batch_write left unprocessed items after retries")
+
+
+def restore_images(
+    client: Any,
+    table_name: str,
+    backup_path: Path,
+    image_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Roll the target partitions back to the backup, then VERIFY byte-exact.
+
+    Deletes rows the migration added, rewrites every backed-up row from its
+    exact wire JSON, then re-reads each partition and compares canonical wire
+    forms. Raises if verification fails — a rollback you can't verify is not a
+    rollback.
+    """
+    backup_rows = load_rows(backup_path)
+    ids = image_ids or sorted(
+        {r.image_id or image_id_from_pk(r.pk) for r in backup_rows} - {None}
+    )
+    current: list[Row] = []
+    for img in ids:
+        for it in _query_partition(client, table_name, f"IMAGE#{img}"):
+            native = cache._native_item(it)
+            current.append(
+                Row(
+                    pk=str(native.get("PK", "")),
+                    sk=str(native.get("SK", "")),
+                    entity_type=None,
+                    image_id=img,
+                    receipt_id=None,
+                    native=native,
+                    wire_json=json.dumps(it),
+                )
+            )
+    puts, deletes = compute_restore_plan(backup_rows, current, ids)
+    requests = [
+        {"DeleteRequest": {"Key": {"PK": {"S": pk}, "SK": {"S": sk}}}}
+        for pk, sk in deletes
+    ] + [{"PutRequest": {"Item": json.loads(r.wire_json)}} for r in puts]
+    _batch_write(client, table_name, requests)
+
+    # Verify: every partition must now match the backup byte-for-byte.
+    mismatches = []
+    for img in ids:
+        want = {
+            (r.pk, r.sk): _canonical(r.wire_json)
+            for r in backup_rows
+            if r.pk == f"IMAGE#{img}"
+        }
+        got = {}
+        for it in _query_partition(client, table_name, f"IMAGE#{img}"):
+            native = cache._native_item(it)
+            got[(str(native.get("PK", "")), str(native.get("SK", "")))] = _canonical(
+                json.dumps(it)
+            )
+        if want != got:
+            extra = set(got) - set(want)
+            missing = set(want) - set(got)
+            changed = {k for k in set(want) & set(got) if want[k] != got[k]}
+            mismatches.append((img, len(missing), len(extra), len(changed)))
+    if mismatches:
+        raise RuntimeError(f"RESTORE VERIFICATION FAILED: {mismatches[:5]}")
+    return {
+        "images": len(ids),
+        "puts": len(puts),
+        "deletes": len(deletes),
+        "verified": True,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Reporting / CLI                                                             #
 # --------------------------------------------------------------------------- #
 
@@ -754,8 +911,57 @@ def main(argv: list[str] | None = None) -> int:
     pull.add_argument("--region", default=None)
     pull.add_argument("--profile", default=None)
 
+    bk = sub.add_parser(
+        "backup",
+        help="wire-exact snapshot of target image partitions (rollback source)",
+    )
+    bk.add_argument("--endpoint-url", default="http://127.0.0.1:8000")
+    bk.add_argument(
+        "--allow-aws",
+        action="store_true",
+        help="required to back up from a non-local endpoint",
+    )
+    bk.add_argument("--table-name", required=True)
+    bk.add_argument("--region", default=None)
+    bk.add_argument("--images", type=Path, required=True)
+    bk.add_argument("--out", type=Path, required=True)
+
+    rs = sub.add_parser(
+        "restore", help="roll target partitions back to a backup + verify byte-exact"
+    )
+    rs.add_argument("--endpoint-url", default="http://127.0.0.1:8000")
+    rs.add_argument(
+        "--allow-aws",
+        action="store_true",
+        help="required to restore into a non-local endpoint",
+    )
+    rs.add_argument("--table-name", required=True)
+    rs.add_argument("--region", default=None)
+    rs.add_argument("--backup", type=Path, required=True)
+    rs.add_argument(
+        "--images",
+        type=Path,
+        default=None,
+        help="optional subset; default = every image in the backup",
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=args.log_level.upper())
+
+    if args.command == "backup":
+        client = _make_client(args.endpoint_url, args.region, args.allow_aws)
+        result = backup_images(
+            client, args.table_name, _read_image_ids(args.images), args.out
+        )
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "restore":
+        client = _make_client(args.endpoint_url, args.region, args.allow_aws)
+        ids = _read_image_ids(args.images) if args.images else None
+        result = restore_images(client, args.table_name, args.backup, ids)
+        print(json.dumps(result, indent=2))
+        return 0
 
     if args.command == "pull":
         ids = _read_image_ids(args.images)

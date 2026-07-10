@@ -431,3 +431,48 @@ def test_resegmentation_label_moved_between_receipts_preserved(tmp_path: Path):
     assert not report.has_real_loss
     assert not report.has_surplus
     assert reh.run_diff(before, after, ["img1"])["ok"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Backup / restore (rollback)                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_compute_restore_plan(tmp_path: Path):
+    backup = write_snapshot(
+        tmp_path / "backup.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "OLD"),
+            label_item("img1", 1, 1, 1, "GT"),
+            word_item("img2", 1, 1, 1, "KEEP"),  # not a restore target
+        ],
+    )
+    current = write_snapshot(
+        tmp_path / "current.sqlite3",
+        [
+            word_item("img1", 1, 2, 2, "NEW"),  # migration-added -> delete
+            word_item("img1", 1, 1, 1, "MUTATED"),  # same key -> overwritten by put
+        ],
+    )
+    puts, deletes = reh.compute_restore_plan(
+        reh.load_rows(backup), reh.load_rows(current), ["img1"]
+    )
+    put_keys = {(r.pk, r.sk) for r in puts}
+    # every img1 backup row is re-put; img2 is out of scope
+    assert ("IMAGE#img1", "RECEIPT#00001#LINE#00001#WORD#00001") in put_keys
+    assert all(pk == "IMAGE#img1" for pk, _ in put_keys)
+    # the migration-added row is deleted; the mutated same-key row is not
+    assert deletes == [("IMAGE#img1", "RECEIPT#00001#LINE#00002#WORD#00002")]
+
+
+def test_local_endpoint_guardrail():
+    assert reh._is_local_endpoint("http://127.0.0.1:8000")
+    assert reh._is_local_endpoint("http://localhost:8000")
+    assert not reh._is_local_endpoint(None)
+    assert not reh._is_local_endpoint("https://dynamodb.us-east-1.amazonaws.com")
+    import pytest
+
+    with pytest.raises(SystemExit):
+        reh._make_client("https://dynamodb.us-east-1.amazonaws.com", None, False)
+    with pytest.raises(SystemExit):
+        reh._make_client(None, None, False)
