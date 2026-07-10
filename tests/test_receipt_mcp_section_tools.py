@@ -458,7 +458,7 @@ def _live_test_event(ts, sid, campaign=None):
         "dt": ts.date().isoformat(),
         "sk": f"{epoch_ms:013d}#{sid}#event",
         "epoch_ms": epoch_ms,
-        "ts": ts.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "ts": ts.isoformat(timespec="milliseconds"),
         "sid": sid,
         "eid": f"{sid}-event",
         "event": "page_view",

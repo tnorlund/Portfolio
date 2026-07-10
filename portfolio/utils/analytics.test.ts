@@ -194,10 +194,16 @@ describe("analytics utilities", () => {
 
   test("CloudFront beacons capture UTM attribution and referrer", () => {
     const imageRequests = mockImageRequests();
-    const longReferrerPath = `/in/${"recruiter-portfolio-".repeat(10)}`;
+    const longReferrerPath = `/in/${"recruiter-portfolio-".repeat(40)}`;
+    const longUtmSource = `li-${"source".repeat(60)}`;
+    const longUtmMedium = `dm-${"medium".repeat(60)}`;
+    const longUtmCampaign = `arthur-${"babylist".repeat(50)}`;
     setViewport({
-      search:
-        "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
+      search: `?${new URLSearchParams({
+        utm_source: longUtmSource,
+        utm_medium: longUtmMedium,
+        utm_campaign: longUtmCampaign,
+      }).toString()}`,
     });
     setDocumentReferrer(
       `https://www.linkedin.com${longReferrerPath}?token=private#message`
@@ -213,16 +219,23 @@ describe("analytics utilities", () => {
     expect(beaconUrl.pathname).toBe("/analytics/pixel.txt");
     expect(beaconUrl.searchParams.get("eid")).toBe("evt_event-id");
     expect(beaconUrl.searchParams.get("path")).toBe("/receipt");
-    expect(beaconUrl.searchParams.get("utm_source")).toBe("li");
-    expect(beaconUrl.searchParams.get("utm_medium")).toBe("dm");
+    expect(beaconUrl.searchParams.get("utm_source")).toBe(
+      longUtmSource.slice(0, 256)
+    );
+    expect(beaconUrl.searchParams.get("utm_medium")).toBe(
+      longUtmMedium.slice(0, 256)
+    );
     expect(beaconUrl.searchParams.get("utm_campaign")).toBe(
-      "arthur-babylist"
+      longUtmCampaign.slice(0, 256)
     );
     expect(beaconUrl.searchParams.get("ref")).toBe(
-      `https://www.linkedin.com${longReferrerPath}`
+      `https://www.linkedin.com${longReferrerPath}`.slice(0, 512)
     );
     expect(beaconUrl.searchParams.get("ref")).not.toContain("token");
-    expect(beaconUrl.searchParams.get("ref")?.length).toBeGreaterThan(120);
+    expect(beaconUrl.searchParams.get("utm_source")).toHaveLength(256);
+    expect(beaconUrl.searchParams.get("utm_medium")).toHaveLength(256);
+    expect(beaconUrl.searchParams.get("utm_campaign")).toHaveLength(256);
+    expect(beaconUrl.searchParams.get("ref")).toHaveLength(512);
     expect(window.fetch).toHaveBeenCalledTimes(1);
     expect(imageRequests).toHaveLength(0);
     expect(window.dataLayer?.[0]).not.toHaveProperty("utm_campaign");

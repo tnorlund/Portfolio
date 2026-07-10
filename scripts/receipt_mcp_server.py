@@ -3756,7 +3756,7 @@ def _analytics_normalize_dynamo(value):
 
 
 def _analytics_live_iso(dt) -> str:
-    return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return dt.isoformat(timespec="milliseconds")
 
 
 def _analytics_live_parse_since(value: str):

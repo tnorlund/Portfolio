@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
+from urllib.parse import quote
 
 import pytest
 
@@ -43,7 +44,8 @@ def test_build_item_parses_attribution_geo_and_ttl() -> None:
     event = _event(
         "event=page_view&sid=ses_1&eid=evt_1&path=%2Freceipt&"
         "page_path=%2Freceipt%3Futm_campaign%3Dbabylist&"
-        "ref=https%3A%2F%2Fgithub.com%2Ftnorlund%2FPortfolio&"
+        "ref=https%3A%2F%2Fgithub.com%2Ftnorlund%2FPortfolio%3F"
+        "token%3Dprivate%23message&"
         "utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist&"
         "percent_scrolled=90",
         **{
@@ -64,6 +66,7 @@ def test_build_item_parses_attribution_geo_and_ttl() -> None:
     assert item is not None
     assert item["dt"] == "2026-07-10"
     assert item["sk"] == "1783708200123#ses_1#evt_1"
+    assert item["ts"] == "2026-07-10T18:30:00.123+00:00"
     assert item["eid"] == "evt_1"
     assert item["expires_at"] == int(
         datetime(
@@ -80,6 +83,29 @@ def test_build_item_parses_attribution_geo_and_ttl() -> None:
     assert item["is_warp"] is False
     assert item["is_bot"] is False
     assert item["is_hosting"] is False
+
+
+def test_build_item_sanitizes_referrer_at_the_trust_boundary() -> None:
+    trusted = "https://user:secret@example.com:8443/path?token=private#message"
+    trusted_item = collector._build_item(
+        _event(
+            "event=page_view&sid=trusted&eid=1&ref="
+            f"{quote(trusted, safe='')}"
+        ),
+        NOW,
+    )
+    untrusted_item = collector._build_item(
+        _event(
+            "event=page_view&sid=untrusted&eid=2&ref="
+            "javascript%3Aalert(1)"
+        ),
+        NOW,
+    )
+
+    assert trusted_item is not None
+    assert trusted_item["ref"] == "https://example.com:8443/path"
+    assert untrusted_item is not None
+    assert untrusted_item["ref"] == ""
 
 
 def test_live_classification_covers_known_batch_signals() -> None:

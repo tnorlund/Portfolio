@@ -18,7 +18,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
 
 import boto3
 
@@ -167,6 +167,30 @@ def _clean_id(value: Any, limit: int) -> str:
     return cleaned if _ANALYTICS_ID_RE.fullmatch(cleaned) else ""
 
 
+def _clean_ref(value: Any, limit: int) -> str:
+    """Retain only an HTTP(S) referrer origin and path."""
+    try:
+        parsed = urlsplit(str(value or "").strip())
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or not parsed.hostname
+        ):
+            return ""
+
+        host = parsed.hostname
+        if ":" in host:
+            host = f"[{host}]"
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+
+        sanitized = urlunsplit(
+            (parsed.scheme.lower(), host, parsed.path or "/", "", "")
+        )
+        return _clean(sanitized, limit)
+    except (TypeError, ValueError):
+        return ""
+
+
 def _viewer_ip(headers: dict[str, str]) -> str:
     address = headers.get("cloudfront-viewer-address", "").strip()
     if address:
@@ -237,7 +261,7 @@ def _build_item(event: dict[str, Any], now: datetime) -> dict[str, Any] | None:
     item: dict[str, Any] = {
         "dt": now.date().isoformat(),
         "sk": f"{epoch_ms:013d}#{sid}#{eid}",
-        "ts": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "ts": now.isoformat(timespec="milliseconds"),
         "epoch_ms": epoch_ms,
         "expires_at": int((now + timedelta(days=TTL_DAYS)).timestamp()),
         "sid": sid,
@@ -247,7 +271,7 @@ def _build_item(event: dict[str, Any], now: datetime) -> dict[str, Any] | None:
         "page_path": _clean(
             params.get("page_path"), _EVENT_PARAM_LIMITS["page_path"]
         ),
-        "ref": _clean(params.get("ref"), _EVENT_PARAM_LIMITS["ref"]),
+        "ref": _clean_ref(params.get("ref"), _EVENT_PARAM_LIMITS["ref"]),
         "utm_source": _clean(
             params.get("utm_source"), _EVENT_PARAM_LIMITS["utm_source"]
         ),
