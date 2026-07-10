@@ -194,11 +194,14 @@ describe("analytics utilities", () => {
 
   test("CloudFront beacons capture UTM attribution and referrer", () => {
     const imageRequests = mockImageRequests();
+    const longReferrerPath = `/in/${"recruiter-portfolio-".repeat(10)}`;
     setViewport({
       search:
         "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
     });
-    setDocumentReferrer("https://www.linkedin.com/in/recruiter");
+    setDocumentReferrer(
+      `https://www.linkedin.com${longReferrerPath}?token=private#message`
+    );
     const analytics = loadAnalytics();
 
     analytics.trackEvent("scroll_depth", {
@@ -216,8 +219,10 @@ describe("analytics utilities", () => {
       "arthur-babylist"
     );
     expect(beaconUrl.searchParams.get("ref")).toBe(
-      "https://www.linkedin.com/in/recruiter"
+      `https://www.linkedin.com${longReferrerPath}`
     );
+    expect(beaconUrl.searchParams.get("ref")).not.toContain("token");
+    expect(beaconUrl.searchParams.get("ref")?.length).toBeGreaterThan(120);
     expect(window.fetch).toHaveBeenCalledTimes(1);
     expect(imageRequests).toHaveLength(0);
     expect(window.dataLayer?.[0]).not.toHaveProperty("utm_campaign");
@@ -357,7 +362,7 @@ describe("analytics utilities", () => {
       search:
         "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
     });
-    setDocumentReferrer("https://www.linkedin.com/");
+    setDocumentReferrer("https://www.linkedin.com/?token=private");
     const analytics = loadAnalytics();
 
     analytics.trackEvent("page_view", { page_path: "/receipt" });

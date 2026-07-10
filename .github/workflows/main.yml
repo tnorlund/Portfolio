@@ -8,8 +8,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep a manually approved deploy isolated from validation runs. Otherwise a
+  # later push to main could cancel Pulumi or the S3 sync mid-deployment.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
   PYTHONPATH: ${{ github.workspace }}
@@ -207,13 +209,13 @@ jobs:
           retention-days: 7
 
   # ============================================================================
-  # STAGE 2: Deploy (only after ALL tests pass, main branch only)
+  # STAGE 2: Deploy (manual dispatch from main after ALL tests pass)
   # ============================================================================
 
   deploy:
     name: Deploy
     needs: [lambda-syntax, python-tests, typescript-tests, browser-tests]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -228,6 +230,11 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Install pinned Pulumi CLI
+        uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.251.0
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -282,7 +289,7 @@ jobs:
   smoke-tests:
     name: Smoke Tests
     needs: deploy
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

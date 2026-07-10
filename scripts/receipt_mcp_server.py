@@ -931,10 +931,12 @@ the newest 5,000 events and 250 sessions; `truncated` reports omitted data.""",
             description="""Real-time campaign and outreach attribution.
 
 Filter live beacon events by exact `utm_campaign`, an ISO-8601 UTC `since`
-timestamp, or both. Campaign-only queries default to the last 24 hours. Returns
-session pages/events, first/last seen, edge geo, referrer, and UTM fields. At
-least one of `campaign` or `since` is required. Results contain at most the
-newest 5,000 events and 250 sessions; `truncated` reports omitted data.""",
+timestamp, or both. Campaign-only queries default to the last 24 hours. A
+campaign result starts at its tagged landing event and continues until another
+tagged campaign begins. Returns pages/events, edge geo, referrer, and UTM
+fields. At least one of `campaign` or `since` is required. Results contain at
+most the newest 5,000 events and 250 sessions; `truncated` reports omitted
+data.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3756,6 +3758,22 @@ def _analytics_live_epoch_ms(item: dict) -> int:
         return 0
 
 
+def _analytics_live_dedupe(events: list[dict]) -> list[dict]:
+    """Match the durable transform by retaining the earliest row per eid."""
+    seen_eids = set()
+    deduped = []
+    # _analytics_live_query supplies newest-first rows, while the durable
+    # transform's row_number() uses ORDER BY time (ascending).
+    for event in reversed(events):
+        eid = str(event.get("eid") or "").strip()
+        if eid:
+            if eid in seen_eids:
+                continue
+            seen_eids.add(eid)
+        deduped.append(event)
+    return list(reversed(deduped))
+
+
 def _analytics_live_query(start, end) -> tuple[list[dict], bool]:
     """Return the newest bounded event suffix and whether data was unread."""
     from datetime import datetime, timedelta, timezone
@@ -3814,17 +3832,15 @@ def _analytics_live_query(start, end) -> tuple[list[dict], bool]:
         for item in normalized
         if start_ms <= _analytics_live_epoch_ms(item) <= end_ms
     ]
-    return (
-        sorted(
-            normalized,
-            key=lambda item: (
-                _analytics_live_epoch_ms(item),
-                str(item.get("sk") or ""),
-            ),
-            reverse=True,
+    ordered = sorted(
+        normalized,
+        key=lambda item: (
+            _analytics_live_epoch_ms(item),
+            str(item.get("sk") or ""),
         ),
-        truncated,
+        reverse=True,
     )
+    return _analytics_live_dedupe(ordered), truncated
 
 
 def _analytics_live_flag(item: dict, key: str) -> bool:
@@ -3841,6 +3857,39 @@ def _analytics_live_is_human(item: dict) -> bool:
         _analytics_live_flag(item, key)
         for key in ("is_bot", "is_warp", "is_hosting")
     )
+
+
+def _analytics_live_campaign_events(
+    events: list[dict], campaign: str
+) -> list[dict]:
+    """Return separately marked spans while the campaign is active."""
+    grouped = defaultdict(list)
+    for event in events:
+        sid = str(event.get("sid") or "").strip()
+        if sid:
+            grouped[sid].append(event)
+
+    attributed = []
+    for session_events in grouped.values():
+        session_events.sort(
+            key=lambda event: (
+                _analytics_live_epoch_ms(event),
+                str(event.get("sk") or ""),
+            )
+        )
+        active_campaign = None
+        campaign_segment = 0
+        for event in session_events:
+            tagged_campaign = str(event.get("utm_campaign") or "").strip()
+            if tagged_campaign and tagged_campaign != active_campaign:
+                active_campaign = tagged_campaign
+                if active_campaign == campaign:
+                    campaign_segment += 1
+            if active_campaign == campaign:
+                attributed_event = dict(event)
+                attributed_event["_campaign_segment"] = campaign_segment
+                attributed.append(attributed_event)
+    return attributed
 
 
 def _analytics_live_first(events: list[dict], key: str):
@@ -3903,10 +3952,10 @@ def _analytics_live_rollup(events: list[dict]) -> list[dict]:
     for event in events:
         sid = str(event.get("sid") or "").strip()
         if sid:
-            grouped[sid].append(event)
+            grouped[(sid, event.get("_campaign_segment"))].append(event)
 
     sessions = []
-    for sid, session_events in grouped.items():
+    for (sid, campaign_segment), session_events in grouped.items():
         session_events.sort(
             key=lambda event: (
                 _analytics_live_epoch_ms(event),
@@ -3970,6 +4019,8 @@ def _analytics_live_rollup(events: list[dict]) -> list[dict]:
             ],
             "_last_epoch": last_epoch,
         }
+        if campaign_segment is not None:
+            session["campaign_segment"] = campaign_segment
         sessions.append(session)
 
     sessions.sort(
@@ -4028,18 +4079,9 @@ async def analytics_attribution_impl(
         events, truncated = _analytics_live_query(start, end)
         if humans_only:
             events = [event for event in events if _analytics_live_is_human(event)]
-        attributed_sids = {
-            str(event.get("sid") or "")
-            for event in events
-            if str(event.get("utm_campaign") or "") == campaign
-        }
-        sessions = _analytics_live_rollup(events)
         if campaign:
-            sessions = [
-                session
-                for session in sessions
-                if session["sid"] in attributed_sids
-            ]
+            events = _analytics_live_campaign_events(events, campaign)
+        sessions = _analytics_live_rollup(events)
         if len(sessions) > ANALYTICS_LIVE_MAX_SESSIONS:
             truncated = True
         sessions = sessions[:ANALYTICS_LIVE_MAX_SESSIONS]

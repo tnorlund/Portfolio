@@ -28,10 +28,11 @@ BROWSER     /analytics/pixel.txt (one canonical eid-bearing request)
 
 - **Glue database** `portfolio_analytics`
 - **Live DynamoDB table** `web_events_live` — on-demand capacity, UTC date
-  partition key (`dt`), time/session/event sort key (`sk`), `sid-index`, and
-  an `expires_at` TTL of approximately 90 days
+  partition key (`dt`), time/session/event sort key (`sk`), keys-only
+  `sid-index`, and an `expires_at` TTL of approximately 90 days
 - **Collector Lambda + Function URL** — invoked only through a SigV4-signed
-  CloudFront origin access control; writes one request-time event to DynamoDB
+  CloudFront origin access control; writes one request-time event to DynamoDB;
+  its CloudWatch log group has 30-day retention
 - **CloudFront `/analytics/pixel.txt` behavior + origin group** — caching
   disabled; the Lambda URL is primary and the existing static S3 object is the
   failover; query strings are forwarded without cookies and viewer geo/ASN
@@ -57,7 +58,8 @@ BROWSER     /analytics/pixel.txt (one canonical eid-bearing request)
   (`WHERE "$path" LIKE '%.<dt>-%'`), so scan cost stays flat as history grows.
 - **Idempotent:** drops the `dt` partition + deletes its S3 objects, then
   re-`INSERT`s — safe to re-run / backfill.
-- **Dedups** on `request_id` (CloudFront can re-deliver lines).
+- **Dedups** on beacon `eid` when present, otherwise `request_id` (CloudFront
+  can re-deliver lines and browsers can retry a beacon).
 - Partition is the **UTC** log date; the serve layer buckets to PT and widens
   the scan ±1 day so PT-day edges are correct.
 - **IP enrichment:** before each rebuild the transform resolves any newly-seen
@@ -79,8 +81,9 @@ aws lambda invoke --function-name <web-analytics-transform> \
 Production builds keep
 `NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/pixel.txt`. The browser
 automatically adds `utm_source`, `utm_medium`, `utm_campaign`, and
-`document.referrer` (`ref`) to each live beacon. Outreach links should use a
-stable campaign name, for example:
+`document.referrer` (`ref`) to each live beacon. Referrers are reduced to
+HTTP(S) origin + pathname so query tokens and fragments are not copied into
+the beacon URL. Outreach links should use a stable campaign name, for example:
 
 ```
 https://tylernorlund.com/receipt?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist
@@ -94,25 +97,31 @@ the static object's non-breaking 200 response.
 CloudFront forwards the query string, user agent, viewer address/ASN, and the
 `CloudFront-Viewer-Country`, `-Country-Region`, `-City`, `-Latitude`,
 `-Longitude`, and `-Time-Zone` headers. The collector percent-decodes and
-persists those fields directly; it performs **no external geo lookup**. The
-edge ASN is also checked against a conservative set of the datacenter/cloud
-providers represented by the batch classifier.
+persists available fields directly; it performs **no external geo lookup**.
+City can be unavailable for some IPs, and detailed location headers can be
+absent for AWS-network viewers, so those fields are nullable. The edge ASN is
+also checked against a conservative set of the datacenter/cloud providers
+represented by the batch classifier.
 
 Each event makes one same-origin, fire-and-forget request. CloudFront first
 tries the signed collector Function URL; on configured 4xx/5xx failures it
 retries the same GET against the existing S3 origin, where the static pixel
-returns 200. The collector also treats writes as best-effort and returns a
-cache-disabled 1x1 GIF with status 200 after malformed input or a DynamoDB
-failure. CloudFront standard logging records that same canonical request for
-the unchanged batch pipeline, so the live overlay neither doubles nor steals
-events from existing metrics.
+returns 200. Malformed/no-op requests receive a cache-disabled 1x1 GIF from the
+collector. Persistence errors are re-raised so Lambda's error metric records
+the failure and CloudFront exercises the static 200 fallback. CloudFront
+standard logging records that same canonical request for the unchanged batch
+pipeline, so the live overlay neither doubles nor steals events from existing
+metrics.
 
 Live items use `dt` (UTC) and
 `sk=<13-digit epoch_ms>#<sid>#<eid>`, plus a `sid-index` for session access.
 `analytics_live` queries only the intersecting UTC date partitions with
-strongly consistent DynamoDB reads. `analytics_attribution` rolls up the full
-session before campaign filtering, so pages visited after the landing URL
-drops its UTM parameters remain attributed.
+strongly consistent DynamoDB reads and deduplicates retries by `eid`, matching
+the durable transform. `analytics_attribution` starts a campaign segment at
+the matching tagged landing event and retains subsequent untagged pages until
+another tagged campaign begins. If a browser later returns to the requested
+campaign after a different campaign, the tool reports a separate segment
+rather than spanning the intervening visit.
 
 Examples:
 
@@ -223,8 +232,8 @@ side by side per day — beacon > GA usually means adblock loss.
 
 ## Deployment
 
-- **Dev** is deployed manually (`pulumi up` on the dev stack); **prod** deploys
-  via CI on merge to `main`.
+- **Dev** is deployed manually (`pulumi up` on the dev stack). **Prod** deploys
+  only from a manually dispatched CI run on `main`, after all test jobs pass.
 - The live table, collector, and `/analytics/pixel.txt` origin-group behavior
   are production only. The browser path does not change during rollout.
 - Keep `portfolio/public/analytics/pixel.txt`. It is both the no-op fallback
@@ -236,6 +245,44 @@ side by side per day — beacon > GA usually means adblock loss.
 - The `analytics_*` MCP tools require the MCP server to pick up the new code:
   redeploy the MCP Lambda, and for the local stdio server, reload it
   (`/mcp` reconnect).
+
+### Post-deploy smoke and rollback
+
+Runtime acceptance remains pending until the manual production deployment.
+Use a normal, non-AWS-network browser for the geo assertion because CloudFront
+can omit detailed geo fields for AWS viewers.
+
+1. Open a unique tagged URL such as
+   `/receipt?utm_source=smoke&utm_medium=manual&utm_campaign=smoke-<UTC epoch>`.
+2. Within five seconds, call `analytics_live(minutes=5, humans_only=false)` and
+   assert one deduplicated `page_view` with the expected path and nonempty
+   country; assert region/city when CloudFront supplies them.
+3. Call `analytics_attribution(campaign="smoke-<UTC epoch>",
+   humans_only=false)` and assert the same session, referrer, and campaign.
+4. Check the collector Lambda `Errors` metric and log group, then verify the
+   DynamoDB item has `expires_at`, edge geo, `sid`, and `eid`.
+5. In a controlled fallback test, temporarily set the collector's reserved
+   concurrency to zero, request `/analytics/pixel.txt?...`, and verify the
+   CloudFront response is still 200 from S3. Restore concurrency to 5
+   immediately afterward.
+
+For an emergency collector rollback, setting reserved concurrency to zero
+routes eligible beacon failures to the static pixel while the CloudFront
+behavior is reverted through the normal manual Pulumi review. Do not delete
+`portfolio/public/analytics/pixel.txt`.
+
+### Security and abuse boundary
+
+The beacon path is intentionally public. Reserved Lambda concurrency bounds
+simultaneous compute but is not a request-rate or DynamoDB cost ceiling; watch
+Lambda invocations/errors and DynamoDB consumed requests, and use a URI-scoped
+WAF rate rule if traffic stops matching portfolio-scale usage.
+
+The existing receipt MCP Function URL currently uses unauthenticated public
+access. Because the live tools expose visitor telemetry, authenticating or
+isolating that remote endpoint is a release decision before enabling its live
+table read policy. The local stdio MCP server continues to use local AWS
+credentials.
 
 ## Cost
 

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+import pytest
+
 
 def _load_handler_module() -> Any:
     handler_path = (
@@ -177,6 +179,21 @@ def test_eid_is_shared_with_the_durable_batch_event() -> None:
     assert item["sk"].endswith("#ses_1#legacy_evt")
 
 
+def test_non_ascii_ids_cannot_overflow_the_dynamodb_sort_key() -> None:
+    item = collector._build_item(
+        _event(
+            "event=page_view&sid=%F0%9F%92%A5%F0%9F%92%A5&"
+            "eid=%F0%9F%92%A5%F0%9F%92%A5"
+        ),
+        NOW,
+    )
+
+    assert item is not None
+    assert item["eid"] == "request-1"
+    assert item["sid"] == "anon_request-1"
+    assert len(item["sk"].encode("utf-8")) < 1024
+
+
 def test_handler_writes_immediately_and_returns_gif() -> None:
     table = Mock()
     collector._table = table
@@ -192,15 +209,11 @@ def test_handler_writes_immediately_and_returns_gif() -> None:
     assert response["isBase64Encoded"] is True
 
 
-def test_handler_swallows_dynamodb_failure_and_still_returns_200() -> None:
+def test_handler_reraises_dynamodb_failure_for_cloudfront_failover() -> None:
     table = Mock()
     table.put_item.side_effect = RuntimeError("DynamoDB unavailable")
     collector._table = table
     collector._utc_now = lambda: NOW
 
-    response = collector.handler(
-        _event("event=page_view&sid=ses_1&eid=evt_1"), None
-    )
-
-    assert response["statusCode"] == 200
-    assert response["headers"]["Cache-Control"].startswith("no-store")
+    with pytest.raises(RuntimeError, match="DynamoDB unavailable"):
+        collector.handler(_event("event=page_view&sid=ses_1&eid=evt_1"), None)

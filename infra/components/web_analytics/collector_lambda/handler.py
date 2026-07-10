@@ -4,9 +4,9 @@ CloudFront forwards the analytics beacon, viewer location headers, and the
 viewer user-agent to this Lambda Function URL.  The handler performs no network
 lookups: it classifies the request and writes the event directly to DynamoDB.
 
-The response is deliberately best-effort.  Analytics must never affect the
-page experience, so malformed requests and DynamoDB failures are logged and
-still receive a cache-disabled 1x1 GIF response.
+Malformed/no-op requests receive a cache-disabled 1x1 GIF response. Persistence
+failures are logged and re-raised so CloudFront marks the primary origin as
+failed and serves the static S3 pixel instead; visitors still receive a 200.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ _BOT_RE = re.compile(
     re.IGNORECASE,
 )
 _SCANNER_PREFIX = "185.177.72."
+_ANALYTICS_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # CloudFront supplies a numeric viewer ASN but not the network-owner string
 # consumed by the batch transform's _DC_RE.  This deliberately conservative
@@ -160,6 +161,12 @@ def _clean(value: Any, limit: int) -> str:
     return str(value).strip()[:limit]
 
 
+def _clean_id(value: Any, limit: int) -> str:
+    """Bound key material to the ASCII alphabet emitted by the frontend."""
+    cleaned = _clean(value, limit)
+    return cleaned if _ANALYTICS_ID_RE.fullmatch(cleaned) else ""
+
+
 def _viewer_ip(headers: dict[str, str]) -> str:
     address = headers.get("cloudfront-viewer-address", "").strip()
     if address:
@@ -206,17 +213,17 @@ def _build_item(event: dict[str, Any], now: datetime) -> dict[str, Any] | None:
     if not event_name:
         return None
 
-    request_id = _clean(
+    request_id = _clean_id(
         (event.get("requestContext") or {}).get("requestId"), 180
     )
     # The same canonical request is captured by DynamoDB now and CloudFront
     # standard logs for the durable batch, so both layers retain the same eid.
-    eid = _clean(params.get("eid"), _EVENT_PARAM_LIMITS["eid"])
+    eid = _clean_id(params.get("eid"), _EVENT_PARAM_LIMITS["eid"])
     if not eid:
         eid = request_id or f"evt_{uuid.uuid4().hex}"
-    sid = _clean(params.get("sid"), _EVENT_PARAM_LIMITS["sid"])
+    sid = _clean_id(params.get("sid"), _EVENT_PARAM_LIMITS["sid"])
     if not sid:
-        sid = f"anon_{eid}"
+        sid = _clean(f"anon_{eid}", _EVENT_PARAM_LIMITS["sid"])
 
     headers = _headers(event)
     ip = _viewer_ip(headers)
@@ -273,11 +280,12 @@ def _build_item(event: dict[str, Any], now: datetime) -> dict[str, Any] | None:
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
-    """Persist one live beacon and always return a no-store 1x1 GIF."""
+    """Persist one live beacon or let CloudFront fail over to static S3."""
     try:
         item = _build_item(event, _utc_now())
         if item is not None:
             _get_table().put_item(Item=item)
-    except Exception:  # Analytics must never surface an error to the page.
+    except Exception:  # CloudFront converts this origin error to a static 200.
         LOGGER.exception("Failed to persist live web analytics event")
+        raise
     return _response()

@@ -51,6 +51,13 @@ const BEACON_UTM_PARAM_KEYS = [
   "utm_medium",
   "utm_campaign",
 ] as const;
+const DEFAULT_BEACON_PARAM_LIMIT = 120;
+const BEACON_PARAM_LIMITS: Record<string, number> = {
+  ref: 512,
+  utm_source: 256,
+  utm_medium: 256,
+  utm_campaign: 256,
+};
 
 const CLOUDFRONT_BEACON_PARAM_KEYS = [
   "page_path",
@@ -116,7 +123,18 @@ function getBeaconAttributionParams(): AnalyticsParams {
   });
 
   if (document.referrer) {
-    attribution.ref = document.referrer;
+    try {
+      const referrer = new URL(document.referrer);
+
+      if (referrer.protocol === "http:" || referrer.protocol === "https:") {
+        // Query strings can contain tokens or other private values. Campaign
+        // attribution has dedicated UTM fields, so retain only origin + path.
+        attribution.ref = `${referrer.origin}${referrer.pathname}`;
+      }
+    } catch {
+      // Browsers normally expose an absolute URL, but malformed values should
+      // never interfere with analytics or the page experience.
+    }
   }
 
   return attribution;
@@ -213,7 +231,8 @@ function pushDataLayerEvent(
 function appendBeaconParam(
   url: URL,
   key: string,
-  value: string | number | boolean | undefined
+  value: string | number | boolean | undefined,
+  maxLength = BEACON_PARAM_LIMITS[key] ?? DEFAULT_BEACON_PARAM_LIMIT
 ): void {
   if (value === undefined) {
     return;
@@ -229,7 +248,7 @@ function appendBeaconParam(
     return;
   }
 
-  url.searchParams.set(key, stringValue.slice(0, 120));
+  url.searchParams.set(key, stringValue.slice(0, maxLength));
 }
 
 function sendCloudFrontBeacon(

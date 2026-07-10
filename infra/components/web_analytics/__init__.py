@@ -112,7 +112,10 @@ class LiveWebAnalytics(ComponentResource):
                     name="sid-index",
                     hash_key="sid",
                     range_key="ts",
-                    projection_type="ALL",
+                    # Live tools query UTC date partitions today. Keep the
+                    # required session index cheap until a direct SID lookup
+                    # needs additional projected fields.
+                    projection_type="KEYS_ONLY",
                 )
             ],
             ttl=aws.dynamodb.TableTtlArgs(
@@ -159,9 +162,17 @@ class LiveWebAnalytics(ComponentResource):
             opts=ResourceOptions(parent=collector_role),
         )
 
+        collector_function_name = f"{name}-{stack}-collector"
+        self.collector_log_group = aws.cloudwatch.LogGroup(
+            f"{name}-collector-logs",
+            name=f"/aws/lambda/{collector_function_name}",
+            retention_in_days=30,
+            opts=child,
+        )
+
         self.collector_lambda = aws.lambda_.Function(
             f"{name}-collector",
-            name=f"{name}-{stack}-collector",
+            name=collector_function_name,
             runtime="python3.12",
             handler="handler.handler",
             code=pulumi.AssetArchive(
@@ -179,7 +190,11 @@ class LiveWebAnalytics(ComponentResource):
             ),
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[collector_basic, collector_write],
+                depends_on=[
+                    collector_basic,
+                    collector_write,
+                    self.collector_log_group,
+                ],
             ),
         )
         self.function_url_resource = aws.lambda_.FunctionUrl(

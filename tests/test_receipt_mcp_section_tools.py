@@ -300,6 +300,89 @@ def test_attribution_keeps_full_session_after_campaign_landing(
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_attribution_starts_at_requested_campaign_segment(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    events = []
+    for minute, eid, path, campaign in [
+        (1, "a-landing", "/first", "campaign-a"),
+        (2, "a-next", "/first-details", None),
+        (3, "b-landing", "/second", "campaign-b"),
+        (4, "b-next", "/second-details", None),
+    ]:
+        event = _live_test_event(
+            datetime(2026, 7, 10, 12, minute, tzinfo=timezone.utc),
+            "shared-session",
+            campaign,
+        )
+        event.update({"eid": eid, "path": path})
+        events.append(event)
+
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda _start, _end: (events, False),
+    )
+
+    result = asyncio.run(
+        module.analytics_attribution_impl(
+            campaign="campaign-b", humans_only=False
+        )
+    )
+
+    assert result["event_count"] == 2
+    assert result["session_count"] == 1
+    session = result["sessions"][0]
+    assert session["pages"] == ["/second", "/second-details"]
+    assert session["utm_campaign"] == "campaign-b"
+    assert session["first_seen"] == events[2]["ts"]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_attribution_keeps_repeated_campaign_segments_separate(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    events = []
+    for minute, eid, path, campaign in [
+        (1, "a-first", "/first", "campaign-a"),
+        (2, "a-first-next", "/first-details", None),
+        (3, "b-landing", "/second", "campaign-b"),
+        (4, "b-next", "/second-details", None),
+        (5, "a-return", "/third", "campaign-a"),
+        (6, "a-return-next", "/third-details", None),
+    ]:
+        event = _live_test_event(
+            datetime(2026, 7, 10, 12, minute, tzinfo=timezone.utc),
+            "shared-session",
+            campaign,
+        )
+        event.update({"eid": eid, "path": path})
+        events.append(event)
+
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda _start, _end: (events, False),
+    )
+
+    result = asyncio.run(
+        module.analytics_attribution_impl(
+            campaign="campaign-a", humans_only=False
+        )
+    )
+
+    assert result["event_count"] == 4
+    assert result["session_count"] == 2
+    assert [session["pages"] for session in result["sessions"]] == [
+        ["/third", "/third-details"],
+        ["/first", "/first-details"],
+    ]
+    assert [
+        session["campaign_segment"] for session in result["sessions"]
+    ] == [2, 1]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
 def test_live_query_uses_partition_queries_not_scan(label):
     source = SERVER_FILES[label].read_text(encoding="utf-8")
     query_source = source.split("def _analytics_live_query", 1)[1].split(
@@ -465,6 +548,43 @@ def test_live_query_reports_unread_older_date_at_exact_cap(label, monkeypatch):
     assert truncated is True
     assert queried_days == ["2026-07-10"]
     assert len(table.calls) == 1
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_live_query_deduplicates_retry_by_eid(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    queried_days = []
+    newest = _live_test_event(
+        datetime(2026, 7, 10, 12, 3, tzinfo=timezone.utc),
+        "retried-session",
+    )
+    newest["path"] = "/newest-copy"
+    older = _live_test_event(
+        datetime(2026, 7, 10, 12, 2, tzinfo=timezone.utc),
+        "retried-session",
+    )
+    older["path"] = "/older-copy"
+    unique = _live_test_event(
+        datetime(2026, 7, 10, 12, 1, tzinfo=timezone.utc),
+        "unique-session",
+    )
+
+    class _FakeTable:
+        def query(self, **_kwargs):
+            return {"Items": [newest, older, unique]}
+
+    _install_fake_boto3_query(monkeypatch, _FakeTable(), queried_days)
+    start = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    end = datetime(2026, 7, 10, 13, tzinfo=timezone.utc)
+
+    events, truncated = module._analytics_live_query(start, end)
+
+    assert truncated is False
+    assert [event["path"] for event in events] == [
+        "/older-copy",
+        "/unique-session",
+    ]
+    assert queried_days == ["2026-07-10"]
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
