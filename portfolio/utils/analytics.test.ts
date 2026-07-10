@@ -2,7 +2,6 @@ type AnalyticsModule = typeof import("./analytics");
 
 const originalEnv = process.env;
 const originalCrypto = window.crypto;
-const originalFetch = window.fetch;
 const originalImage = window.Image;
 const originalReferrerDescriptor = Object.getOwnPropertyDescriptor(
   document,
@@ -73,25 +72,6 @@ async function flushBeaconPromises(): Promise<void> {
   await Promise.resolve();
 }
 
-function expectCollectorAndMirrorIds(
-  collectorUrl: URL,
-  mirrorUrl: URL
-): void {
-  expect(collectorUrl.pathname).toBe("/analytics/collect");
-  expect(collectorUrl.searchParams.get("live_id")).toBe("evt_event-id");
-  expect(collectorUrl.searchParams.has("eid")).toBe(false);
-  expect(collectorUrl.search).not.toContain("eid=");
-  expect(mirrorUrl.pathname).toBe("/analytics/pixel.txt");
-  expect(mirrorUrl.searchParams.get("eid")).toBe("evt_event-id");
-  expect(mirrorUrl.searchParams.has("live_id")).toBe(false);
-
-  const collectorParams = new URLSearchParams(collectorUrl.search);
-  const mirrorParams = new URLSearchParams(mirrorUrl.search);
-  collectorParams.delete("live_id");
-  mirrorParams.delete("eid");
-  expect(collectorParams.toString()).toBe(mirrorParams.toString());
-}
-
 function setViewport({
   path = "/receipt",
   search = "",
@@ -144,11 +124,6 @@ describe("analytics utilities", () => {
     Object.defineProperty(window, "crypto", {
       configurable: true,
       value: originalCrypto,
-    });
-    Object.defineProperty(window, "fetch", {
-      configurable: true,
-      value: originalFetch,
-      writable: true,
     });
     Object.defineProperty(window, "Image", {
       configurable: true,
@@ -207,7 +182,6 @@ describe("analytics utilities", () => {
     expect(beaconUrl.searchParams.get("event")).toBe("reader_summary");
     expect(beaconUrl.searchParams.get("sid")).toBe("ses_session-id");
     expect(beaconUrl.searchParams.get("eid")).toBe("evt_event-id");
-    expect(beaconUrl.searchParams.has("live_id")).toBe(false);
     expect(beaconUrl.searchParams.get("page_path")).toBe("/receipt");
     expect(beaconUrl.searchParams.get("quick_jump")).toBe("false");
     expect(beaconUrl.searchParams.has("metric_value")).toBe(false);
@@ -225,10 +199,7 @@ describe("analytics utilities", () => {
         "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
     });
     setDocumentReferrer("https://www.linkedin.com/in/recruiter");
-    const analytics = loadAnalytics({
-      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
-        "/analytics/collect",
-    });
+    const analytics = loadAnalytics();
 
     analytics.trackEvent("scroll_depth", {
       page_path: "/receipt",
@@ -236,7 +207,8 @@ describe("analytics utilities", () => {
     });
 
     const beaconUrl = new URL((window.fetch as jest.Mock).mock.calls[0][0]);
-    expect(beaconUrl.pathname).toBe("/analytics/collect");
+    expect(beaconUrl.pathname).toBe("/analytics/pixel.txt");
+    expect(beaconUrl.searchParams.get("eid")).toBe("evt_event-id");
     expect(beaconUrl.searchParams.get("path")).toBe("/receipt");
     expect(beaconUrl.searchParams.get("utm_source")).toBe("li");
     expect(beaconUrl.searchParams.get("utm_medium")).toBe("dm");
@@ -246,9 +218,8 @@ describe("analytics utilities", () => {
     expect(beaconUrl.searchParams.get("ref")).toBe(
       "https://www.linkedin.com/in/recruiter"
     );
-    expect(imageRequests).toHaveLength(1);
-    const mirrorUrl = new URL(imageRequests[0].src);
-    expectCollectorAndMirrorIds(beaconUrl, mirrorUrl);
+    expect(window.fetch).toHaveBeenCalledTimes(1);
+    expect(imageRequests).toHaveLength(0);
     expect(window.dataLayer?.[0]).not.toHaveProperty("utm_campaign");
     expect(window.dataLayer?.[0]).not.toHaveProperty("ref");
   });
@@ -373,9 +344,11 @@ describe("analytics utilities", () => {
     expect(beaconUrl.origin).toBe(window.location.origin);
     expect(beaconUrl.pathname).toBe("/custom/pixel.txt");
     expect(beaconUrl.searchParams.get("source")).toBe("analytics");
+    expect(beaconUrl.searchParams.get("eid")).toBe("evt_event-id");
+    expect(window.fetch).toHaveBeenCalledTimes(1);
   });
 
-  test("collector network failures do not duplicate the static mirror", async () => {
+  test("fetch failures retry the same beacon once via Image", async () => {
     const imageRequests = mockImageRequests();
     (window.fetch as jest.Mock).mockRejectedValueOnce(
       new TypeError("collector unavailable")
@@ -385,90 +358,27 @@ describe("analytics utilities", () => {
         "?utm_source=li&utm_medium=dm&utm_campaign=arthur-babylist",
     });
     setDocumentReferrer("https://www.linkedin.com/");
-    const analytics = loadAnalytics({
-      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
-        "/analytics/collect",
-    });
+    const analytics = loadAnalytics();
 
     analytics.trackEvent("page_view", { page_path: "/receipt" });
     await flushBeaconPromises();
 
+    expect(window.fetch).toHaveBeenCalledTimes(1);
     expect(imageRequests).toHaveLength(1);
-    const collectorUrl = new URL(
+    const fetchUrl = new URL(
       (window.fetch as jest.Mock).mock.calls[0][0]
     );
-    const mirrorUrl = new URL(imageRequests[0].src);
-    expectCollectorAndMirrorIds(collectorUrl, mirrorUrl);
-    expect(mirrorUrl.searchParams.get("event")).toBe("page_view");
-    expect(mirrorUrl.searchParams.get("sid")).toBe("ses_session-id");
-    expect(mirrorUrl.searchParams.get("eid")).toBe("evt_event-id");
-    expect(mirrorUrl.searchParams.get("utm_campaign")).toBe(
+    const imageUrl = new URL(imageRequests[0].src);
+    expect(fetchUrl.pathname).toBe("/analytics/pixel.txt");
+    expect(imageUrl.toString()).toBe(fetchUrl.toString());
+    expect(imageUrl.searchParams.get("event")).toBe("page_view");
+    expect(imageUrl.searchParams.get("sid")).toBe("ses_session-id");
+    expect(imageUrl.searchParams.get("eid")).toBe("evt_event-id");
+    expect(imageUrl.searchParams.get("utm_campaign")).toBe(
       "arthur-babylist"
     );
-    expect(mirrorUrl.searchParams.get("ref")).toBe(
+    expect(imageUrl.searchParams.get("ref")).toBe(
       "https://www.linkedin.com/"
     );
-  });
-
-  test("non-ok collector responses keep exactly one static mirror", async () => {
-    const imageRequests = mockImageRequests();
-    (window.fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
-    const analytics = loadAnalytics({
-      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
-        "/analytics/collect",
-    });
-
-    analytics.trackEvent("page_view", { page_path: "/receipt" });
-    await flushBeaconPromises();
-
-    expect(imageRequests).toHaveLength(1);
-    expectCollectorAndMirrorIds(
-      new URL((window.fetch as jest.Mock).mock.calls[0][0]),
-      new URL(imageRequests[0].src)
-    );
-  });
-
-  test("successful collector responses still preserve the static mirror", async () => {
-    const imageRequests = mockImageRequests();
-    const analytics = loadAnalytics({
-      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
-        "/analytics/collect",
-    });
-
-    analytics.trackEvent("page_view", { page_path: "/receipt" });
-    await flushBeaconPromises();
-
-    expect(imageRequests).toHaveLength(1);
-    expectCollectorAndMirrorIds(
-      new URL((window.fetch as jest.Mock).mock.calls[0][0]),
-      new URL(imageRequests[0].src)
-    );
-  });
-
-  test("image transport sends the collector and one static mirror", () => {
-    const imageRequests = mockImageRequests();
-    Object.defineProperty(window, "fetch", {
-      configurable: true,
-      value: undefined,
-      writable: true,
-    });
-    const analytics = loadAnalytics({
-      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
-        "/analytics/collect",
-    });
-
-    analytics.trackEvent("page_view", { page_path: "/receipt" });
-
-    expect(imageRequests).toHaveLength(2);
-    const requestUrls = imageRequests.map(({ src }) => new URL(src));
-    const collectorUrl = requestUrls.find(
-      ({ pathname }) => pathname === "/analytics/collect"
-    );
-    const mirrorUrl = requestUrls.find(
-      ({ pathname }) => pathname === "/analytics/pixel.txt"
-    );
-    expect(collectorUrl).toBeDefined();
-    expect(mirrorUrl).toBeDefined();
-    expectCollectorAndMirrorIds(collectorUrl!, mirrorUrl!);
   });
 });

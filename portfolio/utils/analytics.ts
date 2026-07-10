@@ -232,34 +232,6 @@ function appendBeaconParam(
   url.searchParams.set(key, stringValue.slice(0, 120));
 }
 
-function getStaticBeaconMirrorUrl(url: URL): URL | null {
-  const mirrorUrl = new URL(
-    DEFAULT_CLOUDFRONT_ANALYTICS_BEACON_PATH,
-    window.location.origin
-  );
-
-  if (
-    mirrorUrl.origin === url.origin &&
-    mirrorUrl.pathname === url.pathname
-  ) {
-    return null;
-  }
-
-  mirrorUrl.search = url.search;
-  mirrorUrl.searchParams.delete("live_id");
-  return mirrorUrl;
-}
-
-function sendImageBeacon(url: URL): void {
-  try {
-    const image = new Image();
-    image.decoding = "async";
-    image.src = url.toString();
-  } catch {
-    // Analytics should never affect the page experience.
-  }
-}
-
 function sendCloudFrontBeacon(
   event: string,
   params: AnalyticsParams,
@@ -298,13 +270,6 @@ function sendCloudFrontBeacon(
       appendBeaconParam(url, key, beaconParams[key]);
     });
 
-    const mirrorUrl = getStaticBeaconMirrorUrl(url);
-    if (mirrorUrl) {
-      url.searchParams.delete("eid");
-      appendBeaconParam(url, "live_id", meta.eventId);
-      sendImageBeacon(mirrorUrl);
-    }
-
     if (typeof window.fetch === "function") {
       window
         .fetch(url.toString(), {
@@ -313,12 +278,16 @@ function sendCloudFrontBeacon(
           cache: "no-store",
         })
         .catch(() => {
-          // The static mirror already preserves the durable event.
+          const image = new Image();
+          image.decoding = "async";
+          image.src = url.toString();
         });
       return;
     }
 
-    sendImageBeacon(url);
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url.toString();
   } catch {
     // Analytics should never affect the page experience.
   }
