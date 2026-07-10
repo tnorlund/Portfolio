@@ -11,7 +11,7 @@ import asyncio
 import importlib.util
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -37,6 +37,7 @@ EXPECTED_SECTION_TOOLS = {
 }
 
 EXPECTED_LIVE_ANALYTICS_TOOLS = {
+    "analytics_auto",
     "analytics_live",
     "analytics_attribution",
 }
@@ -171,6 +172,20 @@ def test_live_analytics_tools_present_with_valid_schema(label):
     missing = EXPECTED_LIVE_ANALYTICS_TOOLS - set(by_name)
     assert not missing, f"missing live analytics tools in {label}: {missing}"
 
+    auto_schema = by_name["analytics_auto"].inputSchema
+    assert auto_schema["type"] == "object"
+    assert {
+        "minutes",
+        "since",
+        "until",
+        "campaign",
+        "humans_only",
+        "limit",
+    } <= set(auto_schema["properties"])
+    assert auto_schema["properties"]["minutes"]["maximum"] == 525600
+    assert auto_schema["properties"]["humans_only"]["default"] is True
+    assert auto_schema["properties"]["limit"]["maximum"] == 250
+
     live_schema = by_name["analytics_live"].inputSchema
     assert live_schema["type"] == "object"
     assert live_schema["properties"]["minutes"]["default"] == 60
@@ -212,6 +227,7 @@ def test_live_analytics_tools_are_dispatched(label):
     dispatch = source.split("async def call_tool", 1)[1].split(
         "async def search_receipts_impl", 1
     )[0]
+    assert 'elif name == "analytics_auto"' in dispatch
     assert 'elif name == "analytics_live"' in dispatch
     assert 'elif name == "analytics_attribution"' in dispatch
 
@@ -451,6 +467,561 @@ def _live_test_event(ts, sid, campaign=None):
     if campaign is not None:
         event["utm_campaign"] = campaign
     return event
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_auto_window_is_exclusive_and_campaign_defaults_to_24h(label):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+
+    start, end, current, minutes = module._analytics_auto_window(
+        campaign="launch", now=now
+    )
+
+    assert start == datetime(2026, 7, 9, 12, tzinfo=timezone.utc)
+    assert end == now
+    assert current == now
+    assert minutes == 24 * 60
+
+    with pytest.raises(ValueError, match="earlier than until"):
+        module._analytics_auto_window(
+            since="2026-07-10T12:00:00Z",
+            until="2026-07-10T12:00:00Z",
+            now=now,
+        )
+    with pytest.raises(ValueError, match="cannot exceed 365 days"):
+        module._analytics_auto_window(
+            since=(now - timedelta(days=366)).isoformat(),
+            until=now.isoformat(),
+            now=now,
+        )
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_latest_durable_event_uses_newest_glue_partition(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    captured_sql = []
+
+    class _Paginator:
+        def paginate(self, **kwargs):
+            assert kwargs["DatabaseName"] == "portfolio_analytics"
+            assert kwargs["TableName"] == "web_events"
+            assert kwargs["ExcludeColumnSchema"] is True
+            return [
+                {
+                    "Partitions": [
+                        {"Values": ["2026-07-08"]},
+                        {"Values": ["not-a-date"]},
+                        {"Values": ["2026-07-10"]},
+                    ]
+                }
+            ]
+
+    class _Glue:
+        def get_paginator(self, operation):
+            assert operation == "get_partitions"
+            return _Paginator()
+
+    boto3_module = types.ModuleType("boto3")
+    boto3_module.client = lambda service, **_kwargs: (
+        _Glue() if service == "glue" else None
+    )
+    monkeypatch.setitem(sys.modules, "boto3", boto3_module)
+    monkeypatch.setattr(
+        module,
+        "_athena_run",
+        lambda sql, max_rows=5000: (
+            captured_sql.append((sql, max_rows))
+            or [{"latest": "2026-07-10T09:29:59.123000Z"}]
+        ),
+    )
+    module._analytics_watermark_cache = {"checked_at": 0.0, "value": None}
+
+    latest = module._analytics_latest_durable_event(force=True)
+
+    assert latest == datetime(
+        2026, 7, 10, 9, 29, 59, 123000, tzinfo=timezone.utc
+    )
+    assert "WHERE dt IN ('2026-07-08', '2026-07-10')" in captured_sql[0][0]
+    assert captured_sql[0][1] == 1
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_durable_query_normalizes_existing_feed_without_schema_changes(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    captured = {}
+
+    def _fake_athena(sql, max_rows=5000):
+        captured.update({"sql": sql, "max_rows": max_rows})
+        return [
+            {
+                "dt": "2026-07-08",
+                "request_id": "request-1",
+                "ts": "2026-07-08T12:00:00.000000Z",
+                "epoch_ms": "1783512000000",
+                "sid": "session-1",
+                "eid": "event-1",
+                "event": "page_view",
+                "path": "/receipt",
+                "utm_campaign": "launch",
+                "is_bot": "false",
+            }
+        ]
+
+    monkeypatch.setattr(module, "_athena_run", _fake_athena)
+    start = datetime(2026, 7, 8, 12, tzinfo=timezone.utc)
+    end = datetime(2026, 7, 9, 13, tzinfo=timezone.utc)
+
+    events, truncated = module._analytics_durable_query(start, end)
+
+    assert truncated is False
+    assert events[0]["epoch_ms"] == 1783512000000
+    assert events[0]["_source"] == "durable"
+    assert events[0]["sk"].endswith("#session-1#event-1")
+    sql = captured["sql"]
+    assert "dt BETWEEN '2026-07-08' AND '2026-07-09'" in sql
+    assert "ts_utc >= TIMESTAMP '2026-07-08 12:00:00.000000'" in sql
+    assert "ts_utc < TIMESTAMP '2026-07-09 13:00:00.000000'" in sql
+    assert "(?:^|&)utm_campaign=([^&]*)" in sql
+    assert "(?:^|&)ref=([^&]*)" in sql
+    assert "TRY(url_decode" in sql
+    assert "referrer AS ref" not in sql
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_auto_merge_prefers_durable_classification_and_keeps_live_geo(label):
+    module = _load_module(label, SERVER_FILES[label])
+    ts = datetime(2026, 7, 8, 12, tzinfo=timezone.utc)
+    durable = _live_test_event(ts, "shared")
+    durable.update(
+        {
+            "_source": "durable",
+            "_sources": ["durable"],
+            "is_bot": "true",
+            "country": "US",
+            "org": "Example Hosting",
+        }
+    )
+    live = _live_test_event(ts, "shared")
+    live.update(
+        {
+            "_source": "live",
+            "_sources": ["live"],
+            "is_bot": False,
+            "region": "WA",
+            "latitude": "45.6",
+            "utm_campaign": "launch",
+        }
+    )
+    no_eid_a = _live_test_event(ts, "no-eid-a")
+    no_eid_a.update({"eid": "", "_source": "durable"})
+    no_eid_b = _live_test_event(ts, "no-eid-b")
+    no_eid_b.update({"eid": "", "_source": "live"})
+
+    events, deduplicated, undeduplicable = module._analytics_auto_merge_events(
+        [live, no_eid_a, durable, no_eid_b]
+    )
+
+    merged = next(event for event in events if event.get("eid"))
+    assert deduplicated == 1
+    assert undeduplicable == 2
+    assert merged["_source"] == "mixed"
+    assert merged["_sources"] == ["durable", "live"]
+    assert merged["is_bot"] == "true"
+    assert merged["org"] == "Example Hosting"
+    assert merged["region"] == "WA"
+    assert merged["latitude"] == "45.6"
+    assert merged["utm_campaign"] == "launch"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_auto_merge_keeps_live_order_for_same_second_campaign_events(label):
+    module = _load_module(label, SERVER_FILES[label])
+    second = datetime(2026, 7, 8, 12, tzinfo=timezone.utc)
+    landing_live_ts = second + timedelta(milliseconds=100)
+    follow_live_ts = second + timedelta(milliseconds=200)
+
+    durable_landing = _live_test_event(second, "shared", "launch")
+    durable_landing.update(
+        {
+            "eid": "z-landing",
+            "path": "/landing",
+            "_source": "durable",
+            "_sources": ["durable"],
+        }
+    )
+    durable_follow = _live_test_event(second, "shared")
+    durable_follow.update(
+        {
+            "eid": "a-follow",
+            "path": "/follow",
+            "_source": "durable",
+            "_sources": ["durable"],
+        }
+    )
+    live_landing = _live_test_event(landing_live_ts, "shared", "launch")
+    live_landing.update(
+        {
+            "eid": "z-landing",
+            "path": "/landing",
+            "_source": "live",
+            "_sources": ["live"],
+        }
+    )
+    live_follow = _live_test_event(follow_live_ts, "shared")
+    live_follow.update(
+        {
+            "eid": "a-follow",
+            "path": "/follow",
+            "_source": "live",
+            "_sources": ["live"],
+        }
+    )
+
+    merged, deduplicated, _ = module._analytics_auto_merge_events(
+        [durable_follow, durable_landing, live_follow, live_landing]
+    )
+    attributed = module._analytics_live_campaign_events(merged, "launch")
+    sessions = module._analytics_live_rollup(attributed)
+
+    assert deduplicated == 2
+    assert sessions[0]["pages"] == ["/landing", "/follow"]
+    assert sessions[0]["first_seen"] == live_landing["ts"]
+    assert sessions[0]["last_seen"] == live_follow["ts"]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_routes_recent_window_to_live_only(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    before_end = _live_test_event(
+        datetime(2026, 7, 10, 11, 59, 59, tzinfo=timezone.utc),
+        "included",
+    )
+    at_end = _live_test_event(now, "excluded")
+    live_calls = []
+
+    monkeypatch.setattr(
+        module,
+        "_analytics_latest_durable_event",
+        lambda: datetime(2026, 7, 1, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_durable_query",
+        lambda *_args: pytest.fail("durable query should not run"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda start, end: (
+            live_calls.append((start, end)) or [before_end, at_end],
+            False,
+        ),
+    )
+
+    result = asyncio.run(
+        module.analytics_auto_impl(minutes=60, humans_only=False, _now=now)
+    )
+
+    assert result["source"] == "live"
+    assert result["partial"] is False
+    assert result["event_count"] == 1
+    assert result["sessions"][0]["sid"] == "included"
+    assert live_calls == [
+        (
+            datetime(2026, 7, 10, 11, tzinfo=timezone.utc),
+            now - timedelta(microseconds=1),
+        )
+    ]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_routes_old_window_to_durable_only(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    event = _live_test_event(
+        datetime(2026, 6, 1, 12, tzinfo=timezone.utc), "historical"
+    )
+    event.update({"_source": "durable", "_sources": ["durable"]})
+    durable_calls = []
+
+    monkeypatch.setattr(
+        module,
+        "_analytics_latest_durable_event",
+        lambda: datetime(2026, 7, 9, 12, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_durable_query",
+        lambda start, end: (
+            durable_calls.append((start, end)) or [event],
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda *_args: pytest.fail("live query should not run"),
+    )
+
+    result = asyncio.run(
+        module.analytics_auto_impl(
+            since="2026-06-01T00:00:00Z",
+            until="2026-06-02T00:00:00Z",
+            humans_only=False,
+            _now=now,
+        )
+    )
+
+    assert result["source"] == "durable"
+    assert result["partial"] is False
+    assert result["event_count"] == 1
+    assert durable_calls == [
+        (
+            datetime(2026, 6, 1, tzinfo=timezone.utc),
+            datetime(2026, 6, 2, tzinfo=timezone.utc),
+        )
+    ]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_merges_overlap_and_campaign_across_sources(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    latest = datetime(2026, 7, 9, 12, tzinfo=timezone.utc)
+    landing_ts = datetime(2026, 7, 8, 12, tzinfo=timezone.utc)
+    durable_landing = _live_test_event(landing_ts, "shared", "launch")
+    durable_landing.update(
+        {
+            "eid": "shared-landing",
+            "path": "/landing",
+            "_source": "durable",
+            "_sources": ["durable"],
+            "is_bot": "false",
+            "org": "Residential ISP",
+        }
+    )
+    live_duplicate = dict(durable_landing)
+    live_duplicate.update(
+        {
+            "_source": "live",
+            "_sources": ["live"],
+            "region": "WA",
+            "is_bot": True,
+        }
+    )
+    follow = _live_test_event(
+        datetime(2026, 7, 9, 13, tzinfo=timezone.utc), "shared"
+    )
+    follow.update({"eid": "shared-follow", "path": "/follow"})
+    calls = {}
+
+    monkeypatch.setattr(module, "_analytics_latest_durable_event", lambda: latest)
+
+    def _durable(start, end):
+        calls["durable"] = (start, end)
+        return [durable_landing], False
+
+    def _live(start, end):
+        calls["live"] = (start, end)
+        return [live_duplicate, follow], False
+
+    monkeypatch.setattr(module, "_analytics_durable_query", _durable)
+    monkeypatch.setattr(module, "_analytics_live_query", _live)
+
+    result = asyncio.run(
+        module.analytics_auto_impl(
+            since="2026-07-01T00:00:00Z",
+            campaign="launch",
+            humans_only=True,
+            _now=now,
+        )
+    )
+
+    assert result["source"] == "mixed"
+    assert result["partial"] is False
+    assert result["deduplicated_event_count"] == 1
+    assert result["event_count"] == 2
+    assert result["source_event_counts"] == {
+        "durable": 0,
+        "live": 1,
+        "mixed": 1,
+    }
+    assert result["sessions"][0]["pages"] == ["/landing", "/follow"]
+    assert result["sessions"][0]["sources"] == ["durable", "live"]
+    assert result["sessions"][0]["org"] == "Residential ISP"
+    assert result["sessions"][0]["region"] == "WA"
+    assert calls["durable"] == (
+        datetime(2026, 7, 1, tzinfo=timezone.utc),
+        latest.replace(microsecond=1000),
+    )
+    assert calls["live"] == (
+        datetime(2026, 7, 5, 12, tzinfo=timezone.utc),
+        now - timedelta(microseconds=1),
+    )
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_marks_live_fallback_partial_on_durable_error(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    start = datetime(2026, 7, 1, 12, tzinfo=timezone.utc)
+    live_calls = []
+    monkeypatch.setattr(
+        module,
+        "_analytics_latest_durable_event",
+        lambda: datetime(2026, 7, 9, 12, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_durable_query",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("Athena down")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda live_start, live_end: (
+            live_calls.append((live_start, live_end)) or [],
+            False,
+        ),
+    )
+
+    result = asyncio.run(
+        module.analytics_auto_impl(
+            since="2026-07-01T12:00:00Z",
+            humans_only=False,
+            _now=now,
+        )
+    )
+
+    assert result["source"] == "live"
+    assert result["partial"] is True
+    assert result["source_errors"] == {"durable": "Athena down"}
+    assert result["unqueried_ranges"] == []
+    assert live_calls == [(start, now - timedelta(microseconds=1))]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_reports_retention_gap_without_durable_data(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    start = now - timedelta(days=100)
+    live_floor = now - timedelta(days=90)
+    live_calls = []
+    monkeypatch.setattr(module, "_analytics_latest_durable_event", lambda: None)
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda live_start, live_end: (
+            live_calls.append((live_start, live_end)) or [],
+            False,
+        ),
+    )
+
+    result = asyncio.run(
+        module.analytics_auto_impl(
+            since=start.isoformat(), humans_only=False, _now=now
+        )
+    )
+
+    assert result["source"] == "live"
+    assert result["partial"] is True
+    assert result["unqueried_ranges"] == [
+        {
+            "since": module._analytics_live_iso(start),
+            "until": module._analytics_live_iso(live_floor),
+        }
+    ]
+    assert live_calls == [
+        (live_floor, now - timedelta(microseconds=1))
+    ]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_caps_combined_sources_to_newest_events(
+    label, monkeypatch
+):
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setattr(module, "ANALYTICS_LIVE_MAX_EVENTS", 2)
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    latest = datetime(2026, 7, 9, 12, tzinfo=timezone.utc)
+    durable_events = [
+        _live_test_event(
+            datetime(2026, 7, 8, 10, tzinfo=timezone.utc), "oldest"
+        ),
+        _live_test_event(
+            datetime(2026, 7, 9, 10, tzinfo=timezone.utc), "middle"
+        ),
+    ]
+    for event in durable_events:
+        event.update({"_source": "durable", "_sources": ["durable"]})
+    live_events = [
+        _live_test_event(
+            datetime(2026, 7, 9, 13, tzinfo=timezone.utc), "newer"
+        ),
+        _live_test_event(
+            datetime(2026, 7, 10, 11, tzinfo=timezone.utc), "newest"
+        ),
+    ]
+    monkeypatch.setattr(module, "_analytics_latest_durable_event", lambda: latest)
+    monkeypatch.setattr(
+        module,
+        "_analytics_durable_query",
+        lambda *_args: (durable_events, False),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda *_args: (live_events, False),
+    )
+
+    result = asyncio.run(
+        module.analytics_auto_impl(
+            since="2026-07-08T00:00:00Z",
+            humans_only=False,
+            _now=now,
+        )
+    )
+
+    assert result["truncated"] is True
+    assert result["event_count"] == 2
+    assert [session["sid"] for session in result["sessions"]] == [
+        "newest",
+        "newer",
+    ]
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_analytics_auto_returns_error_when_both_sources_fail(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    now = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        module,
+        "_analytics_latest_durable_event",
+        lambda: (_ for _ in ()).throw(RuntimeError("watermark down")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_analytics_live_query",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("Dynamo down")),
+    )
+
+    result = asyncio.run(module.analytics_auto_impl(_now=now))
+
+    assert result["error"] == "all analytics sources failed"
+    assert result["source_errors"] == {
+        "watermark": "watermark down",
+        "live": "Dynamo down",
+    }
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))

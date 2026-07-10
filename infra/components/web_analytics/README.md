@@ -17,11 +17,12 @@ BROWSER     /analytics/pixel.txt (one canonical eid-bearing request)
               → origin group
                    ├─ primary: signed Function URL → collector Lambda
                    │    → web_events_live (DynamoDB, ~90-day TTL)
-                   │    → analytics_live / analytics_attribution
+                   │    → analytics_live / analytics_attribution ─┐
                    └─ failover: existing static S3 pixel (always 200)
               → CloudFront standard logs in S3
               → unchanged daily transform + ip_geo enrichment
-              → web_events (Parquet) → existing analytics_* tools
+              → web_events (Parquet) → existing analytics_* tools ─┤
+                                                                  └→ analytics_auto
 ```
 
 ## What this creates
@@ -126,6 +127,9 @@ rather than spanning the intervening visit.
 Examples:
 
 ```
+analytics_auto(minutes=60)
+analytics_auto(since="2026-07-01T00:00:00Z")
+analytics_auto(campaign="arthur-babylist")
 analytics_live(minutes=60, humans_only=true)
 analytics_attribution(campaign="arthur-babylist")
 analytics_attribution(since="2026-07-10T17:00:00Z")
@@ -134,6 +138,32 @@ analytics_attribution(since="2026-07-10T17:00:00Z")
 The live table is an operational overlay, not a historical replacement. TTL
 removes old items; use `web_events` and the existing Athena-backed tools for
 durable analysis.
+
+### Unified MCP routing
+
+`analytics_auto` is the default read surface when a visitor question may cross
+the live/durable boundary. It accepts a UTC `[since, until)` interval (or a
+minute lookback), then:
+
+1. Finds the latest materialized durable event using Glue partition metadata
+   plus a partition-pruned Athena `max(ts_utc)` query, cached for five minutes
+   on warm MCP processes.
+2. Reads the older interval from `web_events` and DynamoDB across a four-day
+   overlap matching the transform's trailing repair horizon.
+3. Reconstructs `ref`, UTM, and event metrics from the existing durable
+   `query_decoded` field. No batch schema or transform change is needed.
+4. Merges events before filtering/rollup and de-duplicates only nonempty
+   `eid`s. Durable classification/org data win, live millisecond ordering is
+   retained, and other live-only edge fields fill durable gaps.
+5. Returns `source` (`live`, `durable`, or `mixed`), freshness, truncation,
+   errors, and explicit queried/unqueried ranges. These describe which stores
+   were queried; they do not claim DynamoDB contained pre-rollout history.
+
+Campaign-only calls default to 24 hours, while other calls default to 60
+minutes. Explicit `since` values can reach beyond the live table's TTL because
+the older portion is served by Athena, with a one-year maximum interval to
+bound scan cost. Existing tools remain unchanged and available when a caller
+explicitly wants one source.
 
 ## Where classification and query logic live
 
@@ -150,6 +180,7 @@ in lockstep in `scripts/receipt_mcp_server.py` and
 
 | Tool | Purpose |
 |---|---|
+| `analytics_auto(minutes, since, until, campaign, humans_only=true)` | default unified visitor/session query; routes and merges live DynamoDB with durable Athena data |
 | `analytics_live(minutes=60, humans_only=true)` | request-time sessions from `web_events_live`, with edge geo, referrer, UTM fields, pages, and events |
 | `analytics_attribution(campaign, since, humans_only=true)` | exact live campaign/time-window attribution with full-session page timelines |
 | `analytics_traffic(start, end)` | per-PT-day requests, outside-human vs WARP vs bot, human sessions/pageviews |
@@ -259,9 +290,12 @@ can omit detailed geo fields for AWS viewers.
    country; assert region/city when CloudFront supplies them.
 3. Call `analytics_attribution(campaign="smoke-<UTC epoch>",
    humans_only=false)` and assert the same session, referrer, and campaign.
-4. Check the collector Lambda `Errors` metric and log group, then verify the
+4. Call `analytics_auto(campaign="smoke-<UTC epoch>", humans_only=false)` and
+   assert `source` includes `live`, no unexpected unqueried range is reported,
+   and the same session is returned.
+5. Check the collector Lambda `Errors` metric and log group, then verify the
    DynamoDB item has `expires_at`, edge geo, `sid`, and `eid`.
-5. In a controlled fallback test, temporarily set the collector's reserved
+6. In a controlled fallback test, temporarily set the collector's reserved
    concurrency to zero, request `/analytics/pixel.txt?...`, and verify the
    CloudFront response is still 200 from S3. Restore concurrency to 5
    immediately afterward.

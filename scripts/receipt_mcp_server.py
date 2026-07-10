@@ -900,6 +900,53 @@ using get_receipt or get_receipt_image_url.""",
             },
         ),
         Tool(
+            name="analytics_auto",
+            description="""Unified production visitor analytics across live and durable data.
+
+Use this as the default tool when a question may span current and historical
+traffic. It routes the older range to Athena and queries DynamoDB across a
+four-day repair/tail overlap, then normalizes, merges, and de-duplicates events
+by `eid`. Optional exact `campaign` filtering preserves campaign segments
+across the source boundary. Returns source/freshness metadata, errors,
+queried/unqueried ranges, and at most 250 newest sessions without changing
+existing analytics tools.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 525600,
+                        "description": "Lookback ending at until; default 60, or 1440 for campaign-only",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Optional ISO-8601 UTC start (max 365-day interval)",
+                    },
+                    "until": {
+                        "type": "string",
+                        "description": "Optional ISO-8601 UTC exclusive end (default now)",
+                    },
+                    "campaign": {
+                        "type": "string",
+                        "description": "Optional exact utm_campaign value",
+                    },
+                    "humans_only": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Exclude bots, WARP, and hosting traffic",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 250,
+                        "minimum": 1,
+                        "maximum": 250,
+                        "description": "Maximum newest sessions returned",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="analytics_live",
             description="""Recent production web visits from the real-time beacon collector.
 
@@ -907,7 +954,8 @@ Reads DynamoDB directly and rolls beacon events into sessions with pages,
 event details, edge geo, referrer, and UTM attribution. By default excludes
 bots, Cloudflare WARP traffic, and datacenter-hosting traffic. `minutes` is
 clamped to the live table's 90-day retention window. Results contain at most
-the newest 5,000 events and 250 sessions; `truncated` reports omitted data.""",
+the newest 5,000 events and 250 sessions; `truncated` reports omitted data.
+Prefer `analytics_auto` unless a Dynamo-only diagnostic is explicitly needed.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -936,7 +984,7 @@ campaign result starts at its tagged landing event and continues until another
 tagged campaign begins. Returns pages/events, edge geo, referrer, and UTM
 fields. At least one of `campaign` or `since` is required. Results contain at
 most the newest 5,000 events and 250 sessions; `truncated` reports omitted
-data.""",
+data. Prefer `analytics_auto` when attribution may include durable history.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1552,6 +1600,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "get_label_distribution":
             result = await get_label_distribution_impl(dynamo_client)
+        elif name == "analytics_auto":
+            result = await analytics_auto_impl(
+                minutes=arguments.get("minutes"),
+                since=arguments.get("since"),
+                until=arguments.get("until"),
+                campaign=arguments.get("campaign"),
+                humans_only=arguments.get("humans_only", True),
+                limit=arguments.get("limit", 250),
+            )
         elif name == "analytics_live":
             result = await analytics_live_impl(
                 minutes=arguments.get("minutes", 60),
@@ -3669,6 +3726,10 @@ ANALYTICS_LIVE_TABLE = os.environ.get(
 ANALYTICS_LIVE_MAX_MINUTES = 90 * 24 * 60
 ANALYTICS_LIVE_MAX_EVENTS = 5000
 ANALYTICS_LIVE_MAX_SESSIONS = 250
+ANALYTICS_AUTO_MAX_MINUTES = 365 * 24 * 60
+ANALYTICS_AUTO_REPAIR_OVERLAP_DAYS = 4
+ANALYTICS_WATERMARK_CACHE_SECONDS = 300
+_analytics_watermark_cache = {"checked_at": 0.0, "value": None}
 
 
 def _analytics_normalize_dynamo(value):
@@ -3939,6 +4000,7 @@ def _analytics_live_event_summary(item: dict) -> dict:
         "eid": item.get("eid"),
         "event": item.get("event"),
         "path": item.get("path") or item.get("page_path"),
+        "source": item.get("_source"),
     }
     for key in _ANALYTICS_LIVE_EVENT_METRICS:
         value = item.get(key)
@@ -4021,6 +4083,19 @@ def _analytics_live_rollup(events: list[dict]) -> list[dict]:
         }
         if campaign_segment is not None:
             session["campaign_segment"] = campaign_segment
+        org = _analytics_live_first(session_events, "org")
+        if org:
+            session["org"] = org
+        source_set = set()
+        for event in session_events:
+            event_sources = event.get("_sources") or []
+            if event_sources:
+                source_set.update(str(source) for source in event_sources)
+            elif event.get("_source"):
+                source_set.add(str(event["_source"]))
+        sources = sorted(source_set)
+        if sources:
+            session["sources"] = sources
         sessions.append(session)
 
     sessions.sort(
@@ -4162,6 +4237,495 @@ def _athena_run(sql: str, max_wait: int = 90, max_rows: int = 5000) -> list:
         if not token:
             break
     return rows
+
+
+def _analytics_auto_window(
+    minutes=None, since=None, until=None, campaign=None, now=None
+):
+    """Return a validated UTC [start, end) interval for routed analytics."""
+    from datetime import datetime, timedelta, timezone
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+
+    end = (
+        _analytics_live_parse_since(str(until))
+        if until is not None and str(until).strip()
+        else current
+    )
+    if end > current:
+        raise ValueError("until cannot be in the future")
+
+    if since is not None and str(since).strip():
+        start = _analytics_live_parse_since(str(since))
+        effective_minutes = None
+    else:
+        default_minutes = 24 * 60 if str(campaign or "").strip() else 60
+        try:
+            effective_minutes = int(
+                default_minutes if minutes is None else minutes
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("minutes must be an integer") from exc
+        effective_minutes = max(
+            1, min(effective_minutes, ANALYTICS_AUTO_MAX_MINUTES)
+        )
+        start = end - timedelta(minutes=effective_minutes)
+
+    if start >= end:
+        raise ValueError("since must be earlier than until")
+    if end - start > timedelta(minutes=ANALYTICS_AUTO_MAX_MINUTES):
+        raise ValueError("analytics_auto interval cannot exceed 365 days")
+    return start, end, current, effective_minutes
+
+
+def _analytics_durable_param_sql(name: str) -> str:
+    """Extract one beacon parameter already retained in query_decoded."""
+    return (
+        "NULLIF(TRY(url_decode(regexp_extract(COALESCE(query_decoded, ''), "
+        f"'(?:^|&){name}=([^&]*)', 1))), '')"
+    )
+
+
+def _analytics_latest_durable_event(force=False):
+    """Return the newest materialized event timestamp, cached for warm calls."""
+    import time
+
+    checked_at = float(_analytics_watermark_cache.get("checked_at") or 0.0)
+    now_mono = time.monotonic()
+    if (
+        not force
+        and checked_at
+        and now_mono - checked_at < ANALYTICS_WATERMARK_CACHE_SECONDS
+    ):
+        return _analytics_watermark_cache.get("value")
+
+    import boto3
+
+    glue = boto3.client("glue", region_name=ANALYTICS_REGION)
+    partition_dates = []
+    paginator = glue.get_paginator("get_partitions")
+    for page in paginator.paginate(
+        DatabaseName=ANALYTICS_DB,
+        TableName="web_events",
+        ExcludeColumnSchema=True,
+    ):
+        for partition in page.get("Partitions", []):
+            values = partition.get("Values") or []
+            if values:
+                try:
+                    partition_dates.append(_analytics_check_date(values[0]))
+                except ValueError:
+                    continue
+
+    latest = None
+    if partition_dates:
+        repair_dates = sorted(set(partition_dates))[-4:]
+        dates_sql = ", ".join(f"'{dt}'" for dt in repair_dates)
+        rows = _athena_run(
+            f"""
+SELECT date_format(max(ts_utc), '%Y-%m-%dT%H:%i:%s.%fZ') AS latest
+FROM {ANALYTICS_DB}.web_events
+WHERE dt IN ({dates_sql})
+""",
+            max_rows=1,
+        )
+        raw = rows[0].get("latest") if rows else None
+        if raw:
+            latest = _analytics_live_parse_since(raw)
+
+    _analytics_watermark_cache["checked_at"] = now_mono
+    _analytics_watermark_cache["value"] = latest
+    return latest
+
+
+def _analytics_normalize_durable_event(row: dict) -> dict:
+    """Map an Athena web_events row to the live event contract."""
+    event = {
+        key: value
+        for key, value in row.items()
+        if value is not None and value != ""
+    }
+    try:
+        event["epoch_ms"] = int(event.get("epoch_ms", 0))
+    except (TypeError, ValueError):
+        event["epoch_ms"] = _analytics_live_epoch_ms(event)
+
+    sid = str(event.get("sid") or "")
+    eid = str(event.get("eid") or "")
+    request_id = str(event.get("request_id") or "")
+    event["sk"] = (
+        f"{event['epoch_ms']:013d}#{sid}#{eid or request_id}"
+    )
+    event["_source"] = "durable"
+    event["_sources"] = ["durable"]
+    return event
+
+
+def _analytics_durable_query(start, end) -> tuple[list[dict], bool]:
+    """Read normalized durable beacon events for UTC [start, end)."""
+    from datetime import timedelta
+
+    if start >= end:
+        return [], False
+
+    last_included = end - timedelta(microseconds=1)
+    start_dt = start.date().isoformat()
+    end_dt = last_included.date().isoformat()
+    start_sql = start.strftime("%Y-%m-%d %H:%M:%S.%f")
+    end_sql = end.strftime("%Y-%m-%d %H:%M:%S.%f")
+    param_fields = (
+        "ref",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        *_ANALYTICS_LIVE_EVENT_METRICS,
+    )
+    param_select = ",\n  ".join(
+        f"{_analytics_durable_param_sql(name)} AS {name}"
+        for name in param_fields
+    )
+    row_limit = ANALYTICS_LIVE_MAX_EVENTS + 1
+    sql = f"""
+SELECT
+  dt,
+  request_id,
+  date_format(ts_utc, '%Y-%m-%dT%H:%i:%s.%fZ') AS ts,
+  CAST(to_unixtime(ts_utc) * 1000 AS bigint) AS epoch_ms,
+  sid,
+  eid,
+  event,
+  evt_path AS path,
+  {param_select},
+  request_ip AS ip,
+  user_agent AS ua,
+  country,
+  city,
+  org,
+  asn,
+  is_warp,
+  is_bot,
+  is_hosting
+FROM {ANALYTICS_DB}.web_events
+WHERE dt BETWEEN '{start_dt}' AND '{end_dt}'
+  AND is_beacon
+  AND ts_utc >= TIMESTAMP '{start_sql}'
+  AND ts_utc < TIMESTAMP '{end_sql}'
+ORDER BY ts_utc DESC, request_id DESC
+LIMIT {row_limit}
+"""
+    rows = _athena_run(sql, max_rows=row_limit)
+    truncated = len(rows) > ANALYTICS_LIVE_MAX_EVENTS
+    rows = rows[:ANALYTICS_LIVE_MAX_EVENTS]
+    return [_analytics_normalize_durable_event(row) for row in rows], truncated
+
+
+def _analytics_auto_merge_events(events: list[dict]):
+    """Deduplicate non-empty eids while retaining both sources' best fields."""
+    durable_authoritative = {
+        "dt",
+        "request_id",
+        "sid",
+        "eid",
+        "event",
+        "path",
+        "page_path",
+        "ip",
+        "ua",
+        "country",
+        "city",
+        "org",
+        "asn",
+        "is_warp",
+        "is_bot",
+        "is_hosting",
+    }
+    by_eid = {}
+    without_eid = []
+    deduplicated = 0
+
+    ordered = sorted(
+        events,
+        key=lambda event: (
+            _analytics_live_epoch_ms(event),
+            str(event.get("sk") or ""),
+        ),
+    )
+    for original in ordered:
+        event = dict(original)
+        source = str(event.get("_source") or "")
+        if source == "live":
+            event["_live_order"] = {
+                key: event.get(key)
+                for key in ("dt", "ts", "epoch_ms", "sk")
+            }
+        event["_sources"] = sorted(
+            set(event.get("_sources") or ([source] if source else []))
+        )
+        eid = str(event.get("eid") or "").strip()
+        if not eid:
+            without_eid.append(event)
+            continue
+
+        existing = by_eid.get(eid)
+        if existing is None:
+            by_eid[eid] = event
+            continue
+
+        deduplicated += 1
+        merged = dict(existing)
+        for key, value in event.items():
+            if (
+                value is not None
+                and value != ""
+                and (merged.get(key) is None or merged.get(key) == "")
+            ):
+                merged[key] = value
+
+        durable = None
+        if event.get("_source") == "durable":
+            durable = event
+        elif existing.get("_source") == "durable" or "durable" in (
+            existing.get("_sources") or []
+        ):
+            durable = existing
+        if durable is not None:
+            for key in durable_authoritative:
+                value = durable.get(key)
+                if value is not None and value != "":
+                    merged[key] = value
+
+        sources = sorted(
+            set(existing.get("_sources") or [])
+            | set(event.get("_sources") or [])
+        )
+        merged["_sources"] = sources
+        merged["_source"] = "mixed" if len(sources) > 1 else sources[0]
+        if "durable" in sources and "live" in sources:
+            live_order = merged.get("_live_order") or {}
+            for key in ("dt", "ts", "epoch_ms", "sk"):
+                value = live_order.get(key)
+                if value is not None and value != "":
+                    merged[key] = value
+        by_eid[eid] = merged
+
+    merged_events = list(by_eid.values()) + without_eid
+    merged_events.sort(
+        key=lambda event: (
+            _analytics_live_epoch_ms(event),
+            str(event.get("sk") or ""),
+        ),
+        reverse=True,
+    )
+    return merged_events, deduplicated, len(without_eid)
+
+
+def _analytics_auto_unqueried_ranges(start, end, queried_ranges):
+    """Return uncovered UTC intervals after merging successful source ranges."""
+    cursor = start
+    gaps = []
+    for _, covered_start, covered_end in sorted(
+        queried_ranges, key=lambda item: item[1]
+    ):
+        covered_start = max(start, covered_start)
+        covered_end = min(end, covered_end)
+        if covered_end <= cursor:
+            continue
+        if covered_start > cursor:
+            gaps.append((cursor, covered_start))
+        cursor = max(cursor, covered_end)
+    if cursor < end:
+        gaps.append((cursor, end))
+    return gaps
+
+
+async def analytics_auto_impl(
+    minutes=None,
+    since=None,
+    until=None,
+    campaign=None,
+    humans_only=True,
+    limit=ANALYTICS_LIVE_MAX_SESSIONS,
+    _now=None,
+) -> dict:
+    """Route one UTC interval across durable and live analytics sources."""
+    from datetime import timedelta
+
+    try:
+        campaign = str(campaign or "").strip()
+        start, end, current, effective_minutes = _analytics_auto_window(
+            minutes=minutes,
+            since=since,
+            until=until,
+            campaign=campaign,
+            now=_now,
+        )
+        limit = max(1, min(int(limit), ANALYTICS_LIVE_MAX_SESSIONS))
+        live_floor = current - timedelta(
+            minutes=ANALYTICS_LIVE_MAX_MINUTES
+        )
+        source_errors = {}
+        latest_durable = None
+        overlap_start = None
+
+        try:
+            latest_durable = _analytics_latest_durable_event()
+        except Exception as exc:
+            logger.exception("analytics_auto durable watermark failed")
+            source_errors["watermark"] = str(exc)
+
+        durable_range = None
+        live_range = None
+        if latest_durable is not None:
+            durable_end = min(end, latest_durable + timedelta(milliseconds=1))
+            if start < durable_end:
+                durable_range = (start, durable_end)
+
+            overlap_start = latest_durable - timedelta(
+                days=ANALYTICS_AUTO_REPAIR_OVERLAP_DAYS
+            )
+            live_start = max(start, overlap_start, live_floor)
+            if live_start < end:
+                live_range = (live_start, end)
+        else:
+            live_start = max(start, live_floor)
+            if live_start < end:
+                live_range = (live_start, end)
+
+        all_events = []
+        queried_ranges = []
+        truncated = False
+
+        if durable_range is not None:
+            try:
+                durable_events, durable_truncated = _analytics_durable_query(
+                    *durable_range
+                )
+                all_events.extend(durable_events)
+                truncated = truncated or durable_truncated
+                queried_ranges.append(("durable", *durable_range))
+            except Exception as exc:
+                logger.exception("analytics_auto durable query failed")
+                source_errors["durable"] = str(exc)
+                fallback_start = max(start, live_floor)
+                if fallback_start < end:
+                    live_range = (fallback_start, end)
+
+        if live_range is not None:
+            try:
+                live_events, live_truncated = _analytics_live_query(
+                    live_range[0],
+                    live_range[1] - timedelta(microseconds=1),
+                )
+                start_ms = live_range[0].timestamp() * 1000
+                end_ms = live_range[1].timestamp() * 1000
+                for live_event in live_events:
+                    epoch_ms = _analytics_live_epoch_ms(live_event)
+                    if start_ms <= epoch_ms < end_ms:
+                        normalized = dict(live_event)
+                        normalized["_source"] = "live"
+                        normalized["_sources"] = ["live"]
+                        all_events.append(normalized)
+                truncated = truncated or live_truncated
+                queried_ranges.append(("live", *live_range))
+            except Exception as exc:
+                logger.exception("analytics_auto live query failed")
+                source_errors["live"] = str(exc)
+
+        events, deduplicated, undeduplicable = _analytics_auto_merge_events(
+            all_events
+        )
+        if len(events) > ANALYTICS_LIVE_MAX_EVENTS:
+            events = events[:ANALYTICS_LIVE_MAX_EVENTS]
+            truncated = True
+        if humans_only:
+            events = [
+                event
+                for event in events
+                if _analytics_live_is_human(event)
+            ]
+        if campaign:
+            events = _analytics_live_campaign_events(events, campaign)
+
+        sessions = _analytics_live_rollup(events)
+        if len(sessions) > limit:
+            truncated = True
+        sessions = sessions[:limit]
+
+        unqueried_ranges = _analytics_auto_unqueried_ranges(
+            start, end, queried_ranges
+        )
+        successful_sources = sorted({item[0] for item in queried_ranges})
+        if len(successful_sources) > 1:
+            source = "mixed"
+        elif successful_sources:
+            source = successful_sources[0]
+        else:
+            source = "none"
+
+        if not successful_sources and source_errors:
+            return {
+                "error": "all analytics sources failed",
+                "source_errors": source_errors,
+                "since": _analytics_live_iso(start),
+                "until": _analytics_live_iso(end),
+            }
+
+        source_event_counts = {"durable": 0, "live": 0, "mixed": 0}
+        for event in events:
+            event_source = str(event.get("_source") or "")
+            if event_source in source_event_counts:
+                source_event_counts[event_source] += 1
+
+        return {
+            "source": source,
+            "since": _analytics_live_iso(start),
+            "until": _analytics_live_iso(end),
+            "as_of": _analytics_live_iso(current),
+            "minutes": effective_minutes,
+            "campaign": campaign or None,
+            "timezone": "UTC",
+            "humans_only": bool(humans_only),
+            "partial": bool(source_errors or unqueried_ranges),
+            "truncated": truncated,
+            "latest_durable_event": (
+                _analytics_live_iso(latest_durable)
+                if latest_durable is not None
+                else None
+            ),
+            "live_durable_overlap_start": (
+                _analytics_live_iso(overlap_start)
+                if overlap_start is not None
+                else None
+            ),
+            "queried_ranges": [
+                {
+                    "source": item_source,
+                    "since": _analytics_live_iso(item_start),
+                    "until": _analytics_live_iso(item_end),
+                }
+                for item_source, item_start, item_end in queried_ranges
+            ],
+            "unqueried_ranges": [
+                {
+                    "since": _analytics_live_iso(gap_start),
+                    "until": _analytics_live_iso(gap_end),
+                }
+                for gap_start, gap_end in unqueried_ranges
+            ],
+            "source_errors": source_errors,
+            "source_event_counts": source_event_counts,
+            "deduplicated_event_count": deduplicated,
+            "undeduplicable_event_count": undeduplicable,
+            "event_count": len(events),
+            "session_count": len(sessions),
+            "sessions": sessions,
+        }
+    except Exception as exc:
+        logger.exception("analytics_auto failed")
+        return {"error": str(exc)}
 
 
 def _analytics_base_cte(start_date: str, end_date: str) -> str:
