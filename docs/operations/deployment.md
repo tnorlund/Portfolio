@@ -229,7 +229,7 @@ The portfolio sends pseudonymous `analytics_session_id` and
 `analytics_event_id` parameters to GA/GTM and to the real-time
 `/analytics/collect` beacon. Each event is also mirrored to the static
 `/analytics/pixel.txt` beacon so CloudFront standard logs remain the durable
-batch source if the collector is unavailable. The collector uses `live_eid`
+batch source if the collector is unavailable. The collector uses `live_id`
 while the static mirror keeps canonical `eid`, preventing the unchanged batch
 dedup from racing the two request paths and preserving GA4 BigQuery joins.
 

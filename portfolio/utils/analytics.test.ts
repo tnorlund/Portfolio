@@ -78,15 +78,16 @@ function expectCollectorAndMirrorIds(
   mirrorUrl: URL
 ): void {
   expect(collectorUrl.pathname).toBe("/analytics/collect");
-  expect(collectorUrl.searchParams.get("live_eid")).toBe("evt_event-id");
+  expect(collectorUrl.searchParams.get("live_id")).toBe("evt_event-id");
   expect(collectorUrl.searchParams.has("eid")).toBe(false);
+  expect(collectorUrl.search).not.toContain("eid=");
   expect(mirrorUrl.pathname).toBe("/analytics/pixel.txt");
   expect(mirrorUrl.searchParams.get("eid")).toBe("evt_event-id");
-  expect(mirrorUrl.searchParams.has("live_eid")).toBe(false);
+  expect(mirrorUrl.searchParams.has("live_id")).toBe(false);
 
   const collectorParams = new URLSearchParams(collectorUrl.search);
   const mirrorParams = new URLSearchParams(mirrorUrl.search);
-  collectorParams.delete("live_eid");
+  collectorParams.delete("live_id");
   mirrorParams.delete("eid");
   expect(collectorParams.toString()).toBe(mirrorParams.toString());
 }
@@ -206,7 +207,7 @@ describe("analytics utilities", () => {
     expect(beaconUrl.searchParams.get("event")).toBe("reader_summary");
     expect(beaconUrl.searchParams.get("sid")).toBe("ses_session-id");
     expect(beaconUrl.searchParams.get("eid")).toBe("evt_event-id");
-    expect(beaconUrl.searchParams.has("live_eid")).toBe(false);
+    expect(beaconUrl.searchParams.has("live_id")).toBe(false);
     expect(beaconUrl.searchParams.get("page_path")).toBe("/receipt");
     expect(beaconUrl.searchParams.get("quick_jump")).toBe("false");
     expect(beaconUrl.searchParams.has("metric_value")).toBe(false);

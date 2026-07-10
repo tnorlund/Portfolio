@@ -246,7 +246,7 @@ function getStaticBeaconMirrorUrl(url: URL): URL | null {
   }
 
   mirrorUrl.search = url.search;
-  mirrorUrl.searchParams.delete("live_eid");
+  mirrorUrl.searchParams.delete("live_id");
   return mirrorUrl;
 }
 
@@ -301,7 +301,7 @@ function sendCloudFrontBeacon(
     const mirrorUrl = getStaticBeaconMirrorUrl(url);
     if (mirrorUrl) {
       url.searchParams.delete("eid");
-      appendBeaconParam(url, "live_eid", meta.eventId);
+      appendBeaconParam(url, "live_id", meta.eventId);
       sendImageBeacon(mirrorUrl);
     }
 
