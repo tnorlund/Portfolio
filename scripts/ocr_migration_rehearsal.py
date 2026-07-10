@@ -498,6 +498,7 @@ def pull_scoped_images(
     table_name: str,
     image_ids: list[str],
     dest_path: Path,
+    exclude_types: set[str] | None = None,
 ) -> dict[str, Any]:
     """Query ALL rows for the given images into a serve-compatible cache SQLite.
 
@@ -507,6 +508,10 @@ def pull_scoped_images(
     output ``dynamodb.sqlite3`` + returned component dict match what the full
     ``local_analytics_cache`` sync produces, so ``serve`` can hydrate it and the
     diff can treat it as the exact BEFORE snapshot.
+
+    ``exclude_types`` skips entity TYPEs on disk-constrained hosts (e.g. LETTER /
+    RECEIPT_LETTER: 68% of rows, no labels, pure re-OCR regen). NEVER use it for
+    a rollback ``backup`` — a backup must be complete to be a backup.
     """
     table = client.describe_table(TableName=table_name)["Table"]
     writer = cache.DynamoSQLiteWriter(dest_path)
@@ -522,6 +527,12 @@ def pull_scoped_images(
             while True:
                 resp = client.query(**kwargs)
                 items = resp.get("Items", [])
+                if exclude_types:
+                    items = [
+                        it
+                        for it in items
+                        if it.get("TYPE", {}).get("S") not in exclude_types
+                    ]
                 writer.add(items)
                 scanned += len(items)
                 lek = resp.get("LastEvaluatedKey")
@@ -572,13 +583,18 @@ def run_pull(
     image_ids: list[str],
     region: str | None = None,
     profile: str | None = None,
+    exclude_types: set[str] | None = None,
 ) -> dict[str, Any]:
     """Scoped pull into ``<cache_dir>/<env>/dynamodb.sqlite3`` + a serve manifest."""
     cache_root = cache_dir.expanduser().resolve() / env
     cache_root.mkdir(parents=True, exist_ok=True)
     client = boto3.Session(profile_name=profile, region_name=region).client("dynamodb")
     component = pull_scoped_images(
-        client, table_name, image_ids, cache_root / "dynamodb.sqlite3"
+        client,
+        table_name,
+        image_ids,
+        cache_root / "dynamodb.sqlite3",
+        exclude_types=exclude_types,
     )
     manifest = cache._load_manifest(cache_root)
     manifest.setdefault("components", {})
@@ -910,6 +926,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     pull.add_argument("--region", default=None)
     pull.add_argument("--profile", default=None)
+    pull.add_argument(
+        "--exclude-types",
+        default=None,
+        help="comma-separated entity TYPEs to skip (disk-constrained hosts); "
+        "never valid for rollback backups",
+    )
 
     bk = sub.add_parser(
         "backup",
@@ -965,6 +987,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "pull":
         ids = _read_image_ids(args.images)
+        excl = (
+            {t.strip() for t in args.exclude_types.split(",") if t.strip()}
+            if args.exclude_types
+            else None
+        )
         result = run_pull(
             args.env,
             args.cache_dir,
@@ -972,6 +999,7 @@ def main(argv: list[str] | None = None) -> int:
             ids,
             args.region,
             args.profile,
+            exclude_types=excl,
         )
         comp = result["component"]
         print(
