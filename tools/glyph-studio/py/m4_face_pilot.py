@@ -136,10 +136,10 @@ def _agreement(measurement, row_faces, typography, logo_phrases=()):
     measured selection can actually change. Logo-anchor rows are excluded:
     the renderer suppresses their text entirely and pastes the logo.
     """
-    from glyphstudio.face_select import normalize_face_key
-
     from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (  # noqa: E501
         measured_row_style, row_style)
+
+    from glyphstudio.face_select import _next_band_bleeds, normalize_face_key
 
     stylemap_json = typography.get("stylemap")
     rules, bleed, bleed_scale = _heading_rules(typography)
@@ -160,7 +160,7 @@ def _agreement(measurement, row_faces, typography, logo_phrases=()):
         if _is_logo_anchor_line(line, anchor_norm, image_h):
             continue
         next_reverse = bool(
-            idx + 1 < len(lines) and lines[idx + 1].get("reverse_video")
+            idx + 1 < len(lines) and _next_band_bleeds(line, lines[idx + 1])
         )
         truth = _truth_from_line(line, body_cap, body_stroke, next_reverse=next_reverse)
         if truth is None:
@@ -305,8 +305,12 @@ def _row_evidence(real, syn_a, syn_b, rows, image_size, out_dir, tag):
     """One labeled strip (real | stylemap | measured) per DISAGREEING row.
 
     The real bbox is in real-image pixels; the synth renders share the real
-    aspect, so the same y-fraction band shows the corresponding synth rows.
-    Returns {row_text: png_path} for the summary JSON.
+    aspect, so the same y-fraction locates the row's NEIGHBORHOOD in the
+    synth panels. The renderer reflows vertically (dash-rule reservations,
+    scaled rows), so the synth band gets ~3 extra row heights of context on
+    each side rather than a tight crop -- the target row drifts but stays in
+    frame. Returns {"NN <row_text>": png_path} for the summary JSON (indexed
+    keys: duplicate texts must not overwrite each other's evidence).
     """
     from PIL import Image, ImageDraw, ImageFont
 
@@ -324,10 +328,15 @@ def _row_evidence(real, syn_a, syn_b, rows, image_size, out_dir, tag):
         if not box:
             continue
         _, t, _, b = box
-        pad = max(6, int((b - t) * 0.6))
-        f0, f1 = max(0, t - pad) / H, min(H, b + pad) / H
+        row_h = max(10, b - t)
         strips = []
-        for name, im in (("REAL", real), ("STYLEMAP", syn_a), ("MEASURED", syn_b)):
+        for name, im, pad in (
+            ("REAL", real, max(6, int(row_h * 0.6))),
+            ("STYLEMAP", syn_a, int(row_h * 3)),
+            ("MEASURED", syn_b, int(row_h * 3)),
+        ):
+            f0 = max(0, t - pad) / H
+            f1 = min(H, b + pad) / H
             band = im.crop((0, int(f0 * im.height), im.width, int(f1 * im.height)))
             band = band.resize((560, max(1, int(band.height * 560 / band.width))))
             strips.append((name, band))
@@ -341,7 +350,7 @@ def _row_evidence(real, syn_a, syn_b, rows, image_size, out_dir, tag):
             y += s.height + 20
         path = os.path.join(out_dir, f"{tag}.row{n:02d}.png")
         cv.save(path)
-        out[r["text"]] = path
+        out[f"{n:02d} {r['text']}"] = path
         n += 1
     return out
 
@@ -381,13 +390,13 @@ def main(argv=None) -> int:
     import boto3
     import render_synthetic_receipts as rsr
     from glyph_review import _ink_metrics  # noqa: F401  (path check)
+    from PIL import Image
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+
     from glyphstudio.face_select import select_row_faces
     from glyphstudio.section_face_map import load_merchant_faces
     from glyphstudio.stylescan import measure
     from m3_acceptance import ocr_overlap_score
-    from PIL import Image
-
-    from receipt_dynamo.data.dynamo_client import DynamoClient
 
     table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
     region = os.environ.get("AWS_REGION", "us-east-1")

@@ -4,6 +4,7 @@ import os
 import sys
 
 import pytest
+
 from glyphstudio.face_select import (measured_style_for_line,
                                      normalize_face_key, select_row_faces)
 from glyphstudio.section_face_map import Face
@@ -213,6 +214,53 @@ def test_next_row_reverse_band_clears_underline():
         )
     )
     assert faces[normalize_face_key("INSTANT SAVINGS $ 12.30")]["underline"] is False
+
+
+def test_distant_reverse_band_cannot_clear_underline():
+    # The probe window only extends 0.5x the line height below the row; a
+    # reverse-video line far down the receipt cannot have caused the hit.
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line("SECTION HEADER", underline=True, bbox=[10, 100, 300, 140]),
+                _line("TOTAL 28.44", reverse_video=1, bbox=[10, 600, 300, 640]),
+            ]
+        )
+    )
+    assert faces[normalize_face_key("SECTION HEADER")]["underline"] is True
+
+
+def test_adjacent_reverse_band_with_bboxes_clears_underline():
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line(
+                    "INSTANT SAVINGS $ 12.30",
+                    underline=True,
+                    bbox=[10, 100, 300, 140],
+                ),
+                _line(
+                    "167027 10051117",
+                    reverse_video=1,
+                    bbox=[10, 150, 300, 190],
+                ),
+            ]
+        )
+    )
+    assert faces[normalize_face_key("INSTANT SAVINGS $ 12.30")]["underline"] is False
+
+
+def test_zero_height_letters_are_not_cap_samples():
+    # Missing letter heights must not count toward MIN_CAP_SAMPLES nor zero
+    # the spread median -- an unreliable cap_px could otherwise size the row.
+    letters = [{"ch": "A", "h": 0}, {"ch": "B", "h": None}, {"ch": "C", "h": 70.0}]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("BIG ROW", cap=70.0, stroke=3.8, letters=letters)],
+            body_cap=50.0,
+        )
+    )
+    assert faces[normalize_face_key("BIG ROW")]["scale"] == 1.0
 
 
 def test_underline_kept_when_next_row_is_normal_video():

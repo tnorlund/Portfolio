@@ -88,11 +88,38 @@ def normalize_face_key(text: str) -> str:
 
 
 def _cap_heights(line: Mapping[str, Any]) -> list[float]:
-    return [
-        float(c.get("h") or 0)
-        for c in line.get("letters") or ()
-        if str(c.get("ch", ""))[:1].isupper() or str(c.get("ch", ""))[:1].isdigit()
-    ]
+    """Positive cap-letter heights only: a missing/zero height is not a
+    sample (coerced zeros would both satisfy MIN_CAP_SAMPLES and zero the
+    spread median, letting an unreliable cap_px enlarge the row)."""
+    out = []
+    for c in line.get("letters") or ():
+        ch = str(c.get("ch", ""))[:1]
+        if not (ch.isupper() or ch.isdigit()):
+            continue
+        try:
+            h = float(c.get("h") or 0)
+        except (TypeError, ValueError):
+            continue
+        if h > 0:
+            out.append(h)
+    return out
+
+
+def _next_band_bleeds(line: Mapping[str, Any], nxt: Mapping[str, Any]) -> bool:
+    """Can the NEXT line's reverse-video band reach this line's underline
+    probe window (which extends 0.5x line height below the line bottom)?
+
+    Without geometry on both lines, assume yes (adjacency was the pilot's
+    hand-checked case); with bboxes, a band further down than the probe
+    window cannot have caused the underline hit.
+    """
+    if not nxt.get("reverse_video"):
+        return False
+    box, nbox = line.get("bbox"), nxt.get("bbox")
+    if not box or not nbox:
+        return True
+    line_h = max(1.0, float(box[3]) - float(box[1]))
+    return float(nbox[1]) <= float(box[3]) + 0.5 * line_h
 
 
 def _cap_spread(heights: list[float]) -> float:
@@ -276,7 +303,7 @@ def select_row_faces(
             stats["wordmark"] += 1
             continue
         next_reverse = bool(
-            idx + 1 < len(lines) and lines[idx + 1].get("reverse_video")
+            idx + 1 < len(lines) and _next_band_bleeds(line, lines[idx + 1])
         )
         style = measured_style_for_line(
             line, body_cap, body_stroke, next_reverse=next_reverse
