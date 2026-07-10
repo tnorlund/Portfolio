@@ -79,8 +79,9 @@ def main(argv=None) -> int:
             "weight seam on backfilled chars."
         ),
     }
+    # foo.glyphs.npz -> foo.glyphs.manifest.json (splitext strips the final
+    # extension, i.e. the .npz)
     mpath = os.path.splitext(args.out)[0] + ".manifest.json"
-    # foo.glyphs.npz -> foo.glyphs.manifest.json (strip only the .npz)
     with open(mpath, "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=1)
     print(

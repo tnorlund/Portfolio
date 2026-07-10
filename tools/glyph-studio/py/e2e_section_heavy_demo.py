@@ -118,6 +118,12 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     os.makedirs(args.out_dir, exist_ok=True)
     merchant, _, slug = args.merchant.partition(":")
+    if not merchant.strip() or not slug.strip():
+        raise SystemExit(
+            f"--merchant must be 'Name:slug' (got {args.merchant!r})"
+        )
+    if not os.path.exists(args.heavy_npz):
+        raise SystemExit(f"--heavy-npz not found: {args.heavy_npz}")
 
     import boto3
     from PIL import Image, ImageDraw, ImageFont
@@ -181,6 +187,11 @@ def main(argv=None) -> int:
             k: v["source"] for k, v in row_faces.items() if v["face"] == "heavy"
         }
 
+        if not rec.width or not rec.height or rec.width <= 0 or rec.height <= 0:
+            raise SystemExit(
+                f"{iid}:{rid}: bad receipt dimensions "
+                f"{rec.width}x{rec.height}"
+            )
         wt = 760
         ht = int(round(wt * rec.height / rec.width))
         payload = {
@@ -242,7 +253,7 @@ def main(argv=None) -> int:
                     sm = score_receipt_images(real_m, syn, words)["summary"]
                     scores[mode] = sm["severity_counts"]
                 except Exception as e:  # noqa: BLE001
-                    scores[mode] = {"error": str(e)[:80]}
+                    scores[mode] = {"error": str(e)}
 
         # labeled side-by-side, shared canvas height
         wd = 380
@@ -286,7 +297,13 @@ def main(argv=None) -> int:
         os.path.join(args.out_dir, "e2e_report.json"), "w", encoding="utf-8"
     ) as fh:
         json.dump(report, fh, indent=1)
-    return 0
+    # A demo that could not score a render is not a completed comparison.
+    score_errors = any(
+        isinstance(v, dict) and "error" in v
+        for r in report
+        for v in (r.get("scorecard") or {}).values()
+    )
+    return 1 if score_errors else 0
 
 
 if __name__ == "__main__":
