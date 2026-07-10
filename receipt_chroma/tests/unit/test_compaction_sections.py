@@ -98,11 +98,14 @@ def test_recompute_stamps_plurality_from_fresh_state():
     assert results[0].updated_count == 2
     kwargs = collection_obj.update.call_args.kwargs
     by_id = dict(zip(kwargs["ids"], kwargs["metadatas"]))
-    row1 = by_id["IMAGE#img#RECEIPT#00001#LINE#00001"]
-    row3 = by_id["IMAGE#img#RECEIPT#00001#LINE#00003"]
-    assert row1["section_label"] == "HEADER"
-    assert row3["section_label"] == "LINE_ITEMS"
-    assert row1["merchant_name"] == "Test"  # other metadata preserved
+    # Chroma update() MERGES metadata, so only the delta is sent —
+    # other keys (merchant_name, ...) survive untouched on the row.
+    assert by_id["IMAGE#img#RECEIPT#00001#LINE#00001"] == {
+        "section_label": "HEADER"
+    }
+    assert by_id["IMAGE#img#RECEIPT#00001#LINE#00003"] == {
+        "section_label": "LINE_ITEMS"
+    }
 
 
 @pytest.mark.unit
@@ -153,8 +156,8 @@ def test_invalid_section_demotion_removes_label():
 
     assert results[0].updated_count == 1
     new_metadata = collection_obj.update.call_args.kwargs["metadatas"][0]
-    assert "section_label" not in new_metadata
-    assert new_metadata["merchant_name"] == "Test"
+    # None deletes the key under Chroma's merge semantics
+    assert new_metadata == {"section_label": None}
 
 
 @pytest.mark.unit
@@ -180,7 +183,7 @@ def test_section_delete_removes_labels():
 
     assert results[0].updated_count == 1
     new_metadata = collection_obj.update.call_args.kwargs["metadatas"][0]
-    assert "section_label" not in new_metadata
+    assert new_metadata == {"section_label": None}
 
 
 @pytest.mark.unit
@@ -210,7 +213,7 @@ def test_tie_leaves_label_unset():
 
     assert results[0].updated_count == 1
     new_metadata = collection_obj.update.call_args.kwargs["metadatas"][0]
-    assert "section_label" not in new_metadata
+    assert new_metadata == {"section_label": None}
 
 
 @pytest.mark.unit
@@ -297,6 +300,51 @@ def test_missing_collection_is_noop():
 
 
 @pytest.mark.unit
+def test_unexpected_get_collection_error_propagates():
+    """Transient/unknown Chroma failures must NOT be acknowledged as a
+    missing collection; they propagate so the batch retries."""
+    chroma = Mock()
+    chroma.get_collection.side_effect = RuntimeError("client closed")
+    with pytest.raises(RuntimeError):
+        apply_section_updates(
+            chroma_client=chroma,
+            section_messages=[_message()],
+            collection=ChromaDBCollection.LINES,
+            logger=Mock(),
+            dynamo_client=Mock(),
+        )
+
+
+@pytest.mark.unit
+def test_extra_receipts_recomputed_without_section_messages():
+    """Receipts touched by a delta merge are restamped even when no
+    section message shares the batch (stale-delta-overwrite guard)."""
+    chroma, collection_obj = _chroma_with_rows(
+        {
+            "IMAGE#img#RECEIPT#00001#LINE#00001": {
+                "row_line_ids": json.dumps([1]),
+                "section_label": "STALE",
+            }
+        }
+    )
+    dynamo = _dynamo_with_sections([_section("HEADER", [1])])
+
+    results = apply_section_updates(
+        chroma_client=chroma,
+        section_messages=[],
+        collection=ChromaDBCollection.LINES,
+        logger=Mock(),
+        dynamo_client=dynamo,
+        extra_receipts=[(IMAGE_ID, 1)],
+    )
+
+    assert len(results) == 1
+    assert results[0].updated_count == 1
+    new_metadata = collection_obj.update.call_args.kwargs["metadatas"][0]
+    assert new_metadata == {"section_label": "HEADER"}
+
+
+@pytest.mark.unit
 def test_dynamo_failure_records_error_for_retry():
     """A failed section fetch must NOT strip labels; it must error so
     the SQS message is retried."""
@@ -324,6 +372,62 @@ def test_dynamo_failure_records_error_for_retry():
     assert len(results) == 1
     assert results[0].error is not None
     collection_obj.update.assert_not_called()
+
+
+@pytest.mark.unit
+def test_real_chroma_update_semantics_stamp_and_strip(tmp_path):
+    """Against a real ChromaDB collection: update() merges metadata, so
+    the delta-only payload preserves other keys, and None deletes the
+    key (a full-metadata payload minus the key would NOT delete it)."""
+    chromadb = pytest.importorskip("chromadb")
+    # PersistentClient with a unique path: chroma's shared-system cache
+    # keys by path, so this cannot collide with other tests' clients.
+    client = chromadb.PersistentClient(path=str(tmp_path / "chroma"))
+    collection_obj = client.create_collection("lines-test")
+    row_id = "IMAGE#img#RECEIPT#00001#LINE#00001"
+    collection_obj.add(
+        ids=[row_id],
+        embeddings=[[0.1, 0.2]],
+        metadatas=[
+            {
+                "image_id": IMAGE_ID,
+                "receipt_id": 1,
+                "row_line_ids": json.dumps([1]),
+                "merchant_name": "Test",
+                "section_label": "STALE",
+            }
+        ],
+    )
+    chroma = Mock()
+    chroma.get_collection.return_value = collection_obj
+
+    def run(sections):
+        dynamo = _dynamo_with_sections(sections)
+        return apply_section_updates(
+            chroma_client=chroma,
+            section_messages=[_message()],
+            collection=ChromaDBCollection.LINES,
+            logger=Mock(),
+            dynamo_client=dynamo,
+        )
+
+    # Restamp: STALE -> HEADER, other keys preserved
+    results = run([_section("HEADER", [1])])
+    assert results[0].updated_count == 1
+    metadata = collection_obj.get(ids=[row_id], include=["metadatas"])[
+        "metadatas"
+    ][0]
+    assert metadata["section_label"] == "HEADER"
+    assert metadata["merchant_name"] == "Test"
+
+    # Strip: all sections INVALID -> key actually deleted on the row
+    results = run([_section("HEADER", [1], validation_status="INVALID")])
+    assert results[0].updated_count == 1
+    metadata = collection_obj.get(ids=[row_id], include=["metadatas"])[
+        "metadatas"
+    ][0]
+    assert "section_label" not in metadata
+    assert metadata["merchant_name"] == "Test"
 
 
 @pytest.mark.unit

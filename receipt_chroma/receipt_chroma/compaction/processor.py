@@ -159,7 +159,16 @@ def process_collection_updates(
         )
 
     # 4. Apply section updates (after deltas so freshly-merged rows are
-    # restamped with current section state)
+    # restamped with current section state). Receipts touched by a delta
+    # merge are recomputed even without a section message: a delta whose
+    # metadata was captured before a section edit may merge after the
+    # section event was already processed, and no later event would fix
+    # the stale labels it carried.
+    delta_receipts = [
+        (r["image_id"], r["receipt_id"])
+        for r in delta_results
+        if r.get("image_id") is not None and r.get("receipt_id") is not None
+    ]
     section_results = apply_section_updates(
         chroma_client=chroma_client,
         section_messages=section_msgs,
@@ -167,6 +176,7 @@ def process_collection_updates(
         logger=logger,
         metrics=metrics,
         dynamo_client=dynamo_client,
+        extra_receipts=delta_receipts,
     )
 
     if section_results:

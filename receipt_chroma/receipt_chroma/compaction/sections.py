@@ -25,10 +25,17 @@ Design notes (race-condition driven):
 - STORM COLLAPSE: messages are grouped per (image_id, receipt_id) so a
   bulk-QA burst of N section events for one receipt costs one DynamoDB
   query + one recompute pass within a batch.
+
+- DELTA-DRIVEN RECOMPUTE: receipts touched by a delta merge in the same
+  compaction cycle are also recomputed (``extra_receipts``), so a delta
+  whose metadata was captured before a section edit — and merged after
+  the section event was already processed — cannot leave stale labels.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+from chromadb.errors import NotFoundError
 
 from receipt_chroma.compaction.models import MetadataUpdateResult
 from receipt_chroma.data.chroma_client import ChromaClient
@@ -49,6 +56,7 @@ def apply_section_updates(
     logger: Any,
     metrics: Any = None,
     dynamo_client: Optional[DynamoClient] = None,
+    extra_receipts: Optional[Iterable[Tuple[str, int]]] = None,
 ) -> List[MetadataUpdateResult]:
     """Recompute row ``section_label`` metadata for changed receipts.
 
@@ -67,12 +75,17 @@ def apply_section_updates(
         metrics: Optional metrics collector
         dynamo_client: DynamoDB client used to fetch the receipt's
             current sections; without it recompute is skipped
+        extra_receipts: Additional (image_id, receipt_id) pairs to
+            recompute even without a section message — the processor
+            passes receipts touched by delta merges so a delta whose
+            metadata was captured before a section edit cannot leave
+            stale labels behind
 
     Returns:
         List of MetadataUpdateResult objects (one per affected receipt)
     """
     results: List[MetadataUpdateResult] = []
-    if not section_messages:
+    if not section_messages and not extra_receipts:
         return results
 
     if collection != ChromaDBCollection.LINES:
@@ -83,6 +96,8 @@ def apply_section_updates(
         return results
 
     if dynamo_client is None:
+        # A missing client is a wiring bug, not a transient failure —
+        # retrying the messages cannot help, so warn loudly and skip.
         logger.warning(
             "No DynamoDB client; skipping section recompute",
             message_count=len(section_messages),
@@ -92,9 +107,11 @@ def apply_section_updates(
     database = collection.value
     try:
         collection_obj = chroma_client.get_collection(database)
-    except Exception:
-        # Collection may not exist yet (fresh environment) — safe no-op,
+    except (NotFoundError, ValueError):
+        # Collection genuinely absent (fresh environment) — safe no-op,
         # embeds will stamp fresh state when the collection is created.
+        # Any other failure (I/O, closed client, ...) propagates so the
+        # whole batch is retried instead of being silently acknowledged.
         logger.warning(
             "Collection not found for sections", collection=database
         )
@@ -113,6 +130,9 @@ def apply_section_updates(
                 entity_data=dict(entity_data),
             )
             continue
+        receipts[(image_id, receipt_id)] = None
+
+    for image_id, receipt_id in extra_receipts or []:
         receipts[(image_id, receipt_id)] = None
 
     for image_id, receipt_id in receipts:
@@ -212,6 +232,10 @@ def _recompute_receipt_section_labels(
         )
         return 0
 
+    # The base-table query is eventually consistent; by the time a
+    # stream event has traversed DynamoDB Streams -> Lambda -> SQS ->
+    # this handler (seconds), replication lag (sub-second) has passed —
+    # the same trade-off the label path makes.
     sections = dynamo_client.get_receipt_sections_from_receipt(
         image_id=image_id,
         receipt_id=receipt_id,
@@ -228,13 +252,10 @@ def _recompute_receipt_section_labels(
         if metadata.get(_SECTION_LABEL_KEY) == row_section:
             continue  # includes both-absent (None == None)
 
-        new_metadata = {
-            k: v for k, v in metadata.items() if k != _SECTION_LABEL_KEY
-        }
-        if row_section is not None:
-            new_metadata[_SECTION_LABEL_KEY] = row_section
+        # Chroma's update MERGES metadata (omitted keys survive), so
+        # send only the delta; None deletes the key.
         ids_to_update.append(chromadb_id)
-        new_metadatas.append(new_metadata)
+        new_metadatas.append({_SECTION_LABEL_KEY: row_section})
 
     if ids_to_update:
         collection_obj.update(ids=ids_to_update, metadatas=new_metadatas)
