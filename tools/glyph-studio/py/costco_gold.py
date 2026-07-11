@@ -18,6 +18,10 @@ existing machinery rather than reinventing it:
 Metrics that need a model we do not have (forgery-detector AUC, TSTR gap) are
 emitted as explicit ``NOT_IMPLEMENTED`` entries -- never a fabricated number.
 
+Pass/fail is vs the 1:1 target bands in ``--config``. Pass ``--baseline`` with a
+prior scorecard to additionally run the CI regression gate (no metric may
+worsen by more than its ``reg`` threshold-width); the run exits 2 on regression.
+
 Usage:
     costco_gold.py --render final.webp --real real.webp \\
         --labels final.labels.json --refpack costco.refpack.npz \\
@@ -69,6 +73,35 @@ def _load_gold_metrics():
 
 def _log(msg: str) -> None:
     print(f"[costco_gold {time.strftime('%H:%M:%S')}] {msg}", file=sys.stderr, flush=True)
+
+
+def _repo_rel(path: str) -> str:
+    """Path relative to the enclosing git repo root (portable in the committed
+    record), or the absolute path if not under a repo."""
+    ap = os.path.abspath(path)
+    d = os.path.dirname(ap)
+    while d and d != os.path.dirname(d):
+        if os.path.isdir(os.path.join(d, ".git")) or os.path.isfile(os.path.join(d, ".git")):
+            return os.path.relpath(ap, d)
+        d = os.path.dirname(d)
+    return ap
+
+
+def _sanitize(obj):
+    """Recursively replace non-finite floats with None so the scorecard is
+    strict-JSON valid (json.dumps allow_nan=False)."""
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize(v) for v in obj]
+    if isinstance(obj, float) and not np.isfinite(obj):
+        return None
+    if isinstance(obj, (np.floating,)):
+        f = float(obj)
+        return f if np.isfinite(f) else None
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    return obj
 
 
 # --- GlyphScore machinery (imported from the glyphscore worktree) --------------
@@ -172,10 +205,21 @@ def _gate(value, spec: dict) -> dict:
     return out
 
 
-def _level_pass(gates: dict) -> bool:
-    passes = [g.get("pass") for g in gates.values() if isinstance(g, dict) and "pass" in g]
-    live = [p for p in passes if p is not None]
-    return bool(live) and all(live)
+def _level_pass(gates: dict):
+    """A level passes only when EVERY required gate passes. A required gate
+    that could not be evaluated (value nan/None -- e.g. OCR unavailable)
+    yields ``None`` (INCOMPLETE), never a silent pass on the survivors.
+
+    Only required gates are passed in here; intentionally-unsupported metrics
+    (forgery AUC, TSTR) are trained-model stubs kept OUT of the gate set.
+    """
+    passes = [g.get("pass") for g in gates.values()
+              if isinstance(g, dict) and "pass" in g]
+    if not passes:
+        return None
+    if any(p is None for p in passes):
+        return None  # required metric unavailable -> level incomplete
+    return all(passes)
 
 
 # --- L1 IoU decomposition (render vs design/real, with I3 hygiene) -------------
@@ -425,7 +469,10 @@ def _l3_texture(real_gray, render_warp, body, dark_thresh, GS, refpack_path,
         "render_paper_clip_frac": gm.paper_clip_frac(f_body),
         "ink_tone_emd": gm.tone_emd(r_body, f_body),
     }
-    # Kanungo two-sample: render glyph crops vs real refpack crops (binary)
+    # Kanungo two-sample: render glyph crops vs real refpack crops (binary).
+    # Stratified & character-MATCHED so the test measures texture, not glyph
+    # composition: for each char present on both sides (outside the hygiene
+    # mask) take an equal number of render and real crops, then pool.
     pack = GS["load_refpack"](refpack_path)
     gsc = GS["gsc"]
     words = gsc._words_from_json(labels_path)
@@ -437,16 +484,28 @@ def _l3_texture(real_gray, render_warp, body, dark_thresh, GS, refpack_path,
         except ValueError:
             return -1
 
-    render_crops = [np.asarray(m, bool) for ch, m, line in instances
-                    if line_idx(line) not in exclude_lines]
-    real_crops = []
-    for ch, stack in pack.items():
-        st = np.asarray(stack, bool)
-        for i in range(min(4, st.shape[0])):  # a few per char, keep it bounded
-            real_crops.append(st[i])
-    kg = gm.kanungo_two_sample(render_crops[:400], real_crops[:400], n_perm=100)
+    render_by_char = defaultdict(list)
+    for ch, m, line in instances:
+        if line_idx(line) in exclude_lines:
+            continue
+        render_by_char[ch].append(np.asarray(m, bool))
+    per_char_cap = 8  # bound total crops; equal counts per char both sides
+    render_crops, real_crops = [], []
+    for ch, r_list in render_by_char.items():
+        st = pack.get(ch)
+        if st is None:
+            continue
+        st = np.asarray(st, bool)
+        k = min(per_char_cap, len(r_list), st.shape[0])
+        if k < 1:
+            continue
+        idx = np.linspace(0, st.shape[0] - 1, k).round().astype(int)
+        render_crops.extend(r_list[:k])
+        real_crops.extend(st[i] for i in np.unique(idx))
+    kg = gm.kanungo_two_sample(render_crops, real_crops, n_perm=100)
     out["kanungo_distance"] = kg["distance"]
     out["kanungo_p"] = kg["p_value"]
+    out["kanungo_n"] = {"render": len(render_crops), "real": len(real_crops)}
     return out
 
 
@@ -465,6 +524,12 @@ def build_scorecard(args) -> dict:
     render_img = Image.open(args.render)
     real_gray = np.asarray(real_img.convert("L"), np.float64)
     render_gray = np.asarray(render_img.convert("L"), np.float64)
+    if real_gray.shape != render_gray.shape:
+        raise SystemExit(
+            f"render {render_gray.shape[::-1]} and real {real_gray.shape[::-1]} "
+            "must share one canvas (the pipeline composites both at the same "
+            "size); resize before scoring."
+        )
     H, W = real_gray.shape
     body = (int(regions["body"][0] * H), int(regions["body"][1] * H))
     dark_thresh = cfg.get("dark_thresh", 160.0)
@@ -472,8 +537,9 @@ def build_scorecard(args) -> dict:
     scorecard = {
         "merchant": cfg.get("merchant", "costco"),
         "date": time.strftime("%Y-%m-%d"),
-        "render": os.path.abspath(args.render),
-        "real": os.path.abspath(args.real),
+        "tool": "costco_gold.py",
+        "render": _repo_rel(args.render),
+        "real": _repo_rel(args.real),
         "canvas": [W, H],
         "glyphscore_root": args.glyphscore_root,
     }
@@ -525,7 +591,6 @@ def build_scorecard(args) -> dict:
     cap_real = duty_real * pitch_real if np.isfinite(pitch_real) else float("nan")
     cap_ratio = cap_render / cap_real if cap_real and np.isfinite(cap_real) else float("nan")
     pitch_ratio = pitch_render / pitch_real if pitch_real and np.isfinite(pitch_real) else float("nan")
-    interline_fill = duty_render  # duty cycle == glyph-height / pitch fill
     L0 = {
         "ink_ratio": _gate(ink_r, cfg["L0"]["ink_ratio"]),
         "fill_render": _gate(fill_render, cfg["L0"]["fill"]),
@@ -653,15 +718,58 @@ def build_scorecard(args) -> dict:
     scorecard["L3"] = L3
     scorecard["L4"] = L4
 
-    # overall rung cleared (first level that fails)
+    # overall rung cleared: first level that does not pass (fail vs incomplete)
     cleared = "L4-pass"
     for lvl in ("L0", "L1", "L2", "L3", "L4"):
-        if not scorecard[lvl].get("pass"):
-            cleared = f"{lvl}-fail"
-            break
+        p = scorecard[lvl].get("pass")
+        if p is True:
+            continue
+        cleared = f"{lvl}-{'incomplete' if p is None else 'fail'}"
+        break
     scorecard["overall_rung_cleared"] = cleared
     scorecard["elapsed_sec"] = round(time.time() - t_start, 1)
     return scorecard
+
+
+def _iter_gate_values(sc: dict):
+    """Yield (path, value) for every gated metric (dicts carrying a 'dir')."""
+    for lvl in ("L0", "L1", "L2", "L3", "L4"):
+        block = sc.get(lvl, {})
+        for name, g in block.items():
+            if isinstance(g, dict) and "dir" in g and isinstance(g.get("value"), (int, float)):
+                yield f"{lvl}.{name}", float(g["value"])
+
+
+def regression_report(current: dict, baseline: dict, cfg: dict) -> dict:
+    """CI gate: flag any metric that worsened by more than its ``reg``
+    threshold-width vs the committed baseline scorecard (GOLD_STANDARD Part 3).
+
+    "Worse" is direction-aware: for ``min`` gates a drop is worse, for ``max``
+    a rise is worse, for ``band`` any move away from target is worse.
+    """
+    base_vals = dict(_iter_gate_values(baseline))
+    regressions = []
+    for path, cur in _iter_gate_values(current):
+        if path not in base_vals:
+            continue
+        lvl, name = path.split(".", 1)
+        spec = cfg.get(lvl, {}).get(name, {})
+        reg = spec.get("reg")
+        if reg is None:
+            continue
+        d = spec.get("dir", "band")
+        base = base_vals[path]
+        if d == "min":
+            worse = base - cur
+        elif d == "max":
+            worse = cur - base
+        else:  # band: distance from target
+            t = spec.get("target", 0.0)
+            worse = abs(cur - t) - abs(base - t)
+        if worse > reg:
+            regressions.append({"metric": path, "baseline": base, "current": cur,
+                                "worsened_by": round(worse, 4), "reg_width": reg})
+    return {"regressions": regressions, "regressed": bool(regressions)}
 
 
 def main(argv=None) -> int:
@@ -678,17 +786,32 @@ def main(argv=None) -> int:
                     default=os.environ.get("GLYPHSCORE_ROOT", "/private/tmp/glyphscore"))
     ap.add_argument("--cache-dir",
                     default=os.path.join(tempfile.gettempdir(), "costco_gold_cache"))
+    ap.add_argument("--baseline",
+                    help="prior scorecard JSON; flag metrics that regressed by "
+                         "more than their reg threshold-width (CI gate). Exit 2 "
+                         "on regression.")
     args = ap.parse_args(argv)
 
     sc = build_scorecard(args)
-    text = json.dumps(sc, indent=2, sort_keys=False)
+    regressed = False
+    if args.baseline:
+        cfg = json.load(open(args.config))
+        baseline = json.load(open(args.baseline))
+        rep = regression_report(sc, baseline, cfg)
+        sc["regression"] = rep
+        regressed = rep["regressed"]
+        _log(f"regression check vs {args.baseline}: "
+             f"{len(rep['regressions'])} metric(s) regressed")
+
+    sc = _sanitize(sc)
+    text = json.dumps(sc, indent=2, sort_keys=False, allow_nan=False)
     if args.out:
         with open(args.out, "w") as fh:
             fh.write(text + "\n")
         _log(f"wrote {args.out}")
     print(text)
     _log(f"overall: {sc['overall_rung_cleared']} in {sc['elapsed_sec']}s")
-    return 0
+    return 2 if regressed else 0
 
 
 if __name__ == "__main__":

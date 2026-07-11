@@ -466,7 +466,16 @@ def _downsample2(im: np.ndarray) -> np.ndarray:
 
 
 def ms_ssim(a: np.ndarray, b: np.ndarray, levels: int = 5) -> float:
-    """Multi-scale SSIM (standard 5-scale weights) -- the metrics.py port."""
+    """Multi-scale SSIM, 5-scale standard weights.
+
+    NOTE: this is the ``metrics.py`` port used to produce the committed Costco
+    reference (raw MS-SSIM 0.32328...), so it is kept bit-faithful to that
+    implementation on purpose -- it uses the full SSIM-map mean at each scale
+    as the contrast-structure proxy rather than the textbook CS-only term.
+    Changing the formula would break the required reproduction of the gap
+    report's numbers. All powered components are clamped non-negative so a
+    negative SSIM cannot produce NaN via a fractional power.
+    """
     weights = np.array([0.0448, 0.2856, 0.3001, 0.2363, 0.1333])
     a = np.asarray(a, np.float64)
     b = np.asarray(b, np.float64)
@@ -479,10 +488,35 @@ def ms_ssim(a: np.ndarray, b: np.ndarray, levels: int = 5) -> float:
             a = _downsample2(a)
             b = _downsample2(b)
         else:
-            lssim = s.mean()
+            lssim = max(s.mean(), 1e-6)  # clamp: no NaN from a negative base
     mcs = np.array(mcs)
     val = np.prod(mcs ** weights[: levels - 1]) * (lssim ** weights[levels - 1])
     return float(val)
+
+
+def _levenshtein(a: str, b: str) -> int:
+    """Edit distance (ins/del/sub) between two strings."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1,
+                           prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def char_error_rate(ref: str, hyp: str) -> float:
+    """True character error rate: Levenshtein(ref, hyp) / len(ref)."""
+    if not ref:
+        return float("nan")
+    return _levenshtein(ref, hyp) / len(ref)
 
 
 def _tokens(lines: Sequence[dict], row_q: float = 25.0) -> list[str]:
@@ -526,9 +560,7 @@ def ocr_error_sets(gt: Sequence[str], real_lines, render_lines) -> dict:
     fok, fsubs = _align_subs(gt, ft)
 
     def cer(ref: Sequence[str], hyp: Sequence[str]) -> float:
-        a = "".join(ref)
-        b = "".join(hyp)
-        return 1.0 - SequenceMatcher(None, a, b).ratio()
+        return char_error_rate(" ".join(ref), " ".join(hyp))
 
     shared = set(rsubs) & set(fsubs)
     either = set(rsubs) | set(fsubs)
@@ -686,6 +718,7 @@ def piecewise_row_warp(
     render_gray = np.asarray(render_gray, np.float64)
     if len(anchors) < 2:
         return render_gray.copy(), float("inf")
+    Hr = render_gray.shape[0]  # clip source rows against the RENDER's height
     yr = np.array([a[0] for a in anchors], float)
     yf = np.array([a[1] for a in anchors], float)
     # linear-fit residual std (reported)
@@ -696,12 +729,12 @@ def piecewise_row_warp(
     # extend anchors to the edges, then interpolate a source-row map
     yr_e = np.concatenate([[0.0], yr, [H - 1.0]])
     yf_e = np.concatenate(
-        [[max(0.0, yf[0] - yr[0])], yf, [min(H - 1.0, yf[-1] + (H - 1 - yr[-1]))]]
+        [[max(0.0, yf[0] - yr[0])], yf, [min(Hr - 1.0, yf[-1] + (Hr - 1 - yr[-1]))]]
     )
     rows = np.arange(H)
     srcf = np.interp(rows, yr_e, yf_e)
-    f0 = np.clip(np.floor(srcf).astype(int), 0, H - 1)
-    f1 = np.clip(f0 + 1, 0, H - 1)
+    f0 = np.clip(np.floor(srcf).astype(int), 0, Hr - 1)
+    f1 = np.clip(f0 + 1, 0, Hr - 1)
     w1 = (srcf - f0)[:, None]
     warped = render_gray[f0] * (1 - w1) + render_gray[f1] * w1
     return warped, resid_std

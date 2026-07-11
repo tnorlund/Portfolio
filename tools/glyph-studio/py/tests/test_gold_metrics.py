@@ -196,6 +196,22 @@ def test_ocr_error_sets_parity():
     assert res["jaccard"] == pytest.approx(0.5)
 
 
+def test_char_error_rate():
+    assert gm.char_error_rate("HELLO", "HELLO") == pytest.approx(0.0)
+    # one substitution in a 5-char ref -> 0.2
+    assert gm.char_error_rate("HELLO", "HELLP") == pytest.approx(0.2)
+    # one deletion in a 4-char ref -> 0.25
+    assert gm.char_error_rate("ABCD", "ABD") == pytest.approx(0.25)
+
+
+def test_ms_ssim_no_nan_on_anticorrelated():
+    # anti-correlated images drive SSIM negative; must not return NaN
+    a = np.indices((32, 32)).sum(0) * 4.0
+    b = 255.0 - a
+    v = gm.ms_ssim(a, b)
+    assert np.isfinite(v)
+
+
 def test_glcm_contrast_flat_is_zero():
     g = np.full((20, 20), 100.0)
     assert gm.glcm_contrast(g) == pytest.approx(0.0)
