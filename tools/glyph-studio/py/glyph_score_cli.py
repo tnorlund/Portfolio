@@ -165,6 +165,7 @@ def cmd_build_ref(args) -> int:
     )
     pack: dict[str, list[np.ndarray]] = defaultdict(list)
     used = 0
+    skipped = 0
     for p in places:
         if used >= args.receipts:
             break
@@ -181,6 +182,9 @@ def cmd_build_ref(args) -> int:
                 f"  [vet] {p.image_id[:8]}#{p.receipt_id}: "
                 f"overlap={meta['ocr_overlap_score']} > {args.max_overlaps}"
             )
+            continue
+        if skipped < args.skip:
+            skipped += 1
             continue
         for ch, m in zip(chars, masks):
             pack[ch].append(m)
@@ -215,15 +219,21 @@ def _load_atlas(path: str) -> dict[str, np.ndarray]:
     }
 
 
-def _build_refs(args):
+def _build_refs(args, cohort: str = "single"):
+    """Cohort must match the candidates: "exemplar" for atlas glyphs
+    (median-voted, clean), "single" for render cells / letter crops."""
     pack = load_refpack(args.ref)
     if getattr(args, "anchor", None):
         anchors = _load_atlas(args.anchor)
-        refs = build_anchor_references(pack, anchors, max_shift=args.max_shift)
-        mode = "anchor"
+        refs = build_anchor_references(
+            pack, anchors, max_shift=args.max_shift, cohort=cohort
+        )
+        mode = f"anchor/{cohort}"
     else:
-        refs = build_self_references(pack, max_shift=args.max_shift)
-        mode = "self"
+        refs = build_self_references(
+            pack, max_shift=args.max_shift, cohort=cohort
+        )
+        mode = f"self/{cohort}"
     if not refs:
         raise SystemExit("no scorable chars (need >= "
                          f"{MIN_REF} crops per char)")
@@ -274,7 +284,7 @@ def _write(doc: dict, out: str | None) -> None:
 
 
 def cmd_score_atlas(args) -> int:
-    refs, mode = _build_refs(args)
+    refs, mode = _build_refs(args, cohort="exemplar")
     atlas = _load_atlas(args.atlas)
     instances = [
         (ch, normalize_glyph(g)) for ch, g in sorted(atlas.items())
@@ -581,6 +591,10 @@ def main(argv=None) -> int:
     b.add_argument("--merchant", required=True)
     b.add_argument("--slug", required=True)
     b.add_argument("--receipts", type=int, default=12)
+    b.add_argument(
+        "--skip", type=int, default=0,
+        help="skip the first N vetted receipts (held-out reference builds)",
+    )
     b.add_argument("--max-overlaps", type=int, default=2)
     b.add_argument("--table",
                    default=os.environ.get("DYNAMODB_TABLE_NAME",

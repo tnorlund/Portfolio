@@ -9,7 +9,7 @@ from glyphstudio.glyph_score import (
     anchor_similarity,
     build_anchor_references,
     build_self_references,
-    crop_similarity,
+    crop_exemplar,
     group_rollup,
     load_refpack,
     per_char_table,
@@ -87,11 +87,24 @@ def test_self_similarity_spread_is_tight_for_consistent_prints():
     assert d.min() > 0.5  # jittered copies of one shape agree strongly
 
 
-def test_crop_similarity_median_not_max():
+def test_crop_exemplar_recovers_letterform_from_noisy_prints():
     e = _letter_E()
-    stack = np.stack([e, _letter_O(), _letter_O()])  # one match, two misses
-    val = crop_similarity(e, stack)
-    assert val < 0.6  # median punishes matching only the outlier
+    ex = crop_exemplar(_stack(e, n=20))
+    # the vote cancels jitter noise: exemplar ~= the designed shape
+    from glyphstudio.typography import shifted_iou
+
+    assert shifted_iou(ex, e) > 0.8
+
+
+def test_self_mode_designed_font_beats_other_typeface():
+    # THE negative-control property (metric revision 1): the merchant's own
+    # designed glyph must outscore a different typeface's glyph against the
+    # merchant's crops — blur statistics must not trump letterform.
+    refs = build_self_references({"E": _stack(_letter_E(), n=16)})
+    own = score_glyph(refs["E"], _letter_E())
+    other = score_glyph(refs["E"], _letter_O())
+    assert own.raw > other.raw
+    assert own.pct > 0.3 > other.pct
 
 
 # --- self mode: the metric must separate same-face from different-face --------
