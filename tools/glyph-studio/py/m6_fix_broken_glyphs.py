@@ -44,8 +44,11 @@ import sys
 import numpy as np
 
 # per-cell vote overrides and demotions decided by the cached-sample sweep
-REMINT_VOTE = {"E": 0.30}          # recovers the missing bottom bar
-DEMOTE_TO_DONOR = ["e", "u", "V"]  # re-vote fails visual sanity -> borrow vons
+REMINT_VOTE = {"E": 0.30}               # recovers the missing bottom bar
+# e/u/V: re-vote fails visual sanity. D: absolute glyph-floor gate surfaced a
+# collapsed bowl (counter 0px) the review missed; re-vote does not recover a
+# clean counter, so demote it too. All borrow the clean vons donor cell.
+DEMOTE_TO_DONOR = ["e", "u", "V", "D"]
 
 
 def _load_bmg():
