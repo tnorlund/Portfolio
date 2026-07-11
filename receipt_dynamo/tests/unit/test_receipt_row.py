@@ -500,3 +500,21 @@ def test_item_to_receipt_row_rejects_foreign_keys(example_receipt_row, pk, sk):
         ValueError, match="Error converting item to ReceiptRow"
     ):
         item_to_receipt_row(item)
+
+
+@pytest.mark.unit
+def test_receipt_row_negative_member_line_ids_rejected():
+    """Members reference ReceiptLine.line_id, which is non-negative."""
+    with pytest.raises(ValueError, match="line_ids must be non-negative"):
+        ReceiptRow(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            row_id=0,
+            line_ids=[0, -1],
+            grouping_version="visual-rows-v1",
+            y_min=0.1,
+            y_max=0.2,
+            x_min=0.1,
+            x_max=0.9,
+            created_at=datetime(2026, 7, 10),
+        )

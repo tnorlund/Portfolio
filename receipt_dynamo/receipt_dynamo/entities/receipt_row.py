@@ -92,6 +92,9 @@ class ReceiptRow:
             for line_id in self.line_ids
         ):
             raise ValueError("line_ids must contain only integers")
+        if any(line_id < 0 for line_id in self.line_ids):
+            # Members reference ReceiptLine.line_id, which is non-negative.
+            raise ValueError("line_ids must be non-negative")
         if len(set(self.line_ids)) != len(self.line_ids):
             raise ValueError("line_ids must not contain duplicates")
         if self.row_id != self.line_ids[0]:

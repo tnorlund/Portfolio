@@ -3428,6 +3428,9 @@ async def update_section_status_impl(
             }
 
         old_status = existing.validation_status or "NONE"
+        # Mutate the fetched entity instead of rebuilding it so a
+        # status-only update preserves every other field (e.g. the
+        # optional row_ids row anchor) through the full-item put.
         updated = ReceiptSection(
             receipt_id=existing.receipt_id,
             image_id=existing.image_id,
@@ -3437,6 +3440,7 @@ async def update_section_status_impl(
             confidence=existing.confidence,
             model_source=existing.model_source,
             validation_status=normalized_status,
+            row_ids=existing.row_ids,
         )
         dynamo_client.update_receipt_section(updated)
 
