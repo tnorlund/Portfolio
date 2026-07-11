@@ -1,0 +1,60 @@
+{
+  "chart": "/private/tmp/claude-501/-Users-tnorlund-vegas-26/8e37906b-7da3-4cc8-b685-505d5d59c685/scratchpad/font_charts/626436-pixCrog.png",
+  "image_size": [
+    626,
+    436
+  ],
+  "cols": 17,
+  "n_bands": 12,
+  "n_glyph_rows": 6,
+  "first_code": 33,
+  "last_code": 126,
+  "glyph_count": 94,
+  "coverage": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+  "rows": [
+    {
+      "y_band": [
+        16,
+        45
+      ],
+      "chars": "!\"#$%&'()*+,-."
+    },
+    {
+      "y_band": [
+        72,
+        100
+      ],
+      "chars": "/0123456789:;<=>?"
+    },
+    {
+      "y_band": [
+        127,
+        154
+      ],
+      "chars": "@ABCDEFGHIJKLMNOP"
+    },
+    {
+      "y_band": [
+        181,
+        210
+      ],
+      "chars": "QRSTUVWXYZ[\\]^_`a"
+    },
+    {
+      "y_band": [
+        237,
+        265
+      ],
+      "chars": "bcdefghijklmnopqr"
+    },
+    {
+      "y_band": [
+        291,
+        320
+      ],
+      "chars": "stuvwxyz{|}~"
+    }
+  ],
+  "name": "pixCrog",
+  "npz": "/Users/tnorlund/Portfolio_rom_font/.out/rom-fonts/pixCrog.glyphs.npz"
+}
