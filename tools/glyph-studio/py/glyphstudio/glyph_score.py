@@ -42,9 +42,10 @@ from typing import Iterable, Mapping, Optional, Sequence
 import numpy as np
 
 from glyphstudio.family_cluster import normalize_glyph
-from glyphstudio.typography import _shift
+from glyphstudio.typography import _shift, connected_components
 
 __all__ = [
+    "segment_word_mask",
     "CharReference",
     "GlyphResult",
     "shifted_iou_stack",
@@ -358,6 +359,80 @@ def weighted_glyphscore(
         wsum += w
         vsum += w * r.pct
     return 100.0 * (vsum / wsum) if wsum > 0 else float("nan")
+
+
+# --- render word segmentation (pure mask logic; binarization is the caller's) ----
+
+
+def segment_word_mask(
+    mask: np.ndarray,
+    chars: str,
+    min_ink: int = 4,
+    snap_frac: float = 0.3,
+) -> Optional[list[np.ndarray]]:
+    """Split one rendered word's ink mask into per-character cell masks.
+
+    Grid renders are MONOSPACE, but connected components are useless for
+    them: dot-matrix glyphs shatter into many components while condensed
+    neighbors touch into one. So segment by pitch instead: divide the word's
+    ink extent into ``len(chars)`` equal cells, snapping each cut to the
+    lowest-ink column within +-``snap_frac`` of a pitch (the valley between
+    letters). Cells get SPECK-ONLY cleaning (drop components under
+    max(3 px, 2% of cell ink) — cut slivers and texture noise). The OCR-box
+    cleaner's edge-centroid rule is deliberately NOT applied here: a pitch
+    cell is tight around the glyph, so an 'L' whose left bar touches the
+    cell edge is the letter, not neighbor bleed.
+
+    Returns per-char cropped masks left-to-right, or None when the word
+    cannot be segmented (empty cell, sub-2px pitch): an unsegmentable word
+    must be skipped and counted, never guessed.
+    """
+    want = [c for c in chars if not c.isspace()]
+    m = np.asarray(mask, dtype=bool)
+    n = len(want)
+    if not n or not m.any():
+        return None
+    proj = m.sum(axis=0)
+    xs = np.where(proj > 0)[0]
+    x0, x1 = int(xs[0]), int(xs[-1])
+    pitch = (x1 - x0 + 1) / n
+    if n > 1 and pitch < 2.0:
+        return None
+    bounds = [x0]
+    for i in range(1, n):
+        nominal = x0 + i * pitch
+        w = max(1, int(round(pitch * snap_frac)))
+        lo = max(bounds[-1] + 1, int(round(nominal)) - w)
+        hi = min(x1, int(round(nominal)) + w + 1)
+        if lo >= hi:
+            cut = min(x1, max(bounds[-1] + 1, int(round(nominal))))
+        else:
+            cut = lo + int(np.argmin(proj[lo:hi]))
+        bounds.append(cut)
+    bounds.append(x1 + 1)
+    out: list[np.ndarray] = []
+    for a, b in zip(bounds, bounds[1:]):
+        cell = m[:, a:b]
+        if cell.size == 0 or int(cell.sum()) < min_ink:
+            return None
+        cleaned = _despeck(cell)
+        if int(cleaned.sum()) < min_ink:
+            return None
+        out.append(cleaned)
+    return out
+
+
+def _despeck(cell: np.ndarray) -> np.ndarray:
+    """Drop components smaller than max(3 px, 2% of ink) — the speck rule
+    from ``clean_letter_mask``, without its OCR-box edge heuristics."""
+    total = int(cell.sum())
+    floor = max(3, 0.02 * total)
+    comps = connected_components(cell)
+    keep = np.zeros_like(cell)
+    for c in comps:
+        if int(c.sum()) >= floor:
+            keep |= c
+    return keep if keep.any() else cell
 
 
 # --- refpack I/O -------------------------------------------------------------------

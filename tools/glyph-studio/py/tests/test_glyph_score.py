@@ -204,6 +204,80 @@ def test_weighted_glyphscore_instance_pooling_and_char_weights():
     assert np.isnan(weighted_glyphscore([]))
 
 
+# --- render word segmentation -----------------------------------------------------
+
+
+def _word_mask(glyphs, cell=36):
+    """Monospace word image: each glyph centered in a fixed-pitch cell —
+    the geometry the grid renderer actually produces."""
+    def crop(g):
+        ys, xs = np.where(g)
+        return g[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+    glyphs = [crop(g) for g in glyphs]
+    h = max(g.shape[0] for g in glyphs)
+    out = np.zeros((h, cell * len(glyphs)), bool)
+    for i, g in enumerate(glyphs):
+        x = i * cell + (cell - g.shape[1]) // 2
+        out[h - g.shape[0]:, x : x + g.shape[1]] = g
+    return out
+
+
+def test_segment_word_mask_splits_monospace_word():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    e, o = _letter_E(), _letter_O()
+    parts = segment_word_mask(_word_mask([e, o, e]), "EOE")
+    assert parts is not None and len(parts) == 3
+    # left-to-right assignment: middle cell is the O
+    assert np.array_equal(normalize_glyph(parts[1]), normalize_glyph(o))
+    assert np.array_equal(normalize_glyph(parts[0]), normalize_glyph(e))
+
+
+def test_segment_word_mask_keeps_stacked_parts_together():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    colon = np.zeros((32, 32), bool)
+    colon[6:10, 14:18] = True
+    colon[22:26, 14:18] = True
+    parts = segment_word_mask(_word_mask([_letter_E(), colon]), "E:")
+    assert parts is not None and len(parts) == 2
+    assert parts[1].sum() == colon.sum()
+
+
+def test_segment_word_mask_survives_shattered_dot_matrix_glyphs():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    # dot-matrix: punch holes so each glyph breaks into many components
+    def dotty(g):
+        out = g.copy()
+        out[::3, :] = False
+        return out
+
+    parts = segment_word_mask(
+        _word_mask([dotty(_letter_E()), dotty(_letter_O())]), "EO"
+    )
+    assert parts is not None and len(parts) == 2
+
+
+def test_segment_word_mask_splits_touching_condensed_letters():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    e = _letter_E()
+    parts = segment_word_mask(_word_mask([e, e], cell=30), "EE")
+    assert parts is not None and len(parts) == 2
+    assert abs(int(parts[0].sum()) - int(parts[1].sum())) < 0.2 * e.sum()
+
+
+def test_segment_word_mask_refuses_hopeless_input():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    assert segment_word_mask(np.zeros((8, 8), bool), "E") is None
+    # a 4-char word squeezed into 6 columns: pitch < 2
+    tiny = np.ones((8, 6), bool)
+    assert segment_word_mask(tiny, "ABCD") is None
+
+
 # --- refpack I/O -----------------------------------------------------------------
 
 
