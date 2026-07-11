@@ -1,27 +1,33 @@
 # Row Schema — materialized visual rows, row-granularity sections
 
 **Status:** row-anchoring amendment to FONT_INTELLIGENCE_EPIC.md (additive; no
-existing consumer changes behavior)
+existing consumer changes behavior); typography layer finalized per the
+typography pilot (PR #1106)
 **Depends on:** ReceiptSection v1 (canonical vocab + QA fields, merged M0/M1a-1/M1b)
-**Feeds:** StyleRun (typography-runs pilot), M1a-2 ingest wiring, Chroma lines
-metadata, embedding batch identity (task #19)
+**Feeds:** per-line typography map + typeface registry (PR #1106), M1a-2
+ingest wiring, Chroma lines metadata, embedding batch identity (task #19)
 
 ---
 
 ## 1. The hierarchy
 
 ```
-ReceiptLetter ── char-level crops; attribution to word/line (exists today)
+ReceiptLetter ─────────── char-level crops; attribution to word/line
+     │                    (exists today)
      │
-  StyleRun ───── contiguous same-style span within a row
-     │           [PLACEHOLDER — schema locks after the running typography
-     │            pilot reports within-row style variance; see §7]
+per-line typography map ─ per-receipt attribute item: line_id →
+  + typeface registry     {typeface, tier, underline, reverse_video,
+     │                     slant_deg, attribution, contaminated}, with
+     │                    typeface values referencing a per-merchant
+     │                    TYPEFACE REGISTRY
+     │                    (FINALIZED per typography pilot PR #1106 —
+     │                     replaces the earlier StyleRun placeholder; §7)
      │
-  ReceiptRow ─── one printed row; groups the OCR lines Vision split apart
-     │           (NEW — this amendment)
+  ReceiptRow ──────────── one printed row; groups the OCR lines Vision
+     │                    split apart (NEW — this amendment)
      │
-ReceiptSection ─ v2: row-granular via optional row_ids
-                 (AMENDED — additive; line_ids stays authoritative)
+ReceiptSection ────────── v2: row-granular via optional row_ids
+                          (AMENDED — additive; line_ids stays authoritative)
 ```
 
 The unit the font model renders is the *row* (one pass of the print head);
@@ -135,18 +141,30 @@ recompute in environments with streams).
 | M1a-2 ingest section wiring | sections at upload | none | write rows at ingest alongside sections |
 | LayoutLM / synthesis legs | sections | none | row-conditioned features and rendering units |
 
-## 7. Open questions for StyleRun (schema deliberately not locked)
+## 7. Typography layer — finalized by the pilot (PR #1106)
 
-- Does within-row style variance justify a run *entity*, or is a per-row
-  style summary (fields on ReceiptRow) enough? Pilot must report the rate of
-  multi-style rows (e.g. regular label + bold amount on one row).
-- Run identity: char-span within the row (stable under re-OCR?) vs word-id
-  list vs letter-id range.
-- Whether StyleRun keys under the row
-  (`...#ROW#{row_id:05d}#RUN#{n:02d}`) — natural if runs never cross rows;
-  the pilot should confirm runs don't span rows (double-height amounts?).
-- Attribution: ReceiptLetter → run assignment needs the letter-level
-  face/weight classifier output; confidence field mirrors ReceiptSection's.
+The typography pilot measured within-section style variance and settled the
+StyleRun placeholder (all numbers from PR #1106):
+
+- **Typography is orthogonal to semantic sections (confirmed).** 31 % of
+  VALID sections contain more than one typographic style — Sprouts
+  STOREFRONT is 12/12 multi-style while its ITEMS is nearly uniform (1/21
+  multi-style). Sections cannot be the style-carrying unit.
+- **No StyleRun entity.** Persist a compact **per-line typography attribute
+  item** per receipt — `line_id → {typeface, tier, underline,
+  reverse_video, slant_deg, attribution, contaminated}` — plus a
+  **per-merchant typeface registry**. Runs are a pure ~10-line derivation
+  from the per-line map; *storing* runs invites drift between stored spans
+  and the derivation, and per-line facts survive line regrouping — the same
+  durable-identity lesson that motivated ReceiptRow.
+- **Face-inventory corrections.** Wild Fork's suspected second face was
+  REFUTED — one body face plus size tiers; the earlier two-face signal
+  traced to traced-atlas weakness. Sprouts has 5 credible typefaces,
+  including a true-italic promo face.
+
+**Follow-up entity to spec: the per-merchant typeface registry** (identity
+and naming of typefaces, and how per-line `typeface` values reference
+registry entries).
 
 ## 8. Decision log
 
@@ -159,4 +177,4 @@ recompute in environments with streams).
 | Emptied sections | deleted (logged), not left stale | leaving them double-assigns lines because line_ids stays authoritative |
 | Grouping versioning | `grouping_version` string on the row | grouping algorithm changes mint distinguishable generations instead of corrupting identity |
 | Geometry summary | y-band + x-extent only | enough for section/band queries; full geometry lives on ReceiptLine |
-| StyleRun | placeholder | typography pilot (within-row style variance) reports first; don't lock a schema without the measurement |
+| Typography persistence | per-line typography map + per-merchant typeface registry; **no StyleRun entity** (PR #1106) | 31 % of VALID sections are multi-style, so sections can't carry style; runs are a pure derivation (storing them invites drift); per-line facts survive regrouping — same lesson as ReceiptRow |
