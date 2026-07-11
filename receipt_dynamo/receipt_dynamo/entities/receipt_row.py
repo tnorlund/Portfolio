@@ -109,9 +109,7 @@ class ReceiptRow:
 
         for name in ("y_min", "y_max", "x_min", "x_max"):
             value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(
-                value, (int, float)
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"{name} must be a number")
             if not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
@@ -135,8 +133,7 @@ class ReceiptRow:
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": (
-                    f"RECEIPT#{self.receipt_id:05d}#"
-                    f"ROW#{self.row_id:05d}"
+                    f"RECEIPT#{self.receipt_id:05d}#" f"ROW#{self.row_id:05d}"
                 )
             },
         }

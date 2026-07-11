@@ -112,9 +112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--limit", type=int, default=None, help="Process at most N receipts"
     )
-    parser.add_argument(
-        "--image-id", default=None, help="Only process this image_id"
-    )
+    parser.add_argument("--image-id", default=None, help="Only process this image_id")
     parser.add_argument(
         "--report-json",
         default=None,
@@ -312,9 +310,7 @@ def process_receipt(
                 + "\n"
             )
             continue
-        new_line_ids = sorted(
-            lid for rid in row_ids for lid in lines_by_row[rid]
-        )
+        new_line_ids = sorted(lid for rid in row_ids for lid in lines_by_row[rid])
         if new_line_ids != sorted(set(section.line_ids)):
             stats["sections_line_ids_changed"] += 1
         section.row_ids = row_ids
@@ -329,9 +325,7 @@ def process_receipt(
         current_ids = {r.row_id for r in row_entities}
         stale = [
             r
-            for r in client.get_receipt_rows_from_receipt(
-                image_id, receipt_id
-            )
+            for r in client.get_receipt_rows_from_receipt(image_id, receipt_id)
             if r.row_id not in current_ids
         ]
         if stale:
@@ -375,10 +369,7 @@ def main() -> int:
 
     client = DynamoClient(args.table)
 
-    cache_dir = Path(
-        args.cache_dir
-        or _REPO_ROOT / ".row_backfill_cache" / args.table
-    )
+    cache_dir = Path(args.cache_dir or _REPO_ROOT / ".row_backfill_cache" / args.table)
     cache_dir.mkdir(parents=True, exist_ok=True)
     straddle_path = cache_dir / "straddle_resolutions.jsonl"
 
@@ -386,9 +377,7 @@ def main() -> int:
     receipts = []
     last_key = None
     while True:
-        page, last_key = client.list_receipts(
-            limit=1000, last_evaluated_key=last_key
-        )
+        page, last_key = client.list_receipts(limit=1000, last_evaluated_key=last_key)
         receipts.extend(page)
         if last_key is None:
             break
@@ -410,10 +399,7 @@ def main() -> int:
 
     with open(straddle_path, "a", encoding="utf-8") as straddle_log:
         for i, receipt in enumerate(receipts, 1):
-            marker = (
-                cache_dir
-                / f"{receipt.image_id}_{receipt.receipt_id:05d}.json"
-            )
+            marker = cache_dir / f"{receipt.image_id}_{receipt.receipt_id:05d}.json"
             if marker.exists() and not args.force:
                 skipped += 1
                 continue
@@ -427,9 +413,7 @@ def main() -> int:
                 )
             except Exception as exc:  # noqa: BLE001 - keep the sweep going
                 failed += 1
-                print(
-                    f"  FAIL {receipt.image_id} r{receipt.receipt_id}: {exc}"
-                )
+                print(f"  FAIL {receipt.image_id} r{receipt.receipt_id}: {exc}")
                 continue
             processed += 1
             for key in (

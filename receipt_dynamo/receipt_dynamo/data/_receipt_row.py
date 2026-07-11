@@ -167,9 +167,7 @@ class _ReceiptRow(FlattenedStandardMixin):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ROW#{row_id:05d}"
-                    },
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ROW#{row_id:05d}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
             )

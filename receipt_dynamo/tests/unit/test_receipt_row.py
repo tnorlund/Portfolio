@@ -33,8 +33,7 @@ def test_receipt_row_init_valid(example_receipt_row):
     """Test that a ReceiptRow can be created with valid parameters."""
     assert example_receipt_row.receipt_id == 1
     assert (
-        example_receipt_row.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        example_receipt_row.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
     assert example_receipt_row.row_id == 5
     assert example_receipt_row.line_ids == [5, 6, 7]
@@ -492,9 +491,7 @@ def test_receipt_row_non_finite_geometry_rejected(bad):
         ),
     ],
 )
-def test_item_to_receipt_row_rejects_foreign_keys(
-    example_receipt_row, pk, sk
-):
+def test_item_to_receipt_row_rejects_foreign_keys(example_receipt_row, pk, sk):
     """Items with another entity's key shape must not decode as a row."""
     item = dict(example_receipt_row.to_item())
     item["PK"] = {"S": pk}
