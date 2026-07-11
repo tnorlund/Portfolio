@@ -29,8 +29,13 @@ from glyphstudio.family_cluster import glyph_iou, normalize_glyph
 __all__ = [
     "clean_letter_mask",
     "shifted_iou",
+    "attribution_ious",
     "line_attribution",
+    "per_char_medians",
+    "calibrated_deviation",
     "estimate_slant",
+    "line_slant",
+    "DIAGONAL_CHARS",
     "intra_line_overlap",
     "LineShape",
     "cluster_line_shapes",
@@ -147,6 +152,20 @@ def shifted_iou(a: np.ndarray, b: np.ndarray, max_shift: int = 2) -> float:
     return best
 
 
+def attribution_ious(
+    letters: Sequence[tuple[str, np.ndarray]],
+    atlas: dict[str, np.ndarray],
+    max_shift: int = 2,
+) -> list[tuple[str, float]]:
+    """Per-letter (char, shifted IoU vs atlas) for a line; skips chars the
+    atlas lacks."""
+    return [
+        (ch, shifted_iou(g, atlas[ch], max_shift))
+        for ch, g in letters
+        if ch in atlas
+    ]
+
+
 def line_attribution(
     letters: Sequence[tuple[str, np.ndarray]],
     atlas: dict[str, np.ndarray],
@@ -159,14 +178,49 @@ def line_attribution(
     the atlas are skipped. Returns (score, n_used); score None when fewer
     than ``min_letters`` usable letters (distributions, not n=1).
     """
-    vals = [
-        shifted_iou(g, atlas[ch], max_shift)
-        for ch, g in letters
-        if ch in atlas
-    ]
+    vals = [v for _, v in attribution_ious(letters, atlas, max_shift)]
     if len(vals) < min_letters:
         return None, len(vals)
     return float(median(vals)), len(vals)
+
+
+def per_char_medians(
+    ious: Sequence[tuple[str, float]], min_samples: int = 10
+) -> dict[str, float]:
+    """Median atlas-IoU per character over a merchant's whole vetted corpus.
+
+    The body face dominates every receipt, so this is each char's *body*
+    matching level — including the atlas's own per-char weaknesses (a traced
+    'e' that only ever hits 0.41, a '.' at 0.21). Raw line medians confuse
+    those weaknesses with typeface changes: 'Tender:' is built almost
+    entirely from weak chars and false-flagged as a second face until each
+    letter is judged against its own char's norm.
+    """
+    by_char: dict[str, list[float]] = {}
+    for ch, v in ious:
+        by_char.setdefault(ch, []).append(v)
+    return {
+        ch: float(median(vs))
+        for ch, vs in by_char.items()
+        if len(vs) >= min_samples
+    }
+
+
+def calibrated_deviation(
+    ious: Sequence[tuple[str, float]],
+    char_medians: dict[str, float],
+    min_letters: int = 4,
+) -> Optional[float]:
+    """Median per-letter deviation from each char's own corpus norm.
+
+    ~0 for body lines regardless of char mix; strongly negative when the
+    letterforms genuinely differ from the atlas. Chars without a corpus norm
+    are skipped. None when fewer than ``min_letters`` usable letters.
+    """
+    devs = [v - char_medians[ch] for ch, v in ious if ch in char_medians]
+    if len(devs) < min_letters:
+        return None
+    return float(median(devs))
 
 
 # --- slant / italic probe ---------------------------------------------------
@@ -208,9 +262,24 @@ def estimate_slant(
     return best_deg
 
 
-def line_slant(masks: Sequence[np.ndarray], min_glyphs: int = 3) -> Optional[float]:
-    """Median glyph slant over a line's cleaned (unnormalized) masks."""
-    vals = [estimate_slant(m) for m in masks]
+# Letterforms whose strokes are legitimately diagonal: a line of card-mask
+# X's "leans" ~14deg to the shear probe without any italic intent. Excluded
+# from line-level slant so the italic finding measures the typeface, not the
+# letter inventory.
+DIAGONAL_CHARS = set("AKMNRVWXYZkvwxyz/\\%*<>")
+
+
+def line_slant(
+    slants: Sequence[tuple[str, float]], min_glyphs: int = 3
+) -> Optional[float]:
+    """Median per-glyph slant over a line, from (char, slant_deg) pairs.
+
+    Skips ``DIAGONAL_CHARS`` and NaNs (glyphs too short to lean)."""
+    vals = [
+        s
+        for ch, s in slants
+        if ch not in DIAGONAL_CHARS and s == s  # NaN-safe
+    ]
     if len(vals) < min_glyphs:
         return None
     return float(median(vals))
@@ -444,6 +513,7 @@ def section_run_crosstab(
             {line_to_run[lid] for lid in s["line_ids"] if lid in line_to_run}
         )
         measured = [lid for lid in s["line_ids"] if lid in line_to_run]
+        styles = {runs[rid].style_key() for rid in run_ids}
         out.append(
             {
                 "section_type": s["section_type"],
@@ -454,7 +524,14 @@ def section_run_crosstab(
                 "typefaces": sorted(
                     {runs[rid].typeface for rid in run_ids}
                 ),
+                # multi_run: split across runs (includes being interrupted by
+                # a different-styled block). multi_style: the section itself
+                # contains >1 distinct (typeface, tier, underline, reverse)
+                # style — the direct "sections don't determine typography"
+                # evidence. multi_typeface: strongest form, >1 letterform set.
                 "multi_run": len(run_ids) > 1,
+                "n_styles": len(styles),
+                "multi_style": len(styles) > 1,
                 "multi_typeface": len({runs[rid].typeface for rid in run_ids})
                 > 1,
             }

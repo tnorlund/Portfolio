@@ -299,9 +299,36 @@ def test_section_run_crosstab():
         "n_runs": 1,
         "typefaces": ["T0"],
         "multi_run": False,
+        "n_styles": 1,
+        "multi_style": False,
         "multi_typeface": False,
     }
     assert xt[2]["n_measured"] == 0 and xt[2]["n_runs"] == 0
+
+
+def test_crosstab_multi_run_vs_multi_style():
+    # same style interrupted by another block: multi_run but NOT multi_style
+    lines = [
+        _line("T0", [1]),
+        _line("T1", [2], tier="large"),
+        _line("T0", [3]),
+    ]
+    runs = build_style_runs(lines)
+    xt = section_run_crosstab(
+        [{"section_type": "ITEMS", "line_ids": [1, 3]}], runs
+    )
+    assert xt[0]["multi_run"] and not xt[0]["multi_style"]
+
+
+def test_line_slant_skips_diagonal_chars():
+    from glyphstudio.typography import line_slant
+
+    pairs = [("X", 14.0), ("X", 15.0), ("X", 13.0), ("X", 14.0)]
+    assert line_slant(pairs) is None  # all-diagonal line: no verdict
+    upright = [("l", 0.0), ("t", 1.0), ("d", -1.0), ("X", 14.0)]
+    assert abs(line_slant(upright)) <= 1.0
+    nan = float("nan")
+    assert line_slant([("l", nan), ("t", nan), ("d", 0.0)]) is None
 
 
 # --- stylescan refactor: extracted grouping stays greedy-top-down ------------
