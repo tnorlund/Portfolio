@@ -43,6 +43,11 @@ for _p in (
         sys.path.insert(0, _p)
 
 from glyphstudio.family_cluster import normalize_glyph  # noqa: E402
+
+# The M3-canonical vetting metric (identical semantics to every prior vetted
+# run: groups words by rounded geometric y-center, deliberately NOT by OCR
+# line_id, so numbers stay comparable across epics). Imported, not duplicated.
+from m3_acceptance import ocr_overlap_score  # noqa: E402
 from glyphstudio.typography import (  # noqa: E402
     attribution_ious,
     clean_letter_mask,
@@ -58,26 +63,6 @@ DEFAULT_ROMS = [
     "bitMatrix-B2",
     "bitArray-A2",
 ]
-
-
-def ocr_overlap_score(words) -> int:
-    """Same-row word pairs whose x-intervals overlap >30% (M3 vetting)."""
-    rows: dict[float, list[tuple[float, float]]] = {}
-    for w in words:
-        bb = w.get("bbox") or ()
-        if len(bb) != 4:
-            continue
-        y_center = round((bb[1] + bb[3]) / 2000.0, 2)
-        x0, x1 = sorted((bb[0], bb[2]))
-        rows.setdefault(y_center, []).append((x0, x1))
-    bad = 0
-    for spans in rows.values():
-        spans.sort()
-        for (a0, a1), (b0, b1) in zip(spans, spans[1:]):
-            inter = min(a1, b1) - max(a0, b0)
-            if inter > 0.3 * min(a1 - a0, b1 - b0):
-                bad += 1
-    return bad
 
 
 # --- per-receipt crop extraction (cached) ------------------------------------
@@ -187,11 +172,12 @@ def compile_shipped_atlas(slug, out_dir):
     """Compile fonts/<slug> to a temp npz and normalize (shipped baseline)."""
     from glyphstudio.compile import main as compile_main
 
+    # always recompile: it is cheap, and reusing an existing npz would
+    # silently score a stale revision of fonts/<slug>
     npz = os.path.join(out_dir, f"_shipped_{slug}.glyphs.npz")
-    if not os.path.exists(npz):
-        compile_main(
-            [os.path.join(_ROOT, "tools", "glyph-studio", "fonts", slug), npz]
-        )
+    compile_main(
+        [os.path.join(_ROOT, "tools", "glyph-studio", "fonts", slug), npz]
+    )
     data = np.load(npz)
     return {
         chr(int(k[1:])): normalize_glyph(data[k])
@@ -345,7 +331,9 @@ def main(argv=None) -> int:
         )
         report["merchants"][name] = entry
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    parent = os.path.dirname(args.out)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)
     print(f"\nreport -> {args.out}")

@@ -124,6 +124,7 @@ def extract(chart: str, cols: int = COLS):
     offsets: dict[str, float] = {}
     next_code = FIRST_CODE
     row_report = []
+    started = False  # first inked cell seen (the leading pad is over)
     for (y0, y1) in glyph_rows:
         if next_code > LAST_CODE:
             break
@@ -133,7 +134,21 @@ def extract(chart: str, cols: int = COLS):
                 break
             res = _extract_cell(black, y0, y1, c, W, cols)
             if res is None:
-                continue  # empty cell: skip WITHOUT consuming a codepoint
+                # Only the leading pad of the right-aligned partial top row
+                # may be empty. Every printable ASCII glyph carries ink, so an
+                # interior empty cell means the black-mask threshold missed a
+                # glyph -- and silently skipping it would shift every
+                # subsequent codepoint (the Latin-1 tail would then backfill
+                # the count to a plausible-looking 94). Fail loudly instead.
+                if started:
+                    raise RuntimeError(
+                        f"empty cell at row band ({y0},{y1}) col {c} while "
+                        f"expecting {chr(next_code)!r} (0x{next_code:02x}): "
+                        "codepoint mapping would shift; chart layout or "
+                        "threshold mismatch"
+                    )
+                continue  # leading pad: skip WITHOUT consuming a codepoint
+            started = True
             ch = chr(next_code)
             row[c] = (ch, res[0], res[1])
             next_code += 1
@@ -158,6 +173,13 @@ def extract(chart: str, cols: int = COLS):
             }
         )
 
+    expected = LAST_CODE - FIRST_CODE + 1
+    if len(glyphs) != expected:
+        raise RuntimeError(
+            f"incomplete extraction: {len(glyphs)}/{expected} glyphs "
+            f"(missing {''.join(chr(c) for c in range(FIRST_CODE, LAST_CODE + 1) if chr(c) not in glyphs)!r}); "
+            "refusing to emit a partial atlas"
+        )
     meta = {
         "chart": os.path.abspath(chart),
         "image_size": [W, H],
@@ -176,7 +198,11 @@ def extract(chart: str, cols: int = COLS):
 def write_outputs(glyphs, offsets, meta, out_dir, name):
     os.makedirs(out_dir, exist_ok=True)
     payload = {f"c{ord(k)}": v for k, v in glyphs.items()}
-    payload.update({f"o{ord(k)}": np.int16(v) for k, v in offsets.items()})
+    # round-half-away instead of int16 truncation: an even cap count medians
+    # to x.5 and truncation would bias those glyphs up a pixel
+    payload.update(
+        {f"o{ord(k)}": np.int16(round(v)) for k, v in offsets.items()}
+    )
     npz_path = os.path.join(out_dir, f"{name}.glyphs.npz")
     np.savez_compressed(npz_path, **payload)
 

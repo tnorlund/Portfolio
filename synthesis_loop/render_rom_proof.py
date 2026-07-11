@@ -100,7 +100,7 @@ def main(argv=None) -> int:
     rec = next((r for r in d.receipts if str(r.receipt_id) == str(args.receipt)), None)
     if rec is None:
         raise SystemExit(f"receipt {args.receipt} not in image {args.image}")
-    ws = [w for w in d.receipt_words if w.receipt_id == args.receipt]
+    ws = [w for w in d.receipt_words if str(w.receipt_id) == str(args.receipt)]
     words = [
         {
             "text": w.text,
@@ -144,14 +144,22 @@ def main(argv=None) -> int:
 
     # REAL panel
     real = None
+    last_err = None
     for bkt, key in [(rec.cdn_s3_bucket, rec.cdn_s3_key), (rec.raw_s3_bucket, rec.raw_s3_key)]:
         if not bkt or not key:
             continue
         try:
             real = Image.open(BytesIO(s3.get_object(Bucket=bkt, Key=key)["Body"].read())).convert("RGB")
             break
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            last_err = e
             continue
+    if real is None:
+        raise SystemExit(
+            f"could not fetch the REAL scan for {args.image}#{args.receipt} "
+            f"(last error: {last_err or 'no s3 keys on record'}); "
+            "refusing to emit a proof without the REAL panel"
+        )
 
     # compose at matched panel height
     wd = 380
@@ -169,7 +177,9 @@ def main(argv=None) -> int:
         cv.paste(im, (x, 34))
         dd.text((x, 12), t, fill=(200, 0, 0))
         x += wd + 20
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    parent = os.path.dirname(args.out)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     cv.save(args.out)
     print(f"{args.merchant} {args.image}:{args.receipt} -> {args.out}")
     for t, p in [("current", args.out + ".current.png"), ("rom", args.out + ".rom.png")]:
