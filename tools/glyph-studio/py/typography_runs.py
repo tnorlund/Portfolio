@@ -76,7 +76,11 @@ DEFAULT_MERCHANTS = ["Wild Fork:wildfork", "Sprouts Farmers Market:sprouts"]
 # 'Tender:'); per-RECEIPT because absolute IoU is resolution-sensitive (a
 # 9px-cap Sprouts scan medians ~0.42 where a 28px one medians ~0.52).
 REL_DELTA = 0.12
-CLUSTER_THRESHOLD = 0.45
+# Line-pair linking threshold, calibrated on the known-answer split: at 0.45
+# single-linkage chains Sprouts' serif FARMERS MARKET onto the italic promo
+# face through 0.47-0.50 cross-face pairs; at 0.50 they separate exactly
+# (intra-face pairs run 0.47-0.80, cross-face 0.34-0.52).
+CLUSTER_THRESHOLD = 0.50
 CONTAMINATION_MAX = 0.20  # intra-line box-overlap fraction above this = flag
 MIN_LETTERS = 4
 ITALIC_DEG = 8.0  # |line slant| >= this counts as a true italic candidate
@@ -85,6 +89,9 @@ VIZ_COLORS = {
     "T1": (220, 40, 40),
     "T2": (30, 80, 220),
     "T3": (160, 40, 200),
+    "T4": (0, 150, 170),
+    "T5": (150, 90, 20),
+    "T6": (200, 30, 120),
     "T?": (240, 150, 0),
     "X": (120, 120, 120),
 }
@@ -225,33 +232,59 @@ def _extract_receipt(client, merchant: str, image_id: str, receipt_id: int):
     return meta, masks, mask_line_idx, mask_chars, mask_slants
 
 
+# Bump when extraction output changes (cleaning, grouping, slant, meta keys):
+# stale caches must re-extract, not silently reproduce old findings.
+CACHE_SCHEMA = 2
+
+
 def load_or_extract(client, merchant, slug, image_id, receipt_id, cache_dir):
     os.makedirs(cache_dir, exist_ok=True)
     path = os.path.join(cache_dir, f"{slug}_{image_id}_{receipt_id}.npz")
     if os.path.exists(path):
-        d = np.load(path, allow_pickle=False)
-        return (
-            json.loads(str(d["meta"])),
-            d["masks"].astype(bool),
-            d["line_idx"].tolist(),
-            [str(c) for c in d["chars"]],
-            d["slants"].tolist(),
-        )
+        try:
+            d = np.load(path, allow_pickle=False)
+            meta = json.loads(str(d["meta"]))
+            if meta.get("cache_schema") == CACHE_SCHEMA:
+                return (
+                    meta,
+                    d["masks"].astype(bool),
+                    d["line_idx"].tolist(),
+                    [str(c) for c in d["chars"]],
+                    d["slants"].tolist(),
+                )
+            print(
+                f"  [cache] {os.path.basename(path)}: schema "
+                f"{meta.get('cache_schema')} != {CACHE_SCHEMA}, re-extracting",
+                file=sys.stderr,
+            )
+        except Exception as e:  # noqa: BLE001 - truncated/corrupt = miss
+            print(
+                f"  [cache] {os.path.basename(path)} unreadable ({e}), "
+                "re-extracting",
+                file=sys.stderr,
+            )
+        os.remove(path)
     meta, masks, line_idx, chars, slants = _extract_receipt(
         client, merchant, image_id, receipt_id
     )
-    np.savez_compressed(
-        path,
-        meta=json.dumps(meta),
-        masks=(
-            np.stack(masks).astype(bool)
-            if masks
-            else np.zeros((0, 32, 32), bool)
-        ),
-        line_idx=np.array(line_idx, dtype=np.int32),
-        chars=np.array(chars, dtype="U1"),
-        slants=np.array(slants, dtype=np.float32),
-    )
+    meta["cache_schema"] = CACHE_SCHEMA
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as fh:  # atomic publish: a killed run can't leave
+        np.savez_compressed(  # a half-written npz behind
+            fh,
+            meta=json.dumps(meta),
+            masks=(
+                np.stack(masks).astype(bool)
+                if masks
+                else np.zeros((0, 32, 32), bool)
+            ),
+            line_idx=np.array(line_idx, dtype=np.int32),
+            chars=np.array(chars, dtype="U1"),
+            slants=np.array(slants, dtype=np.float32),
+        )
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
     return meta, masks, line_idx, chars, slants
 
 
@@ -298,9 +331,7 @@ def analyze_merchant(receipts, atlas, args):
             if line["contamination"] <= args.contamination:
                 corpus_ious.extend(rec["per_line_ious"].get(line["index"], []))
         rec["per_line_slant"] = per_line_slant
-    char_med = per_char_medians(corpus_ious)
-
-    # pass 2: per-line attribution (raw + char-calibrated, receipt-centered)
+    # pass 2: per-line attribution (raw + slant, char_med-independent)
     for rec in receipts:
         meta = rec["meta"]
         for line in meta["lines"]:
@@ -313,36 +344,58 @@ def analyze_merchant(receipts, atlas, args):
                 if len(vals) >= args.min_letters
                 else None
             )
-            dev = calibrated_deviation(
-                ious, char_med, min_letters=args.min_letters
-            )
-            line["attr_dev"] = round(dev, 4) if dev is not None else None
             sl = line_slant(rec["per_line_slant"].get(line["index"], []))
             line["slant_deg"] = round(sl, 1) if sl is not None else None
             line["contaminated"] = line["contamination"] > args.contamination
             all_lines.append((rec, line, letters))
-        # receipt centering (see REL_DELTA)
-        devs = [
-            l["attr_dev"]
-            for l in meta["lines"]
-            if l["attr_dev"] is not None and not l["contaminated"]
-        ]
-        rec_med = float(np.median(devs)) if devs else None
-        for line in meta["lines"]:
-            line["attr_dev_rel"] = (
-                round(line["attr_dev"] - rec_med, 4)
-                if line["attr_dev"] is not None and rec_med is not None
-                else None
-            )
 
-    # discovery: cluster the poorly-attributed, uncontaminated lines
-    cand = [
-        (rec, line, letters)
-        for rec, line, letters in all_lines
-        if line["attr_dev_rel"] is not None
-        and line["attr_dev_rel"] < -args.rel_delta
-        and not line["contaminated"]
+    def _score(char_med):
+        """Char-calibrated deviations + receipt centering + candidates."""
+        for rec in receipts:
+            meta = rec["meta"]
+            for line in meta["lines"]:
+                dev = calibrated_deviation(
+                    rec["per_line_ious"].get(line["index"], []),
+                    char_med,
+                    min_letters=args.min_letters,
+                )
+                line["attr_dev"] = round(dev, 4) if dev is not None else None
+            devs = [
+                l["attr_dev"]
+                for l in meta["lines"]
+                if l["attr_dev"] is not None and not l["contaminated"]
+            ]
+            rec_med = float(np.median(devs)) if devs else None
+            for line in meta["lines"]:
+                line["attr_dev_rel"] = (
+                    round(line["attr_dev"] - rec_med, 4)
+                    if line["attr_dev"] is not None and rec_med is not None
+                    else None
+                )
+        return [
+            (rec, line, letters)
+            for rec, line, letters in all_lines
+            if line["attr_dev_rel"] is not None
+            and line["attr_dev_rel"] < -args.rel_delta
+            and not line["contaminated"]
+        ]
+
+    # discovery: cluster the poorly-attributed, uncontaminated lines.
+    # Two rounds: char norms first include every uncontaminated line, then
+    # the first round's candidates are dropped and norms recomputed, so a
+    # display face that prints a char often (Sprouts' address digits) can't
+    # pull that char's "body" norm toward itself and hide.
+    cand = _score(per_char_medians(corpus_ious))
+    cand_line_ids = {id(line) for _, line, _ in cand}
+    corpus2 = [
+        iou
+        for rec in receipts
+        for l in rec["meta"]["lines"]
+        if id(l) not in cand_line_ids
+        and l["contamination"] <= args.contamination
+        for iou in rec["per_line_ious"].get(l["index"], [])
     ]
+    cand = _score(per_char_medians(corpus2))
     shapes = []
     for rec, line, letters in cand:
         key = f"{rec['meta']['image_id'][:8]}#{rec['meta']['receipt_id']}:{line['index']}"

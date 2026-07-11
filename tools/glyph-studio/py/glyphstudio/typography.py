@@ -103,8 +103,11 @@ def clean_letter_mask(mask: np.ndarray) -> np.ndarray:
     - drop flat full-width components (<=2 px tall, >=85% of crop width:
       underline / separator-rule fragments).
 
-    The largest component is always kept, and vertically stacked parts
-    (i/j dots, colons) survive because their x-centroid is central.
+    Vertically stacked parts (i/j dots, colons) survive because their
+    x-centroid is central. If EVERY component is disqualified (a lone dash
+    filling the crop, a single letter hugging the edge of a tight box) the
+    largest is kept — an empty mask helps nobody — but a rule fragment that
+    happens to out-weigh the letter no longer gets a free pass.
     """
     m = np.asarray(mask, dtype=bool)
     if not m.any():
@@ -112,26 +115,40 @@ def clean_letter_mask(mask: np.ndarray) -> np.ndarray:
     h, w = m.shape
     comps = connected_components(m)
     total = int(m.sum())
-    best = max(comps, key=lambda c: int(c.sum()))
     keep = np.zeros_like(m)
     for c in comps:
-        if c is not best:
-            n = int(c.sum())
-            ys, xs = np.where(c)
-            cx = float(xs.mean()) / max(1, w - 1)
-            ch = ys.max() - ys.min() + 1
-            cw = xs.max() - xs.min() + 1
-            if n < max(3, 0.02 * total):
-                continue
-            if cx < 0.12 or cx > 0.88:
-                continue
-            if ch <= 2 and cw >= 0.85 * w:
-                continue
+        n = int(c.sum())
+        ys, xs = np.where(c)
+        cx = float(xs.mean()) / max(1, w - 1)
+        ch = ys.max() - ys.min() + 1
+        cw = xs.max() - xs.min() + 1
+        if n < max(3, 0.02 * total):
+            continue
+        if cx < 0.12 or cx > 0.88:
+            continue
+        if ch <= 2 and cw >= 0.85 * w:
+            continue
         keep |= c
+    if not keep.any():
+        keep = max(comps, key=lambda c: int(c.sum()))
     return keep
 
 
 # --- attribution -----------------------------------------------------------
+
+
+def _shift(mask: np.ndarray, dy: int, dx: int) -> np.ndarray:
+    """Translate a boolean mask, zero-filling exposed pixels (no wrap:
+    normalized glyphs touch the canvas edges, so ``np.roll`` would smuggle
+    edge ink onto the opposite side and fake intersections)."""
+    out = np.zeros_like(mask)
+    h, w = mask.shape
+    ys0, ys1 = max(0, dy), min(h, h + dy)
+    xs0, xs1 = max(0, dx), min(w, w + dx)
+    out[ys0:ys1, xs0:xs1] = mask[
+        max(0, -dy) : min(h, h - dy), max(0, -dx) : min(w, w - dx)
+    ]
+    return out
 
 
 def shifted_iou(a: np.ndarray, b: np.ndarray, max_shift: int = 2) -> float:
@@ -145,10 +162,8 @@ def shifted_iou(a: np.ndarray, b: np.ndarray, max_shift: int = 2) -> float:
     bb = np.asarray(b, dtype=bool)
     aa = np.asarray(a, dtype=bool)
     for dy in range(-max_shift, max_shift + 1):
-        rolled_y = np.roll(aa, dy, axis=0)
         for dx in range(-max_shift, max_shift + 1):
-            s = np.roll(rolled_y, dx, axis=1)
-            best = max(best, glyph_iou(s, bb))
+            best = max(best, glyph_iou(_shift(aa, dy, dx), bb))
     return best
 
 
@@ -289,23 +304,28 @@ def line_slant(
 
 
 def intra_line_overlap(boxes: Sequence[tuple[float, float, float, float]]) -> float:
-    """Fraction of a line's letter boxes that overlap a neighbor by >30%.
+    """Fraction of a line's letter boxes whose x-span overlaps ANY other
+    box on the line by >30% (of the smaller box).
 
     Overlap-contaminated regions (the Sprouts wordmark double-strike) stamp
     letter boxes on top of each other; their crops are unusable for shape
     attribution and must be flagged EXPLICITLY, not silently misattributed.
-    Boxes are (x0, y0, x1, y1).
+    Boxes are (x0, y0, x1, y1). All pairs are checked (double-strike passes
+    are not adjacent after sorting), and both members of a bad pair count.
     """
     if len(boxes) < 2:
         return 0.0
-    spans = sorted((min(b[0], b[2]), max(b[0], b[2])) for b in boxes)
-    bad = 0
-    for (a0, a1), (b0, b1) in zip(spans, spans[1:]):
-        inter = min(a1, b1) - max(a0, b0)
-        smaller = min(a1 - a0, b1 - b0)
-        if smaller > 0 and inter > 0.3 * smaller:
-            bad += 1
-    return bad / (len(boxes) - 1)
+    spans = [(min(b[0], b[2]), max(b[0], b[2])) for b in boxes]
+    bad = [False] * len(spans)
+    for i in range(len(spans)):
+        for j in range(i + 1, len(spans)):
+            a0, a1 = spans[i]
+            b0, b1 = spans[j]
+            inter = min(a1, b1) - max(a0, b0)
+            smaller = min(a1 - a0, b1 - b0)
+            if smaller > 0 and inter > 0.3 * smaller:
+                bad[i] = bad[j] = True
+    return sum(bad) / len(spans)
 
 
 # --- within-merchant typeface discovery -------------------------------------
@@ -461,12 +481,14 @@ def build_style_runs(lines: Sequence[dict]) -> list[StyleRun]:
 
     ``lines`` are visual-line records in top-to-bottom order with keys
     ``typeface``, ``tier``, ``underline``, ``reverse_video``, ``line_ids``.
-    Lines with typeface None (too few letters to attribute) are transparent:
-    they don't break a run and belong to no run.
+    Lines with typeface None (too few letters to attribute) or ``"X"``
+    (overlap-contaminated — excluded, never attributed) are transparent:
+    they don't break a run and belong to no run, so they can't fabricate
+    multi-style sections in the crosstab.
     """
     runs: list[StyleRun] = []
     for idx, l in enumerate(lines):
-        if l.get("typeface") is None:
+        if l.get("typeface") in (None, "X"):
             continue
         key = (
             l["typeface"],

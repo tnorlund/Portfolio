@@ -97,6 +97,23 @@ def test_clean_mask_drops_rule_fragment():
     assert cleaned[2:16, 12:18].all()
 
 
+def test_clean_mask_drops_rule_even_when_largest():
+    # a wide underline out-weighing a small letter must still be removed
+    m = np.zeros((20, 60), bool)
+    m[6:14, 28:33] = True  # small letter (40 px)
+    m[17:19, :] = True  # heavy rule (120 px, the largest component)
+    cleaned = clean_letter_mask(m)
+    assert not cleaned[17:19].any()
+    assert cleaned[6:14, 28:33].all()
+
+
+def test_clean_mask_lone_dash_survives():
+    # a '-' crop IS one flat wide component; the fallback must keep it
+    m = np.zeros((6, 20), bool)
+    m[2:4, 1:19] = True
+    assert clean_letter_mask(m).sum() == m.sum()
+
+
 def test_clean_mask_keeps_largest_even_at_edge():
     m = np.zeros((10, 10), bool)
     m[:, :2] = True  # only component, at the edge
@@ -113,9 +130,24 @@ def test_clean_mask_empty():
 
 def test_shifted_iou_forgives_jitter():
     a = normalize_glyph(block_H())
-    b = np.roll(a, 2, axis=1)
+    b = np.zeros_like(a)
+    b[:, 2:] = a[:, :-2]  # true translation (zero-filled), not a roll
     assert shifted_iou(a, b, max_shift=2) == 1.0
     assert shifted_iou(a, b, max_shift=0) < 1.0
+
+
+def test_shifted_iou_does_not_wrap():
+    # ink hugging opposite edges: a wrap-around "shift" would overlay them
+    # and fake a match; a zero-filling shift must not.
+    a = np.zeros((8, 8), bool)
+    a[:, :2] = True  # left edge bar
+    b = np.zeros((8, 8), bool)
+    b[:, -2:] = True  # right edge bar
+    assert shifted_iou(a, b, max_shift=2) == 0.0
+    # sanity: the same bar 2px away IS matched via genuine translation
+    c = np.zeros((8, 8), bool)
+    c[:, 2:4] = True
+    assert shifted_iou(a, c, max_shift=2) == 1.0
 
 
 def test_line_attribution_scores_and_gate():
@@ -174,6 +206,31 @@ def test_intra_line_overlap():
     stamped = [(0, 0, 10, 20), (2, 0, 12, 20), (4, 0, 14, 20)]
     assert intra_line_overlap(stamped) == 1.0
     assert intra_line_overlap(clean[:1]) == 0.0
+
+
+def test_intra_line_overlap_counts_boxes_not_pairs():
+    # one double-struck pair among four boxes: BOTH members count -> 2/4
+    boxes = [(0, 0, 10, 20), (1, 0, 11, 20), (20, 0, 30, 20), (40, 0, 50, 20)]
+    assert intra_line_overlap(boxes) == 0.5
+    # nested box overlaps its container even when not sort-adjacent
+    nested = [(0, 0, 30, 20), (10, 0, 12, 20), (32, 0, 40, 20)]
+    assert intra_line_overlap(nested) == pytest.approx(2 / 3)
+
+
+def test_per_char_medians_and_calibrated_deviation():
+    from glyphstudio.typography import calibrated_deviation, per_char_medians
+
+    ious = [("e", 0.4)] * 10 + [("A", 0.6)] * 10 + [("q", 0.5)] * 3
+    med = per_char_medians(ious, min_samples=10)
+    assert med == {"e": 0.4, "A": 0.6}  # q lacks support
+    # a weak-char-heavy line at its chars' norms deviates ~0, not negative
+    line = [("e", 0.4), ("e", 0.41), ("A", 0.6), ("e", 0.39)]
+    assert abs(calibrated_deviation(line, med)) < 0.02
+    # genuinely alien letterforms deviate hard
+    alien = [("e", 0.15), ("e", 0.12), ("A", 0.2), ("e", 0.18)]
+    assert calibrated_deviation(alien, med) < -0.2
+    # unknown chars are skipped; too few knowns -> None
+    assert calibrated_deviation([("q", 0.5)] * 8, med) is None
 
 
 # --- discovery clustering ----------------------------------------------------
@@ -273,6 +330,21 @@ def test_build_style_runs_groups_and_gaps():
         ("T0", [7]),
     ]
     assert runs[3].underline is True
+
+
+def test_contaminated_lines_transparent_to_runs_and_crosstab():
+    lines = [
+        _line("T0", [1]),
+        _line("X", [2]),  # contaminated: excluded, never attributed
+        _line("T0", [3]),
+    ]
+    runs = build_style_runs(lines)
+    assert [(r.typeface, r.line_ids) for r in runs] == [("T0", [1, 3])]
+    xt = section_run_crosstab(
+        [{"section_type": "ADDRESS", "line_ids": [1, 2, 3]}], runs
+    )
+    assert not xt[0]["multi_style"] and not xt[0]["multi_typeface"]
+    assert xt[0]["n_measured"] == 2  # the X line is not "measured"
 
 
 def test_section_run_crosstab():
