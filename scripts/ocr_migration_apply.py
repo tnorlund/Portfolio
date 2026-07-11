@@ -219,13 +219,25 @@ def plan_label_moves(
     # images with repeated labels, e.g. many ADDRESS_LINE rows).
     taken: set[tuple[tuple[int, int, int], str]] = set()
 
+    # PASS 1 — finalize all MOVES first so their (word, label) slots are
+    # claimed before any park chooses a landing spot. (A park's all-consumed
+    # fallback may land on a move's word; if the park ran first it could claim
+    # the same (word, label) a later move needs -> duplicate PK/SK.)
+    for okey in labeled_keys:
+        if okey not in matched:
+            continue
+        rows = old_labels[okey]
+        for row in rows:
+            lab = str(row.get("label", ""))
+            plan.moves.append(LabelMove(okey, matched[okey], row, lab))
+            taken.add((matched[okey], lab))
+
+    # PASS 2 — parks.
     for okey in labeled_keys:
         rows = old_labels[okey]
         labels_here = [str(row.get("label", "")) for row in rows]
         if okey in matched:
-            for row, lab in zip(rows, labels_here):
-                plan.moves.append(LabelMove(okey, matched[okey], row, lab))
-                taken.add((matched[okey], lab))
+            pass  # handled in pass 1
         else:
             # PARK: nearest word (unconsumed first) whose (word, label) slots
             # are all free. Consume it so parked labels spread out instead of

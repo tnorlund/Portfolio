@@ -460,14 +460,25 @@ def snapshot_local_table(
     """
     client = cache._robust_local_dynamo_client(endpoint_url, region)
     writer = cache.DynamoSQLiteWriter(out_path)
-    stats = cache._scan_segment(
-        client=client,
-        table_name=table_name,
-        segment=0,
-        total_segments=1,
-        consistent_read=True,
-        writer=writer,
-    )
+    # Own scan loop with a modest page Limit: DynamoDB Local's Scan can throw
+    # InternalFailure on large pages after heavy write churn; small pages are
+    # reliable (per-partition Queries never exhibited the failure).
+    kwargs: dict[str, Any] = {
+        "TableName": table_name,
+        "ConsistentRead": True,
+        "Limit": 250,
+    }
+    pages = scanned = 0
+    while True:
+        resp = client.scan(**kwargs)
+        writer.add(resp.get("Items", []))
+        pages += 1
+        scanned += int(resp.get("ScannedCount", 0))
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
+        kwargs["ExclusiveStartKey"] = lek
+    stats = {"pages": pages, "scanned": scanned}
     writer.finalize(
         {
             "source": "dynamodb-local",
