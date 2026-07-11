@@ -57,3 +57,34 @@ def test_target_department_headers_use_section_header_style():
         "bold": True,
         "underline": False,
     }
+
+
+def test_smiths_row_classification_sections():
+    # M6 cold-start pilot: only the sections whose measured face departs from
+    # body are classified (storefront bold 1.27x, footer 1.10x).
+    assert classify_row("Smith's", "smiths") == "store_header"
+    assert classify_row("FRESH FOR EVERYONE.", "smiths") == "store_header"
+    assert classify_row("EVERYONE-.", "smiths") == "store_header"
+    assert classify_row("Fuel Points Earned Today: 10", "smiths") == "footer"
+    assert classify_row("Your cashier was SANJA", "smiths") == "footer"
+    assert classify_row("RECALL NOTICE", "smiths") == "footer"
+    # body sections deliberately fall through (measured body-normal)
+    assert classify_row("SNLK SSM OIL 4.99 F", "smiths") == "other"
+
+
+def test_smiths_store_header_style_is_bold_scaled():
+    stylemap = {
+        "source": {"merchant": "smiths"},
+        "sections": {
+            "store_header": {
+                "sizeScale": 1.265,
+                "weight": "bold",
+                "underline": False,
+            }
+        },
+    }
+    assert row_style(stylemap, "FRESH FOR EVERYONE.") == {
+        "scale": 1.265,
+        "bold": True,
+        "underline": False,
+    }

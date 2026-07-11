@@ -1,0 +1,60 @@
+{
+ "version": 1,
+ "source": {
+  "merchant": "smiths",
+  "receipts": 10,
+  "date": "2026-07-10",
+  "method": "M6 cold-start: stylescan measurements aggregated per QA'd ReceiptSection"
+ },
+ "sections": {
+  "store_header": {
+   "sizeScale": 1.265,
+   "weight": "bold",
+   "underline": false,
+   "underlineRate": 0.038,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.265, stroke_rel 1.358 (bold), n=26 lines / 10 receipts. ok"
+  },
+  "footer": {
+   "sizeScale": 1.105,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.029,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.105, stroke_rel 1.181 (semibold), n=35 lines / 8 receipts. ok"
+  },
+  "item": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 1.0 (normal), n=136 lines / 10 receipts. ok"
+  },
+  "address": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 0.992 (normal), n=18 lines / 10 receipts. ok"
+  },
+  "payment": {
+   "sizeScale": 1.027,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.013,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.027, stroke_rel 0.955 (normal), n=76 lines / 10 receipts. ok"
+  },
+  "summary": {
+   "sizeScale": 0.919,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 0.919, stroke_rel 0.935 (normal), n=5 lines / 4 receipts. ok"
+  },
+  "total_line": {
+   "sizeScale": 1.0,
+   "weight": "normal",
+   "underline": false,
+   "underlineRate": 0.0,
+   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 1.037 (normal), n=6 lines / 5 receipts. ok"
+  }
+ }
+}
