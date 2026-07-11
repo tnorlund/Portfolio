@@ -692,13 +692,21 @@ def _query_partition(client: Any, table_name: str, pk: str) -> list[dict[str, An
 
 
 def _batch_write(client: Any, table_name: str, requests: list[dict[str, Any]]) -> None:
+    """Chunked batch_write_item with EXPONENTIAL BACKOFF on UnprocessedItems.
+
+    Under sustained load (a 370k-row restore) DynamoDB keeps shedding items;
+    immediate re-submits never let it drain — the retry loop must back off.
+    """
+    import time as _time
+
     for i in range(0, len(requests), 25):
         chunk = {table_name: requests[i : i + 25]}
-        for _ in range(8):
+        for attempt in range(12):
             resp = client.batch_write_item(RequestItems=chunk)
             chunk = resp.get("UnprocessedItems") or {}
             if not chunk:
                 break
+            _time.sleep(min(5.0, 0.1 * (2**attempt)))
         if chunk:
             raise RuntimeError("batch_write left unprocessed items after retries")
 
