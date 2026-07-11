@@ -51,7 +51,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "receipt_dynamo"))
@@ -213,40 +213,59 @@ def plan_label_moves(
             matched[okey] = best
             consumed.add(best)
 
+    # (new word key, label) pairs already claimed — a label row's PK/SK is
+    # unique per (word, label), so two labels landing on the same pair would be
+    # DUPLICATE KEYS in the batch write (this killed the first real apply on
+    # images with repeated labels, e.g. many ADDRESS_LINE rows).
+    taken: set[tuple[tuple[int, int, int], str]] = set()
+
     for okey in labeled_keys:
         rows = old_labels[okey]
+        labels_here = [str(row.get("label", "")) for row in rows]
         if okey in matched:
-            for row in rows:
-                plan.moves.append(
-                    LabelMove(okey, matched[okey], row, str(row.get("label", "")))
-                )
+            for row, lab in zip(rows, labels_here):
+                plan.moves.append(LabelMove(okey, matched[okey], row, lab))
+                taken.add((matched[okey], lab))
         else:
-            # PARK: nearest unconsumed word (any receipt), no score threshold —
-            # a parked label needs a live word to attach to, and NEEDS_REVIEW
-            # flags it for a human regardless of where it sits.
+            # PARK: nearest word (unconsumed first) whose (word, label) slots
+            # are all free. Consume it so parked labels spread out instead of
+            # piling onto one word.
             od = old_words[okey]
-            best, best_d = None, float("inf")
-            for nkey, nd in new_words.items():
-                if nkey in consumed:
-                    continue
-                d = math.hypot(od["c"][0] - nd["c"][0], od["c"][1] - nd["c"][1])
-                if d < best_d:
-                    best, best_d = nkey, d
-            if best is None:  # every new word consumed — attach to nearest overall
-                for nkey, nd in new_words.items():
+
+            def _nearest(pool: Iterable[tuple[int, int, int]]):
+                best, best_d = None, float("inf")
+                for nkey in pool:
+                    nd = new_words[nkey]
+                    if any((nkey, lab) in taken for lab in labels_here):
+                        continue
                     d = math.hypot(od["c"][0] - nd["c"][0], od["c"][1] - nd["c"][1])
                     if d < best_d:
                         best, best_d = nkey, d
-            for row in rows:
+                return best
+
+            best = _nearest(k for k in new_words if k not in consumed)
+            if best is None:  # all consumed — any word with free label slots
+                best = _nearest(new_words.keys())
+            if best is None:
+                # Pathological (labels with this name outnumber words). Refuse
+                # rather than lose or collide; the image errors out cleanly
+                # before any write happens.
+                raise RuntimeError(
+                    f"cannot place parked label(s) {labels_here} from {okey}: "
+                    "no (word, label) slot left"
+                )
+            consumed.add(best)
+            for row, lab in zip(rows, labels_here):
                 plan.parks.append(
                     LabelPark(
                         okey,
                         best,
                         row,
-                        str(row.get("label", "")),
+                        lab,
                         str(row.get("validation_status", "NONE")),
                     )
                 )
+                taken.add((best, lab))
     return plan
 
 
@@ -508,6 +527,11 @@ def apply_image(
         + [lb.to_item() for lb in label_entities]
     )
     new_keys = {(i["PK"]["S"], i["SK"]["S"]) for i in new_items}
+    if len(new_keys) != len(new_items):
+        raise RuntimeError(
+            f"duplicate keys in new items ({len(new_items) - len(new_keys)}); "
+            "refusing to write"
+        )
     pre_orphan_sks = {
         (
             f"IMAGE#{image_id}",

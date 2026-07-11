@@ -458,7 +458,7 @@ def snapshot_local_table(
     Reuses the cache's DynamoSQLiteWriter so the schema/normalization exactly
     matches the pre-migration snapshot, making them directly diffable.
     """
-    client = cache._local_dynamo_client(endpoint_url, region)
+    client = cache._robust_local_dynamo_client(endpoint_url, region)
     writer = cache.DynamoSQLiteWriter(out_path)
     stats = cache._scan_segment(
         client=client,
@@ -622,9 +622,13 @@ def _is_local_endpoint(endpoint_url: str | None) -> bool:
 
 
 def _make_client(endpoint_url: str | None, region: str | None, allow_aws: bool):
-    """Local-first guardrail: a real-AWS client requires an explicit opt-in."""
+    """Local-first guardrail: a real-AWS client requires an explicit opt-in.
+
+    Uses the ROBUST local client (60s read timeout, retries): backup/restore/
+    snapshot are bulk scan/write paths, and the 1s probe client dies mid-run.
+    """
     if _is_local_endpoint(endpoint_url):
-        return cache._local_dynamo_client(endpoint_url, region)
+        return cache._robust_local_dynamo_client(endpoint_url, region)
     if not allow_aws:
         raise SystemExit(
             "REFUSING to touch a non-local endpoint without --allow-aws. "

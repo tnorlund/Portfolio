@@ -144,3 +144,26 @@ def test_centroid_handles_dynamodb_decimals():
     new_words = {(1, 1, 1): {"text": "TOTAL", "c": (0.3, 0.85)}}
     plan = app.plan_label_moves(old_words, old_labels, new_words)
     assert len(plan.moves) == 1
+
+
+def test_parked_same_label_lands_on_distinct_words():
+    # Two different old words both carry ADDRESS_LINE and both fail to match.
+    # They must park on DISTINCT words (same (word,label) twice = duplicate
+    # PK/SK = the BatchWriteItem failure from the first real apply).
+    old_words = {
+        (1, 1, 1): w("AAAA", 0.2, 0.9),
+        (1, 2, 1): w("BBBB", 0.2, 0.8),
+    }
+    old_labels = {
+        (1, 1, 1): [label_row("ADDRESS_LINE")],
+        (1, 2, 1): [label_row("ADDRESS_LINE")],
+    }
+    new_words = {
+        (1, 1, 1): w("XXXX", 0.2, 0.9),
+        (1, 2, 1): w("YYYY", 0.2, 0.8),
+        (1, 3, 1): w("ZZZZ", 0.2, 0.7),
+    }
+    plan = app.plan_label_moves(old_words, old_labels, new_words)
+    assert len(plan.parks) == 2
+    landing = {(p.new_key, p.label) for p in plan.parks}
+    assert len(landing) == 2  # distinct (word, label) slots
