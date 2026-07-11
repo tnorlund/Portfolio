@@ -545,9 +545,23 @@ def save_refpack(path: str, refpack: Mapping[str, np.ndarray]) -> None:
 
 
 def load_refpack(path: str) -> dict[str, np.ndarray]:
+    """Load and validate a refpack npz; malformed packs fail HERE with the
+    offending key named, not deep inside a vote or an einsum."""
     data = np.load(path)
-    return {
-        chr(int(k[1:])): data[k].astype(bool)
-        for k in data.files
-        if k.startswith("r")
-    }
+    out: dict[str, np.ndarray] = {}
+    for k in data.files:
+        if not k.startswith("r"):
+            continue
+        try:
+            ch = chr(int(k[1:]))
+        except ValueError as e:
+            raise ValueError(f"{path}: bad refpack key {k!r} ({e})") from e
+        arr = data[k]
+        if arr.ndim != 3:
+            raise ValueError(
+                f"{path}: {k!r} must be (n, H, W), got shape {arr.shape}"
+            )
+        out[ch] = arr.astype(bool)
+    if not out:
+        raise ValueError(f"{path}: no r<codepoint> crop stacks found")
+    return out

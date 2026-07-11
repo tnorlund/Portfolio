@@ -279,15 +279,23 @@ def _maybe_glyphscore(syn, words) -> dict | None:
     if not ref:
         return None
     try:
-        sys.path.insert(
-            0,
-            os.path.join(os.path.dirname(HERE), "tools", "glyph-studio", "py"),
+        gs_dir = os.path.join(
+            os.path.dirname(HERE), "tools", "glyph-studio", "py"
         )
+        if gs_dir not in sys.path:
+            sys.path.insert(0, gs_dir)
         from glyph_score_cli import score_render_report
 
         doc = score_render_report(
             syn, words, ref, os.environ.get("GLYPHSCORE_ANCHOR")
         )
+        if doc["glyphscore"] is None:
+            print(
+                "glyphscore skipped: refpack covers none of the "
+                "segmented chars",
+                file=sys.stderr,
+            )
+            return None
         print(
             f"glyphscore {doc['glyphscore']:.1f} (mode={doc['mode']}, "
             f"{doc['n_instances']} instances, "

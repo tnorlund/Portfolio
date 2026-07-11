@@ -186,6 +186,9 @@ def cmd_build_ref(args) -> int:
         if skipped < args.skip:
             skipped += 1
             continue
+        if not len(chars):
+            print(f"  [empty] {p.image_id[:8]}#{p.receipt_id}: no crops")
+            continue
         for ch, m in zip(chars, masks):
             pack[ch].append(m)
         used += 1
@@ -196,8 +199,15 @@ def cmd_build_ref(args) -> int:
         print("no vetted receipts", file=sys.stderr)
         return 1
     stacks = {ch: np.stack(ms) for ch, ms in pack.items()}
-    save_refpack(args.out, stacks)
     scorable = sorted(ch for ch, s in stacks.items() if s.shape[0] >= MIN_REF)
+    if not scorable:
+        print(
+            f"no char reached {MIN_REF} crops across {used} receipts; "
+            "refusing to write an unscorable refpack",
+            file=sys.stderr,
+        )
+        return 1
+    save_refpack(args.out, stacks)
     print(
         f"{args.out}: {used} receipts, "
         f"{sum(s.shape[0] for s in stacks.values())} crops, "
@@ -212,11 +222,23 @@ def cmd_build_ref(args) -> int:
 
 def _load_atlas(path: str) -> dict[str, np.ndarray]:
     data = np.load(path)
-    return {
-        chr(int(k[1:])): data[k]
-        for k in data.files
-        if k.startswith("c")
-    }
+    out: dict[str, np.ndarray] = {}
+    for k in data.files:
+        if not k.startswith("c"):
+            continue
+        try:
+            ch = chr(int(k[1:]))
+        except ValueError as e:
+            raise SystemExit(f"{path}: bad atlas key {k!r} ({e})") from e
+        arr = data[k]
+        if arr.ndim != 2:
+            raise SystemExit(
+                f"{path}: glyph {k!r} must be 2-D, got shape {arr.shape}"
+            )
+        out[ch] = arr
+    if not out:
+        raise SystemExit(f"{path}: no c<codepoint> glyph arrays found")
+    return out
 
 
 def _build_refs(args, cohort: str = "single"):
@@ -240,10 +262,18 @@ def _build_refs(args, cohort: str = "single"):
     return refs, mode
 
 
-def _report(results, refs, mode, extra=None) -> dict:
+def _report(results, refs, mode, extra=None, weight_by_reference=False) -> dict:
+    """``weight_by_reference`` is the ATLAS aggregation policy (one result
+    per char, weighted by corpus usage); renders/receipts use the plain
+    instance mean, which is already usage-weighted by pooling. Explicit,
+    never inferred: a render whose scored chars happen to be unique must
+    not silently switch weighting rules. A run that scored nothing reports
+    ``glyphscore: null`` (never NaN — strict JSON consumers downstream).
+    """
+    score = weighted_glyphscore(results, refs if weight_by_reference else None)
     doc = {
         "mode": mode,
-        "glyphscore": weighted_glyphscore(results, refs if mode_is_per_char(results) else None),
+        "glyphscore": float(score) if np.isfinite(score) else None,
         "n_instances": len(results),
         "n_chars": len({r.char for r in results}),
         "per_char": per_char_table(results),
@@ -252,13 +282,13 @@ def _report(results, refs, mode, extra=None) -> dict:
     return doc
 
 
-def mode_is_per_char(results) -> bool:
-    """Atlas scoring yields exactly one result per char -> weight by usage."""
-    chars = [r.char for r in results]
-    return len(chars) == len(set(chars))
-
-
 def _print_summary(doc: dict) -> None:
+    if doc["glyphscore"] is None:
+        print(
+            "GlyphScore = n/a (no scorable instances — refpack covers "
+            "none of the segmented chars)"
+        )
+        return
     print(
         f"GlyphScore = {doc['glyphscore']:.1f}  "
         f"(mode={doc['mode']}, {doc['n_instances']} instances, "
@@ -290,7 +320,11 @@ def cmd_score_atlas(args) -> int:
         (ch, normalize_glyph(g)) for ch, g in sorted(atlas.items())
     ]
     results = score_instances(refs, instances, max_shift=args.max_shift)
-    doc = _report(results, refs, mode, {"atlas": args.atlas, "ref": args.ref})
+    doc = _report(
+        results, refs, mode,
+        {"atlas": args.atlas, "ref": args.ref},
+        weight_by_reference=True,
+    )
     _print_summary(doc)
     _write(doc, args.out)
     return 0
@@ -449,9 +483,13 @@ def _locate_row_band(
 ) -> tuple[int, int] | None:
     """The row span of the text band inside a vertically padded crop.
 
-    Bands are maximal row groups separated by >= 2 blank rows; the one with
-    the largest overlap with the OCR box's rows wins (fragments of the
-    neighboring line at the crop's edge lose).
+    Ink rows cluster into bands (split on >= 2 blank rows); the result is
+    the UNION of every band that intersects the OCR box's rows. Glyph parts
+    separated by internal blanks — i/j dots, a lone ':' or '=' word — sit
+    INSIDE the box and are all kept; the neighboring line's fragments sit
+    beyond the box edge in the padded crop and are dropped. Keeping only
+    the single best band here would score dotless i's against dotted
+    references.
     """
     proj = np.asarray(mask, bool).sum(axis=1)
     rows = np.where(proj > 0)[0]
@@ -464,14 +502,20 @@ def _locate_row_band(
         else:
             bands.append([int(rr), int(rr)])
     b0, b1 = box
-
-    def overlap(r: list[int]) -> int:
-        return max(0, min(r[1], b1) - max(r[0], b0) + 1)
-
-    best = max(bands, key=overlap)
-    if overlap(best) <= 0:
+    # intersect against the box CORE (shrunk 25% per side): the word's own
+    # parts sit well inside the box even a few px displaced, while an
+    # overlapping neighbor's ink only grazes the box edge (the composed
+    # synths legitimately overlap word boxes across lines).
+    core = max(1, int(round(0.25 * (b1 - b0))))
+    c0, c1 = b0 + core, b1 - core
+    hits = [
+        band
+        for band in bands
+        if min(band[1], c1) - max(band[0], c0) + 1 > 0
+    ]
+    if not hits:
         return None
-    return best[0], best[1] + 1
+    return hits[0][0], hits[-1][1] + 1
 
 
 def _locate_word_run(

@@ -302,3 +302,54 @@ def test_refpack_roundtrip(tmp_path):
     assert set(loaded) == {"E", "."}
     assert np.array_equal(loaded["E"], pack["E"])
     assert loaded["."].dtype == bool
+
+
+# --- CLI segmentation helpers (row-band, NaN policy) -------------------------
+
+
+def test_locate_row_band_keeps_stacked_glyph_parts():
+    import glyph_score_cli as cli
+
+    # a 40px-tall crop: neighbor-line fragment rows 0-2, then a colon word
+    # whose two dots sit at rows 14-17 and 26-29 (a 9-row internal gap)
+    m = np.zeros((40, 20), bool)
+    m[0:3, :] = True  # previous line's bottoms
+    m[14:18, 8:12] = True
+    m[26:30, 8:12] = True
+    band = cli._locate_row_band(m, box=(12, 32))
+    assert band is not None
+    a, b = band
+    assert a <= 14 and b >= 30  # both dots survive
+    assert a >= 3  # the neighbor fragment does not
+
+
+def test_locate_row_band_still_drops_far_neighbor():
+    import glyph_score_cli as cli
+
+    m = np.zeros((60, 20), bool)
+    m[0:6, :] = True  # neighbor line
+    m[30:44, 4:16] = True  # the word
+    band = cli._locate_row_band(m, box=(28, 46))
+    assert band == (30, 44)
+
+
+def test_report_null_glyphscore_when_nothing_scored():
+    import glyph_score_cli as cli
+
+    doc = cli._report([], {}, "self/single")
+    assert doc["glyphscore"] is None
+    assert doc["n_instances"] == 0
+    import json as _json
+
+    _json.dumps(doc, allow_nan=False)  # strict-JSON safe
+
+
+def test_load_refpack_rejects_malformed(tmp_path):
+    p = str(tmp_path / "bad.npz")
+    np.savez_compressed(p, **{"r65": np.zeros((32, 32), bool)})  # 2-D, not 3-D
+    with pytest.raises(ValueError, match="must be"):
+        load_refpack(p)
+    p2 = str(tmp_path / "empty.npz")
+    np.savez_compressed(p2, other=np.zeros(3))
+    with pytest.raises(ValueError, match="no r<codepoint>"):
+        load_refpack(p2)
