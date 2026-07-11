@@ -11,11 +11,16 @@ One-shot migration for the font-intelligence row-anchoring amendment
 2. For every ReceiptSection, compute ``row_ids``: a section *claims* a row
    when it contains any of the row's line_ids. Straddle rows (rows whose
    lines are split across sections — measured ~3% of sectioned rows) are
-   resolved by majority-of-lines, with ties going to the section owning the
-   row's primary line. Every straddle resolution is logged (JSONL).
+   resolved by majority-of-lines; ties between the leading sections go to
+   the leader owning the row's primary line, with a deterministic
+   alphabetical fallback when the primary line's section is not among the
+   leaders. Every straddle resolution is logged (JSONL).
 3. Update each section with ``row_ids`` plus reconciled ``line_ids`` (the
    union of its claimed rows' line_ids), and verify
-   ``validate_section_row_coverage`` on every updated section.
+   ``validate_section_row_coverage`` on every updated section. Sections
+   whose every row is won by a competitor ("emptied") are DELETED — leaving
+   them would keep their stale line_ids authoritative and double-assign the
+   straddle lines. Deletions are logged like straddle resolutions.
 
 Safety:
   - Local-first. The DynamoDB endpoint comes from ``--endpoint-url`` or
@@ -241,6 +246,7 @@ def process_receipt(
         "sections_line_ids_changed": 0,
         "sections_emptied": 0,
         "sections_row_aligned_before": 0,
+        "stale_rows_deleted": 0,
     }
 
     # --- before-stat: is each section already a union of whole rows? ------
@@ -284,10 +290,27 @@ def process_receipt(
 
     # --- reconcile sections ------------------------------------------------
     updated_sections = []
+    emptied_sections = []
     for section in sections:
         row_ids = claims[section.section_type]
         if not row_ids:
+            # Every row this section touched is majority-owned by another
+            # section. Leaving it would keep its stale line_ids
+            # authoritative (double-assigning those lines), so delete it.
             stats["sections_emptied"] += 1
+            emptied_sections.append(section)
+            straddle_log.write(
+                json.dumps(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "section_type": section.section_type,
+                        "line_ids": section.line_ids,
+                        "method": "section-emptied-deleted",
+                    }
+                )
+                + "\n"
+            )
             continue
         new_line_ids = sorted(
             lid for rid in row_ids for lid in lines_by_row[rid]
@@ -301,10 +324,25 @@ def process_receipt(
     stats["sections_updated"] = len(updated_sections)
 
     if apply:
+        # Prune rows from a previous run/grouping whose primary line id is
+        # no longer a row key, so re-runs never leave a mixed generation.
+        current_ids = {r.row_id for r in row_entities}
+        stale = [
+            r
+            for r in client.get_receipt_rows_from_receipt(
+                image_id, receipt_id
+            )
+            if r.row_id not in current_ids
+        ]
+        if stale:
+            client.delete_receipt_rows(stale)
+            stats["stale_rows_deleted"] = len(stale)
         if row_entities:
             client.add_receipt_rows(row_entities)  # batch put: idempotent
         if updated_sections:
             client.update_receipt_sections(updated_sections)
+        if emptied_sections:
+            client.delete_receipt_sections(emptied_sections)
 
     return stats
 
@@ -404,6 +442,7 @@ def main() -> int:
                 "sections_line_ids_changed",
                 "sections_emptied",
                 "sections_row_aligned_before",
+                "stale_rows_deleted",
             ):
                 totals[key] += stats[key]
             straddle_methods.update(stats["straddle_methods"])
@@ -426,7 +465,8 @@ def main() -> int:
         "sections_seen": totals["sections"],
         "sections_updated_with_row_ids": totals["sections_updated"],
         "sections_line_ids_changed": totals["sections_line_ids_changed"],
-        "sections_emptied_skipped": totals["sections_emptied"],
+        "sections_emptied_deleted": totals["sections_emptied"],
+        "stale_rows_deleted": totals["stale_rows_deleted"],
         "sectioned_rows": totals["sectioned_rows"],
         "straddle_rows_resolved": totals["straddle_rows"],
         "straddle_methods": dict(straddle_methods),

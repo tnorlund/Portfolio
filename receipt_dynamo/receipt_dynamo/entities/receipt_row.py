@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -112,6 +113,8 @@ class ReceiptRow:
                 value, (int, float)
             ):
                 raise ValueError(f"{name} must be a number")
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
             setattr(self, name, float(value))
         if self.y_min > self.y_max:
             raise ValueError("y_min must be <= y_max")
@@ -219,8 +222,20 @@ class ReceiptRow:
             raise ValueError(f"Item is missing required keys: {missing_keys}")
 
         try:
-            image_id = item["PK"]["S"].split("#")[1]
+            pk = item["PK"]["S"]
+            if not pk.startswith("IMAGE#"):
+                raise ValueError(f"PK must start with IMAGE#, got {pk!r}")
+            image_id = pk.split("#")[1]
             sk_parts = item["SK"]["S"].split("#")
+            if (
+                len(sk_parts) != 4
+                or sk_parts[0] != "RECEIPT"
+                or sk_parts[2] != "ROW"
+            ):
+                raise ValueError(
+                    "SK must have the form RECEIPT#{id:05d}#ROW#{row:05d}, "
+                    f"got {item['SK']['S']!r}"
+                )
             receipt_id = int(sk_parts[1])
             row_id = int(sk_parts[3])
 

@@ -144,6 +144,9 @@ class ReceiptSection:
                 for row_id in self.row_ids
             ):
                 raise ValueError("row_ids must contain only integers")
+            if any(row_id < 0 for row_id in self.row_ids):
+                # ReceiptRow.row_id is non-negative; match its contract.
+                raise ValueError("row_ids must be non-negative")
             if len(set(self.row_ids)) != len(self.row_ids):
                 raise ValueError("row_ids must not contain duplicates")
 

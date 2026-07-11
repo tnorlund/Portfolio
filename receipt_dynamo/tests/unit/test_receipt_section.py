@@ -568,3 +568,17 @@ def test_validate_section_row_coverage_wrong_receipt():
         validate_section_row_coverage(
             s, [_make_row(5, [5, 6], receipt_id=2)]
         )
+
+
+@pytest.mark.unit
+def test_negative_row_ids_rejected():
+    """ReceiptRow.row_id is non-negative; section references must match."""
+    with pytest.raises(ValueError, match="row_ids must be non-negative"):
+        ReceiptSection(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            section_type="ITEMS",
+            line_ids=[1],
+            created_at=datetime(2026, 7, 10),
+            row_ids=[-1],
+        )

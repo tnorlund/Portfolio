@@ -101,11 +101,18 @@ skip), dry-run by default, local-first (refuses non-local endpoints without
    `group_lines_into_visual_rows`; write ReceiptRow entities (batch put —
    idempotent).
 2. A section claims a row when it contains any of the row's line_ids.
-   Straddle rows (~3%) resolve by majority-of-lines; ties go to the section
-   owning the row's primary line; every resolution is logged (JSONL).
+   Straddle rows (~3%) resolve by majority-of-lines; ties between the
+   leading sections go to the leader owning the row's primary line; if the
+   primary line's section is not among the leaders, a deterministic
+   alphabetical fallback applies (logged as `tie-fallback-alpha`, 12/510 on
+   the corpus). Every resolution is logged (JSONL).
 3. Update sections with `row_ids` + reconciled `line_ids` (union of claimed
-   rows). Sections emptied by straddle resolution are left untouched
-   (logged). `validate_section_row_coverage` runs on every write.
+   rows). Sections *emptied* by straddle resolution (every row won by a
+   competitor) are **deleted** — leaving them would keep stale `line_ids`
+   authoritative and double-assign those lines; deletions are logged.
+   Re-runs also prune stale rows whose primary id vanished under a grouping
+   change, so a receipt never carries a mixed row generation.
+   `validate_section_row_coverage` runs on every write.
 
 Order of environments: local sandbox (validated — see PR) → dev → prod via
 the standard mirror. **Dev/prod writes are a separate approval.**
@@ -148,7 +155,8 @@ recompute in environments with streams).
 | Row identity | `row_id == primary (leftmost) line_id` | identical to Chroma lines-collection ids → joins for free; no new id namespace |
 | SK shape | `RECEIPT#{r:05d}#ROW#{row_id:05d}` | sibling of LINE/SECTION SKs; invisible to the stream matcher (verified) |
 | Section change | additive `row_ids`, `line_ids` authoritative | zero breakage; consumers migrate opt-in; invariant validator keeps both honest |
-| Straddle resolution | majority-of-lines, tie → primary line's section | matches the measured failure mode (label+amount tears); every resolution logged |
+| Straddle resolution | majority-of-lines; tie between leaders → the leader owning the primary line; else alphabetical fallback | matches the measured failure mode (label+amount tears); every resolution logged |
+| Emptied sections | deleted (logged), not left stale | leaving them double-assigns lines because line_ids stays authoritative |
 | Grouping versioning | `grouping_version` string on the row | grouping algorithm changes mint distinguishable generations instead of corrupting identity |
 | Geometry summary | y-band + x-extent only | enough for section/band queries; full geometry lives on ReceiptLine |
 | StyleRun | placeholder | typography pilot (within-row style variance) reports first; don't lock a schema without the measurement |

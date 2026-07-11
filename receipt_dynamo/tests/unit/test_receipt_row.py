@@ -456,3 +456,50 @@ def test_item_to_receipt_row(example_receipt_row):
         ValueError, match="Error converting item to ReceiptRow"
     ):
         item_to_receipt_row(invalid_item)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_receipt_row_non_finite_geometry_rejected(bad):
+    """NaN/inf would serialize to Dynamo numbers it rejects — fail early."""
+    with pytest.raises(ValueError, match="must be finite"):
+        ReceiptRow(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            row_id=5,
+            line_ids=[5],
+            grouping_version="visual-rows-v1",
+            y_min=bad,
+            y_max=0.2,
+            x_min=0.1,
+            x_max=0.9,
+            created_at=datetime(2026, 7, 10),
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "pk,sk",
+    [
+        ("RECEIPT#00001", "RECEIPT#00001#ROW#00005"),  # PK not IMAGE#
+        (
+            "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "RECEIPT#00001#LINE#00005",  # wrong entity SK
+        ),
+        (
+            "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "RECEIPT#00001#ROW#00005#EXTRA",  # malformed SK
+        ),
+    ],
+)
+def test_item_to_receipt_row_rejects_foreign_keys(
+    example_receipt_row, pk, sk
+):
+    """Items with another entity's key shape must not decode as a row."""
+    item = dict(example_receipt_row.to_item())
+    item["PK"] = {"S": pk}
+    item["SK"] = {"S": sk}
+    with pytest.raises(
+        ValueError, match="Error converting item to ReceiptRow"
+    ):
+        item_to_receipt_row(item)
