@@ -20,9 +20,10 @@ constants -- every knob is measured or derived:
           sections by line_id (face-map v2 approach), normalized against the
           receipt's own ITEMS body; n>=3 cells else LOW-CONF
   borrow  labeled borrow-variant atlas: native glyphs kept, top-affinity
-          fleet merchant fills MISSING chars; gate-flagged MISRENDER natives
-          are also replaced (a fleet-gate rule, not an eyeball call); emits a
-          per-glyph native/borrowed provenance JSON
+          fleet merchant fills MISSING chars; --replace-misrenders (opt-in,
+          after confirming the gate's flags in a rendered receipt) also
+          swaps gate-flagged natives; emits a per-glyph native/borrowed
+          provenance JSON
   score   production-scorecard ink metrics (_ink_metrics) of a rendered synth
           vs the vetted real corpus's distribution
 
@@ -200,6 +201,11 @@ def _load_npz_raw(path):
     }
 
 
+def _load_npz_offsets(path):
+    z = np.load(path)
+    return {int(k[1:]): int(z[k]) for k in z.files if k.startswith("o")}
+
+
 def _load_npz_norm(path, chars):
     from glyphstudio.family_cluster import normalize_glyph
 
@@ -223,18 +229,22 @@ def cmd_gates(args) -> int:
     mine_raw = _load_npz_raw(args.atlas)
 
     # Anti-copy (npz-level): the publisher's gate compares stroke-source
-    # geometry, which a crop-minted atlas does not have; the same policy at
-    # bitmap level -- substantial glyphs byte-identical to a sibling.
+    # geometry, which a crop-minted atlas does not have; the equivalent policy
+    # here is binary-mask + baseline-offset equality of substantial glyphs vs
+    # a sibling atlas (a copied atlas duplicates both).
+    mine_off = _load_npz_offsets(args.atlas)
     substantial = {cp: b for cp, b in mine_raw.items() if b.sum() >= 30}
     anti_copy_ok = True
     for name, path in fleet.items():
         theirs = _load_npz_raw(path)
+        theirs_off = _load_npz_offsets(path)
         same = [
             chr(cp)
             for cp, b in substantial.items()
             if cp in theirs
             and theirs[cp].shape == b.shape
             and np.array_equal(theirs[cp], b)
+            and theirs_off.get(cp) == mine_off.get(cp)
         ]
         if len(same) > max(4, int(0.25 * len(substantial))):
             anti_copy_ok = False
@@ -265,6 +275,9 @@ def cmd_gates(args) -> int:
     missing = [c for c in ALL94 if c not in have]
     print(f"coverage: {len(have)}/94 native; missing: {''.join(missing)}")
 
+    # merchant_iou intersects internally (only chars BOTH atlases carry are
+    # scored) and returns the true shared count, printed as n= below -- donors
+    # are not penalized for chars they lack.
     chars = "".join(sorted(have))
     mine_norm = _load_npz_norm(args.atlas, chars)
     affinity = sorted(
@@ -531,12 +544,25 @@ def cmd_faces(args) -> int:
 # --------------------------------------------------------------------------
 def cmd_borrow(args) -> int:
     donor_path = os.path.join(args.bitmatrix, FLEET_ATLASES[args.donor])
+    if not os.path.exists(donor_path):
+        print(f"donor atlas missing: {donor_path}")
+        return 2
     nat = np.load(args.atlas)
     don = np.load(donor_path)
-    gates = json.load(open(os.path.join(args.workdir, "gates.json")))
-    misrender = {
-        f["char"] for f in gates["findings"] if f["kind"] == "MISRENDER"
-    }
+    misrender: set[str] = set()
+    if args.replace_misrenders:
+        # OPT-IN: the identity gate RANKS suspects; it has known FP classes
+        # (bar glyphs, 1-hole box letters, stylistic slant), so gate findings
+        # alone must not mutate the atlas. Pass this flag only after
+        # confirming the flagged natives in a rendered receipt (the pilot's
+        # 8 were confirmed in the native render before replacement).
+        gates = json.load(open(os.path.join(args.workdir, "gates.json")))
+        misrender = {
+            f["char"] for f in gates["findings"] if f["kind"] == "MISRENDER"
+        }
+        print(
+            f"replacing gate-flagged misrenders: {''.join(sorted(misrender))}"
+        )
     nat_cps = {int(k[1:]) for k in nat.files if k.startswith("c")}
     don_cps = {int(k[1:]) for k in don.files if k.startswith("c")}
     payload, label = {}, {}
@@ -602,6 +628,25 @@ def cmd_score(args) -> int:
     d_all = [r["ink"]["density_med"] for r in reals]
     hw_all = [r["ink"]["h_med"] / r["img_size"][0] for r in reals]
     img = Image.open(args.synth)
+    # Guard against scoring an image with boxes it was not rendered from:
+    # the render step may drop a sidecar `<synth>.manifest.json` with its
+    # canvas size + candidate index; verify when present, caveat when not.
+    sidecar = args.synth + ".manifest.json"
+    if os.path.exists(sidecar):
+        man = json.load(open(sidecar))
+        if tuple(man.get("canvas", ())) != img.size or man.get(
+            "candidate"
+        ) not in (None, args.candidate):
+            print(
+                f"manifest mismatch: image {img.size} candidate "
+                f"{args.candidate} vs {man}"
+            )
+            return 2
+    else:
+        print(
+            "note: no render manifest sidecar -- caller must ensure "
+            "--synth was rendered from --composed[--candidate] at this size"
+        )
     m = _ink_metrics(img, words)
     d_ratio = m["density_med"] / float(np.median(d_all))
     h_ratio = (m["h_med"] / img.width) / float(np.median(hw_all))
@@ -643,7 +688,18 @@ def main(argv=None) -> int:
         if name == "gates":
             p.add_argument("--top", type=int, default=12)
         if name == "borrow":
-            p.add_argument("--donor", default="vons")
+            p.add_argument(
+                "--donor",
+                default="vons",
+                choices=sorted(FLEET_ATLASES),
+            )
+            p.add_argument(
+                "--replace-misrenders",
+                action="store_true",
+                help="also replace gate-flagged MISRENDER natives "
+                "(opt-in; confirm flags in a render first -- the gate "
+                "has documented FP classes)",
+            )
         if name == "score":
             p.add_argument("--synth", required=True)
             p.add_argument("--composed", required=True)

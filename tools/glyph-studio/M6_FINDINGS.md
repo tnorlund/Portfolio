@@ -42,9 +42,9 @@ receipts): **27 native glyphs** (`-.012456789ADEFILNRTUVenrsu`), 21
 forced-fallback (noisy consensus incl. S with 36 samples — quality gates
 doing their job), rest below sample floor.
 
-- **Anti-copy: PASS** (bitmap-level byte-identity vs all 9 fleet atlases; 0
-  matches — trivially true for a crop mint, run because the epic makes it
-  mandatory).
+- **Anti-copy: PASS** (binary-mask + baseline-offset equality of substantial
+  glyphs vs all 9 fleet atlases; 0 matches — expected for a crop mint, run
+  because the epic makes it mandatory).
 - **Fleet identity gate: 8/27 MISRENDER** (`.` reads as L, N as f, 9 as 1,
   U as b, r as F, T as i, 7 as Z, 0 as L), 51 MISSING of the gate's chars.
   The misrenders are real (visible in the verify sheet and the native
@@ -92,7 +92,10 @@ line_ids (no rule tables), normalized per receipt against its own ITEMS body;
 | SURVEY | 1/1 | — | — | LOW-CONF, unused |
 
 Underlines ≈ 0 everywhere (Smith's prints none — like Vons, unlike Sprouts).
-Encoded as `fonts/smiths/stylemap.json`; `receipt_stylemap.py` gained a
+The renderer's row styling supports bold only, so FOOTER's measured semibold
+(stroke 1.181, below the 1.30 bold threshold) is encoded as `normal` weight
+with its measured 1.105 size scale; the ratio is preserved in the stylemap
+notes. Encoded as `fonts/smiths/stylemap.json`; `receipt_stylemap.py` gained a
 minimal measured `smiths` rule table (storefront + footer only; body
 sections deliberately fall through since they measured body-normal).
 
@@ -110,7 +113,10 @@ true-aspect from the scaffold's scan, RECEIPT_PAPER_STRENGTH=0.3):
 - **native+TTF**: honest but rough — the 8 misrenders garble digits/totals.
 - **borrowed**: 19 native + **75 borrowed(vons, labeled per glyph in
   `borrow_labels.json`)** + 0 TTF. Reads correctly end to end; residual
-  garbles are the *native* e/u/E/V glyphs.
+  garbles are the *native* e/u/E/V glyphs. The 8 gate-flagged misrenders
+  were replaced only after confirming each in the native render
+  (`borrow --replace-misrenders` is opt-in; the gate ranks suspects and has
+  documented FP classes — it does not mutate atlases on its own).
 
 ## 6. Scorecard placement — **in-gate**
 

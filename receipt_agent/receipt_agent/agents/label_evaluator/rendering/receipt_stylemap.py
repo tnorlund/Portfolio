@@ -152,8 +152,12 @@ _SMITHS_RULES: list[tuple[str, re.Pattern]] = [
     (
         "footer",
         re.compile(
-            r"Fuel Points|cashier was|Thank you|questions|call\s*1-8|"
-            r"RECALL|UPC:",
+            # Anchored to the measured footer templates (fuel-points block,
+            # cashier line, thank-you/recall trailer) so ordinary item or
+            # coupon rows containing these words are not swept in.
+            r"Fuel Points|^Your cashier was\b|^Thank you\b|"
+            r"^If you have any questions|^please call 1-8|"
+            r"^RECALL NOTICE|^UPC:",
             re.I,
         ),
     ),

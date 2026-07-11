@@ -68,8 +68,12 @@ def test_smiths_row_classification_sections():
     assert classify_row("Fuel Points Earned Today: 10", "smiths") == "footer"
     assert classify_row("Your cashier was SANJA", "smiths") == "footer"
     assert classify_row("RECALL NOTICE", "smiths") == "footer"
-    # body sections deliberately fall through (measured body-normal)
+    # body sections deliberately fall through (measured body-normal), and
+    # the anchored footer rules must not sweep in item/coupon rows that
+    # merely contain a footer word mid-line
     assert classify_row("SNLK SSM OIL 4.99 F", "smiths") == "other"
+    assert classify_row("GRILL BRUSH UPC: STICKER 2.99", "smiths") == "other"
+    assert classify_row("BIG THANK YOU CARD 3.49 F", "smiths") == "other"
 
 
 def test_smiths_store_header_style_is_bold_scaled():
