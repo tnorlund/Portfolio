@@ -55,6 +55,16 @@ MIN_LETTERS = 4
 # (WF's "Tender:" has ONE cap sample, an OCR smear read as 1.34x body --
 # hand-checked as plain body height).
 MIN_CAP_SAMPLES = 3
+# A single printed row has ONE cap height, so its cap samples must agree:
+# when p75/p25 of the samples reaches this ratio, the letter set mixes
+# physical rows (OCR leakage from a neighboring line) and the median sizes
+# a row that does not exist. In-N-Out 9afeb902#2's small footer
+# "Questions/Comments: ... Call" measured cap 65px = 1.51x body because
+# leaked 83-84px digits sat beside its true 46-47px caps -- hand-checked
+# as plain small print. Sizing is suppressed on such rows; face/underline
+# keep their own guards. (Clean enlarged headers measure tight: WF's
+# "Thousand Oaks CA" disperses < 1.1; body-row OCR noise reaches ~1.3.)
+CAP_DISPERSION_MAX = 1.4
 
 
 def normalize_face_key(text: str) -> str:
@@ -67,12 +77,28 @@ def normalize_face_key(text: str) -> str:
     return " ".join(str(text).upper().split())[:60]
 
 
-def _cap_samples(line: Mapping[str, Any]) -> int:
-    return sum(
-        1
+def _cap_heights(line: Mapping[str, Any]) -> list[float]:
+    return sorted(
+        float(c["h"])
         for c in line.get("letters") or ()
-        if str(c.get("ch", ""))[:1].isupper() or str(c.get("ch", ""))[:1].isdigit()
+        if (str(c.get("ch", ""))[:1].isupper() or str(c.get("ch", ""))[:1].isdigit())
+        and c.get("h")
     )
+
+
+def _caps_consistent(line: Mapping[str, Any]) -> bool:
+    """True when the row's cap samples describe ONE letter size.
+
+    Enough samples (>= MIN_CAP_SAMPLES) and unimodal heights
+    (p75/p25 < CAP_DISPERSION_MAX) -- see the constants' rationale.
+    """
+    heights = _cap_heights(line)
+    n = len(heights)
+    if n < MIN_CAP_SAMPLES:
+        return False
+    p25 = heights[n // 4]
+    p75 = heights[(3 * n) // 4]
+    return p75 / max(p25, 1e-6) < CAP_DISPERSION_MAX
 
 
 def measured_style_for_line(
@@ -98,7 +124,7 @@ def measured_style_for_line(
         and stroke_rel / max(cap_rel, 1e-6) >= BOLD_STROKE_TO_CAP
     )
     scale = 1.0
-    if cap_rel >= LARGE_CAP and _cap_samples(line) >= MIN_CAP_SAMPLES:
+    if cap_rel >= LARGE_CAP and _caps_consistent(line):
         scale = round(min(cap_rel, SCALE_MAX), 2)
     underline = bool(line.get("underline"))
     reverse = bool(line.get("reverse_video"))

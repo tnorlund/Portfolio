@@ -4,11 +4,8 @@ import os
 import sys
 
 import pytest
-from glyphstudio.face_select import (
-    measured_style_for_line,
-    normalize_face_key,
-    select_row_faces,
-)
+from glyphstudio.face_select import (measured_style_for_line,
+                                     normalize_face_key, select_row_faces)
 from glyphstudio.section_face_map import Face
 
 
@@ -223,9 +220,8 @@ def test_normalize_key_parity_with_renderer():
     )
     sys.path.insert(0, os.path.join(root, "receipt_agent"))
     try:
-        from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (  # noqa: E501
-            normalize_face_key as renderer_key,
-        )
+        from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import \
+            normalize_face_key as renderer_key  # noqa: E501
     except ImportError:
         pytest.skip("receipt_agent not importable in this environment")
     for text in (
@@ -236,3 +232,61 @@ def test_normalize_key_parity_with_renderer():
         "Total Tax 0. 00",
     ):
         assert normalize_face_key(text) == renderer_key(text)
+
+
+def test_bimodal_cap_samples_cannot_size_a_row():
+    # In-N-Out 9afeb902#2 "Questions/Comments: ... Call": true caps at
+    # 46-47px with 83-84px digits leaked from a neighboring line; the
+    # median (65px = 1.51x body) sized a row that does not exist on the
+    # print (hand-checked as plain small text). Bimodal caps -> no sizing.
+    letters = [
+        {"ch": c, "h": h}
+        for c, h in [
+            ("C", 46),
+            ("C", 46),
+            ("C", 46),
+            ("Q", 47),
+            ("C", 47),
+            ("Q", 47),
+            ("C", 47),
+            ("Q", 47),
+            ("C", 47),
+            ("0", 83),
+            ("5", 83),
+            ("0", 83),
+            ("5", 83),
+            ("0", 83),
+            ("5", 83),
+            ("3", 84),
+            ("3", 84),
+            ("3", 84),
+        ]
+    ]
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line(
+                    "Questions/Comments: ad0a-53e24d Call",
+                    cap=65.0,
+                    stroke=3.02,
+                    n=90,
+                    letters=letters,
+                )
+            ],
+            body_cap=43.0,
+            body_stroke=3.0,
+        )
+    )
+    key = normalize_face_key("Questions/Comments: ad0a-53e24d Call")
+    assert faces[key]["scale"] == 1.0
+    assert faces[key]["face"] == "regular"
+
+
+def test_unimodal_cap_samples_still_size_an_enlarged_header():
+    # A genuine enlarged header disperses tight (WF "Thousand Oaks CA"
+    # letters all ~85px) and must keep its measured scale.
+    letters = [{"ch": c, "h": 85} for c in "THOUSANDOAKSCA"]
+    faces, _ = select_row_faces(
+        _measurement([_line("Thousand Oaks CA", cap=85.0, stroke=6.2, letters=letters)])
+    )
+    assert faces[normalize_face_key("Thousand Oaks CA")]["scale"] == 1.7
