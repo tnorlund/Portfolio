@@ -246,6 +246,9 @@ def _save_line_scorecard(real, syn, words, out_png: str) -> None:
     from receipt_line_scorecard import _write_markdown, score_receipt_images
 
     report = score_receipt_images(real, syn, words)
+    gs = _maybe_glyphscore(syn, words)
+    if gs is not None:
+        report["glyphscore"] = gs
     stem = os.path.splitext(out_png)[0]
     json_path = f"{stem}.scorecard.json"
     md_path = f"{stem}.scorecard.md"
@@ -259,6 +262,41 @@ def _save_line_scorecard(real, syn, words, out_png: str) -> None:
         f"blockers={counts.get('BLOCKER', 0)} minors={counts.get('MINOR', 0)} "
         f"-> {json_path} {md_path}"
     )
+
+
+def _maybe_glyphscore(syn, words) -> dict | None:
+    """Opt-in third scorecard axis: letterform fidelity.
+
+    Set $GLYPHSCORE_REF to a merchant refpack npz (built by
+    tools/glyph-studio/py/glyph_score_cli.py build-ref) to score the
+    render's glyph SHAPES against the merchant's real letter crops —
+    density/height say how much ink; GlyphScore says whether the
+    letterforms are the merchant's. Optional $GLYPHSCORE_ANCHOR points at
+    a designed-font .glyphs.npz (anchor mode). No env var -> no behavior
+    change.
+    """
+    ref = os.environ.get("GLYPHSCORE_REF")
+    if not ref:
+        return None
+    try:
+        sys.path.insert(
+            0,
+            os.path.join(os.path.dirname(HERE), "tools", "glyph-studio", "py"),
+        )
+        from glyph_score_cli import score_render_report
+
+        doc = score_render_report(
+            syn, words, ref, os.environ.get("GLYPHSCORE_ANCHOR")
+        )
+        print(
+            f"glyphscore {doc['glyphscore']:.1f} (mode={doc['mode']}, "
+            f"{doc['n_instances']} instances, "
+            f"{doc['n_words_segmented']}/{doc['n_words']} words)"
+        )
+        return doc
+    except Exception as e:  # noqa: BLE001 - opt-in axis must never break review
+        print(f"glyphscore skipped: {e}", file=sys.stderr)
+        return None
 
 
 def _metric_box(

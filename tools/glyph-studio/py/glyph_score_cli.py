@@ -310,8 +310,9 @@ def _words_from_json(path: str) -> list[dict]:
     raise SystemExit(f"unrecognized words JSON shape in {path}")
 
 
-def segment_render(render_path: str, words: list[dict]):
-    """Render PNG + word boxes -> (char, normalized mask, line key) instances.
+def segment_render(render, words: list[dict]):
+    """Render (path or PIL image) + word boxes -> (char, normalized mask,
+    line key) instances.
 
     Word boxes are the labels convention: 0..1000, y-up. Binarization is
     Sauvola with auto polarity (reverse-video safe), the same treatment the
@@ -323,7 +324,9 @@ def segment_render(render_path: str, words: list[dict]):
     from glyph_segment import auto_polarity, sauvola_mask
     from glyphstudio.stylescan import group_visual_lines
 
-    gray = np.asarray(Image.open(render_path).convert("L"))
+    if isinstance(render, str):
+        render = Image.open(render)
+    gray = np.asarray(render.convert("L"))
     H, W = gray.shape
     ws = []
     for w in words:
@@ -530,26 +533,47 @@ def _best_window(
     return s, s + width
 
 
-def cmd_score_render(args) -> int:
+def score_render_report(
+    render,
+    words: list[dict],
+    ref_path: str,
+    anchor_path: str | None = None,
+    max_shift: int = 2,
+) -> dict:
+    """One-call GlyphScore for a render: the scorecard integration point.
+
+    ``render`` is a path or PIL image at the geometry the ``words`` boxes
+    describe (0..1000, y-up); ``ref_path`` a refpack npz. Returns the same
+    report dict the ``score-render`` subcommand writes.
+    """
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(ref=ref_path, anchor=anchor_path, max_shift=max_shift)
     refs, mode = _build_refs(args)
-    words = _words_from_json(args.words)
-    instances, seg_stats = segment_render(args.render, words)
-    results = score_instances(refs, instances, max_shift=args.max_shift)
-    doc = _report(
+    instances, seg_stats = segment_render(render, words)
+    results = score_instances(refs, instances, max_shift=max_shift)
+    return _report(
         results,
         refs,
         mode,
         {
-            "render": args.render,
-            "ref": args.ref,
+            "ref": ref_path,
             **seg_stats,
             "per_line": group_rollup(results),
         },
     )
+
+
+def cmd_score_render(args) -> int:
+    words = _words_from_json(args.words)
+    doc = score_render_report(
+        args.render, words, args.ref, args.anchor, args.max_shift
+    )
+    doc["render"] = args.render
     _print_summary(doc)
     print(
-        f"  segmentation: {seg_stats['n_words_segmented']}/"
-        f"{seg_stats['n_words']} words"
+        f"  segmentation: {doc['n_words_segmented']}/"
+        f"{doc['n_words']} words"
     )
     _write(doc, args.out)
     return 0
