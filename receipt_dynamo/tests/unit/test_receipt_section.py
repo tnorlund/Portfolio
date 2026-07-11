@@ -401,3 +401,170 @@ def test_validation_status_accepts_enum_instance():
         validation_status=ValidationStatus.PENDING,
     )
     assert s.validation_status == "PENDING"
+
+
+# --- row-granularity sections (row-anchoring amendment) ---------------------
+
+
+def _make_row(row_id, line_ids, receipt_id=1):
+    from receipt_dynamo.entities.receipt_row import ReceiptRow
+
+    return ReceiptRow(
+        receipt_id=receipt_id,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        row_id=row_id,
+        line_ids=line_ids,
+        grouping_version="visual-rows-v1",
+        y_min=0.1,
+        y_max=0.2,
+        x_min=0.0,
+        x_max=1.0,
+        created_at=datetime(2026, 7, 10),
+    )
+
+
+@pytest.mark.unit
+def test_row_ids_roundtrip():
+    """row_ids survives to_item/from_item."""
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="SUMMARY",
+        line_ids=[5, 6, 8],
+        created_at=datetime(2026, 7, 10),
+        row_ids=[5, 8],
+    )
+    item = s.to_item()
+    assert item["row_ids"] == {"L": [{"N": "5"}, {"N": "8"}]}
+    assert item_to_receipt_section(item) == s
+
+
+@pytest.mark.unit
+def test_row_ids_omitted_when_none(example_receipt_section):
+    """to_item stays schema-identical to the legacy row when row_ids unset."""
+    assert "row_ids" not in example_receipt_section.to_item()
+    assert example_receipt_section.row_ids is None
+
+
+@pytest.mark.unit
+def test_legacy_item_without_row_ids_parses():
+    """A row written before row_ids existed still deserializes."""
+    legacy = {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "RECEIPT#00001#SECTION#HEADER"},
+        "TYPE": {"S": "RECEIPT_SECTION"},
+        "section_type": {"S": "HEADER"},
+        "line_ids": {"L": [{"N": "1"}, {"N": "2"}]},
+        "created_at": {"S": "2025-05-01T00:00:00"},
+    }
+    assert item_to_receipt_section(legacy).row_ids is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "bad,match",
+    [
+        ("not a list", "row_ids must be a list"),
+        ([], "row_ids must not be empty"),
+        ([1, "2"], "row_ids must contain only integers"),
+        ([1, 2, 1], "row_ids must not contain duplicates"),
+    ],
+)
+def test_invalid_row_ids_rejected(bad, match):
+    with pytest.raises(ValueError, match=match):
+        ReceiptSection(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            section_type="ITEMS",
+            line_ids=[1],
+            created_at=datetime(2026, 7, 10),
+            row_ids=bad,
+        )
+
+
+@pytest.mark.unit
+def test_validate_section_row_coverage_passes():
+    """line_ids == union of referenced rows' line_ids is accepted."""
+    from receipt_dynamo.entities.receipt_section import (
+        validate_section_row_coverage,
+    )
+
+    rows = [_make_row(5, [5, 6]), _make_row(8, [8]), _make_row(9, [9, 10])]
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="SUMMARY",
+        line_ids=[5, 6, 8],
+        created_at=datetime(2026, 7, 10),
+        row_ids=[5, 8],
+    )
+    # Extra rows in `rows` (row 9) are ignored.
+    validate_section_row_coverage(s, rows)
+
+
+@pytest.mark.unit
+def test_validate_section_row_coverage_skips_legacy_sections(
+    example_receipt_section,
+):
+    """Sections without row_ids are exempt (line-granular legacy rows)."""
+    from receipt_dynamo.entities.receipt_section import (
+        validate_section_row_coverage,
+    )
+
+    validate_section_row_coverage(example_receipt_section, [])
+
+
+@pytest.mark.unit
+def test_validate_section_row_coverage_union_mismatch():
+    from receipt_dynamo.entities.receipt_section import (
+        validate_section_row_coverage,
+    )
+
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="SUMMARY",
+        line_ids=[5],  # missing 6, which row 5 owns
+        created_at=datetime(2026, 7, 10),
+        row_ids=[5],
+    )
+    with pytest.raises(ValueError, match="do not equal the union"):
+        validate_section_row_coverage(s, [_make_row(5, [5, 6])])
+
+
+@pytest.mark.unit
+def test_validate_section_row_coverage_missing_row():
+    from receipt_dynamo.entities.receipt_section import (
+        validate_section_row_coverage,
+    )
+
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="SUMMARY",
+        line_ids=[5, 6],
+        created_at=datetime(2026, 7, 10),
+        row_ids=[5],
+    )
+    with pytest.raises(ValueError, match="no matching ReceiptRow"):
+        validate_section_row_coverage(s, [])
+
+
+@pytest.mark.unit
+def test_validate_section_row_coverage_wrong_receipt():
+    from receipt_dynamo.entities.receipt_section import (
+        validate_section_row_coverage,
+    )
+
+    s = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type="SUMMARY",
+        line_ids=[5, 6],
+        created_at=datetime(2026, 7, 10),
+        row_ids=[5],
+    )
+    with pytest.raises(ValueError, match="belongs to"):
+        validate_section_row_coverage(
+            s, [_make_row(5, [5, 6], receipt_id=2)]
+        )
