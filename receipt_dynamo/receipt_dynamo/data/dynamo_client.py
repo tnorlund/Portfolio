@@ -40,6 +40,7 @@ from receipt_dynamo.data._receipt_line_item_analysis import (
 )
 from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
 from receipt_dynamo.data._receipt_place import _ReceiptPlace
+from receipt_dynamo.data._receipt_row import _ReceiptRow
 from receipt_dynamo.data._receipt_section import _ReceiptSection
 from receipt_dynamo.data._receipt_structure_analysis import (
     _ReceiptStructureAnalysis,
@@ -114,6 +115,7 @@ class DynamoClient(
     _CompletionBatchResult,
     _MerchantFont,
     _OCRJob,
+    _ReceiptRow,
     _ReceiptSection,
     _OCRRoutingDecision,
     _AIUsageMetric,

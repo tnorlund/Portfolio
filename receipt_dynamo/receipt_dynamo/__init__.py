@@ -68,6 +68,7 @@ from receipt_dynamo.entities import (
     ReceiptLineItemAnalysis,
     ReceiptMetadata,
     ReceiptPlace,
+    ReceiptRow,
     ReceiptSection,
     ReceiptStructureAnalysis,
     ReceiptTextGeometryEntity,
@@ -122,6 +123,7 @@ from receipt_dynamo.entities import (
     item_to_receipt_line_item_analysis,
     item_to_receipt_metadata,
     item_to_receipt_place,
+    item_to_receipt_row,
     item_to_receipt_section,
     item_to_receipt_structure_analysis,
     item_to_receipt_validation_category,
@@ -131,6 +133,7 @@ from receipt_dynamo.entities import (
     item_to_receipt_word_label,
     item_to_receipt_word_label_spatial_analysis,
     item_to_word,
+    validate_section_row_coverage,
 )
 
 # =============================================================================
@@ -282,6 +285,7 @@ __all__ = [
     "ReceiptLineItemAnalysis",
     "ReceiptMetadata",
     "ReceiptPlace",
+    "ReceiptRow",
     "ReceiptSection",
     "ReceiptStructureAnalysis",
     "ReceiptValidationCategory",
@@ -333,7 +337,9 @@ __all__ = [
     "item_to_receipt_line_item_analysis",
     "item_to_receipt_metadata",
     "item_to_receipt_place",
+    "item_to_receipt_row",
     "item_to_receipt_section",
+    "validate_section_row_coverage",
     "item_to_receipt_structure_analysis",
     "item_to_receipt_validation_category",
     "item_to_receipt_validation_result",
