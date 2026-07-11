@@ -548,3 +548,27 @@ def test_orphan_delta_ignores_pre_existing(tmp_path: Path):
     report = reh.run_diff(before, after, ["img1"])
     assert report["invariants"]["orphan_labels"] == []
     assert report["invariants"]["pre_existing_orphans"] == 1
+
+
+def test_absorbed_pre_orphan_not_counted_as_loss(tmp_path: Path):
+    # BEFORE: a real labeled word + a PRE-ORPHAN label at (1,2,2) (no word).
+    # Migration moves the real label to (1,2,2) — same SK as the pre-orphan —
+    # overwriting the dead row. Net count drops by 1 but nothing real was lost.
+    before = write_snapshot(
+        tmp_path / "b.sqlite3",
+        [
+            word_item("img1", 1, 1, 1, "TOTAL"),
+            label_item("img1", 1, 1, 1, "GT", status="VALID"),
+            label_item("img1", 1, 2, 2, "GT", status="VALID"),  # pre-orphan
+        ],
+    )
+    after = write_snapshot(
+        tmp_path / "a.sqlite3",
+        [
+            word_item("img1", 1, 2, 2, "TOTAL"),  # new word at colliding ids
+            label_item("img1", 1, 2, 2, "GT", status="VALID"),  # moved label
+        ],
+    )
+    report = reh.run_diff(before, after, ["img1"])
+    assert report["labels"]["absorbed_pre_orphans"] == 1
+    assert report["ok"] is True

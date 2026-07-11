@@ -817,34 +817,101 @@ def reconcile_parked(
     is REAL loss/surplus and still fails the verdict.
     """
     reconciled: dict[str, int] = {}
-    for img in list(labels.lost_labels.keys()):
+    images = set(labels.lost_labels) | set(labels.surplus_labels)
+    for img in images:
         budget = expect_parked.get(img, 0)
         if budget <= 0:
             continue
-        lost = dict(labels.lost_labels[img])
+        lost = dict(labels.lost_labels.get(img, []))
         surplus = dict(labels.surplus_labels.get(img, []))
-        nr_avail = {lab: n for (lab, st), n in surplus.items() if st == "NEEDS_REVIEW"}
         used = 0
-        new_lost = {}
-        for (lab, st), n in lost.items():
-            take = min(n, nr_avail.get(lab, 0), budget - used)
-            if take > 0:
-                nr_avail[lab] -= take
-                surplus[(lab, "NEEDS_REVIEW")] -= take
-                used += take
-            if n - take > 0:
-                new_lost[(lab, st)] = n - take
+        # Each park provably creates exactly one (label, NEEDS_REVIEW) row, so
+        # the report's parked count vouches for NR surpluses DIRECTLY — the
+        # matching (label, orig_status) loss may already be explained elsewhere
+        # (e.g. an absorbed pre-orphan). Cancel NR surplus up to budget, and
+        # opportunistically cancel a same-label loss 1:1 for each. Non-NR
+        # surplus (real duplication) and unexplained loss still fail.
+        for key in list(surplus.keys()):
+            lab, st = key
+            if st != "NEEDS_REVIEW" or used >= budget:
+                continue
+            take = min(surplus[key], budget - used)
+            surplus[key] -= take
+            used += take
+            rem = take
+            for lkey in list(lost.keys()):
+                if lkey[0] != lab or rem <= 0:
+                    continue
+                c = min(lost[lkey], rem)
+                lost[lkey] -= c
+                rem -= c
+                if lost[lkey] <= 0:
+                    del lost[lkey]
         reconciled[img] = used
+        for target, src in (
+            (labels.lost_labels, {k: v for k, v in lost.items() if v > 0}),
+            (labels.surplus_labels, {k: v for k, v in surplus.items() if v > 0}),
+        ):
+            if src:
+                target[img] = sorted(src.items())
+            else:
+                target.pop(img, None)
+    return reconciled
+
+
+def absorbed_pre_orphans(
+    before: list[Row],
+    after: list[Row],
+    target_image_ids: Iterable[str] | None = None,
+) -> dict[str, Counter]:
+    """Per image: (label, status) counts of pre-orphan rows ABSORBED by a move.
+
+    A pre-orphan (label row whose word never existed) can have the same SK as a
+    legitimately moved label when re-OCR reassigns coinciding ids; the put then
+    overwrites the dead row. The real label survives; only the dead row's
+    contribution leaves the multiset. Detect exactly that: a BEFORE pre-orphan
+    SK that exists in AFTER with a LIVE word. Its BEFORE (label, status) is an
+    EXPECTED disappearance, not a loss.
+    """
+    targets = set(target_image_ids) if target_image_ids is not None else None
+    before_words = {(r.pk, r.sk) for r in before if parse_word_sk(r.sk)}
+    after_words = {(r.pk, r.sk) for r in after if parse_word_sk(r.sk)}
+    after_label_keys = {(r.pk, r.sk) for r in after if parse_label_sk(r.sk)}
+    out: dict[str, Counter] = {}
+    for r in before:
+        m = parse_label_sk(r.sk)
+        if not m:
+            continue
+        img = r.image_id or image_id_from_pk(r.pk)
+        if img is None or (targets is not None and img not in targets):
+            continue
+        word_sk = r.sk.rsplit("#LABEL#", 1)[0]
+        if (r.pk, word_sk) in before_words:
+            continue  # not a pre-orphan
+        if (r.pk, r.sk) in after_label_keys and (r.pk, word_sk) in after_words:
+            status = str(r.native.get("validation_status") or "").upper()
+            out.setdefault(img, Counter())[(m[3], status)] += 1
+    return out
+
+
+def _cancel_expected_losses(labels: LabelReport, expected: dict[str, Counter]) -> int:
+    """Remove expected (label, status) disappearances from lost_labels."""
+    cancelled = 0
+    for img, exp in expected.items():
+        if img not in labels.lost_labels:
+            continue
+        lost = dict(labels.lost_labels[img])
+        new_lost = {}
+        for key, n in lost.items():
+            take = min(n, exp.get(key, 0))
+            cancelled += take
+            if n - take > 0:
+                new_lost[key] = n - take
         if new_lost:
             labels.lost_labels[img] = sorted(new_lost.items())
         else:
             del labels.lost_labels[img]
-        remaining_surplus = {k: v for k, v in surplus.items() if v > 0}
-        if remaining_surplus:
-            labels.surplus_labels[img] = sorted(remaining_surplus.items())
-        else:
-            labels.surplus_labels.pop(img, None)
-    return reconciled
+    return cancelled
 
 
 def run_diff(
@@ -858,6 +925,13 @@ def run_diff(
     row_diff = diff_rows(before, after)
     violations = blast_radius_violations(row_diff.changed_pks, target_image_ids)
     labels = check_label_preservation(before, after, target_image_ids)
+    # Absorption FIRST (exact, key-deterministic), park reconciliation second
+    # (budgeted): otherwise the parked NEEDS_REVIEW budget gets spent cancelling
+    # losses that absorption would have explained exactly, leaving genuine
+    # parked transitions stranded as false "loss".
+    absorbed = _cancel_expected_losses(
+        labels, absorbed_pre_orphans(before, after, target_image_ids)
+    )
     reconciled = reconcile_parked(labels, expect_parked) if expect_parked else {}
     # Orphan DELTA: pre-existing dangling labels (word already missing BEFORE
     # the migration) must not fail the run — only orphans the migration CREATED.
@@ -907,6 +981,7 @@ def run_diff(
             "images_with_churn_only": len(labels.churn_only),
             "reconciled_parked": sum(reconciled.values()),
             "images_reconciled": len(reconciled),
+            "absorbed_pre_orphans": absorbed,
         },
         "invariants": {
             "orphan_labels": [
