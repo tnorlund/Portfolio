@@ -601,6 +601,74 @@ def cmd_borrow(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# provcheck: compose provenance-consistency pass (role cardinality/zone +
+# scaffold-artifact scrub + compose->render reconciliation + tax liveness)
+# --------------------------------------------------------------------------
+def cmd_provcheck(args) -> int:
+    from glyphstudio.provenance_consistency import (
+        _real_artifact_values,
+        constraints_to_json,
+        derive_role_constraints,
+        process_candidate,
+    )
+
+    corpus = json.load(open(args.corpus))
+    constraints = derive_role_constraints(corpus)
+    real_values = _real_artifact_values(corpus)
+    print("learned role constraints (from corpus):")
+    for role, c in constraints.items():
+        if c.n_receipts_present:
+            print(
+                f"  {role:12s} max_count={c.max_count} zone={c.zone} "
+                f"present={c.n_receipts_present}/{c.support}"
+            )
+    print(f"real auth-artifact values to avoid: {len(real_values)}")
+
+    candidates = json.load(open(args.composed))
+    if args.candidate is not None:
+        candidates = [candidates[args.candidate]]
+    repaired_all, results = [], []
+    n_rejected = n_scrubbed = n_recon_fail = 0
+    for cand in candidates:
+        repaired, res = process_candidate(cand, constraints, real_values)
+        repaired_all.append(repaired)
+        results.append(res.to_json())
+        n_rejected += bool(res.role_violations)
+        n_scrubbed += bool(res.scrub.replacements)
+        n_recon_fail += not res.reconcile.ok
+        tag = res.candidate_id[-8:]
+        print(
+            f"  {tag}: role_violations={len(res.role_violations)} "
+            f"repaired={len(res.role_actions)} "
+            f"scrubbed={len(res.scrub.replacements)} "
+            f"reconcile_ok={res.reconcile.ok} "
+            f"(dropped={len(res.reconcile.dropped_lines)} "
+            f"dup={len(res.reconcile.duplicated_tokens)} "
+            f"tax={len(res.reconcile.tax_issues)})"
+        )
+    print(
+        f"\n{len(candidates)} candidates: "
+        f"{n_rejected} rejected on role-cardinality/zone, "
+        f"{n_scrubbed} scrubbed of scaffold artifacts, "
+        f"{n_recon_fail} with reconcile issues"
+    )
+    os.makedirs(args.workdir, exist_ok=True)
+    json.dump(
+        {
+            "constraints": constraints_to_json(constraints),
+            "n_real_artifact_values": len(real_values),
+            "results": results,
+        },
+        open(os.path.join(args.workdir, "provcheck.json"), "w"),
+        indent=1,
+    )
+    if args.out:
+        json.dump(repaired_all, open(args.out, "w"), indent=1)
+        print(f"wrote repaired candidates -> {args.out}")
+    return 0
+
+
+# --------------------------------------------------------------------------
 # score: synth ink metrics vs the vetted real distribution
 # --------------------------------------------------------------------------
 def cmd_score(args) -> int:
@@ -675,9 +743,14 @@ def main(argv=None) -> int:
         default=os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22"),
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("vet", "gates", "knobs", "faces", "borrow", "score"):
+    for name in ("vet", "gates", "knobs", "faces", "borrow", "score", "provcheck"):
         p = sub.add_parser(name)
         p.add_argument("--workdir", required=True)
+        if name == "provcheck":
+            p.add_argument("--composed", required=True)
+            p.add_argument("--corpus", required=True)
+            p.add_argument("--candidate", type=int, default=None)
+            p.add_argument("--out", default=None)
         if name in ("gates", "knobs", "borrow"):
             p.add_argument("--atlas", required=True)
         if name in ("gates", "borrow"):
@@ -713,6 +786,7 @@ def main(argv=None) -> int:
         "faces": cmd_faces,
         "borrow": cmd_borrow,
         "score": cmd_score,
+        "provcheck": cmd_provcheck,
     }[args.cmd](args)
 
 
