@@ -565,9 +565,7 @@ def test_validate_section_row_coverage_wrong_receipt():
         row_ids=[5],
     )
     with pytest.raises(ValueError, match="belongs to"):
-        validate_section_row_coverage(
-            s, [_make_row(5, [5, 6], receipt_id=2)]
-        )
+        validate_section_row_coverage(s, [_make_row(5, [5, 6], receipt_id=2)])
 
 
 @pytest.mark.unit
