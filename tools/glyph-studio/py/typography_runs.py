@@ -640,7 +640,11 @@ def main(argv=None) -> int:
     )
     args = ap.parse_args(argv)
     os.environ["DYNAMODB_TABLE_NAME"] = args.table
-    cache_dir = args.cache_dir or os.path.join(args.out_dir, "cache")
+    # Namespaced by table: cached meta embeds that table's QA sections, so a
+    # --table rerun must not silently reuse another environment's extraction.
+    cache_dir = os.path.join(
+        args.cache_dir or os.path.join(args.out_dir, "cache"), args.table
+    )
 
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
