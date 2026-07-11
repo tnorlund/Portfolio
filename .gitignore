@@ -251,8 +251,7 @@ infra/backups/
 .venv312/
 backups/
 
-# ROM-font recreation: never commit extracted atlases / heavy artifacts (local only)
-.out/rom-fonts/*.glyphs.npz
-.out/rom-fonts/*.verify.png
-.out/rom-fonts/_shipped_*.npz
-.out/rom-fonts/cache/
+# ROM-font recreation: extracted atlases / crop caches / render proofs stay
+# local (tracked copies of the per-font manifests + validation results live in
+# synthesis_loop/rom_font_manifests/)
+.out/rom-fonts/
