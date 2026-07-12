@@ -659,8 +659,13 @@ def build_scorecard(args) -> dict:
     # each channel's pass band centers on the harness-measured real value
     # (dynamic target), not the reports' hand-crop numbers (a different method).
     # The documented Part-1 targets ride along as ``spec_target`` annotations.
+    # Texture channels are POPULATION statistics over the body band, so they
+    # are computed on the UNWARPED render: the piecewise row warp interpolates
+    # rows, manufacturing mid-tone pixels that inflate edge-transition frac
+    # (~+0.05) and tone EMD on the render side only -- an instrument bias, not
+    # a render property. (MS-SSIM, which IS spatially matched, keeps the warp.)
     _log("stage: L3 texture / degradation parity")
-    tex = _l3_texture(real_gray, render_warp, body, dark_thresh, GS, args.refpack,
+    tex = _l3_texture(real_gray, render_gray, body, dark_thresh, GS, args.refpack,
                       args.render, args.labels, exclude_lines)
 
     def _gate_dyn(value, real_value, key):
