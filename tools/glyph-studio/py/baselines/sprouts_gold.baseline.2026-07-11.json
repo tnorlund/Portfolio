@@ -72,8 +72,14 @@
     "iou_rc": "SKIPPED",
     "iou_ce": "SKIPPED",
     "iou_rc_hygiene": "SKIPPED",
-    "iou_re_hygiene": 0.5492311097594366,
-    "self_agreement_ref": 0.87,
+    "iou_re_hygiene": {
+      "value": 0.5492311097594366,
+      "target": 0.611,
+      "tol": 0.03,
+      "dir": "min",
+      "pass": false
+    },
+    "self_agreement_ref": 0.611,
     "worst_after_hygiene": [
       {
         "char": "Q",
@@ -269,6 +275,6 @@
     "pass": false
   },
   "overall_rung_cleared": "L0-fail",
-  "elapsed_sec": 10.1,
-  "_baseline_note": "Merchant #2 official starting line: Sprouts variant (b) MODERN = production render + composite true-bold heavy atlas (PR #1104 sprouts-heavy-composite.glyphs.npz). Gold receipt 00ded398-af6f-4a49-86f7-c79ccb554e48#1. Chart rungs SKIPPED (no Sprouts specimen chart). Overall L0-fail: too clean/heavy, same pattern as Costco baseline."
+  "elapsed_sec": 10.2,
+  "_baseline_note": "Merchant #2 official starting line: Sprouts variant (b) MODERN = production render + composite true-bold heavy atlas (PR #1104 sprouts-heavy-composite.glyphs.npz). Gold receipt 00ded398-af6f-4a49-86f7-c79ccb554e48#1. Chart rungs SKIPPED (no Sprouts specimen chart); chart-free L1 gates GlyphScore-vs-crops AND render->real IoU (dir=min vs sprouts self-agreement 0.611). Overall L0-fail: too clean/heavy, same pattern as Costco baseline."
 }

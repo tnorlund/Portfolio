@@ -660,6 +660,7 @@ def build_scorecard(args) -> dict:
     d_crops = gsc.score_render_report(args.render, words, args.refpack)
     iou = _iou_decomposition(GS, args.render, args.labels, args.refpack, chart_path,
                              exclude_lines)
+    gs_crops_gate = _gate(d_crops["glyphscore"], cfg["L1"]["gs_vs_crops"])
     if has_chart:
         d_chart = gsc.score_render_report(args.render, words, args.refpack,
                                           anchor_path=chart_path)
@@ -667,24 +668,33 @@ def build_scorecard(args) -> dict:
         iou_rc = iou["raw"]["iou_rc"]
         iou_ce = iou["raw"]["iou_ce"]
         iou_rc_hygiene = _gate(iou["hygiene"]["iou_rc"], cfg["L1"]["iou_rc"])
+        # Costco path unchanged: render->real IoU is a reported float, the L1
+        # gate is GlyphScore + the chart-anchored render->design (rc) rung.
+        iou_re_hygiene = iou["hygiene"]["iou_re"]
+        l1_gates = {"gs": gs_crops_gate, "rc": iou_rc_hygiene}
     else:
-        # No specimen chart -> render->design and design->real are undefined.
+        # No specimen chart -> render->design/design->real are undefined
+        # (SKIPPED). The chart-free L1 gate is GlyphScore-vs-crops AND the
+        # crop-anchored render->real IoU (gated dir=min vs the real crops'
+        # own self-agreement ceiling, cfg L1.iou_re); without this second rung
+        # L1 could pass on GlyphScore alone despite arbitrarily poor
+        # render->real fidelity.
         gs_vs_chart = iou_rc = iou_ce = iou_rc_hygiene = SKIPPED
+        iou_re_hygiene = _gate(iou["hygiene"]["iou_re"], cfg["L1"]["iou_re"])
+        l1_gates = {"gs": gs_crops_gate, "re": iou_re_hygiene}
     L1 = {
-        "gs_vs_crops": _gate(d_crops["glyphscore"], cfg["L1"]["gs_vs_crops"]),
+        "gs_vs_crops": gs_crops_gate,
         "gs_vs_chart": gs_vs_chart,
         "iou_re": iou["raw"]["iou_re"],
         "iou_rc": iou_rc,
         "iou_ce": iou_ce,
         "iou_rc_hygiene": iou_rc_hygiene,
-        "iou_re_hygiene": iou["hygiene"]["iou_re"],
+        "iou_re_hygiene": iou_re_hygiene,
         "self_agreement_ref": cfg["L1"].get("self_agreement_ref", 0.87),
         "worst_after_hygiene": iou["worst_after_hygiene"],
         "segmentation": f"{seg['n_words_segmented']}/{seg['n_words']}",
     }
-    # Chart-free merchants gate L1 on the crop-anchored GlyphScore alone; the
-    # SKIPPED iou_rc gate is dropped by _level_pass (not a silent pass).
-    L1["pass"] = _level_pass({"gs": L1["gs_vs_crops"], "rc": L1["iou_rc_hygiene"]})
+    L1["pass"] = _level_pass(l1_gates)
 
     # --- L2 geometry ---
     _log("stage: L2 chamfer + boundary-IoU + column geometry")

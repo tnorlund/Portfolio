@@ -22,7 +22,9 @@
   "L1": {
     "gs_vs_crops": {"target": 50.0, "tol": 5.0, "dir": "min", "reg": 3.0},
     "iou_rc": {"target": 0.536, "tol": 0.05, "dir": "band", "reg": 0.03},
-    "self_agreement_ref": 0.87
+    "_iou_re_doc": "Chart-free L1 fallback rung: render->real IoU (dir=min) vs the Sprouts crops' own usage-weighted leave-one-out self-agreement (0.611, measured on sprouts.refpack in the harness's shifted-IoU space) -- the render->real 1:1 ceiling. Only gated for merchants with no specimen chart.",
+    "iou_re": {"target": 0.611, "tol": 0.03, "dir": "min", "reg": 0.03},
+    "self_agreement_ref": 0.611
   },
   "L2": {
     "cap_h_ratio": {"target": 1.00, "tol": 0.03, "dir": "band", "reg": 0.03},

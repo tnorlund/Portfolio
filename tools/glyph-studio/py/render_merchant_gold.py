@@ -98,11 +98,17 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
     sk_re = _re.compile(
         r"RECEIPT#\d+#LINE#(\d+)#WORD#(\d+)(?:#LABEL#(.+))?$"
     )
-    words, labels = {}, {}
+    words, labels, skipped_words = {}, {}, 0
     for it in query(f"RECEIPT#{rid}#LINE"):
         t = it.get("TYPE", {}).get("S")
         m = sk_re.search(it["SK"]["S"])
         if not m:
+            # An unparsable RECEIPT_WORD SK would silently drop a real word ->
+            # a plausible-but-incomplete receipt. Surface it loudly.
+            if t == "RECEIPT_WORD":
+                skipped_words += 1
+                print(f"[render_merchant_gold] WARN: unparsable RECEIPT_WORD SK "
+                      f"{it['SK']['S']!r}", file=sys.stderr)
             continue
         line_id, word_id, label = int(m.group(1)), int(m.group(2)), m.group(3)
         if t == "RECEIPT_WORD" and label is None:
@@ -115,14 +121,29 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
                          br["x"] * 1000, br["y"] * 1000],
             }
         elif t == "RECEIPT_WORD_LABEL" and label not in (None, "O"):
-            # first label per word wins (matches the single-label render path)
-            labels.setdefault((line_id, word_id), label)
+            # Prefer a VALID label over PENDING/INVALID for the same word (the
+            # single label the render path styles on); fall back to SK order.
+            status = it.get("validation_status", {}).get("S", "")
+            key = (line_id, word_id)
+            prev = labels.get(key)
+            if prev is None or (status == "VALID" and prev[1] != "VALID"):
+                labels[key] = (label, status)
+    if skipped_words:
+        raise RuntimeError(
+            f"{skipped_words} RECEIPT_WORD item(s) had unparsable SKs for "
+            f"{image_id}#{receipt_id}; refusing to render an incomplete receipt"
+        )
     word_list = []
     for key, w in sorted(words.items()):
         w = dict(w)
-        w["labels"] = [labels[key]] if key in labels else []
+        w["labels"] = [labels[key][0]] if key in labels else []
         word_list.append(w)
 
+    # Barcodes use the renderer's NORMALIZED (0-1) top_left/bottom_right point
+    # contract, matching render_costco_gold.py (words are 0-1000, barcodes are
+    # 0-1 dicts -- the renderer scales barcode geometry itself). The Sprouts
+    # gold receipt has no barcodes, so this path is untested here but preserved
+    # for chart/barcode merchants.
     barcodes = []
     for it in query(f"RECEIPT#{rid}#BARCODE"):
         if it.get("TYPE", {}).get("S") != "RECEIPT_BARCODE":
