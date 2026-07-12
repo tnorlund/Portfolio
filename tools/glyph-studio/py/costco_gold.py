@@ -43,7 +43,6 @@ import sys
 import tempfile
 import time
 from collections import defaultdict
-from difflib import SequenceMatcher
 
 import numpy as np
 from PIL import Image
