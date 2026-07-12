@@ -1,0 +1,270 @@
+{
+  "merchant": "costco",
+  "date": "2026-07-11",
+  "tool": "costco_gold.py",
+  "render": ".out/final_i2.webp",
+  "real": "portfolio/public/synthetic-receipts/pipeline/costco/real.webp",
+  "canvas": [
+    760,
+    2999
+  ],
+  "glyphscore_root": "/private/tmp/glyphscore",
+  "aligned": true,
+  "align_residual_px": 17.9,
+  "n_anchors": 55,
+  "L0": {
+    "ink_ratio": {
+      "value": 1.2504649198522761,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "fill_render": {
+      "value": 0.259765625,
+      "target": 0.25390625,
+      "tol": 0.01,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.25390625,
+      "spec_target": 0.271
+    },
+    "fill_real_ref": 0.25390625,
+    "cap_h_ratio": {
+      "value": 1.0044631199028502,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": true
+    },
+    "pitch_ratio": {
+      "value": 0.9926837016523902,
+      "target": 1.0,
+      "tol": 0.02,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_px": {
+      "render": 30.81112774110375,
+      "real": 30.67422499701507
+    },
+    "pitch_px": {
+      "render": 44.34437361459495,
+      "real": 44.6712014519637
+    },
+    "interline_fill": {
+      "render": 0.6948148148148148,
+      "real": 0.6866666666666666
+    },
+    "pass": false
+  },
+  "L1": {
+    "gs_vs_crops": {
+      "value": 36.034419589504694,
+      "target": 50.0,
+      "tol": 5.0,
+      "dir": "min",
+      "pass": false
+    },
+    "gs_vs_chart": 73.01420373852952,
+    "iou_re": 0.5307112315207174,
+    "iou_rc": 0.6380129912309127,
+    "iou_ce": 0.6238213760723995,
+    "iou_rc_hygiene": {
+      "value": 0.6333923700037116,
+      "target": 0.536,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "iou_re_hygiene": 0.5405581946942226,
+    "self_agreement_ref": 0.87,
+    "worst_after_hygiene": [
+      {
+        "char": "L",
+        "rc": 0.079,
+        "ce": 0.744,
+        "n": 122
+      },
+      {
+        "char": "r",
+        "rc": 0.259,
+        "ce": 0.741,
+        "n": 97
+      },
+      {
+        "char": "e",
+        "rc": 0.333,
+        "ce": 0.485,
+        "n": 248
+      },
+      {
+        "char": "U",
+        "rc": 0.421,
+        "ce": 0.578,
+        "n": 62
+      },
+      {
+        "char": "N",
+        "rc": 0.424,
+        "ce": 0.542,
+        "n": 94
+      },
+      {
+        "char": "g",
+        "rc": 0.441,
+        "ce": 0.523,
+        "n": 22
+      },
+      {
+        "char": "H",
+        "rc": 0.453,
+        "ce": 0.713,
+        "n": 72
+      },
+      {
+        "char": "m",
+        "rc": 0.476,
+        "ce": 0.583,
+        "n": 58
+      }
+    ],
+    "segmentation": "212/219",
+    "pass": false
+  },
+  "L2": {
+    "chamfer_dots": 0.763427234222343,
+    "boundary_iou": 0.360089612391096,
+    "advance_ratio": {
+      "value": 1.0246703320698418,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "max",
+      "pass": true
+    },
+    "advance_px": {
+      "render": 20.503640007280328,
+      "real": 20.009986983679735
+    },
+    "price_std_px": {
+      "value": 5.510213151919972,
+      "target": 8.0,
+      "tol": 0.0,
+      "dir": "max",
+      "pass": true
+    },
+    "barcode_caption_ratio": {
+      "value": 0.9824611508940304,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_ratio": {
+      "value": 1.0044631199028502,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": true
+    },
+    "interline_fill": {
+      "render": 0.6948148148148148,
+      "real": 0.6866666666666666
+    },
+    "pass": true
+  },
+  "L3": {
+    "ink_darkness": {
+      "value": 10.0,
+      "target": 63.0,
+      "tol": 6.0,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 63.0,
+      "spec_target": 69.0
+    },
+    "stroke_cov": {
+      "value": 0.03745592420078225,
+      "target": 0.1338306461501223,
+      "tol": 0.06,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.1338306461501223,
+      "spec_target": 0.35
+    },
+    "edge_transition_frac": {
+      "value": 0.1488035500719826,
+      "target": 0.3540884074429982,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.3540884074429982,
+      "spec_target": 0.16
+    },
+    "paper_clip_frac": {
+      "value": 0.05194054580896686,
+      "target": 0.4523040935672515,
+      "tol": 0.1,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.4523040935672515,
+      "spec_target": 0.55
+    },
+    "ink_tone_emd": {
+      "value": 12.766034585160817,
+      "target": 0.0,
+      "tol": 3.0,
+      "dir": "max",
+      "pass": false
+    },
+    "kanungo_p": {
+      "value": 0.009900990099009901,
+      "target": 0.05,
+      "tol": 0.0,
+      "dir": "p_min",
+      "pass": false
+    },
+    "kanungo_distance": 0.10181699346405233,
+    "pass": false
+  },
+  "L4": {
+    "ms_ssim": {
+      "value": 0.48265467265844925,
+      "target": 0.75,
+      "tol": 0.0,
+      "dir": "min",
+      "pass": false
+    },
+    "ms_ssim_raw": 0.30590480488856553,
+    "glcm_contrast": {
+      "real": 5.581989947787049,
+      "render": 7.1049060654857765
+    },
+    "forgery_auc": "NOT_IMPLEMENTED",
+    "tstr_gap": "NOT_IMPLEMENTED",
+    "ocr_jaccard": {
+      "value": 0.6808510638297872,
+      "target": 1.0,
+      "tol": 0.1,
+      "dir": "min",
+      "pass": false
+    },
+    "ocr_recall": {
+      "real": 0.7412280701754386,
+      "render": 0.6798245614035088
+    },
+    "ocr_cer": {
+      "real": 0.23330887747615553,
+      "render": 0.31694790902421127
+    },
+    "ocr_error_classes": {
+      "shared": 32,
+      "render_only": 13,
+      "real_only": 2
+    },
+    "spacing_jitter_render": 0.4294586658445015,
+    "pass": false
+  },
+  "overall_rung_cleared": "L0-fail",
+  "elapsed_sec": 14.4
+}
