@@ -81,9 +81,18 @@ def _norm(t: str | None) -> str:
 def _centroid(d: dict[str, Any]) -> tuple[float, float]:
     # float() everything: rows read live from DynamoDB deserialize numbers as
     # decimal.Decimal, and Decimal / float raises TypeError.
+    # Older-era word rows can lack corner attrs; fall back to bounding_box so
+    # their labels are MOVED/PARKED instead of mis-classed as pre-orphans while
+    # their words get deleted (live-dev wave-2 halt, image 1b441d33).
+    if "top_left" in d and "bottom_right" in d:
+        return (
+            (float(d["top_left"]["x"]) + float(d["bottom_right"]["x"])) / 2.0,
+            (float(d["top_left"]["y"]) + float(d["bottom_right"]["y"])) / 2.0,
+        )
+    bb = d["bounding_box"]
     return (
-        (float(d["top_left"]["x"]) + float(d["bottom_right"]["x"])) / 2.0,
-        (float(d["top_left"]["y"]) + float(d["bottom_right"]["y"])) / 2.0,
+        float(bb["x"]) + float(bb["width"]) / 2.0,
+        float(bb["y"]) + float(bb["height"]) / 2.0,
     )
 
 
@@ -471,7 +480,7 @@ def apply_image(
         etype = native.get("TYPE")
         wkey = reh.parse_word_sk(sk)
         if wkey and etype == "RECEIPT_WORD":
-            if "top_left" in native and "bottom_right" in native:
+            if "bounding_box" in native or ("top_left" in native and "bottom_right" in native):
                 old_words[wkey] = {
                     "text": _norm(native.get("text")),
                     "c": _centroid(native),

@@ -167,3 +167,9 @@ def test_parked_same_label_lands_on_distinct_words():
     assert len(plan.parks) == 2
     landing = {(p.new_key, p.label) for p in plan.parks}
     assert len(landing) == 2  # distinct (word, label) slots
+
+
+def test_centroid_falls_back_to_bounding_box():
+    d = {"bounding_box": {"x": 0.2, "y": 0.6, "width": 0.2, "height": 0.1}}
+    cx, cy = app._centroid(d)
+    assert abs(cx - 0.3) < 1e-9 and abs(cy - 0.65) < 1e-9
