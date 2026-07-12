@@ -55,6 +55,7 @@ Commands
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import logging
 import os
@@ -65,11 +66,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+from urllib.parse import urlparse
 
 LOG = logging.getLogger("remap_sections")
-
-# Endpoints that are safe to write to without --allow-remote.
-LOCAL_ENDPOINT_HINTS = ("127.0.0.1", "localhost", "0.0.0.0", "192.168.")
 
 # model_source suffix stamped on every remapped row.
 REMAP_TAG = "+remap-v1"
@@ -183,10 +182,18 @@ class AlignBlock:
         return "N:M"
 
 
-# A block that maps some OLD lines to no NEW line still "costs" something so the
-# DP does not drop lines for free; an unmatched OLD line scores this.
+# Score for a gap block (unmatched OLD / inserted NEW): 0.0 == "no match". This
+# is both the DP objective for a gap step and the emitted per-line confidence.
 _UNMATCHED_SCORE = 0.0
 _INSERTED_SCORE = 0.0
+
+# Structural floor: a match block whose similarity is below this is DISALLOWED
+# by the DP (scored -inf), so its lines are forced into gaps (unmatched OLD +
+# inserted NEW) instead of being consumed as a spurious near-zero-similarity
+# match that would shift the rest of the alignment. It sits well below the
+# keep-threshold so genuine noisy re-reads still align and are then judged by
+# ``--match-threshold``; only clear garbage is refused a match here.
+_MATCH_FLOOR = 0.2
 
 
 def _band_bounds(m: int, n: int, band: int | None) -> tuple[int, int]:
@@ -252,13 +259,18 @@ def align_lines(
     best[m][n] = 0.0
 
     def block_score(i: int, a: int, j: int, b: int) -> float:
-        if a == 0:
-            return _INSERTED_SCORE
-        if b == 0:
-            return _UNMATCHED_SCORE
+        # Gap step (drop OLD / insert NEW) scores 0.0; any real match must beat
+        # it, so a match is only skipped when it is below the floor below.
+        if a == 0 or b == 0:
+            return 0.0
         left = merge_join.join(old_norm[i : i + a])
         right = merge_join.join(new_norm[j : j + b])
+        # All-blank lines must not anchor as a high-confidence match.
+        if not left and not right:
+            return NEG
         s = similarity_norm(left, right)
+        if s < _MATCH_FLOOR:
+            return NEG  # disallow: force these lines into gaps instead
         # Mild size penalty so identical-scoring bigger blocks lose to 1:1.
         return s - 0.001 * (a + b - 2)
 
@@ -297,11 +309,33 @@ def align_lines(
     while i < m or j < n:
         step = back[i][j]
         if step is None:
-            # Should not happen (a full path always exists), but stay safe:
-            # consume whatever remains as a final unmatched/inserted block.
-            step = (min(1, m - i), min(1, n - j)) if (m - i or n - j) else (0, 0)
-            if step == (0, 0):
-                break
+            # A full in-band path always exists, so this is unreachable. If it
+            # ever happens, FAIL CLOSED: emit the remaining OLD lines as
+            # unmatched and NEW lines as inserted (score 0) rather than
+            # fabricating high-confidence 1:1 matches the remapper would trust.
+            LOG.warning(
+                "alignment backtrack hit a dead cell at (%d,%d); "
+                "flushing remainder as unmatched/inserted",
+                i,
+                j,
+            )
+            if i < m:
+                blocks.append(
+                    AlignBlock(
+                        old_ids=tuple(old_lines[k][0] for k in range(i, m)),
+                        new_ids=(),
+                        score=_UNMATCHED_SCORE,
+                    )
+                )
+            if j < n:
+                blocks.append(
+                    AlignBlock(
+                        old_ids=(),
+                        new_ids=tuple(new_lines[k][0] for k in range(j, n)),
+                        score=_INSERTED_SCORE,
+                    )
+                )
+            break
         a, b = step
         old_ids = tuple(old_lines[i + k][0] for k in range(a))
         new_ids = tuple(new_lines[j + k][0] for k in range(b))
@@ -575,7 +609,14 @@ def _parse_packet_sections(packet: dict[str, Any]) -> list[SectionInput]:
 
 
 def _packet_old_lines(packet: dict[str, Any]) -> list[tuple[int, str]]:
-    """OLD lines from a packet as ``(line_id, text)`` in reading order."""
+    """OLD lines from a packet as ``(line_id, text)`` in reading order.
+
+    Sorting by ``line_id`` yields reading order because OCR ingestion assigns
+    line ids top-to-bottom (the ReceiptLine SK is ``...#LINE#<id:05d>``), so id
+    order == reading order. The packets are documented as reading-order lines
+    keyed by line id; ``read_new_lines`` sorts the re-OCR'd lines the same way
+    for the same reason, keeping both sequences monotonic for the DP.
+    """
     lines = packet.get("lines", {})
     pairs = [(int(k), v) for k, v in lines.items()]
     pairs.sort(key=lambda p: p[0])
@@ -631,7 +672,25 @@ def remap_receipt(
 
 
 def is_local_endpoint(endpoint_url: str | None) -> bool:
-    return bool(endpoint_url) and any(h in endpoint_url for h in LOCAL_ENDPOINT_HINTS)
+    """True only for a genuinely local endpoint (loopback / private / localhost).
+
+    Parses the URL and inspects the HOSTNAME (not a substring of the whole
+    string) so a crafted remote host like ``https://localhost.evil.example`` or
+    ``https://evil.example/192.168.0.1`` is correctly treated as REMOTE and
+    still requires ``--allow-remote`` to write.
+    """
+    if not endpoint_url:
+        return False
+    host = urlparse(endpoint_url).hostname
+    if not host:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_unspecified
 
 
 def _resolve_endpoint(cli_endpoint: str | None) -> str | None:
@@ -1202,6 +1261,21 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=args.log_level.upper(), format="%(levelname)s %(message)s"
     )
+
+    # Validate tuning knobs: out-of-range values silently corrupt alignment or
+    # downgrade semantics, so reject them up front.
+    if not 0.0 <= args.match_threshold <= 1.0:
+        parser.error("--match-threshold must be in [0, 1]")
+    if not 0.0 <= args.pending_loss_frac <= 1.0:
+        parser.error("--pending-loss-frac must be in [0, 1]")
+    if args.max_block < 1:
+        parser.error("--max-block must be >= 1")
+    if getattr(args, "n_receipts", 1) < 1:
+        parser.error("--n-receipts must be >= 1")
+    for frac_attr in ("merge_frac", "split_frac", "noise_frac"):
+        val = getattr(args, frac_attr, 0.0)
+        if not 0.0 <= val <= 1.0:
+            parser.error(f"--{frac_attr.replace('_', '-')} must be in [0, 1]")
 
     packets = load_packets(args.packets)
     if args.limit:

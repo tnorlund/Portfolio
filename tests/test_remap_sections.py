@@ -243,8 +243,45 @@ def test_remap_receipt_no_new_lines_marks_unmatched():
 def test_is_local_endpoint():
     assert rs.is_local_endpoint("http://127.0.0.1:8100")
     assert rs.is_local_endpoint("http://localhost:8000")
+    assert rs.is_local_endpoint("http://192.168.1.10:8000")
     assert not rs.is_local_endpoint("https://dynamodb.us-east-1.amazonaws.com")
     assert not rs.is_local_endpoint(None)
+
+
+def test_is_local_endpoint_rejects_crafted_remote_hosts():
+    # substring tricks must NOT be treated as local (would bypass --allow-remote)
+    assert not rs.is_local_endpoint("https://localhost.attacker.example")
+    assert not rs.is_local_endpoint("https://evil.example/192.168.0.1")
+    assert not rs.is_local_endpoint("https://127.0.0.1.attacker.example")
+
+
+def test_align_weak_match_is_unmatched_not_consumed():
+    # An OLD line with only a very weak counterpart must be left UNMATCHED
+    # rather than consume the unrelated NEW line and shift the alignment.
+    old = [(1, "HEADER STORE"), (2, "QWXZJ VBKMP"), (3, "TOTAL 5.00")]
+    new = [(10, "HEADER STORE"), (11, "TOTAL 5.00")]
+    matches = rs.old_line_matches(rs.align_lines(old, new))
+    assert matches[1].new_ids == [10]
+    assert matches[3].new_ids == [11]
+    assert matches[2].new_ids == []  # not forced onto 10 or 11
+    assert matches[2].kind == "unmatched"
+
+
+def test_align_blank_lines_do_not_anchor():
+    old = [(1, "HEADER"), (2, ""), (3, "TOTAL 5.00")]
+    new = [(10, "HEADER"), (11, "PROMO"), (12, "TOTAL 5.00")]
+    matches = rs.old_line_matches(rs.align_lines(old, new))
+    # the blank OLD line must not claim the (non-blank) NEW line as a match
+    assert matches[1].new_ids == [10]
+    assert matches[3].new_ids == [12]
+    assert matches[2].new_ids == []
+
+
+def test_cli_rejects_out_of_range_tuning():
+    with pytest.raises(SystemExit):
+        rs.main(["--match-threshold", "1.5", "simulate", "--n-receipts", "1"])
+    with pytest.raises(SystemExit):
+        rs.main(["--max-block", "0", "simulate", "--n-receipts", "1"])
 
 
 # --------------------------------------------------------------------------- #
