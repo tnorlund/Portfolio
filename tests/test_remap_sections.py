@@ -277,6 +277,36 @@ def test_align_blank_lines_do_not_anchor():
     assert matches[2].new_ids == []
 
 
+def test_align_match_floor_disallows_subfloor_blocks():
+    # A ~0.3-similarity pair is allowed at the default floor (0.2) but refused
+    # when the floor is raised to the keep-threshold (0.5).
+    old = [(1, "ABCDEFGH")]
+    new = [(10, "ABCXYZ12")]  # ~half the chars differ -> sim ~0.5-ish
+    lo = rs.old_line_matches(rs.align_lines(old, new, match_floor=0.2))
+    hi = rs.old_line_matches(rs.align_lines(old, new, match_floor=0.95))
+    assert lo[1].new_ids == [10]
+    assert hi[1].new_ids == []  # disallowed by the high floor -> unmatched
+
+
+def test_remap_receipt_threads_threshold_as_floor():
+    # With threshold 0.9, a moderately-similar re-read must NOT be aligned+kept;
+    # the line is dropped and (being the whole section) the section is skipped.
+    packet = {
+        "image_id": "img",
+        "receipt_id": 1,
+        "lines": {"1": "STORE HEADER LINE"},
+        "sections": [
+            {"section_type": "HEADER", "line_ids": [1], "confidence": 0.9,
+             "model_source": "qa", "validation_status": "VALID"}
+        ],
+    }
+    new = [(10, "5T0RE HEADER 1INE")]  # OCR-noisy re-read, sim < 0.9
+    res = rs.remap_receipt(packet, new, match_threshold=0.9, pending_loss_frac=0.3)
+    assert res.matched
+    assert res.remapped == []  # section emptied (line dropped) and skipped
+    assert res.skipped_sections == 1
+
+
 def test_cli_rejects_out_of_range_tuning():
     with pytest.raises(SystemExit):
         rs.main(["--match-threshold", "1.5", "simulate", "--n-receipts", "1"])

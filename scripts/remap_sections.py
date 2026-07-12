@@ -187,12 +187,14 @@ class AlignBlock:
 _UNMATCHED_SCORE = 0.0
 _INSERTED_SCORE = 0.0
 
-# Structural floor: a match block whose similarity is below this is DISALLOWED
-# by the DP (scored -inf), so its lines are forced into gaps (unmatched OLD +
-# inserted NEW) instead of being consumed as a spurious near-zero-similarity
-# match that would shift the rest of the alignment. It sits well below the
-# keep-threshold so genuine noisy re-reads still align and are then judged by
-# ``--match-threshold``; only clear garbage is refused a match here.
+# Default structural floor when a caller does not pass one: a match block whose
+# similarity is below the floor is DISALLOWED by the DP (scored -inf), so its
+# lines are forced into gaps (unmatched OLD + inserted NEW) instead of being
+# consumed as a spurious low-similarity match that would shift the rest of the
+# alignment. The receipt driver raises this to the keep-threshold so the DP
+# never even forms a match it would then drop -- a line is either a confident
+# match or a gap, with no "matched-but-dropped" middle state that could consume
+# a NEW line away from its true owner.
 _MATCH_FLOOR = 0.2
 
 
@@ -223,6 +225,7 @@ def align_lines(
     max_block: int = 3,
     merge_join: str = " ",
     band: int | None = None,
+    match_floor: float = _MATCH_FLOOR,
 ) -> list[AlignBlock]:
     """Monotonic block alignment of OLD lines to NEW lines.
 
@@ -269,7 +272,7 @@ def align_lines(
         if not left and not right:
             return NEG
         s = similarity_norm(left, right)
-        if s < _MATCH_FLOOR:
+        if s < match_floor:
             return NEG  # disallow: force these lines into gaps instead
         # Mild size penalty so identical-scoring bigger blocks lose to 1:1.
         return s - 0.001 * (a + b - 2)
@@ -644,7 +647,12 @@ def remap_receipt(
             matched=False,
         )
 
-    blocks = align_lines(old_lines, new_lines, max_block=max_block)
+    # Use the keep-threshold as the alignment floor: the DP won't even form a
+    # match it would then drop, so a sub-threshold similarity can never consume
+    # a NEW line away from a line that truly matches it.
+    blocks = align_lines(
+        old_lines, new_lines, max_block=max_block, match_floor=match_threshold
+    )
     matches = old_line_matches(blocks)
 
     remapped: list[RemappedSection] = []
