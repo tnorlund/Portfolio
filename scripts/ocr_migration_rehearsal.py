@@ -761,25 +761,45 @@ def restore_images(
     ] + [{"PutRequest": {"Item": json.loads(r.wire_json)}} for r in puts]
     _batch_write(client, table_name, requests)
 
-    # Verify: every partition must now match the backup byte-for-byte.
+    # Verify: every partition must match the backup — modulo LIVE-TABLE churn:
+    # background pipelines legitimately mutate embedding_status/updated_at and
+    # append COMPACTION_RUN rows between our write and read. Ignore exactly
+    # those; anything else is a real mismatch.
+    VOLATILE_ATTRS = ("embedding_status", "updated_at")
+    VOLATILE_TYPES = ("COMPACTION_RUN",)
+
+    def _stable(wire: str) -> str:
+        try:
+            it = json.loads(wire)
+        except (TypeError, json.JSONDecodeError):
+            return wire
+        for a in VOLATILE_ATTRS:
+            it.pop(a, None)
+        return _canonical(json.dumps(it))
+
     mismatches = []
     for img in ids:
         want = {
-            (r.pk, r.sk): _canonical(r.wire_json)
+            (r.pk, r.sk): _stable(r.wire_json)
             for r in backup_rows
             if r.pk == f"IMAGE#{img}"
         }
-        got = {}
+        got, got_types = {}, {}
         for it in _query_partition(client, table_name, f"IMAGE#{img}"):
             native = cache._native_item(it)
-            got[(str(native.get("PK", "")), str(native.get("SK", "")))] = _canonical(
-                json.dumps(it)
-            )
+            key = (str(native.get("PK", "")), str(native.get("SK", "")))
+            got[key] = _stable(json.dumps(it))
+            got_types[key] = native.get("TYPE")
         if want != got:
-            extra = set(got) - set(want)
+            extra = {
+                k
+                for k in set(got) - set(want)
+                if got_types.get(k) not in VOLATILE_TYPES
+            }
             missing = set(want) - set(got)
             changed = {k for k in set(want) & set(got) if want[k] != got[k]}
-            mismatches.append((img, len(missing), len(extra), len(changed)))
+            if missing or extra or changed:
+                mismatches.append((img, len(missing), len(extra), len(changed)))
     if mismatches:
         raise RuntimeError(f"RESTORE VERIFICATION FAILED: {mismatches[:5]}")
     return {
