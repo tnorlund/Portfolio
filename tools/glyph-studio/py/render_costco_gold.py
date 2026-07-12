@@ -106,16 +106,26 @@ def _load_receipt_payload(client, merchant, image_id, receipt_id):
                         "confidence": getattr(b, "confidence", None),
                     }
                 )
-        except Exception:  # noqa: BLE001
-            barcodes = []
+        except Exception as e:  # noqa: BLE001
+            # A transient fetch failure must not be CACHED as "this receipt
+            # has no barcodes" -- that would silently change every later
+            # (supposedly deterministic) render. Fail loudly instead.
+            raise RuntimeError(
+                f"barcode fetch failed for {image_id}#{receipt_id}: {e}"
+            ) from e
     return rec, words, barcodes
 
 
 def _cached_payload(cache_dir: str, table: str, region: str) -> dict:
-    """The gold receipt payload, cached to disk after the first Dynamo pull."""
+    """The gold receipt payload, cached to disk after the first Dynamo pull.
+
+    The cache key includes the table so a run against a different
+    environment cannot silently reuse another table's payload.
+    """
     os.makedirs(cache_dir, exist_ok=True)
     path = os.path.join(
-        cache_dir, f"payload_{GOLD_IMAGE_ID}_{GOLD_RECEIPT_ID}.json"
+        cache_dir,
+        f"payload_{table}_{GOLD_IMAGE_ID}_{GOLD_RECEIPT_ID}.json",
     )
     if os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
@@ -157,7 +167,9 @@ def render_gold(
     merchant = doc["merchant"]
     prof = rsr.cached_font_profile(table, merchant, region=region,
                                    max_receipts=12)
-    typ = rsr.merchant_typography(merchant)
+    # shallow-copy before mutating: never leak vscale/box_sink into a dict a
+    # profile helper might share or cache across renders
+    typ = dict(rsr.merchant_typography(merchant))
     if vscale is not None:
         typ["bitmap_glyph_vscale"] = float(vscale)
     ss = rsr.section_scale_for_merchant(merchant)
@@ -188,15 +200,19 @@ def render_gold(
         tokens, bboxes = [], []
         for b in box_sink:
             x0, y0, x1, y1 = (float(v) for v in b["px"])
+            # clamp to the inner canvas: a glyph offset/descender at the
+            # margin must not emit out-of-range label coordinates
+            box = [
+                (x0 - margin) / inner_w * 1000.0,
+                (1.0 - (y1 - margin) / inner_h) * 1000.0,
+                (x1 - margin) / inner_w * 1000.0,
+                (1.0 - (y0 - margin) / inner_h) * 1000.0,
+            ]
+            box = [min(1000.0, max(0.0, v)) for v in box]
+            if box[2] - box[0] <= 0 or box[3] - box[1] <= 0:
+                continue  # fully outside the inner canvas
             tokens.append(b["text"])
-            bboxes.append(
-                [
-                    (x0 - margin) / inner_w * 1000.0,
-                    (1.0 - (y1 - margin) / inner_h) * 1000.0,
-                    (x1 - margin) / inner_w * 1000.0,
-                    (1.0 - (y0 - margin) / inner_h) * 1000.0,
-                ]
-            )
+            bboxes.append(box)
         with open(labels_out, "w", encoding="utf-8") as fh:
             json.dump(
                 {

@@ -279,6 +279,11 @@ class FitContext:
         if self.anchor == "gold":
             gold_gray = np.asarray(
                 Image.open(args.gold_real).convert("L"), np.float64)
+            if gold_gray.shape != self.gray.shape:
+                raise SystemExit(
+                    f"gold real {gold_gray.shape[::-1]} and render "
+                    f"{self.gray.shape[::-1]} must share one canvas (the "
+                    f"z_ink total-ink term compares whole-canvas sums)")
             self.gold = _texture_stats(self.gm, gold_gray, BODY)
             self.gold["ink_total"] = float((255.0 - gold_gray).sum())
             _log(f"gold texture anchor: L={self.gold['median_L']:.1f} "
@@ -295,6 +300,11 @@ class FitContext:
             if y_top_frac >= BODY[0] and y_bot_frac <= BODY[1]:
                 words.append({"text": t, "bbox": list(b[:4])})
         self.words = words[: args.max_words]
+        if len(self.words) < 30:
+            raise SystemExit(
+                f"only {len(self.words)} body tokens in the labels; the fit "
+                "would silently lose its crop-level guards (fill / Kanungo / "
+                "GlyphScore)")
         _log(f"fit segmentation subset: {len(self.words)} body tokens")
         self.n_eval = 0
         self.trace: list[dict] = []
@@ -340,9 +350,13 @@ class FitContext:
                 "z_emd": _hist_emd(tr["hist"], hist) / 3.0,
             }
         gs = fill = kan = float("nan")
+        degenerate = False
         if with_glyphs:
             img = Image.fromarray(np.round(deg).astype(np.uint8), "L")
             instances, _seg = self.gsc.segment_render(img, self.words)
+            # a candidate that destroys segmentation must not be rewarded by
+            # its glyph terms silently dropping out of the loss
+            degenerate = len(instances) < 20
             masks = [np.asarray(m, bool) for _c, m, _l in instances]
             fill = self.gm.normalized_fill(masks)
             terms["z_fill"] = (fill - tr["fill"]) / 0.01
@@ -366,7 +380,12 @@ class FitContext:
             res = self.score_instances(self.refs, instances, max_shift=2)
             gs = self.weighted_glyphscore(res)
             terms["z_gs"] = max(0.0, 50.0 - gs) / 5.0
-        loss = float(sum(v * v for v in terms.values() if np.isfinite(v)))
+        # Non-finite terms mean the candidate broke a measurement (empty
+        # segmentation, no ink, ...): that is a failure, not a free pass.
+        if degenerate or any(not np.isfinite(v) for v in terms.values()):
+            loss = float("inf")
+        else:
+            loss = float(sum(v * v for v in terms.values()))
         self.n_eval += 1
         rec = {
             "eval": self.n_eval,
@@ -408,7 +427,9 @@ def _stage(ctx, base: dict, keys, *, label: str, iters: int, popsize: int,
     _log(f"stage {label}: {len(keys)} params, {iters} iters x pop {popsize}")
     es = cma.CMAEvolutionStrategy(
         _to_unit(base, keys), sigma0,
-        {"popsize": popsize, "bounds": [0.0, 1.0], "seed": seed,
+        # pycma treats seed<=0 as "seed from time"; keep it strictly positive
+        # so the fit is reproducible for any --seed value.
+        {"popsize": popsize, "bounds": [0.0, 1.0], "seed": max(1, int(seed)),
          "verbose": -9},
     )
     # Seed with the incoming point so a stage can never RETURN worse than it
@@ -450,7 +471,9 @@ def main(argv=None) -> int:
     ap.add_argument("--train-img-dir",
                     default=os.path.join(_ROOT, ".out", "train_reals"))
     ap.add_argument("--max-words", type=int, default=120)
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--seed", type=int, default=1,
+                    help="CMA-ES seed (kept strictly positive: pycma treats "
+                         "seed<=0 as time-seeded)")
     ap.add_argument("--iters-a", type=int, default=14)
     ap.add_argument("--iters-b", type=int, default=14)
     ap.add_argument("--iters-c", type=int, default=8)

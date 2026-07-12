@@ -69,8 +69,13 @@ def _validate(params: Mapping[str, float]) -> dict[str, float]:
         raise ValueError(f"degrade params missing {missing}")
     out = {}
     for k in PARAM_ORDER:
+        v = float(params[k])
+        if not np.isfinite(v):
+            # NaN survives np.clip and would silently poison the whole
+            # image (and, downstream, an optimizer's loss); refuse it.
+            raise ValueError(f"degrade param {k} is not finite: {v!r}")
         lo, hi = PARAM_BOUNDS[k]
-        out[k] = float(np.clip(float(params[k]), lo, hi))
+        out[k] = float(np.clip(v, lo, hi))
     return out
 
 
@@ -81,6 +86,11 @@ def degrade(gray: np.ndarray, params: Mapping[str, float], seed: int = 0) -> np.
     """
     p = _validate(params)
     g = np.asarray(gray, np.float64)
+    if g.ndim != 2 or g.size == 0:
+        raise ValueError(f"degrade expects a 2-D grayscale array, got shape "
+                         f"{g.shape}")
+    if not np.isfinite(g).all():
+        raise ValueError("degrade input contains non-finite pixels")
     H, W = g.shape
     rng = np.random.default_rng(seed)
     ink = np.clip((255.0 - g) / 255.0, 0.0, 1.0)

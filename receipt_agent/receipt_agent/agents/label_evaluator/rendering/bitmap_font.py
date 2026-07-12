@@ -104,7 +104,8 @@ class BitmapFont:
         # glyphs ~17% too TALL at correct pitch (GOLD_STANDARD.md I2), so the
         # fix must be vertical-only. 1.0 (default) is byte-identical.
         self.vscale = max(0.5, min(1.5, float(vscale or 1.0)))
-        self._cache: dict[tuple[str, int], tuple] = {}
+        # key: (char, cap_px, thin, vscale)
+        self._cache: dict[tuple[str, int, float, float], tuple] = {}
 
     def advance(self, cap_px: float) -> float:
         return cap_px * self._advance_ratio
