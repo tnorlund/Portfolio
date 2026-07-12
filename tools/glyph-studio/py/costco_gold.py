@@ -590,9 +590,18 @@ def build_scorecard(args) -> dict:
     cap_real = duty_real * pitch_real if np.isfinite(pitch_real) else float("nan")
     cap_ratio = cap_render / cap_real if cap_real and np.isfinite(cap_real) else float("nan")
     pitch_ratio = pitch_render / pitch_real if pitch_real and np.isfinite(pitch_real) else float("nan")
+    # Fill is gated DYNAMICALLY against the refpack-measured real fill (same
+    # 32x32-normalized-mask method as the render side). The documented Part-1
+    # value (0.271, a different hand-crop method) rides along as spec_target;
+    # gating on it would fail the real reference itself (measures ~0.254).
+    fill_gate = _gate(fill_render, {"target": fill_real,
+                                    "tol": cfg["L0"]["fill"]["tol"],
+                                    "dir": "band"})
+    fill_gate["real_measured"] = fill_real
+    fill_gate["spec_target"] = cfg["L0"]["fill"].get("target")
     L0 = {
         "ink_ratio": _gate(ink_r, cfg["L0"]["ink_ratio"]),
-        "fill_render": _gate(fill_render, cfg["L0"]["fill"]),
+        "fill_render": fill_gate,
         "fill_real_ref": fill_real,
         "cap_h_ratio": _gate(cap_ratio, cfg["L0"]["cap_h_ratio"]),
         "pitch_ratio": _gate(pitch_ratio, cfg["L0"]["pitch_ratio"]),
