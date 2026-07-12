@@ -161,7 +161,11 @@ def degrade_image_file(
     img = Image.open(src)
     gray = np.asarray(img.convert("L"), np.float64)
     out = degrade(gray, params, seed=seed)
-    Image.fromarray(np.round(out).astype(np.uint8), "L").convert("RGB").save(dst)
+    res = Image.fromarray(np.round(out).astype(np.uint8), "L").convert("RGB")
+    # lossless for webp: the scorecard must measure the model, not encoder
+    # artifacts stacked on top of it.
+    kw = {"lossless": True} if dst.lower().endswith(".webp") else {}
+    res.save(dst, **kw)
     return dst
 
 

@@ -151,6 +151,10 @@ def _texture_stats(gm, gray: np.ndarray, band: tuple[float, float]) -> dict:
         "cov": st["cov"],
         "edge": gm.edge_transition_frac(body, zone),
         "clip": gm.paper_clip_frac(body),
+        # mean darkness over ALL thresholded ink px (edges included): the
+        # whole-stroke ink budget, which the round-1 fit under-delivered
+        # (blur spread ink too thin at matched core darkness).
+        "ink_mean": float((255.0 - body[ink]).mean()) if ink.any() else float("nan"),
         "hist": hist,
     }
 
@@ -182,6 +186,11 @@ def build_train_targets(gm, cache_dir: str, img_dir: str) -> dict:
     if len(receipts) < 3:
         raise SystemExit("fewer than 3 vetted train scans; refusing to fit")
     med = lambda k: float(np.median([s[k] for s in stats]))  # noqa: E731
+
+    def iqr(k):
+        v = [s[k] for s in stats]
+        return (float(np.percentile(v, 25)), float(np.percentile(v, 75)))
+
     stacks = {ch: np.stack(ms) for ch, ms in pack.items()}
     return {
         "receipts": receipts,
@@ -189,6 +198,12 @@ def build_train_targets(gm, cache_dir: str, img_dir: str) -> dict:
         "cov": med("cov"),
         "edge": med("edge"),
         "clip": med("clip"),
+        "ink_mean": med("ink_mean"),
+        # in-family intervals: any value inside a stat's train IQR is a valid
+        # member of the print/scan family (the gold scan is ONE draw of it);
+        # the objective only penalizes leaving the family.
+        "iqr": {k: iqr(k) for k in
+                ("median_L", "cov", "edge", "clip", "ink_mean")},
         "hist": np.mean(np.stack(hists), axis=0),
         "fill": float(np.median(
             [float(m.mean()) for ms in stacks.values() for m in ms]
@@ -255,11 +270,20 @@ class FitContext:
         zone = ndimage.binary_dilation(ink, iterations=2)
         hist, _ = np.histogram(body, bins=64, range=(0, 255), density=True)
         tr = self.train
+
+        def z_iqr(value, key, tol):
+            lo, hi = tr["iqr"][key]
+            if lo <= value <= hi:
+                return 0.0
+            return (value - hi if value > hi else value - lo) / tol
+
+        ink_mean = float((255.0 - body[ink]).mean()) if ink.any() else float("nan")
         terms = {
-            "z_L": (st["median_L"] - tr["median_L"]) / 6.0,
-            "z_cov": (st["cov"] - tr["cov"]) / 0.06,
-            "z_edge": (self.gm.edge_transition_frac(body, zone) - tr["edge"]) / 0.05,
-            "z_clip": (self.gm.paper_clip_frac(body) - tr["clip"]) / 0.10,
+            "z_L": z_iqr(st["median_L"], "median_L", 6.0),
+            "z_cov": z_iqr(st["cov"], "cov", 0.06),
+            "z_edge": z_iqr(self.gm.edge_transition_frac(body, zone), "edge", 0.05),
+            "z_clip": z_iqr(self.gm.paper_clip_frac(body), "clip", 0.10),
+            "z_inkmean": z_iqr(ink_mean, "ink_mean", 6.0),
             "z_emd": _hist_emd(tr["hist"], hist) / 3.0,
         }
         gs = fill = kan = float("nan")
@@ -285,7 +309,7 @@ class FitContext:
                 rc.extend(ms[:k])
                 xc.extend(stk[i] for i in np.unique(idx))
             kan = self.gm.kanungo_two_sample(rc, xc, n_perm=0)["distance"]
-            terms["z_kan"] = kan / 0.03
+            terms["z_kan"] = kan / 0.02
             res = self.score_instances(self.refs, instances, max_shift=2)
             gs = self.weighted_glyphscore(res)
             terms["z_gs"] = max(0.0, 50.0 - gs) / 5.0
@@ -334,7 +358,10 @@ def _stage(ctx, base: dict, keys, *, label: str, iters: int, popsize: int,
         {"popsize": popsize, "bounds": [0.0, 1.0], "seed": seed,
          "verbose": -9},
     )
-    best = (float("inf"), dict(base))
+    # Seed with the incoming point so a stage can never RETURN worse than it
+    # received (CMA samples around base; none is guaranteed to beat it).
+    base_loss, _ = ctx.evaluate(base, with_glyphs=with_glyphs)
+    best = (base_loss, dict(base))
     for it in range(iters):
         xs = es.ask()
         losses = []
@@ -377,16 +404,23 @@ def main(argv=None) -> int:
     ap.add_argument("--popsize", type=int, default=10)
     ap.add_argument("--smoke", action="store_true",
                     help="3 evals + timing, no fit")
+    ap.add_argument("--start",
+                    help="warm-start params JSON (a prior fit round)")
     args = ap.parse_args(argv)
 
     ctx = FitContext(args)
 
-    # start: mid-bounds, noise off (stage A explores from a neutral chain)
-    start = {}
-    for k in PARAM_ORDER:
-        lo, hi = PARAM_BOUNDS[k]
-        start[k] = lo if k in NOISE_PARAMS else 0.5 * (lo + hi)
-    start["white_point"] = 250.0
+    if args.start:
+        with open(args.start, encoding="utf-8") as fh:
+            start = json.load(fh)["params"]
+        _log(f"warm start from {args.start}")
+    else:
+        # start: mid-bounds, noise off (stage A explores from a neutral chain)
+        start = {}
+        for k in PARAM_ORDER:
+            lo, hi = PARAM_BOUNDS[k]
+            start[k] = lo if k in NOISE_PARAMS else 0.5 * (lo + hi)
+        start["white_point"] = 250.0
 
     if args.smoke:
         for i in range(3):
