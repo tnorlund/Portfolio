@@ -751,6 +751,7 @@ def draw_text_run(
             box_sink.append(
                 {
                     "word_index": getattr(w, "word_index", None),
+                    "text": wtext,
                     "px": (
                         x + (x0m - bb[0]),
                         baseline_y - cap,
@@ -1067,6 +1068,7 @@ def draw_grid_line(
             box_sink.append(
                 {
                     "word_index": getattr(p.word, "word_index", None),
+                    "text": p.draw_text,
                     "px": (x0, baseline_y - cap, x1, baseline_y + desc),
                 }
             )

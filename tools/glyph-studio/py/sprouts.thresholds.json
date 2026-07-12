@@ -1,0 +1,46 @@
+{
+  "merchant": "sprouts",
+  "_doc": "Sprouts Farmers Market gold-ladder thresholds. Merchant #2 of the ladder-green loop. Bands are inherited from costco.thresholds.json because the gated metrics are either ratios to the real reference (target 1.0: ink/cap/pitch/advance/caption) or dynamic (L0 fill + all L3 channels center on the harness-measured real value), so they transfer merchant-agnostically. Regions were re-derived from THIS receipt's real row-ink profile. The L1 iou_rc rung is chart-anchored and Sprouts has no specimen chart, so it is SKIPPED at runtime (dropped from the L1 gate; the block is kept for structural parity with costco). A Sprouts-specific band re-fit is future work.",
+  "gold_receipt": "00ded398-af6f-4a49-86f7-c79ccb554e48#1",
+  "_gold_note": "The SPROUTS receipt in image 00ded398 is receipt #1 (receipt #2 in the same image is a Vons receipt). The committed pipeline/sprouts/final.labels.json is mis-tagged #2 but contains #1's Sprouts words.",
+  "dark_thresh": 160.0,
+  "regions": {
+    "header": [0.02, 0.10],
+    "body": [0.12, 0.62],
+    "footer": [0.72, 0.96]
+  },
+  "hygiene": {
+    "_doc": "Drop the SPROUTS wordmark lines (oversized display glyphs that break single-glyph segmentation). Sprouts-specific hygiene tuning (dense payment/footer blocks) is future work; the gated L0/L2 metrics do not use this mask.",
+    "exclude_lines": [0, 1]
+  },
+  "L0": {
+    "ink_ratio": {"target": 1.00, "tol": 0.05, "dir": "band", "reg": 0.05},
+    "fill": {"target": 0.271, "tol": 0.01, "dir": "band", "reg": 0.01},
+    "cap_h_ratio": {"target": 1.00, "tol": 0.03, "dir": "band", "reg": 0.03},
+    "pitch_ratio": {"target": 1.00, "tol": 0.02, "dir": "band", "reg": 0.02}
+  },
+  "L1": {
+    "gs_vs_crops": {"target": 50.0, "tol": 5.0, "dir": "min", "reg": 3.0},
+    "iou_rc": {"target": 0.536, "tol": 0.05, "dir": "band", "reg": 0.03},
+    "self_agreement_ref": 0.87
+  },
+  "L2": {
+    "cap_h_ratio": {"target": 1.00, "tol": 0.03, "dir": "band", "reg": 0.03},
+    "advance_ratio": {"target": 1.00, "tol": 0.05, "dir": "max", "reg": 0.03},
+    "price_std_px": {"target": 8.0, "tol": 0.0, "dir": "max", "reg": 2.0},
+    "barcode_caption_ratio": {"target": 1.00, "tol": 0.05, "dir": "band", "reg": 0.05}
+  },
+  "_L3_doc": "L3 channels are evaluated against the harness-measured real value (dynamic band). 'target' is the documented Costco Part-1 reference echoed as spec_target; tol is the dynamic band half-width.",
+  "L3": {
+    "ink_darkness": {"target": 69.0, "tol": 6.0, "dir": "band", "reg": 5.0},
+    "stroke_cov": {"target": 0.35, "tol": 0.06, "dir": "band", "reg": 0.05},
+    "edge_transition_frac": {"target": 0.16, "tol": 0.05, "dir": "band", "reg": 0.03},
+    "paper_clip_frac": {"target": 0.55, "tol": 0.10, "dir": "band", "reg": 0.10},
+    "ink_tone_emd": {"target": 0.0, "tol": 3.0, "dir": "max", "reg": 3.0},
+    "kanungo_p": {"target": 0.05, "tol": 0.0, "dir": "p_min", "reg": 0.05}
+  },
+  "L4": {
+    "ms_ssim": {"target": 0.75, "tol": 0.0, "dir": "min", "reg": 0.03},
+    "ocr_jaccard": {"target": 1.00, "tol": 0.10, "dir": "min", "reg": 0.05}
+  }
+}
