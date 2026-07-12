@@ -745,12 +745,16 @@ def build_scorecard(args) -> dict:
 
 
 def _iter_gate_values(sc: dict):
-    """Yield (path, value) for every gated metric (dicts carrying a 'dir')."""
+    """Yield (path, value, target) for every gated metric (dicts carrying a
+    'dir'). ``target`` is the gate's OWN recorded target -- for dynamic gates
+    (L3 channels, L0 fill) that is the real-measured value, which is what
+    pass/fail uses; the regression check must measure distance to the same
+    point or a move TOWARD the real value reads as a regression."""
     for lvl in ("L0", "L1", "L2", "L3", "L4"):
         block = sc.get(lvl, {})
         for name, g in block.items():
             if isinstance(g, dict) and "dir" in g and isinstance(g.get("value"), (int, float)):
-                yield f"{lvl}.{name}", float(g["value"])
+                yield f"{lvl}.{name}", float(g["value"]), g.get("target")
 
 
 def regression_report(current: dict, baseline: dict, cfg: dict) -> dict:
@@ -760,9 +764,9 @@ def regression_report(current: dict, baseline: dict, cfg: dict) -> dict:
     "Worse" is direction-aware: for ``min`` gates a drop is worse, for ``max``
     a rise is worse, for ``band`` any move away from target is worse.
     """
-    base_vals = dict(_iter_gate_values(baseline))
+    base_vals = {path: val for path, val, _t in _iter_gate_values(baseline)}
     regressions = []
-    for path, cur in _iter_gate_values(current):
+    for path, cur, gate_target in _iter_gate_values(current):
         if path not in base_vals:
             continue
         lvl, name = path.split(".", 1)
@@ -776,8 +780,9 @@ def regression_report(current: dict, baseline: dict, cfg: dict) -> dict:
             worse = base - cur
         elif d == "max":
             worse = cur - base
-        else:  # band: distance from target
-            t = spec.get("target", 0.0)
+        else:  # band: distance from the gate's own (possibly dynamic) target
+            t = gate_target if isinstance(gate_target, (int, float)) \
+                else spec.get("target", 0.0)
             worse = abs(cur - t) - abs(base - t)
         if worse > reg:
             regressions.append({"metric": path, "baseline": base, "current": cur,
