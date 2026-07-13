@@ -1,5 +1,5 @@
 # Multi-stage build for Receipt MCP Server Lambda
-# Wraps the receipt MCP server for remote HTTP access via Lambda Function URL
+# Wraps the receipt MCP server for API Gateway and Lambda Function URL access
 
 # Stage 1: Build and install dependencies (cached layer)
 FROM public.ecr.aws/lambda/python:3.12 AS dependencies
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_places && \
     pip install --no-cache-dir /tmp/receipt_upload && \
     pip install --no-cache-dir /tmp/receipt_agent && \
-    pip install --no-cache-dir run-mcp-servers-with-aws-lambda && \
+    pip install --no-cache-dir run-mcp-servers-with-aws-lambda==0.5.21 && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_dynamo_stream /tmp/receipt_chroma /tmp/receipt_upload /tmp/receipt_places /tmp/receipt_agent
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)

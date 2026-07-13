@@ -1312,7 +1312,7 @@ pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
 
-# Receipt MCP Server Lambda (remote MCP access via Function URL)
+# Receipt MCP Server Lambda
 from mcp_server_lambda import McpServerLambda
 
 mcp_server = McpServerLambda(
@@ -1320,15 +1320,37 @@ mcp_server = McpServerLambda(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
 )
-pulumi.export("mcp_server_url", mcp_server.function_url)
 pulumi.export("mcp_server_lambda_arn", mcp_server.lambda_arn)
+pulumi.export("mcp_server_iam_url", mcp_server.function_url)
 
-# Glyph Studio MCP Server Lambda (read-only remote MCP via Function URL)
+# Glyph Studio MCP Server Lambda
 from glyph_mcp_lambda import GlyphMcpLambda
 
 glyph_mcp_server = GlyphMcpLambda("glyph-mcp")
-pulumi.export("glyph_mcp_server_url", glyph_mcp_server.function_url)
 pulumi.export("glyph_mcp_server_lambda_arn", glyph_mcp_server.lambda_arn)
+pulumi.export("glyph_mcp_server_iam_url", glyph_mcp_server.function_url)
+
+# Shared OAuth ingress for off-the-shelf remote MCP clients. The direct
+# Function URLs above require SigV4 and are retained for signed internal use.
+from mcp_auth_gateway import McpAuthGateway
+
+mcp_auth_gateway = McpAuthGateway(
+    "portfolio-mcp-auth",
+    receipt_lambda=mcp_server.lambda_function,
+    glyph_lambda=glyph_mcp_server.lambda_function,
+)
+pulumi.export("mcp_server_url", mcp_auth_gateway.receipt_url)
+pulumi.export("glyph_mcp_server_url", mcp_auth_gateway.glyph_url)
+pulumi.export("mcp_oauth_issuer_url", mcp_auth_gateway.issuer_url)
+pulumi.export("mcp_oauth_user_pool_id", mcp_auth_gateway.user_pool.id)
+pulumi.export(
+    "mcp_oauth_interactive_client_id",
+    mcp_auth_gateway.interactive_client.id,
+)
+pulumi.export(
+    "mcp_oauth_automation_secret_arn",
+    mcp_auth_gateway.automation_secret_arn,
+)
 
 # Web analytics query layer: Glue + Athena over the CloudFront access logs,
 # read by the analytics_* MCP tools. No new pipeline — just a queryable view
@@ -1369,6 +1391,20 @@ if pulumi.get_stack() == "prod":
     )
     pulumi.export("analytics_database", web_analytics.database_name)
     pulumi.export("analytics_workgroup", web_analytics.workgroup_name)
+    pulumi.export("analytics_read_policy_arn", web_analytics.read_policy_arn)
+else:
+    # The analytics layer (and its managed read policy) exist only on the
+    # prod stack, but the analytics_* MCP tools run from every stack's
+    # Lambda — Glue/Athena names are account-global. Reuse prod's policy
+    # via stack reference so non-prod roles survive recreation with their
+    # analytics access intact. Requires prod to have deployed at least
+    # once after it began exporting analytics_read_policy_arn.
+    _prod_ref = pulumi.StackReference("tnorlund/portfolio/prod")
+    aws.iam.RolePolicyAttachment(
+        "receipt-mcp-analytics-read",
+        role=mcp_server.lambda_role_name,
+        policy_arn=_prod_ref.get_output("analytics_read_policy_arn"),
+    )
 
 # Merge Receipt Lambda (for merging receipt fragments into a single receipt)
 # Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
