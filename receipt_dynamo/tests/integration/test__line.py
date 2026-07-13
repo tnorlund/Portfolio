@@ -102,227 +102,92 @@ FIXED_UUIDS = [
 
 
 # -------------------------------------------------------------------
-#           PARAMETERIZED SINGLE OPERATION CLIENT ERROR TESTS
+#           PARAMETERIZED CLIENT ERROR TESTS
 # -------------------------------------------------------------------
+
+
+LINE_CLIENT_ERROR_CASES = (
+    [
+        ("add_line", "put_item", "PutItem", False, "entity", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("update_line", "put_item", "PutItem", True, "entity", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("delete_line", "delete_item", "DeleteItem", True, "key", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("get_line", "get_item", "GetItem", False, "key", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        (
+            method_name,
+            "transact_write_items",
+            "TransactWriteItems",
+            False,
+            "batch",
+            *case,
+        )
+        for method_name, scenarios in (
+            ("add_lines", ERROR_SCENARIOS),
+            ("update_lines", UPDATE_BATCH_ERROR_SCENARIOS),
+            ("delete_lines", DELETE_BATCH_ERROR_SCENARIOS),
+        )
+        for case in scenarios
+    ]
+)
+
+
+def _line_args(sample_line: Line, arg_source: str) -> tuple[Any, ...]:
+    """Return DynamoClient method args for a line case."""
+    return {
+        "entity": (sample_line,),
+        "key": (sample_line.image_id, sample_line.line_id),
+        "batch": ([sample_line],),
+    }[arg_source]
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+    "method_name,api_method,operation_name,pre_add,arg_source,"
+    "error_code,expected_exception,error_match",
+    LINE_CLIENT_ERROR_CASES,
 )
-# pylint: disable=too-many-arguments
-def test_add_line_client_errors(
+# pylint: disable=too-many-arguments,protected-access
+def test_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_line: Line,
     mocker: MockerFixture,
+    method_name: str,
+    api_method: str,
+    operation_name: str,
+    pre_add: bool,
+    arg_source: str,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """Tests error handling for add_line operations."""
+    """Tests error handling for line operations."""
     client = DynamoClient(dynamodb_table)
-
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "PutItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
+    if pre_add:
         client.add_line(sample_line)
 
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_line_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for update_line operations."""
-    client = DynamoClient(dynamodb_table)
-    client.add_line(sample_line)
-
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
+    mock_api = mocker.patch.object(
         client._client,
-        "put_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "PutItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_line(sample_line)
-
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_line_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for delete_line operations."""
-    client = DynamoClient(dynamodb_table)
-    client.add_line(sample_line)
-
-    # pylint: disable=protected-access
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "DeleteItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_line(sample_line.image_id, sample_line.line_id)
-
-    mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_get_line_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for get_line operations."""
-    client = DynamoClient(dynamodb_table)
-
-    # pylint: disable=protected-access
-    mock_get = mocker.patch.object(
-        client._client,
-        "get_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "GetItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.get_line(sample_line.image_id, sample_line.line_id)
-
-    mock_get.assert_called_once()
-
-
-# -------------------------------------------------------------------
-#           PARAMETERIZED BATCH OPERATION CLIENT ERROR TESTS
-# -------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_add_lines_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for add_lines batch operations."""
-    client = DynamoClient(dynamodb_table)
-    lines = [sample_line]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
+        api_method,
         side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
+            {"Error": {"Code": error_code}}, operation_name
         ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
-        client.add_lines(lines)
+        getattr(client, method_name)(*_line_args(sample_line, arg_source))
 
-    mock_transact.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_lines_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for update_lines batch operations."""
-    client = DynamoClient(dynamodb_table)
-    lines = [sample_line]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_lines(lines)
-
-    mock_transact.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_lines_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for delete_lines batch operations."""
-    client = DynamoClient(dynamodb_table)
-    lines = [sample_line]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_lines(lines)
-
-    mock_transact.assert_called_once()
+    mock_api.assert_called_once()
 
 
 # -------------------------------------------------------------------

@@ -102,239 +102,109 @@ FIXED_UUIDS = [
 
 
 # -------------------------------------------------------------------
-#           PARAMETERIZED SINGLE OPERATION CLIENT ERROR TESTS
+#           PARAMETERIZED CLIENT ERROR TESTS
 # -------------------------------------------------------------------
+
+
+RECEIPT_LETTER_CLIENT_ERROR_CASES = (
+    [
+        ("add_receipt_letter", "put_item", "PutItem", False, "entity", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("update_receipt_letter", "put_item", "PutItem", True, "entity", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        (
+            "delete_receipt_letter",
+            "delete_item",
+            "DeleteItem",
+            True,
+            "key",
+            *case,
+        )
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("get_receipt_letter", "get_item", "GetItem", False, "key", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        (
+            method_name,
+            "transact_write_items",
+            "TransactWriteItems",
+            False,
+            "batch",
+            *case,
+        )
+        for method_name, scenarios in (
+            ("add_receipt_letters", ERROR_SCENARIOS),
+            ("update_receipt_letters", UPDATE_BATCH_ERROR_SCENARIOS),
+            ("delete_receipt_letters", DELETE_BATCH_ERROR_SCENARIOS),
+        )
+        for case in scenarios
+    ]
+)
+
+
+def _receipt_letter_args(
+    sample_receipt_letter: ReceiptLetter, arg_source: str
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Return DynamoClient args/kwargs for a receipt-letter case."""
+    key = {
+        "image_id": sample_receipt_letter.image_id,
+        "receipt_id": sample_receipt_letter.receipt_id,
+        "line_id": sample_receipt_letter.line_id,
+        "word_id": sample_receipt_letter.word_id,
+        "letter_id": sample_receipt_letter.letter_id,
+    }
+    return {
+        "entity": ((sample_receipt_letter,), {}),
+        "key": ((), key),
+        "batch": (([sample_receipt_letter],), {}),
+    }[arg_source]
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+    "method_name,api_method,operation_name,pre_add,arg_source,"
+    "error_code,expected_exception,error_match",
+    RECEIPT_LETTER_CLIENT_ERROR_CASES,
 )
-# pylint: disable=too-many-arguments
-def test_add_receipt_letter_client_errors(
+# pylint: disable=too-many-arguments,protected-access
+def test_receipt_letter_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
     mocker: MockerFixture,
+    method_name: str,
+    api_method: str,
+    operation_name: str,
+    pre_add: bool,
+    arg_source: str,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """Tests error handling for add_receipt_letter operations."""
+    """Tests error handling for receipt letter operations."""
     client = DynamoClient(dynamodb_table)
-
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "PutItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
+    if pre_add:
         client.add_receipt_letter(sample_receipt_letter)
 
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_receipt_letter_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for update_receipt_letter operations."""
-    client = DynamoClient(dynamodb_table)
-    client.add_receipt_letter(sample_receipt_letter)
-
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
+    mock_api = mocker.patch.object(
         client._client,
-        "put_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "PutItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_receipt_letter(sample_receipt_letter)
-
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_receipt_letter_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for delete_receipt_letter operations."""
-    client = DynamoClient(dynamodb_table)
-    client.add_receipt_letter(sample_receipt_letter)
-
-    # pylint: disable=protected-access
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "DeleteItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipt_letter(
-            image_id=sample_receipt_letter.image_id,
-            receipt_id=sample_receipt_letter.receipt_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-            letter_id=sample_receipt_letter.letter_id,
-        )
-
-    mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_get_receipt_letter_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for get_receipt_letter operations."""
-    client = DynamoClient(dynamodb_table)
-
-    # pylint: disable=protected-access
-    mock_get = mocker.patch.object(
-        client._client,
-        "get_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "GetItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.get_receipt_letter(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-            letter_id=sample_receipt_letter.letter_id,
-        )
-
-    mock_get.assert_called_once()
-
-
-# -------------------------------------------------------------------
-#           PARAMETERIZED BATCH OPERATION CLIENT ERROR TESTS
-# -------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_add_receipt_letters_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for add_receipt_letters batch operations."""
-    client = DynamoClient(dynamodb_table)
-    letters = [sample_receipt_letter]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
+        api_method,
         side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
+            {"Error": {"Code": error_code}}, operation_name
         ),
     )
+    args, kwargs = _receipt_letter_args(sample_receipt_letter, arg_source)
 
     with pytest.raises(expected_exception, match=error_match):
-        client.add_receipt_letters(letters)
+        getattr(client, method_name)(*args, **kwargs)
 
-    mock_transact.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", UPDATE_BATCH_ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_receipt_letters_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for update_receipt_letters batch operations."""
-    client = DynamoClient(dynamodb_table)
-    letters = [sample_receipt_letter]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_receipt_letters(letters)
-
-    mock_transact.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", DELETE_BATCH_ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_receipt_letters_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for delete_receipt_letters batch operations."""
-    client = DynamoClient(dynamodb_table)
-    letters = [sample_receipt_letter]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipt_letters(letters)
-
-    mock_transact.assert_called_once()
+    mock_api.assert_called_once()
 
 
 # -------------------------------------------------------------------

@@ -5,33 +5,45 @@
 # pylint: disable=pointless-statement,expression-not-assigned
 
 import math
+from copy import deepcopy
 
 import pytest
 
 from receipt_dynamo import Word, item_to_word
 
+IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+WORD_KWARGS = {
+    "image_id": IMAGE_ID,
+    "line_id": 2,
+    "word_id": 3,
+    "text": "test_string",
+    "bounding_box": {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+    "top_right": {"x": 15.0, "y": 20.0},
+    "top_left": {"x": 10.0, "y": 20.0},
+    "bottom_right": {"x": 15.0, "y": 22.0},
+    "bottom_left": {"x": 10.0, "y": 22.0},
+    "angle_degrees": 1.0,
+    "angle_radians": 5.0,
+    "confidence": 0.90,
+}
+CORNERS = ("top_right", "top_left", "bottom_right", "bottom_left")
+
+
+def word_kwargs(**overrides):
+    """Return fresh Word kwargs so tests cannot mutate shared dicts."""
+    kwargs = deepcopy(WORD_KWARGS)
+    kwargs.update(overrides)
+    return kwargs
+
+
+def make_word(**overrides):
+    """Create a Word with defaults overridden by the caller."""
+    return Word(**word_kwargs(**overrides))
+
 
 @pytest.fixture
 def example_word():
-    return Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
+    return make_word()
 
 
 def create_test_word() -> Word:
@@ -39,16 +51,10 @@ def create_test_word() -> Word:
     A helper function that returns a Word object
     with easily verifiable points for testing.
     """
-    return Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        word_id=1,
+    return make_word(
         text="Hello",
         line_id=1,
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
+        word_id=1,
         angle_degrees=0.0,
         angle_radians=0.0,
         confidence=1.0,
@@ -57,352 +63,62 @@ def create_test_word() -> Word:
 
 @pytest.mark.unit
 def test_word_init_valid(example_word):
-    assert example_word.image_id == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
-    assert example_word.line_id == 2
-    assert example_word.word_id == 3
-    assert example_word.text == "test_string"
-    assert example_word.bounding_box == {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 5.0,
-        "height": 2.0,
-    }
-    assert example_word.top_right == {"x": 15.0, "y": 20.0}
-    assert example_word.top_left == {"x": 10.0, "y": 20.0}
-    assert example_word.bottom_right == {"x": 15.0, "y": 22.0}
-    assert example_word.bottom_left == {"x": 10.0, "y": 22.0}
-    assert example_word.angle_degrees == 1
-    assert example_word.angle_radians == 5
-    assert example_word.confidence == 0.90
+    for attr, value in WORD_KWARGS.items():
+        assert getattr(example_word, attr) == value
 
 
 @pytest.mark.unit
-def test_word_init_invalid_uuid():
-    """Test that Word raises a ValueError if the image_id is not a string"""
-    with pytest.raises(ValueError, match="uuid must be a string"):
-        Word(
-            image_id=1,
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Word(
-            image_id="bad-uuid",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"image_id": 1}, "uuid must be a string"),
+        ({"image_id": "bad-uuid"}, "uuid must be a valid UUID"),
+        ({"line_id": "bad-line-id"}, "line_id must be an integer"),
+        ({"line_id": -1}, "line_id must be non-negative"),
+        ({"word_id": "bad-id"}, "word_id must be an integer"),
+        ({"word_id": -1}, "word_id must be non-negative"),
+        ({"text": 1}, "text must be a string"),
+        ({"bounding_box": 1}, "bounding_box must be a dict"),
+        (
+            {"bounding_box": {"bad": 1}},
+            "bounding_box must contain the key 'x'",
+        ),
+        ({"angle_degrees": "bad"}, "angle_degrees must be float or int, got"),
+        ({"angle_radians": "bad"}, "angle_radians must be float or int, got"),
+        ({"confidence": "bad"}, "confidence must be float or int, got"),
+        ({"confidence": 1.1}, "confidence must be between 0 and 1, got"),
+        ({"extracted_data": 1}, "extracted_data must be dict, got"),
+    ],
+)
+def test_word_init_invalid_values(overrides, message):
+    """Constructor rejects invalid scalar and bounding-box values."""
+    with pytest.raises(ValueError, match=message):
+        make_word(**overrides)
 
 
 @pytest.mark.unit
-def test_word_init_invalid_line_id():
-    """Test that Word raises a ValueError if the line_id is not an integer"""
-    with pytest.raises(ValueError, match="line_id must be an integer"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id="bad-line-id",
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(ValueError, match="line_id must be non-negative"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=-1,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
+@pytest.mark.parametrize("corner", CORNERS)
+@pytest.mark.parametrize(
+    "bad_point, message",
+    [
+        (1, "point must be a dictionary"),
+        ({"bad": 1}, "point must contain the key 'x'"),
+    ],
+)
+def test_word_init_invalid_corners(corner, bad_point, message):
+    """Constructor rejects invalid corner points."""
+    with pytest.raises(ValueError, match=message):
+        make_word(**{corner: bad_point})
 
 
 @pytest.mark.unit
-def test_word_init_invalid_id():
-    """Test that Word raises a ValueError if the id is not an integer"""
-    with pytest.raises(ValueError, match="word_id must be an integer"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id="bad-id",
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(ValueError, match="word_id must be non-negative"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=-1,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-
-
-@pytest.mark.unit
-def test_word_init_invalid_text():
-    """Test that Word raises a ValueError if the text is not a string"""
-    with pytest.raises(ValueError, match="text must be a string"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text=1,
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-
-
-@pytest.mark.unit
-def test_word_init_invalid_bounding_box():
-    """Test that Word raises a ValueError if the bounding_box is not a dict"""
-    with pytest.raises(ValueError, match="bounding_box must be a dict"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box=1,
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(
-        ValueError, match="bounding_box must contain the key 'x'"
-    ):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"bad": 1},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-
-
-@pytest.mark.unit
-def test_word_init_invalid_corners():
-    """Test that Word raises a ValueError if the corners are not dicts"""
-    with pytest.raises(ValueError, match="point must be a dictionary"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right=1,
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(ValueError, match="point must contain the key 'x'"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"bad": 1},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-
-
-@pytest.mark.unit
-def test_word_init_invalid_angle():
-    """Test that Word raises a ValueError if the angle is not a float"""
-    with pytest.raises(
-        ValueError, match="angle_degrees must be float or int, got"
-    ):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees="bad",
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(
-        ValueError, match="angle_radians must be float or int, got"
-    ):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians="bad",
-            confidence=0.90,
-        )
-
-
-@pytest.mark.unit
-def test_word_init_invalid_confidence():
-    """Test that Word raises a ValueError if the confidence is not a float"""
-    with pytest.raises(
-        ValueError, match="confidence must be float or int, got"
-    ):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence="bad",
-        )
-    word = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=1,
+def test_word_optional_values():
+    """Constructor accepts optional values and normalizes confidence."""
+    assert make_word(confidence=1).confidence == 1.0
+    extracted_data = {"type": "test_type", "value": "test_value"}
+    assert make_word(extracted_data=extracted_data).extracted_data == (
+        extracted_data
     )
-    assert word.confidence == 1.0
-    with pytest.raises(
-        ValueError, match="confidence must be between 0 and 1, got"
-    ):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=1.1,
-        )
-
-
-@pytest.mark.unit
-def test_word_init_invalid_extracted_data():
-    """Test that Word raises a ValueError if the extracted_data is not a
-    dict.
-    """
-    with pytest.raises(ValueError, match="extracted_data must be dict, got"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-            extracted_data=1,
-        )
-    word = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-        extracted_data={"type": "test_type", "value": "test_value"},
-    )
-    assert word.extracted_data == {"type": "test_type", "value": "test_value"}
 
 
 @pytest.mark.unit

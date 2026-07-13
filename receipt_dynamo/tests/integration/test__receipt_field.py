@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Type
+from typing import Literal
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, ReceiptField
 from receipt_dynamo.data.shared_exceptions import (
@@ -23,22 +23,58 @@ pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
 # -------------------------------------------------------------------
 
 
+TEST_IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+TEST_TIMESTAMP = datetime.fromisoformat("2024-03-20T12:00:00+00:00")
+
+
+def make_receipt_field(
+    field_type="BUSINESS_NAME",
+    *,
+    image_id=TEST_IMAGE_ID,
+    receipt_id=1,
+    word_id=5,
+    line_id=10,
+    label=None,
+    reasoning=None,
+    timestamp_added=TEST_TIMESTAMP,
+):
+    label = label or field_type
+    return ReceiptField(
+        field_type=field_type,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        words=[{"word_id": word_id, "line_id": line_id, "label": label}],
+        reasoning=reasoning
+        or f"This field appears to be the {field_type.lower().replace('_', ' ')}",
+        timestamp_added=timestamp_added,
+    )
+
+
+def make_address_field(*, image_id=TEST_IMAGE_ID, receipt_id=2):
+    return make_receipt_field(
+        "ADDRESS",
+        image_id=image_id,
+        receipt_id=receipt_id,
+        word_id=10,
+        line_id=20,
+    )
+
+
+def add_sample_and_address(
+    client, sample_receipt_field, *, same_receipt=False
+):
+    client.add_receipt_field(sample_receipt_field)
+    second_field = make_address_field(
+        image_id=sample_receipt_field.image_id,
+        receipt_id=sample_receipt_field.receipt_id if same_receipt else 2,
+    )
+    client.add_receipt_field(second_field)
+    return second_field
+
+
 @pytest.fixture
 def sample_receipt_field():
-    return ReceiptField(
-        field_type="BUSINESS_NAME",
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=1,
-        words=[
-            {
-                "word_id": 5,
-                "line_id": 10,
-                "label": "BUSINESS_NAME",
-            }
-        ],
-        reasoning="This field appears to be the business name",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
+    return make_receipt_field()
 
 
 # -------------------------------------------------------------------
@@ -200,38 +236,8 @@ def test_addReceiptFields_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     fields = [
-        ReceiptField(
-            field_type="BUSINESS_NAME",
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            receipt_id=1,
-            words=[
-                {
-                    "word_id": 5,
-                    "line_id": 10,
-                    "label": "BUSINESS_NAME",
-                }
-            ],
-            reasoning="This field appears to be the business name",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
-        ),
-        ReceiptField(
-            field_type="ADDRESS",
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            receipt_id=2,
-            words=[
-                {
-                    "word_id": 10,
-                    "line_id": 20,
-                    "label": "ADDRESS",
-                }
-            ],
-            reasoning="This field appears to be the address",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
-        ),
+        make_receipt_field(),
+        make_address_field(),
     ]
 
     # Act
@@ -553,24 +559,7 @@ def test_updateReceiptFields_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    second_field = add_sample_and_address(client, sample_receipt_field)
 
     # Update both fields
     updated_fields = [
@@ -753,21 +742,13 @@ def test_updateReceiptFields_chunking(
 
     # Create 30 fields (should be processed in 2 chunks)
     fields = [
-        ReceiptField(
-            field_type=f"FIELD_{i}",
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_receipt_field(
+            f"FIELD_{i}",
             receipt_id=i,
-            words=[
-                {
-                    "word_id": i * 5,
-                    "line_id": i * 10,
-                    "label": f"LABEL_{i}",
-                }
-            ],
+            word_id=i * 5,
+            line_id=i * 10,
+            label=f"LABEL_{i}",
             reasoning=f"Reasoning {i}",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
         )
         for i in range(1, 31)
     ]
@@ -941,24 +922,7 @@ def test_deleteReceiptFields_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    second_field = add_sample_and_address(client, sample_receipt_field)
 
     fields = [sample_receipt_field, second_field]
 
@@ -1113,21 +1077,13 @@ def test_deleteReceiptFields_chunking(
 
     # Create 30 fields (should be processed in 2 chunks)
     fields = [
-        ReceiptField(
-            field_type=f"FIELD_{i}",
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_receipt_field(
+            f"FIELD_{i}",
             receipt_id=i,
-            words=[
-                {
-                    "word_id": i * 5,
-                    "line_id": i * 10,
-                    "label": f"LABEL_{i}",
-                }
-            ],
+            word_id=i * 5,
+            line_id=i * 10,
+            label=f"LABEL_{i}",
             reasoning=f"Reasoning {i}",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
         )
         for i in range(1, 31)
     ]
@@ -1311,73 +1267,31 @@ def test_getReceiptField_client_errors(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "query_kwargs,expected_count,expect_last_key",
+    [({}, 2, False), ({"limit": 1}, 1, True)],
+    ids=["all", "limit"],
+)
 def test_listReceiptFields_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
+    query_kwargs,
+    expected_count,
+    expect_last_key,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    second_field = add_sample_and_address(client, sample_receipt_field)
 
     # Act
-    fields, last_evaluated_key = client.list_receipt_fields()
+    fields, last_evaluated_key = client.list_receipt_fields(**query_kwargs)
 
     # Assert
-    assert len(fields) == 2
-    assert sample_receipt_field in fields
-    assert second_field in fields
-    assert last_evaluated_key is None
-
-
-@pytest.mark.integration
-def test_listReceiptFields_with_limit(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_field: ReceiptField,
-):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
-
-    # Act
-    fields, last_evaluated_key = client.list_receipt_fields(limit=1)
-
-    # Assert
-    assert len(fields) == 1
-    assert last_evaluated_key is not None
+    assert len(fields) == expected_count
+    if not expect_last_key:
+        assert sample_receipt_field in fields
+        assert second_field in fields
+    assert (last_evaluated_key is not None) is expect_last_key
 
 
 @pytest.mark.integration
@@ -1387,24 +1301,7 @@ def test_listReceiptFields_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    add_sample_and_address(client, sample_receipt_field)
 
     # Get first page
     first_page, last_evaluated_key = client.list_receipt_fields(limit=1)
@@ -1603,77 +1500,33 @@ def test_listReceiptFields_pagination_errors(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "query_kwargs,expected_count,expect_last_key",
+    [({}, 2, False), ({"limit": 1}, 1, True)],
+    ids=["all", "limit"],
+)
 def test_getReceiptFieldsByImage_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
+    query_kwargs,
+    expected_count,
+    expect_last_key,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field with the same image_id
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id=sample_receipt_field.image_id,
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    second_field = add_sample_and_address(client, sample_receipt_field)
 
     # Act
     fields, last_evaluated_key = client.get_receipt_fields_by_image(
-        sample_receipt_field.image_id
+        sample_receipt_field.image_id, **query_kwargs
     )
 
     # Assert
-    assert len(fields) == 2
-    assert sample_receipt_field in fields
-    assert second_field in fields
-    assert last_evaluated_key is None
-
-
-@pytest.mark.integration
-def test_getReceiptFieldsByImage_with_limit(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_field: ReceiptField,
-):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field with the same image_id
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id=sample_receipt_field.image_id,
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
-
-    # Act
-    fields, last_evaluated_key = client.get_receipt_fields_by_image(
-        sample_receipt_field.image_id, limit=1
-    )
-
-    # Assert
-    assert len(fields) == 1
-    assert last_evaluated_key is not None
+    assert len(fields) == expected_count
+    if not expect_last_key:
+        assert sample_receipt_field in fields
+        assert second_field in fields
+    assert (last_evaluated_key is not None) is expect_last_key
 
 
 @pytest.mark.integration
@@ -1683,24 +1536,7 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field with the same image_id
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id=sample_receipt_field.image_id,
-        receipt_id=2,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    add_sample_and_address(client, sample_receipt_field)
 
     # Get first page
     first_page, last_evaluated_key = client.get_receipt_fields_by_image(
@@ -1938,80 +1774,37 @@ def test_getReceiptFieldsByImage_pagination_errors(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "query_kwargs,expected_count,expect_last_key",
+    [({}, 2, False), ({"limit": 1}, 1, True)],
+    ids=["all", "limit"],
+)
 def test_getReceiptFieldsByReceipt_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
+    query_kwargs,
+    expected_count,
+    expect_last_key,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field with the same image_id and receipt_id
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id=sample_receipt_field.image_id,
-        receipt_id=sample_receipt_field.receipt_id,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
+    second_field = add_sample_and_address(
+        client, sample_receipt_field, same_receipt=True
     )
-    client.add_receipt_field(second_field)
 
     # Act
     fields, last_evaluated_key = client.get_receipt_fields_by_receipt(
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
+        **query_kwargs,
     )
 
     # Assert
-    assert len(fields) == 2
-    assert sample_receipt_field in fields
-    assert second_field in fields
-    assert last_evaluated_key is None
-
-
-@pytest.mark.integration
-def test_getReceiptFieldsByReceipt_with_limit(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_field: ReceiptField,
-):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field with the same image_id and receipt_id
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id=sample_receipt_field.image_id,
-        receipt_id=sample_receipt_field.receipt_id,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
-
-    # Act
-    fields, last_evaluated_key = client.get_receipt_fields_by_receipt(
-        sample_receipt_field.image_id,
-        sample_receipt_field.receipt_id,
-        limit=1,
-    )
-
-    # Assert
-    assert len(fields) == 1
-    assert last_evaluated_key is not None
+    assert len(fields) == expected_count
+    if not expect_last_key:
+        assert sample_receipt_field in fields
+        assert second_field in fields
+    assert (last_evaluated_key is not None) is expect_last_key
 
 
 @pytest.mark.integration
@@ -2021,24 +1814,7 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.add_receipt_field(sample_receipt_field)
-
-    # Create a second field with the same image_id and receipt_id
-    second_field = ReceiptField(
-        field_type="ADDRESS",
-        image_id=sample_receipt_field.image_id,
-        receipt_id=sample_receipt_field.receipt_id,
-        words=[
-            {
-                "word_id": 10,
-                "line_id": 20,
-                "label": "ADDRESS",
-            }
-        ],
-        reasoning="This field appears to be the address",
-        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
-    )
-    client.add_receipt_field(second_field)
+    add_sample_and_address(client, sample_receipt_field, same_receipt=True)
 
     # Get first page
     first_page, last_evaluated_key = client.get_receipt_fields_by_receipt(

@@ -5,442 +5,125 @@
 # pylint: disable=comparison-with-itself,consider-using-dict-items
 
 import math
+from copy import deepcopy
 
 import pytest
 
 from receipt_dynamo import Letter, item_to_letter
 
+IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+LETTER_KWARGS = {
+    "image_id": IMAGE_ID,
+    "line_id": 1,
+    "word_id": 2,
+    "letter_id": 3,
+    "text": "0",
+    "bounding_box": {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+    "top_right": {"x": 15.0, "y": 20.0},
+    "top_left": {"x": 10.0, "y": 20.0},
+    "bottom_right": {"x": 15.0, "y": 22.0},
+    "bottom_left": {"x": 10.0, "y": 22.0},
+    "angle_degrees": 1.0,
+    "angle_radians": 5.0,
+    "confidence": 0.90,
+}
+CORNERS = ("top_right", "top_left", "bottom_right", "bottom_left")
+
+
+def letter_kwargs(**overrides):
+    """Return fresh Letter kwargs so tests cannot mutate shared dicts."""
+    kwargs = deepcopy(LETTER_KWARGS)
+    kwargs.update(overrides)
+    return kwargs
+
+
+def make_letter(**overrides):
+    """Create a Letter with defaults overridden by the caller."""
+    return Letter(**letter_kwargs(**overrides))
+
 
 @pytest.fixture
 def example_letter():
     """A pytest fixture for a sample Letter object."""
-    return Letter(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=1,
-        word_id=2,
-        letter_id=3,
-        text="0",
-        bounding_box={
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
+    return make_letter()
 
 
 @pytest.mark.unit
 def test_letter_init_valid(example_letter):
     """Test the Letter constructor"""
-    assert example_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert example_letter.line_id == 1
-    assert example_letter.word_id == 2
-    assert example_letter.letter_id == 3
-    assert example_letter.text == "0"
-    assert example_letter.bounding_box == {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 5.0,
-        "height": 2.0,
-    }
-    assert example_letter.top_right == {"x": 15.0, "y": 20.0}
-    assert example_letter.top_left == {"x": 10.0, "y": 20.0}
-    assert example_letter.bottom_right == {"x": 15.0, "y": 22.0}
-    assert example_letter.bottom_left == {"x": 10.0, "y": 22.0}
-    assert example_letter.angle_degrees == 1.0
-    assert example_letter.angle_radians == 5.0
-    assert example_letter.confidence == 0.90
-
-
-@pytest.mark.unit
-def test_letter_init_invalid_uuid():
-    """Test the Letter constructor with a bad UUID"""
-    with pytest.raises(ValueError, match="uuid must be a string"):
-        Letter(
-            image_id=123,
-            line_id=1,
-            word_id=2,
-            letter_id=3,
-            text="0",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Letter(
-            image_id="not-a-uuid",
-            line_id=1,
-            word_id=2,
-            letter_id=3,
-            text="0",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
+    assert dict(example_letter) == LETTER_KWARGS
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "invalid_int",
+    "overrides, message",
     [
-        0,
-        -1,
-        None,
-        "string",
-        1.5,
+        ({"image_id": 123}, "uuid must be a string"),
+        ({"image_id": "not-a-uuid"}, "uuid must be a valid UUID"),
+        ({"line_id": 0}, r"line_id must be"),
+        ({"line_id": -1}, r"line_id must be"),
+        ({"line_id": None}, r"line_id must be"),
+        ({"line_id": "string"}, r"line_id must be"),
+        ({"line_id": 1.5}, r"line_id must be"),
+        ({"word_id": 0}, r"word_id must be"),
+        ({"word_id": -1}, r"word_id must be"),
+        ({"word_id": None}, r"word_id must be"),
+        ({"word_id": "string"}, r"word_id must be"),
+        ({"word_id": 1.5}, r"word_id must be"),
+        ({"letter_id": 0}, r"id must be"),
+        ({"letter_id": -1}, r"id must be"),
+        ({"letter_id": None}, r"id must be"),
+        ({"letter_id": "string"}, r"id must be"),
+        ({"letter_id": 1.5}, r"id must be"),
+        ({"text": 123}, r"text must be a string"),
+        (
+            {"text": "string-longer-than-1-char"},
+            r"text must be exactly one character",
+        ),
+        ({"bounding_box": {}}, None),
+        ({"bounding_box": {"x": 1, "width": 3, "height": 4}}, None),
+        ({"bounding_box": {"y": 2, "width": 3, "height": 4}}, None),
+        (
+            {"bounding_box": {"x": "str", "y": 2, "width": 3, "height": 4}},
+            None,
+        ),
+        ({"confidence": -0.1}, None),
+        ({"confidence": 0.0}, None),
+        ({"confidence": 1.0001}, None),
+        ({"confidence": 2}, None),
+        ({"confidence": "high"}, None),
+        ({"confidence": None}, None),
+        (
+            {"angle_degrees": "not-a-number"},
+            "angle_degrees must be float or int, got",
+        ),
+        (
+            {"angle_radians": "not-a-number"},
+            "angle_radians must be float or int, got",
+        ),
     ],
 )
-def test_letter_init_invalid_line_id(invalid_int):
-    """Test constructor fails when line_id is not a valid positive integer."""
-    with pytest.raises(ValueError, match=r"line_id must be"):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=invalid_int,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
+def test_letter_init_invalid_values(overrides, message):
+    """Constructor rejects invalid scalar and bounding-box values."""
+    with pytest.raises(ValueError, match=message):
+        make_letter(**overrides)
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "invalid_int",
-    [
-        0,
-        -1,
-        None,
-        "string",
-        1.5,
-    ],
-)
-def test_letter_init_invalid_word_id(invalid_int):
-    """Test constructor fails when word_id is not a valid positive integer."""
-    with pytest.raises(ValueError, match=r"word_id must be"):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=invalid_int,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "invalid_int",
-    [
-        0,
-        -1,
-        None,
-        "string",
-        1.5,
-    ],
-)
-def test_letter_init_invalid_id(invalid_int):
-    """Test constructor fails when id is not a valid positive integer."""
-    with pytest.raises(ValueError, match=r"id must be"):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=invalid_int,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-def test_letter_init_invalid_text():
-    """Test constructor fails when text is not a string."""
-    with pytest.raises(ValueError, match=r"text must be a string"):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text=123,
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-    with pytest.raises(
-        ValueError, match=r"text must be exactly one character"
-    ):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="string-longer-than-1-char",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "bad_box",
-    [
-        {},
-        {"x": 1, "width": 3, "height": 4},  # missing "y"
-        {"y": 2, "width": 3, "height": 4},  # missing "x"
-        {"x": "str", "y": 2, "width": 3, "height": 4},  # not float/int
-    ],
-)
-def test_letter_init_invalid_bounding_box(bad_box):
-    """Test constructor fails when bounding_box is not valid."""
-    with pytest.raises(ValueError):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box=bad_box,
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
+@pytest.mark.parametrize("corner", CORNERS)
 @pytest.mark.parametrize(
     "bad_point",
     [
         {},
-        {"x": 1},  # missing "y"
-        {"y": 2},  # missing "x"
+        {"x": 1},
+        {"y": 2},
         {"x": "str", "y": 2},
     ],
 )
-def test_letter_init_invalid_top_right(bad_point):
-    """Test constructor fails when top_right is not valid."""
+def test_letter_init_invalid_corners(corner, bad_point):
+    """Constructor rejects invalid corner points."""
     with pytest.raises(ValueError):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right=bad_point,
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "bad_point",
-    [
-        {},
-        {"x": 1},  # missing "y"
-        {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},
-    ],
-)
-def test_letter_init_invalid_top_left(bad_point):
-    """Test constructor fails when top_left is not valid."""
-    with pytest.raises(ValueError):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left=bad_point,
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "bad_point",
-    [
-        {},
-        {"x": 1},  # missing "y"
-        {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},
-    ],
-)
-def test_letter_init_invalid_bottom_right(bad_point):
-    """Test constructor fails when bottom_right is not valid."""
-    with pytest.raises(ValueError):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right=bad_point,
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "bad_point",
-    [
-        {},
-        {"x": 1},  # missing "y"
-        {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},
-    ],
-)
-def test_letter_init_invalid_bottom_left(bad_point):
-    """Test constructor fails when bottom_left is not valid."""
-    with pytest.raises(ValueError):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left=bad_point,
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "bad_confidence", [-0.1, 0.0, 1.0001, 2, "high", None]
-)
-def test_letter_init_invalid_confidence(bad_confidence):
-    """Test constructor fails when confidence is not within (0, 1]."""
-    with pytest.raises(ValueError):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=10.0,
-            angle_radians=0.1,
-            confidence=bad_confidence,
-        )
-
-
-@pytest.mark.unit
-def test_letter_init_invalid_angles():
-    """Constructor fails when angle_degrees and angle_radians are not valid."""
-    with pytest.raises(
-        ValueError, match="angle_degrees must be float or int, got"
-    ):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees="not-a-number",
-            angle_radians=0.0,
-            confidence=0.5,
-        )
-    with pytest.raises(
-        ValueError, match="angle_radians must be float or int, got"
-    ):
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            letter_id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians="not-a-number",
-            confidence=0.5,
-        )
+        make_letter(**{corner: bad_point})
 
 
 @pytest.mark.unit

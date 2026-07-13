@@ -20,25 +20,96 @@ from receipt_dynamo.data.shared_exceptions import (
 # This entity is not used in production infrastructure
 pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
 
-# =============================================================================
-# TEST DATA AND FIXTURES
-# =============================================================================
+IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+TIMESTAMP = "2023-05-15T12:34:56.789Z"
+UPDATED_TIMESTAMP = "2023-05-16T10:20:30.456Z"
+
+
+def make_category(
+    field_name: str = "total_amount",
+    field_category: str = "amount",
+    status: str = "valid",
+    reasoning: str = "The total amount value matches the expected format",
+    valid: int = 3,
+    invalid: int = 0,
+    metadata: dict[str, Any] | None = None,
+    receipt_id: int = 1,
+    image_id: str = IMAGE_ID,
+    validation_timestamp: str = TIMESTAMP,
+) -> ReceiptValidationCategory:
+    return ReceiptValidationCategory(
+        receipt_id=receipt_id,
+        image_id=image_id,
+        field_name=field_name,
+        field_category=field_category,
+        status=status,
+        reasoning=reasoning,
+        result_summary={"valid": valid, "invalid": invalid},
+        validation_timestamp=validation_timestamp,
+        metadata=metadata or {"confidence": 0.95},
+    )
+
+
+def make_numbered_categories(count: int) -> list[ReceiptValidationCategory]:
+    return [
+        make_category(
+            field_name=f"field_{i}",
+            field_category="test_category",
+            reasoning=f"Test reasoning {i}",
+            valid=i,
+            metadata={"index": i},
+        )
+        for i in range(count)
+    ]
+
+
+def make_updated_category(
+    category: ReceiptValidationCategory,
+    *,
+    status: str = "invalid",
+    reasoning: str = "Updated reasoning after review",
+    valid: int = 1,
+    invalid: int = 2,
+    metadata: dict[str, Any] | None = None,
+) -> ReceiptValidationCategory:
+    return make_category(
+        receipt_id=category.receipt_id,
+        image_id=category.image_id,
+        field_name=category.field_name,
+        field_category=category.field_category,
+        status=status,
+        reasoning=reasoning,
+        valid=valid,
+        invalid=invalid,
+        validation_timestamp=UPDATED_TIMESTAMP,
+        metadata=metadata or {"confidence": 0.85, "updated": True},
+    )
+
+
+def assert_category_items(
+    client: DynamoClient,
+    table_name: str,
+    categories: list[ReceiptValidationCategory],
+    *,
+    present: bool = True,
+) -> None:
+    for category in categories:
+        response = client._client.get_item(TableName=table_name, Key=category.key)
+        assert ("Item" in response) is present, (
+            f"Category {category.field_name} presence should be {present}."
+        )
+
+
+def delete_category_items(
+    client: DynamoClient, table_name: str, categories: list[ReceiptValidationCategory]
+) -> None:
+    for category in categories:
+        client._client.delete_item(TableName=table_name, Key=category.key)
 
 
 @pytest.fixture
 def sample_receipt_validation_category() -> ReceiptValidationCategory:
-    """Returns a sample ReceiptValidationCategory for testing."""
-    return ReceiptValidationCategory(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        field_name="total_amount",
-        field_category="amount",
-        status="valid",
-        reasoning="The total amount value matches the expected format",
-        result_summary={"valid": 3, "invalid": 0},
-        validation_timestamp="2023-05-15T12:34:56.789Z",
-        metadata={"confidence": 0.95},
-    )
+    return make_category()
 
 
 # -------------------------------------------------------------------
@@ -115,13 +186,6 @@ def test_addReceiptValidationCategory_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that addReceiptValidationCategory correctly adds a category to DynamoDB.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
@@ -141,13 +205,6 @@ def test_addReceiptValidationCategory_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that adding a duplicate ReceiptValidationCategory raises an error.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
@@ -177,8 +234,6 @@ def test_addReceiptValidationCategory_invalid_parameters(
     invalid_input: Any,
     error_match: str,
 ) -> None:
-    """Tests that add_receipt_validation_category raises appropriate error for
-    invalid inputs."""
     client = DynamoClient(dynamodb_table)
     with pytest.raises(OperationError, match=error_match):
         client.add_receipt_validation_category(invalid_input)  # type: ignore
@@ -196,8 +251,6 @@ def test_addReceiptValidationCategory_client_errors(
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """Tests that add_receipt_validation_category raises appropriate exceptions for various
-    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
     # pylint: disable=protected-access
     mock_put = mocker.patch.object(
@@ -225,39 +278,26 @@ def test_addReceiptValidationCategories_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that addReceiptValidationCategories correctly adds multiple categories to DynamoDB.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
     # Create a list of categories
     categories = [
         sample_receipt_validation_category,
-        ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_category(
             field_name="payment_method",
             field_category="payment",
-            status="valid",
             reasoning="The payment method is valid",
-            result_summary={"valid": 2, "invalid": 0},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
+            valid=2,
             metadata={"confidence": 0.9},
         ),
-        ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_category(
             field_name="merchant_name",
             field_category="merchant",
             status="invalid",
             reasoning="The merchant name could not be validated",
-            result_summary={"valid": 0, "invalid": 1},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
+            valid=0,
+            invalid=1,
             metadata={"confidence": 0.7},
         ),
     ]
@@ -265,103 +305,41 @@ def test_addReceiptValidationCategories_success(
     # Execute
     client.add_receipt_validation_categories(categories)
 
-    # Verify
-    for category in categories:
-        response = client._client.get_item(
-            TableName=dynamodb_table,
-            Key=category.key,
-        )
-        assert (
-            "Item" in response
-        ), f"Category {category.field_name} was not added to the table."
-
-    # Clean up
-    for category in categories:
-        client._client.delete_item(
-            TableName=dynamodb_table,
-            Key=category.key,
-        )
+    assert_category_items(client, dynamodb_table, categories)
+    delete_category_items(client, dynamodb_table, categories)
 
 
 @pytest.mark.integration
 def test_addReceiptValidationCategories_with_large_batch(
     dynamodb_table, sample_receipt_validation_category
 ):
-    """
-    Tests that addReceiptValidationCategories correctly handles large batches by splitting them.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create 30 categories (more than the 25 batch limit)
-    categories = []
-    for i in range(30):
-        categories.append(
-            ReceiptValidationCategory(
-                receipt_id=1,
-                image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-                field_name=f"field_{i}",
-                field_category="test_category",
-                status="valid",
-                reasoning=f"Test reasoning {i}",
-                result_summary={"valid": i, "invalid": 0},
-                validation_timestamp="2023-05-15T12:34:56.789Z",
-                metadata={"index": i},
-            )
-        )
+    categories = make_numbered_categories(30)
 
     # Execute
     client.add_receipt_validation_categories(categories)
 
-    # Verify
-    for category in categories:
-        response = client._client.get_item(
-            TableName=dynamodb_table,
-            Key=category.key,
-        )
-        assert (
-            "Item" in response
-        ), f"Category {category.field_name} was not added to the table."
-
-    # Clean up
-    for category in categories:
-        client._client.delete_item(
-            TableName=dynamodb_table,
-            Key=category.key,
-        )
+    assert_category_items(client, dynamodb_table, categories)
+    delete_category_items(client, dynamodb_table, categories)
 
 
 @pytest.mark.integration
 def test_addReceiptValidationCategories_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_validation_category, mocker
 ):
-    """
-    Tests that addReceiptValidationCategories correctly retries unprocessed items.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
     # Create a list of 2 categories
     categories = [
         sample_receipt_validation_category,
-        ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_category(
             field_name="payment_method",
             field_category="payment",
-            status="valid",
             reasoning="The payment method is valid",
-            result_summary={"valid": 2, "invalid": 0},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
+            valid=2,
             metadata={"confidence": 0.9},
         ),
     ]
@@ -417,16 +395,6 @@ def test_addReceiptValidationCategories_invalid_parameters(
     invalid_input,
     expected_error,
 ):
-    """
-    Tests that addReceiptValidationCategories validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        invalid_input: Invalid input parameter.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_batch_write = mocker.patch.object(client._client, "batch_write_item")
@@ -483,17 +451,6 @@ def test_addReceiptValidationCategories_client_errors(
     error_message,
     expected_error_message,
 ):
-    """
-    Tests that addReceiptValidationCategories handles client errors correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        error_code: AWS error code to simulate.
-        error_message: AWS error message to simulate.
-        expected_error_message: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_batch_write = mocker.patch.object(client._client, "batch_write_item")
@@ -514,31 +471,13 @@ def test_updateReceiptValidationCategory_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that updateReceiptValidationCategory correctly updates an existing category.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
     # First, add the category
     client.add_receipt_validation_category(sample_receipt_validation_category)
 
-    # Create an updated version
-    updated_category = ReceiptValidationCategory(
-        receipt_id=sample_receipt_validation_category.receipt_id,
-        image_id=sample_receipt_validation_category.image_id,
-        field_name=sample_receipt_validation_category.field_name,
-        field_category=sample_receipt_validation_category.field_category,
-        status="invalid",  # Changed status
-        reasoning="Updated reasoning after review",  # Changed reasoning
-        result_summary={"valid": 1, "invalid": 2},  # Changed result summary
-        validation_timestamp="2023-05-16T10:20:30.456Z",  # Updated timestamp
-        metadata={"confidence": 0.85, "updated": True},  # Updated metadata
-    )
+    updated_category = make_updated_category(sample_receipt_validation_category)
 
     # Execute
     client.update_receipt_validation_category(updated_category)
@@ -559,11 +498,7 @@ def test_updateReceiptValidationCategory_success(
         item["reasoning"]["S"] == "Updated reasoning after review"
     ), "Reasoning was not updated correctly"
 
-    # Clean up
-    client._client.delete_item(
-        TableName=dynamodb_table,
-        Key=updated_category.key,
-    )
+    delete_category_items(client, dynamodb_table, [updated_category])
 
 
 @pytest.mark.integration
@@ -584,16 +519,6 @@ def test_updateReceiptValidationCategory_invalid_parameters(
     invalid_input,
     expected_error,
 ):
-    """
-    Tests that updateReceiptValidationCategory validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        invalid_input: Invalid input parameter.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_put_item = mocker.patch.object(client._client, "put_item")
@@ -655,17 +580,6 @@ def test_updateReceiptValidationCategory_client_errors(
     error_message,
     expected_error,
 ):
-    """
-    Tests that updateReceiptValidationCategory handles client errors appropriately.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        error_code: AWS error code to simulate.
-        error_message: AWS error message to simulate.
-        expected_error: Expected exception message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
@@ -687,28 +601,17 @@ def test_updateReceiptValidationCategories_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that updateReceiptValidationCategories correctly updates multiple categories.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
     # Create multiple categories
     categories = [
         sample_receipt_validation_category,
-        ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_category(
             field_name="payment_method",
             field_category="payment",
-            status="valid",
             reasoning="The payment method is valid",
-            result_summary={"valid": 2, "invalid": 0},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
+            valid=2,
             metadata={"confidence": 0.9},
         ),
     ]
@@ -717,28 +620,15 @@ def test_updateReceiptValidationCategories_success(
     for category in categories:
         client.add_receipt_validation_category(category)
 
-    # Create updated versions
     updated_categories = [
-        ReceiptValidationCategory(
-            receipt_id=categories[0].receipt_id,
-            image_id=categories[0].image_id,
-            field_name=categories[0].field_name,
-            field_category=categories[0].field_category,
-            status="invalid",  # Changed status
-            reasoning="Updated reasoning for first category",
-            result_summary={"valid": 1, "invalid": 2},
-            validation_timestamp="2023-05-16T10:20:30.456Z",
-            metadata={"confidence": 0.85, "updated": True},
+        make_updated_category(
+            categories[0], reasoning="Updated reasoning for first category"
         ),
-        ReceiptValidationCategory(
-            receipt_id=categories[1].receipt_id,
-            image_id=categories[1].image_id,
-            field_name=categories[1].field_name,
-            field_category=categories[1].field_category,
-            status="invalid",  # Changed status
+        make_updated_category(
+            categories[1],
             reasoning="Updated reasoning for second category",
-            result_summary={"valid": 0, "invalid": 3},
-            validation_timestamp="2023-05-16T10:20:30.456Z",
+            valid=0,
+            invalid=3,
             metadata={"confidence": 0.75, "updated": True},
         ),
     ]
@@ -760,62 +650,31 @@ def test_updateReceiptValidationCategories_success(
             item["status"]["S"] == "invalid"
         ), f"Category {category.field_name} status was not updated correctly"
 
-    # Clean up
-    for category in updated_categories:
-        client._client.delete_item(
-            TableName=dynamodb_table,
-            Key=category.key,
-        )
+    delete_category_items(client, dynamodb_table, updated_categories)
 
 
 @pytest.mark.integration
 def test_updateReceiptValidationCategories_with_large_batch(
     dynamodb_table, sample_receipt_validation_category
 ):
-    """
-    Tests that updateReceiptValidationCategories correctly handles large batches by splitting them.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create 30 categories (more than the 25 batch limit)
-    categories = []
-    for i in range(30):
-        category = ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            field_name=f"field_{i}",
-            field_category="test_category",
-            status="valid",
-            reasoning=f"Test reasoning {i}",
-            result_summary={"valid": i, "invalid": 0},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
-            metadata={"index": i},
-        )
-        categories.append(category)
-        # Add each category first
+    categories = make_numbered_categories(30)
+    for category in categories:
         client.add_receipt_validation_category(category)
 
-    # Create updated versions
-    updated_categories = []
-    for i, category in enumerate(categories):
-        updated_categories.append(
-            ReceiptValidationCategory(
-                receipt_id=category.receipt_id,
-                image_id=category.image_id,
-                field_name=category.field_name,
-                field_category=category.field_category,
-                status="updated",
-                reasoning=f"Updated reasoning {i}",
-                result_summary={"valid": 0, "invalid": i},
-                validation_timestamp="2023-05-16T10:20:30.456Z",
-                metadata={"index": i, "updated": True},
-            )
+    updated_categories = [
+        make_updated_category(
+            category,
+            status="updated",
+            reasoning=f"Updated reasoning {i}",
+            valid=0,
+            invalid=i,
+            metadata={"index": i, "updated": True},
         )
+        for i, category in enumerate(categories)
+    ]
 
     # Execute
     client.update_receipt_validation_categories(updated_categories)
@@ -834,12 +693,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
             item["status"]["S"] == "updated"
         ), f"Category {category.field_name} status was not updated correctly"
 
-    # Clean up
-    for category in updated_categories:
-        client._client.delete_item(
-            TableName=dynamodb_table,
-            Key=category.key,
-        )
+    delete_category_items(client, dynamodb_table, updated_categories)
 
 
 @pytest.mark.integration
@@ -864,16 +718,6 @@ def test_updateReceiptValidationCategories_invalid_inputs(
     invalid_input,
     expected_error,
 ):
-    """
-    Tests that updateReceiptValidationCategories validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        invalid_input: Invalid input parameter.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_transact_write = mocker.patch.object(
@@ -900,17 +744,6 @@ def test_updateReceiptValidationCategories_client_errors(
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """
-    Tests that updateReceiptValidationCategories handles client errors correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        error_code: AWS error code to simulate.
-        expected_exception: Expected exception type.
-        error_match: Expected error message pattern.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_transact_write = mocker.patch.object(
@@ -940,13 +773,6 @@ def test_deleteReceiptValidationCategory_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that deleteReceiptValidationCategory correctly deletes a category.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
@@ -991,16 +817,6 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
     invalid_input,
     expected_error,
 ):
-    """
-    Tests that deleteReceiptValidationCategory validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        invalid_input: Invalid input parameter.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_delete_item = mocker.patch.object(client._client, "delete_item")
@@ -1058,17 +874,6 @@ def test_deleteReceiptValidationCategory_client_errors(
     error_message,
     expected_error,
 ):
-    """
-    Tests that deleteReceiptValidationCategory handles client errors appropriately.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        error_code: AWS error code to simulate.
-        error_message: AWS error message to simulate.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
@@ -1090,39 +895,26 @@ def test_deleteReceiptValidationCategories_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
-    """
-    Tests that deleteReceiptValidationCategories correctly deletes multiple categories.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
     # Create a list of categories
     categories = [
         sample_receipt_validation_category,
-        ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_category(
             field_name="payment_method",
             field_category="payment",
-            status="valid",
             reasoning="The payment method is valid",
-            result_summary={"valid": 2, "invalid": 0},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
+            valid=2,
             metadata={"confidence": 0.9},
         ),
-        ReceiptValidationCategory(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        make_category(
             field_name="merchant_name",
             field_category="merchant",
             status="invalid",
             reasoning="The merchant name could not be validated",
-            result_summary={"valid": 0, "invalid": 1},
-            validation_timestamp="2023-05-15T12:34:56.789Z",
+            valid=0,
+            invalid=1,
             metadata={"confidence": 0.7},
         ),
     ]
@@ -1167,16 +959,6 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
     invalid_input,
     expected_error,
 ):
-    """
-    Tests that deleteReceiptValidationCategories validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        invalid_input: Invalid input parameter.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     mock_batch_write = mocker.patch.object(client._client, "batch_write_item")
@@ -1239,14 +1021,6 @@ def test_listReceiptValidationCategoriesForReceipt_success(
     error_message,
     expected_error,
 ):
-    """
-    Tests that listReceiptValidationCategoriesForReceipt correctly lists categories for a receipt.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     receipt_id = sample_receipt_validation_category.receipt_id
@@ -1322,14 +1096,6 @@ def test_listReceiptValidationCategoriesForReceipt_with_pagination(
     sample_receipt_validation_category: ReceiptValidationCategory,
     mocker,
 ):
-    """
-    Tests that listReceiptValidationCategoriesForReceipt correctly handles pagination.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     receipt_id = sample_receipt_validation_category.receipt_id
@@ -1410,17 +1176,10 @@ def test_listReceiptValidationCategoriesForReceipt_empty_results(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
 ):
-    """
-    Tests that listReceiptValidationCategoriesForReceipt correctly handles empty results.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        mocker: Pytest mocker fixture.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     receipt_id = 1
-    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    image_id = IMAGE_ID
 
     # Mock the query response to return no items
     mock_query = mocker.patch.object(client._client, "query")
@@ -1445,7 +1204,7 @@ def test_listReceiptValidationCategoriesForReceipt_empty_results(
     [
         (
             None,
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            IMAGE_ID,
             "receipt_id must be an integer, got NoneType",
         ),
         (1, None, "image_id must be a string, got NoneType"),
@@ -1458,15 +1217,6 @@ def test_listReceiptValidationCategoriesForReceipt_invalid_parameters(
     image_id,
     expected_error,
 ):
-    """
-    Tests that listReceiptValidationCategoriesForReceipt validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        receipt_id: Receipt ID to test.
-        image_id: Image ID to test.
-        expected_error: Expected error message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
@@ -1482,16 +1232,10 @@ def test_listReceiptValidationCategoriesForReceipt_invalid_parameters(
 def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """
-    Tests that listReceiptValidationCategoriesForReceipt validates the limit parameter.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     receipt_id = 1
-    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    image_id = IMAGE_ID
 
     # Execute and Assert
     with pytest.raises(
@@ -1555,20 +1299,10 @@ def test_listReceiptValidationCategoriesForReceipt_client_errors(
     error_message,
     expected_error,
 ):
-    """
-    Tests that listReceiptValidationCategoriesForReceipt handles client errors correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        mocker: Pytest mocker fixture.
-        error_code: AWS error code to simulate.
-        error_message: AWS error message to simulate.
-        expected_error: Expected exception message.
-    """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
     receipt_id = 1
-    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    image_id = IMAGE_ID
 
     # Mock the query to raise an error
     mock_query = mocker.patch.object(client._client, "query")

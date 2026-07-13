@@ -118,185 +118,136 @@ UPDATE_DELETE_ERROR_SCENARIOS = ERROR_SCENARIOS + [
     ),
 ]
 
+
+def _client_error(error_code: str, operation_name: str) -> ClientError:
+    """Build a DynamoDB ClientError for mocked low-level calls."""
+    return ClientError(
+        error_response={
+            "Error": {"Code": error_code, "Message": "Test error"}
+        },
+        operation_name=operation_name,
+    )
+
+
+def _assert_client_error(
+    client: DynamoClient,
+    api_method: str,
+    operation_name: str,
+    error_code: str,
+    expected_exception: type,
+    error_fragment: str,
+    call_name: str,
+    *args: Any,
+) -> None:
+    """Patch a low-level DynamoDB API and assert wrapper error mapping."""
+    with patch.object(client._client, api_method) as mock_api:
+        mock_api.side_effect = _client_error(error_code, operation_name)
+        with pytest.raises(expected_exception, match=error_fragment):
+            getattr(client, call_name)(*args)
+
+
 # =============================================================================
 # CLIENT ERROR TESTS
 # =============================================================================
 
 
+CLIENT_ERROR_OPERATIONS = [
+    (
+        "add_receipt_word",
+        "put_item",
+        "PutItem",
+        "sample",
+        ERROR_SCENARIOS,
+    ),
+    (
+        "update_receipt_word",
+        "put_item",
+        "PutItem",
+        "sample",
+        UPDATE_DELETE_ERROR_SCENARIOS,
+    ),
+    (
+        "delete_receipt_word",
+        "delete_item",
+        "DeleteItem",
+        "sample",
+        UPDATE_DELETE_ERROR_SCENARIOS,
+    ),
+    ("get_receipt_word", "get_item", "GetItem", "key", ERROR_SCENARIOS),
+    (
+        "add_receipt_words",
+        "transact_write_items",
+        "TransactWriteItems",
+        "batch",
+        ERROR_SCENARIOS,
+    ),
+    (
+        "update_receipt_words",
+        "transact_write_items",
+        "TransactWriteItems",
+        "batch",
+        UPDATE_DELETE_ERROR_SCENARIOS,
+    ),
+    (
+        "delete_receipt_words",
+        "transact_write_items",
+        "TransactWriteItems",
+        "batch",
+        UPDATE_DELETE_ERROR_SCENARIOS,
+    ),
+]
+
+CLIENT_ERROR_CASES = [
+    (call, api, op_name, source, *scenario)
+    for call, api, op_name, source, scenarios in CLIENT_ERROR_OPERATIONS
+    for scenario in scenarios
+]
+
+
+def _receipt_word_args(
+    source: str,
+    sample_receipt_word: ReceiptWord,
+    sample_receipt_words: List[ReceiptWord],
+) -> tuple[Any, ...]:
+    """Return method arguments for a receipt-word client-error case."""
+    return {
+        "sample": (sample_receipt_word,),
+        "batch": (sample_receipt_words,),
+        "key": (FIXED_IMAGE_ID, 1, 10, 5),
+    }[source]
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment", ERROR_SCENARIOS
+    "call_name,api_method,operation_name,arg_source,"
+    "error_code,expected_exception,error_fragment",
+    CLIENT_ERROR_CASES,
 )
-def test_add_receipt_word_client_errors(
+def test_receipt_word_client_errors(
     client: DynamoClient,
     sample_receipt_word: ReceiptWord,
-    error_code: str,
-    expected_exception: type,
-    error_fragment: str,
-):
-    """Test that add_receipt_word handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "put_item") as mock_put:
-        mock_put.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="PutItem",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.add_receipt_word(sample_receipt_word)
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment",
-    UPDATE_DELETE_ERROR_SCENARIOS,
-)
-def test_update_receipt_word_client_errors(
-    client: DynamoClient,
-    sample_receipt_word: ReceiptWord,
-    error_code: str,
-    expected_exception: type,
-    error_fragment: str,
-):
-    """Test that update_receipt_word handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "put_item") as mock_put:
-        mock_put.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="PutItem",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.update_receipt_word(sample_receipt_word)
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment",
-    UPDATE_DELETE_ERROR_SCENARIOS,
-)
-def test_delete_receipt_word_client_errors(
-    client: DynamoClient,
-    sample_receipt_word: ReceiptWord,
-    error_code: str,
-    expected_exception: type,
-    error_fragment: str,
-):
-    """Test that delete_receipt_word handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "delete_item") as mock_delete:
-        mock_delete.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="DeleteItem",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.delete_receipt_word(sample_receipt_word)
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment", ERROR_SCENARIOS
-)
-def test_get_receipt_word_client_errors(
-    client: DynamoClient,
-    error_code: str,
-    expected_exception: type,
-    error_fragment: str,
-):
-    """Test that get_receipt_word handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "get_item") as mock_get:
-        mock_get.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="GetItem",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.get_receipt_word(FIXED_IMAGE_ID, 1, 10, 5)
-
-
-# =============================================================================
-# BATCH OPERATION CLIENT ERROR TESTS
-# =============================================================================
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment", ERROR_SCENARIOS
-)
-def test_add_receipt_words_client_errors(
-    client: DynamoClient,
     sample_receipt_words: List[ReceiptWord],
+    call_name: str,
+    api_method: str,
+    operation_name: str,
+    arg_source: str,
     error_code: str,
     expected_exception: type,
     error_fragment: str,
 ):
-    """Test that add_receipt_words handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "transact_write_items") as mock_transact:
-        mock_transact.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="TransactWriteItems",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.add_receipt_words(sample_receipt_words)
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment",
-    UPDATE_DELETE_ERROR_SCENARIOS,
-)
-def test_update_receipt_words_client_errors(
-    client: DynamoClient,
-    sample_receipt_words: List[ReceiptWord],
-    error_code: str,
-    expected_exception: type,
-    error_fragment: str,
-):
-    """Test that update_receipt_words handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "transact_write_items") as mock_transact:
-        mock_transact.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="TransactWriteItems",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.update_receipt_words(sample_receipt_words)
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_fragment",
-    UPDATE_DELETE_ERROR_SCENARIOS,
-)
-def test_delete_receipt_words_client_errors(
-    client: DynamoClient,
-    sample_receipt_words: List[ReceiptWord],
-    error_code: str,
-    expected_exception: type,
-    error_fragment: str,
-):
-    """Test that delete_receipt_words handles various ClientError scenarios correctly."""
-    with patch.object(client._client, "transact_write_items") as mock_transact:
-        mock_transact.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
-            operation_name="TransactWriteItems",
-        )
-
-        with pytest.raises(expected_exception, match=error_fragment):
-            client.delete_receipt_words(sample_receipt_words)
+    """Test receipt word methods map DynamoDB ClientErrors consistently."""
+    _assert_client_error(
+        client,
+        api_method,
+        operation_name,
+        error_code,
+        expected_exception,
+        error_fragment,
+        call_name,
+        *_receipt_word_args(
+            arg_source, sample_receipt_word, sample_receipt_words
+        ),
+    )
 
 
 # =============================================================================
