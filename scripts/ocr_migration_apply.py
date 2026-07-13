@@ -596,15 +596,29 @@ def apply_image(
         ],
     )
     # 5. IMAGE row: new classification + receipt count.
+    # The image root row's SK is the literal "IMAGE" (not IMAGE#{id});
+    # update_item on a wrong key silently UPSERTS a junk row and leaves the
+    # real row stale (bit us on dev: 633 junk rows, 235 stale
+    # classifications). GSI3 keys derive from these fields, so update them
+    # together, and condition on the row existing so a typo can never
+    # create a new item.
     itype = (ocr.get("classification") or {}).get("image_type")
     if itype:
         client.update_item(
             TableName=table_name,
-            Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": f"IMAGE#{image_id}"}},
-            UpdateExpression="SET image_type = :t, receipt_count = :n",
+            Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
+            UpdateExpression=(
+                "SET image_type = :t, receipt_count = :n, "
+                "GSI3PK = :g3p, GSI3SK = :g3s"
+            ),
+            ConditionExpression="attribute_exists(PK) AND #ty = :img",
+            ExpressionAttributeNames={"#ty": "TYPE"},
             ExpressionAttributeValues={
                 ":t": {"S": itype},
                 ":n": {"N": str(len(receipts))},
+                ":g3p": {"S": f"IMAGE#{itype}"},
+                ":g3s": {"S": f"NUM_RECEIPTS#{len(receipts):05d}"},
+                ":img": {"S": "IMAGE"},
             },
         )
     return result
