@@ -1391,6 +1391,20 @@ if pulumi.get_stack() == "prod":
     )
     pulumi.export("analytics_database", web_analytics.database_name)
     pulumi.export("analytics_workgroup", web_analytics.workgroup_name)
+    pulumi.export("analytics_read_policy_arn", web_analytics.read_policy_arn)
+else:
+    # The analytics layer (and its managed read policy) exist only on the
+    # prod stack, but the analytics_* MCP tools run from every stack's
+    # Lambda — Glue/Athena names are account-global. Reuse prod's policy
+    # via stack reference so non-prod roles survive recreation with their
+    # analytics access intact. Requires prod to have deployed at least
+    # once after it began exporting analytics_read_policy_arn.
+    _prod_ref = pulumi.StackReference("tnorlund/portfolio/prod")
+    aws.iam.RolePolicyAttachment(
+        "receipt-mcp-analytics-read",
+        role=mcp_server.lambda_role_name,
+        policy_arn=_prod_ref.get_output("analytics_read_policy_arn"),
+    )
 
 # Merge Receipt Lambda (for merging receipt fragments into a single receipt)
 # Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
