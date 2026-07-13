@@ -86,7 +86,7 @@ def test_direct_function_urls_require_sigv4(path):
 
 def test_gateway_uses_separate_cognito_scopes():
     source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
-    assert 'authorization="COGNITO_USER_POOLS"' in source
+    assert 'authorizer_type="JWT"' in source
     assert 'f"{_RESOURCE_SERVER_ID}/receipt"' in source
     assert 'f"{_RESOURCE_SERVER_ID}/glyph"' in source
     assert "oauth-protected-resource" in source
@@ -94,12 +94,14 @@ def test_gateway_uses_separate_cognito_scopes():
 
 def test_gateway_supports_claude_connector_oauth():
     """claude.ai connectors need their callback allowed and RFC 9728
-    discovery via the 401 WWW-Authenticate header (the stage-prefixed
-    execute-api path makes the well-known location underivable)."""
+    discovery via the path-derived well-known location — which only
+    works on an HTTP API $default stage (no /{stage}/ path prefix)."""
     source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
     assert "https://claude.ai/api/mcp/auth_callback" in source
-    assert "resource_metadata" in source
-    assert "$context.resourcePath" in source
+    assert 'name="$default"' in source
+    assert "GET /.well-known/oauth-protected-resource" in source
+    assert "apigatewayv2" in source
+    assert "apigateway.RestApi" not in source
 
 
 def test_label_fixer_sends_bearer_token():

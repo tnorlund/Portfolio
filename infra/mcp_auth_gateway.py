@@ -1,22 +1,26 @@
 """Shared OAuth ingress for remotely hosted MCP servers.
 
 The Lambda Function URLs remain available behind ``AWS_IAM`` for callers
-that can sign requests. Off-the-shelf MCP clients use this API Gateway and
+that can sign requests. Off-the-shelf MCP clients use this HTTP API and
 obtain OAuth access tokens from the shared Cognito user pool.
+
+The API is an HTTP API (v2) on the ``$default`` stage deliberately: v2
+URLs have no stage path prefix, so the RFC 9728 well-known location
+(``/.well-known/oauth-protected-resource/<server>/mcp``) derives
+correctly from each MCP resource URL — a REST API's ``/{stage}/`` prefix
+breaks that derivation, and REST gateway responses cannot emit a
+per-route ``WWW-Authenticate`` hint to compensate ($context variables do
+not interpolate inside static response parameters).
 """
 
-import hashlib
 import json
 from typing import List, Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, Config, Input, Output, ResourceOptions
+from pulumi import ComponentResource, Config, Output, ResourceOptions
 
 _RESOURCE_SERVER_ID = "portfolio-mcp"
-# Bump to force an API Gateway stage redeploy for changes the trigger
-# hash can't see (e.g. metadata response templates).
-_GATEWAY_REV = "2"
 _DEFAULT_CALLBACK_URLS = [
     # claude.ai / Claude desktop custom-connector OAuth callbacks — the
     # primary remote clients for both MCP servers.
@@ -27,6 +31,31 @@ _DEFAULT_CALLBACK_URLS = [
     "http://127.0.0.1:8765/callback",
     "http://localhost:6274/oauth/callback",
 ]
+
+# Serves the RFC 9728 protected-resource metadata documents. HTTP APIs
+# have no mock integrations, so a minimal Lambda answers the well-known
+# routes from an env-var lookup table.
+_METADATA_HANDLER_CODE = """\
+import json
+import os
+
+DOCS = json.loads(os.environ["METADATA_DOCS"])
+
+
+def handler(event, context):
+    path = event.get("rawPath") or event.get("path") or ""
+    doc = DOCS.get(path)
+    if doc is None:
+        return {"statusCode": 404, "body": "{}"}
+    return {
+        "statusCode": 200,
+        "headers": {
+            "content-type": "application/json",
+            "cache-control": "max-age=3600",
+        },
+        "body": json.dumps(doc),
+    }
+"""
 
 
 def _callback_urls(config: Config) -> List[str]:
@@ -42,14 +71,12 @@ def _callback_urls(config: Config) -> List[str]:
             "of callback URLs"
         )
     if not value:
-        raise ValueError(
-            "portfolio:mcpOAuthCallbackUrls must contain at least one URL"
-        )
+        raise ValueError("portfolio:mcpOAuthCallbackUrls must contain at least one URL")
     return value
 
 
 class McpAuthGateway(ComponentResource):
-    """Cognito-protected API Gateway routes for receipt and glyph MCP."""
+    """Cognito-protected HTTP API routes for receipt and glyph MCP."""
 
     def __init__(
         self,
@@ -77,9 +104,7 @@ class McpAuthGateway(ComponentResource):
                 "allow_admin_create_user_only": True,
             },
             account_recovery_setting={
-                "recovery_mechanisms": [
-                    {"name": "verified_email", "priority": 1}
-                ]
+                "recovery_mechanisms": [{"name": "verified_email", "priority": 1}]
             },
             password_policy={
                 "minimum_length": 16,
@@ -174,9 +199,7 @@ class McpAuthGateway(ComponentResource):
         automation_secret = aws.secretsmanager.Secret(
             f"{name}-receipt-automation-credentials",
             name=f"/{stack}/mcp/oauth/receipt-automation-client",
-            description=(
-                "OAuth client credentials for scheduled receipt MCP callers"
-            ),
+            description=("OAuth client credentials for scheduled receipt MCP callers"),
             opts=child_opts,
         )
         automation_credentials: Output[str] = Output.json_dumps(
@@ -195,159 +218,171 @@ class McpAuthGateway(ComponentResource):
         )
         self.automation_secret_arn = automation_secret.arn
 
-        self.api = aws.apigateway.RestApi(
+        # ------------------------------------------------------------
+        # HTTP API ($default stage — no path prefix, see module doc)
+        # ------------------------------------------------------------
+        self.api = aws.apigatewayv2.Api(
             f"{name}-api",
             name=f"{name}-{stack}",
+            protocol_type="HTTP",
             description="OAuth-protected ingress for Portfolio MCP servers",
-            endpoint_configuration={"types": "REGIONAL"},
+            cors_configuration={
+                "allow_origins": ["*"],
+                "allow_methods": ["GET", "POST", "OPTIONS"],
+                "allow_headers": [
+                    "authorization",
+                    "content-type",
+                    "mcp-protocol-version",
+                    "mcp-session-id",
+                ],
+                "max_age": 3600,
+            },
             opts=child_opts,
         )
-        self.authorizer = aws.apigateway.Authorizer(
+        self.receipt_url = Output.format("{}/receipt/mcp", self.api.api_endpoint)
+        self.glyph_url = Output.format("{}/glyph/mcp", self.api.api_endpoint)
+
+        # Cognito access tokens carry the client id in the client_id
+        # claim; HTTP API JWT authorizers accept it in place of aud.
+        self.authorizer = aws.apigatewayv2.Authorizer(
             f"{name}-authorizer",
-            name=f"{name}-{stack}-cognito",
-            rest_api=self.api.id,
-            type="COGNITO_USER_POOLS",
-            provider_arns=[self.user_pool.arn],
-            identity_source="method.request.header.Authorization",
-            opts=child_opts,
-        )
-
-        route_resources: List[pulumi.Resource] = []
-        route_resources.extend(
-            self._add_mcp_route(
-                "receipt",
-                receipt_lambda,
-                f"{_RESOURCE_SERVER_ID}/receipt",
-                region,
-            )
-        )
-        route_resources.extend(
-            self._add_mcp_route(
-                "glyph",
-                glyph_lambda,
-                f"{_RESOURCE_SERVER_ID}/glyph",
-                region,
-            )
-        )
-
-        base_url = Output.format(
-            "https://{}.execute-api.{}.amazonaws.com/{}",
-            self.api.id,
-            region,
-            stack,
-        )
-        self.receipt_url = Output.format("{}/receipt/mcp", base_url)
-        self.glyph_url = Output.format("{}/glyph/mcp", base_url)
-
-        well_known = aws.apigateway.Resource(
-            f"{name}-well-known",
-            rest_api=self.api.id,
-            parent_id=self.api.root_resource_id,
-            path_part=".well-known",
-            opts=child_opts,
-        )
-        protected_resource = aws.apigateway.Resource(
-            f"{name}-protected-resource",
-            rest_api=self.api.id,
-            parent_id=well_known.id,
-            path_part="oauth-protected-resource",
-            opts=child_opts,
-        )
-        metadata_resources: List[pulumi.Resource] = [
-            well_known,
-            protected_resource,
-        ]
-        metadata_resources.extend(
-            self._add_metadata_route(
-                "receipt",
-                self.receipt_url,
-                f"{_RESOURCE_SERVER_ID}/receipt",
-                protected_resource,
-            )
-        )
-        metadata_resources.extend(
-            self._add_metadata_route(
-                "glyph",
-                self.glyph_url,
-                f"{_RESOURCE_SERVER_ID}/glyph",
-                protected_resource,
-            )
-        )
-
-        # RFC 9728 §5.1: the 401 must tell the client where the
-        # protected-resource metadata lives. The stage prefix on
-        # execute-api URLs makes the path-derived well-known location
-        # unguessable, so this header is the only discovery channel that
-        # works here. $context.resourcePath ("/receipt/mcp" or
-        # "/glyph/mcp") reconstructs each route's actual metadata URL.
-        unauthorized_header = Output.format(
-            "'Bearer resource_metadata="
-            '"{}/.well-known/oauth-protected-resource'
-            "$context.resourcePath\"'",
-            base_url,
-        )
-        aws.apigateway.Response(
-            f"{name}-unauthorized-response",
-            rest_api_id=self.api.id,
-            response_type="UNAUTHORIZED",
-            status_code="401",
-            response_parameters={
-                "gatewayresponse.header.WWW-Authenticate": (
-                    unauthorized_header
-                )
-            },
-            response_templates={
-                "application/json": json.dumps(
-                    {"error": "authentication_required"}
-                )
-            },
-            opts=child_opts,
-        )
-        aws.apigateway.Response(
-            f"{name}-forbidden-response",
-            rest_api_id=self.api.id,
-            response_type="ACCESS_DENIED",
-            status_code="403",
-            response_parameters={
-                "gatewayresponse.header.WWW-Authenticate": (
-                    "'Bearer error=\"insufficient_scope\"'"
-                )
-            },
-            response_templates={
-                "application/json": json.dumps({"error": "insufficient_scope"})
+            api_id=self.api.id,
+            authorizer_type="JWT",
+            name=f"{name}-{stack}-cognito-jwt",
+            identity_sources=["$request.header.Authorization"],
+            jwt_configuration={
+                "issuer": self.issuer_url,
+                "audiences": [
+                    self.interactive_client.id,
+                    self.automation_client.id,
+                ],
             },
             opts=child_opts,
         )
 
-        # URNs alone don't change when resource *properties* change (e.g.
-        # editing a gateway response header), so fold the property values
-        # that require a stage redeploy into the hash as well.
-        deployment_inputs = [
-            resource.urn for resource in route_resources + metadata_resources
-        ] + [
-            unauthorized_header,
-            json.dumps(callbacks, sort_keys=True),
-            _GATEWAY_REV,
-        ]
-        redeployment = Output.all(*deployment_inputs).apply(
-            lambda values: hashlib.sha256(
-                json.dumps(values, sort_keys=True).encode("utf-8")
-            ).hexdigest()
-        )
-        deployment = aws.apigateway.Deployment(
-            f"{name}-deployment",
-            rest_api=self.api.id,
-            triggers={"redeployment": redeployment},
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=route_resources + metadata_resources,
+        for route_name, lambda_function in (
+            ("receipt", receipt_lambda),
+            ("glyph", glyph_lambda),
+        ):
+            integration = aws.apigatewayv2.Integration(
+                f"mcp-auth-{route_name}-integration",
+                api_id=self.api.id,
+                integration_type="AWS_PROXY",
+                integration_uri=lambda_function.arn,
+                payload_format_version="2.0",
+                opts=child_opts,
+            )
+            aws.apigatewayv2.Route(
+                f"mcp-auth-{route_name}-route",
+                api_id=self.api.id,
+                route_key=f"ANY /{route_name}/mcp",
+                target=integration.id.apply(lambda iid: f"integrations/{iid}"),
+                authorization_type="JWT",
+                authorizer_id=self.authorizer.id,
+                authorization_scopes=[f"{_RESOURCE_SERVER_ID}/{route_name}"],
+                opts=child_opts,
+            )
+            aws.lambda_.Permission(
+                f"mcp-auth-{route_name}-invoke",
+                action="lambda:InvokeFunction",
+                function=lambda_function.name,
+                principal="apigateway.amazonaws.com",
+                source_arn=self.api.execution_arn.apply(
+                    lambda arn, rn=route_name: f"{arn}/*/*/{rn}/mcp"
+                ),
+                opts=child_opts,
+            )
+
+        # RFC 9728 metadata: the well-known location derives from the
+        # resource URL because $default has no stage prefix.
+        metadata_role = aws.iam.Role(
+            f"{name}-metadata-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
             ),
+            opts=child_opts,
         )
-        self.stage = aws.apigateway.Stage(
+        aws.iam.RolePolicyAttachment(
+            f"{name}-metadata-role-logs",
+            role=metadata_role.name,
+            policy_arn=(
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+            ),
+            opts=ResourceOptions(parent=metadata_role),
+        )
+        metadata_docs = Output.json_dumps(
+            {
+                "/.well-known/oauth-protected-resource/receipt/mcp": {
+                    "resource": self.receipt_url,
+                    "authorization_servers": [self.issuer_url],
+                    "scopes_supported": [f"{_RESOURCE_SERVER_ID}/receipt"],
+                    "bearer_methods_supported": ["header"],
+                },
+                "/.well-known/oauth-protected-resource/glyph/mcp": {
+                    "resource": self.glyph_url,
+                    "authorization_servers": [self.issuer_url],
+                    "scopes_supported": [f"{_RESOURCE_SERVER_ID}/glyph"],
+                    "bearer_methods_supported": ["header"],
+                },
+            }
+        )
+        metadata_lambda = aws.lambda_.Function(
+            f"{name}-metadata",
+            role=metadata_role.arn,
+            runtime="python3.12",
+            handler="index.handler",
+            timeout=5,
+            memory_size=128,
+            code=pulumi.AssetArchive(
+                {"index.py": pulumi.StringAsset(_METADATA_HANDLER_CODE)}
+            ),
+            environment={"variables": {"METADATA_DOCS": metadata_docs}},
+            opts=child_opts,
+        )
+        metadata_integration = aws.apigatewayv2.Integration(
+            f"{name}-metadata-integration",
+            api_id=self.api.id,
+            integration_type="AWS_PROXY",
+            integration_uri=metadata_lambda.arn,
+            payload_format_version="2.0",
+            opts=child_opts,
+        )
+        for route_name in ("receipt", "glyph"):
+            aws.apigatewayv2.Route(
+                f"{name}-metadata-route-{route_name}",
+                api_id=self.api.id,
+                route_key=(
+                    "GET /.well-known/oauth-protected-resource" f"/{route_name}/mcp"
+                ),
+                target=metadata_integration.id.apply(lambda iid: f"integrations/{iid}"),
+                authorization_type="NONE",
+                opts=child_opts,
+            )
+        aws.lambda_.Permission(
+            f"{name}-metadata-invoke",
+            action="lambda:InvokeFunction",
+            function=metadata_lambda.name,
+            principal="apigateway.amazonaws.com",
+            source_arn=self.api.execution_arn.apply(
+                lambda arn: f"{arn}/*/*/.well-known/*"
+            ),
+            opts=child_opts,
+        )
+
+        self.stage = aws.apigatewayv2.Stage(
             f"{name}-stage",
-            rest_api=self.api.id,
-            deployment=deployment.id,
-            stage_name=stack,
+            api_id=self.api.id,
+            name="$default",
+            auto_deploy=True,
             opts=child_opts,
         )
 
@@ -360,150 +395,3 @@ class McpAuthGateway(ComponentResource):
                 "automation_secret_arn": self.automation_secret_arn,
             }
         )
-
-    def _add_mcp_route(
-        self,
-        route_name: str,
-        lambda_function: aws.lambda_.Function,
-        scope: str,
-        region: str,
-    ) -> List[pulumi.Resource]:
-        """Add ``/<name>/mcp`` and protect it with a custom scope."""
-        parent = aws.apigateway.Resource(
-            f"mcp-auth-{route_name}",
-            rest_api=self.api.id,
-            parent_id=self.api.root_resource_id,
-            path_part=route_name,
-            opts=ResourceOptions(parent=self),
-        )
-        resource = aws.apigateway.Resource(
-            f"mcp-auth-{route_name}-mcp",
-            rest_api=self.api.id,
-            parent_id=parent.id,
-            path_part="mcp",
-            opts=ResourceOptions(parent=self),
-        )
-        method = aws.apigateway.Method(
-            f"mcp-auth-{route_name}-method",
-            rest_api=self.api.id,
-            resource_id=resource.id,
-            http_method="ANY",
-            authorization="COGNITO_USER_POOLS",
-            authorizer_id=self.authorizer.id,
-            authorization_scopes=[scope],
-            opts=ResourceOptions(parent=self),
-        )
-        integration_uri = Output.format(
-            "arn:aws:apigateway:{}:lambda:path/2015-03-31/functions/{}"
-            "/invocations",
-            region,
-            lambda_function.arn,
-        )
-        integration = aws.apigateway.Integration(
-            f"mcp-auth-{route_name}-integration",
-            rest_api=self.api.id,
-            resource_id=resource.id,
-            http_method=method.http_method,
-            integration_http_method="POST",
-            type="AWS_PROXY",
-            uri=integration_uri,
-            timeout_milliseconds=29000,
-            opts=ResourceOptions(parent=self),
-        )
-        permission = aws.lambda_.Permission(
-            f"mcp-auth-{route_name}-invoke",
-            action="lambda:InvokeFunction",
-            function=lambda_function.name,
-            principal="apigateway.amazonaws.com",
-            source_arn=self.api.execution_arn.apply(
-                lambda arn: f"{arn}/*/*/{route_name}/mcp"
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-        return [parent, resource, method, integration, permission]
-
-    def _add_metadata_route(
-        self,
-        route_name: str,
-        resource_url: Input[str],
-        scope: str,
-        protected_resource: aws.apigateway.Resource,
-    ) -> List[pulumi.Resource]:
-        """Publish RFC 9728 metadata without requiring a bearer token."""
-        server = aws.apigateway.Resource(
-            f"mcp-auth-metadata-server-{route_name}",
-            rest_api=self.api.id,
-            parent_id=protected_resource.id,
-            path_part=route_name,
-            opts=ResourceOptions(parent=self),
-        )
-        resource = aws.apigateway.Resource(
-            f"mcp-auth-metadata-mcp-{route_name}",
-            rest_api=self.api.id,
-            parent_id=server.id,
-            path_part="mcp",
-            opts=ResourceOptions(parent=self),
-        )
-        method = aws.apigateway.Method(
-            f"mcp-auth-metadata-method-{route_name}",
-            rest_api=self.api.id,
-            resource_id=resource.id,
-            http_method="GET",
-            authorization="NONE",
-            opts=ResourceOptions(parent=self),
-        )
-        integration = aws.apigateway.Integration(
-            f"mcp-auth-metadata-integration-{route_name}",
-            rest_api=self.api.id,
-            resource_id=resource.id,
-            http_method=method.http_method,
-            type="MOCK",
-            passthrough_behavior="NEVER",
-            request_templates={
-                "application/json": json.dumps({"statusCode": 200})
-            },
-            opts=ResourceOptions(parent=self),
-        )
-        method_response = aws.apigateway.MethodResponse(
-            f"mcp-auth-metadata-method-response-{route_name}",
-            rest_api=self.api.id,
-            resource_id=resource.id,
-            http_method=method.http_method,
-            status_code="200",
-            response_parameters={
-                "method.response.header.Content-Type": True,
-                "method.response.header.Cache-Control": True,
-            },
-            opts=ResourceOptions(parent=self),
-        )
-        metadata = Output.all(resource_url, self.issuer_url).apply(
-            lambda values: json.dumps(
-                {
-                    "resource": values[0],
-                    "authorization_servers": [values[1]],
-                    "scopes_supported": [scope],
-                    "bearer_methods_supported": ["header"],
-                }
-            )
-        )
-        integration_response = aws.apigateway.IntegrationResponse(
-            f"mcp-auth-metadata-integration-response-{route_name}",
-            rest_api=self.api.id,
-            resource_id=resource.id,
-            http_method=method.http_method,
-            status_code=method_response.status_code,
-            response_parameters={
-                "method.response.header.Content-Type": "'application/json'",
-                "method.response.header.Cache-Control": "'max-age=3600'",
-            },
-            response_templates={"application/json": metadata},
-            opts=ResourceOptions(parent=self),
-        )
-        return [
-            server,
-            resource,
-            method,
-            integration,
-            method_response,
-            integration_response,
-        ]

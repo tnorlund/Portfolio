@@ -28,11 +28,13 @@ client registration, so the exported client ID is required.
 For a claude.ai custom connector: add the connector with the gateway URL
 (`mcp_server_url` or `glyph_mcp_server_url`), open Advanced settings, and
 paste `mcp_oauth_interactive_client_id` as the OAuth client ID (no secret —
-it is a public PKCE client). Discovery works through the `WWW-Authenticate:
-Bearer resource_metadata="…"` header on the 401; the stage-prefixed
-execute-api path means the RFC 9728 well-known location cannot be derived
-from the resource URL, so clients that ignore the header will not find the
-metadata on their own.
+it is a public PKCE client). Discovery uses the standard RFC 9728
+path-derived well-known location: the gateway is an HTTP API on the
+`$default` stage, so resource URLs have no stage path prefix and
+`/.well-known/oauth-protected-resource/<server>/mcp` resolves exactly as
+clients derive it. (A REST API's `/{stage}/` prefix breaks that
+derivation, and REST gateway responses can't emit a per-route
+`WWW-Authenticate` hint — that is why this is an HTTP API.)
 
 User signup is administrator-only. Create the first user after deployment:
 
