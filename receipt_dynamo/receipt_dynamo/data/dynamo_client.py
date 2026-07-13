@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Any
 
 import boto3
 
@@ -129,6 +130,7 @@ class DynamoClient(
         table_name: str,
         region: str = "us-east-1",
         max_pool_connections: int | None = None,
+        endpoint_url: str | None = None,
     ):
         """Initializes a DynamoClient instance.
 
@@ -140,6 +142,10 @@ class DynamoClient(
                 in the connection pool. Defaults to None (uses boto3 default
                 of 10). Increase this when using parallel workers to avoid
                 "Connection pool is full" warnings.
+            endpoint_url (str, optional): DynamoDB-compatible endpoint. When
+                omitted, ``DYNAMODB_ENDPOINT_URL`` is used if set. Local
+                endpoints use placeholder credentials so cached data can be
+                queried without an AWS session.
 
         Attributes:
             _client (DynamoDBClient): The Boto3 DynamoDB client.
@@ -154,8 +160,21 @@ class DynamoClient(
 
             boto3_config = Config(max_pool_connections=max_pool_connections)
 
+        endpoint_url = endpoint_url or os.environ.get("DYNAMODB_ENDPOINT_URL")
+        client_options: dict[str, Any] = {
+            "region_name": region,
+            "config": boto3_config,
+            "endpoint_url": endpoint_url,
+        }
+        if endpoint_url:
+            client_options.update(
+                {
+                    "aws_access_key_id": "local",
+                    "aws_secret_access_key": "local",
+                }
+            )
         self._client: DynamoDBClient = boto3.client(
-            "dynamodb", region_name=region, config=boto3_config
+            "dynamodb", **client_options
         )
         self.table_name = table_name
         # Ensure the table already exists

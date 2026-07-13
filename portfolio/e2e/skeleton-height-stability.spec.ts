@@ -8,22 +8,19 @@ import { mockWordSimilarityResponse } from "./fixtures/word-similarity";
  *
  * For each lazy-loaded component on /receipt, we:
  *   1. Block its API so it renders the skeleton/loading placeholder.
- *   2. Scroll to it and measure the skeleton container height.
+ *   2. Scroll to it and measure the page-level figure boundary.
  *   3. Fulfill the blocked API request with mock data.
  *   4. Wait for the loaded state to render.
- *   5. Measure the loaded container height and assert they match (within tolerance).
+ *   5. Measure the settled boundary and assert that its full box is unchanged.
  *
- * A tolerance of 10 % is used because minor differences (a few px from borders,
- * dynamic content like epoch counts) are acceptable — the goal is to prevent
- * large layout shifts (e.g. 300 px → 900 px).
- *
- * Currently scoped to chromium (desktop). Mobile has known height-shift issues
- * in LayoutLM (~42%) and WordSimilarity (~28%) that should be fixed separately.
+ * A one-pixel tolerance only covers subpixel rounding. The outer boundary is
+ * the layout contract, so dynamic differences inside a figure must not move the
+ * surrounding article on either desktop or mobile.
  */
 
-test.use({ viewport: { width: 1280, height: 900 } });
+const BOX_TOLERANCE_PX = 1;
 
-const HEIGHT_TOLERANCE = 0.1; // 10%
+type LayoutBox = { x: number; y: number; width: number; height: number };
 
 /** Mock CDN image requests with an SVG placeholder */
 async function mockImages(page: Page) {
@@ -64,9 +61,10 @@ async function stubOtherApis(page: Page, except: string[]) {
 /** Navigate to the receipt page and wait for it to be ready */
 async function navigateToReceipt(page: Page) {
   await page.goto("/receipt");
-  await expect(
-    page.locator("h1", { hasText: "Introduction" })
-  ).toBeVisible({ timeout: 15000 });
+  const introduction = page
+    .getByRole("heading", { name: "Introduction", exact: true })
+    .filter({ visible: true });
+  await expect(introduction).toHaveCount(1, { timeout: 15000 });
 }
 
 /** Scroll a text anchor into view, then nudge slightly to reveal the component */
@@ -81,16 +79,34 @@ async function scrollToAnchor(page: Page, text: string, scrollUp?: number) {
   await page.waitForTimeout(500);
 }
 
-function assertHeightStable(
-  skeletonHeight: number,
-  loadedHeight: number,
+function assertBoxStable(
+  loadingBox: LayoutBox,
+  loadedBox: LayoutBox,
   componentName: string
 ) {
-  const ratio = Math.abs(loadedHeight - skeletonHeight) / skeletonHeight;
-  expect(
-    ratio,
-    `${componentName}: skeleton height (${skeletonHeight}px) vs loaded height (${loadedHeight}px) — ${(ratio * 100).toFixed(1)}% shift exceeds ${HEIGHT_TOLERANCE * 100}% tolerance`
-  ).toBeLessThanOrEqual(HEIGHT_TOLERANCE);
+  for (const key of ["x", "y", "width", "height"] as const) {
+    const delta = Math.abs(loadedBox[key] - loadingBox[key]);
+    expect(
+      delta,
+      `${componentName}: ${key} shifted by ${delta.toFixed(2)}px (loading ${loadingBox[key].toFixed(2)}px → loaded ${loadedBox[key].toFixed(2)}px)`
+    ).toBeLessThanOrEqual(BOX_TOLERANCE_PX);
+  }
+}
+
+function figureBoundary(page: Page, name: string) {
+  return page
+    .locator(`[data-figure-boundary="${name}"]`)
+    .filter({ visible: true });
+}
+
+async function measureDocumentBox(
+  page: Page,
+  locator: ReturnType<Page["locator"]>
+): Promise<LayoutBox | null> {
+  const box = await locator.boundingBox();
+  if (!box) return null;
+  const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+  return { ...box, x: box.x + scroll.x, y: box.y + scroll.y };
 }
 
 // ---------------------------------------------------------------------------
@@ -118,10 +134,10 @@ test.describe("Skeleton height stability", () => {
     // Measure skeleton height
     const container = page.locator('[class*="TrainingMetricsAnimation"]').first();
     await expect(container).toBeVisible({ timeout: 10000 });
-    const skeletonBox = await container.boundingBox();
+    const boundary = figureBoundary(page, "training-metrics");
+    const skeletonBox = await measureDocumentBox(page, boundary);
     expect(skeletonBox).not.toBeNull();
-    const skeletonHeight = skeletonBox!.height;
-    console.log(`  TrainingMetrics skeleton height: ${skeletonHeight}px`);
+    console.log(`  TrainingMetrics loading boundary: ${JSON.stringify(skeletonBox)}`);
 
     // Fulfill the blocked API request
     for (const route of pendingRoutes) {
@@ -134,12 +150,11 @@ test.describe("Skeleton height stability", () => {
 
     // Wait for loaded state — the epoch timeline appears when loaded
     await page.waitForTimeout(3000);
-    const loadedBox = await container.boundingBox();
+    const loadedBox = await measureDocumentBox(page, boundary);
     expect(loadedBox).not.toBeNull();
-    const loadedHeight = loadedBox!.height;
-    console.log(`  TrainingMetrics loaded height: ${loadedHeight}px`);
+    console.log(`  TrainingMetrics loaded boundary: ${JSON.stringify(loadedBox)}`);
 
-    assertHeightStable(skeletonHeight, loadedHeight, "TrainingMetricsAnimation");
+    assertBoxStable(skeletonBox!, loadedBox!, "TrainingMetricsAnimation");
   });
 
   // ---------------------------------------------------------------------------
@@ -165,10 +180,10 @@ test.describe("Skeleton height stability", () => {
     // Measure skeleton height — uses ReceiptFlowLoadingShell
     const container = page.locator('[class*="LayoutLMBatch"]').first();
     await expect(container).toBeVisible({ timeout: 10000 });
-    const skeletonBox = await container.boundingBox();
+    const boundary = figureBoundary(page, "layoutlm-inference");
+    const skeletonBox = await measureDocumentBox(page, boundary);
     expect(skeletonBox).not.toBeNull();
-    const skeletonHeight = skeletonBox!.height;
-    console.log(`  LayoutLM skeleton height: ${skeletonHeight}px`);
+    console.log(`  LayoutLM loading boundary: ${JSON.stringify(skeletonBox)}`);
 
     // Fulfill the blocked API requests (component fetches 3 times: initial + 2 prefetch)
     for (const route of pendingRoutes) {
@@ -189,12 +204,11 @@ test.describe("Skeleton height stability", () => {
     });
 
     await page.waitForTimeout(3000);
-    const loadedBox = await container.boundingBox();
+    const loadedBox = await measureDocumentBox(page, boundary);
     expect(loadedBox).not.toBeNull();
-    const loadedHeight = loadedBox!.height;
-    console.log(`  LayoutLM loaded height: ${loadedHeight}px`);
+    console.log(`  LayoutLM loaded boundary: ${JSON.stringify(loadedBox)}`);
 
-    assertHeightStable(skeletonHeight, loadedHeight, "LayoutLMBatchVisualization");
+    assertBoxStable(skeletonBox!, loadedBox!, "LayoutLMBatchVisualization");
   });
 
   // ---------------------------------------------------------------------------
@@ -223,16 +237,23 @@ test.describe("Skeleton height stability", () => {
     // Measure loading state height — the container has data-testid and minHeight: 900px
     const container = page.locator('[data-testid="word-similarity"]').first();
     await expect(container).toBeVisible({ timeout: 10000 });
-    const loadingBox = await container.boundingBox();
+    const boundary = figureBoundary(page, "word-similarity");
+    const loadingBox = await measureDocumentBox(page, boundary);
     expect(loadingBox).not.toBeNull();
-    const loadingHeight = loadingBox!.height;
-    console.log(`  WordSimilarity loading height: ${loadingHeight}px`);
+    console.log(`  WordSimilarity loading boundary: ${JSON.stringify(loadingBox)}`);
 
-    // Verify the loading placeholder reserves reasonable space
-    expect(
-      loadingHeight,
-      "WordSimilarity loading placeholder should reserve at least 400px"
-    ).toBeGreaterThanOrEqual(400);
+    const evidenceSuffix = (page.viewportSize()?.width ?? 1280) <= 768
+      ? "mobile"
+      : "desktop";
+    if (process.env.CAPTURE_SKELETON_EVIDENCE === "1") {
+      const performanceToggle = page.getByText("⚡ Performance", { exact: true });
+      if (await performanceToggle.count() === 1) {
+        await performanceToggle.click();
+      }
+      await boundary.screenshot({
+        path: `/tmp/portfolio-word-similarity-skeleton-${evidenceSuffix}.png`,
+      });
+    }
 
     // Fulfill the blocked API request
     for (const route of pendingRoutes) {
@@ -249,12 +270,15 @@ test.describe("Skeleton height stability", () => {
     await page.waitForTimeout(1000);
 
     // Measure the loaded component — same data-testid, now on the loaded wrapper
-    const loadedContainer = page.locator('[data-testid="word-similarity"]').first();
-    const loadedBox = await loadedContainer.boundingBox();
+    const loadedBox = await measureDocumentBox(page, boundary);
     expect(loadedBox).not.toBeNull();
-    const loadedHeight = loadedBox!.height;
-    console.log(`  WordSimilarity loaded height: ${loadedHeight}px`);
-    assertHeightStable(loadingHeight, loadedHeight, "WordSimilarity");
+    console.log(`  WordSimilarity loaded boundary: ${JSON.stringify(loadedBox)}`);
+    if (process.env.CAPTURE_SKELETON_EVIDENCE === "1") {
+      await boundary.screenshot({
+        path: `/tmp/portfolio-word-similarity-loaded-${evidenceSuffix}.png`,
+      });
+    }
+    assertBoxStable(loadingBox!, loadedBox!, "WordSimilarity");
   });
 
   // ---------------------------------------------------------------------------
@@ -268,7 +292,11 @@ test.describe("Skeleton height stability", () => {
     await navigateToReceipt(page);
 
     // CICDLoop has no API — it renders as soon as it enters the viewport.
-    // The placeholder has minHeight matching the SVG height prop.
+    // Measure the reserved boundary before bringing it into view.
+    const boundary = figureBoundary(page, "cicd-loop");
+    const placeholderBox = await measureDocumentBox(page, boundary);
+    expect(placeholderBox).not.toBeNull();
+
     // Scroll to just before the component to see the placeholder first.
     const anchor = page.getByText("LangSmith records what happened", {
       exact: false,
@@ -301,5 +329,9 @@ test.describe("Skeleton height stability", () => {
       // height prop, there should be no shift. Just verify it rendered.
       expect(svgBox!.height).toBeGreaterThan(100);
     }
+
+    const renderedBox = await measureDocumentBox(page, boundary);
+    expect(renderedBox).not.toBeNull();
+    assertBoxStable(placeholderBox!, renderedBox!, "CICDLoop");
   });
 });

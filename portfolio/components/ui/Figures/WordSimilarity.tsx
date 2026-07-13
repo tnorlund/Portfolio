@@ -7,6 +7,7 @@ import {
   detectImageFormatSupport,
   getBestImageUrl,
 } from "../../../utils/imageFormat";
+import styles from "./WordSimilarity.module.css";
 
 // Simple seeded random number generator for consistent randomness
 function seededRandom(seed: number): () => number {
@@ -41,6 +42,41 @@ interface SafeZone {
   minY: number;
   maxY: number;
 }
+
+const WordSimilaritySkeleton: React.FC = () => (
+  <div
+    className={styles.loadingShell}
+    data-testid="word-similarity"
+    aria-busy="true"
+    aria-label="Loading word similarity results"
+  >
+    <div className={styles.receiptStage} aria-hidden="true">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div key={index} className={styles.receiptSkeleton} />
+      ))}
+    </div>
+
+    <div className={styles.tableSkeleton} aria-hidden="true">
+      <div className={styles.tableHeaderSkeleton} />
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className={styles.tableRowSkeleton}>
+          <span />
+          <span />
+          <span />
+        </div>
+      ))}
+    </div>
+
+    <div className={styles.timingSkeleton} aria-hidden="true">
+      <div className={styles.timingRingSkeleton} />
+      <div className={styles.timingLinesSkeleton}>
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+  </div>
+);
 
 // Constraint-based position solver that guarantees cards stay within bounds
 function solveCardPosition(
@@ -256,22 +292,9 @@ const WordSimilarity: React.FC = () => {
   }, []);
 
   if (!nearViewport || loading) {
-    const reservedHeight = windowWidth <= 768 ? 100 : 120;
     return (
-      <div
-        ref={lazyRef}
-        data-testid="word-similarity"
-        style={{
-          padding: "2rem",
-          textAlign: "center",
-          color: "#666",
-          minHeight: `${reservedHeight}px`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        Loading...
+      <div ref={lazyRef}>
+        <WordSimilaritySkeleton />
       </div>
     );
   }

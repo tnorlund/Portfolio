@@ -21,12 +21,14 @@ from receipt_chroma.compaction.models import (
     ReceiptDeletionResult,
 )
 from receipt_chroma.compaction.processor import process_collection_updates
+from receipt_chroma.compaction.sections import apply_section_updates
 
 __all__ = [
     "apply_collection_updates",
     "apply_label_updates",
     "apply_place_updates",
     "apply_receipt_deletions",
+    "apply_section_updates",
     "BulkSyncResult",
     "CloudConfig",
     "CollectionUpdateResult",

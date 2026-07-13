@@ -74,6 +74,17 @@ public struct ReceiptProcessor {
         let imageWidth = CGFloat(image.width)
         let imageHeight = CGFloat(image.height)
 
+        // If a cluster is two overlapping copies of one receipt (customer +
+        // merchant copy), split it into two clusters via duplicate-content
+        // consensus. Clusters that look like multiple receipts but can't be
+        // confidently split are flagged for review (never silently guessed).
+        let (splitClustering, reviewClusterIds) =
+            splitDuplicateReceiptClusters(clustering, lines: lines)
+        for cid in reviewClusterIds {
+            logger.warning("Cluster \(cid): probable overlapping receipts (duplicate anchors below confident-split threshold) - flagged for review, not split")
+        }
+        let clustering = splitClustering
+
         for (clusterId, lineIndices) in clustering.clusters {
             // Skip noise cluster
             guard clusterId != -1 else { continue }
@@ -84,11 +95,26 @@ public struct ReceiptProcessor {
                 continue
             }
 
-            // Get lines for this cluster
-            let clusterLines = lineIndices.compactMap { idx -> Line? in
-                guard idx >= 0 && idx < lines.count else { return nil }
-                return lines[idx]
+            // Get lines for this cluster (keep line/index arrays parallel).
+            var clusterLines: [Line] = []
+            var effectiveIndices: [Int] = []
+            for idx in lineIndices {
+                guard idx >= 0 && idx < lines.count else { continue }
+                clusterLines.append(lines[idx])
+                effectiveIndices.append(idx)
             }
+
+            // NOTE: cross-axis geometric trimming was intentionally removed here.
+            // Deciding a line is "sideways background" from geometry ALONE is
+            // unsafe: a right-aligned TOTAL, or a separately-recognized price /
+            // amount column, is cross-axis-disjoint from the description column
+            // yet is real receipt content — trimming it silently drops totals.
+            // The two cases trimming targeted are handled with actual evidence
+            // instead: a colored menu/flyer background is removed pre-clustering
+            // by the pixel-based BackgroundColorFilter, and two overlapping
+            // copies are separated (or flagged) by the duplicate splitter. A
+            // white adjacent document that survives both is kept in the crop
+            // (a slightly larger crop) rather than risking loss of real content.
 
             guard clusterLines.count >= 3 else { continue }
 
@@ -200,7 +226,8 @@ public struct ReceiptProcessor {
                 warpedImage: warpedImage,
                 warpedWidth: warpedWidth,
                 warpedHeight: warpedHeight,
-                lineIndices: lineIndices
+                lineIndices: effectiveIndices,
+                needsReview: reviewClusterIds.contains(clusterId)
             )
             results.append(processed)
 
@@ -243,7 +270,20 @@ public struct ReceiptProcessor {
             iouThreshold: 0.01
         )
 
-        for (clusterId, lineIndices) in mergedClusters {
+        // Two stacked / overlapping copies on a flatbed share the same X-range,
+        // so X-axis DBSCAN + overlap-join collapse them into ONE cluster. Run the
+        // same duplicate-content consensus the photo path uses to split them
+        // (or, when not confidently separable, flag for review) instead of
+        // emitting a single combined crop.
+        let (splitResult, reviewClusterIds) =
+            splitDuplicateReceiptClusters(
+                ClusteringResult(clusters: mergedClusters), lines: lines
+            )
+        for cid in reviewClusterIds {
+            logger.warning("SCAN cluster \(cid): probable overlapping copies (duplicate anchors below confident-split threshold) - flagged for review, not split")
+        }
+
+        for (clusterId, lineIndices) in splitResult.clusters {
             guard clusterId != -1 else { continue }
             guard !lineIndices.isEmpty else { continue }
 
@@ -314,7 +354,8 @@ public struct ReceiptProcessor {
                 warpedImage: warpedImage,
                 warpedWidth: w,
                 warpedHeight: h,
-                lineIndices: lineIndices
+                lineIndices: lineIndices,
+                needsReview: reviewClusterIds.contains(clusterId)
             )
             results.append(processed)
 

@@ -14,6 +14,7 @@ from typing import Callable, Optional
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
+from receipt_dynamo.entities.receipt_section import item_to_receipt_section
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
@@ -32,6 +33,9 @@ logger = logging.getLogger(__name__)
 _SK_PATTERN_MATCHERS: list[tuple[Callable[[str], bool], str]] = [
     (lambda sk: "#PLACE" in sk, "RECEIPT_PLACE"),
     (lambda sk: "#LABEL#" in sk, "RECEIPT_WORD_LABEL"),
+    # RECEIPT#00001#SECTION#{TYPE}; "#SECTION#" appears in no other
+    # entity SK (receipt_section.py is the only entity emitting it)
+    (lambda sk: "#SECTION#" in sk, "RECEIPT_SECTION"),
     (lambda sk: "#COMPACTION_RUN#" in sk, "COMPACTION_RUN"),
     (lambda sk: "#WORD#" in sk and "#LINE#" in sk, "RECEIPT_WORD"),
     (lambda sk: "#LINE#" in sk, "RECEIPT_LINE"),
@@ -44,6 +48,7 @@ _ENTITY_PARSERS: dict[
 ] = {
     "RECEIPT_PLACE": item_to_receipt_place,
     "RECEIPT_WORD_LABEL": item_to_receipt_word_label,
+    "RECEIPT_SECTION": item_to_receipt_section,
     "RECEIPT": item_to_receipt,
     "RECEIPT_WORD": item_to_receipt_word,
     "RECEIPT_LINE": item_to_receipt_line,
@@ -55,6 +60,7 @@ def detect_entity_type(sk: str) -> Optional[str]:
 
     SK patterns (most specific first):
     - RECEIPT_WORD_LABEL: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#...
+    - RECEIPT_SECTION: RECEIPT#00001#SECTION#HEADER
     - RECEIPT_WORD: RECEIPT#00001#LINE#00001#WORD#00001
     - RECEIPT_LINE: RECEIPT#00001#LINE#00001
     - RECEIPT_PLACE: IMAGE#...#RECEIPT#00001#PLACE

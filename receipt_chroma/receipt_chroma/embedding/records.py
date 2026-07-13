@@ -28,6 +28,10 @@ from receipt_chroma.embedding.metadata.word_metadata import (
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
+from receipt_chroma.section_labels import (
+    row_section_from_map,
+    sections_to_line_map,
+)
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 
@@ -117,25 +121,9 @@ class RowEmbeddingRecord:
         return [line.line_id for line in self.row_lines]
 
 
-def sections_to_line_map(sections: Sequence[Any]) -> Dict[int, str]:
-    """Build a ``line_id -> section_type`` map from ReceiptSection rows.
-
-    Each section holds its ``line_ids``; sections partition a receipt's lines,
-    but if a line appears in more than one (e.g. overlapping seed generations)
-    the higher-confidence section wins.
-    """
-    out: Dict[int, str] = {}
-    best: Dict[int, float] = {}
-    for s in sections or []:
-        # skip QA-rejected rows — an INVALID section must not stamp a line
-        if str(getattr(s, "validation_status", "") or "").upper() == "INVALID":
-            continue
-        conf = getattr(s, "confidence", None) or 0.0
-        for line_id in getattr(s, "line_ids", []) or []:
-            if line_id not in out or conf > best.get(line_id, -1.0):
-                out[line_id] = s.section_type
-                best[line_id] = conf
-    return out
+# Section-label logic lives in receipt_chroma.section_labels (a
+# dependency leaf shared with the compaction consumer); re-exported here
+# for existing embed-time callers.
 
 
 def build_line_payload(
@@ -286,17 +274,7 @@ def build_row_payload(
 
         # Row section = majority section among the row's lines (a row can span
         # multiple ReceiptLines; sections are line-level).
-        row_section: Optional[str] = None
-        if section_by_line:
-            votes = Counter(
-                section_by_line[lid]
-                for lid in record.line_ids
-                if lid in section_by_line
-            )
-            top = votes.most_common(2)
-            # only stamp on a clear plurality; a tie is ambiguous -> leave unset
-            if top and (len(top) == 1 or top[0][1] > top[1][1]):
-                row_section = top[0][0]
+        row_section = row_section_from_map(record.line_ids, section_by_line)
 
         # Create row metadata
         row_metadata = create_row_metadata(

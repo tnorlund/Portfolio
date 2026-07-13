@@ -14,6 +14,7 @@
 
 .summary {
   max-width: 720px;
+  min-height: calc(1.45em * 2);
   margin: 0;
   font-size: 1.1rem;
   font-weight: 650;
@@ -24,5 +25,9 @@
   .readerInsight {
     margin-top: 2rem;
     padding: 1rem 1rem 0;
+  }
+
+  .summary {
+    min-height: calc(1.45em * 3);
   }
 }

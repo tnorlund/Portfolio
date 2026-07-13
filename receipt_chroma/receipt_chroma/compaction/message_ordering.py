@@ -62,6 +62,19 @@ def _get_entity_key(msg: "StreamMessage") -> tuple[str, ...]:
             str(entity_data.get("word_id", "")),
         )
 
+    if entity_type == "RECEIPT_SECTION":
+        # Keyed per section (not per receipt) and namespaced by entity
+        # type so a section REMOVE never suppresses other entities'
+        # updates for the same receipt. The consumer recomputes from
+        # fresh DynamoDB state either way, so dropping a same-batch
+        # MODIFY after a REMOVE of the same section stays correct.
+        return (
+            "RECEIPT_SECTION",
+            str(entity_data.get("image_id", "")),
+            str(entity_data.get("receipt_id", "")),
+            str(entity_data.get("section_type", "")),
+        )
+
     # Fallback for other entity types
     return (entity_type, str(sorted(entity_data.items())))
 

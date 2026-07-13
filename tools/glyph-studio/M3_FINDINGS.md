@@ -165,3 +165,71 @@ python -m glyphstudio.compile /tmp/wf_font_copy /tmp/wf_derived.glyphs.npz
 python tools/glyph-studio/py/m3_acceptance.py /tmp/wf_derived.glyphs.npz \
   --merchant "Wild Fork:wildfork"
 ```
+
+## Correction (2026-07-10) — the Wild Fork "railing" was a measurement artifact
+
+Tyler's visual review of the render A/B caught broken layout in the synth;
+tracing it invalidated the addendum's ship recommendation.
+
+**Root cause:** receipt `058b662d#1` — used by the render A/B, by this
+harness's first-N `gather()`, and plausibly by v1's original calibration —
+has **44 same-row x-overlapping OCR word pairs** (doubled/fragmented OCR) and
+~2× the corpus's cap scale. The renderer stamps every OCR word faithfully, so
+duplicates overprint and inflate measured synth density. Clean receipts score
+0–2 on this metric.
+
+**Vetted 6-receipt distribution (dup-free, render scorecard):**
+
+| | shipped font | derived w=0.60 candidate |
+|---|--:|--:|
+| range | 0.831 – 0.991 | 0.616 – 0.788 |
+| median | **0.87 — in/near gate** | **0.66 — regression** |
+
+**Conclusions:**
+1. **The shipped Wild Fork font was never density-broken** on real receipts
+   (slightly *light* if anything). No weight change ships. The derived-weight
+   candidate is permanently withdrawn.
+2. The "rails at bitmap_thin 0.6, ~48% too dense" narrative — the epic's
+   flagship motivation — was the pathological receipt, not the font. v1's
+   RETROFIT figures for Wild Fork (and possibly Costco, whose acceptance
+   `gather()` shared the contaminated sampling) should be re-derived on a
+   vetted corpus.
+3. **What stands:** the pooling refutation (relative, same corpus both
+   sides), the diagnostic toolchain (stroke/cap measurement, skeleton-
+   protected erosion, the closed-form weight↔stroke mapping), and this
+   harness — now with OCR vetting (`ocr_overlap_score`, receipts above
+   `--max-overlaps` excluded) so first-N sampling can't poison future
+   measurements.
+4. Optional derived win, properly measured this time: the shipped font's
+   vetted median 0.87 suggests reducing the `bitmap_thin` pin (0.6 → ~0.3)
+   would center density at ~1.0 — needs a vetted-corpus derivation + A/B.
+
+*Lesson for every measurement in this epic: vet the corpus before trusting
+first-N samples; one bad receipt at the top of an index shaped two epics.*
+
+## Fleet-wide vetted pin audit (2026-07-10) — no pin needs changing
+
+Current shipped fonts + pins, vetted receipts only (OCR x-overlap ≤ 2),
+render scorecard:
+
+| merchant (pin) | vetted density_ratios | median | verdict |
+|---|---|--:|---|
+| Wild Fork (thin 0.6) | 0.92 / 0.94 / 0.94 / 0.99 | **0.94** | fine — tightest in the fleet |
+| Sprouts (0.225) | 0.75 / 0.97 / 0.97 / 1.09 | **0.97** | fine |
+| CVS (0.15) | 0.75 / 0.81 / 1.00 / 1.02 | **0.91** | fine |
+| Home Depot (0.6) | 0.98 (only one vetted receipt exists) | **0.98** | fine (n=1) |
+| Costco (0.0) | 0.53 / 0.74 / 0.76 / 1.12 | **0.75** | runs LIGHT + high variance — monitor, no change |
+
+Every "railed merchant" narrative dissolves on vetted data. Costco — which
+the epic doc says "rails at the 0.0 floor" (too dense) — actually runs
+*light*, the opposite direction, with too much variance for a confident
+correction. **The epic's M3/M5 acceptance criterion ("the railed merchants
+come off the rails") was chasing measurement artifacts.** The epic's real
+remaining objectives are diagonals (family-level handcraft), multi-face
+rendering (M4, consumes the M2 map), and new-merchant cold start (M6).
+Density calibration is CLOSED: current pins stand.
+
+(Note: Home Depot has exactly one vetted receipt in dev — 17 of its 18
+receipts flag the x-overlap detector. Whether that is genuinely pathological
+OCR corpus-wide or partly detector over-flagging on HD's dense column layout
+deserves a look before trusting any HD-specific conclusion.)
