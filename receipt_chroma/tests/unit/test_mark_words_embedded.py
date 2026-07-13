@@ -17,7 +17,9 @@ class FakeWord:
 
 
 def _custom_id(image_id, receipt_id, line_id, word_id):
-    return f"IMAGE#{image_id}#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}"
+    return (
+        f"IMAGE#{image_id}#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}"
+    )
 
 
 IMG = "3f52ce10-0000-4000-8000-000000000001"
