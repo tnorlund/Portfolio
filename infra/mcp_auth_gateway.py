@@ -14,7 +14,15 @@ import pulumi_aws as aws
 from pulumi import ComponentResource, Config, Input, Output, ResourceOptions
 
 _RESOURCE_SERVER_ID = "portfolio-mcp"
+# Bump to force an API Gateway stage redeploy for changes the trigger
+# hash can't see (e.g. metadata response templates).
+_GATEWAY_REV = "2"
 _DEFAULT_CALLBACK_URLS = [
+    # claude.ai / Claude desktop custom-connector OAuth callbacks — the
+    # primary remote clients for both MCP servers.
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+    # Local development: mcp-remote default and MCP Inspector.
     "http://localhost:8765/callback",
     "http://127.0.0.1:8765/callback",
     "http://localhost:6274/oauth/callback",
@@ -62,6 +70,7 @@ class McpAuthGateway(ComponentResource):
         self.user_pool = aws.cognito.UserPool(
             f"{name}-users",
             name=f"{name}-{stack}",
+            deletion_protection="ACTIVE",
             username_attributes=["email"],
             auto_verified_attributes=["email"],
             admin_create_user_config={
@@ -265,13 +274,27 @@ class McpAuthGateway(ComponentResource):
             )
         )
 
+        # RFC 9728 §5.1: the 401 must tell the client where the
+        # protected-resource metadata lives. The stage prefix on
+        # execute-api URLs makes the path-derived well-known location
+        # unguessable, so this header is the only discovery channel that
+        # works here. $context.resourcePath ("/receipt/mcp" or
+        # "/glyph/mcp") reconstructs each route's actual metadata URL.
+        unauthorized_header = Output.format(
+            "'Bearer resource_metadata="
+            '"{}/.well-known/oauth-protected-resource'
+            "$context.resourcePath\"'",
+            base_url,
+        )
         aws.apigateway.Response(
             f"{name}-unauthorized-response",
             rest_api_id=self.api.id,
             response_type="UNAUTHORIZED",
             status_code="401",
             response_parameters={
-                "gatewayresponse.header.WWW-Authenticate": "'Bearer'"
+                "gatewayresponse.header.WWW-Authenticate": (
+                    unauthorized_header
+                )
             },
             response_templates={
                 "application/json": json.dumps(
@@ -296,8 +319,15 @@ class McpAuthGateway(ComponentResource):
             opts=child_opts,
         )
 
+        # URNs alone don't change when resource *properties* change (e.g.
+        # editing a gateway response header), so fold the property values
+        # that require a stage redeploy into the hash as well.
         deployment_inputs = [
             resource.urn for resource in route_resources + metadata_resources
+        ] + [
+            unauthorized_header,
+            json.dumps(callbacks, sort_keys=True),
+            _GATEWAY_REV,
         ]
         redeployment = Output.all(*deployment_inputs).apply(
             lambda values: hashlib.sha256(

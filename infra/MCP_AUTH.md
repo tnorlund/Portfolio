@@ -19,9 +19,20 @@ anonymous origin that bypasses the Cognito authorizer.
 The `mcp_oauth_interactive_client_id` stack output identifies a public OAuth
 client that uses authorization code flow. Configure the MCP client with that
 client ID, the appropriate `mcp_server_url` or `glyph_mcp_server_url`, and a
-callback URL allowed by `portfolio:mcpOAuthCallbackUrls`. The defaults support
+callback URL allowed by `portfolio:mcpOAuthCallbackUrls`. The defaults cover
+the claude.ai / Claude desktop connector callbacks
+(`https://claude.ai/api/mcp/auth_callback`, `https://claude.com/...`) and
 local callbacks on ports 8765 and 6274. Cognito does not provide dynamic
 client registration, so the exported client ID is required.
+
+For a claude.ai custom connector: add the connector with the gateway URL
+(`mcp_server_url` or `glyph_mcp_server_url`), open Advanced settings, and
+paste `mcp_oauth_interactive_client_id` as the OAuth client ID (no secret —
+it is a public PKCE client). Discovery works through the `WWW-Authenticate:
+Bearer resource_metadata="…"` header on the 401; the stage-prefixed
+execute-api path means the RFC 9728 well-known location cannot be derived
+from the resource URL, so clients that ignore the header will not find the
+metadata on their own.
 
 User signup is administrator-only. Create the first user after deployment:
 
@@ -64,3 +75,20 @@ or migrate scheduled callers to the automation secret. The API Gateway route
 uses the standard buffered MCP adapter and has a 29-second integration
 window. Signed internal callers that need longer operations should continue
 to use the IAM Function URL.
+
+## IAM principal inventory (do not conflate)
+
+Three unrelated kinds of principals touch this system:
+
+- **MCP Lambda execution roles** (`receipt-mcp-lambda-role-*`,
+  `glyph-mcp-lambda-role-*`, one per stack): what the Lambda may do once
+  invoked — DynamoDB, scoped S3/SQS, and the `web-analytics-read-policy`
+  for the Athena-backed `analytics_*` tools. Authorization, not
+  authentication; nothing in this document changes them.
+- **Cognito user pool** (this gateway): authenticates *remote MCP clients*
+  (claude.ai connectors, scheduled callers). Issues OAuth tokens; has no
+  AWS API permissions at all.
+- **`claude-cloud-dev` IAM user**: credentials for Claude Code cloud
+  sessions to reach dev AWS directly. Entirely separate from both of the
+  above — do not grant it MCP-related policies to "fix" a connector, and
+  do not point connector auth at it.
