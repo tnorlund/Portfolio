@@ -433,6 +433,70 @@ def _run_widths(mask: np.ndarray) -> list[int]:
     return out
 
 
+def group_visual_lines(ws: list[dict]) -> list[list[dict]]:
+    """Group word boxes (dicts with cy/h keys) into visual lines by y-center.
+
+    Same greedy top-down grouping ``measure`` has always used, exposed so
+    other per-line passes (typography attribution) segment identically.
+    """
+    ws = sorted(ws, key=lambda w: w["cy"])
+    lines: list[list[dict]] = []
+    for w in ws:
+        if (
+            lines
+            and abs(w["cy"] - median(x["cy"] for x in lines[-1]))
+            < w["h"] * 0.6
+        ):
+            lines[-1].append(w)
+        else:
+            lines.append([w])
+    return lines
+
+
+def reverse_video_probe(
+    gray: np.ndarray, lt: float, lb: float, ll: float, lr: float
+) -> int:
+    """Reverse-video detection (Costco's TOTAL/date boxes): the line band
+    is mostly DARK. Normal text bands run ~10-25% ink."""
+    H, W = gray.shape
+    by0, by1 = max(0, int(lt)), min(H, int(lb) + 1)
+    bx0, bx1 = max(0, int(ll)), min(W, int(lr) + 1)
+    if by1 - by0 <= 3 or bx1 - bx0 <= 3:
+        return 0
+    band = gray[by0:by1, bx0:bx1]
+    paper = float(np.percentile(gray, 85))
+    return int(float((band < paper - 40).mean()) > 0.55)
+
+
+def underline_probe(
+    gray: np.ndarray, lt: float, lb: float, ll: float, lr: float
+) -> bool:
+    """Underline probe: a wide horizontal ink run near the line bottom.
+
+    Underlines often sit INSIDE the OCR box (boxes include them), so the
+    band straddles the bottom edge. Paper level from a high percentile of
+    the band region (a mean collapses when most of a row IS the rule)."""
+    H, W = gray.shape
+    line_h = lb - lt
+    yb0 = max(0, int(lb - 0.30 * line_h))
+    yb1 = min(H, int(lb + 0.50 * line_h))
+    xb0, xb1 = max(0, int(ll) - 3), min(W, int(lr) + 3)
+    if yb1 - yb0 < 2 or xb1 - xb0 <= 20:
+        return False
+    region = gray[yb0:yb1, xb0:xb1].astype(float)
+    paper = float(np.percentile(region, 90))
+    thresh = max(0.0, min(230.0, paper - 25.0))
+    width_need = 0.55 * (xb1 - xb0)
+    for row in region:
+        ink = row < thresh
+        padded = np.concatenate([[0], ink.view(np.uint8), [0]])
+        starts = np.where(np.diff(padded) == 1)[0]
+        ends = np.where(np.diff(padded) == -1)[0]
+        if any(e - s >= width_need for s, e in zip(starts, ends)):
+            return True
+    return False
+
+
 def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     from receipt_line_scorecard import _load_words_and_real
 
@@ -480,13 +544,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
                 "h": bottom - top,
             }
         )
-    ws.sort(key=lambda w: w["cy"])
-    lines: list[list[dict]] = []
-    for w in ws:
-        if lines and abs(w["cy"] - median(x["cy"] for x in lines[-1])) < w["h"] * 0.6:
-            lines[-1].append(w)
-        else:
-            lines.append([w])
+    lines = group_visual_lines(ws)
 
     # letters indexed by (line_id, rough position) -> use line_id from words
     letters_by_line: dict[int, list] = {}
@@ -512,15 +570,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         ll = min(w["l"] for w in line)
         lr = max(w["r"] for w in line)
 
-        # Reverse-video detection (Costco's TOTAL/date boxes): the line band
-        # is mostly DARK. Normal text bands run ~10-25% ink.
-        by0, by1 = max(0, int(lt)), min(H, int(lb) + 1)
-        bx0, bx1 = max(0, int(ll)), min(W, int(lr) + 1)
-        reverse_video = 0
-        if by1 - by0 > 3 and bx1 - bx0 > 3:
-            band = gray[by0:by1, bx0:bx1]
-            paper = float(np.percentile(gray, 85))
-            reverse_video = int(float((band < paper - 40).mean()) > 0.55)
+        reverse_video = reverse_video_probe(gray, lt, lb, ll, lr)
 
         # per-letter measurements for this line
         dens, strokes, caps, chars = [], [], [], []
@@ -555,28 +605,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
                     }
                 )
 
-        # Underline probe: a wide horizontal ink run near the line bottom.
-        # Underlines often sit INSIDE the OCR box (boxes include them), so the
-        # band straddles the bottom edge. Paper level from a high percentile of
-        # the band region (a mean collapses when most of a row IS the rule).
-        underline = False
-        line_h = lb - lt
-        yb0 = max(0, int(lb - 0.30 * line_h))
-        yb1 = min(H, int(lb + 0.50 * line_h))
-        xb0, xb1 = max(0, int(ll) - 3), min(W, int(lr) + 3)
-        if yb1 - yb0 >= 2 and xb1 - xb0 > 20:
-            region = gray[yb0:yb1, xb0:xb1].astype(float)
-            paper = float(np.percentile(region, 90))
-            thresh = max(0.0, min(230.0, paper - 25.0))
-            width_need = 0.55 * (xb1 - xb0)
-            for row in region:
-                ink = row < thresh
-                padded = np.concatenate([[0], ink.view(np.uint8), [0]])
-                starts = np.where(np.diff(padded) == 1)[0]
-                ends = np.where(np.diff(padded) == -1)[0]
-                if any(e - s >= width_need for s, e in zip(starts, ends)):
-                    underline = True
-                    break
+        underline = underline_probe(gray, lt, lb, ll, lr)
 
         out_lines.append(
             {
