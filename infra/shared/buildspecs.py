@@ -374,8 +374,10 @@ def docker_image_buildspec(
                         'if aws lambda get-function --function-name "$FUNCTION_NAME" '
                         ">/dev/null 2>&1; then "
                         'echo "Updating existing Lambda function $FUNCTION_NAME..."; '
-                        "aws lambda update-function-code --function-name "
+                        "if ! aws lambda update-function-code --function-name "
                         '"$FUNCTION_NAME" --image-uri "$IMAGE_URI" >/dev/null; '
+                        'then echo "ERROR: failed to update Lambda function '
+                        '$FUNCTION_NAME"; exit 1; fi; '
                         'echo "✅ Lambda function $FUNCTION_NAME updated"; else '
                         'echo "Lambda function $FUNCTION_NAME does not exist - '
                         'will be created by Pulumi"; fi; done'

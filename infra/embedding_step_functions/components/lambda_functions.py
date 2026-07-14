@@ -446,7 +446,7 @@ class LambdaFunctionsComponent(ComponentResource):
             lambda_config = self._container_lambda_config(config)
             depends_on = [
                 self.lambda_role,
-                self.docker_image.docker_image.ready,
+                *self.docker_image.lambda_ready_dependencies,
             ]
             lambda_args: Dict[str, Any] = {
                 "name": f"{name}-lambda-{stack}",

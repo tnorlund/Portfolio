@@ -16,3 +16,8 @@ def test_buildspec_updates_every_declared_lambda() -> None:
     assert (
         'update-function-code --function-name "$FUNCTION_NAME"' in post_build
     )
+    assert "if ! aws lambda update-function-code" in post_build
+    assert (
+        'then echo "ERROR: failed to update Lambda function $FUNCTION_NAME"; '
+        "exit 1; fi;" in post_build
+    )

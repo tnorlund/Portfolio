@@ -116,6 +116,9 @@ class DockerImageComponent(ComponentResource):
         self.ecr_repo = self.docker_image.ecr_repo
         self.repository_url = self.docker_image.repository_url
         self.image_uri = self.docker_image.image_uri
+        self.lambda_ready_dependencies = (
+            self.docker_image.lambda_ready_dependencies
+        )
 
         # Attach ECR lifecycle policy (retain N, expire untagged older than X)
         portfolio_config = pulumi.Config("portfolio")

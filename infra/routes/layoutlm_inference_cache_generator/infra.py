@@ -1,6 +1,5 @@
 import json
 import os
-from pathlib import Path
 from typing import Optional
 
 import pulumi
@@ -194,8 +193,9 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
             dockerfile_path=dockerfile_path,
             build_context_path=build_context_path,
             source_paths=[
-                "receipt_layoutlm"
-            ],  # Include receipt_layoutlm package
+                "receipt_dynamo",
+                "receipt_layoutlm",
+            ],  # Include packages copied by the Dockerfile
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,

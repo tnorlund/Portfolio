@@ -228,7 +228,15 @@ class CodeBuildDockerImage(ComponentResource):
         else:
             self.lambda_function = None
 
-        self.ready = pipeline_trigger_cmd or bootstrap_cmd or self.pipeline
+        # Consumers that create Lambda resources from this image must wait for
+        # both the bootstrap image and the build trigger.  In async mode the
+        # trigger returns before CodeBuild pushes ``latest``, so depending on
+        # it alone can race a fresh ECR repository.
+        self.lambda_ready_dependencies = [
+            dependency
+            for dependency in (bootstrap_cmd, pipeline_trigger_cmd)
+            if dependency is not None
+        ] or [self.pipeline]
 
         # Export outputs
         self.repository_url = self.ecr_repo.repository_url
