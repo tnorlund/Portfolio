@@ -747,3 +747,60 @@ def test_receipt_place_from_item_rejects_type_and_key_mismatches(
     item["GSI4SK"] = {"S": "OTHER"}
     with pytest.raises(ValueError, match="GSI4SK does not match"):
         ReceiptPlace.from_item(item)
+
+
+@pytest.mark.unit
+def test_receipt_place_from_item_tolerates_stale_business_gsi_projections(
+    example_receipt_place,
+):
+    """A merchant/place remap or confidence bump corrects the scalar field
+    without rewriting the projected GSI value, so legitimate dev/prod rows keep
+    superseded GSI1PK (merchant), GSI2PK (place_id), and GSI3SK (confidence)
+    projections. This reproduces the real dev shape of the 6 remapped rows
+    (e.g. merchant_name="Wild Fork" with GSI1PK=MERCHANT#THOUSAND_OAKS,
+    GSI2PK=PLACE#<old id>, and GSI3SK confidence 0.8000 while the field is
+    0.95). from_item must read these rows; the scalar fields are authoritative.
+    """
+    item = example_receipt_place.to_item()
+    image_id = example_receipt_place.image_id
+    item["GSI1PK"] = {"S": "MERCHANT#THOUSAND_OAKS"}
+    item["GSI2PK"] = {"S": "PLACE#ChIJkYgocFYl6IARJi7MRwF6Lo0"}
+    item["GSI3SK"] = {
+        "S": f"CONFIDENCE#0.8000#STATUS#MATCHED#IMAGE#{image_id}"
+    }
+
+    restored = ReceiptPlace.from_item(item)
+
+    assert restored == example_receipt_place
+    assert restored.merchant_name == "Starbucks Coffee"
+    assert restored.confidence == pytest.approx(0.85)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key", "bad_value"),
+    [
+        ("GSI1PK", "WRONG"),
+        ("GSI1PK", "MERCHANT#"),
+        ("GSI1PK", "MERCHANT#lower case"),
+        ("GSI2PK", "WRONG"),
+        ("GSI2PK", "PLACE#"),
+        ("GSI3PK", "NOT_PLACE_VALIDATION"),
+        (
+            "GSI3SK",
+            "CONFIDENCE#0.8000#STATUS#MATCHED#IMAGE#00000000-0000-0000-0000-000000000000",
+        ),
+        ("GSI3SK", "garbage"),
+    ],
+)
+def test_receipt_place_from_item_rejects_malformed_gsi_projections(
+    example_receipt_place, key, bad_value
+):
+    """Malformed projections (wrong prefix, empty slug, or a GSI3SK whose
+    identity anchor does not match the row) are still rejected, so genuine
+    corruption is not silently accepted. GSI3PK is a constant and stays a
+    strict exact match."""
+    item = example_receipt_place.to_item()
+    item[key] = {"S": bad_value}
+    with pytest.raises(ValueError, match=f"{key} does not match"):
+        ReceiptPlace.from_item(item)

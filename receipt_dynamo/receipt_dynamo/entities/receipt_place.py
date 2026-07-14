@@ -48,6 +48,30 @@ logger = __import__("logging").getLogger(__name__)
 MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 
+# Well-formed shapes for the GSI keys that embed a mutable business field.
+# Used on read to accept a stale-but-well-formed projection left by a partial
+# update (merchant remap, place remap, confidence bump) while still rejecting
+# genuinely malformed values. See ReceiptPlace.from_item for the rationale.
+#
+# GSI1PK: "MERCHANT#" + the slug merchant_name normalization emits (uppercase
+# alphanumeric groups joined by single underscores, no leading/trailing "_").
+_MERCHANT_GSI1PK_RE = re.compile(r"MERCHANT#[A-Z0-9]+(?:_[A-Z0-9]+)*")
+# GSI2PK: "PLACE#" + a non-empty Google place id (base64url-ish charset).
+_PLACE_GSI2PK_RE = re.compile(r"PLACE#[A-Za-z0-9_-]+")
+# GSI3SK: CONFIDENCE#<number>#STATUS#<status>#IMAGE#<image_id>. Confidence and
+# status are mutable; the trailing image id is identity and is anchored to the
+# row in _is_wellformed_validation_sk.
+_VALIDATION_GSI3SK_RE = re.compile(
+    r"CONFIDENCE#\d+(?:\.\d+)?#STATUS#[^#]*#IMAGE#(?P<image_id>[^#]+)"
+)
+
+
+def _is_wellformed_validation_sk(value: str, image_id: str) -> bool:
+    """A GSI3SK is well-formed if it matches the confidence/status/image shape
+    and its identity anchor (the trailing IMAGE#<id>) matches this row."""
+    match = _VALIDATION_GSI3SK_RE.fullmatch(value)
+    return bool(match) and match.group("image_id") == image_id
+
 # Fields that are computed (GSI keys) and should not be passed to
 # constructor. Includes GSI4 and geohash for backward compatibility
 # with older records that had geospatial indexing.
@@ -598,7 +622,42 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
             **result.gsi3_key,
             **result.gsi4_key,
         }
+        # Some GSI keys embed a *mutable* business field, so a partial update
+        # (e.g. a merchant remap or a confidence bump) can correct the scalar
+        # field without rewriting the projected GSI value. Real dev/prod rows
+        # carry that drift: the merchant-normalization migration fixed 144
+        # merchants but left 6 dev rows whose GSI1PK/GSI2PK/GSI3SK still encode
+        # the superseded merchant, place_id, and confidence (e.g.
+        # merchant_name="Wild Fork" with GSI1PK=MERCHANT#THOUSAND_OAKS and
+        # GSI2PK=PLACE#<old place id>; confidence bumped 0.80->0.95 without
+        # rewriting GSI3SK). The scalar fields are authoritative on read, so
+        # tolerate a stale-but-well-formed projection here rather than
+        # hard-failing a read of pre-existing data. Only these three keys carry
+        # a mutable field; every other key derives from identity
+        # (image_id/receipt_id) or a constant and stays a strict exact match.
+        # GSI2PK is only present in expected_keys when place_id is set, so the
+        # empty-place_id legacy handling below is unaffected.
+        business_key_validators = {
+            "GSI1PK": lambda value: bool(
+                _MERCHANT_GSI1PK_RE.fullmatch(value)
+            ),
+            "GSI2PK": lambda value: bool(_PLACE_GSI2PK_RE.fullmatch(value)),
+            "GSI3SK": lambda value: _is_wellformed_validation_sk(
+                value, result.image_id
+            ),
+        }
         for key_name, expected_value in expected_keys.items():
+            validator = business_key_validators.get(key_name)
+            if validator is not None:
+                stored = item.get(key_name)
+                if stored is not None and (
+                    not isinstance(stored, dict)
+                    or not validator(stored.get("S") or "")
+                ):
+                    raise ValueError(
+                        f"{key_name} does not match entity keys"
+                    )
+                continue
             if key_name in item and item[key_name] != expected_value:
                 raise ValueError(f"{key_name} does not match entity keys")
 
