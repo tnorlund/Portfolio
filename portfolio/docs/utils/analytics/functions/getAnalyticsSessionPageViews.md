@@ -8,7 +8,7 @@
 
 > **getAnalyticsSessionPageViews**(): `number`
 
-Defined in: [utils/analytics.ts:146](https://github.com/tnorlund/Portfolio/blob/1848e177d08d494e676b8aee707315d9411f13d6/portfolio/utils/analytics.ts#L146)
+Defined in: [utils/analytics.ts:146](https://github.com/tnorlund/Portfolio/blob/ea60d0b697df4e97a598da5128fb3ec16ffd3ba1/portfolio/utils/analytics.ts#L146)
 
 ## Returns
 
