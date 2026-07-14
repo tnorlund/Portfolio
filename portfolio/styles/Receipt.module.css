@@ -46,6 +46,13 @@
   overflow: visible;
 }
 
+/* Keep the QA estimate while lazy, then let its responsive content own height. */
+.figureBoundary[data-figure-boundary="qa-agent"]:not(
+    [data-lazy-pending="true"]
+  ) {
+  min-height: 0;
+}
+
 @media (max-width: 768px) {
   .figureBoundary {
     min-height: var(

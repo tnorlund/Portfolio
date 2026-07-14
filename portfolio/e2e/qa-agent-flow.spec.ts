@@ -308,6 +308,16 @@ test.describe("QAAgentFlow", () => {
       { timeout: 15_000 },
     );
     await expect(timeline.locator('[data-active="true"]')).toHaveCount(2);
+
+    const qaBoundary = page.locator('[data-figure-boundary="qa-agent"]');
+    const renderedHeights = await qaBoundary.evaluate((boundary) => ({
+      boundary: boundary.getBoundingClientRect().height,
+      component:
+        boundary.firstElementChild?.getBoundingClientRect().height ?? 0,
+    }));
+    expect(
+      Math.abs(renderedHeights.boundary - renderedHeights.component),
+    ).toBeLessThan(2);
   });
 
   test("answer updates when auto-advancing between questions", async ({
