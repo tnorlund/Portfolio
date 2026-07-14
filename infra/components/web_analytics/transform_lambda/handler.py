@@ -3,10 +3,13 @@
 A light, Spark-free transform run by a scheduled Lambda (and backfillable on
 demand). For each target UTC date it rebuilds that partition idempotently:
 
-1. ``ALTER TABLE ... DROP PARTITION`` + delete the partition's S3 objects, then
-2. ``INSERT INTO web_events`` a parsed / de-duplicated / classified projection
-   of *only that day's* raw CloudFront files (pruned via the Athena ``$path``
-   pseudo-column, so the scan stays cheap as history grows).
+1. ``UNLOAD`` a parsed / de-duplicated / classified projection to a unique
+   per-run Parquet staging location, then
+2. atomically repoint the Glue partition to the complete staging location and
+   delete objects from superseded runs.
+
+The source query reads *only that day's* raw CloudFront files (pruned via the
+Athena ``$path`` pseudo-column), so the scan stays cheap as history grows.
 
 All beacon parsing, WARP/bot classification and dedup live here, so the curated
 table is the single source of truth; the MCP ``analytics_*`` tools just SELECT.
@@ -20,7 +23,9 @@ import json
 import os
 import time
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import boto3
 
@@ -28,6 +33,7 @@ DB = os.environ.get("ANALYTICS_DB", "portfolio_analytics")
 WORKGROUP = os.environ.get("ANALYTICS_WORKGROUP", "portfolio_analytics")
 CURATED_BUCKET = os.environ["CURATED_BUCKET"]
 CURATED_PREFIX = os.environ.get("CURATED_PREFIX", "web_events/")
+STAGING_PREFIX = os.environ.get("STAGING_PREFIX", "staging/web_events/")
 IP_GEO_KEY = os.environ.get("IP_GEO_KEY", "ip_geo/data.json")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 _WARP_RE = "^(104\\.28\\.|2a09:bac)"
@@ -58,6 +64,7 @@ _DC_RE = (
 )
 
 _athena = boto3.client("athena", region_name=REGION)
+_glue = boto3.client("glue", region_name=REGION)
 _s3 = boto3.client("s3", region_name=REGION)
 
 
@@ -67,6 +74,8 @@ def _run(sql: str, deadline: float) -> str:
         QueryExecutionContext={"Database": DB},
         WorkGroup=WORKGROUP,
     )["QueryExecutionId"]
+    if not isinstance(qid, str):
+        raise RuntimeError("Athena did not return a query execution ID")
     while True:
         status = _athena.get_query_execution(QueryExecutionId=qid)[
             "QueryExecution"
@@ -102,7 +111,7 @@ def _query_rows(sql: str, deadline: float) -> list:
     return rows[1:]  # drop header row
 
 
-def _enrich_ips(dts: list, deadline: float) -> int:
+def _enrich_ips(dts: list[str], deadline: float) -> tuple[int, bool]:
     """Resolve org/geo/hosting for newly-seen (non-WARP) IPs and upsert the
     ip_geo NDJSON. Each IP is looked up once and cached; web_events joins it.
     """
@@ -144,7 +153,7 @@ def _enrich_ips(dts: list, deadline: float) -> int:
         if time.time() >= deadline:
             complete = False
             break
-        batch = new_ips[i:i + 100]
+        batch = new_ips[i : i + 100]
         payload = json.dumps(
             [{"query": ip, "fields": fields} for ip in batch]
         ).encode()
@@ -194,7 +203,7 @@ def _enrich_ips(dts: list, deadline: float) -> int:
     return len(new_ips), complete
 
 
-def _insert_sql(dt: str) -> str:
+def _projection_sql(dt: str) -> str:
     # CloudFront percent-encodes each log field ONCE. The beacon query string's
     # nested param values were additionally url-encoded by the client, so we
     # single-decode the field and decode only each extracted beacon value —
@@ -215,9 +224,7 @@ def _insert_sql(dt: str) -> str:
         f" coalesce(g.asn, ''))), '{_DC_RE}'))"
     )
 
-    return f"""
-INSERT INTO {DB}.web_events
-WITH src AS (
+    return f"""WITH src AS (
   SELECT *, {beacon_param('eid')} AS _eid
   FROM {DB}.cloudfront_logs_prod WHERE "$path" LIKE '%.{dt}-%'
 ),
@@ -252,19 +259,59 @@ SELECT
   g.city AS city,
   g.org AS org,
   g.asn AS asn,
-  {dc} AS is_hosting,
-  cast(date as varchar) AS dt
+  {dc} AS is_hosting
 FROM dedup
 LEFT JOIN {DB}.ip_geo g ON dedup.request_ip = g.ip
 """
 
 
-def _delete_partition_objects(dt: str) -> None:
-    prefix = f"{CURATED_PREFIX}dt={dt}/"
+def _unload_sql(dt: str, location: str) -> str:
+    # ``dt`` is intentionally absent from the Parquet payload: it is the Glue
+    # partition key, supplied by the partition metadata after the swap. The
+    # remaining SELECT order exactly matches ``web_events``' non-partition
+    # columns in ``__init__.py``.
+    return f"""UNLOAD (
+{_projection_sql(dt)}
+)
+TO '{location}'
+WITH (format = 'PARQUET', compression = 'SNAPPY')
+"""
+
+
+def _partition_location(dt: str) -> str | None:
+    try:
+        partition = _glue.get_partition(
+            DatabaseName=DB,
+            TableName="web_events",
+            PartitionValues=[dt],
+        )["Partition"]
+    except _glue.exceptions.EntityNotFoundException:
+        return None
+    location = partition["StorageDescriptor"].get("Location")
+    return location if isinstance(location, str) else None
+
+
+def _location_prefix(location: str, dt: str) -> str:
+    root = f"s3://{CURATED_BUCKET}/"
+    if not location.startswith(root):
+        raise ValueError(
+            f"Refusing to clean partition outside curated bucket: {location}"
+        )
+    prefix = location[len(root) :].lstrip("/").rstrip("/") + "/"
+    if f"dt={dt}/" not in prefix:
+        raise ValueError(
+            f"Refusing to clean location without dt={dt}: {location}"
+        )
+    return prefix
+
+
+def _delete_prefix(prefix: str, keep_prefix: str | None = None) -> None:
     paginator = _s3.get_paginator("list_objects_v2")
     batch = []
     for page in paginator.paginate(Bucket=CURATED_BUCKET, Prefix=prefix):
         for obj in page.get("Contents", []):
+            if keep_prefix and obj["Key"].startswith(keep_prefix):
+                continue
             batch.append({"Key": obj["Key"]})
             if len(batch) == 1000:
                 _s3.delete_objects(
@@ -275,17 +322,76 @@ def _delete_partition_objects(dt: str) -> None:
         _s3.delete_objects(Bucket=CURATED_BUCKET, Delete={"Objects": batch})
 
 
+def _cleanup_partition_objects(
+    dt: str,
+    active_location: str,
+    retired_location: str | None = None,
+) -> None:
+    """Delete every known layout for ``dt`` except the active partition.
+
+    Sweeping both the legacy INSERT path and all inactive staging runs makes
+    cleanup retry-safe after a Lambda timeout between the metadata swap and
+    object deletion.
+    """
+    active_prefix = _location_prefix(active_location, dt)
+    roots = [
+        f"{CURATED_PREFIX.rstrip('/')}/dt={dt}/",
+        f"{STAGING_PREFIX.rstrip('/')}/dt={dt}/",
+    ]
+    if retired_location:
+        retired_prefix = _location_prefix(retired_location, dt)
+        if not any(retired_prefix.startswith(root) for root in roots):
+            roots.append(retired_prefix)
+    for prefix in roots:
+        _delete_prefix(prefix, keep_prefix=active_prefix)
+
+
 def _rebuild_partition(dt: str, deadline: float) -> str:
-    _run(
-        f"ALTER TABLE {DB}.web_events DROP IF EXISTS PARTITION (dt='{dt}')",
-        deadline,
+    previous_location = _partition_location(dt)
+    if previous_location:
+        # Clear objects orphaned by an earlier interrupted run, while retaining
+        # the complete location that queries currently read.
+        _cleanup_partition_objects(dt, previous_location)
+
+    run_id = uuid.uuid4().hex
+    staging_prefix = f"{STAGING_PREFIX.rstrip('/')}/dt={dt}/run={run_id}/"
+    staging_location = f"s3://{CURATED_BUCKET}/{staging_prefix}"
+    unload_complete = False
+    try:
+        _run(_unload_sql(dt, staging_location), deadline)
+        unload_complete = True
+        if previous_location:
+            swap_sql = (
+                f"ALTER TABLE {DB}.web_events PARTITION (dt='{dt}') "
+                f"SET LOCATION '{staging_location}'"
+            )
+        else:
+            swap_sql = (
+                f"ALTER TABLE {DB}.web_events ADD PARTITION (dt='{dt}') "
+                f"LOCATION '{staging_location}'"
+            )
+        _run(swap_sql, deadline)
+    finally:
+        if not unload_complete:
+            # Athena can leave partial UNLOAD output on failure. It is never
+            # visible through web_events, and is safe to remove immediately.
+            _delete_prefix(staging_prefix)
+        # Once UNLOAD succeeds, preserve staging on any swap error. Athena may
+        # have committed ADD/SET LOCATION just before a timeout was observed;
+        # deleting here could remove the newly active partition. The next run
+        # safely reconciles any genuinely orphaned staging prefix.
+
+    # The metadata swap above is the only visibility boundary. Once it
+    # succeeds, remove the previous location and any older abandoned runs.
+    _cleanup_partition_objects(
+        dt,
+        staging_location,
+        retired_location=previous_location,
     )
-    _delete_partition_objects(dt)
-    _run(_insert_sql(dt), deadline)
     return dt
 
 
-def _target_dates(event: dict) -> list:
+def _target_dates(event: dict) -> list[str]:
     if event.get("start") and event.get("end"):
         start = datetime.strptime(event["start"], "%Y-%m-%d").date()
         end = datetime.strptime(event["end"], "%Y-%m-%d").date()
@@ -303,7 +409,7 @@ def _target_dates(event: dict) -> list:
     return [(today - timedelta(days=n)).isoformat() for n in (1, 0)]
 
 
-def handler(event, context):
+def handler(event: dict | None, context: Any) -> dict:
     event = event or {}
     # Bound all Athena polling to the Lambda's own deadline (minus a buffer) so
     # a slow/queued query is stopped rather than orphaned when we're killed.
