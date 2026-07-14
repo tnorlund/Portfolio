@@ -13,7 +13,12 @@ import type {
 import { useRevealInView } from "../../../hooks/useOptimizedInView";
 import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import { getJpegFallbackUrl } from "../../../utils/imageFormat";
-import { buildTimelineLayout } from "./qaTimeline";
+import {
+  buildTimelineLayout,
+  buildTimelinePlayback,
+  getActiveTimelineStepIndices,
+  getTimelineRevealPercent,
+} from "./qaTimeline";
 
 interface QAAgentFlowProps {
   /** Whether to auto-play the animation */
@@ -40,6 +45,24 @@ const getCdnUrl = (key: string): string =>
 const getReceiptJpegFallbackUrl = (key: string): string => {
   const jpegKey = key.replace(/\.(?:avif|webp)$/i, ".jpg");
   return getJpegFallbackUrl({ cdn_s3_key: jpegKey.replace(/^\/+/, "") });
+};
+
+const getAnswerSummaryMarkdown = (answer: string): string => {
+  const blocks = answer
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  const firstBlock = blocks[0] ?? answer;
+  const isHeading = (block: string): boolean => /^#{1,6}\s+\S/.test(block);
+
+  if (!isHeading(firstBlock)) return firstBlock;
+
+  const firstSubstantiveBlock = blocks
+    .slice(1)
+    .find((block) => !isHeading(block));
+  return firstSubstantiveBlock
+    ? `${firstBlock}\n\n${firstSubstantiveBlock}`
+    : firstBlock;
 };
 
 const deduplicateReceiptEvidence = (trace: TraceStep[]): ReceiptEvidence[] => {
@@ -499,7 +522,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
     threshold: 0,
     rootMargin: "200px",
   });
-  const [activeStep, setActiveStep] = React.useState(-1);
+  const [playbackTimeMs, setPlaybackTimeMs] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
   const [showAnswer, setShowAnswer] = React.useState(false);
   const [showDetails, setShowDetails] = React.useState(false);
@@ -511,6 +534,16 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
     () => buildTimelineLayout(trace, DEFAULT_STEP_MS),
     [trace],
   );
+  const playbackTimeline = React.useMemo(
+    () =>
+      buildTimelinePlayback(timelineLayout, {
+        targetTotalMs: TARGET_TOTAL_MS,
+        motionScale,
+        minStepMs: MIN_STEP_MS,
+        maxStepMs: MAX_STEP_MS,
+      }),
+    [timelineLayout, motionScale],
+  );
   const synthesizeStep = trace.find((step) => step.type === "synthesize");
   const rawAnswer = synthesizeStep?.content ?? "";
   const answerText =
@@ -518,7 +551,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
       .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
       .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
       .trim() || undefined;
-  const answerSummary = answerText?.split(/\n\s*\n/, 1)[0];
+  const answerSummary = answerText
+    ? getAnswerSummaryMarkdown(answerText)
+    : undefined;
   const evidenceReceipts = React.useMemo(
     () => deduplicateReceiptEvidence(trace),
     [trace],
@@ -533,7 +568,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
   // Reset animation when question changes (use index to avoid stale-data issues on mobile)
   const questionIndex = questionData?.questionIndex ?? -1;
   React.useEffect(() => {
-    setActiveStep(-1);
+    setPlaybackTimeMs(-1);
     setShowAnswer(false);
     setShowDetails(false);
   }, [questionIndex]);
@@ -542,53 +577,57 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
     setIsPlaying(autoPlay && isVisible);
   }, [autoPlay, isVisible]);
 
-  // Compute per-step animation durations from durationMs, scaled proportionally
-  const stepDurations = React.useMemo(() => {
-    const hasTiming = trace.some(
-      (s) => s.durationMs != null && s.durationMs > 0,
-    );
-    if (!hasTiming) return trace.map(() => DEFAULT_STEP_MS * motionScale);
-
-    const rawMs = trace.map((s) => s.durationMs ?? DEFAULT_STEP_MS);
-    const rawTotal = rawMs.reduce((sum, d) => sum + d, 0);
-    if (rawTotal === 0) return trace.map(() => DEFAULT_STEP_MS);
-
-    const scale = TARGET_TOTAL_MS / rawTotal;
-    return rawMs.map((d) =>
-      Math.max(
-        MIN_STEP_MS * motionScale,
-        Math.min(
-          MAX_STEP_MS * motionScale,
-          Math.round(d * scale * motionScale),
-        ),
+  const nextBoundaryMs = React.useMemo(
+    () =>
+      playbackTimeMs < 0
+        ? 0
+        : playbackTimeline.boundariesMs.find(
+            (boundaryMs) => boundaryMs > playbackTimeMs,
+          ),
+    [playbackTimeMs, playbackTimeline.boundariesMs],
+  );
+  const activeStepIndices = React.useMemo(
+    () =>
+      playbackTimeMs < 0
+        ? []
+        : getActiveTimelineStepIndices(
+            playbackTimeline.segments,
+            playbackTimeMs,
+          ),
+    [playbackTimeMs, playbackTimeline.segments],
+  );
+  const activeStep = activeStepIndices[0] ?? -1;
+  const visitedStepIndices = React.useMemo(
+    () =>
+      new Set(
+        playbackTimeline.segments
+          .filter((segment) => segment.startMs <= playbackTimeMs)
+          .map((segment) => segment.stepIndex),
       ),
-    );
-  }, [trace, motionScale]);
-
-  // Current step's animation duration (for clock-fill sync)
+    [playbackTimeMs, playbackTimeline.segments],
+  );
+  const activePlaybackSegment = playbackTimeline.segments.find(
+    (segment) => segment.stepIndex === activeStep,
+  );
   const currentStepDuration =
-    activeStep >= 0 && activeStep < stepDurations.length
-      ? stepDurations[activeStep]
-      : DEFAULT_STEP_MS;
+    activePlaybackSegment?.durationMs ?? DEFAULT_STEP_MS;
+  const activeParallelToolSteps = activeStepIndices.filter(
+    (stepIndex) => trace[stepIndex]?.type === "tools",
+  );
 
-  // Auto-advance through steps using per-step durations
+  // Advance through actual wall-clock boundaries. Overlapping spans are active
+  // together, while legacy traces retain their clamped sequential playback.
   React.useEffect(() => {
     if (!isPlaying) return;
 
-    if (activeStep >= trace.length - 1) {
-      // Last step reached — reveal answer after its duration, then hold 5s
-      if (!showAnswer) {
-        const id = setTimeout(
-          () => setShowAnswer(true),
-          stepDurations[trace.length - 1],
-        );
-        return () => clearTimeout(id);
-      }
+    if (showAnswer) {
+      if (showDetails) return;
+
       const id = setTimeout(() => {
         // Reset animation before advancing so the next cycle always starts
         // fresh — even when consecutive null-data states produce the same
         // questionIndex (-1 → -1) and the questionIndex effect doesn't fire.
-        setActiveStep(-1);
+        setPlaybackTimeMs(-1);
         setShowAnswer(false);
         setShowDetails(false);
         onCycleComplete?.();
@@ -596,49 +635,61 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
       return () => clearTimeout(id);
     }
 
-    const delay =
-      activeStep < 0 ? 400 * motionScale : stepDurations[activeStep];
-    const id = setTimeout(() => setActiveStep((prev) => prev + 1), delay);
+    if (playbackTimeMs < 0) {
+      const id = setTimeout(() => setPlaybackTimeMs(0), 400 * motionScale);
+      return () => clearTimeout(id);
+    }
+
+    if (nextBoundaryMs == null) {
+      setShowAnswer(true);
+      return;
+    }
+
+    const id = setTimeout(
+      () => setPlaybackTimeMs(nextBoundaryMs),
+      Math.max(0, nextBoundaryMs - playbackTimeMs),
+    );
     return () => clearTimeout(id);
   }, [
     isPlaying,
-    activeStep,
-    trace.length,
-    stepDurations,
+    playbackTimeMs,
+    nextBoundaryMs,
     showAnswer,
+    showDetails,
     onCycleComplete,
     motionScale,
   ]);
 
-  // Reveal the wall-clock timeline through the furthest completed step.
-  // Overlapping steps share the same x-range and occupy separate lanes.
-  const barTarget = React.useMemo(() => {
-    if (activeStep < 0) return 0;
-    if (activeStep >= trace.length - 1) return 100;
-    const revealedEndMs = timelineLayout.segments.reduce(
-      (furthestEnd, segment) =>
-        segment.stepIndex <= activeStep
-          ? Math.max(furthestEnd, segment.endMs)
-          : furthestEnd,
-      0,
-    );
-    return (revealedEndMs / timelineLayout.totalMs) * 100;
-  }, [activeStep, trace.length, timelineLayout]);
+  const barTarget =
+    playbackTimeMs < 0 || playbackTimeline.totalMs === 0
+      ? 0
+      : getTimelineRevealPercent(
+          timelineLayout,
+          playbackTimeline,
+          nextBoundaryMs ?? playbackTimeline.totalMs,
+        );
+  const barDuration =
+    playbackTimeMs < 0 || nextBoundaryMs == null
+      ? 0
+      : nextBoundaryMs - playbackTimeMs;
 
   const barSpring = useSpring({
     progress: barTarget,
-    config: { duration: activeStep < 0 ? 0 : currentStepDuration },
+    pause: !isPlaying,
+    config: { duration: barDuration },
   });
 
   // Compute loop count: increments each time an agent step appears
   const loopCount = React.useMemo(() => {
-    if (activeStep < 1) return 0;
-    let count = 0;
-    for (let i = 1; i <= Math.min(activeStep, trace.length - 1); i++) {
-      if (trace[i].type === "agent") count++;
-    }
-    return count;
-  }, [activeStep, trace]);
+    if (playbackTimeMs < 0) return 0;
+    return trace.reduce(
+      (count, step, stepIndex) =>
+        step.type === "agent" && visitedStepIndices.has(stepIndex)
+          ? count + 1
+          : count,
+      0,
+    );
+  }, [playbackTimeMs, trace, visitedStepIndices]);
 
   // Determine which node is currently active
   const activeType: StepType | null =
@@ -672,6 +723,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
       {(() => {
         const formatMs = (ms: number): string =>
           ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms.toFixed(1)}ms`;
+        const parallelToolSegments = timelineLayout.segments.filter((segment) =>
+          timelineLayout.parallelStepIndices.includes(segment.stepIndex),
+        );
 
         // Deduplicate step types for the legend (e.g. multiple agent/tools steps)
         const uniqueTypes: StepType[] = [];
@@ -685,8 +739,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
           const stepIndices = trace
             .map((s, i) => (s.type === type ? i : -1))
             .filter((i) => i >= 0);
-          const visitedCount = stepIndices.filter(
-            (i) => i <= activeStep,
+          const visitedCount = stepIndices.filter((i) =>
+            visitedStepIndices.has(i),
           ).length;
           const fillPercent =
             stepIndices.length > 0
@@ -790,14 +844,17 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
         );
 
         const circumference = Math.PI * nodeR;
-        const fillDurationSec = ((currentStepDuration - 100) / 1000).toFixed(2);
+        const fillDurationSec = (
+          Math.max(1, currentStepDuration - 100) / 1000
+        ).toFixed(2);
 
         const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
           const isNodeActive = activeType === node;
-          const wasVisited =
-            activeStep >= 0 &&
-            trace.slice(0, activeStep + 1).some((s) => s.type === node);
+          const wasVisited = trace.some(
+            (step, stepIndex) =>
+              step.type === node && visitedStepIndices.has(stepIndex),
+          );
           return (
             <g
               key={node}
@@ -1006,24 +1063,87 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
 
             {/* Wall-clock flame timeline — animated with spring */}
             {timelineLayout.hasParallelTools ? (
-              <div
-                data-testid="parallel-tool-indicator"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  gap: "0.35rem",
-                  marginBottom: "0.35rem",
-                  color: "var(--color-green)",
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: "0.67rem",
-                  fontWeight: 650,
-                }}
-              >
-                <span aria-hidden="true">⇉</span>
-                <span>
-                  Parallel tool calls · {timelineLayout.laneCount} lanes
-                </span>
+              <div style={{ marginBottom: "0.55rem" }}>
+                <div
+                  data-testid="parallel-tool-indicator"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "0.35rem 0.75rem",
+                    marginBottom: "0.4rem",
+                    color: "var(--color-green)",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "0.67rem",
+                    fontWeight: 650,
+                  }}
+                >
+                  <span>
+                    <span aria-hidden="true">⇉</span> Parallel tool calls ·{" "}
+                    {timelineLayout.laneCount} lanes
+                  </span>
+                  {activeParallelToolSteps.length > 1 ? (
+                    <span data-testid="active-parallel-tools" role="status">
+                      {activeParallelToolSteps.length} tools running together
+                    </span>
+                  ) : null}
+                </div>
+                <div
+                  role="list"
+                  aria-label="Parallel tool call details"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+                    gap: "0.35rem",
+                  }}
+                >
+                  {parallelToolSegments.map((segment) => {
+                    const step = trace[segment.stepIndex];
+                    const isActive = activeStepIndices.includes(
+                      segment.stepIndex,
+                    );
+                    return (
+                      <div
+                        key={`parallel-detail-${segment.stepIndex}`}
+                        role="listitem"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                          alignItems: "center",
+                          gap: "0.45rem",
+                          padding: "0.35rem 0.45rem",
+                          border:
+                            "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12)",
+                          borderRadius: "4px",
+                          color: "var(--text-color)",
+                          backgroundColor: isActive
+                            ? "rgba(var(--text-color-rgb, 0, 0, 0), 0.06)"
+                            : "transparent",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: "0.67rem",
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: "0.45rem",
+                            height: "0.45rem",
+                            borderRadius: "50%",
+                            backgroundColor: STEP_CONFIG.tools.color,
+                          }}
+                        />
+                        <span style={{ overflowWrap: "anywhere" }}>
+                          {step.content}
+                        </span>
+                        <span style={{ opacity: 0.6 }}>
+                          {formatMs(segment.durationMs)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : null}
             <div
@@ -1082,6 +1202,11 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                     <div
                       key={`bar-${segment.stepIndex}-${step.type}`}
                       data-timeline-lane={segment.lane}
+                      data-active={
+                        activeStepIndices.includes(segment.stepIndex)
+                          ? "true"
+                          : "false"
+                      }
                       aria-label={`${cfg.label}: ${step.content}; ${durationLabel}; starts at ${formatMs(segment.startMs)}`}
                       title={`${cfg.label}: ${step.content} · ${durationLabel} · starts at ${formatMs(segment.startMs)}`}
                       style={{

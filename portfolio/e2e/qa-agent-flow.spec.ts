@@ -176,6 +176,8 @@ test.describe("QAAgentFlow", () => {
           ? {
               ...step,
               content: [
+                "# Grocery spending",
+                "",
                 "You spent $42.00 on groceries.",
                 "",
                 "## Breakdown",
@@ -204,7 +206,7 @@ test.describe("QAAgentFlow", () => {
       });
     });
 
-    await page.goto("/receipt?receiptMotionScale=0.5");
+    await page.goto("/receipt?receiptMotionScale=0.2");
     await expect(
       page.locator("h1:visible", { hasText: "Introduction" }),
     ).toBeVisible({ timeout: 15_000 });
@@ -245,15 +247,20 @@ test.describe("QAAgentFlow", () => {
     });
     await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
     await expect(resultFrame.getByText("Structured receipts")).toBeVisible();
+    await page.waitForTimeout(2200);
+    await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      resultFrame.getByText("You spent $42.00 on groceries.", {
+        exact: false,
+      }),
+    ).toBeVisible();
 
     const afterExpand = await resultFrame.evaluate((element) => ({
       height: element.getBoundingClientRect().height,
       scrollY: window.scrollY,
     }));
     expect(Math.abs(afterExpand.height - beforeReveal.height)).toBeLessThan(1);
-    expect(Math.abs(afterExpand.scrollY - beforeExpandScrollY)).toBeLessThan(
-      2,
-    );
+    expect(Math.abs(afterExpand.scrollY - beforeExpandScrollY)).toBeLessThan(2);
   });
 
   test("renders concurrent tool calls on parallel timeline lanes", async ({
@@ -272,7 +279,7 @@ test.describe("QAAgentFlow", () => {
       });
     });
 
-    await page.goto("/receipt?receiptMotionScale=0.1");
+    await page.goto("/receipt?receiptMotionScale=0.5");
     await expect(
       page.locator("h1:visible", { hasText: "Introduction" }),
     ).toBeVisible({ timeout: 15_000 });
@@ -289,6 +296,18 @@ test.describe("QAAgentFlow", () => {
     await expect(
       timeline.getByLabel(/search_receipt_descriptions/),
     ).toBeAttached();
+    const parallelDetails = page.getByRole("list", {
+      name: "Parallel tool call details",
+    });
+    await expect(parallelDetails.getByText("search_receipts")).toBeVisible();
+    await expect(
+      parallelDetails.getByText("search_receipt_descriptions"),
+    ).toBeVisible();
+    await expect(page.getByTestId("active-parallel-tools")).toContainText(
+      "2 tools running together",
+      { timeout: 15_000 },
+    );
+    await expect(timeline.locator('[data-active="true"]')).toHaveCount(2);
   });
 
   test("answer updates when auto-advancing between questions", async ({
