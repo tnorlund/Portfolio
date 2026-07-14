@@ -14,6 +14,7 @@ from receipt_dynamo.entities import (
     Word,
 )
 
+from receipt_upload.typeface_fingerprint import persist_receipt_fingerprint
 from receipt_upload.utils import (
     calculate_sha256_from_bytes,
     image_ocr_to_receipt_ocr,
@@ -144,6 +145,7 @@ def process_native(
     dynamo_client.add_receipt_lines(receipt_lines)
     dynamo_client.add_receipt_words(receipt_words)
     dynamo_client.add_receipt_letters(receipt_letters)
+    persist_receipt_fingerprint(dynamo_client, image, receipt_letters)
 
     # Update the OCR routing decision
     ocr_routing_decision.status = OCRStatus.COMPLETED.value

@@ -92,6 +92,9 @@ exclude = [
 packages = ["receipt_upload"]
 include = ["receipt_upload/py.typed"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"receipt_upload/assets/typeface_registry_v1.json" = "receipt_upload/assets/typeface_registry_v1.json"
+
 [tool.black]
 line-length = 79
 target-version = ["py312"]
