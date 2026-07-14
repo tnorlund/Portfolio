@@ -122,7 +122,6 @@ def test_to_item_and_back(example_receipt_metadata):
         ("receipt_id", 0, "receipt_id must be positive"),
         ("place_id", 123, "place id must be a string"),
         ("merchant_name", 456, "merchant name must be a string"),
-        ("merchant_name", "", "merchant name cannot be empty"),
         ("merchant_category", 789, "merchant category must be a string"),
         ("address", None, "address must be a string"),
         ("phone_number", 12345, "phone number must be a string"),
@@ -224,6 +223,68 @@ def test_configurable_validation_thresholds(monkeypatch):
         reasoning="testing",
     )
     assert m3.validation_status == MerchantValidationStatus.NO_MATCH.value
+
+
+@pytest.mark.unit
+def test_blank_merchant_name_round_trip_is_no_match():
+    metadata = ReceiptMetadata(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="",
+        merchant_name="",
+        matched_fields=["name", "address", "phone"],
+        validated_by="INFERENCE",
+        timestamp=datetime(2025, 1, 1),
+    )
+
+    item = metadata.to_item()
+    restored = item_to_receipt_metadata(item)
+
+    assert restored.merchant_name == ""
+    assert restored.validation_status == MerchantValidationStatus.NO_MATCH
+    assert item["validation_status"] == {"S": "NO_MATCH"}
+    assert item["GSI3SK"] == {"S": "STATUS#NO_MATCH"}
+
+
+@pytest.mark.unit
+def test_stored_validation_status_survives_threshold_change(monkeypatch):
+    metadata = ReceiptMetadata(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="id",
+        merchant_name="Test Store",
+        address="123 Test St",
+        matched_fields=["name", "address"],
+        validated_by="INFERENCE",
+        timestamp=datetime(2025, 1, 1),
+    )
+    item = metadata.to_item()
+    assert metadata.validation_status == MerchantValidationStatus.MATCHED
+
+    monkeypatch.setenv("MIN_FIELDS_FOR_MATCH", "3")
+    monkeypatch.setenv("MIN_FIELDS_FOR_UNSURE", "2")
+    restored = item_to_receipt_metadata(item)
+
+    assert restored.validation_status == MerchantValidationStatus.MATCHED
+    assert restored.to_item()["GSI3SK"] == {"S": "STATUS#MATCHED"}
+
+
+@pytest.mark.unit
+def test_explicit_validation_status_is_authoritative():
+    metadata = ReceiptMetadata(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="id",
+        merchant_name="Test Store",
+        address="123 Test St",
+        matched_fields=["name", "address"],
+        validated_by="INFERENCE",
+        timestamp=datetime(2025, 1, 1),
+        validation_status=MerchantValidationStatus.NO_MATCH,
+    )
+
+    assert metadata.validation_status == MerchantValidationStatus.NO_MATCH
+    assert metadata.to_item()["GSI3SK"] == {"S": "STATUS#NO_MATCH"}
 
 
 @pytest.mark.unit
@@ -340,20 +401,6 @@ def test_get_high_quality_matched_fields():
     ]
 
     for name, should_pass, description in name_test_cases:
-        if not name.strip():
-            with pytest.raises(
-                ValueError, match="merchant name cannot be empty"
-            ):
-                ReceiptMetadata(
-                    image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-                    receipt_id=1,
-                    place_id="test",
-                    merchant_name=name,
-                    matched_fields=["name"],
-                    validated_by="TEXT_SEARCH",
-                    timestamp=datetime.now(),
-                )
-            continue
         m = ReceiptMetadata(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,

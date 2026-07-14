@@ -317,7 +317,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             "NULL"
         ):
             custom_extractors["extracted_data"] = (
-                EntityFactory.extract_optional_extracted_data
+                EntityFactory.extract_optional_string_map
             )
 
         # Use EntityFactory to create the entity with full type safety

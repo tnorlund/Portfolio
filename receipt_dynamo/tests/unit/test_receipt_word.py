@@ -387,3 +387,29 @@ def test_item_to_receipt_word_with_optional_fields(receipt_word_fixture):
     word = item_to_receipt_word(item)
     assert word.is_noise is True
     assert word.extracted_data == {"type": "test"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "extracted_data",
+    [
+        {"language": "en"},
+        {"type": "merchant", "value": "Shop", "language": "en"},
+        {},
+    ],
+)
+def test_receipt_word_arbitrary_extracted_data_round_trip(extracted_data):
+    word = make_receipt_word(extracted_data=extracted_data)
+
+    restored = item_to_receipt_word(word.to_item())
+
+    assert restored.extracted_data == extracted_data
+
+
+@pytest.mark.unit
+def test_receipt_word_rejects_non_string_extracted_data_attribute():
+    item = make_receipt_word().to_item()
+    item["extracted_data"] = {"M": {"language": {"N": "1"}}}
+
+    with pytest.raises(ValueError, match="extracted_data.language"):
+        item_to_receipt_word(item)

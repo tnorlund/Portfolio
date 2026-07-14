@@ -336,6 +336,39 @@ class EntityFactory(SerializationMixin):
         return result if result else None
 
     @staticmethod
+    def extract_optional_string_map(
+        item: dict[str, Any], field_name: str = "extracted_data"
+    ) -> dict[str, Any] | None:
+        """Extract an optional DynamoDB map containing arbitrary strings."""
+        if field_name not in item:
+            return None
+        attribute = item[field_name]
+        if attribute == {"NULL": True}:
+            return None
+        if not isinstance(attribute, dict) or set(attribute) != {"M"}:
+            raise ValueError(
+                f"{field_name} must be a DynamoDB map (M) or NULL"
+            )
+        string_map = attribute["M"]
+        if not isinstance(string_map, dict):
+            raise ValueError(f"{field_name}.M must be a map")
+
+        result: dict[str, Any] = {}
+        for key, value in string_map.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{field_name} keys must be strings")
+            if (
+                not isinstance(value, dict)
+                or set(value) != {"S"}
+                or not isinstance(value["S"], str)
+            ):
+                raise ValueError(
+                    f"{field_name}.{key} must be a DynamoDB string (S)"
+                )
+            result[key] = cast(str, value["S"])
+        return result
+
+    @staticmethod
     def extract_embedding_status(item: dict[str, Any]) -> str:
         """Extract embedding_status with default and type safety."""
         if "embedding_status" not in item:

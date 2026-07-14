@@ -6,6 +6,7 @@ from typing import Any, Dict, Mapping, Never
 import pytest
 
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.parsing import parsers as parsers_module
 from receipt_dynamo_stream.parsing.parsers import (
@@ -166,6 +167,36 @@ def test_parse_entity_word_label_success() -> None:
     assert result is not None
     assert isinstance(result, ReceiptWordLabel)
     assert result.label == "TOTAL"
+
+
+def test_parse_entity_receipt_word_with_arbitrary_extracted_data() -> None:
+    """Receipt words with Apple NL metadata survive stream parsing."""
+    pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
+    sk = "RECEIPT#00001#LINE#00001#WORD#00001"
+    word = ReceiptWord(
+        image_id="550e8400-e29b-41d4-a716-446655440000",
+        receipt_id=1,
+        line_id=1,
+        word_id=1,
+        text="TOTAL",
+        bounding_box={"x": 0.1, "y": 0.1, "width": 0.2, "height": 0.1},
+        top_left={"x": 0.1, "y": 0.1},
+        top_right={"x": 0.3, "y": 0.1},
+        bottom_left={"x": 0.1, "y": 0.2},
+        bottom_right={"x": 0.3, "y": 0.2},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+        extracted_data={"language": "en"},
+    )
+    image = word.to_item()
+    image.pop("PK")
+    image.pop("SK")
+
+    result = parse_entity(image, "RECEIPT_WORD", "new", (pk, sk))
+
+    assert isinstance(result, ReceiptWord)
+    assert result.extracted_data == {"language": "en"}
 
 
 def test_parse_entity_invalid_entity_type() -> None:

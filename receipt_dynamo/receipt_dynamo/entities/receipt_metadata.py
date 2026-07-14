@@ -108,8 +108,6 @@ class ReceiptMetadata(  # pylint: disable=too-many-instance-attributes
 
         if not isinstance(self.merchant_name, str):
             raise ValueError("merchant name must be a string")
-        if not self.merchant_name.strip():
-            raise ValueError("merchant name cannot be empty")
 
         if not isinstance(self.merchant_category, str):
             raise ValueError("merchant category must be a string")
@@ -154,20 +152,31 @@ class ReceiptMetadata(  # pylint: disable=too-many-instance-attributes
         # collection, but preserving order keeps equality deterministic.
         self.matched_fields = list(self.matched_fields)
 
-        # Validate field quality before determining validation status
-        high_quality_fields = self._get_high_quality_matched_fields()
-        num_fields = len(high_quality_fields)
-
-        # Use configurable thresholds from environment variables
-        min_fields_for_match = int(os.environ.get("MIN_FIELDS_FOR_MATCH", 2))
-        min_fields_for_unsure = int(os.environ.get("MIN_FIELDS_FOR_UNSURE", 1))
-
-        if num_fields >= min_fields_for_match:
-            self.validation_status = MerchantValidationStatus.MATCHED.value
-        elif num_fields >= min_fields_for_unsure:
-            self.validation_status = MerchantValidationStatus.UNSURE.value
+        if self.validation_status:
+            self.validation_status = normalize_enum(
+                self.validation_status, MerchantValidationStatus
+            )
         else:
-            self.validation_status = MerchantValidationStatus.NO_MATCH.value
+            # Derive a status only when the caller or stored record did not
+            # provide one. Persisted and curated statuses must remain stable
+            # if environment thresholds change later.
+            high_quality_fields = self._get_high_quality_matched_fields()
+            num_fields = len(high_quality_fields)
+            min_fields_for_match = int(
+                os.environ.get("MIN_FIELDS_FOR_MATCH", 2)
+            )
+            min_fields_for_unsure = int(
+                os.environ.get("MIN_FIELDS_FOR_UNSURE", 1)
+            )
+
+            if num_fields >= min_fields_for_match:
+                self.validation_status = MerchantValidationStatus.MATCHED.value
+            elif num_fields >= min_fields_for_unsure:
+                self.validation_status = MerchantValidationStatus.UNSURE.value
+            else:
+                self.validation_status = (
+                    MerchantValidationStatus.NO_MATCH.value
+                )
 
     def _get_high_quality_matched_fields(  # pylint: disable=too-many-branches
         self,
