@@ -451,9 +451,9 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
 
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
-    real, words = _load_words_and_real(
-        "Sprouts Farmers Market", image_id, receipt_id
-    )
+    # _load_words_and_real ignores its merchant arg (loads purely by
+    # image/receipt id); pass the caller's merchant through for clarity.
+    real, words = _load_words_and_real(merchant, image_id, receipt_id)
     gray = np.asarray(real.convert("L"))
     H, W = gray.shape
 
@@ -603,6 +603,10 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
                 "stroke_med": round(median(strokes), 2) if strokes else None,
                 "underline": underline,
                 "n_letters": len(chars),
+                # OCR line-box height: a weaker size signal than per-letter
+                # caps, but present even when letters are missing (URL rows,
+                # dropped letter records) -- the M4 selector's middle rung.
+                "box_h": round(lb - lt, 1),
                 "letters": chars,
             }
         )
@@ -622,6 +626,13 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     ]
     body_cap = median(body_caps) if body_caps else None
     body_stroke = median(body_strokes) if body_strokes else None
+    body_boxes = [
+        l["box_h"]
+        for l in out_lines
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["box_h"] > 0
+    ]
+    body_box_h = median(body_boxes) if body_boxes else None
     for l in out_lines:
         tier = "normal"
         if body_cap and l["cap_px"] and l["cap_px"] >= 1.45 * body_cap:
@@ -640,6 +651,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         "image_size": [W, H],
         "body_cap_px": body_cap,
         "body_stroke_px": body_stroke,
+        "body_box_h": body_box_h,
         "lines": out_lines,
     }
 
