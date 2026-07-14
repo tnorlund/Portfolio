@@ -93,19 +93,36 @@ def test_minimal_optional_fields_are_omitted(result_kwargs: dict):
     result = ReceiptValidationResult(**result_kwargs)
     item = result.to_item()
 
-    assert result.validation_timestamp is not None
-    assert item["validation_timestamp"] == {"S": result.validation_timestamp}
-    assert item["GSI1SK"] == {
-        "S": (
-            f"VALIDATION#{result.validation_timestamp}#"
-            "CATEGORY#payment_info#RESULT"
-        )
-    }
-    assert "None" not in item["GSI1SK"]["S"]
+    assert result.validation_timestamp is None
+    assert item["validation_timestamp"] == {"NULL": True}
+    assert result.gsi1_key == {}
+    assert "GSI1PK" not in item
+    assert "GSI1SK" not in item
     assert item["metadata"] == {"M": {}}
     assert "field" not in item
     assert "expected_value" not in item
     assert "actual_value" not in item
+
+
+@pytest.mark.parametrize("timestamp_field", [None, {"NULL": True}])
+def test_from_item_preserves_legacy_missing_timestamp(
+    result: ReceiptValidationResult,
+    timestamp_field: dict | None,
+):
+    item = result.to_item()
+    if timestamp_field is None:
+        del item["validation_timestamp"]
+    else:
+        item["validation_timestamp"] = timestamp_field
+    item["GSI1SK"] = {"S": "VALIDATION#None#CATEGORY#payment_info#RESULT"}
+
+    restored = ReceiptValidationResult.from_item(item)
+
+    assert restored.validation_timestamp is None
+    rewritten = restored.to_item()
+    assert rewritten["validation_timestamp"] == {"NULL": True}
+    assert "GSI1PK" not in rewritten
+    assert "GSI1SK" not in rewritten
 
 
 def test_keys_and_item_schema(result: ReceiptValidationResult):

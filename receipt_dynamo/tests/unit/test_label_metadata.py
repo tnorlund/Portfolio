@@ -90,6 +90,26 @@ def test_label_metadata_roundtrip(example_label_metadata):
     assert restored.receipt_refs == example_label_metadata.receipt_refs
 
 
+def test_label_metadata_reads_legacy_item_without_type(
+    example_label_metadata,
+):
+    item = example_label_metadata.to_item()
+    del item["TYPE"]
+
+    restored = item_to_label_metadata(item)
+
+    assert restored == example_label_metadata
+    assert restored.to_item()["TYPE"] == {"S": "LABEL_METADATA"}
+
+
+def test_label_metadata_rejects_wrong_type(example_label_metadata):
+    item = example_label_metadata.to_item()
+    item["TYPE"] = {"S": "WRONG"}
+
+    with pytest.raises(ValueError, match="TYPE"):
+        item_to_label_metadata(item)
+
+
 def test_label_metadata_deserialization_invalid_date_format():
     item = {
         "PK": {"S": "LABEL#SUBTOTAL"},

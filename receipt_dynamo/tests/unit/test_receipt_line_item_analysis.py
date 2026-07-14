@@ -786,6 +786,44 @@ def test_receipt_line_item_analysis_nested_metadata_round_trip(
 
 
 @pytest.mark.unit
+def test_receipt_line_item_analysis_allows_zero_based_line_and_word_ids():
+    analysis = ReceiptLineItemAnalysis(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        timestamp_added="2024-01-01T00:00:00",
+        items=[{"description": "item", "line_ids": [0]}],
+        reasoning="reason",
+        version="1.0",
+        word_labels={(0, 0): {"label": "description"}},
+    )
+
+    assert item_to_receipt_line_item_analysis(analysis.to_item()) == analysis
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [True, -1])
+def test_receipt_line_item_analysis_rejects_invalid_nested_ids(value):
+    common = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "receipt_id": 1,
+        "timestamp_added": "2024-01-01T00:00:00",
+        "reasoning": "reason",
+        "version": "1.0",
+    }
+    with pytest.raises(ValueError, match="line_id"):
+        ReceiptLineItemAnalysis(
+            **common,
+            items=[{"line_ids": [value]}],
+        )
+    with pytest.raises(ValueError, match="word_id"):
+        ReceiptLineItemAnalysis(
+            **common,
+            items=[],
+            word_labels={(0, value): {"label": "description"}},
+        )
+
+
+@pytest.mark.unit
 def test_receipt_line_item_analysis_full_round_trip_and_hash(
     example_receipt_line_item_analysis,
 ):

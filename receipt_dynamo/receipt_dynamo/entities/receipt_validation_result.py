@@ -64,9 +64,12 @@ class ReceiptValidationResult(SerializationMixin):
         # (Result includes result_index, Category does not) and slightly
         # different validation logic. A shared mixin would require overriding
         # most methods, adding complexity without benefit.
-        self.validation_timestamp = validate_iso_timestamp(
-            self.validation_timestamp, "validation_timestamp"
-        )
+        if self.validation_timestamp is not None:
+            self.validation_timestamp = validate_iso_timestamp(
+                self.validation_timestamp,
+                "validation_timestamp",
+                default_now=False,
+            )
         self.metadata = deepcopy(validate_metadata_field(self.metadata))
 
     @property
@@ -86,6 +89,8 @@ class ReceiptValidationResult(SerializationMixin):
     @property
     def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
+        if self.validation_timestamp is None:
+            return {}
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {
@@ -111,7 +116,6 @@ class ReceiptValidationResult(SerializationMixin):
 
     def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
-        assert self.validation_timestamp is not None
         # Start with the keys which are already properly formatted
         item: dict[str, Any] = {
             **self.key,
@@ -124,7 +128,11 @@ class ReceiptValidationResult(SerializationMixin):
         item["type"] = {"S": self.type}
         item["message"] = {"S": self.message}
         item["reasoning"] = {"S": self.reasoning}
-        item["validation_timestamp"] = {"S": self.validation_timestamp}
+        item["validation_timestamp"] = (
+            {"S": self.validation_timestamp}
+            if self.validation_timestamp is not None
+            else {"NULL": True}
+        )
 
         # Add metadata as a map
         item["metadata"] = self._python_to_dynamo(self.metadata)

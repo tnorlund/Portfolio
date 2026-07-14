@@ -13,6 +13,7 @@ from receipt_dynamo.entities.dynamodb_utils import (
 from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     validate_iso_timestamp,
+    validate_non_negative_int,
     validate_positive_int,
 )
 
@@ -173,9 +174,9 @@ class ReceiptLineItemAnalysis:  # pylint: disable=too-many-instance-attributes
                         "word_labels keys must be (line_id, word_id) tuples"
                     )
                 line_id, word_id = key
-                validate_positive_int("line_id", line_id)
+                validate_non_negative_int("line_id", line_id)
                 if word_id is not None:
-                    validate_positive_int("word_id", word_id)
+                    validate_non_negative_int("word_id", word_id)
                 if not isinstance(label_info, dict):
                     raise ValueError("word label values must be dictionaries")
                 normalized_word_labels[(line_id, word_id)] = dict(label_info)
@@ -210,7 +211,7 @@ class ReceiptLineItemAnalysis:  # pylint: disable=too-many-instance-attributes
             if not isinstance(line_ids, list):
                 raise ValueError("line_ids must be a list")
             for line_id in line_ids:
-                validate_positive_int("line_id", line_id)
+                validate_non_negative_int("line_id", line_id)
             normalized["line_ids"] = list(line_ids)
         if "quantity" in normalized:
             quantity = normalized["quantity"]

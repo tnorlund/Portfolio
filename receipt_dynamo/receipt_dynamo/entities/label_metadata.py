@@ -16,7 +16,6 @@ class LabelMetadata:
     REQUIRED_KEYS = {
         "PK",
         "SK",
-        "TYPE",
         "status",
         "aliases",
         "description",
@@ -211,9 +210,11 @@ class LabelMetadata:
                 receipt_refs=receipt_refs,
             )
             expected = metadata.to_item()
-            key_names = ("PK", "SK", "TYPE", "GSI1PK", "GSI1SK")
+            key_names = ("PK", "SK", "GSI1PK", "GSI1SK")
             if any(item.get(key) != expected.get(key) for key in key_names):
                 raise ValueError("Invalid LabelMetadata keys")
+            if "TYPE" in item and item["TYPE"] != expected["TYPE"]:
+                raise ValueError("Invalid LabelMetadata TYPE")
             for key in ("GSI2PK", "GSI2SK"):
                 if item.get(key) != expected.get(key):
                     raise ValueError("Invalid LabelMetadata GSI2 keys")
