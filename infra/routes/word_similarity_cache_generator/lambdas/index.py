@@ -233,8 +233,45 @@ class TimingStats:
         return result
 
 
+# Explicit size tokens printed in product names, checked before any
+# price-range inference (longest match first: HALF GALLON before GALLON).
+_EXPLICIT_SIZE_TOKENS = [
+    ("HALF GALLON", "Half Gallon"),
+    ("HALF GAL", "Half Gallon"),
+    ("1/2 GALLON", "Half Gallon"),
+    ("1/2 GAL", "Half Gallon"),
+    ("GALLON", "Gallon"),
+    ("QUART", "Quart"),
+    ("QT", "Quart"),
+    ("PINT", "Pint"),
+]
+
+# Generic dairy-milk fallback when the product name has no explicit size
+# and no per-product range entry. Half gallons of whole/organic/A2 milk
+# cluster under ~$6.50; gallons above.
+_GENERIC_MILK_RANGES = [
+    (0, 6.50, "Half Gallon"),
+    (6.50, 25.00, "Gallon"),
+]
+
+
+def strip_upc_prefix(product: str) -> str:
+    """Drop a leading UPC/item-code (8+ digits) from a product name:
+    '7989315000 V CRNR WHOLE MILK' -> 'V CRNR WHOLE MILK'."""
+    return re.sub(r"^\d{8,}\s+", "", product or "").strip()
+
+
 def infer_size(product: str, price: Optional[str]) -> str:
-    """Infer product size based on product name and price."""
+    """Infer product size: explicit size words in the name win, then
+    per-product price ranges, then a generic dairy-milk price fallback."""
+    product_upper = strip_upc_prefix(product).upper().strip()
+
+    # 1) The receipt names the size outright — no price needed.
+    padded = f" {product_upper} "
+    for token, size in _EXPLICIT_SIZE_TOKENS:
+        if f" {token} " in padded or padded.strip().endswith(token):
+            return size
+
     if not price:
         return "Unknown"
 
@@ -243,16 +280,8 @@ def infer_size(product: str, price: Optional[str]) -> str:
     except (ValueError, AttributeError):
         return "Unknown"
 
-    product_upper = product.upper().strip()
-
-    # Handle common variations
-    if product_upper == "WHOLE MILK" or product == "Whole Milk":
-        product_upper = "WHOLE MILK"
-
-    ranges = MILK_SIZE_RANGES.get(product_upper)
-    if not ranges:
-        return "Unknown"
-
+    # 2) Per-product calibrated ranges, else 3) generic milk ranges.
+    ranges = MILK_SIZE_RANGES.get(product_upper, _GENERIC_MILK_RANGES)
     for min_price, max_price, size in ranges:
         if min_price <= price_val < max_price:
             return size
@@ -734,6 +763,7 @@ def handler(_event, _context):
                     if m:
                         price = m.group(1)
                         product_text = product_text[: m.start()].rstrip()
+                product_text = strip_upc_prefix(product_text)
                 size = infer_size(product_text, price)
 
                 # NOTE: details.lines (the full per-receipt line list, ~75 lines
