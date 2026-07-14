@@ -43,6 +43,29 @@ CHROMA_CLOUD_ENABLED = (
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
 
+# Display-name overrides for merchants whose Google Places records vary in
+# casing/branding across store locations (e.g. "TRADER JOE'S" vs
+# "Trader Joe's" would otherwise render as two merchants in the table).
+_MERCHANT_DISPLAY_OVERRIDES = {
+    "trader joe's": "Trader Joe's",
+    "sprouts farmers market": "Sprouts Farmers Market",
+    "whole foods market": "Whole Foods Market",
+    "cvs pharmacy": "CVS Pharmacy",
+    "vons": "Vons",
+    "target": "Target",
+}
+
+
+def normalize_merchant(name: str) -> str:
+    """Collapse casing/whitespace variants of the same chain into one
+    display name. RECEIPT_PLACE.merchant_name comes verbatim from Google
+    Places and differs across store locations of the same chain."""
+    key = " ".join((name or "").split()).casefold()
+    if not key:
+        return "Unknown"
+    return _MERCHANT_DISPLAY_OVERRIDES.get(key, " ".join((name or "").split()))
+
+
 # Pattern to match price-like tokens (used to extract product name from row text)
 def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
     """Find the specific OCR line containing the target word.
@@ -691,7 +714,7 @@ def handler(_event, _context):
                 )
                 timings["visual_line"] = time.time() - t0
 
-                merchant = (
+                merchant = normalize_merchant(
                     details.place.merchant_name if details.place else "Unknown"
                 )
                 price = line_total or unit_price
