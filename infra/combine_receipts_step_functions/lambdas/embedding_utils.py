@@ -5,7 +5,7 @@ This module provides backward-compatible wrappers around the receipt_chroma
 embedding orchestration functions for the combine_receipts workflow.
 
 For new code, use
-``receipt_chroma.embedding.orchestration.create_embeddings_and_compaction_run``
+``receipt_chroma.embedding.create_embeddings_and_compaction_run``
 directly to access the complete ``EmbeddingResult``.
 """
 
@@ -46,7 +46,7 @@ def create_embeddings_and_compaction_run(
     Create embeddings and ChromaDB deltas for combined receipt.
 
     This is a backward-compatible wrapper that delegates to the canonical
-    canonical ``receipt_chroma.embedding.orchestration`` implementation.
+    canonical ``receipt_chroma.embedding`` implementation.
 
     SQS notifications are handled by DynamoDB streams when the CompactionRun
     record is inserted, so no direct SQS messaging is needed here.
@@ -74,10 +74,10 @@ def create_embeddings_and_compaction_run(
         return None
 
     # Import and call receipt_chroma implementation
-    from receipt_chroma.embedding.orchestration import (
+    from receipt_chroma.embedding import (
         EmbeddingConfig,
     )
-    from receipt_chroma.embedding.orchestration import (
+    from receipt_chroma.embedding import (
         create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
 

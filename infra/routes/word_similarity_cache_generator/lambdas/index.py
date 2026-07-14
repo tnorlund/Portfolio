@@ -20,9 +20,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
-import chromadb
-from receipt_chroma.compaction.dual_write import CloudConfig
-from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma import ChromaClient
+from receipt_chroma.compaction import CloudConfig
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
 
@@ -627,18 +626,31 @@ def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
 
     # Step 2: Initialize local ChromaDB
     step_start = time.time()
-    client = chromadb.PersistentClient(path=temp_dir)
-    lines_collection = client.get_collection("lines")
-    timing.chromadb_init = time.time() - step_start
-
-    step_start = time.time()
-    all_lines = lines_collection.get(include=["metadatas"])
-    timing.chromadb_fetch_all = time.time() - step_start
-    logger.info(
-        "Fetched %d lines from local ChromaDB (%.2fs)",
-        len(all_lines["ids"]),
-        timing.chromadb_fetch_all,
+    client = ChromaClient(
+        persist_directory=temp_dir,
+        mode="read",
+        metadata_only=True,
     )
+    try:
+        lines_collection = client.get_collection("lines")
+        timing.chromadb_init = time.time() - step_start
+
+        step_start = time.time()
+        all_lines = lines_collection.get(include=["metadatas"])
+        timing.chromadb_fetch_all = time.time() - step_start
+        logger.info(
+            "Fetched %d lines from local ChromaDB (%.2fs)",
+            len(all_lines["ids"]),
+            timing.chromadb_fetch_all,
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to close read-only ChromaDB snapshot",
+                exc_info=True,
+            )
 
     return all_lines
 

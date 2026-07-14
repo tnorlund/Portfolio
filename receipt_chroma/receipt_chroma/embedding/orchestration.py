@@ -511,30 +511,39 @@ class EmbeddingResult:
         if self._closed:
             return
 
-        try:
-            self.lines_client.close()
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error closing lines_client: %s", e)
+        close_errors: list[tuple[str, Exception]] = []
+        closed_clients: set[str] = set()
 
-        try:
-            self.words_client.close()
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error closing words_client: %s", e)
+        for name, client in (
+            ("lines", self.lines_client),
+            ("words", self.words_client),
+        ):
+            try:
+                client.close()
+                closed_clients.add(name)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                close_errors.append((name, exc))
+                logger.error("Error closing %s_client: %s", name, exc)
 
-        # Clean up temp directories
-        try:
-            if self._lines_dir and os.path.exists(self._lines_dir):
-                shutil.rmtree(self._lines_dir, ignore_errors=True)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error cleaning up lines_dir: %s", e)
-
-        try:
-            if self._words_dir and os.path.exists(self._words_dir):
-                shutil.rmtree(self._words_dir, ignore_errors=True)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error cleaning up words_dir: %s", e)
+        for name, directory in (
+            ("lines", self._lines_dir),
+            ("words", self._words_dir),
+        ):
+            if (
+                name in closed_clients
+                and directory
+                and os.path.exists(directory)
+            ):
+                shutil.rmtree(directory, ignore_errors=True)
 
         self._closed = True
+        if close_errors:
+            failed_clients = ", ".join(name for name, _ in close_errors)
+            raise RuntimeError(
+                "Failed to close EmbeddingResult clients "
+                f"({failed_clients}); their temporary directories were preserved"
+            ) from close_errors[0][1]
+
         logger.debug("EmbeddingResult closed")
 
     def __enter__(self) -> "EmbeddingResult":
@@ -548,7 +557,14 @@ class EmbeddingResult:
         exc_tb: Any,
     ) -> None:
         """Context manager exit - ensures cleanup."""
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            if exc_type is None:
+                raise
+            logger.exception(
+                "Failed to close EmbeddingResult while handling %s", exc_val
+            )
 
 
 @dataclass

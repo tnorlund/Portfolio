@@ -5,7 +5,7 @@ This module provides backward-compatible wrappers around the receipt_chroma
 embedding orchestration functions.
 
 For new code, use
-``receipt_chroma.embedding.orchestration.create_embeddings_and_compaction_run``
+``receipt_chroma.embedding.create_embeddings_and_compaction_run``
 directly to access the complete ``EmbeddingResult``.
 """
 
@@ -22,10 +22,8 @@ from receipt_dynamo.entities import (
 )
 
 try:
-    from receipt_chroma.embedding.orchestration import (
+    from receipt_chroma.embedding import (
         EmbeddingConfig,
-    )
-    from receipt_chroma.embedding.orchestration import (
         create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
 except ImportError:  # pragma: no cover
@@ -57,7 +55,7 @@ def create_embeddings_and_compaction_run(
     Backward-compatible wrapper for embedding creation.
 
     This function fetches data from DynamoDB if not provided, then delegates
-    to ``receipt_chroma.embedding.orchestration``.
+    to ``receipt_chroma.embedding``.
 
     For new code, use the canonical orchestration module directly to get
     access to ``EmbeddingResult`` with local ChromaClients.

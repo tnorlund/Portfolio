@@ -16,17 +16,16 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 from chromadb.errors import NotFoundError
-from receipt_chroma import LockManager  # type: ignore[attr-defined]
-from receipt_chroma.compaction.dual_write import (
+from receipt_chroma import ChromaClient, LockManager
+from receipt_chroma.compaction import (
     CloudConfig,
     sync_collection_to_cloud,
 )
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
+    upload_snapshot_with_hash,
 )
-from receipt_chroma.s3.helpers import upload_snapshot_with_hash
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.constants import ChromaDBCollection
@@ -71,30 +70,24 @@ def close_chromadb_client(
     if client is None:
         return
 
+    logger.debug(
+        "Cleaning up ChromaDB client",
+        collection=collection_name or "unknown",
+    )
+
     try:
-        logger.debug(
-            "Cleaning up ChromaDB client",
+        client.close()
+    except Exception:
+        logger.exception(
+            "Failed to flush ChromaDB client",
             collection=collection_name or "unknown",
         )
-
-        # Use the close() method from receipt_chroma.ChromaClient
-        if hasattr(client, "close"):
-            client.close()
-        elif hasattr(client, "_client") and hasattr(client._client, "close"):
-            # Fallback for direct chromadb.PersistentClient instances
-            client._client.close()
-
+        raise
+    else:
         logger.debug(
             "ChromaDB client cleaned up",
             collection=collection_name or "unknown",
         )
-    except Exception as e:
-        logger.debug(
-            "Error cleaning up ChromaDB client (non-critical)",
-            error=str(e),
-            collection=collection_name or "unknown",
-        )
-
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # pylint: disable=unused-argument

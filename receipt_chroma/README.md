@@ -27,15 +27,18 @@ The package root is intentionally small and lazy:
 from receipt_chroma import ChromaClient, LockManager
 ```
 
-Import workflow-specific APIs from their owning modules:
+Import workflow-specific APIs from their nearest public facade:
 
 ```python
-from receipt_chroma.embedding.orchestration import (
+from receipt_chroma.embedding import (
     EmbeddingConfig,
     create_embeddings_and_compaction_run,
 )
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 ```
+
+Implementation modules such as `receipt_chroma.data.chroma_client` are private.
+Repository callers are checked to ensure they use the public client facade.
 
 `ChromaClient` accepts three modes:
 
@@ -67,6 +70,15 @@ with ChromaClient(
 For Chroma Cloud, pass `cloud_api_key`, `cloud_tenant`, and `cloud_database`.
 The embedding upload service reads these values from the corresponding
 `CHROMA_CLOUD_*` environment variables.
+
+## 0.2 migration
+
+Version 0.2 removes the retired HTTP/EFS architecture and its compatibility
+surface. Replace `http_url` with Chroma Cloud configuration or a local
+`persist_directory`; use `read`, `write`, or `delta` instead of `snapshot`;
+use `upsert()` instead of `upsert_vectors()`; and import `ChromaClient` from
+the package root. The removed `receipt_chroma.storage` package has no runtime
+replacement because S3 snapshots are now the deployed persistence boundary.
 
 ## Development
 

@@ -100,7 +100,6 @@ class DockerImageComponent(ComponentResource):
             build_context_path=".",  # Project root for monorepo access
             source_paths=[
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_agent",
                 "receipt_chroma",
                 "receipt_places",

@@ -309,7 +309,6 @@ class QAAgentStepFunction(ComponentResource):
             source_paths=[
                 "receipt_agent",
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_chroma",
                 "receipt_places",
             ],

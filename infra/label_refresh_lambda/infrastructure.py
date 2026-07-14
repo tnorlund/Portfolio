@@ -201,7 +201,6 @@ class LabelRefreshLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_chroma",
                 "infra/label_refresh_lambda/lambdas",
             ],

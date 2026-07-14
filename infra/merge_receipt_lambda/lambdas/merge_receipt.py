@@ -90,7 +90,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         # Import here to avoid cold start overhead if validation fails
         from receipt_agent.lifecycle.receipt_manager import delete_receipt
-        from receipt_chroma.embedding.orchestration import (
+        from receipt_chroma.embedding import (
             EmbeddingConfig,
             create_embeddings_and_compaction_run,
         )

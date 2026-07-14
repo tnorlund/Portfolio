@@ -202,7 +202,6 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             build_context_path=build_context_path,
             source_paths=[
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_chroma",
             ],
             lambda_function_name=lambda_function_name,

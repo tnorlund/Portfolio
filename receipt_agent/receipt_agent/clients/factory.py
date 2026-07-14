@@ -18,12 +18,9 @@ except ImportError:  # pragma: no cover - optional dependency
     DynamoClient = None
 
 try:
-    from receipt_chroma.data.chroma_client import ChromaClient
+    from receipt_chroma import ChromaClient
 except ImportError:  # pragma: no cover - optional dependency
-    try:
-        from receipt_chroma import ChromaClient
-    except ImportError:  # pragma: no cover - optional dependency
-        ChromaClient = None
+    ChromaClient = None
 
 try:
     from receipt_places import PlacesClient, PlacesConfig

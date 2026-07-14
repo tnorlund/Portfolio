@@ -34,8 +34,8 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
 from receipt_agent.constants import CORE_LABELS
-from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_chroma.embedding.orchestration import (
+from receipt_chroma import ChromaClient
+from receipt_chroma.embedding import (
     build_words_payload,
     create_compaction_run,
     download_and_embed_parallel,
@@ -45,6 +45,7 @@ from receipt_chroma.embedding.orchestration import (
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
 )
@@ -380,7 +381,7 @@ def _run_lines_pipeline_worker(
         langsmith_headers: Optional headers from parent RunTree for trace context
     """
     # Import inside worker to avoid pickling issues
-    from receipt_chroma.embedding.formatting.line_format import (
+    from receipt_chroma.embedding.formatting import (
         group_lines_into_visual_rows,
     )
     from receipt_chroma.embedding.records import (
@@ -393,6 +394,7 @@ def _run_lines_pipeline_worker(
         ReceiptWord,
         ReceiptWordLabel,
     )
+
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
         merchant_name_matches_receipt,
