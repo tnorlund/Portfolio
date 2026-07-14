@@ -33,7 +33,7 @@ config:
     secure: AAABAJiHEdWOgkHMQWv/1wPGA98jO46C73wQxl5XrIokyOkRuCt50jAQ7DEe/+cxJANSERRUrbC1es+8J2ZQFnWzOMygi3nW1JaQU6+VndVnGs4=
   portfolio:ecr-max-images: "4"
   portfolio:ecr-max-age-days: "7"
-  docker-build:sync-mode: "true" # Async mode for faster pulumi up in dev
+  docker-build:sync-mode: "false" # Async mode for faster pulumi up in dev
   docker-build:force-rebuild: "true"
   docker-build:debug-mode: "false"
   portfolio:force-rebuild: "false"
@@ -42,7 +42,7 @@ config:
     secure: AAABAN6ptx7AysWMDQ4oCllzXWxWkIu7uxwgHswFkbfa0B0+DBMbJoVT5RZ2i5uSakARs45iOO6KNuiX1sUgZPRF8o6iWpDmwr06IZJ1GIz8CWUtTEz6A07PC4Hv9LivlK//JXLIXV2/
   ml-training:enable-sagemaker: "true"
   portfolio:LANGSMITH_SERVICE_API_KEY:
-    secure: AAABALDwD+PxYHuh4x/KSvGVb4AL0l+nWLeMQVmnOdwBfvImSLIZa62jYL4mdflrCVxKsRUt2PAsCnrh0DG0nRjPnzb3XBsfEco9cpSM9HE1+Ak=
+    secure: AAABACA8nuWWAFr7DNIUljcwHqBNi4l67kafsPgLC5IvY51wIIeq8LQlNM13btgInjoxUWq5zD51l0S6aRhd+F78ueCmCTs/DuMTDqtNJXVhECk=
   portfolio:LANGSMITH_TENANT_ID: 2586637a-4a13-4ad7-8bc1-2f8221e32c1b
   emr-docker-build:force-rebuild: "true"
   portfolio:CHROMA_CLOUD_API_KEY:
@@ -51,3 +51,10 @@ config:
   portfolio:CHROMA_CLOUD_DATABASE: receipt_dev
   portfolio:CHROMA_CLOUD_ENABLED: "true"
   portfolio:LLM_VALIDATION_ASYNC: "true"
+  portfolio:mcpOAuthCallbackUrls:
+    - https://claude.ai/api/mcp/auth_callback
+    - https://claude.com/api/mcp/auth_callback
+    - http://localhost:8765/callback
+    - http://127.0.0.1:8765/callback
+    - http://localhost:6274/oauth/callback
+    - http://127.0.0.1:8765/callback/rzKPyJle2jYU

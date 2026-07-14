@@ -1,5 +1,4 @@
-from typing import Any
-from uuid import uuid4
+from typing import Any, cast
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
@@ -11,6 +10,9 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_pagination_params,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
@@ -20,6 +22,45 @@ from receipt_dynamo.entities.embedding_batch_result import (
     item_to_embedding_batch_result,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+
+def _validate_batch_id(batch_id: str) -> None:
+    """Validate a batch UUID using the data-layer exception contract."""
+    try:
+        assert_valid_uuid(batch_id)
+    except ValueError as exc:
+        raise EntityValidationError("batch_id must be a valid UUIDv4") from exc
+
+
+def _validate_image_id(image_id: str) -> None:
+    """Validate an image UUID using the data-layer exception contract."""
+    try:
+        assert_valid_uuid(image_id)
+    except ValueError as exc:
+        raise EntityValidationError("image_id must be a valid UUIDv4") from exc
+
+
+def _validate_pagination(
+    limit: int | None,
+    last_evaluated_key: dict[str, Any] | None,
+    required_index_keys: tuple[str, ...],
+) -> None:
+    """Validate query pagination without accepting bool as an integer."""
+    if isinstance(limit, bool):
+        raise EntityValidationError("limit must be an integer")
+    validate_pagination_params(
+        limit,
+        last_evaluated_key,
+        validate_attribute_format=True,
+    )
+    if last_evaluated_key is not None:
+        for key in required_index_keys:
+            value = last_evaluated_key.get(key)
+            if not isinstance(value, dict) or "S" not in value:
+                raise EntityValidationError(
+                    f"last_evaluated_key[{key}] must be a dict "
+                    "containing a key 'S'"
+                )
 
 
 class _EmbeddingBatchResult(
@@ -203,30 +244,45 @@ class _EmbeddingBatchResult(
         """
         Gets an EmbeddingBatchResult from DynamoDB by primary key.
         """
-        assert_valid_uuid(batch_id)
-        self._validate_image_id(image_id)
-        if not isinstance(receipt_id, int) or receipt_id <= 0:
+        _validate_batch_id(batch_id)
+        _validate_image_id(image_id)
+        if (
+            not isinstance(receipt_id, int)
+            or isinstance(receipt_id, bool)
+            or receipt_id <= 0
+        ):
             raise EntityValidationError(
                 "receipt_id must be a positive integer"
             )
-        if not isinstance(line_id, int) or line_id < 0:
+        if (
+            not isinstance(line_id, int)
+            or isinstance(line_id, bool)
+            or line_id < 0
+        ):
             raise EntityValidationError(
                 "line_id must be zero or positive integer"
             )
-        if not isinstance(word_id, int) or word_id < 0:
+        if (
+            not isinstance(word_id, int)
+            or isinstance(word_id, bool)
+            or word_id < 0
+        ):
             raise EntityValidationError(
                 "word_id must be zero or positive integer"
             )
 
-        result = self._get_entity(
-            primary_key=f"BATCH#{batch_id}",
-            sort_key=(
-                f"RESULT#IMAGE#{image_id}"
-                f"#RECEIPT#{receipt_id:05d}"
-                f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
+        result = cast(
+            EmbeddingBatchResult | None,
+            self._get_entity(
+                primary_key=f"BATCH#{batch_id}",
+                sort_key=(
+                    f"RESULT#IMAGE#{image_id}"
+                    f"#RECEIPT#{receipt_id:05d}"
+                    f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
+                ),
+                entity_class=EmbeddingBatchResult,
+                converter_func=item_to_embedding_batch_result,
             ),
-            entity_class=EmbeddingBatchResult,
-            converter_func=item_to_embedding_batch_result,
         )
 
         if result is None:
@@ -244,29 +300,38 @@ class _EmbeddingBatchResult(
         self,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[list[EmbeddingBatchResult], dict | None]:
+    ) -> tuple[list[EmbeddingBatchResult], dict[str, Any] | None]:
         """
         List all EmbeddingBatchResults, paginated.
         """
-        if limit is not None and (not isinstance(limit, int) or limit <= 0):
-            raise EntityValidationError("Limit must be a positive integer.")
-        return self._query_by_type(
-            entity_type="EMBEDDING_BATCH_RESULT",
-            converter_func=item_to_embedding_batch_result,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
+        _validate_pagination(limit, last_evaluated_key, ("TYPE",))
+        return cast(
+            tuple[list[EmbeddingBatchResult], dict[str, Any] | None],
+            self._query_by_type(
+                entity_type="EMBEDDING_BATCH_RESULT",
+                converter_func=item_to_embedding_batch_result,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+            ),
         )
 
     @handle_dynamodb_errors("get_embedding_batch_results_by_status")
     def get_embedding_batch_results_by_status(
         self,
-        status: str,
+        batch_id: str,
+        status: str | EmbeddingStatus,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[list[EmbeddingBatchResult], dict | None]:
+    ) -> tuple[list[EmbeddingBatchResult], dict[str, Any] | None]:
         """
-        Query EmbeddingBatchResults by status using GSI2.
+        Query one batch's EmbeddingBatchResults by status using GSI2.
+
+        GSI2 is partitioned by batch ID, so a status-only query is not a
+        valid DynamoDB key condition.
         """
+        _validate_batch_id(batch_id)
+        if isinstance(status, EmbeddingStatus):
+            status = status.value
         if not isinstance(status, str) or not status:
             raise EntityValidationError("Status must be a non-empty string")
         if status not in [s.value for s in EmbeddingStatus]:
@@ -274,13 +339,15 @@ class _EmbeddingBatchResult(
                 "Status must be one of: "
                 + ", ".join(s.value for s in EmbeddingStatus)
             )
-        if limit is not None and (not isinstance(limit, int) or limit <= 0):
-            raise EntityValidationError("Limit must be a positive integer.")
+        _validate_pagination(limit, last_evaluated_key, ("GSI2PK", "GSI2SK"))
         return self._query_entities(
             index_name="GSI2",
-            key_condition_expression="GSI2SK = :sk",
+            key_condition_expression="GSI2PK = :pk AND GSI2SK = :sk",
             expression_attribute_names=None,
-            expression_attribute_values={":sk": {"S": f"STATUS#{status}"}},
+            expression_attribute_values={
+                ":pk": {"S": f"BATCH#{batch_id}"},
+                ":sk": {"S": f"STATUS#{status}"},
+            },
             converter_func=item_to_embedding_batch_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -293,35 +360,28 @@ class _EmbeddingBatchResult(
         receipt_id: int,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[list[EmbeddingBatchResult], dict | None]:
+    ) -> tuple[list[EmbeddingBatchResult], dict[str, Any] | None]:
         """
         Query EmbeddingBatchResults by receipt_id using GSI3.
         """
-        self._validate_image_id(image_id)
-        if not isinstance(receipt_id, int) or receipt_id <= 0:
+        _validate_image_id(image_id)
+        if (
+            not isinstance(receipt_id, int)
+            or isinstance(receipt_id, bool)
+            or receipt_id <= 0
+        ):
             raise EntityValidationError(
                 "receipt_id must be a positive integer."
             )
-        if limit is not None and (not isinstance(limit, int) or limit <= 0):
-            raise EntityValidationError("Limit must be a positive integer.")
-        template_embedding_batch_result = EmbeddingBatchResult(
-            batch_id=str(uuid4()),
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=0,
-            word_id=0,
-            pinecone_id="dummy",
-            status="dummy",
-            text="dummy",
-            error_message="dummy",
-        )
-        template_key = template_embedding_batch_result.gsi3_key()["GSI3PK"]
+        _validate_pagination(limit, last_evaluated_key, ("GSI3PK", "GSI3SK"))
 
         return self._query_entities(
             index_name="GSI3",
             key_condition_expression="GSI3PK = :pk",
             expression_attribute_names=None,
-            expression_attribute_values={":pk": template_key},
+            expression_attribute_values={
+                ":pk": {"S": (f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}")}
+            },
             converter_func=item_to_embedding_batch_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

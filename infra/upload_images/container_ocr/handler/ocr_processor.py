@@ -1191,7 +1191,7 @@ class OCRProcessor:
         compaction_run_id = None
         if self.chromadb_bucket:
             try:
-                from receipt_chroma.embedding.orchestration import (
+                from receipt_chroma.embedding import (
                     EmbeddingConfig,
                     create_embeddings_and_compaction_run,
                 )

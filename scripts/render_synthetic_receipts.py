@@ -1483,9 +1483,12 @@ def _render_cached_hybrid(
     box_sink: list | None = None,
     bitmap_cap_ratio: float = 0.72,
     bitmap_thin: float = 0.0,
+    bitmap_glyph_vscale: float = 1.0,
     ocr_font_sizing: bool = False,
     ocr_cap_height_ratio: float = 0.72,
     ink: tuple[int, int, int] | list[int] | None = None,
+    face_source: str = "stylemap",
+    row_faces: dict | None = None,
 ) -> str:
     receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
@@ -1520,9 +1523,14 @@ def _render_cached_hybrid(
         box_sink=box_sink,
         bitmap_cap_ratio=bitmap_cap_ratio,
         bitmap_thin=bitmap_thin,
+        bitmap_glyph_vscale=bitmap_glyph_vscale,
         ocr_font_sizing=ocr_font_sizing,
         ocr_cap_height_ratio=ocr_cap_height_ratio,
         ink=ink,
+        # M4 pilot: measured per-row typography. Defaults are a no-op; the
+        # profile flag face_source="stylemap" keeps production byte-identical.
+        face_source=face_source,
+        row_faces=row_faces,
         # Grid typography (fixed character grid, one body size per receipt, hard
         # non-anti-aliased glyphs on a shared baseline). The merchant profile
         # geometry is the realism control; min/max_font_px are only sanity clamps.

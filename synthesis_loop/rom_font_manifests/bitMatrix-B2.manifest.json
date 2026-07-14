@@ -1,0 +1,60 @@
+{
+  "chart": "/private/tmp/claude-501/-Users-tnorlund-vegas-26/8e37906b-7da3-4cc8-b685-505d5d59c685/scratchpad/font_charts/626436-bitMatrix-B2.png",
+  "image_size": [
+    626,
+    436
+  ],
+  "cols": 17,
+  "n_bands": 8,
+  "n_glyph_rows": 7,
+  "first_code": 33,
+  "last_code": 126,
+  "glyph_count": 94,
+  "coverage": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+  "rows": [
+    {
+      "y_band": [
+        18,
+        44
+      ],
+      "chars": "!\"#$%&'()*+,-./0"
+    },
+    {
+      "y_band": [
+        73,
+        99
+      ],
+      "chars": "123456789:;<=>?@A"
+    },
+    {
+      "y_band": [
+        128,
+        151
+      ],
+      "chars": "BCDEFGHIJKLMNOPQR"
+    },
+    {
+      "y_band": [
+        183,
+        211
+      ],
+      "chars": "STUVWXYZ[\\]^_`abc"
+    },
+    {
+      "y_band": [
+        238,
+        264
+      ],
+      "chars": "defghijklmnopqrst"
+    },
+    {
+      "y_band": [
+        292,
+        318
+      ],
+      "chars": "uvwxyz{|}~"
+    }
+  ],
+  "name": "bitMatrix-B2",
+  "npz": "/Users/tnorlund/Portfolio_rom_font/.out/rom-fonts/bitMatrix-B2.glyphs.npz"
+}

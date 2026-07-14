@@ -6,6 +6,7 @@ validation without requiring actual S3/DynamoDB/OpenAI operations.
 """
 
 import os
+import shutil
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -73,6 +74,57 @@ class TestEmbeddingResult:
         # Should only be called once
         assert mock_lines.close.call_count == 1
         assert mock_words.close.call_count == 1
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("failed_client", ["lines", "words"])
+    def test_close_propagates_failures_and_preserves_unsafe_directory(
+        self, failed_client
+    ):
+        """A failed client close must preserve its database for inspection."""
+        mock_lines = MagicMock()
+        mock_words = MagicMock()
+        clients = {"lines": mock_lines, "words": mock_words}
+        clients[failed_client].close.side_effect = RuntimeError("flush failed")
+
+        lines_dir = tempfile.mkdtemp()
+        words_dir = tempfile.mkdtemp()
+        result = EmbeddingResult(
+            lines_client=mock_lines,
+            words_client=mock_words,
+            compaction_run=MagicMock(),
+            _lines_dir=lines_dir,
+            _words_dir=words_dir,
+        )
+
+        with pytest.raises(
+            RuntimeError, match="Failed to close EmbeddingResult"
+        ):
+            result.close()
+
+        assert mock_lines.close.call_count == 1
+        assert mock_words.close.call_count == 1
+        assert os.path.exists(lines_dir) is (failed_client == "lines")
+        assert os.path.exists(words_dir) is (failed_client == "words")
+        assert result._closed is True
+
+        shutil.rmtree(lines_dir, ignore_errors=True)
+        shutil.rmtree(words_dir, ignore_errors=True)
+
+    @pytest.mark.unit
+    def test_context_manager_preserves_body_exception_on_close_failure(self):
+        """Cleanup failure must not mask an exception from the managed body."""
+        mock_lines = MagicMock()
+        mock_lines.close.side_effect = RuntimeError("flush failed")
+
+        with pytest.raises(ValueError, match="body failed"):
+            with EmbeddingResult(
+                lines_client=mock_lines,
+                words_client=MagicMock(),
+                compaction_run=MagicMock(),
+                _lines_dir=tempfile.mkdtemp(),
+                _words_dir=tempfile.mkdtemp(),
+            ):
+                raise ValueError("body failed")
 
     @pytest.mark.unit
     def test_context_manager_closes_on_exit(self):

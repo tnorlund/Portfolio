@@ -30,10 +30,8 @@ import tempfile
 import time
 from pathlib import Path
 from pathlib import Path as PathLib
-from typing import Optional
 from unittest.mock import MagicMock
 
-import chromadb
 import pytest
 
 # Set PYTEST_RUNNING to prevent infrastructure imports
@@ -93,9 +91,15 @@ def temp_chromadb_dir():
 @pytest.fixture
 def chromadb_client_with_data(temp_chromadb_dir):
     """Create a ChromaDB client with test data."""
-    client = chromadb.PersistentClient(path=temp_chromadb_dir)
-    collection = client.get_or_create_collection(
-        name="test_collection", metadata={"test": "true"}
+    client = compaction_module.ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="write",
+        metadata_only=True,
+    )
+    collection = client.get_collection(
+        name="test_collection",
+        create_if_missing=True,
+        metadata={"test": "true"},
     )
 
     # Add some test data
@@ -157,15 +161,19 @@ def test_close_chromadb_client_releases_file_locks(
         assert Path(
             copy_dir
         ).exists(), "Should be able to copy entire directory"
-        assert Path(
-            copy_dir / "chroma.sqlite3"
+        assert (
+            Path(copy_dir) / "chroma.sqlite3"
         ).exists(), "SQLite file should be copied"
     finally:
         shutil.rmtree(copy_dir, ignore_errors=True)
 
     # Test 3: Create a new client and read from the same directory
     # This verifies files are not locked
-    new_client = chromadb.PersistentClient(path=temp_chromadb_dir)
+    new_client = compaction_module.ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="read",
+        metadata_only=True,
+    )
     new_collection = new_client.get_collection("test_collection")
     assert (
         new_collection.count() == 3
@@ -179,11 +187,15 @@ def test_close_chromadb_client_with_multiple_collections(temp_chromadb_dir):
     """
     Test that close_chromadb_client works with multiple collections.
     """
-    client = chromadb.PersistentClient(path=temp_chromadb_dir)
+    client = compaction_module.ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="write",
+        metadata_only=True,
+    )
 
     # Create multiple collections
-    collection1 = client.get_or_create_collection("collection1")
-    collection2 = client.get_or_create_collection("collection2")
+    collection1 = client.get_collection("collection1", create_if_missing=True)
+    collection2 = client.get_collection("collection2", create_if_missing=True)
 
     collection1.add(ids=["1"], embeddings=[[0.1, 0.2]], documents=["doc1"])
     collection2.add(ids=["2"], embeddings=[[0.3, 0.4]], documents=["doc2"])
@@ -214,6 +226,101 @@ def test_close_chromadb_client_handles_none():
     """
     # Should not raise an exception
     close_chromadb_client(None, collection_name="none_test")
+
+
+def test_close_chromadb_client_propagates_flush_failure():
+    """Snapshot uploads must stop when the package cannot flush a client."""
+    client = MagicMock()
+    failure = RuntimeError("flush failed")
+    client.close.side_effect = failure
+
+    with pytest.raises(RuntimeError, match="flush failed") as exc_info:
+        close_chromadb_client(client, collection_name="unsafe_snapshot")
+
+    assert exc_info.value is failure
+
+
+def test_process_chunk_does_not_upload_after_flush_failure(monkeypatch):
+    """A chunk database must be flushed before its intermediate is uploaded."""
+    client = MagicMock()
+    client.close.side_effect = RuntimeError("flush failed")
+    upload = MagicMock()
+    monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
+    monkeypatch.setattr(
+        compaction_module, "ChromaClient", MagicMock(return_value=client)
+    )
+    monkeypatch.setattr(compaction_module, "upload_to_s3", upload)
+
+    with pytest.raises(RuntimeError, match="flush failed"):
+        compaction_module.process_chunk_deltas(
+            batch_id="batch",
+            chunk_index=0,
+            chunk_deltas=[],
+            deltas_by_collection={},
+        )
+
+    upload.assert_not_called()
+
+
+def test_intermediate_merge_does_not_upload_after_flush_failure(monkeypatch):
+    """A merged intermediate must be flushed before it is uploaded."""
+    client = MagicMock()
+    client.close.side_effect = RuntimeError("flush failed")
+    upload = MagicMock()
+    monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
+    monkeypatch.setattr(
+        compaction_module, "ChromaClient", MagicMock(return_value=client)
+    )
+    monkeypatch.setattr(compaction_module, "upload_to_s3", upload)
+
+    with pytest.raises(RuntimeError, match="flush failed"):
+        compaction_module.perform_intermediate_merge(
+            batch_id="batch",
+            group_index=0,
+            intermediate_keys=[],
+            database_name="lines",
+        )
+
+    upload.assert_not_called()
+
+
+def test_final_merge_does_not_upload_after_flush_failure(monkeypatch):
+    """The authoritative snapshot must be flushed before any upload path."""
+    client = MagicMock()
+    client.close.side_effect = RuntimeError("flush failed")
+    client.get_collection.return_value.count.return_value = 0
+    atomic_upload = MagicMock()
+    legacy_upload = MagicMock()
+    monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
+    monkeypatch.setattr(
+        compaction_module, "ChromaClient", MagicMock(return_value=client)
+    )
+    monkeypatch.setattr(
+        compaction_module,
+        "download_snapshot_atomic",
+        MagicMock(return_value={"status": "downloaded"}),
+    )
+    monkeypatch.setattr(
+        compaction_module.CloudConfig,
+        "from_env",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(compaction_module, "ATOMIC_DOWNLOAD_AVAILABLE", True)
+    monkeypatch.setattr(compaction_module, "ATOMIC_UPLOAD_AVAILABLE", True)
+    monkeypatch.setattr(
+        compaction_module, "upload_snapshot_atomic", atomic_upload
+    )
+    monkeypatch.setattr(compaction_module, "upload_to_s3", legacy_upload)
+
+    with pytest.raises(RuntimeError, match="flush failed"):
+        compaction_module.perform_final_merge(
+            batch_id="batch",
+            total_chunks=0,
+            database_name="lines",
+        )
+
+    atomic_upload.assert_not_called()
+    legacy_upload.assert_not_called()
 
 
 def test_close_chromadb_client_allows_file_operations_after_close(
@@ -290,8 +397,12 @@ def test_close_chromadb_client_without_closing_fails_file_operations(
         if copied_sqlite.exists():
             # Try to open it with a new client - this might fail if file is inconsistent
             try:
-                test_client = chromadb.PersistentClient(path=copy_dir)
-                test_collection = test_client.get_collection("test_collection")
+                test_client = compaction_module.ChromaClient(
+                    persist_directory=copy_dir,
+                    mode="read",
+                    metadata_only=True,
+                )
+                test_client.get_collection("test_collection")
                 # If we get here, the file was copied successfully
                 # But this doesn't guarantee it's safe - the original client might
                 # still have locks

@@ -1,4 +1,5 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_chatgpt_validation.py
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,6 +8,8 @@ from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     validate_iso_timestamp,
     validate_metadata_field,
+    validate_non_empty_string,
+    validate_positive_int,
 )
 
 
@@ -30,33 +33,25 @@ class ReceiptChatGPTValidation(SerializationMixin):
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        validate_positive_int("receipt_id", self.receipt_id)
         assert_valid_uuid(self.image_id)
-
-        if not isinstance(self.original_status, str):
-            raise ValueError("original_status must be a string")
-
-        if not isinstance(self.revised_status, str):
-            raise ValueError("revised_status must be a string")
-
-        if not isinstance(self.reasoning, str):
-            raise ValueError("reasoning must be a string")
+        validate_non_empty_string("original_status", self.original_status)
+        validate_non_empty_string("revised_status", self.revised_status)
+        validate_non_empty_string("reasoning", self.reasoning)
 
         if not isinstance(self.corrections, list):
             raise ValueError("corrections must be a list")
+        if not all(
+            isinstance(correction, dict) for correction in self.corrections
+        ):
+            raise ValueError("corrections must contain dictionaries")
+        self.corrections = deepcopy(self.corrections)
 
-        if not isinstance(self.prompt, str):
-            raise ValueError("prompt must be a string")
-
-        if not isinstance(self.response, str):
-            raise ValueError("response must be a string")
+        validate_non_empty_string("prompt", self.prompt)
+        validate_non_empty_string("response", self.response)
 
         self.timestamp = validate_iso_timestamp(self.timestamp, "timestamp")
-        self.metadata = validate_metadata_field(self.metadata)
+        self.metadata = deepcopy(validate_metadata_field(self.metadata))
 
     @property
     def key(self) -> dict[str, dict[str, str]]:
@@ -89,11 +84,13 @@ class ReceiptChatGPTValidation(SerializationMixin):
 
     def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
+        assert self.timestamp is not None
         # Start with the keys which are already properly formatted
         item = {
             **self.key,
             **self.gsi1_key,
             **self.gsi3_key,
+            "TYPE": {"S": "RECEIPT_CHATGPT_VALIDATION"},
         }
 
         # Add the required fields with proper DynamoDB typing
@@ -111,6 +108,19 @@ class ReceiptChatGPTValidation(SerializationMixin):
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptChatGPTValidation":
         """Create a ReceiptChatGPTValidation from a DynamoDB item."""
+        cls.validate_required_keys(
+            item,
+            {
+                "PK",
+                "SK",
+                "original_status",
+                "revised_status",
+                "reasoning",
+                "corrections",
+                "prompt",
+                "response",
+            },
+        )
         # Extract image_id, receipt_id, and timestamp from keys
         image_id = item["PK"]["S"].split("#")[1]
         sk_parts = item["SK"]["S"].split("#")

@@ -39,9 +39,6 @@ TABLE_NAME = cast(str, _env["DYNAMODB_TABLE_NAME"])
 CHROMADB_BUCKET = cast(str, _env["CHROMADB_BUCKET"])
 RAW_BUCKET = cast(str, _env["RAW_BUCKET"])
 SITE_BUCKET = cast(str, _env["SITE_BUCKET"])
-ARTIFACTS_BUCKET: Optional[str] = os.environ.get(
-    "ARTIFACTS_BUCKET"
-)  # Optional for NDJSON export
 BATCH_BUCKET_ENV = cast(str, _env["BATCH_BUCKET"])
 
 
@@ -156,7 +153,6 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             raw_bucket=RAW_BUCKET,
             site_bucket=SITE_BUCKET,
             chromadb_bucket=CHROMADB_BUCKET,
-            artifacts_bucket=ARTIFACTS_BUCKET,
             batch_bucket=batch_bucket,
             execution_id=execution_id,
             dry_run=dry_run,

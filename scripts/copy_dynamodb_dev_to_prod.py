@@ -40,9 +40,9 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
@@ -189,7 +189,7 @@ def copy_image_entities(
         "receipt_word_labels": 0,
         "receipt_metadatas": 0,
         "receipt_places": 0,
-        "ocr_jobs": 0,
+        "receipt_barcodes": 0,
         "ocr_routing_decisions": 0,
         "errors": [],
     }
@@ -316,12 +316,19 @@ def copy_image_entities(
                 prod_client.add_receipt_places(receipt_places)
             stats["receipt_places"] = len(receipt_places)
 
-        # Process OCRJobs
-        if export_data.get("ocr_jobs"):
-            ocr_jobs = [OCRJob(**job) for job in export_data["ocr_jobs"]]
+        # Process ReceiptBarcodes (exported but previously dropped — a REPLACE
+        # deletes the whole image partition, so these must be restored)
+        if export_data.get("receipt_barcodes"):
+            receipt_barcodes = [
+                ReceiptBarcode(**bc) for bc in export_data["receipt_barcodes"]
+            ]
             if not dry_run:
-                prod_client.add_ocr_jobs(ocr_jobs)
-            stats["ocr_jobs"] = len(ocr_jobs)
+                prod_client.add_receipt_barcodes(receipt_barcodes)
+            stats["receipt_barcodes"] = len(receipt_barcodes)
+
+        # NOTE: OCRJobs are intentionally NOT copied here. sync_ocr_jobs_dev_to_prod.py
+        # owns them because it also rewrites OCRJob.s3_bucket (dev→prod) and copies
+        # the ocr_results/ S3 artifact, which a raw DynamoDB copy would not do.
 
         # Process OCRRoutingDecisions
         if export_data.get("ocr_routing_decisions"):
@@ -348,6 +355,7 @@ def copy_all_images(
     prod_config: Dict[str, str],
     dry_run: bool = True,
     skip_existing: bool = True,
+    skip_empty: bool = True,
     max_workers: int = 10,
 ) -> Dict[str, Any]:
     """
@@ -363,6 +371,7 @@ def copy_all_images(
         "total_images": len(export_files),
         "copied": 0,
         "skipped": 0,
+        "skipped_empty": 0,
         "failed": 0,
         "entity_stats": {},
         "errors": [],
@@ -382,6 +391,11 @@ def copy_all_images(
                 return export_file.stem, {}, "No images in export file"
 
             image_id = images[0].get("image_id") or export_file.stem
+
+            # Skip images with no receipts (empty / failed-OCR shells).
+            # Promoting a bare Image with no receipts adds junk to prod.
+            if skip_empty and not export_data.get("receipts"):
+                return image_id, {"skipped_empty": True}, None
 
             # Check if image already exists
             if skip_existing and image_exists_in_prod(prod_client, image_id):
@@ -419,6 +433,15 @@ def copy_all_images(
             if error:
                 overall_stats["failed"] += 1
                 overall_stats["errors"].append(error)
+            elif stats.get("errors"):
+                # copy_image_entities caught a per-entity error but still
+                # returned; treat that image as a failure so callers that gate
+                # on `failed`/`copied` (e.g. the reconcile completeness check)
+                # do not report success after a partial copy.
+                overall_stats["failed"] += 1
+                overall_stats["errors"].extend(stats["errors"])
+            elif stats.get("skipped_empty"):
+                overall_stats["skipped_empty"] += 1
             elif stats.get("skipped"):
                 overall_stats["skipped"] += 1
             else:
@@ -470,6 +493,19 @@ def main():
         help="Skip images that already exist in prod (default: True)",
     )
     parser.add_argument(
+        "--skip-empty",
+        action="store_true",
+        default=True,
+        help="Skip images with no receipts (empty/failed-OCR shells) "
+        "(default: True)",
+    )
+    parser.add_argument(
+        "--include-empty",
+        action="store_false",
+        dest="skip_empty",
+        help="Promote images even if they have no receipts",
+    )
+    parser.add_argument(
         "--max-workers",
         type=int,
         default=10,
@@ -516,6 +552,7 @@ def main():
             prod_config,
             dry_run=args.dry_run,
             skip_existing=args.skip_existing,
+            skip_empty=args.skip_empty,
             max_workers=args.max_workers,
         )
 
@@ -528,6 +565,7 @@ def main():
             f"{'Would copy' if args.dry_run else 'Copied'}: {stats['copied']}"
         )
         logger.info(f"Skipped (already exist): {stats['skipped']}")
+        logger.info(f"Skipped (no receipts/empty): {stats['skipped_empty']}")
         logger.info(f"Failed: {stats['failed']}")
 
         if stats["entity_stats"]:

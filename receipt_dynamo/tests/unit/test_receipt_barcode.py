@@ -1,4 +1,6 @@
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name,no-member
+from dataclasses import replace
+
 import pytest
 
 from receipt_dynamo import ReceiptBarcode, item_to_receipt_barcode
@@ -139,3 +141,95 @@ def test_receipt_barcode_invalid_image_id():
 def test_receipt_barcode_from_item_missing_keys():
     with pytest.raises(ValueError, match="missing required keys"):
         item_to_receipt_barcode({"PK": {"S": f"IMAGE#{IMAGE_ID}"}})
+
+
+@pytest.mark.unit
+def test_receipt_barcode_from_item_rejects_malformed_symbology(
+    receipt_barcode_fixture,
+):
+    item = receipt_barcode_fixture.to_item()
+    item["symbology"] = {"N": "1"}
+
+    with pytest.raises(
+        ValueError, match="symbology must be a DynamoDB string"
+    ):
+        item_to_receipt_barcode(item)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("receipt_id", True, "receipt_id must be an integer"),
+        ("barcode_id", False, "barcode_id must be an integer"),
+        ("angle_degrees", True, "angle_degrees must be float or int"),
+        ("angle_degrees", float("nan"), "angle_degrees must be float or int"),
+        ("angle_radians", float("inf"), "angle_radians must be float or int"),
+        ("confidence", False, "confidence must be float or int"),
+        ("confidence", float("nan"), "confidence must be float or int"),
+        ("confidence", float("inf"), "confidence must be float or int"),
+    ],
+)
+def test_receipt_barcode_rejects_bool_and_non_finite_numbers(
+    receipt_barcode_fixture, field, value, match
+):
+    with pytest.raises(ValueError, match=match):
+        replace(receipt_barcode_fixture, **{field: value})
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        (
+            "bounding_box",
+            {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4, "z": 1},
+            "bounding_box must contain exactly",
+        ),
+        ("top_left", {"x": 0.1, "y": 0.2, "z": 1}, "must contain exactly"),
+        ("top_right", {"x": True, "y": 0.2}, "must be a number"),
+        (
+            "bottom_left",
+            {"x": float("nan"), "y": 0.2},
+            "must be a number",
+        ),
+    ],
+)
+def test_receipt_barcode_rejects_invalid_nested_geometry(
+    receipt_barcode_fixture, field, value, match
+):
+    with pytest.raises(ValueError, match=match):
+        replace(receipt_barcode_fixture, **{field: value})
+
+
+@pytest.mark.unit
+def test_receipt_barcode_item_has_exact_keys(receipt_barcode_fixture):
+    assert set(receipt_barcode_fixture.to_item()) == {
+        "PK",
+        "SK",
+        "TYPE",
+        "GSI3PK",
+        "GSI3SK",
+        "GSI4PK",
+        "GSI4SK",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+        "symbology",
+    }
+
+
+@pytest.mark.unit
+def test_receipt_barcode_serialization_revalidates_mutable_geometry(
+    receipt_barcode_fixture,
+):
+    receipt_barcode_fixture.bounding_box["x"] = float("nan")
+
+    with pytest.raises(ValueError, match="must be a number"):
+        receipt_barcode_fixture.to_item()

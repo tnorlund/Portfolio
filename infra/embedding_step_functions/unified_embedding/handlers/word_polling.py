@@ -14,8 +14,8 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
 from botocore.config import Config
+from handlers.skipped_all import build_skipped_all_s3_result
 from openai import OpenAI
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
 from receipt_chroma.embedding.openai import (
     download_openai_batch_result,
@@ -23,12 +23,8 @@ from receipt_chroma.embedding.openai import (
     get_unique_receipt_and_image_ids,
     handle_batch_status,
     mark_items_for_retry,
+    mark_words_embedded,
 )
-from receipt_chroma.embedding.records import (
-    WordEmbeddingRecord,
-    build_word_payload,
-)
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
@@ -232,7 +228,9 @@ def _ensure_receipt_place(
 
     # Confirm the receipt entity itself exists before invoking the agent.
     try:
-        dynamo_client.get_receipt_details(image_id=image_id, receipt_id=receipt_id)
+        dynamo_client.get_receipt_details(
+            image_id=image_id, receipt_id=receipt_id
+        )
     except EntityNotFoundError:
         logger.warning(
             "Receipt entity missing; skipping orphaned receipt",
@@ -243,13 +241,17 @@ def _ensure_receipt_place(
 
     fix_place_fn = os.environ.get("FIX_PLACE_LAMBDA_NAME")
     if not fix_place_fn:
-        raise RuntimeError("FIX_PLACE_LAMBDA_NAME environment variable not set")
+        raise RuntimeError(
+            "FIX_PLACE_LAMBDA_NAME environment variable not set"
+        )
 
-    payload = json.dumps({
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "reason": "Missing place detected during word embedding ingest",
-    }).encode()
+    payload = json.dumps(
+        {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "reason": "Missing place detected during word embedding ingest",
+        }
+    ).encode()
 
     try:
         response = _fix_place_lambda_client.invoke(
@@ -832,6 +834,15 @@ def _handle_internal_core(
                 "All results filtered out due to orphaned receipts; "
                 "marking batch complete with no embeddings saved"
             )
+            # Build/upload the envelope BEFORE marking complete: if the
+            # upload fails, the batch must stay unmarked so a retry is safe.
+            skipped_result = build_skipped_all_s3_result(
+                s3_client,
+                batch_id,
+                openai_batch_id,
+                len(skipped_orphans),
+                "orphaned_receipts",
+            )
             if not skip_sqs:
                 _mark_batch_complete(batch_id)
             else:
@@ -840,23 +851,13 @@ def _handle_internal_core(
                     "(step function mode - will mark after compaction)",
                     batch_id=batch_id,
                 )
-            return {
-                "batch_id": batch_id,
-                "openai_batch_id": openai_batch_id,
-                "status": "completed",
-                "skipped_all": True,
-                "skipped_receipt_count": len(skipped_orphans),
-                "result_s3_key": None,
-                "result_s3_bucket": None,
-            }
+            return skipped_result
 
         # Get receipt details with timeout protection
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions, skipped_receipts = _get_receipt_descriptions(
-                results
-            )
+            descriptions, skipped_receipts = _get_receipt_descriptions(results)
 
         # Filter out results for skipped (missing) receipts
         if skipped_receipts:
@@ -867,7 +868,10 @@ def _handle_internal_core(
                     meta = parse_word_custom_id(r["custom_id"])
                 except (ValueError, KeyError):
                     continue
-                if (meta["image_id"], meta["receipt_id"]) not in skipped_receipts:
+                if (
+                    meta["image_id"],
+                    meta["receipt_id"],
+                ) not in skipped_receipts:
                     filtered.append(r)
             results = filtered
             logger.warning(
@@ -889,6 +893,15 @@ def _handle_internal_core(
                 "All results filtered out due to missing receipts; "
                 "marking batch complete with no embeddings saved"
             )
+            # Build/upload the envelope BEFORE marking complete: if the
+            # upload fails, the batch must stay unmarked so a retry is safe.
+            skipped_result = build_skipped_all_s3_result(
+                s3_client,
+                batch_id,
+                openai_batch_id,
+                len(skipped_receipts),
+                "missing_receipts",
+            )
             if not skip_sqs:
                 _mark_batch_complete(batch_id)
             else:
@@ -897,15 +910,7 @@ def _handle_internal_core(
                     "(step function mode - will mark after compaction)",
                     batch_id=batch_id,
                 )
-            return {
-                "batch_id": batch_id,
-                "openai_batch_id": openai_batch_id,
-                "status": "completed",
-                "skipped_all": True,
-                "skipped_receipt_count": len(skipped_receipts),
-                "result_s3_key": None,
-                "result_s3_bucket": None,
-            }
+            return skipped_result
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -1019,6 +1024,19 @@ def _handle_internal_core(
         # Add to trace
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
+
+        # Flip word embedding_status now that the delta is durably in S3
+        # (#990: this was skipped, stranding words in PENDING forever)
+        with operation_with_timeout("mark_words_embedded", max_duration=120):
+            words_marked = mark_words_embedded(
+                results, descriptions, dynamo_client
+            )
+        collected_metrics["WordsMarkedSuccess"] = words_marked
+        logger.info(
+            "Marked words as embedded",
+            words_marked=words_marked,
+            batch_id=batch_id,
+        )
 
         # Mark batch complete only if NOT in step function mode
         # (skip_sqs=False means standalone mode)
@@ -1218,10 +1236,13 @@ def _handle_internal_core(
                     sqs_queue_url,
                 )
 
-                # Skip writing to DynamoDB - we only store in ChromaDB now
+                words_marked_partial = mark_words_embedded(
+                    partial_results, descriptions, dynamo_client
+                )
                 logger.info(
                     "Processed partial embedding results",
                     count=len(partial_results),
+                    words_marked=words_marked_partial,
                 )
 
         # Mark failed items for retry

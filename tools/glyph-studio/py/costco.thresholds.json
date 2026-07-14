@@ -1,0 +1,44 @@
+{
+  "merchant": "costco",
+  "_doc": "Per-level pass bands = the 1:1 targets from GOLD_STANDARD.md Part 1. dir: band=|v-target|<=tol, min=v>=target-tol, max=v<=target+tol, p_min=v>=target (fail-to-reject). A render 'advances a rung' only when every live metric at that level passes. reg = regression threshold-width for the CI gate (no metric may worsen by more than reg vs the committed baseline).",
+  "dark_thresh": 160.0,
+  "regions": {
+    "header": [0.083, 0.153],
+    "body": [0.167, 0.617],
+    "footer": [0.727, 0.967]
+  },
+  "hygiene": {
+    "_doc": "I3 metric hygiene: drop logo-header lines (000-001, WHOLESALE contamination) and the dense payment-footer block (043-049, pitch mis-segmentation) so L1/L2 measure render defects, not measurement noise.",
+    "exclude_lines": [0, 1, 43, 44, 45, 46, 47, 48, 49]
+  },
+  "L0": {
+    "ink_ratio": {"target": 1.00, "tol": 0.05, "dir": "band", "reg": 0.05},
+    "fill": {"target": 0.271, "tol": 0.01, "dir": "band", "reg": 0.01},
+    "cap_h_ratio": {"target": 1.00, "tol": 0.03, "dir": "band", "reg": 0.03},
+    "pitch_ratio": {"target": 1.00, "tol": 0.02, "dir": "band", "reg": 0.02}
+  },
+  "L1": {
+    "gs_vs_crops": {"target": 50.0, "tol": 5.0, "dir": "min", "reg": 3.0},
+    "iou_rc": {"target": 0.536, "tol": 0.05, "dir": "band", "reg": 0.03},
+    "self_agreement_ref": 0.87
+  },
+  "L2": {
+    "cap_h_ratio": {"target": 1.00, "tol": 0.03, "dir": "band", "reg": 0.03},
+    "advance_ratio": {"target": 1.00, "tol": 0.05, "dir": "max", "reg": 0.03},
+    "price_std_px": {"target": 8.0, "tol": 0.0, "dir": "max", "reg": 2.0},
+    "barcode_caption_ratio": {"target": 1.00, "tol": 0.05, "dir": "band", "reg": 0.05}
+  },
+  "_L3_doc": "L3 channels are evaluated against the harness-measured real value (dynamic band = |render-real|<=tol), since texture 1:1 means matching real measured the SAME way. 'target' below is the documented Part-1 reference value, echoed as spec_target. tol is the dynamic band half-width. ink_tone_emd and kanungo_p are absolute (render-vs-real distances).",
+  "L3": {
+    "ink_darkness": {"target": 69.0, "tol": 6.0, "dir": "band", "reg": 5.0},
+    "stroke_cov": {"target": 0.35, "tol": 0.06, "dir": "band", "reg": 0.05},
+    "edge_transition_frac": {"target": 0.16, "tol": 0.05, "dir": "band", "reg": 0.03},
+    "paper_clip_frac": {"target": 0.55, "tol": 0.10, "dir": "band", "reg": 0.10},
+    "ink_tone_emd": {"target": 0.0, "tol": 3.0, "dir": "max", "reg": 3.0},
+    "kanungo_p": {"target": 0.05, "tol": 0.0, "dir": "p_min", "reg": 0.05}
+  },
+  "L4": {
+    "ms_ssim": {"target": 0.75, "tol": 0.0, "dir": "min", "reg": 0.03},
+    "ocr_jaccard": {"target": 1.00, "tol": 0.10, "dir": "min", "reg": 0.05}
+  }
+}

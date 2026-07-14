@@ -34,8 +34,8 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
 from receipt_agent.constants import CORE_LABELS
-from receipt_chroma import (
-    ChromaClient,
+from receipt_chroma import ChromaClient
+from receipt_chroma.embedding import (
     build_words_payload,
     create_compaction_run,
     download_and_embed_parallel,
@@ -381,13 +381,13 @@ def _run_lines_pipeline_worker(
         langsmith_headers: Optional headers from parent RunTree for trace context
     """
     # Import inside worker to avoid pickling issues
-    from receipt_chroma import (
-        build_row_payload,
-    )
-    from receipt_chroma.embedding.formatting.line_format import (
+    from receipt_chroma.embedding.formatting import (
         group_lines_into_visual_rows,
     )
-    from receipt_chroma.embedding.records import RowEmbeddingRecord
+    from receipt_chroma.embedding.records import (
+        RowEmbeddingRecord,
+        build_row_payload,
+    )
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import (
         ReceiptLine,
@@ -507,7 +507,7 @@ def _run_lines_pipeline_worker(
             # Upsert into the local snapshot client (skip in cloud mode — the
             # read client is Cloud and the delta upload below is self-contained).
             if not cloud_cfg:
-                client.upsert_vectors(collection_name="lines", **line_payload)
+                client.upsert(collection_name="lines", **line_payload)
 
             # Upload delta to S3
             import boto3
@@ -912,7 +912,7 @@ def _run_words_pipeline_worker(
             # Upsert into the local snapshot client (skip in cloud mode — the
             # read client is Cloud and the delta upload below is self-contained).
             if not cloud_cfg:
-                client.upsert_vectors(collection_name="words", **word_payload)
+                client.upsert(collection_name="words", **word_payload)
 
             # Upload delta to S3
             import boto3
@@ -994,7 +994,6 @@ class MerchantResolvingEmbeddingProcessor:
         self,
         table_name: str,
         chromadb_bucket: str,
-        chroma_http_endpoint: Optional[str] = None,
         google_places_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
     ):
@@ -1004,7 +1003,6 @@ class MerchantResolvingEmbeddingProcessor:
         Args:
             table_name: DynamoDB table name
             chromadb_bucket: S3 bucket for ChromaDB snapshots/deltas
-            chroma_http_endpoint: Optional HTTP endpoint (unused, kept for compat)
             google_places_api_key: Google Places API key for Tier 2 resolution
             openai_api_key: OpenAI API key for embeddings
         """
@@ -1378,7 +1376,7 @@ class MerchantResolvingEmbeddingProcessor:
             # PHASE 3: Create compaction run (after both deltas uploaded)
             # =================================================================
             if lines_prefix and words_prefix:
-                compaction_run = create_compaction_run(
+                create_compaction_run(
                     run_id=run_id,
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -1391,7 +1389,6 @@ class MerchantResolvingEmbeddingProcessor:
                 _log(
                     "WARNING: Skipping compaction run - missing delta prefixes"
                 )
-                compaction_run = None
 
             # =================================================================
             # PHASE 3b: Enqueue deferred LLM validation (async mode only)

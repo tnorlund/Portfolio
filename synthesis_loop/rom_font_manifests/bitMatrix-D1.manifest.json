@@ -1,0 +1,60 @@
+{
+  "chart": "/private/tmp/claude-501/-Users-tnorlund-vegas-26/8e37906b-7da3-4cc8-b685-505d5d59c685/scratchpad/font_charts/626436-bitMatrix-D1.png",
+  "image_size": [
+    626,
+    436
+  ],
+  "cols": 17,
+  "n_bands": 12,
+  "n_glyph_rows": 8,
+  "first_code": 33,
+  "last_code": 126,
+  "glyph_count": 94,
+  "coverage": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+  "rows": [
+    {
+      "y_band": [
+        16,
+        47
+      ],
+      "chars": "!\"#$%&'()*+,-./0"
+    },
+    {
+      "y_band": [
+        71,
+        99
+      ],
+      "chars": "123456789:;<=>?@A"
+    },
+    {
+      "y_band": [
+        126,
+        154
+      ],
+      "chars": "BCDEFGHIJKLMNOPQR"
+    },
+    {
+      "y_band": [
+        181,
+        209
+      ],
+      "chars": "STUVWXYZ[\\]^_`abc"
+    },
+    {
+      "y_band": [
+        236,
+        270
+      ],
+      "chars": "defghijklmnopqrst"
+    },
+    {
+      "y_band": [
+        281,
+        325
+      ],
+      "chars": "uvwxyz{|}~"
+    }
+  ],
+  "name": "bitMatrix-D1",
+  "npz": "/Users/tnorlund/Portfolio_rom_font/.out/rom-fonts/bitMatrix-D1.glyphs.npz"
+}

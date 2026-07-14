@@ -1,0 +1,69 @@
+{
+  "merchant": "costco",
+  "tool": "fit_degrade.py",
+  "date": "2026-07-11",
+  "fitted_on_render": ".out/final_i2.webp",
+  "texture_anchor": "gold",
+  "held_out": "crop-level guards (fill/Kanungo/GlyphScore) train-anchored; scan-stage texture stats anchored on the gold scan per GOLD_STANDARD I1 (train-only transfer gap measured in rounds 1-3)",
+  "train_receipts": [
+    "41885f70-0a10-4897-8840-8f7373d150cd#1",
+    "758cbedf-f1dd-4466-98ec-faf86e82d422#2",
+    "75ec2ac9-e043-4270-b7ec-67e4f225dae9#1",
+    "84efc4e9-87e8-4bda-beb9-1668328c6801#1",
+    "ac5fd741-29f2-4e05-bf69-9c216ec8a56a#1",
+    "b44d58bc-cdad-443b-bea3-958a2fbb76e6#1",
+    "c1672313-25b9-4d14-9951-691a2003dacf#1",
+    "d67ee0e3-6f30-4142-8209-cebbf309f40e#2",
+    "d84d4101-8a2f-4b6f-9c4e-4d89af1850f5#3",
+    "e8b658b6-e731-4aab-8c9b-cd9df55efc57#1"
+  ],
+  "train_targets": {
+    "median_L": 71.0,
+    "cov": 0.13913481946759326,
+    "edge": 0.4162797535954422,
+    "clip": 0.5153983419681032,
+    "fill": 0.25390625
+  },
+  "objective_final": {
+    "eval": 292,
+    "loss": 33.6558,
+    "terms": {
+      "z_L": 0.576,
+      "z_cov": -0.34,
+      "z_edge": -0.078,
+      "z_clip": 1.143,
+      "z_inkmean": -0.592,
+      "z_speck": 0.936,
+      "z_emd": 1.086,
+      "z_ink": -2.139,
+      "z_fill": -0.146,
+      "z_kan": 3.397,
+      "z_gs": 3.655
+    },
+    "gs": 31.73,
+    "fill": 0.2524,
+    "kan": 0.0679,
+    "sec": 1.09
+  },
+  "n_evals": 292,
+  "seed": 400,
+  "params": {
+    "jitter_sigma": 3e-06,
+    "jitter_corr": 2.850227,
+    "gain_sx": 0.248009,
+    "gain_sy": 1.190453,
+    "gain_gamma": 1.939815,
+    "trc_mid": 0.623308,
+    "trc_slope": 24.573098,
+    "d_max": 0.779307,
+    "mottle_sigma": 0.153812,
+    "mottle_scale": 1.36883,
+    "k_a0": 0.536623,
+    "k_decay": 1.73404,
+    "k_b0": 0.089183,
+    "k_eta": 0.000106,
+    "psf_sigma": 0.391011,
+    "sensor_sigma": 11.923395,
+    "white_point": 248.712673
+  }
+}

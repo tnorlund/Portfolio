@@ -54,6 +54,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     section_for_labels,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
+    measured_row_style,
     row_style,
 )
 
@@ -189,6 +190,10 @@ class RenderConfig:
     mixed_layout: bool = False
     bitmap_cap_ratio: float = 0.72
     bitmap_thin: float = 0.0
+    # I2 (GOLD_STANDARD.md): opt-in vertical-only scale of bitmap glyph images,
+    # correcting cap-height without touching line pitch, cell advance or
+    # condense. 1.0 = off (byte-identical default).
+    bitmap_glyph_vscale: float = 1.0
     ink: tuple[int, int, int] | None = None
     # Data-built atlases can be sized directly from the receipt's OCR geometry:
     # median word-box height -> cap height, and median word width-per-char ->
@@ -203,6 +208,15 @@ class RenderConfig:
     # BINDS for fonts with lower bitmap_cap_ratio (Vons: floor 0.73x cap vs
     # true 0.538x cap -> cells ~35% wide -> truncated item names).
     pitch_ratio: float | None = None
+    # M4 pilot (opt-in): per-ROW typography MEASURED from the real receipt
+    # being mimicked, instead of the stylemap's text rules. ``face_source``
+    # stays "stylemap" by default (production behavior byte-identical);
+    # "measured" consumes ``row_faces`` -- a {normalize_face_key(row_text):
+    # {"face": "regular"|"heavy", "scale": float, "underline": bool}} map
+    # built by glyphstudio.face_select from stylescan measurements. Rows
+    # without a measured entry fall back to the stylemap rules.
+    face_source: str = "stylemap"
+    row_faces: Mapping[str, Any] | None = None
 
 
 def render_receipt(
@@ -489,11 +503,18 @@ def _render_grid(
         )
 
         bitmap_thin = max(0.0, min(0.9, float(config.bitmap_thin or 0.0)))
-        bmf = BitmapFont(config.bitmap_font["regular"], thin=bitmap_thin)
+        glyph_vscale = float(config.bitmap_glyph_vscale or 1.0)
+        bmf = BitmapFont(
+            config.bitmap_font["regular"],
+            thin=bitmap_thin,
+            vscale=glyph_vscale,
+        )
         heavy_path = config.bitmap_font.get(
             "heavy", config.bitmap_font["regular"]
         )
-        bmf_heavy = BitmapFont(heavy_path, thin=bitmap_thin)
+        bmf_heavy = BitmapFont(
+            heavy_path, thin=bitmap_thin, vscale=glyph_vscale
+        )
         cap_ratio = max(0.5, min(1.0, float(config.bitmap_cap_ratio)))
         cap_px = max(6, int(round(sizing.font_px * cap_ratio)))
         ocr_cap, ocr_advance = _ocr_grid_metrics(grid_words, sizing, config)
@@ -737,10 +758,18 @@ def _render_grid(
         # Measured stylemap pass (no-op when config.stylemap is None): size
         # scale multiplies the row cap; bold double-strikes; underline draws
         # a rule under the row. Headings keep their own treatment.
+        # M4 opt-in (face_source="measured"): a per-row style measured from
+        # the real receipt overrides the text rules for the rows it covers;
+        # uncovered rows keep the stylemap fallback.
         sm_style = None
-        if config.stylemap is not None and not is_heading:
-            sm_style = row_style(config.stylemap, row_text, seed=str(baseline))
-            if sm_style["scale"] != 1.0:
+        if not is_heading:
+            if config.face_source == "measured" and config.row_faces:
+                sm_style = measured_row_style(config.row_faces, row_text)
+            if sm_style is None and config.stylemap is not None:
+                sm_style = row_style(
+                    config.stylemap, row_text, seed=str(baseline)
+                )
+            if sm_style is not None and sm_style["scale"] != 1.0:
                 sc = sc * sm_style["scale"]
         if _is_asterisk_rule(row_text):
             n = int(content_cw / spec.cell_w)

@@ -1,16 +1,17 @@
 """Pulumi infrastructure for the Glyph Studio MCP Server Lambda.
 
-Creates a container-based Lambda with a Function URL that exposes the
-read-only Glyph Studio inspection tools for remote MCP access. The
+Creates a container-based Lambda with an IAM-protected Function URL for
+signed access. The shared MCP auth gateway exposes the read-only Glyph
+Studio inspection tools to OAuth clients. The
 ``run-mcp-servers-with-aws-lambda`` (mcp_lambda) adapter translates
 incoming HTTP requests into stdio MCP messages.
 
-The Function URL uses ``RESPONSE_STREAM`` invoke mode so MCP streaming
-works end-to-end without API Gateway.
+The Function URL uses ``RESPONSE_STREAM`` invoke mode for signed internal
+callers. It is never anonymously invokable.
 
 Architecture:
 - Container Lambda with the glyphstudio package + baked font sources
-- Lambda Function URL (no API Gateway) for HTTP streaming
+- IAM-protected Lambda Function URL for signed HTTP streaming
 - IAM: basic execution, ECR pull, and read-only S3 for the letterform
   corpora (raw-image-bucket-*/merchant_fonts/<font>/corpus.npz)
 """
@@ -39,7 +40,7 @@ _CORPUS_PREFIX = "merchant_fonts"
 
 
 class GlyphMcpLambda(ComponentResource):
-    """Container Lambda exposing the Glyph Studio MCP server via Function URL.
+    """Container Lambda that hosts the Glyph Studio MCP server.
 
     Read-only: it renders/measures/compiles baked-in fonts and reads the
     letterform corpora from S3. It never writes back to the repo.
@@ -148,8 +149,8 @@ class GlyphMcpLambda(ComponentResource):
             "role_arn": lambda_role.arn,
             "timeout": 300,  # 5 min — compile/compare are well under this
             "memory_size": 1536,  # numpy + PIL rasterization headroom
-            # Public (auth NONE) Function URL — cap concurrency so a burst of
-            # requests can't fan out into unbounded 1.5 GB invocations.
+            # Cap concurrency so a burst of authenticated requests cannot
+            # fan out into unbounded 1.5 GB invocations.
             "reserved_concurrent_executions": 10,
             "tags": {"environment": stack},
             "environment": {
@@ -163,9 +164,10 @@ class GlyphMcpLambda(ComponentResource):
             f"{name}-img",
             dockerfile_path="infra/glyph_mcp_lambda/lambdas/Dockerfile",
             build_context_path=".",
-            # receipt_agent is copied by the default rsync (BitmapFont shim);
-            # the glyphstudio package + baked fonts are non-package trees, so
-            # they ride along as extra literal context paths.
+            # receipt_agent supplies the BitmapFont shim. The glyphstudio
+            # package + baked fonts are non-package trees, so they ride along
+            # as extra literal context paths.
+            source_paths=["receipt_agent"],
             extra_context_paths=[
                 "tools/glyph-studio/py",
                 "tools/glyph-studio/fonts",
@@ -179,12 +181,12 @@ class GlyphMcpLambda(ComponentResource):
         self.lambda_function = docker_image.lambda_function
 
         # ============================================================
-        # Lambda Function URL (streaming, no API Gateway)
+        # Signed Function URL for internal callers and emergency access.
         # ============================================================
         function_url = aws.lambda_.FunctionUrl(
             f"{name}-function-url",
             function_name=self.lambda_function.name,
-            authorization_type="NONE",
+            authorization_type="AWS_IAM",
             invoke_mode="RESPONSE_STREAM",
             opts=ResourceOptions(parent=self),
         )

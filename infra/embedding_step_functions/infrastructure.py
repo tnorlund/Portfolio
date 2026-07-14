@@ -9,6 +9,7 @@ code organization and easier maintenance of the 79-character line limit.
 
 from typing import Optional
 
+import pulumi
 from pulumi import ComponentResource, Output, ResourceOptions
 
 # pylint: disable=import-error
@@ -17,6 +18,7 @@ from chromadb_compaction import (  # type: ignore[import-not-found]
 )
 
 from .components import (
+    CONTAINER_FUNCTION_NAMES,
     DockerImageComponent,
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
@@ -42,8 +44,6 @@ class EmbeddingInfrastructure(ComponentResource):
         chromadb_buckets=None,
         vpc_subnet_ids=None,
         lambda_security_group_id=None,
-        efs_access_point_arn=None,
-        efs_mount_targets=None,  # Mount targets dependency for Lambda
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize embedding infrastructure.
@@ -54,7 +54,6 @@ class EmbeddingInfrastructure(ComponentResource):
             chromadb_buckets: Shared ChromaDB S3 buckets component
             vpc_subnet_ids: Subnet IDs for Lambda VPC configuration
             lambda_security_group_id: Security group ID for Lambda VPC access
-            efs_access_point_arn: EFS access point ARN for ChromaDB storage
             opts: Pulumi resource options
         """
         super().__init__(
@@ -80,12 +79,14 @@ class EmbeddingInfrastructure(ComponentResource):
         # Create Docker image component
         self.docker = DockerImageComponent(
             f"{name}-docker",
+            lambda_function_names=[
+                f"{function_name}-lambda-{pulumi.get_stack()}"
+                for function_name in CONTAINER_FUNCTION_NAMES
+            ],
             opts=ResourceOptions(parent=self),
         )
 
-        # Create Lambda functions component
-        # Pass mount targets dependency so Lambda waits for EFS mount targets to be available
-        # This is critical - Lambda will timeout if it tries to mount EFS before mount targets are ready
+        # Create Lambda functions component.
         self.lambdas = LambdaFunctionsComponent(
             f"{name}-lambdas",
             chromadb_buckets=self.chromadb_buckets,
@@ -93,8 +94,6 @@ class EmbeddingInfrastructure(ComponentResource):
             docker_image_component=self.docker,
             vpc_subnet_ids=vpc_subnet_ids,
             lambda_security_group_id=lambda_security_group_id,
-            efs_access_point_arn=efs_access_point_arn,
-            efs_mount_targets=efs_mount_targets,  # Pass mount targets dependency
             opts=ResourceOptions(parent=self),
         )
 

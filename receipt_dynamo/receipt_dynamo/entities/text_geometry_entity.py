@@ -31,11 +31,12 @@ Usage:
 """
 
 from dataclasses import dataclass
-from math import atan2, cos, degrees, pi, radians, sin
-from typing import Any, Callable, ClassVar
+from math import atan2, cos, degrees, isfinite, pi, radians, sin
+from typing import Any, Callable, ClassVar, Self
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.entity_factory import (
+    DynamoDBItemExtractor,
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
@@ -147,16 +148,44 @@ class TextGeometryEntity(DynamoDBEntity):
         assert_valid_point(self.top_right)
         assert_valid_point(self.bottom_left)
         assert_valid_point(self.bottom_right)
+        if set(self.bounding_box) != {"x", "y", "width", "height"}:
+            raise ValueError(
+                "bounding_box must contain exactly x, y, width, and height"
+            )
+        for name in (
+            "top_left",
+            "top_right",
+            "bottom_left",
+            "bottom_right",
+        ):
+            point = getattr(self, name)
+            if set(point) != {"x", "y"}:
+                raise ValueError(
+                    f"{name} must contain exactly 'x' and 'y' keys"
+                )
+            setattr(self, name, {"x": point["x"], "y": point["y"]})
+        self.bounding_box = {
+            name: self.bounding_box[name]
+            for name in ("x", "y", "width", "height")
+        }
 
         # Normalize and validate angles
-        if not isinstance(self.angle_degrees, (float, int)):
+        if (
+            isinstance(self.angle_degrees, bool)
+            or not isinstance(self.angle_degrees, (float, int))
+            or not isfinite(self.angle_degrees)
+        ):
             raise ValueError(
                 f"angle_degrees must be float or int, "
                 f"got {type(self.angle_degrees).__name__}"
             )
         self.angle_degrees = float(self.angle_degrees)
 
-        if not isinstance(self.angle_radians, (float, int)):
+        if (
+            isinstance(self.angle_radians, bool)
+            or not isinstance(self.angle_radians, (float, int))
+            or not isfinite(self.angle_radians)
+        ):
             raise ValueError(
                 f"angle_radians must be float or int, "
                 f"got {type(self.angle_radians).__name__}"
@@ -164,9 +193,16 @@ class TextGeometryEntity(DynamoDBEntity):
         self.angle_radians = float(self.angle_radians)
 
         # Validate confidence
+        if isinstance(self.confidence, bool):
+            raise ValueError(
+                f"confidence must be float or int, "
+                f"got {type(self.confidence).__name__}"
+            )
         if isinstance(self.confidence, int):
             self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float):
+        if not isinstance(self.confidence, float) or not isfinite(
+            self.confidence
+        ):
             raise ValueError(
                 f"confidence must be float or int, "
                 f"got {type(self.confidence).__name__}"
@@ -191,6 +227,7 @@ class TextGeometryEntity(DynamoDBEntity):
         Returns:
             Dict with DynamoDB-formatted geometry fields
         """
+        self._validate_geometry()
         return {
             "text": {"S": self.text},
             "bounding_box": serialize_bounding_box(self.bounding_box),
@@ -209,7 +246,7 @@ class TextGeometryEntity(DynamoDBEntity):
         item: dict[str, Any],
         sk_parser: Callable[[str], dict[str, Any]],
         additional_extractors: dict[str, Callable] | None = None,
-    ) -> "TextGeometryEntity":
+    ) -> Self:
         """
         Create entity from DynamoDB item using EntityFactory.
 
@@ -234,7 +271,7 @@ class TextGeometryEntity(DynamoDBEntity):
             ValueError: If required fields are missing or have invalid format
         """
         # Build extractors: text + geometry + any additional
-        custom_extractors = {
+        custom_extractors: dict[str, DynamoDBItemExtractor | None] = {
             "text": EntityFactory.extract_text_field,
             **create_geometry_extractors(),
         }

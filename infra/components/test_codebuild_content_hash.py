@@ -25,8 +25,10 @@ def _bare_instance(**attrs):
     obj = object.__new__(cdi.CodeBuildDockerImage)
     obj.dockerfile_path = attrs["dockerfile_path"]
     obj.build_context_path = attrs.get("build_context_path", ".")
-    obj.source_paths = attrs.get("source_paths")
+    obj.source_paths = attrs.get("source_paths", [])
     obj.extra_context_paths = attrs.get("extra_context_paths", [])
+    obj.name = attrs.get("name", "test-image")
+    obj.force_rebuild = False
     return obj
 
 
@@ -96,6 +98,52 @@ def test_extra_strings_none_is_noop():
     assert compute_hash(roots, include_globs=globs) == compute_hash(
         roots, include_globs=globs, extra_strings=None
     )
+
+
+def test_only_explicit_source_packages_affect_hash(tmp_path, monkeypatch):
+    """An unlisted receipt_chroma edit must not rebuild another image."""
+    _make_project(tmp_path)
+    monkeypatch.setattr(cdi, "PROJECT_DIR", str(tmp_path))
+
+    dynamo = tmp_path / "receipt_dynamo" / "receipt_dynamo"
+    dynamo.mkdir(parents=True)
+    (dynamo / "client.py").write_text("VALUE = 1\n")
+    (tmp_path / "receipt_dynamo" / "pyproject.toml").write_text(
+        "[project]\nname='receipt-dynamo'\nversion='0.1.0'\n"
+    )
+    chroma = tmp_path / "receipt_chroma" / "receipt_chroma"
+    chroma.mkdir(parents=True)
+    (chroma / "client.py").write_text("VALUE = 1\n")
+
+    handler_dir = tmp_path / "infra" / "handler"
+    handler_dir.mkdir(parents=True)
+    (handler_dir / "Dockerfile").write_text("FROM scratch\n")
+    inst = _bare_instance(
+        dockerfile_path="infra/handler/Dockerfile",
+        source_paths=["receipt_dynamo"],
+    )
+    baseline = inst._calculate_content_hash()
+
+    (chroma / "client.py").write_text("VALUE = 2\n")
+    assert inst._calculate_content_hash() == baseline
+
+    (dynamo / "client.py").write_text("VALUE = 2\n")
+    assert inst._calculate_content_hash() != baseline
+
+
+def test_upload_context_includes_only_explicit_packages(tmp_path, monkeypatch):
+    _make_project(tmp_path)
+    monkeypatch.setattr(cdi, "PROJECT_DIR", str(tmp_path))
+    inst = _bare_instance(
+        dockerfile_path="Dockerfile",
+        source_paths=["receipt_dynamo"],
+    )
+
+    script = inst._generate_upload_script("artifact-bucket", "hash")
+
+    assert 'PACKAGES_TO_INCLUDE="receipt_dynamo"' in script
+    assert "--include='receipt_dynamo/'" in script
+    assert "receipt_chroma" not in script
 
 
 if __name__ == "__main__":

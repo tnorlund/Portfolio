@@ -57,7 +57,7 @@ def get_clients():
             create_dynamo_client,
             create_embed_fn,
         )
-        from receipt_chroma.data.chroma_client import ChromaClient
+        from receipt_chroma import ChromaClient
         from receipt_dynamo.data._pulumi import load_env, load_secrets
 
         env = os.environ.get("PORTFOLIO_ENV", "dev")
@@ -938,6 +938,24 @@ real outside humans. Ordered by activity.""",
             },
         ),
         Tool(
+            name="analytics_recent",
+            description="""Most recent human page views across the site, newest first (one call).
+
+Reads the curated web_events table, so freshness tracks the transform cadence
+(hourly). Returns recent page_view beacons with PT time, IP, org/city/country,
+page, and referrer; bots and your own WARP traffic are excluded by default.
+Use to answer "who just visited" without hand-writing SQL against raw logs.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hours": {"type": "integer", "default": 6, "description": "Look-back window in hours (default 6, max 48)"},
+                    "humans_only": {"type": "boolean", "default": True, "description": "Exclude bots + WARP (default true)"},
+                    "limit": {"type": "integer", "default": 50, "description": "Max rows (default 50, max 200)"},
+                },
+                "required": [],
+            },
+        ),
+        Tool(
             name="analytics_top",
             description="""Top values for a dimension over a date range (CloudFront logs via Athena).
 
@@ -1500,6 +1518,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await analytics_sessions_impl(
                 start_date=arguments["start_date"],
                 end_date=arguments["end_date"],
+                humans_only=arguments.get("humans_only", True),
+                limit=arguments.get("limit", 50),
+            )
+        elif name == "analytics_recent":
+            result = await analytics_recent_impl(
+                hours=arguments.get("hours", 6),
                 humans_only=arguments.get("humans_only", True),
                 limit=arguments.get("limit", 50),
             )
@@ -3739,6 +3763,47 @@ LIMIT {limit}
         }
     except Exception as exc:
         logger.exception("analytics_sessions failed")
+        return {"error": str(exc)}
+
+
+async def analytics_recent_impl(hours=6, humans_only=True, limit=50) -> dict:
+    """Most recent human page views (newest first) from curated web_events.
+
+    A time-window query (last N hours) rather than a date range, so it answers
+    "who just visited" in one call. Freshness tracks the transform cadence.
+    """
+    try:
+        hours = max(1, min(int(hours), 48))
+        limit = max(1, min(int(limit), 200))
+        flt = "AND NOT is_bot AND NOT is_warp" if humans_only else ""
+        pt = "(ts_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles'"
+        # Widen the dt floor to cover the whole look-back plus a 1-day UTC edge
+        # buffer, so a 48h window early in the UTC day doesn't drop the
+        # two-days-ago partition before the ts_utc filter can see it.
+        day_span = hours // 24 + 2
+        sql = f"""
+SELECT
+  date_format({pt}, '%Y-%m-%d %H:%i:%s') AS pt_time,
+  request_ip AS ip,
+  org, city, country, is_hosting,
+  evt_path AS page,
+  referrer AS ref,
+  sid
+FROM {ANALYTICS_DB}.web_events
+WHERE dt >= date_format(date_add('day', -{day_span}, current_date), '%Y-%m-%d')
+  AND ts_utc >= date_add('hour', -{hours}, CAST((now() AT TIME ZONE 'UTC') AS timestamp))
+  AND is_beacon AND event = 'page_view'
+  {flt}
+ORDER BY ts_utc DESC
+LIMIT {limit}
+"""
+        return {
+            "hours": hours,
+            "humans_only": humans_only,
+            "rows": _athena_run(sql),
+        }
+    except Exception as exc:
+        logger.exception("analytics_recent failed")
         return {"error": str(exc)}
 
 

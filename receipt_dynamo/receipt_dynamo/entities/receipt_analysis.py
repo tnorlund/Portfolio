@@ -19,6 +19,10 @@ from receipt_dynamo.entities.receipt_validation_result import (
 from receipt_dynamo.entities.receipt_validation_summary import (
     ReceiptValidationSummary,
 )
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_positive_int,
+)
 
 
 @dataclass
@@ -61,12 +65,34 @@ class ReceiptAnalysis:
 
     def __post_init__(self):
         """Initialize empty lists for collection fields if they are None."""
-        if self.validation_categories is None:
-            self.validation_categories = []
-        if self.validation_results is None:
-            self.validation_results = []
-        if self.chatgpt_validations is None:
-            self.chatgpt_validations = []
+        validate_positive_int("receipt_id", self.receipt_id)
+        assert_valid_uuid(self.image_id)
+        self.validation_categories = list(self.validation_categories or [])
+        self.validation_results = list(self.validation_results or [])
+        self.chatgpt_validations = list(self.chatgpt_validations or [])
+
+        collection_contracts = (
+            (
+                "validation_categories",
+                self.validation_categories,
+                ReceiptValidationCategory,
+            ),
+            (
+                "validation_results",
+                self.validation_results,
+                ReceiptValidationResult,
+            ),
+            (
+                "chatgpt_validations",
+                self.chatgpt_validations,
+                ReceiptChatGPTValidation,
+            ),
+        )
+        for field_name, values, expected_type in collection_contracts:
+            if not all(isinstance(value, expected_type) for value in values):
+                raise ValueError(
+                    f"{field_name} must contain {expected_type.__name__} objects"
+                )
 
     def __repr__(self) -> str:
         """Return a string representation of the ReceiptAnalysis object."""

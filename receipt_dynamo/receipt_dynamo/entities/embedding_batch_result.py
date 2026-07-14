@@ -12,12 +12,18 @@ from receipt_dynamo.entities.util import (
 
 
 def validate_pinecone_id_format(
-    pinecone_id: str, receipt_id: int, line_id: int, word_id: int
+    pinecone_id: str,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
 ) -> bool:
     """
     Validate that the pinecone_id matches the pattern:
     IMAGE#<uuid>#RECEIPT#<receipt_id:05d>#LINE#<line_id:05d>#WORD#<word_id:05d>
     """
+    if not isinstance(pinecone_id, str):
+        return False
     parts = pinecone_id.split("#")
     # Expect exactly 8 segments: IMAGE, uuid, RECEIPT, padded receipt_id,
     # LINE, padded line_id, WORD, padded word_id
@@ -25,6 +31,7 @@ def validate_pinecone_id_format(
         return False
     if (
         parts[0] != "IMAGE"
+        or parts[1] != image_id
         or parts[2] != "RECEIPT"
         or parts[4] != "LINE"
         or parts[6] != "WORD"
@@ -48,6 +55,11 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
     REQUIRED_KEYS = {
         "PK",
         "SK",
+        "TYPE",
+        "GSI2PK",
+        "GSI2SK",
+        "GSI3PK",
+        "GSI3SK",
         "pinecone_id",
         "text",
         "error_message",
@@ -91,7 +103,11 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
 
         # validate pinecone_id format
         if not validate_pinecone_id_format(
-            self.pinecone_id, self.receipt_id, self.line_id, self.word_id
+            self.pinecone_id,
+            self.image_id,
+            self.receipt_id,
+            self.line_id,
+            self.word_id,
         ):
             raise ValueError(
                 "pinecone_id must be in the format "
@@ -105,8 +121,8 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
         sk = (
             f"RESULT#IMAGE#{self.image_id}"
             f"#RECEIPT#{self.receipt_id:05d}"
-            f"#LINE#{self.line_id:03}"
-            f"#WORD#{self.word_id:03}"
+            f"#LINE#{self.line_id:03d}"
+            f"#WORD#{self.word_id:03d}"
         )
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
@@ -127,7 +143,7 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
             "status": {"S": self.status},
             "error_message": (
                 {"S": self.error_message}
-                if self.error_message
+                if self.error_message is not None
                 else {"NULL": True}
             ),
         }
@@ -200,7 +216,12 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
             )
         try:
             # Extract batch_id from PK
-            batch_id = item["PK"]["S"].split("#", 1)[1]
+            pk = item["PK"]["S"]
+            if not pk.startswith("BATCH#") or not pk.split("#", 1)[1]:
+                raise ValueError(f"Invalid embedding batch PK: {pk}")
+            if item["TYPE"].get("S") != "EMBEDDING_BATCH_RESULT":
+                raise ValueError("Invalid embedding batch result TYPE")
+            batch_id = pk.split("#", 1)[1]
 
             # Split SK into parts for flexible parsing
             sk_parts: list[str] = item["SK"]["S"].split("#")
@@ -218,6 +239,16 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
                 )
 
             image_id = item["image_id"]["S"]
+            if (
+                len(sk_parts) != 9
+                or sk_parts[0] != "RESULT"
+                or sk_parts[1] != "IMAGE"
+                or sk_parts[2] != image_id
+                or sk_parts[3] != "RECEIPT"
+                or sk_parts[5] != "LINE"
+                or sk_parts[7] != "WORD"
+            ):
+                raise ValueError("Invalid embedding batch result SK")
 
             # Dynamically parse IDs
             receipt_id = int(sk_value("RECEIPT"))
@@ -232,7 +263,7 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
             else:
                 error_message = None
 
-            return cls(
+            result = cls(
                 batch_id=batch_id,
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -243,6 +274,14 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
                 text=text,
                 error_message=error_message,
             )
+            expected = {
+                **result.key,
+                **result.gsi2_key,
+                **result.gsi3_key,
+            }
+            if any(item.get(key) != value for key, value in expected.items()):
+                raise ValueError("Invalid embedding batch result keys")
+            return result
         except Exception as e:
             raise ValueError(
                 f"Error converting item to EmbeddingBatchResult: {e}"
