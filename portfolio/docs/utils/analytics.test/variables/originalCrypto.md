@@ -8,4 +8,4 @@
 
 > `const` **originalCrypto**: `Crypto` = `window.crypto`
 
-Defined in: [utils/analytics.test.ts:4](https://github.com/tnorlund/Portfolio/blob/781b07c5af0acf72ef3dcbb7739a25854301ce3f/portfolio/utils/analytics.test.ts#L4)
+Defined in: [utils/analytics.test.ts:4](https://github.com/tnorlund/Portfolio/blob/a63834cc397883f007078f5756b2490f1e7488f7/portfolio/utils/analytics.test.ts#L4)
