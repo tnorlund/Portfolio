@@ -7,6 +7,7 @@ from receipt_dynamo.constants import SectionType, ValidationStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_non_negative_int,
     validate_positive_int,
 )
 
@@ -86,10 +87,11 @@ class ReceiptSection:
             raise ValueError("line_ids must not be empty")
         for line_id in self.line_ids:
             try:
-                validate_positive_int("line_id", line_id)
+                validate_non_negative_int("line_id", line_id)
             except ValueError as exc:
                 raise ValueError(
-                    "line_ids must contain only integers greater than zero"
+                    "line_ids must contain only integers greater than or "
+                    "equal to zero"
                 ) from exc
         self.line_ids = list(self.line_ids)
 

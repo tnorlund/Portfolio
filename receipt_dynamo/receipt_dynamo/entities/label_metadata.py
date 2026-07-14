@@ -102,7 +102,7 @@ class LabelMetadata:
 
     def to_item(self) -> dict[str, Any]:
         self.__post_init__()
-        item = {
+        item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "LABEL_METADATA"},
@@ -215,9 +215,13 @@ class LabelMetadata:
                 raise ValueError("Invalid LabelMetadata keys")
             if "TYPE" in item and item["TYPE"] != expected["TYPE"]:
                 raise ValueError("Invalid LabelMetadata TYPE")
-            for key in ("GSI2PK", "GSI2SK"):
-                if item.get(key) != expected.get(key):
-                    raise ValueError("Invalid LabelMetadata GSI2 keys")
+            gsi2_keys = ("GSI2PK", "GSI2SK")
+            present_gsi2_keys = [key for key in gsi2_keys if key in item]
+            if present_gsi2_keys and (
+                len(present_gsi2_keys) != len(gsi2_keys)
+                or any(item[key] != expected.get(key) for key in gsi2_keys)
+            ):
+                raise ValueError("Invalid LabelMetadata GSI2 keys")
             return metadata
         except Exception as e:
             raise ValueError(

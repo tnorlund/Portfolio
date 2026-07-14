@@ -40,6 +40,21 @@ def test_receipt_section_init_valid(example_receipt_section):
 
 
 @pytest.mark.unit
+def test_receipt_section_zero_based_line_id_round_trip():
+    section = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type=SectionType.HEADER,
+        line_ids=[0, 1],
+        created_at=datetime(2023, 1, 1, 12, 0, 0),
+    )
+
+    restored = item_to_receipt_section(section.to_item())
+
+    assert restored == section
+
+
+@pytest.mark.unit
 def test_receipt_section_init_with_string_section_type():
     """Test that a ReceiptSection can be created with a string section_type."""
     section = ReceiptSection(
@@ -162,6 +177,18 @@ def test_receipt_section_init_invalid_line_ids():
             line_ids=[1, "2", 3],
             created_at=datetime(2023, 1, 1, 12, 0, 0),
         )
+
+    for invalid_line_id in (-1, True):
+        with pytest.raises(
+            ValueError, match="line_ids must contain only integers"
+        ):
+            ReceiptSection(
+                receipt_id=1,
+                image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                section_type=SectionType.HEADER,
+                line_ids=[invalid_line_id],
+                created_at=datetime(2023, 1, 1, 12, 0, 0),
+            )
 
 
 @pytest.mark.unit
@@ -410,7 +437,6 @@ def test_validation_status_accepts_enum_instance():
     [
         ("receipt_id", True, "receipt_id must be an integer"),
         ("line_ids", [True], "line_ids must contain only integers"),
-        ("line_ids", [0], "line_ids must contain only integers"),
         ("line_ids", [-1], "line_ids must contain only integers"),
         ("confidence", float("nan"), "confidence must be finite"),
         ("confidence", float("inf"), "confidence must be finite"),

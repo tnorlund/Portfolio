@@ -92,6 +92,23 @@ def test_receipt_label_analysis_init_valid(example_receipt_label_analysis):
 
 
 @pytest.mark.unit
+def test_receipt_label_analysis_zero_based_word_reference_round_trip(
+    example_receipt_label_analysis,
+):
+    label = dict(example_receipt_label_analysis.labels[0])
+    label["line_id"] = 0
+    label["word_id"] = 0
+    example_receipt_label_analysis.labels = [label]
+
+    restored = item_to_receipt_label_analysis(
+        example_receipt_label_analysis.to_item()
+    )
+
+    assert restored.labels[0]["line_id"] == 0
+    assert restored.labels[0]["word_id"] == 0
+
+
+@pytest.mark.unit
 def test_receipt_label_analysis_init_invalid_image_id():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid image_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
@@ -507,6 +524,19 @@ def test_receipt_label_analysis_rejects_bool_identifiers(
         kwargs["labels"][0][field_name] = True
 
     with pytest.raises(ValueError, match=f"{field_name} must be an integer"):
+        ReceiptLabelAnalysis(**kwargs)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("field_name", ["line_id", "word_id"])
+def test_receipt_label_analysis_rejects_negative_word_identifiers(
+    example_receipt_label_analysis, field_name
+):
+    kwargs = dict(example_receipt_label_analysis)
+    kwargs["labels"] = [dict(example_receipt_label_analysis.labels[0])]
+    kwargs["labels"][0][field_name] = -1
+
+    with pytest.raises(ValueError, match=f"{field_name} must be non-negative"):
         ReceiptLabelAnalysis(**kwargs)
 
 

@@ -14,6 +14,7 @@ from receipt_dynamo.entities.dynamodb_utils import (
 from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     validate_iso_timestamp,
+    validate_non_negative_int,
     validate_positive_int,
 )
 
@@ -92,8 +93,8 @@ class ReceiptLabelAnalysis:
                 )
             if not isinstance(label["label_type"], str):
                 raise ValueError("label_type must be a string")
-            validate_positive_int("line_id", label["line_id"])
-            validate_positive_int("word_id", label["word_id"])
+            validate_non_negative_int("line_id", label["line_id"])
+            validate_non_negative_int("word_id", label["word_id"])
             if not isinstance(label["text"], str):
                 raise ValueError("text must be a string")
             if not isinstance(label["reasoning"], str):

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -94,12 +95,56 @@ def test_label_metadata_reads_legacy_item_without_type(
     example_label_metadata,
 ):
     item = example_label_metadata.to_item()
-    del item["TYPE"]
+    for key in ("TYPE", "GSI2PK", "GSI2SK"):
+        del item[key]
 
     restored = item_to_label_metadata(item)
 
     assert restored == example_label_metadata
     assert restored.to_item()["TYPE"] == {"S": "LABEL_METADATA"}
+
+
+@pytest.mark.parametrize(
+    "gsi2_keys",
+    [
+        {"GSI2PK": {"S": "LABEL_TARGET#value"}},
+        {
+            "GSI2PK": {"S": "LABEL_TARGET#wrong"},
+            "GSI2SK": {"S": "LABEL#SUBTOTAL"},
+        },
+    ],
+)
+def test_label_metadata_rejects_partial_or_wrong_gsi2_keys(
+    example_label_metadata,
+    gsi2_keys,
+):
+    item = example_label_metadata.to_item()
+    item.pop("GSI2PK")
+    item.pop("GSI2SK")
+    item.update(gsi2_keys)
+
+    with pytest.raises(ValueError, match="GSI2 keys"):
+        item_to_label_metadata(item)
+
+
+def test_label_metadata_without_target_uses_sparse_gsi2(
+    example_label_metadata,
+):
+    metadata = replace(example_label_metadata, label_target=None)
+    item = metadata.to_item()
+
+    assert "GSI2PK" not in item
+    assert "GSI2SK" not in item
+    assert item_to_label_metadata(item) == metadata
+
+    item.update(
+        {
+            "GSI2PK": {"S": "LABEL_TARGET#None"},
+            "GSI2SK": {"S": "LABEL#SUBTOTAL"},
+        }
+    )
+    with pytest.raises(ValueError, match="GSI2 keys"):
+        item_to_label_metadata(item)
 
 
 def test_label_metadata_rejects_wrong_type(example_label_metadata):
