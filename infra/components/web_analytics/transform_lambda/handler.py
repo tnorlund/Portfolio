@@ -356,9 +356,10 @@ def _rebuild_partition(dt: str, deadline: float) -> str:
     run_id = uuid.uuid4().hex
     staging_prefix = f"{STAGING_PREFIX.rstrip('/')}/dt={dt}/run={run_id}/"
     staging_location = f"s3://{CURATED_BUCKET}/{staging_prefix}"
-    swapped = False
+    unload_complete = False
     try:
         _run(_unload_sql(dt, staging_location), deadline)
+        unload_complete = True
         if previous_location:
             swap_sql = (
                 f"ALTER TABLE {DB}.web_events PARTITION (dt='{dt}') "
@@ -370,12 +371,15 @@ def _rebuild_partition(dt: str, deadline: float) -> str:
                 f"LOCATION '{staging_location}'"
             )
         _run(swap_sql, deadline)
-        swapped = True
     finally:
-        if not swapped:
+        if not unload_complete:
             # Athena can leave partial UNLOAD output on failure. It is never
             # visible through web_events, and is safe to remove immediately.
             _delete_prefix(staging_prefix)
+        # Once UNLOAD succeeds, preserve staging on any swap error. Athena may
+        # have committed ADD/SET LOCATION just before a timeout was observed;
+        # deleting here could remove the newly active partition. The next run
+        # safely reconciles any genuinely orphaned staging prefix.
 
     # The metadata swap above is the only visibility boundary. Once it
     # succeeds, remove the previous location and any older abandoned runs.

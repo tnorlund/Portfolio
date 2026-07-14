@@ -154,6 +154,47 @@ def test_failed_unload_never_changes_partition(transform_module, monkeypatch):
     assert deleted == [f"staging/web_events/dt={dt}/run={'c' * 32}/"]
 
 
+def test_uncertain_swap_result_preserves_staging(
+    transform_module, monkeypatch
+):
+    """A swap timeout cannot delete a prefix Athena may have made active."""
+    transform = transform_module
+    dt = "2026-07-14"
+    previous = f"s3://curated-bucket/web_events/dt={dt}/"
+    sql_calls = []
+    deleted = []
+    monkeypatch.setattr(transform, "_partition_location", lambda _dt: previous)
+    monkeypatch.setattr(
+        transform.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex="d" * 32),
+    )
+    monkeypatch.setattr(
+        transform,
+        "_cleanup_partition_objects",
+        lambda _dt, _active, retired_location=None: None,
+    )
+
+    def timeout_during_swap(sql, _deadline):
+        sql_calls.append(sql)
+        if len(sql_calls) == 2:
+            raise TimeoutError("swap result unknown")
+
+    monkeypatch.setattr(transform, "_run", timeout_during_swap)
+    monkeypatch.setattr(
+        transform,
+        "_delete_prefix",
+        lambda prefix, keep_prefix=None: deleted.append(prefix),
+    )
+
+    with pytest.raises(TimeoutError, match="swap result unknown"):
+        transform._rebuild_partition(dt, 123.0)
+
+    assert sql_calls[0].startswith("UNLOAD (")
+    assert " SET LOCATION " in sql_calls[1]
+    assert not deleted
+
+
 def test_unload_schema_matches_non_partition_columns(transform_module):
     """The partition key is metadata-only; enrichment and dedup stay intact."""
     sql = transform_module._unload_sql(
