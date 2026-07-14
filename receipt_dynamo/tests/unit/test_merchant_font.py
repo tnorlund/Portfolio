@@ -205,9 +205,8 @@ def test_merchant_font_invalid_empty_string_fields(field_name):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [None, 123, "not-a-date"])
 def test_merchant_font_invalid_compiled_at_type(bad_value):
-    # str "not-a-date" is accepted (validated at usage), None/int rejected.
-    if isinstance(bad_value, str):
-        font = MerchantFont(
+    with pytest.raises(ValueError, match="compiled_at must be"):
+        MerchantFont(
             merchant_name="Test Merchant",
             face="regular",
             s3_bucket="b",
@@ -220,22 +219,6 @@ def test_merchant_font_invalid_compiled_at_type(bad_value):
             pitch_check="ok",
             glyph_count=10,
         )
-        assert font.compiled_at == bad_value
-    else:
-        with pytest.raises(ValueError, match="compiled_at must be"):
-            MerchantFont(
-                merchant_name="Test Merchant",
-                face="regular",
-                s3_bucket="b",
-                s3_key="k",
-                content_hash="h",
-                source_commit="c",
-                compiled_at=bad_value,
-                cap_h=0.7,
-                advance_ratio=0.5,
-                pitch_check="ok",
-                glyph_count=10,
-            )
 
 
 @pytest.mark.unit

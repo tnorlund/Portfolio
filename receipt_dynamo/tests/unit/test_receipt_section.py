@@ -1,5 +1,6 @@
 # pylint: disable=redefined-outer-name
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -36,6 +37,21 @@ def test_receipt_section_init_valid(example_receipt_section):
     assert example_receipt_section.section_type == "HEADER"
     assert example_receipt_section.line_ids == [1, 2, 3, 4]
     assert example_receipt_section.created_at == datetime(2023, 1, 1, 12, 0, 0)
+
+
+@pytest.mark.unit
+def test_receipt_section_zero_based_line_id_round_trip():
+    section = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type=SectionType.HEADER,
+        line_ids=[0, 1],
+        created_at=datetime(2023, 1, 1, 12, 0, 0),
+    )
+
+    restored = item_to_receipt_section(section.to_item())
+
+    assert restored == section
 
 
 @pytest.mark.unit
@@ -161,6 +177,18 @@ def test_receipt_section_init_invalid_line_ids():
             line_ids=[1, "2", 3],
             created_at=datetime(2023, 1, 1, 12, 0, 0),
         )
+
+    for invalid_line_id in (-1, True):
+        with pytest.raises(
+            ValueError, match="line_ids must contain only integers"
+        ):
+            ReceiptSection(
+                receipt_id=1,
+                image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                section_type=SectionType.HEADER,
+                line_ids=[invalid_line_id],
+                created_at=datetime(2023, 1, 1, 12, 0, 0),
+            )
 
 
 @pytest.mark.unit
@@ -401,3 +429,54 @@ def test_validation_status_accepts_enum_instance():
         validation_status=ValidationStatus.PENDING,
     )
     assert s.validation_status == "PENDING"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("receipt_id", True, "receipt_id must be an integer"),
+        ("line_ids", [True], "line_ids must contain only integers"),
+        ("line_ids", [-1], "line_ids must contain only integers"),
+        ("confidence", float("nan"), "confidence must be finite"),
+        ("confidence", float("inf"), "confidence must be finite"),
+    ],
+)
+def test_receipt_section_rejects_invalid_numeric_values(
+    example_receipt_section, field, value, match
+):
+    with pytest.raises(ValueError, match=match):
+        replace(example_receipt_section, **{field: value})
+
+
+@pytest.mark.unit
+def test_receipt_section_copies_line_ids(example_receipt_section):
+    line_ids = [1, 2]
+    section = replace(example_receipt_section, line_ids=line_ids)
+    line_ids.append(3)
+
+    assert section.line_ids == [1, 2]
+
+
+@pytest.mark.unit
+def test_receipt_section_item_has_exact_keys(example_receipt_section):
+    assert set(example_receipt_section.to_item()) == {
+        "PK",
+        "SK",
+        "TYPE",
+        "section_type",
+        "line_ids",
+        "created_at",
+    }
+
+
+@pytest.mark.unit
+def test_receipt_section_serialization_revalidates_mutable_state(
+    example_receipt_section,
+):
+    example_receipt_section.line_ids.append(True)
+
+    with pytest.raises(
+        ValueError, match="line_ids must contain only integers"
+    ):
+        example_receipt_section.to_item()

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -357,3 +358,77 @@ def test_item_to_receipt_word_label_invalid_format():
         ValueError, match="Error converting item to ReceiptWordLabel"
     ):
         item_to_receipt_word_label(invalid_item)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("field", ["receipt_id", "line_id", "word_id"])
+def test_receipt_word_label_rejects_bool_ids(
+    example_receipt_word_label, field
+):
+    with pytest.raises(ValueError, match=f"{field} must be an integer"):
+        replace(example_receipt_word_label, **{field: True})
+
+
+@pytest.mark.unit
+def test_receipt_word_label_round_trip_preserves_optional_provenance(
+    example_receipt_word_label,
+):
+    label = replace(
+        example_receipt_word_label,
+        label="item",
+        label_proposed_by="gpt-4.1",
+        label_consolidated_from="ITEM_NAME",
+        reasoning=None,
+    )
+    item = label.to_item()
+
+    assert item_to_receipt_word_label(item) == label
+    assert item_to_receipt_word_label(item).to_item() == item
+
+
+@pytest.mark.unit
+def test_receipt_word_label_item_has_exact_keys(example_receipt_word_label):
+    assert set(example_receipt_word_label.to_item()) == {
+        "PK",
+        "SK",
+        "GSI1PK",
+        "GSI1SK",
+        "GSI2PK",
+        "GSI2SK",
+        "GSI3PK",
+        "GSI3SK",
+        "GSI4PK",
+        "GSI4SK",
+        "TYPE",
+        "reasoning",
+        "timestamp_added",
+        "validation_status",
+        "label_consolidated_from",
+        "label_proposed_by",
+    }
+
+
+@pytest.mark.unit
+def test_receipt_word_label_serialization_revalidates_mutable_state(
+    example_receipt_word_label,
+):
+    example_receipt_word_label.word_id = True
+
+    with pytest.raises(ValueError, match="word_id must be an integer"):
+        example_receipt_word_label.to_item()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", ["", False, 0])
+def test_receipt_word_label_rejects_falsy_invalid_status(status):
+    with pytest.raises(ValueError, match="ValidationStatus"):
+        ReceiptWordLabel(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="ITEM",
+            reasoning=None,
+            timestamp_added="2021-01-01T00:00:00",
+            validation_status=status,
+        )

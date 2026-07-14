@@ -1,5 +1,7 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Generator
 
 from receipt_dynamo.constants import OCRJobType, OCRStatus
@@ -48,14 +50,25 @@ class OCRJob:
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
+        self._validate_fields()
+        self.status = normalize_enum(self.status, OCRStatus)
+        self.job_type = normalize_enum(self.job_type, OCRJobType)
+        self.reocr_region = deepcopy(self.reocr_region)
+
+    def _validate_fields(self) -> None:
+        """Validate fields at construction and before persistence."""
         assert_valid_uuid(self.image_id)
         assert_valid_uuid(self.job_id)
 
         if not isinstance(self.s3_bucket, str):
             raise ValueError("s3_bucket must be a string")
+        if not self.s3_bucket:
+            raise ValueError("s3_bucket must be non-empty")
 
         if not isinstance(self.s3_key, str):
             raise ValueError("s3_key must be a string")
+        if not self.s3_key:
+            raise ValueError("s3_key must be non-empty")
 
         if not isinstance(self.created_at, datetime):
             raise ValueError("created_at must be a datetime")
@@ -65,13 +78,16 @@ class OCRJob:
         ):
             raise ValueError("updated_at must be a datetime or None")
 
-        self.status = normalize_enum(self.status, OCRStatus)
-        self.job_type = normalize_enum(self.job_type, OCRJobType)
+        normalize_enum(self.status, OCRStatus)
+        normalize_enum(self.job_type, OCRJobType)
 
-        if self.receipt_id is not None and not isinstance(
-            self.receipt_id, int
-        ):
-            raise ValueError("receipt_id must be an integer or None")
+        if self.receipt_id is not None:
+            if isinstance(self.receipt_id, bool) or not isinstance(
+                self.receipt_id, int
+            ):
+                raise ValueError("receipt_id must be an integer or None")
+            if self.receipt_id <= 0:
+                raise ValueError("receipt_id must be greater than zero")
 
         if self.reocr_region is not None:
             if not isinstance(self.reocr_region, dict):
@@ -83,7 +99,11 @@ class OCRJob:
                 )
             for key in required:
                 value = self.reocr_region[key]
-                if not isinstance(value, int | float):
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int | float)
+                    or not isfinite(value)
+                ):
                     raise ValueError(
                         f"reocr_region[{key}] must be numeric, got {type(value)}"
                     )
@@ -120,6 +140,9 @@ class OCRJob:
         }
 
     def to_item(self) -> dict[str, Any]:
+        self.status = normalize_enum(self.status, OCRStatus)
+        self.job_type = normalize_enum(self.job_type, OCRJobType)
+        self._validate_fields()
         return {
             **self.key,
             **self.gsi1_key(),
@@ -266,9 +289,18 @@ class OCRJob:
             def _extract(item_dict: dict[str, Any]) -> str | None:
                 if field_name not in item_dict:
                     return None
-                if item_dict[field_name].get("NULL"):
+                attribute = item_dict[field_name]
+                if attribute == {"NULL": True}:
                     return None
-                return item_dict[field_name].get("S")
+                if (
+                    not isinstance(attribute, dict)
+                    or set(attribute) != {"S"}
+                    or not isinstance(attribute["S"], str)
+                ):
+                    raise ValueError(
+                        f"{field_name} must be a DynamoDB string (S) or NULL"
+                    )
+                return attribute["S"]
 
             return _extract
 
@@ -280,7 +312,12 @@ class OCRJob:
             "reocr_reason": _extract_optional_string("reocr_reason"),
         }
 
-        return EntityFactory.create_entity(
+        if item.get("TYPE", {}).get("S") != "OCR_JOB":
+            raise ValueError("Invalid OCRJob TYPE")
+        if not item.get("SK", {}).get("S", "").startswith("OCR_JOB#"):
+            raise ValueError("Invalid OCRJob SK format")
+
+        job = EntityFactory.create_entity(
             entity_class=cls,
             item=item,
             required_keys=cls.REQUIRED_KEYS,
@@ -290,6 +327,19 @@ class OCRJob:
             },
             custom_extractors=custom_extractors,
         )
+        expected = job.to_item()
+        for key in (
+            "PK",
+            "SK",
+            "TYPE",
+            "GSI1PK",
+            "GSI1SK",
+            "GSI2PK",
+            "GSI2SK",
+        ):
+            if item.get(key) != expected.get(key):
+                raise ValueError("Invalid OCRJob keys")
+        return job
 
 
 def item_to_ocr_job(item: dict[str, Any]) -> OCRJob:

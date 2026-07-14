@@ -1,4 +1,6 @@
-from typing import Any
+"""DynamoDB data-access operations for jobs."""
+
+from typing import Any, cast
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
@@ -18,6 +20,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
+    """Validate the primary keys in a job pagination token."""
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
@@ -207,7 +210,7 @@ class _Job(FlattenedStandardMixin):
                 f"Job with job id {job_id} does not exist"
             )
 
-        return result
+        return cast(Job, result)
 
     @handle_dynamodb_errors("get_job_by_name")
     def get_job_by_name(
@@ -331,11 +334,14 @@ class _Job(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        return self._query_by_type(
-            entity_type="JOB",
-            converter_func=item_to_job,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
+        return cast(
+            tuple[list[Job], dict | None],
+            self._query_by_type(
+                entity_type="JOB",
+                converter_func=item_to_job,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+            ),
         )
 
     @handle_dynamodb_errors("get_active_model_job")

@@ -1,5 +1,6 @@
-from dataclasses import dataclass
-from typing import Generator, List
+from copy import copy
+from dataclasses import dataclass, field, fields
+from typing import Any, Generator
 
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
@@ -20,21 +21,31 @@ from receipt_dynamo.entities.word import Word
 class ImageDetails:
     """Collection of all data associated with an image."""
 
-    images: list[Image]
-    lines: list[Line]
-    words: list[Word]
-    letters: list[Letter]
-    receipts: list[Receipt]
-    receipt_lines: list[ReceiptLine]
-    receipt_words: list[ReceiptWord]
-    receipt_letters: list[ReceiptLetter]
-    receipt_word_labels: list[ReceiptWordLabel]
-    receipt_places: list[ReceiptPlace]
-    receipt_barcodes: list[ReceiptBarcode]
-    ocr_jobs: list[OCRJob]
-    ocr_routing_decisions: list[OCRRoutingDecision]
+    images: list[Image] = field(default_factory=list)
+    lines: list[Line] = field(default_factory=list)
+    words: list[Word] = field(default_factory=list)
+    letters: list[Letter] = field(default_factory=list)
+    receipts: list[Receipt] = field(default_factory=list)
+    receipt_lines: list[ReceiptLine] = field(default_factory=list)
+    receipt_words: list[ReceiptWord] = field(default_factory=list)
+    receipt_letters: list[ReceiptLetter] = field(default_factory=list)
+    receipt_word_labels: list[ReceiptWordLabel] = field(default_factory=list)
+    receipt_places: list[ReceiptPlace] = field(default_factory=list)
+    receipt_barcodes: list[ReceiptBarcode] = field(default_factory=list)
+    ocr_jobs: list[OCRJob] = field(default_factory=list)
+    ocr_routing_decisions: list[OCRRoutingDecision] = field(
+        default_factory=list
+    )
 
-    def __iter__(self) -> Generator[List, None, None]:
+    def __post_init__(self) -> None:
+        """Reject non-list collections and detach caller-owned containers."""
+        for field_info in fields(self):
+            value = getattr(self, field_info.name)
+            if not isinstance(value, list):
+                raise ValueError(f"{field_info.name} must be a list")
+            setattr(self, field_info.name, copy(value))
+
+    def __iter__(self) -> Generator[list[Any], None, None]:
         yield self.images
         yield self.lines
         yield self.words

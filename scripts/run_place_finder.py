@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from typing import Any
 
 # Add parent directories to path for imports
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +27,7 @@ sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 
+from receipt_dynamo.constants import MerchantValidationStatus
 from receipt_dynamo.data._pulumi import load_env, load_secrets
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
@@ -136,8 +138,11 @@ async def run_place_finder_for_receipt(
             )
             # No existing place (or check failed), continue processing
 
+    from receipt_agent.clients.factory import (
+        create_embed_fn,
+        create_places_client,
+    )
     from receipt_agent.config.settings import get_settings
-    from receipt_agent.clients.factory import create_places_client, create_embed_fn
     from receipt_agent.subagents.place_finder.graph import (
         create_receipt_place_finder_graph,
         run_receipt_place_finder,
@@ -239,6 +244,11 @@ async def run_place_finder_for_receipt(
                 formatted_address=result.get('address') or '',
                 phone_number=result.get('phone_number') or '',
                 validated_by='INFERENCE',
+                validation_status=(
+                    MerchantValidationStatus.MATCHED.value
+                    if result.get('place_id')
+                    else MerchantValidationStatus.UNSURE.value
+                ),
                 reasoning=result.get('reasoning') or '',
             )
 
@@ -258,10 +268,10 @@ async def run_place_finder_for_receipt(
 async def run_all_missing(
     dynamo_client: DynamoClient,
     dry_run: bool = True,
-    limit: int = None,
+    limit: int | None = None,
 ) -> dict:
     """Run place finder for all missing places."""
-    results = {
+    results: dict[str, list[tuple[str, int, Any]]] = {
         'skipped': [],
         'empty': [],
         'success': [],

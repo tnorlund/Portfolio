@@ -1,13 +1,20 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_summary.py
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_non_empty_string,
+    validate_positive_int,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptValidationSummary:
+class ReceiptValidationSummary(SerializationMixin):
     """
     DynamoDB entity representing the overall validation summary for a receipt.
     This is the parent item for all validation data for a receipt.
@@ -21,8 +28,8 @@ class ReceiptValidationSummary:
     validation_timestamp: str | None = None
     version: str = "1.0.0"
     metadata: dict[str, Any] | None = None
-    timestamp_added: datetime | None = None
-    timestamp_updated: datetime | None = None
+    timestamp_added: str | datetime | None = None
+    timestamp_updated: str | datetime | None = None
 
     def __post_init__(self):
         """
@@ -31,30 +38,19 @@ class ReceiptValidationSummary:
         Raises:
             ValueError: If any parameter is invalid
         """
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        validate_positive_int("receipt_id", self.receipt_id)
         assert_valid_uuid(self.image_id)
-
-        if not isinstance(self.overall_status, str):
-            raise ValueError("overall_status must be a string")
-
-        if not isinstance(self.overall_reasoning, str):
-            raise ValueError("overall_reasoning must be a string")
+        validate_non_empty_string("overall_status", self.overall_status)
+        validate_non_empty_string("overall_reasoning", self.overall_reasoning)
 
         # Store field_summary as an instance attribute
         if not isinstance(self.field_summary, dict):
             raise ValueError("field_summary must be a dictionary")
-
-        if self.validation_timestamp is not None and not isinstance(
-            self.validation_timestamp, str
-        ):
-            raise ValueError("validation_timestamp must be a string")
-
-        if not isinstance(self.version, str):
-            raise ValueError("version must be a string")
+        self.field_summary = deepcopy(self.field_summary)
+        self.validation_timestamp = validate_iso_timestamp(
+            self.validation_timestamp, "validation_timestamp"
+        )
+        validate_non_empty_string("version", self.version)
 
         # Initialize metadata with default structure if not provided
         if self.metadata is None:
@@ -68,7 +64,7 @@ class ReceiptValidationSummary:
                 raise ValueError("metadata must be a dictionary")
 
             # Ensure metadata has the expected structure
-            self.metadata = self.metadata.copy()
+            self.metadata = deepcopy(self.metadata)
             if "processing_metrics" not in self.metadata:
                 self.metadata["processing_metrics"] = {}
             if "source_info" not in self.metadata:
@@ -76,24 +72,23 @@ class ReceiptValidationSummary:
             if "processing_history" not in self.metadata:
                 self.metadata["processing_history"] = []
 
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif isinstance(self.timestamp_added, str):
-            pass  # Already a string
-        elif self.timestamp_added is not None:
+        if not isinstance(self.metadata["processing_metrics"], dict):
             raise ValueError(
-                "timestamp_added must be a datetime, string, or None"
+                "metadata processing_metrics must be a dictionary"
+            )
+        if not isinstance(self.metadata["source_info"], dict):
+            raise ValueError("metadata source_info must be a dictionary")
+        if not isinstance(self.metadata["processing_history"], list):
+            raise ValueError("metadata processing_history must be a list")
+
+        if self.timestamp_added is not None:
+            self.timestamp_added = validate_iso_timestamp(
+                self.timestamp_added, "timestamp_added"
             )
 
-        if self.timestamp_updated is None:
-            pass  # Leave as None
-        elif isinstance(self.timestamp_updated, datetime):
-            self.timestamp_updated = self.timestamp_updated.isoformat()
-        elif isinstance(self.timestamp_updated, str):
-            pass  # Already a string
-        else:
-            raise ValueError(
-                "timestamp_updated must be a datetime, string, or None"
+        if self.timestamp_updated is not None:
+            self.timestamp_updated = validate_iso_timestamp(
+                self.timestamp_updated, "timestamp_updated"
             )
 
     @property
@@ -129,48 +124,6 @@ class ReceiptValidationSummary:
 
     def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
-
-        # Helper function to convert a dict to DynamoDB M (map) format
-        def dict_to_dynamo(d):
-            if not d:
-                return {"M": {}}
-
-            result = {"M": {}}
-            for k, v in d.items():
-                if isinstance(v, dict):
-                    result["M"][k] = dict_to_dynamo(v)
-                elif isinstance(v, str):
-                    result["M"][k] = {"S": v}
-                elif isinstance(v, (int, float)):
-                    result["M"][k] = {"N": str(v)}
-                elif isinstance(v, bool):
-                    # Use BOOL type for boolean values
-                    result["M"][k] = {"BOOL": v}
-                elif v is None:
-                    result["M"][k] = {"NULL": True}
-                elif isinstance(v, list):
-                    result["M"][k] = {
-                        "L": [
-                            (
-                                dict_to_dynamo(item)
-                                if isinstance(item, dict)
-                                else (
-                                    {"BOOL": item}
-                                    if isinstance(item, bool)
-                                    else (
-                                        {"N": str(item)}
-                                        if isinstance(item, (int, float))
-                                        else {"S": str(item)}
-                                    )
-                                )
-                            )
-                            for item in v
-                        ]
-                    }
-                else:
-                    result["M"][k] = {"S": str(v)}
-            return result
-
         item = {
             **self.key,
             **self.gsi1_key(),
@@ -181,8 +134,8 @@ class ReceiptValidationSummary:
             "overall_reasoning": {"S": self.overall_reasoning},
             "validation_timestamp": {"S": self.validation_timestamp},
             "version": {"S": self.version},
-            "field_summary": dict_to_dynamo(self.field_summary),
-            "metadata": dict_to_dynamo(self.metadata),
+            "field_summary": self._python_to_dynamo(self.field_summary),
+            "metadata": self._python_to_dynamo(self.metadata),
         }
 
         # Add timestamps if they exist
@@ -201,43 +154,17 @@ class ReceiptValidationSummary:
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationSummary":
         """Create a ReceiptValidationSummary from a DynamoDB item."""
-
-        # Helper function to convert DynamoDB format back to Python dicts
-        def dynamo_to_python(dynamo_item):
-            if "M" in dynamo_item:
-                result: dict[str, Any] = {}
-                for k, v in dynamo_item["M"].items():
-                    if "S" in v:
-                        result[k] = v["S"]
-                    elif "N" in v:
-                        # Check for string booleans first
-                        if v["N"] == "True":
-                            result[k] = True
-                        elif v["N"] == "False":
-                            result[k] = False
-                        else:
-                            # Try to convert to int first, then float
-                            try:
-                                result[k] = int(v["N"])
-                            except ValueError:
-                                result[k] = float(v["N"])
-                    elif "BOOL" in v:
-                        result[k] = v["BOOL"]
-                    elif "NULL" in v:
-                        result[k] = None
-                    elif "M" in v:
-                        result[k] = dynamo_to_python(v)
-                    elif "L" in v:
-                        result[k] = [
-                            (
-                                dynamo_to_python(item)
-                                if "M" in item
-                                else item.get("S", item.get("N", None))
-                            )
-                            for item in v["L"]
-                        ]
-                return result
-            return {}
+        cls.validate_required_keys(
+            item,
+            {
+                "PK",
+                "SK",
+                "overall_status",
+                "overall_reasoning",
+                "validation_timestamp",
+                "field_summary",
+            },
+        )
 
         # Extract image_id and receipt_id from keys
         image_id = item["PK"]["S"].split("#")[1]
@@ -248,32 +175,17 @@ class ReceiptValidationSummary:
         overall_reasoning = item.get("overall_reasoning", {}).get("S", "")
 
         # Convert field_summary from DynamoDB format
-        field_summary = dynamo_to_python(item.get("field_summary", {"M": {}}))
+        field_summary = cls._dynamo_to_python(item["field_summary"])
 
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
         version = item.get("version", {}).get("S", "1.0.0")
 
         # Convert metadata from DynamoDB format
-        metadata = dynamo_to_python(item.get("metadata", {"M": {}}))
+        metadata = cls._dynamo_to_python(item.get("metadata", {"M": {}}))
 
         # Parse timestamps if present
-        timestamp_added = None
-        if "timestamp_added" in item and "S" in item["timestamp_added"]:
-            try:
-                timestamp_added = datetime.fromisoformat(
-                    item["timestamp_added"]["S"]
-                )
-            except (ValueError, TypeError):
-                pass
-
-        timestamp_updated = None
-        if "timestamp_updated" in item and "S" in item["timestamp_updated"]:
-            try:
-                timestamp_updated = datetime.fromisoformat(
-                    item["timestamp_updated"]["S"]
-                )
-            except (ValueError, TypeError):
-                pass
+        timestamp_added = item.get("timestamp_added", {}).get("S")
+        timestamp_updated = item.get("timestamp_updated", {}).get("S")
 
         # Create and return the object
         return cls(
@@ -303,10 +215,13 @@ class ReceiptValidationSummary:
             metric_name (str): The name of the metric.
             value (Any): The value of the metric.
         """
-        if "processing_metrics" not in self.metadata:
-            self.metadata["processing_metrics"] = {}
+        metadata = self.metadata
+        if metadata is None:  # pragma: no cover - normalized in __post_init__
+            raise RuntimeError("metadata was not initialized")
+        if "processing_metrics" not in metadata:
+            metadata["processing_metrics"] = {}
 
-        self.metadata["processing_metrics"][metric_name] = value
+        metadata["processing_metrics"][metric_name] = value
 
     def add_history_event(
         self, event_type: str, details: dict[str, Any] | None = None
@@ -318,8 +233,11 @@ class ReceiptValidationSummary:
             details (Dict, optional): Additional details about the event.
                 Defaults to None.
         """
-        if "processing_history" not in self.metadata:
-            self.metadata["processing_history"] = []
+        metadata = self.metadata
+        if metadata is None:  # pragma: no cover - normalized in __post_init__
+            raise RuntimeError("metadata was not initialized")
+        if "processing_history" not in metadata:
+            metadata["processing_history"] = []
 
         event = {
             "event_type": event_type,
@@ -329,7 +247,7 @@ class ReceiptValidationSummary:
         if details:
             event.update(details)
 
-        self.metadata["processing_history"].append(event)
+        metadata["processing_history"].append(event)
 
 
 def item_to_receipt_validation_summary(
@@ -349,87 +267,4 @@ def item_to_receipt_validation_summary(
         ValueError: When the item format is invalid or required keys are
             missing.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "overall_status",
-        "overall_reasoning",
-        "validation_timestamp",
-        "field_summary",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
-
-    try:
-        # Helper function to convert DynamoDB format back to Python dicts
-        def dynamo_to_python(dynamo_item):
-            if "M" in dynamo_item:
-                result: dict[str, Any] = {}
-                for k, v in dynamo_item["M"].items():
-                    if "S" in v:
-                        result[k] = v["S"]
-                    elif "N" in v:
-                        # Check for string booleans first
-                        if v["N"] == "True":
-                            result[k] = True
-                        elif v["N"] == "False":
-                            result[k] = False
-                        else:
-                            # Try to convert to int first, then float
-                            try:
-                                result[k] = int(v["N"])
-                            except ValueError:
-                                result[k] = float(v["N"])
-                    elif "BOOL" in v:
-                        result[k] = v["BOOL"]
-                    elif "NULL" in v:
-                        result[k] = None
-                    elif "M" in v:
-                        result[k] = dynamo_to_python(v)
-                    elif "L" in v:
-                        result[k] = [
-                            (
-                                dynamo_to_python(item)
-                                if "M" in item
-                                else item.get(
-                                    "S", item.get("N", item.get("BOOL", None))
-                                )
-                            )
-                            for item in v["L"]
-                        ]
-                return result
-            return {}
-
-        # Extract basic values
-        image_id = item["PK"]["S"].split("#")[1]
-        receipt_id = int(item["SK"]["S"].split("#")[1])
-        overall_status = item["overall_status"]["S"]
-        overall_reasoning = item["overall_reasoning"]["S"]
-        validation_timestamp = item["validation_timestamp"]["S"]
-        version = item.get("version", {}).get("S", "1.0.0")
-
-        # Convert complex structures
-        field_summary = dynamo_to_python(item["field_summary"])
-        metadata = dynamo_to_python(item.get("metadata", {"M": {}}))
-
-        # Handle timestamps
-        timestamp_added = item.get("timestamp_added", {}).get("S")
-        timestamp_updated = item.get("timestamp_updated", {}).get("S")
-
-        return ReceiptValidationSummary(
-            receipt_id=receipt_id,
-            image_id=image_id,
-            overall_status=overall_status,
-            overall_reasoning=overall_reasoning,
-            field_summary=field_summary,
-            validation_timestamp=validation_timestamp,
-            version=version,
-            metadata=metadata,
-            timestamp_added=timestamp_added,
-            timestamp_updated=timestamp_updated,
-        )
-    except (KeyError, IndexError, ValueError) as e:
-        raise ValueError(
-            "Error converting item to ReceiptValidationSummary"
-        ) from e
+    return ReceiptValidationSummary.from_item(item)

@@ -117,18 +117,7 @@ def test_addJobMetric_success(
         sample_job_metric.metric_name
     )
 
-    # Find the metric matching our job_id
-    job_metrics = [m for m in metrics if m.job_id == sample_job.job_id]
-
-    # Verify
-    assert len(job_metrics) >= 1
-    metric = job_metrics[0]
-    assert metric.job_id == sample_job.job_id
-    assert metric.metric_name == sample_job_metric.metric_name
-    assert metric.value == sample_job_metric.value
-    assert metric.unit == sample_job_metric.unit
-    assert metric.step == sample_job_metric.step
-    assert metric.epoch == sample_job_metric.epoch
+    assert sample_job_metric in metrics
 
 
 @pytest.mark.integration
@@ -219,14 +208,7 @@ def test_getJobMetric_success(
         sample_job_metric.timestamp,
     )
 
-    # Verify
-    assert metric.job_id == sample_job_metric.job_id
-    assert metric.metric_name == sample_job_metric.metric_name
-    assert metric.value == sample_job_metric.value
-    assert metric.timestamp == sample_job_metric.timestamp
-    assert metric.unit == sample_job_metric.unit
-    assert metric.step == sample_job_metric.step
-    assert metric.epoch == sample_job_metric.epoch
+    assert metric == sample_job_metric
 
 
 @pytest.mark.integration

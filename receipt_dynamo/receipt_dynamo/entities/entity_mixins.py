@@ -14,13 +14,16 @@ receipt_text_geometry_entity.py for geometry operations.
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import (
     Any,
     Protocol,
     TypeVar,
 )
 
+from receipt_dynamo.entities.dynamodb_utils import (
+    parse_dynamodb_value,
+    to_dynamodb_value,
+)
 from receipt_dynamo.entities.util import _repr_str
 
 T = TypeVar("T")
@@ -121,48 +124,20 @@ class SerializationMixin:
             DynamoDB attribute dict like {"S": "text"} or {"N": "123"}
         """
         # pylint: disable=too-many-return-statements
-        # Maps Python types to DynamoDB type markers. Each Python type (None,
-        # str, bool, int, float, datetime, list, dict, set) requires a
-        # different DynamoDB representation, making multiple returns inherent
-        # to this type dispatch.
-        if value is None:
-            return {"NULL": True}
-        if isinstance(value, str):
-            return {"S": value} if value else {"NULL": True}
-        if isinstance(value, bool):
-            return {"BOOL": value}
-        if isinstance(value, int):
-            return {"N": str(value)}
-        if isinstance(value, float):
-            if serialize_decimal:
-                return {"N": str(Decimal(str(value)))}
-            return {"N": str(value)}
+        # ``serialize_decimal`` remains accepted for API compatibility. The
+        # low-level DynamoDB representation is a decimal string either way.
+        del serialize_decimal
         if isinstance(value, datetime):
             return {"S": value.isoformat()}
+        if isinstance(value, str) and not value:
+            return {"NULL": True}
         if isinstance(value, list):
-            if not value:
-                return {"L": []}
-            # Check if it's a string set
-            if all(isinstance(item, str) for item in value):
-                return {"SS": value}
             return {"L": [self._serialize_value(item) for item in value]}
         if isinstance(value, dict):
-            if not value:
-                return {"M": {}}
             return {
                 "M": {k: self._serialize_value(v) for k, v in value.items()}
             }
-        if isinstance(value, set):
-            if not value:
-                return {"L": []}
-            # Convert to sorted list for consistency
-            if all(isinstance(item, str) for item in value):
-                return {"SS": sorted(value)}
-            return {
-                "L": [self._serialize_value(item) for item in sorted(value)]
-            }
-        # Fallback to string representation
-        return {"S": str(value)}
+        return to_dynamodb_value(value)
         # pylint: enable=too-many-return-statements
 
     def _python_to_dynamo(self, value: Any) -> dict[str, Any]:
@@ -186,36 +161,22 @@ class SerializationMixin:
         # DynamoDB has 9 distinct type markers (NULL, S, N, BOOL, M, L, SS, NS,
         # BS). Each requires different handling, making multiple returns
         # inherent to this type dispatch logic.
-        if "NULL" in dynamo_value:
-            return None
-        if "S" in dynamo_value:
-            return dynamo_value["S"]
-        if "N" in dynamo_value:
-            # Try to convert to int if possible, otherwise float
-            try:
-                return int(dynamo_value["N"])
-            except ValueError:
-                return float(dynamo_value["N"])
-        if "BOOL" in dynamo_value:
-            return dynamo_value["BOOL"]
-        if "M" in dynamo_value:
-            return {
-                k: SerializationMixin._dynamo_to_python(v)
-                for k, v in dynamo_value["M"].items()
-            }
-        if "L" in dynamo_value:
-            return [
-                SerializationMixin._dynamo_to_python(item)
-                for item in dynamo_value["L"]
-            ]
-        if "SS" in dynamo_value:
-            return dynamo_value["SS"]
-        if "NS" in dynamo_value:
-            return [float(n) for n in dynamo_value["NS"]]
-        if "BS" in dynamo_value:
-            return dynamo_value["BS"]
-        # Convert any other type to string
-        return str(dynamo_value)
+        known_markers = {
+            "NULL",
+            "S",
+            "N",
+            "BOOL",
+            "M",
+            "L",
+            "B",
+            "SS",
+            "NS",
+            "BS",
+        }
+        if known_markers.isdisjoint(dynamo_value):
+            # Preserve the established fallback for unsupported values.
+            return str(dynamo_value)
+        return parse_dynamodb_value(dynamo_value)
         # pylint: enable=too-many-return-statements
 
     @classmethod

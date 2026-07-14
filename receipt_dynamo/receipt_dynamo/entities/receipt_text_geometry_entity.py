@@ -16,6 +16,7 @@ from typing import Any, ClassVar
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
+from receipt_dynamo.entities.util import validate_positive_int
 
 
 @dataclass(kw_only=True)
@@ -75,10 +76,7 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
             ValueError: If any field has invalid type or value
         """
         # Validate receipt_id
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
 
         # Normalize and validate embedding_status
         if isinstance(self.embedding_status, EmbeddingStatus):
