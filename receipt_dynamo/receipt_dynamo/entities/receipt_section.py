@@ -67,6 +67,12 @@ class ReceiptSection:
     model_source: str | None = None
     validation_status: str | None = None
     row_ids: list[int] | None = None
+    verification_source: str | None = None
+    verification_status: str | None = None
+    verification_section_type: str | None = None
+    verification_confidence: float | None = None
+    disagreement_row_ids: list[int] | None = None
+    verified_at: datetime | str | None = None
 
     def __post_init__(self):
         """Validate and initialize the ReceiptSection instance."""
@@ -159,6 +165,66 @@ class ReceiptSection:
             if len(set(self.row_ids)) != len(self.row_ids):
                 raise ValueError("row_ids must not contain duplicates")
 
+        self._validate_verification()
+
+    def _validate_verification(self) -> None:
+        """Validate optional KNN-verifier provenance."""
+
+        if self.verification_source is not None and not isinstance(
+            self.verification_source, str
+        ):
+            raise ValueError("verification_source must be a string or None")
+        if self.verification_status is not None:
+            self.verification_status = str(self.verification_status).upper()
+            if self.verification_status not in {
+                "AGREED",
+                "DISAGREED",
+                "ABSTAINED",
+            }:
+                raise ValueError(
+                    "verification_status must be AGREED, DISAGREED, "
+                    "ABSTAINED, or None"
+                )
+        if self.verification_section_type is not None:
+            valid = {section.value for section in SectionType}
+            if self.verification_section_type not in valid:
+                raise ValueError("verification_section_type is invalid")
+        if self.verification_confidence is not None:
+            value = self.verification_confidence
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    "verification_confidence must be a number or None"
+                )
+            self.verification_confidence = float(value)
+            if not isfinite(self.verification_confidence) or not (
+                0.0 <= self.verification_confidence <= 1.0
+            ):
+                raise ValueError("verification_confidence must be in [0, 1]")
+        if self.disagreement_row_ids is not None:
+            if not isinstance(self.disagreement_row_ids, list) or any(
+                isinstance(row_id, bool)
+                or not isinstance(row_id, int)
+                or row_id < 0
+                for row_id in self.disagreement_row_ids
+            ):
+                raise ValueError(
+                    "disagreement_row_ids must contain non-negative integers"
+                )
+            if len(set(self.disagreement_row_ids)) != len(
+                self.disagreement_row_ids
+            ):
+                raise ValueError(
+                    "disagreement_row_ids must not contain duplicates"
+                )
+        if isinstance(self.verified_at, str):
+            self.verified_at = datetime.fromisoformat(self.verified_at)
+        elif self.verified_at is not None and not isinstance(
+            self.verified_at, datetime
+        ):
+            raise ValueError(
+                "verified_at must be a datetime, ISO string, or None"
+            )
+
     @property
     def key(self) -> dict[str, Any]:
         """Generate the primary key for the receipt section."""
@@ -200,6 +266,27 @@ class ReceiptSection:
             item["row_ids"] = {
                 "L": [{"N": str(row_id)} for row_id in self.row_ids]
             }
+        if self.verification_source is not None:
+            item["verification_source"] = {"S": self.verification_source}
+        if self.verification_status is not None:
+            item["verification_status"] = {"S": self.verification_status}
+        if self.verification_section_type is not None:
+            item["verification_section_type"] = {
+                "S": self.verification_section_type
+            }
+        if self.verification_confidence is not None:
+            item["verification_confidence"] = {
+                "N": str(self.verification_confidence)
+            }
+        if self.disagreement_row_ids is not None:
+            item["disagreement_row_ids"] = {
+                "L": [
+                    {"N": str(row_id)} for row_id in self.disagreement_row_ids
+                ]
+            }
+        verified_at = self.verified_at
+        if isinstance(verified_at, datetime):
+            item["verified_at"] = {"S": verified_at.isoformat()}
         return item
 
     def __repr__(self) -> str:
@@ -220,6 +307,7 @@ class ReceiptSection:
             f"model_source={_repr_str(self.model_source)}, "
             f"validation_status={_repr_str(self.validation_status)}, "
             f"row_ids={self.row_ids}"
+            f", verification_status={_repr_str(self.verification_status)}"
             f")"
         )
 
@@ -239,6 +327,16 @@ class ReceiptSection:
         yield "model_source", self.model_source
         yield "validation_status", self.validation_status
         yield "row_ids", self.row_ids
+        yield "verification_source", self.verification_source
+        yield "verification_status", self.verification_status
+        yield "verification_section_type", self.verification_section_type
+        yield "verification_confidence", self.verification_confidence
+        yield "disagreement_row_ids", self.disagreement_row_ids
+        yield "verified_at", (
+            self.verified_at.isoformat()
+            if isinstance(self.verified_at, datetime)
+            else self.verified_at
+        )
 
     def __hash__(self) -> int:
         """Return a hash of the ReceiptSection."""
@@ -257,6 +355,20 @@ class ReceiptSection:
                 self.model_source,
                 self.validation_status,
                 tuple(self.row_ids) if self.row_ids is not None else None,
+                self.verification_source,
+                self.verification_status,
+                self.verification_section_type,
+                self.verification_confidence,
+                (
+                    tuple(self.disagreement_row_ids)
+                    if self.disagreement_row_ids is not None
+                    else None
+                ),
+                (
+                    self.verified_at.isoformat()
+                    if isinstance(self.verified_at, datetime)
+                    else self.verified_at
+                ),
             )
         )
 
@@ -306,6 +418,36 @@ class ReceiptSection:
                 if "row_ids" in item
                 else None
             )
+            verification_source = (
+                item["verification_source"]["S"]
+                if "verification_source" in item
+                else None
+            )
+            verification_status = (
+                item["verification_status"]["S"]
+                if "verification_status" in item
+                else None
+            )
+            verification_section_type = (
+                item["verification_section_type"]["S"]
+                if "verification_section_type" in item
+                else None
+            )
+            verification_confidence = (
+                float(item["verification_confidence"]["N"])
+                if "verification_confidence" in item
+                else None
+            )
+            disagreement_row_ids = (
+                [int(row["N"]) for row in item["disagreement_row_ids"]["L"]]
+                if "disagreement_row_ids" in item
+                else None
+            )
+            verified_at = (
+                datetime.fromisoformat(item["verified_at"]["S"])
+                if "verified_at" in item
+                else None
+            )
 
             return cls(
                 receipt_id=receipt_id,
@@ -317,6 +459,12 @@ class ReceiptSection:
                 model_source=model_source,
                 validation_status=validation_status,
                 row_ids=row_ids,
+                verification_source=verification_source,
+                verification_status=verification_status,
+                verification_section_type=verification_section_type,
+                verification_confidence=verification_confidence,
+                disagreement_row_ids=disagreement_row_ids,
+                verified_at=verified_at,
             )
         except (KeyError, IndexError, ValueError) as e:
             raise ValueError(
