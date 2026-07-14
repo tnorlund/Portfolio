@@ -8,4 +8,4 @@
 
 > `const` **CLOUDFRONT\_ANALYTICS\_BEACON\_PATH**: `string`
 
-Defined in: [utils/analytics.ts:42](https://github.com/tnorlund/Portfolio/blob/ad94039030f38e33e4efbb50b02601fae6d0725f/portfolio/utils/analytics.ts#L42)
+Defined in: [utils/analytics.ts:42](https://github.com/tnorlund/Portfolio/blob/047ceb8158cff890c2e7d316f24605d5fcb4352e/portfolio/utils/analytics.ts#L42)

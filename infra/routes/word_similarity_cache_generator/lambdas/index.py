@@ -8,6 +8,7 @@ generates a summary table for visualization with receipt images.
 import json
 import logging
 import os
+import re
 import shutil
 import statistics
 import tempfile
@@ -43,6 +44,29 @@ CHROMA_CLOUD_ENABLED = (
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
 
+# Display-name overrides for merchants whose Google Places records vary in
+# casing/branding across store locations (e.g. "TRADER JOE'S" vs
+# "Trader Joe's" would otherwise render as two merchants in the table).
+_MERCHANT_DISPLAY_OVERRIDES = {
+    "trader joe's": "Trader Joe's",
+    "sprouts farmers market": "Sprouts Farmers Market",
+    "whole foods market": "Whole Foods Market",
+    "cvs pharmacy": "CVS Pharmacy",
+    "vons": "Vons",
+    "target": "Target",
+}
+
+
+def normalize_merchant(name: str) -> str:
+    """Collapse casing/whitespace variants of the same chain into one
+    display name. RECEIPT_PLACE.merchant_name comes verbatim from Google
+    Places and differs across store locations of the same chain."""
+    key = " ".join((name or "").split()).casefold()
+    if not key:
+        return "Unknown"
+    return _MERCHANT_DISPLAY_OVERRIDES.get(key, " ".join((name or "").split()))
+
+
 # Pattern to match price-like tokens (used to extract product name from row text)
 def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
     """Find the specific OCR line containing the target word.
@@ -58,13 +82,20 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
         Tuple of (text, line_id) for the line containing target_word,
         or None if not found
     """
+    by_id = {line.line_id: line.text.upper() for line in lines}
     for line in lines:
         if target_word in line.text.upper():
             # Check exclusions
             text_upper = line.text.upper()
             excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
-            if not excluded:
-                return (line.text, line.line_id)
+            if excluded or "VOID" in text_upper:
+                continue
+            # Skip voided purchases: receipts print the item line and then a
+            # "Voided <item>" marker on the following line(s). Treat a VOID
+            # marker within the next two lines as voiding this candidate.
+            if any("VOID" in by_id.get(line.line_id + off, "") for off in (1, 2)):
+                continue
+            return (line.text, line.line_id)
     return None
 
 # Price ranges for inferring milk sizes
@@ -202,8 +233,45 @@ class TimingStats:
         return result
 
 
+# Explicit size tokens printed in product names, checked before any
+# price-range inference (longest match first: HALF GALLON before GALLON).
+_EXPLICIT_SIZE_TOKENS = [
+    ("HALF GALLON", "Half Gallon"),
+    ("HALF GAL", "Half Gallon"),
+    ("1/2 GALLON", "Half Gallon"),
+    ("1/2 GAL", "Half Gallon"),
+    ("GALLON", "Gallon"),
+    ("QUART", "Quart"),
+    ("QT", "Quart"),
+    ("PINT", "Pint"),
+]
+
+# Generic dairy-milk fallback when the product name has no explicit size
+# and no per-product range entry. Half gallons of whole/organic/A2 milk
+# cluster under ~$6.50; gallons above.
+_GENERIC_MILK_RANGES = [
+    (0, 6.50, "Half Gallon"),
+    (6.50, 25.00, "Gallon"),
+]
+
+
+def strip_upc_prefix(product: str) -> str:
+    """Drop a leading UPC/item-code (8+ digits) from a product name:
+    '7989315000 V CRNR WHOLE MILK' -> 'V CRNR WHOLE MILK'."""
+    return re.sub(r"^\d{8,}\s+", "", product or "").strip()
+
+
 def infer_size(product: str, price: Optional[str]) -> str:
-    """Infer product size based on product name and price."""
+    """Infer product size: explicit size words in the name win, then
+    per-product price ranges, then a generic dairy-milk price fallback."""
+    product_upper = strip_upc_prefix(product).upper().strip()
+
+    # 1) The receipt names the size outright — no price needed.
+    padded = f" {product_upper} "
+    for token, size in _EXPLICIT_SIZE_TOKENS:
+        if f" {token} " in padded or padded.strip().endswith(token):
+            return size
+
     if not price:
         return "Unknown"
 
@@ -212,16 +280,8 @@ def infer_size(product: str, price: Optional[str]) -> str:
     except (ValueError, AttributeError):
         return "Unknown"
 
-    product_upper = product.upper().strip()
-
-    # Handle common variations
-    if product_upper == "WHOLE MILK" or product == "Whole Milk":
-        product_upper = "WHOLE MILK"
-
-    ranges = MILK_SIZE_RANGES.get(product_upper)
-    if not ranges:
-        return "Unknown"
-
+    # 2) Per-product calibrated ranges, else 3) generic milk ranges.
+    ranges = MILK_SIZE_RANGES.get(product_upper, _GENERIC_MILK_RANGES)
     for min_price, max_price, size in ranges:
         if min_price <= price_val < max_price:
             return size
@@ -691,10 +751,19 @@ def handler(_event, _context):
                 )
                 timings["visual_line"] = time.time() - t0
 
-                merchant = (
+                merchant = normalize_merchant(
                     details.place.merchant_name if details.place else "Unknown"
                 )
                 price = line_total or unit_price
+                if not price:
+                    # Some receipts (e.g. Target) print the price at the end
+                    # of the product line itself; split it out rather than
+                    # shipping a priceless row with the price in the name.
+                    m = re.search(r"\s+\$?(\d{1,3}\.\d{2})\s*$", product_text)
+                    if m:
+                        price = m.group(1)
+                        product_text = product_text[: m.start()].rstrip()
+                product_text = strip_upc_prefix(product_text)
                 size = infer_size(product_text, price)
 
                 # NOTE: details.lines (the full per-receipt line list, ~75 lines
