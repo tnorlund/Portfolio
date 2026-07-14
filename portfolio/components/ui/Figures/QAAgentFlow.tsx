@@ -191,8 +191,8 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
             width: "100%",
             height: "100%",
             display: "block",
-            objectFit: "cover",
-            objectPosition: "top",
+            objectFit: "contain",
+            objectPosition: "top center",
           }}
           onError={handleError}
         />
@@ -227,6 +227,7 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
         paddingTop: "0.9rem",
         borderTop: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14)",
         color: "var(--text-color)",
+        flexShrink: 0,
       }}
     >
       <div
@@ -573,6 +574,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
         ?.structuredData ?? [],
     [trace],
   );
+  const hasAnswerDetails =
+    answerText !== answerSummary || structuredReceipts.length > 0;
 
   // Reset animation when question changes (use index to avoid stale-data issues on mobile)
   const questionIndex = questionData?.questionIndex ?? -1;
@@ -1397,7 +1400,29 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                       color: "var(--text-color)",
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
+                    <div
+                      data-testid="qa-answer-summary"
+                      style={{
+                        minWidth: 0,
+                        flexShrink: 0,
+                        maxHeight:
+                          !showDetails && hasAnswerDetails
+                            ? "6.5rem"
+                            : undefined,
+                        overflow:
+                          !showDetails && hasAnswerDetails
+                            ? "hidden"
+                            : "visible",
+                        WebkitMaskImage:
+                          !showDetails && hasAnswerDetails
+                            ? "linear-gradient(to bottom, #000 78%, transparent 100%)"
+                            : undefined,
+                        maskImage:
+                          !showDetails && hasAnswerDetails
+                            ? "linear-gradient(to bottom, #000 78%, transparent 100%)"
+                            : undefined,
+                      }}
+                    >
                       <ReactMarkdown>
                         {showDetails ? answerText : answerSummary}
                       </ReactMarkdown>
@@ -1411,8 +1436,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                     />
                   </div>
 
-                  {answerText !== answerSummary ||
-                  structuredReceipts.length > 0 ? (
+                  {hasAnswerDetails ? (
                     <div
                       style={{
                         display: "flex",

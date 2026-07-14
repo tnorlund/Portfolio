@@ -34,7 +34,11 @@ const question0 = {
     },
     {
       type: "synthesize" as const,
-      content: "You spent $42.00 on groceries",
+      content: [
+        "# Grocery spending",
+        "",
+        "You spent $42.00 on groceries across receipts with valid dates and reasonable totals, excluding extreme OCR outliers so the summary reflects typical spending.",
+      ].join("\n"),
       detail: "3 receipts with grocery items identified",
       durationMs: 0,
       receipts: [

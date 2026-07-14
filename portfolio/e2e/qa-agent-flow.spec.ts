@@ -159,6 +159,36 @@ test.describe("QAAgentFlow", () => {
     await expect(
       evidence.getByAltText("Neighborhood Market receipt"),
     ).toHaveAttribute("src", /evidence-receipt-a\.jpg$/);
+    await expect(
+      evidence.getByAltText("Neighborhood Market receipt"),
+    ).toHaveCSS("object-fit", "contain");
+
+    const evidenceGeometry = await evidence.evaluate((region) => {
+      const content = document.querySelector("#qa-result-content");
+      const list = region.querySelector('[role="list"]');
+      const thumbnails = Array.from(
+        region.querySelectorAll('[role="listitem"]'),
+      );
+      if (!content || !list || thumbnails.length === 0) return null;
+
+      const contentBottom = content.getBoundingClientRect().bottom;
+      return {
+        contentBottom,
+        listBottom: list.getBoundingClientRect().bottom,
+        receiptBottom: Math.max(
+          ...thumbnails.map(
+            (thumbnail) => thumbnail.getBoundingClientRect().bottom,
+          ),
+        ),
+      };
+    });
+    expect(evidenceGeometry).not.toBeNull();
+    expect(evidenceGeometry!.listBottom).toBeLessThanOrEqual(
+      evidenceGeometry!.contentBottom + 1,
+    );
+    expect(evidenceGeometry!.receiptBottom).toBeLessThanOrEqual(
+      evidenceGeometry!.contentBottom + 1,
+    );
 
     await page.getByRole("button", { name: "View full answer" }).click();
     await expect(page.getByText("Structured receipts")).toBeVisible();
