@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
 from botocore.config import Config
+from handlers.skipped_all import build_skipped_all_s3_result
 from openai import OpenAI
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
 from receipt_chroma.embedding.openai import (
@@ -227,7 +228,9 @@ def _ensure_receipt_place(
 
     # Confirm the receipt entity itself exists before invoking the agent.
     try:
-        dynamo_client.get_receipt_details(image_id=image_id, receipt_id=receipt_id)
+        dynamo_client.get_receipt_details(
+            image_id=image_id, receipt_id=receipt_id
+        )
     except EntityNotFoundError:
         logger.warning(
             "Receipt entity missing; skipping orphaned receipt",
@@ -238,13 +241,17 @@ def _ensure_receipt_place(
 
     fix_place_fn = os.environ.get("FIX_PLACE_LAMBDA_NAME")
     if not fix_place_fn:
-        raise RuntimeError("FIX_PLACE_LAMBDA_NAME environment variable not set")
+        raise RuntimeError(
+            "FIX_PLACE_LAMBDA_NAME environment variable not set"
+        )
 
-    payload = json.dumps({
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "reason": "Missing place detected during word embedding ingest",
-    }).encode()
+    payload = json.dumps(
+        {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "reason": "Missing place detected during word embedding ingest",
+        }
+    ).encode()
 
     try:
         response = _fix_place_lambda_client.invoke(
@@ -827,6 +834,15 @@ def _handle_internal_core(
                 "All results filtered out due to orphaned receipts; "
                 "marking batch complete with no embeddings saved"
             )
+            # Build/upload the envelope BEFORE marking complete: if the
+            # upload fails, the batch must stay unmarked so a retry is safe.
+            skipped_result = build_skipped_all_s3_result(
+                s3_client,
+                batch_id,
+                openai_batch_id,
+                len(skipped_orphans),
+                "orphaned_receipts",
+            )
             if not skip_sqs:
                 _mark_batch_complete(batch_id)
             else:
@@ -835,23 +851,13 @@ def _handle_internal_core(
                     "(step function mode - will mark after compaction)",
                     batch_id=batch_id,
                 )
-            return {
-                "batch_id": batch_id,
-                "openai_batch_id": openai_batch_id,
-                "status": "completed",
-                "skipped_all": True,
-                "skipped_receipt_count": len(skipped_orphans),
-                "result_s3_key": None,
-                "result_s3_bucket": None,
-            }
+            return skipped_result
 
         # Get receipt details with timeout protection
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions, skipped_receipts = _get_receipt_descriptions(
-                results
-            )
+            descriptions, skipped_receipts = _get_receipt_descriptions(results)
 
         # Filter out results for skipped (missing) receipts
         if skipped_receipts:
@@ -862,7 +868,10 @@ def _handle_internal_core(
                     meta = parse_word_custom_id(r["custom_id"])
                 except (ValueError, KeyError):
                     continue
-                if (meta["image_id"], meta["receipt_id"]) not in skipped_receipts:
+                if (
+                    meta["image_id"],
+                    meta["receipt_id"],
+                ) not in skipped_receipts:
                     filtered.append(r)
             results = filtered
             logger.warning(
@@ -884,6 +893,15 @@ def _handle_internal_core(
                 "All results filtered out due to missing receipts; "
                 "marking batch complete with no embeddings saved"
             )
+            # Build/upload the envelope BEFORE marking complete: if the
+            # upload fails, the batch must stay unmarked so a retry is safe.
+            skipped_result = build_skipped_all_s3_result(
+                s3_client,
+                batch_id,
+                openai_batch_id,
+                len(skipped_receipts),
+                "missing_receipts",
+            )
             if not skip_sqs:
                 _mark_batch_complete(batch_id)
             else:
@@ -892,15 +910,7 @@ def _handle_internal_core(
                     "(step function mode - will mark after compaction)",
                     batch_id=batch_id,
                 )
-            return {
-                "batch_id": batch_id,
-                "openai_batch_id": openai_batch_id,
-                "status": "completed",
-                "skipped_all": True,
-                "skipped_receipt_count": len(skipped_receipts),
-                "result_s3_key": None,
-                "result_s3_bucket": None,
-            }
+            return skipped_result
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
