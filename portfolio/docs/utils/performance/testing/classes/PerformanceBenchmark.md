@@ -6,7 +6,7 @@
 
 # Class: PerformanceBenchmark
 
-Defined in: [utils/performance/testing.ts:212](https://github.com/tnorlund/Portfolio/blob/51ea94eff354e58018f9afb8d1dc901cf4f1d3a0/portfolio/utils/performance/testing.ts#L212)
+Defined in: [utils/performance/testing.ts:212](https://github.com/tnorlund/Portfolio/blob/45730201cec5187c2a74a3134ce1e421ddf95374/portfolio/utils/performance/testing.ts#L212)
 
 Create a performance benchmark suite
 
@@ -26,7 +26,7 @@ Create a performance benchmark suite
 
 > **add**(`name`, `fn`, `options?`): `PerformanceBenchmark`
 
-Defined in: [utils/performance/testing.ts:215](https://github.com/tnorlund/Portfolio/blob/51ea94eff354e58018f9afb8d1dc901cf4f1d3a0/portfolio/utils/performance/testing.ts#L215)
+Defined in: [utils/performance/testing.ts:215](https://github.com/tnorlund/Portfolio/blob/45730201cec5187c2a74a3134ce1e421ddf95374/portfolio/utils/performance/testing.ts#L215)
 
 #### Parameters
 
@@ -52,7 +52,7 @@ Defined in: [utils/performance/testing.ts:215](https://github.com/tnorlund/Portf
 
 > **compare**(`baseline`): `Promise`\<`void`\>
 
-Defined in: [utils/performance/testing.ts:236](https://github.com/tnorlund/Portfolio/blob/51ea94eff354e58018f9afb8d1dc901cf4f1d3a0/portfolio/utils/performance/testing.ts#L236)
+Defined in: [utils/performance/testing.ts:236](https://github.com/tnorlund/Portfolio/blob/45730201cec5187c2a74a3134ce1e421ddf95374/portfolio/utils/performance/testing.ts#L236)
 
 #### Parameters
 
@@ -70,7 +70,7 @@ Defined in: [utils/performance/testing.ts:236](https://github.com/tnorlund/Portf
 
 > **run**(): `Promise`\<`Map`\<`string`, [`PerformanceTestResult`](../interfaces/PerformanceTestResult.md)\>\>
 
-Defined in: [utils/performance/testing.ts:224](https://github.com/tnorlund/Portfolio/blob/51ea94eff354e58018f9afb8d1dc901cf4f1d3a0/portfolio/utils/performance/testing.ts#L224)
+Defined in: [utils/performance/testing.ts:224](https://github.com/tnorlund/Portfolio/blob/45730201cec5187c2a74a3134ce1e421ddf95374/portfolio/utils/performance/testing.ts#L224)
 
 #### Returns
 

@@ -8,6 +8,7 @@ generates a summary table for visualization with receipt images.
 import json
 import logging
 import os
+import re
 import shutil
 import statistics
 import tempfile
@@ -43,6 +44,29 @@ CHROMA_CLOUD_ENABLED = (
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
 
+# Display-name overrides for merchants whose Google Places records vary in
+# casing/branding across store locations (e.g. "TRADER JOE'S" vs
+# "Trader Joe's" would otherwise render as two merchants in the table).
+_MERCHANT_DISPLAY_OVERRIDES = {
+    "trader joe's": "Trader Joe's",
+    "sprouts farmers market": "Sprouts Farmers Market",
+    "whole foods market": "Whole Foods Market",
+    "cvs pharmacy": "CVS Pharmacy",
+    "vons": "Vons",
+    "target": "Target",
+}
+
+
+def normalize_merchant(name: str) -> str:
+    """Collapse casing/whitespace variants of the same chain into one
+    display name. RECEIPT_PLACE.merchant_name comes verbatim from Google
+    Places and differs across store locations of the same chain."""
+    key = " ".join((name or "").split()).casefold()
+    if not key:
+        return "Unknown"
+    return _MERCHANT_DISPLAY_OVERRIDES.get(key, " ".join((name or "").split()))
+
+
 # Pattern to match price-like tokens (used to extract product name from row text)
 def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
     """Find the specific OCR line containing the target word.
@@ -58,13 +82,20 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
         Tuple of (text, line_id) for the line containing target_word,
         or None if not found
     """
+    by_id = {line.line_id: line.text.upper() for line in lines}
     for line in lines:
         if target_word in line.text.upper():
             # Check exclusions
             text_upper = line.text.upper()
             excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
-            if not excluded:
-                return (line.text, line.line_id)
+            if excluded or "VOID" in text_upper:
+                continue
+            # Skip voided purchases: receipts print the item line and then a
+            # "Voided <item>" marker on the following line(s). Treat a VOID
+            # marker within the next two lines as voiding this candidate.
+            if any("VOID" in by_id.get(line.line_id + off, "") for off in (1, 2)):
+                continue
+            return (line.text, line.line_id)
     return None
 
 # Price ranges for inferring milk sizes
@@ -691,10 +722,18 @@ def handler(_event, _context):
                 )
                 timings["visual_line"] = time.time() - t0
 
-                merchant = (
+                merchant = normalize_merchant(
                     details.place.merchant_name if details.place else "Unknown"
                 )
                 price = line_total or unit_price
+                if not price:
+                    # Some receipts (e.g. Target) print the price at the end
+                    # of the product line itself; split it out rather than
+                    # shipping a priceless row with the price in the name.
+                    m = re.search(r"\s+\$?(\d{1,3}\.\d{2})\s*$", product_text)
+                    if m:
+                        price = m.group(1)
+                        product_text = product_text[: m.start()].rstrip()
                 size = infer_size(product_text, price)
 
                 # NOTE: details.lines (the full per-receipt line list, ~75 lines
