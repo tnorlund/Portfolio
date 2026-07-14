@@ -87,9 +87,6 @@ class CombineReceiptsStepFunction(ComponentResource):
         chromadb_bucket_arn: pulumi.Input[str],
         raw_bucket_name: pulumi.Input[str],
         site_bucket_name: pulumi.Input[str],
-        artifacts_bucket_name: Optional[pulumi.Input[str]] = None,
-        artifacts_bucket_arn: Optional[pulumi.Input[str]] = None,
-        embed_ndjson_queue_arn: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -234,10 +231,6 @@ class CombineReceiptsStepFunction(ComponentResource):
             site_bucket_name,
         ]
 
-        # Add artifacts bucket if provided (required for NDJSON export)
-        if artifacts_bucket_arn:
-            s3_resource_inputs.append(artifacts_bucket_arn)
-
         RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
@@ -260,12 +253,7 @@ class CombineReceiptsStepFunction(ComponentResource):
                                     f"{args[1]}/*",  # chromadb bucket objects
                                     f"arn:aws:s3:::{args[2]}/*",  # raw bucket objects
                                     f"arn:aws:s3:::{args[3]}/*",  # site bucket objects
-                                ]
-                                + (
-                                    [args[4], f"{args[4]}/*"]
-                                    if len(args) > 4
-                                    else []  # artifacts bucket if provided
-                                ),
+                                ],
                             }
                         ],
                     }
@@ -273,33 +261,6 @@ class CombineReceiptsStepFunction(ComponentResource):
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
-
-        # SQS permissions (only if queue ARN is provided - no wildcards)
-        if embed_ndjson_queue_arn:
-            RolePolicy(
-                f"{name}-lambda-sqs-policy",
-                role=lambda_role.id,
-                policy=Output.all(embed_ndjson_queue_arn).apply(
-                    lambda args: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "sqs:SendMessage",
-                                        "sqs:GetQueueAttributes",
-                                    ],
-                                    "Resource": args[
-                                        0
-                                    ],  # Specific queue ARN, no wildcards
-                                }
-                            ],
-                        }
-                    )
-                ),
-                opts=ResourceOptions(parent=lambda_role),
-            )
 
         # ============================================================
         # Lambda Functions
@@ -418,11 +379,6 @@ class CombineReceiptsStepFunction(ComponentResource):
                 )
                 or "combine-receipts",
                 "PULUMI_STACK": stack,
-                **(
-                    {}
-                    if not artifacts_bucket_name
-                    else {"ARTIFACTS_BUCKET": artifacts_bucket_name}
-                ),
             },
         }
 

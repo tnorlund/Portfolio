@@ -23,7 +23,7 @@ Design decisions:
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from receipt_chroma.compaction.models import CollectionUpdateResult

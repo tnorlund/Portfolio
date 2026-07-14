@@ -79,7 +79,6 @@ def create_dynamo_client(
 
 def create_chroma_client(
     persist_directory: Optional[str] = None,
-    http_url: Optional[str] = None,
     mode: str = "read",
     settings: Optional[Settings] = None,
 ) -> Any:
@@ -96,7 +95,6 @@ def create_chroma_client(
 
     Args:
         persist_directory: Local path to ChromaDB (defaults to settings)
-        http_url: HTTP URL for remote ChromaDB (defaults to settings)
         mode: Operation mode ("read", "write", "delta")
         settings: Configuration settings
 
@@ -238,9 +236,8 @@ def create_chroma_client(
                 "receipt_chroma package required for ChromaDB operations"
             ) from e
 
-    # Fall back to single client (legacy approach)
+    # Fall back to a single local or Chroma Cloud client.
     persist_dir = persist_directory or settings.chroma_persist_directory
-    url = http_url or settings.chroma_http_url
 
     # Chroma Cloud env vars
     cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip() or None
@@ -264,18 +261,13 @@ def create_chroma_client(
             mode=mode,
         )
         logger.info("Created Chroma Cloud client (tenant=%s)", cloud_tenant)
-    elif url:
-        client = ChromaClient(http_url=url, mode=mode)
-        logger.info("Created ChromaDB HTTP client: %s", url)
     elif persist_dir:
         client = ChromaClient(persist_directory=persist_dir, mode=mode)
         logger.info("Created ChromaDB client at: %s", persist_dir)
     else:
         raise ValueError(
-            "Either persist_directory or http_url must be specified. "
-            "Set CHROMA_CLOUD_API_KEY, "
+            "No ChromaDB backend configured. Set CHROMA_CLOUD_API_KEY, "
             "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
-            "RECEIPT_AGENT_CHROMA_HTTP_URL, or "
             "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
             "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
         )

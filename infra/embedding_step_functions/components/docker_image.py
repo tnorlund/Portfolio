@@ -4,21 +4,17 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import pulumi
-from pulumi import ComponentResource, Output, ResourceOptions
+from pulumi import ComponentResource, ResourceOptions
 from pulumi_aws.ecr import (
     LifecyclePolicy,
-    Repository,
-    RepositoryImageScanningConfigurationArgs,
     RepositoryPolicy,
 )
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
-
-from .base import stack
 
 
 class DockerImageComponent(ComponentResource):
@@ -72,12 +68,14 @@ class DockerImageComponent(ComponentResource):
     def __init__(
         self,
         name: str,
+        lambda_function_names: Optional[list[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize Docker image component.
 
         Args:
             name: Component name
+            lambda_function_names: Lambdas updated after the shared image build
             opts: Pulumi resource options
         """
         super().__init__(
@@ -101,11 +99,14 @@ class DockerImageComponent(ComponentResource):
             dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
             source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
                 "receipt_agent",
                 "receipt_chroma",
                 "receipt_places",
             ],  # Include packages used by embedding lambdas
             lambda_function_name=None,  # Lambdas created separately
+            lambda_function_names=lambda_function_names,
             lambda_config=None,
             platform="linux/arm64",
             opts=ResourceOptions(parent=self),

@@ -302,7 +302,6 @@ def docker_image_buildspec(
     *,
     build_args: Dict[str, str],
     platform: str,
-    lambda_function_name: Optional[str],
     debug_mode: bool,
 ) -> Dict[str, Any]:
     """Buildspec for CodeBuild Docker image builds."""
@@ -366,16 +365,20 @@ def docker_image_buildspec(
                     "IMAGE_URI=$ECR_REGISTRY/$REPOSITORY_NAME@$IMAGE_DIGEST",
                     "echo Image URI: $IMAGE_URI",
                     (
-                        'if [ -n "$LAMBDA_FUNCTION_NAME" ]; then '
-                        'echo "Checking if Lambda function $LAMBDA_FUNCTION_NAME exists..." && '
-                        'if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" '
+                        'FUNCTION_NAMES="$LAMBDA_FUNCTION_NAMES"; '
+                        'if [ -z "$FUNCTION_NAMES" ] && '
+                        '[ -n "$LAMBDA_FUNCTION_NAME" ]; then '
+                        'FUNCTION_NAMES="$LAMBDA_FUNCTION_NAME"; fi; '
+                        "for FUNCTION_NAME in $FUNCTION_NAMES; do "
+                        'echo "Checking if Lambda function $FUNCTION_NAME exists..."; '
+                        'if aws lambda get-function --function-name "$FUNCTION_NAME" '
                         ">/dev/null 2>&1; then "
-                        'echo "Updating existing Lambda function..." && '
+                        'echo "Updating existing Lambda function $FUNCTION_NAME..."; '
                         "aws lambda update-function-code --function-name "
-                        '"$LAMBDA_FUNCTION_NAME" --image-uri "$IMAGE_URI" >/dev/null && '
-                        'echo "✅ Lambda function updated"; else '
-                        'echo "Lambda function does not exist - will be created by Pulumi"; '
-                        "fi; fi"
+                        '"$FUNCTION_NAME" --image-uri "$IMAGE_URI" >/dev/null; '
+                        'echo "✅ Lambda function $FUNCTION_NAME updated"; else '
+                        'echo "Lambda function $FUNCTION_NAME does not exist - '
+                        'will be created by Pulumi"; fi; done'
                     ),
                     "echo Push completed on `date`",
                 ]

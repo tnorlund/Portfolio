@@ -4,15 +4,11 @@ These lightweight dataclasses keep embedding payloads (id, document text,
 metadata) aligned with the same schema used for persisted snapshots/deltas.
 """
 
-from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional
 
 from receipt_chroma.embedding.formatting.line_format import (
-    LineLike,
     format_line_context_embedding_input,
-    get_primary_line_id,
-    group_lines_into_visual_rows,
     parse_prev_next_from_formatted,
 )
 from receipt_chroma.embedding.formatting.word_format import get_word_neighbors
@@ -28,10 +24,7 @@ from receipt_chroma.embedding.metadata.word_metadata import (
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
-from receipt_chroma.section_labels import (
-    row_section_from_map,
-    sections_to_line_map,
-)
+from receipt_chroma.section_labels import row_section_from_map
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 
@@ -307,20 +300,3 @@ def build_row_payload(
         "documents": documents,
         "metadatas": metadatas,
     }
-
-
-def build_rows_from_lines(
-    lines: List[ReceiptLine],
-) -> List[List[LineLike]]:
-    """Group lines into visual rows for embedding.
-
-    Utility function to convert a flat list of ReceiptLine entities into
-    visual rows for the row-based embedding approach.
-
-    Args:
-        lines: All lines in a receipt
-
-    Returns:
-        List of visual rows, each row being a list of lines sorted left-to-right
-    """
-    return group_lines_into_visual_rows(lines)

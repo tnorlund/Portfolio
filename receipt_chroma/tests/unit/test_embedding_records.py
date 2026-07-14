@@ -347,8 +347,6 @@ class TestSectionLabelWiring:
     """section_label flows from a line_id->section map into row/line metadata."""
 
     def test_row_payload_stamps_majority_section(self) -> None:
-        from receipt_chroma.embedding.records import sections_to_line_map
-
         l1 = create_mock_line("img1", 1, 1, "Line 1")
         l2 = create_mock_line("img1", 1, 2, "Line 2")
         record = RowEmbeddingRecord(row_lines=(l1, l2), embedding=[0.1, 0.2])
@@ -378,7 +376,7 @@ class TestSectionLabelWiring:
         assert payload["metadatas"][0]["section_label"] == "SUMMARY"
 
     def test_sections_to_line_map_highest_confidence_wins(self) -> None:
-        from receipt_chroma.embedding.records import sections_to_line_map
+        from receipt_chroma.section_labels import sections_to_line_map
 
         s_low = Mock(line_ids=[1, 2], section_type="ITEMS", confidence=0.60)
         s_high = Mock(line_ids=[2], section_type="TOTAL_LINE", confidence=0.95)
@@ -390,7 +388,7 @@ class TestSectionGuards:
     """Codex P2s: skip INVALID sections; don't stamp on a tie."""
 
     def test_sections_to_line_map_skips_invalid(self):
-        from receipt_chroma.embedding.records import sections_to_line_map
+        from receipt_chroma.section_labels import sections_to_line_map
 
         good = Mock(
             line_ids=[1],

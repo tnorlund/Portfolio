@@ -1,9 +1,6 @@
 """Unit tests for normalization utilities."""
 
-import pytest
-
 from receipt_chroma.embedding.utils.normalize import (
-    build_full_address_from_lines,
     build_full_address_from_words,
     normalize_address,
     normalize_phone,
@@ -200,92 +197,4 @@ class TestBuildFullAddressFromWords:
 
         word = MockWord("Hello")
         result = build_full_address_from_words([word])
-        assert result == ""
-
-
-class TestBuildFullAddressFromLines:
-    """Test building address from lines."""
-
-    def test_single_line(self):
-        """Test with single line."""
-
-        class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
-                self.line_id = line_id
-                self.text = text
-                self.is_noise = is_noise
-
-        line = MockLine(1, "123 Main St")
-        result = build_full_address_from_lines([line])
-        assert result == "123 MAIN ST"
-
-    def test_multiple_lines(self):
-        """Test with multiple lines."""
-
-        class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
-                self.line_id = line_id
-                self.text = text
-                self.is_noise = is_noise
-
-        lines = [
-            MockLine(1, "123 Main St"),
-            MockLine(2, "New York, NY 10001"),
-        ]
-        result = build_full_address_from_lines(lines)
-        assert "123 MAIN ST" in result and "NEW YORK" in result
-
-    def test_lines_sorted_by_line_id(self):
-        """Test that lines are sorted by line_id."""
-
-        class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
-                self.line_id = line_id
-                self.text = text
-                self.is_noise = is_noise
-
-        lines = [
-            MockLine(3, "Third"),
-            MockLine(1, "First"),
-            MockLine(2, "Second"),
-        ]
-        result = build_full_address_from_lines(lines)
-        assert result == "FIRST SECOND THIRD"
-
-    def test_noise_lines_excluded(self):
-        """Test that noise lines are excluded."""
-
-        class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
-                self.line_id = line_id
-                self.text = text
-                self.is_noise = is_noise
-
-        lines = [
-            MockLine(1, "123 Main St", is_noise=False),
-            MockLine(2, "Noise", is_noise=True),
-            MockLine(3, "New York", is_noise=False),
-        ]
-        result = build_full_address_from_lines(lines)
-        assert "NOISE" not in result
-        assert "123 MAIN ST" in result
-
-    def test_empty_lines(self):
-        """Test with empty lines."""
-
-        class MockLine:
-            def __init__(self, line_id: int, text: str):
-                self.line_id = line_id
-                self.text = text
-                self.is_noise = False
-
-        result = build_full_address_from_lines([])
         assert result == ""

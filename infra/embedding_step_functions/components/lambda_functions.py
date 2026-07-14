@@ -1,34 +1,27 @@
 """Lambda functions component for embedding infrastructure."""
 
 import json
-import os
-
-# Import CodeBuildDockerImage for container Lambdas (matches compactor approach)
-# Use absolute import path like compactor does
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from pulumi import ComponentResource, FileArchive, Output, ResourceOptions
+from pulumi import (
+    ComponentResource,
+    FileArchive,
+    Output,
+    ResourceOptions,
+    create_urn,
+)
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import (
     Function,
     FunctionEnvironmentArgs,
     FunctionEphemeralStorageArgs,
-    FunctionFileSystemConfigArgs,
-    FunctionTracingConfigArgs,
     FunctionVpcConfigArgs,
 )
 from pulumi_aws.s3 import Bucket
 
 from .base import config as portfolio_config
 from .base import dynamo_layer, dynamodb_table, openai_api_key, stack
-
-# Add infra directory to path for imports
-infra_path = Path(__file__).parent.parent.parent
-if str(infra_path) not in sys.path:
-    sys.path.insert(0, str(infra_path))
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 GIGABYTE = 1024
 MINUTE = 60
@@ -47,6 +40,15 @@ def GiB(n: float | int) -> int:
     return int(n * 1024)
 
 
+CONTAINER_FUNCTION_NAMES = (
+    "embedding-poll-lines",
+    "embedding-poll-words",
+    "embedding-submit-words",
+    "embedding-submit-lines",
+    "embedding-compact",
+)
+
+
 class LambdaFunctionsComponent(ComponentResource):
     """Component for creating Lambda functions and related resources."""
 
@@ -58,8 +60,6 @@ class LambdaFunctionsComponent(ComponentResource):
         docker_image_component,
         vpc_subnet_ids=None,
         lambda_security_group_id=None,
-        efs_access_point_arn=None,
-        efs_mount_targets=None,  # Mount targets dependency for Lambda
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize Lambda functions component.
@@ -71,7 +71,6 @@ class LambdaFunctionsComponent(ComponentResource):
             docker_image_component: Docker image component
             vpc_subnet_ids: Subnet IDs for Lambda VPC configuration
             lambda_security_group_id: Security group ID for Lambda VPC access
-            efs_access_point_arn: EFS access point ARN for ChromaDB storage
             opts: Pulumi resource options
         """
         super().__init__(
@@ -86,10 +85,6 @@ class LambdaFunctionsComponent(ComponentResource):
         self.docker_image = docker_image_component
         self.vpc_subnet_ids = vpc_subnet_ids
         self.lambda_security_group_id = lambda_security_group_id
-        self.efs_access_point_arn = efs_access_point_arn
-        self.efs_mount_targets = (
-            efs_mount_targets  # Store mount targets dependency
-        )
 
         # Create S3 bucket for NDJSON batch files
         self.batch_bucket = Bucket(
@@ -262,15 +257,6 @@ class LambdaFunctionsComponent(ComponentResource):
                         "Action": ["lambda:InvokeFunction"],
                         "Resource": f"arn:aws:lambda:*:*:function:fix-place-{stack}-fix-place",
                     },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "elasticfilesystem:ClientMount",
-                            "elasticfilesystem:ClientWrite",
-                            "elasticfilesystem:DescribeMountTargets",
-                        ],
-                        "Resource": "*",
-                    },
                 ],
             }
         )
@@ -417,313 +403,215 @@ class LambdaFunctionsComponent(ComponentResource):
         )
 
     def _create_container_lambda_functions(self):
-        """Create container-based Lambda functions."""
+        """Create five Lambdas backed by the one shared embedding image."""
         self.container_lambda_functions = {}
 
-        # Define container-based Lambda configurations
-        # Naming convention: operation-first (embedding-{operation}-{entity})
-        # CodeBuild will append -lambda-{stack} suffix automatically
-        # Optimized based on actual usage patterns from observability data
         container_configs = {
             "embedding-poll-lines": {
-                "memory": GiB(
-                    1.5
-                ),  # Reduced from 3GB, usage was 668-818MB (22-27%)
+                "memory": GiB(1.5),
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(
-                    4
-                ),  # Increased back - ChromaDB needs disk space for snapshots/SQLite
+                "ephemeral_storage": GiB(4),
                 "handler_type": "line_polling",
             },
             "embedding-poll-words": {
-                "memory": GiB(
-                    1
-                ),  # Reduced from 3GB, usage was 322-360MB (11-12%)
+                "memory": GiB(1),
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(
-                    4
-                ),  # Increased back - ChromaDB operations require disk space
+                "ephemeral_storage": GiB(4),
                 "handler_type": "word_polling",
             },
             "embedding-submit-words": {
-                "memory": GiB(1),  # Similar to polling, lightweight operations
+                "memory": GiB(1),
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(
-                    2
-                ),  # Minimal disk space needed for NDJSON files
+                "ephemeral_storage": GiB(2),
                 "handler_type": "submit_words_openai",
             },
             "embedding-submit-lines": {
-                "memory": GiB(1),  # Similar to polling, lightweight operations
+                "memory": GiB(1),
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(
-                    2
-                ),  # Minimal disk space needed for NDJSON files
+                "ephemeral_storage": GiB(2),
                 "handler_type": "submit_openai",
             },
             "embedding-compact": {
-                "memory": GiB(
-                    8
-                ),  # Increased from 4GB to 8GB to prevent OOM kills during final merge
-                # Logs show Lambda hitting 4096 MB limit and being killed after ~131 seconds
-                # Final merge operations download large snapshots (578MB+) and merge them,
-                # requiring significant memory headroom for ChromaDB operations
-                "timeout": MINUTE
-                * 15,  # AWS Lambda maximum timeout is 900s (15 minutes)
-                # Note: If operations need longer, consider breaking into multiple steps
-                # or using Step Functions to orchestrate multiple Lambda invocations
-                "ephemeral_storage": GiB(
-                    10
-                ),  # Increased from 6GB to 10GB for large snapshot operations
-                # Final merge downloads intermediate snapshots (578MB+) and final snapshot,
-                # requiring sufficient disk space for temporary storage
+                "memory": GiB(8),
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(10),
                 "handler_type": "compaction",
             },
         }
 
-        # Create all container Lambdas using CodeBuildDockerImage with lambda_config
-        # This ensures CodeBuild automatically updates them when images are built
+        if tuple(container_configs) != CONTAINER_FUNCTION_NAMES:
+            raise RuntimeError("Container Lambda names are out of sync")
+
         for name, config in container_configs.items():
-            if config["handler_type"] == "compaction":
-                lambda_func = self._create_compaction_lambda_with_codebuild(
-                    name, config
+            lambda_config = self._container_lambda_config(config)
+            depends_on = [
+                self.lambda_role,
+                self.docker_image.docker_image.ready,
+            ]
+            lambda_args: Dict[str, Any] = {
+                "name": f"{name}-lambda-{stack}",
+                "package_type": "Image",
+                "image_uri": self.docker_image.image_uri,
+                "role": self.lambda_role.arn,
+                "architectures": ["arm64"],
+                "timeout": lambda_config["timeout"],
+                "memory_size": lambda_config["memory_size"],
+                "ephemeral_storage": FunctionEphemeralStorageArgs(
+                    size=lambda_config["ephemeral_storage"]
+                ),
+                "description": lambda_config["description"],
+                "environment": FunctionEnvironmentArgs(
+                    variables=lambda_config["environment"]
+                ),
+                "tags": lambda_config["tags"],
+            }
+            if lambda_config.get("vpc_config"):
+                lambda_args["vpc_config"] = FunctionVpcConfigArgs(
+                    subnet_ids=lambda_config["vpc_config"]["subnet_ids"],
+                    security_group_ids=lambda_config["vpc_config"][
+                        "security_group_ids"
+                    ],
                 )
-            elif config["handler_type"] in ["line_polling", "word_polling"]:
-                # Create polling Lambdas using CodeBuildDockerImage (same approach as compaction)
-                lambda_func = self._create_polling_lambda_with_codebuild(
-                    name, config
-                )
-            elif config["handler_type"] in [
-                "submit_words_openai",
-                "submit_openai",
-            ]:
-                # Create submit Lambda (words or lines) using CodeBuildDockerImage
-                lambda_func = self._create_submit_lambda_with_codebuild(
-                    name, config
-                )
-            else:
-                raise UnknownHandlerTypeError(config["handler_type"])
-            self.container_lambda_functions[name] = lambda_func
+            self.container_lambda_functions[name] = Function(
+                f"{name}-shared-image-function",
+                **lambda_args,
+                opts=ResourceOptions(
+                    parent=self,
+                    depends_on=depends_on,
+                    aliases=[self._legacy_container_lambda_urn(name)],
+                    # CodeBuild advances every function to the shared digest.
+                    ignore_changes=["image_uri"],
+                ),
+            )
 
-    def _create_compaction_lambda_with_codebuild(
-        self, name: str, config: Dict[str, Any]
-    ):
-        """Create compaction Lambda using CodeBuildDockerImage with lambda_config (matches compactor approach)."""
-        # Build lambda_config dict matching compactor format
-        lambda_config_dict = {
-            "role_arn": self.lambda_role.arn,
+    def _legacy_container_lambda_urn(self, name: str) -> Output[str]:
+        """URN of the Lambda formerly owned by its per-function builder."""
+        old_parent = create_urn(
+            f"{name}-docker",
+            f"codebuild-docker:{name}-docker",
+            parent=self,
+        )
+        return create_urn(
+            f"{name}-docker-function",
+            "aws:lambda/function:Function",
+            parent=old_parent,
+        )
+
+    def _container_lambda_config(
+        self, config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Return the per-function settings layered on the shared image."""
+        handler_type = config["handler_type"]
+        common = {
             "timeout": config["timeout"],
             "memory_size": config["memory"],
             "ephemeral_storage": config.get("ephemeral_storage", 512),
-            "description": "Embedding vector compaction handler for ChromaDB operations",
-            "tags": {
-                "Project": "Embedding",
-                "Component": "Compaction",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            "environment": {
-                "HANDLER_TYPE": config["handler_type"],
-                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-                "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                "COMPACTION_QUEUE_URL": self.chromadb_queues.lines_queue_url,
-                "OPENAI_API_KEY": openai_api_key,
-                "S3_BUCKET": self.batch_bucket.bucket,
-                "CHROMA_PERSIST_DIRECTORY": (
-                    "/mnt/chroma"
-                    if (
-                        self.vpc_subnet_ids
-                        and self.lambda_security_group_id
-                        and self.efs_access_point_arn
-                    )
-                    else "/tmp/chroma"
-                ),
-                "CHROMA_ROOT": (
-                    "/mnt/chroma"
-                    if (
-                        self.vpc_subnet_ids
-                        and self.lambda_security_group_id
-                        and self.efs_access_point_arn
-                    )
-                    else "/tmp/chroma"
-                ),
-                "CHROMADB_STORAGE_MODE": "auto",
-                "ENABLE_XRAY": "true",
-                "ENABLE_METRICS": "true",
-                "LOG_LEVEL": "INFO",
-                # Chroma Cloud configuration
-                "CHROMA_CLOUD_ENABLED": (
-                    portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
-                ),
-                "CHROMA_CLOUD_API_KEY": (
-                    portfolio_config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-                ),
-                "CHROMA_CLOUD_TENANT": (
-                    portfolio_config.get("CHROMA_CLOUD_TENANT") or ""
-                ),
-                "CHROMA_CLOUD_DATABASE": (
-                    portfolio_config.get("CHROMA_CLOUD_DATABASE") or ""
-                ),
-            },
         }
 
-        # Add VPC config if available (matches compactor format)
-        if (
-            self.vpc_subnet_ids is not None
-            and self.lambda_security_group_id is not None
-        ):
-            lambda_config_dict["vpc_config"] = {
-                "subnet_ids": self.vpc_subnet_ids,
-                "security_group_ids": [self.lambda_security_group_id],
+        if handler_type == "compaction":
+            result = {
+                **common,
+                "description": (
+                    "Embedding vector compaction handler for ChromaDB "
+                    "operations"
+                ),
+                "tags": {
+                    "Project": "Embedding",
+                    "Component": "Compaction",
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                "environment": {
+                    "HANDLER_TYPE": handler_type,
+                    "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+                    "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
+                    "COMPACTION_QUEUE_URL": (
+                        self.chromadb_queues.lines_queue_url
+                    ),
+                    "OPENAI_API_KEY": openai_api_key,
+                    "S3_BUCKET": self.batch_bucket.bucket,
+                    "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
+                    "ENABLE_XRAY": "true",
+                    "ENABLE_METRICS": "true",
+                    "LOG_LEVEL": "INFO",
+                    "CHROMA_CLOUD_ENABLED": (
+                        portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
+                    ),
+                    "CHROMA_CLOUD_API_KEY": (
+                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY")
+                        or ""
+                    ),
+                    "CHROMA_CLOUD_TENANT": (
+                        portfolio_config.get("CHROMA_CLOUD_TENANT") or ""
+                    ),
+                    "CHROMA_CLOUD_DATABASE": (
+                        portfolio_config.get("CHROMA_CLOUD_DATABASE") or ""
+                    ),
+                },
+            }
+            if self.vpc_subnet_ids and self.lambda_security_group_id:
+                result["vpc_config"] = {
+                    "subnet_ids": self.vpc_subnet_ids,
+                    "security_group_ids": [self.lambda_security_group_id],
+                }
+            return result
+
+        if handler_type in {"line_polling", "word_polling"}:
+            return {
+                **common,
+                "description": (
+                    f"Embedding {handler_type} handler for ChromaDB operations"
+                ),
+                "tags": {
+                    "Project": "Embedding",
+                    "Component": handler_type.title(),
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                "environment": {
+                    "HANDLER_TYPE": handler_type,
+                    "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+                    "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
+                    "COMPACTION_QUEUE_URL": (
+                        self.chromadb_queues.lines_queue_url
+                    ),
+                    "OPENAI_API_KEY": openai_api_key,
+                    "S3_BUCKET": self.batch_bucket.bucket,
+                    "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
+                    "FIX_PLACE_LAMBDA_NAME": (f"fix-place-{stack}-fix-place"),
+                    "ENABLE_XRAY": "true",
+                    "ENABLE_METRICS": "true",
+                    "LOG_LEVEL": "INFO",
+                },
             }
 
-        # Add EFS config if available (matches compactor format)
-        if self.efs_access_point_arn is not None:
-            lambda_config_dict["file_system_config"] = {
-                "arn": self.efs_access_point_arn,
-                "local_mount_path": "/mnt/chroma",
+        if handler_type in {"submit_words_openai", "submit_openai"}:
+            component = (
+                "SubmitWords"
+                if handler_type == "submit_words_openai"
+                else "SubmitLines"
+            )
+            return {
+                **common,
+                "description": (
+                    f"Embedding {handler_type} handler using receipt_chroma"
+                ),
+                "tags": {
+                    "Project": "Embedding",
+                    "Component": component,
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                "environment": {
+                    "HANDLER_TYPE": handler_type,
+                    "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+                    "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "S3_BUCKET": self.batch_bucket.bucket,
+                    "ENABLE_XRAY": "true",
+                    "ENABLE_METRICS": "true",
+                    "LOG_LEVEL": "INFO",
+                },
             }
 
-        # Create CodeBuildDockerImage with lambda_config (matches compactor approach)
-        # Depend on EFS mount targets if available (matches compactor dependency handling)
-        # The compactor passes depends_on to DockerImageComponent, which passes it to CodeBuildDockerImage
-        compaction_docker_image = CodeBuildDockerImage(
-            f"{name}-docker",
-            dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
-            build_context_path=".",  # Project root for monorepo access
-            source_paths=[
-                "receipt_agent",
-                "receipt_places",
-            ],  # Include receipt_agent and receipt_places for metadata finder
-            lambda_function_name=f"{name}-lambda-{stack}",
-            lambda_config=lambda_config_dict,
-            platform="linux/arm64",
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=(
-                    self.efs_mount_targets
-                    if self.efs_mount_targets
-                    else [self.lambda_role]
-                ),
-            ),
-        )
-
-        # Return the Lambda function created by CodeBuildDockerImage
-        return compaction_docker_image.lambda_function
-
-    def _create_polling_lambda_with_codebuild(
-        self, name: str, config: Dict[str, Any]
-    ):
-        """Create polling Lambda (line/word) using CodeBuildDockerImage with lambda_config."""
-        # Build lambda_config dict matching compaction Lambda format
-        lambda_config_dict = {
-            "role_arn": self.lambda_role.arn,
-            "timeout": config["timeout"],
-            "memory_size": config["memory"],
-            "ephemeral_storage": config.get("ephemeral_storage", 512),
-            "description": f"Embedding {config['handler_type']} handler for ChromaDB operations",
-            "tags": {
-                "Project": "Embedding",
-                "Component": config["handler_type"].title(),
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            "environment": {
-                "HANDLER_TYPE": config["handler_type"],
-                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-                "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                "COMPACTION_QUEUE_URL": self.chromadb_queues.lines_queue_url,
-                "OPENAI_API_KEY": openai_api_key,
-                "S3_BUCKET": self.batch_bucket.bucket,
-                "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",  # Polling Lambdas don't use EFS
-                "FIX_PLACE_LAMBDA_NAME": f"fix-place-{stack}-fix-place",
-                "ENABLE_XRAY": "true",
-                "ENABLE_METRICS": "true",
-                "LOG_LEVEL": "INFO",
-            },
-        }
-
-        # Polling Lambdas don't use VPC/EFS (they only write deltas, not read snapshots)
-        # No VPC or EFS configuration needed
-
-        # Create CodeBuildDockerImage with lambda_config (same approach as compaction)
-        # Use the shared DockerImageComponent's docker image (same Dockerfile, same build)
-        polling_docker_image = CodeBuildDockerImage(
-            f"{name}-docker",
-            dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
-            build_context_path=".",  # Project root for monorepo access
-            source_paths=[
-                "receipt_agent",
-                "receipt_places",
-            ],  # Include receipt_agent and receipt_places for metadata finder
-            lambda_function_name=f"{name}-lambda-{stack}",
-            lambda_config=lambda_config_dict,
-            platform="linux/arm64",
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[self.lambda_role],
-            ),
-        )
-
-        # Return the Lambda function created by CodeBuildDockerImage
-        return polling_docker_image.lambda_function
-
-    def _create_submit_lambda_with_codebuild(
-        self, name: str, config: Dict[str, Any]
-    ):
-        """Create submit Lambda (words or lines) using CodeBuildDockerImage with lambda_config."""
-        # Determine component name based on handler type
-        component_name = (
-            "SubmitWords"
-            if config["handler_type"] == "submit_words_openai"
-            else "SubmitLines"
-        )
-
-        # Build lambda_config dict matching polling Lambda format
-        lambda_config_dict = {
-            "role_arn": self.lambda_role.arn,
-            "timeout": config["timeout"],
-            "memory_size": config["memory"],
-            "ephemeral_storage": config.get("ephemeral_storage", 512),
-            "description": f"Embedding {config['handler_type']} handler using receipt_chroma",
-            "tags": {
-                "Project": "Embedding",
-                "Component": component_name,
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            "environment": {
-                "HANDLER_TYPE": config["handler_type"],
-                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-                "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                "OPENAI_API_KEY": openai_api_key,
-                "S3_BUCKET": self.batch_bucket.bucket,
-                "ENABLE_XRAY": "true",
-                "ENABLE_METRICS": "true",
-                "LOG_LEVEL": "INFO",
-            },
-        }
-
-        # Submit Lambdas don't use VPC/EFS (they only format and submit, no ChromaDB reads)
-        # No VPC or EFS configuration needed
-
-        # Create CodeBuildDockerImage with lambda_config (same approach as polling)
-        submit_docker_image = CodeBuildDockerImage(
-            f"{name}-docker",
-            dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
-            build_context_path=".",  # Project root for monorepo access
-            source_paths=[
-                "receipt_agent",
-                "receipt_places",
-            ],  # Include receipt_agent and receipt_places for metadata finder
-            lambda_function_name=f"{name}-lambda-{stack}",
-            lambda_config=lambda_config_dict,
-            platform="linux/arm64",
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[self.lambda_role],
-            ),
-        )
-
-        # Return the Lambda function created by CodeBuildDockerImage
-        return submit_docker_image.lambda_function
+        raise UnknownHandlerTypeError(handler_type)

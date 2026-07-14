@@ -188,7 +188,7 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         lambda_function_name = f"{name}-lambda-{stack}"
 
         # Build Docker image using CodeBuild
-        # Include receipt_layoutlm in source_paths since it's not in default packages
+        # Declare the package copied by this image's Dockerfile.
         self.docker_image = CodeBuildDockerImage(
             f"{name}-image",
             dockerfile_path=dockerfile_path,

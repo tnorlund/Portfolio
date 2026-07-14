@@ -21,7 +21,7 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
     enrich_row_metadata_with_labels,
 )
-from receipt_chroma.embedding.records import (
+from receipt_chroma.section_labels import (
     row_section_from_map,
     sections_to_line_map,
 )
