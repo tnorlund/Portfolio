@@ -8,4 +8,4 @@
 
 > **AnalyticsModule** = [`utils/analytics`](../../analytics/README.md)
 
-Defined in: [utils/analytics.test.ts:1](https://github.com/tnorlund/Portfolio/blob/8c608afe8af57314edeceb756ace66309208b240/portfolio/utils/analytics.test.ts#L1)
+Defined in: [utils/analytics.test.ts:1](https://github.com/tnorlund/Portfolio/blob/b4a86de1ac9909463dc8b5fae619be8ad448518a/portfolio/utils/analytics.test.ts#L1)
