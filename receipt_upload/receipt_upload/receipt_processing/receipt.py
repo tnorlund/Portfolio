@@ -13,6 +13,7 @@ from receipt_dynamo.entities import (
 )
 
 from receipt_upload.ocr import process_ocr_dict_as_receipt
+from receipt_upload.receipt_processing.rows import persist_receipt_rows
 from receipt_upload.utils import download_file_from_s3
 
 
@@ -28,6 +29,7 @@ def refine_receipt(
     # Add the receipt OCR data to the DynamoD
     dynamo_client.add_receipt_lines(receipt_lines)
     dynamo_client.add_receipt_words(receipt_words)
+    persist_receipt_rows(dynamo_client, receipt_lines, receipt_words)
     dynamo_client.add_receipt_letters(receipt_letters)
 
     # Update the OCR routing decision
