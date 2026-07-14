@@ -1,0 +1,335 @@
+{
+  "table": "ReceiptsTable-dc5be22",
+  "roms": [
+    "bitMatrix-C1",
+    "bitMatrix-C1-heavy",
+    "bitMatrix-D1",
+    "pixCrog",
+    "bitMatrix-B2",
+    "bitArray-A2"
+  ],
+  "merchants": {
+    "Vons": {
+      "shipped_slug": "vons",
+      "n_receipts": 8,
+      "n_letters": 4814,
+      "median_cap_px": 27.0,
+      "receipts": [
+        "00ded398-af6f-4a49-86f7-c79ccb554e48#1",
+        "129ee4aa-2053-4cd7-8534-a9817f8a3402#1",
+        "129ee4aa-2053-4cd7-8534-a9817f8a3402#2",
+        "1828b9ba-6f91-4d06-a738-1a7a1539f35f#1",
+        "1b441d33-6434-449f-b4c7-c98e70861277#2",
+        "314ac65b-2b97-45d6-81c2-e48fb0b8cef4#2",
+        "3cd5a28e-f5ef-4fd9-8bc9-a44437a6353f#1",
+        "47283bc4-7540-4903-890e-87fdc9bcb480#1"
+      ],
+      "scores": {
+        "CURRENT:vons": {
+          "median_iou": 0.5958,
+          "mean_iou": 0.5624,
+          "n_letters": 4814
+        },
+        "ROM:bitMatrix-C1": {
+          "median_iou": 0.5529,
+          "mean_iou": 0.5209,
+          "n_letters": 4814
+        },
+        "ROM:bitMatrix-C1-heavy": {
+          "median_iou": 0.6202,
+          "mean_iou": 0.572,
+          "n_letters": 4814
+        },
+        "ROM:bitMatrix-D1": {
+          "median_iou": 0.4757,
+          "mean_iou": 0.4656,
+          "n_letters": 4814
+        },
+        "ROM:pixCrog": {
+          "median_iou": 0.5668,
+          "mean_iou": 0.5374,
+          "n_letters": 4814
+        },
+        "ROM:bitMatrix-B2": {
+          "median_iou": 0.5068,
+          "mean_iou": 0.4949,
+          "n_letters": 4814
+        },
+        "ROM:bitArray-A2": {
+          "median_iou": 0.4863,
+          "mean_iou": 0.4664,
+          "n_letters": 4814
+        }
+      },
+      "rom_winner": "bitMatrix-C1-heavy",
+      "rom_winner_iou": 0.6202,
+      "current_iou": 0.5958,
+      "rom_beats_current": true
+    },
+    "CVS": {
+      "shipped_slug": "cvs",
+      "n_receipts": 5,
+      "n_letters": 2848,
+      "median_cap_px": 13.0,
+      "receipts": [
+        "3be818da-3892-40ae-bf7a-e2d6fffd3f37#1",
+        "74221b69-0121-4047-a152-718007d00a39#1",
+        "86063568-36eb-4ab7-bf05-22f12a60a572#1",
+        "b81f388d-5c6d-459e-a5c5-d38007950ba5#1",
+        "dd30e914-df04-4d71-a359-3d84e386b897#1"
+      ],
+      "scores": {
+        "CURRENT:cvs": {
+          "median_iou": 0.5029,
+          "mean_iou": 0.4708,
+          "n_letters": 2848
+        },
+        "ROM:bitMatrix-C1": {
+          "median_iou": 0.446,
+          "mean_iou": 0.4232,
+          "n_letters": 2848
+        },
+        "ROM:bitMatrix-C1-heavy": {
+          "median_iou": 0.5429,
+          "mean_iou": 0.4967,
+          "n_letters": 2848
+        },
+        "ROM:bitMatrix-D1": {
+          "median_iou": 0.4234,
+          "mean_iou": 0.4139,
+          "n_letters": 2848
+        },
+        "ROM:pixCrog": {
+          "median_iou": 0.4855,
+          "mean_iou": 0.4582,
+          "n_letters": 2848
+        },
+        "ROM:bitMatrix-B2": {
+          "median_iou": 0.4364,
+          "mean_iou": 0.4225,
+          "n_letters": 2848
+        },
+        "ROM:bitArray-A2": {
+          "median_iou": 0.4012,
+          "mean_iou": 0.3899,
+          "n_letters": 2848
+        }
+      },
+      "rom_winner": "bitMatrix-C1-heavy",
+      "rom_winner_iou": 0.5429,
+      "current_iou": 0.5029,
+      "rom_beats_current": true
+    },
+    "Smith's": {
+      "shipped_slug": null,
+      "n_receipts": 6,
+      "n_letters": 4160,
+      "median_cap_px": 15.0,
+      "receipts": [
+        "153e7df4-0bc2-4995-98a1-8c8f6e8bad34#1",
+        "2173f96f-07ca-41cf-afbe-f8a055053d10#1",
+        "3b2cb4f3-6977-40e8-90d8-e7d3d1aac3c2#1",
+        "5884c115-c24e-41eb-ae9b-0e7ee225c45a#1",
+        "abb331f5-5fdb-4868-9e63-331a385dc012#1",
+        "c9b694f7-4112-4197-9a05-6b918c759c70#1"
+      ],
+      "scores": {
+        "ROM:bitMatrix-C1": {
+          "median_iou": 0.3518,
+          "mean_iou": 0.3533,
+          "n_letters": 4160
+        },
+        "ROM:bitMatrix-C1-heavy": {
+          "median_iou": 0.4125,
+          "mean_iou": 0.4068,
+          "n_letters": 4160
+        },
+        "ROM:bitMatrix-D1": {
+          "median_iou": 0.3648,
+          "mean_iou": 0.3579,
+          "n_letters": 4160
+        },
+        "ROM:pixCrog": {
+          "median_iou": 0.4713,
+          "mean_iou": 0.4409,
+          "n_letters": 4160
+        },
+        "ROM:bitMatrix-B2": {
+          "median_iou": 0.4585,
+          "mean_iou": 0.4382,
+          "n_letters": 4160
+        },
+        "ROM:bitArray-A2": {
+          "median_iou": 0.4172,
+          "mean_iou": 0.398,
+          "n_letters": 4160
+        }
+      },
+      "rom_winner": "pixCrog",
+      "rom_winner_iou": 0.4713,
+      "current_iou": null,
+      "rom_beats_current": false
+    },
+    "The Home Depot": {
+      "shipped_slug": "homedepot",
+      "n_receipts": 5,
+      "n_letters": 5487,
+      "median_cap_px": 29.0,
+      "receipts": [
+        "88c1e632-dea6-4331-a6ca-43894ebbd173#1",
+        "a893938d-146c-4381-a00a-88082627f353#1",
+        "d1953a02-b3ea-410d-8f63-4a1859da6b53#1",
+        "e1f519d5-a977-4916-bc2b-0f122564730d#2",
+        "ecfff604-b0af-473c-b3e9-3e22ca2940dd#1"
+      ],
+      "scores": {
+        "CURRENT:homedepot": {
+          "median_iou": 0.3805,
+          "mean_iou": 0.367,
+          "n_letters": 5487
+        },
+        "ROM:bitMatrix-C1": {
+          "median_iou": 0.3759,
+          "mean_iou": 0.3698,
+          "n_letters": 5487
+        },
+        "ROM:bitMatrix-C1-heavy": {
+          "median_iou": 0.399,
+          "mean_iou": 0.3839,
+          "n_letters": 5487
+        },
+        "ROM:bitMatrix-D1": {
+          "median_iou": 0.4263,
+          "mean_iou": 0.4175,
+          "n_letters": 5487
+        },
+        "ROM:pixCrog": {
+          "median_iou": 0.4262,
+          "mean_iou": 0.4043,
+          "n_letters": 5487
+        },
+        "ROM:bitMatrix-B2": {
+          "median_iou": 0.3769,
+          "mean_iou": 0.3644,
+          "n_letters": 5487
+        },
+        "ROM:bitArray-A2": {
+          "median_iou": 0.4075,
+          "mean_iou": 0.3791,
+          "n_letters": 5487
+        }
+      },
+      "rom_winner": "bitMatrix-D1",
+      "rom_winner_iou": 0.4263,
+      "current_iou": 0.3805,
+      "rom_beats_current": true
+    },
+    "Target": {
+      "shipped_slug": "target",
+      "n_receipts": 8,
+      "n_letters": 5483,
+      "median_cap_px": 15.0,
+      "receipts": [
+        "249e7199-d09a-436b-97fa-f226f527f8a0#1",
+        "24a192ed-ef9d-4719-b48b-5064dbedcf1c#1",
+        "2ca22098-11e8-48a3-93a1-5a1a1d07666f#1",
+        "3442685c-4f52-4bf2-879a-5597eee79e12#2",
+        "55423224-094b-48c5-93dd-f40b4d238d72#1",
+        "5925105a-e3e5-4bab-ac6b-d90b643d1994#1",
+        "6d7b9412-1286-48db-ab51-e276168dc110#1",
+        "7104f671-a9ea-4bcf-94fc-e3b631bd047b#1"
+      ],
+      "scores": {
+        "CURRENT:target": {
+          "median_iou": 0.5231,
+          "mean_iou": 0.4814,
+          "n_letters": 5483
+        },
+        "ROM:bitMatrix-C1": {
+          "median_iou": 0.428,
+          "mean_iou": 0.4157,
+          "n_letters": 5483
+        },
+        "ROM:bitMatrix-C1-heavy": {
+          "median_iou": 0.4925,
+          "mean_iou": 0.4669,
+          "n_letters": 5483
+        },
+        "ROM:bitMatrix-D1": {
+          "median_iou": 0.4986,
+          "mean_iou": 0.4614,
+          "n_letters": 5483
+        },
+        "ROM:pixCrog": {
+          "median_iou": 0.524,
+          "mean_iou": 0.4847,
+          "n_letters": 5483
+        },
+        "ROM:bitMatrix-B2": {
+          "median_iou": 0.4541,
+          "mean_iou": 0.4448,
+          "n_letters": 5483
+        },
+        "ROM:bitArray-A2": {
+          "median_iou": 0.4551,
+          "mean_iou": 0.4309,
+          "n_letters": 5483
+        }
+      },
+      "rom_winner": "pixCrog",
+      "rom_winner_iou": 0.524,
+      "current_iou": 0.5231,
+      "rom_beats_current": true
+    },
+    "Whole Foods Market": {
+      "shipped_slug": null,
+      "n_receipts": 6,
+      "n_letters": 3675,
+      "median_cap_px": 17.0,
+      "receipts": [
+        "51245ed8-9930-4e86-ad81-ff25079afe90#1",
+        "9f838ec2-483a-41d0-90bf-95076a6c0572#1",
+        "a1b7d98e-20f8-41cf-8d30-7c3c69e722c2#1",
+        "b77f9d00-8799-4e63-90fa-294def514a96#1",
+        "de60c6a8-3776-4440-9389-7b17df7e417e#1",
+        "e296ec27-4200-4880-a2c4-06ecb1b12290#3"
+      ],
+      "scores": {
+        "ROM:bitMatrix-C1": {
+          "median_iou": 0.4348,
+          "mean_iou": 0.423,
+          "n_letters": 3675
+        },
+        "ROM:bitMatrix-C1-heavy": {
+          "median_iou": 0.5131,
+          "mean_iou": 0.4775,
+          "n_letters": 3675
+        },
+        "ROM:bitMatrix-D1": {
+          "median_iou": 0.54,
+          "mean_iou": 0.4871,
+          "n_letters": 3675
+        },
+        "ROM:pixCrog": {
+          "median_iou": 0.5227,
+          "mean_iou": 0.4843,
+          "n_letters": 3675
+        },
+        "ROM:bitMatrix-B2": {
+          "median_iou": 0.4437,
+          "mean_iou": 0.4381,
+          "n_letters": 3675
+        },
+        "ROM:bitArray-A2": {
+          "median_iou": 0.4449,
+          "mean_iou": 0.4224,
+          "n_letters": 3675
+        }
+      },
+      "rom_winner": "bitMatrix-D1",
+      "rom_winner_iou": 0.54,
+      "current_iou": null,
+      "rom_beats_current": false
+    }
+  }
+}

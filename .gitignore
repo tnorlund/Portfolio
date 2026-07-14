@@ -250,3 +250,8 @@ infra/backups/
 .github/pr-reviews/reports/*-review-tracking.md
 .venv312/
 backups/
+
+# ROM-font recreation: extracted atlases / crop caches / render proofs stay
+# local (tracked copies of the per-font manifests + validation results live in
+# synthesis_loop/rom_font_manifests/)
+.out/rom-fonts/
