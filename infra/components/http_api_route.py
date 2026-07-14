@@ -1,9 +1,9 @@
 """Reusable API Gateway HTTP API to Lambda route wiring.
 
-The Portfolio API has a mix of routes created at program import time and routes
-whose Lambda functions are created later in ``__main__.py``.  Keeping the
-three-resource wiring here gives both call sites the same behavior without
-forcing those Lambda functions into the same construction phase.
+The Portfolio API has routes created at program import time and late-bound
+routes whose Lambda functions are created in ``__main__.py``. Keeping the
+integration, route, and permission wiring here gives both call sites the same
+behavior without forcing those Lambda functions into one construction phase.
 """
 
 from dataclasses import dataclass
