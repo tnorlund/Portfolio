@@ -328,16 +328,28 @@ class OCRJob:
             custom_extractors=custom_extractors,
         )
         expected = job.to_item()
-        for key in (
-            "PK",
-            "SK",
-            "TYPE",
-            "GSI1PK",
-            "GSI1SK",
-            "GSI2PK",
-            "GSI2SK",
-        ):
+        # Identity keys must round-trip exactly. GSI *SK* values derive from the
+        # immutable job_id, so legacy rows match them too.
+        for key in ("PK", "SK", "TYPE", "GSI1SK", "GSI2SK"):
             if item.get(key) != expected.get(key):
+                raise ValueError("Invalid OCRJob keys")
+        # GSI1PK/GSI2PK encode the mutable status. Legacy OCRJob rows in dev and
+        # prod were written at status=PENDING and never had their GSI status
+        # partitions rewritten on status transitions, so real rows carry e.g.
+        # status=COMPLETED with GSI1PK/GSI2PK=OCR_JOB_STATUS#PENDING (48 of 49
+        # Costco rows sampled in dev ReceiptsTable-dc5be22). The status field is
+        # authoritative on read, so tolerate a stale-but-well-formed partition
+        # here rather than hard-failing a read of pre-existing data; only reject
+        # partitions that are not a valid OCR_JOB_STATUS#<status> value.
+        valid_status_partitions = {
+            f"OCR_JOB_STATUS#{status.value}" for status in OCRStatus
+        }
+        for key in ("GSI1PK", "GSI2PK"):
+            partition = item.get(key, {})
+            if (
+                not isinstance(partition, dict)
+                or partition.get("S") not in valid_status_partitions
+            ):
                 raise ValueError("Invalid OCRJob keys")
         return job
 
