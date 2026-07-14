@@ -4,6 +4,7 @@ import os
 import sys
 
 import pytest
+
 from glyphstudio.face_select import (measured_style_for_line,
                                      normalize_face_key, select_row_faces)
 from glyphstudio.section_face_map import Face
@@ -117,11 +118,195 @@ def test_real_underline_without_reverse_is_kept():
     assert faces[normalize_face_key("SECTION HEADER")]["underline"] is True
 
 
-def test_scale_clamped_below_logo_sizes():
-    faces, _ = select_row_faces(
+def test_wordmark_sized_row_gets_no_entry():
+    # Logo artwork (WF's mark measures ~4.2x, Costco's OCR'd "COSTCO" line
+    # 2.30-3.32x): the renderer draws it via the logo overlay, so the row
+    # must fall through to the rules -- a measured entry rendered a giant
+    # duplicate wordmark over the pasted logo (165b9d15/20576ddd crops).
+    faces, stats = select_row_faces(
         _measurement([_line("W F 4 5", cap=211.0, stroke=10.5, n=4)])
     )
-    assert faces[normalize_face_key("W F 4 5")]["scale"] == 2.5
+    assert normalize_face_key("W F 4 5") not in faces
+    assert stats["wordmark"] == 1
+
+
+def test_wordmark_box_height_cannot_reenter_via_box_rung():
+    # Even with no letter stats, a wordmark-tall OCR box must not size the
+    # row through the box rung.
+    line = _line("COSTCO", cap=None, n=0, letters=[], box_h=160.0)
+    faces, stats = select_row_faces(_measurement([line], body_box_h=60.0))
+    assert normalize_face_key("COSTCO") not in faces
+    assert stats["wordmark"] == 1
+
+
+def test_inconsistent_cap_samples_cannot_size_a_row():
+    # 165b9d15's "10 5249 URa Hi 6.99": a green marker stroke through the
+    # row inflated some OCR letter boxes (44-85px, rel IQR 0.165); the real
+    # print is body-size (hand-checked crop). Median cap clears LARGE_CAP
+    # but the samples disagree -> scale stays 1.0.
+    heights = [44, 44, 44, 66, 66, 66, 69, 69, 79, 79, 79, 79, 79, 79, 85, 85, 85]
+    letters = [{"ch": "A", "h": float(h)} for h in heights]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("10 5249 URa Hi 6.99", cap=79.0, stroke=3.6, letters=letters)],
+            body_cap=54.0,
+            body_stroke=3.7,
+        )
+    )
+    assert faces[normalize_face_key("10 5249 URa Hi 6.99")]["scale"] == 1.0
+
+
+def test_bimodal_minority_contamination_cannot_size_a_row():
+    # 5592edb9's masked-PAN line merged the boxed amount's digits: 27px x4
+    # (the real Xs) vs 44px x16 (black-band digits). Both QUARTILES land on
+    # the majority mode, so the guard uses deciles (rel spread 0.39).
+    heights = [27.0] * 4 + [44.0] * 16
+    letters = [{"ch": "X", "h": h} for h in heights]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("XXXXXXXXXXXX1454 28.14", cap=44.0, stroke=2.3, letters=letters)],
+            body_cap=33.25,
+            body_stroke=2.65,
+        )
+    )
+    assert faces[normalize_face_key("XXXXXXXXXXXX1454 28.14")]["scale"] == 1.0
+
+
+def test_single_outlier_letter_does_not_block_sizing():
+    # One OCR-clipped letter on a well-sampled enlarged row must not veto
+    # the scale (deciles skip one outlier per end from n=10 up).
+    heights = [30.0] + [63.0] * 11
+    letters = [{"ch": "S", "h": h} for h in heights]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("SELF-CHECKOUT", cap=63.0, stroke=4.6, letters=letters)],
+            body_cap=42.5,
+            body_stroke=4.4,
+        )
+    )
+    assert faces[normalize_face_key("SELF-CHECKOUT")]["scale"] == 1.48
+
+
+def test_single_high_outlier_at_ten_samples_does_not_block_sizing():
+    # Symmetric decile trim: one over-tall OCR box among ten samples must
+    # not veto a genuine enlarged row (a plain p90 index only skips the top
+    # sample from n=20).
+    heights = [63.0] * 9 + [95.0]
+    letters = [{"ch": "S", "h": h} for h in heights]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("SELF-CHECKOUT", cap=63.0, stroke=4.6, letters=letters)],
+            body_cap=42.5,
+            body_stroke=4.4,
+        )
+    )
+    assert faces[normalize_face_key("SELF-CHECKOUT")]["scale"] == 1.48
+
+
+def test_wordmark_box_beats_clipped_cap_signal():
+    # A wordmark row whose letter boxes are clipped below the threshold but
+    # whose LINE box is wordmark-tall must still be dropped (the box rung
+    # would otherwise re-inflate it).
+    line = _line(
+        "COSTCO",
+        cap=90.0,  # clipped: 1.8x body, below WORDMARK_SCALE
+        n=3,  # thin letter stats -> letters rung declines
+        letters=[{"ch": "C", "h": 90.0}] * 3,
+        box_h=160.0,
+    )
+    faces, stats = select_row_faces(
+        _measurement([line], body_cap=50.0, body_box_h=60.0)
+    )
+    assert normalize_face_key("COSTCO") not in faces
+    assert stats["wordmark"] == 1
+
+
+def test_consistent_large_row_still_scales():
+    # Costco's VOID stamp: all four cap samples 79px on a 46px body ->
+    # a genuine 1.72x row the rules miss entirely.
+    letters = [{"ch": c, "h": 79.0} for c in "VOID"]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("VOID", cap=79.0, stroke=5.5, letters=letters)],
+            body_cap=46.0,
+            body_stroke=5.4,
+        )
+    )
+    assert faces[normalize_face_key("VOID")]["scale"] == 1.72
+
+
+def test_next_row_reverse_band_clears_underline():
+    # 57cb7f2c's "INSTANT SAVINGS $ 12.30" sits directly above the boxed
+    # (reverse-video) date row; the probe window bleeds into the black band
+    # (real crop has no rule under the row).
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line("INSTANT SAVINGS $ 12.30", underline=True),
+                _line("167027 10051117 10 486 14", reverse_video=1),
+            ]
+        )
+    )
+    assert faces[normalize_face_key("INSTANT SAVINGS $ 12.30")]["underline"] is False
+
+
+def test_distant_reverse_band_cannot_clear_underline():
+    # The probe window only extends 0.5x the line height below the row; a
+    # reverse-video line far down the receipt cannot have caused the hit.
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line("SECTION HEADER", underline=True, bbox=[10, 100, 300, 140]),
+                _line("TOTAL 28.44", reverse_video=1, bbox=[10, 600, 300, 640]),
+            ]
+        )
+    )
+    assert faces[normalize_face_key("SECTION HEADER")]["underline"] is True
+
+
+def test_adjacent_reverse_band_with_bboxes_clears_underline():
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line(
+                    "INSTANT SAVINGS $ 12.30",
+                    underline=True,
+                    bbox=[10, 100, 300, 140],
+                ),
+                _line(
+                    "167027 10051117",
+                    reverse_video=1,
+                    bbox=[10, 150, 300, 190],
+                ),
+            ]
+        )
+    )
+    assert faces[normalize_face_key("INSTANT SAVINGS $ 12.30")]["underline"] is False
+
+
+def test_zero_height_letters_are_not_cap_samples():
+    # Missing letter heights must not count toward MIN_CAP_SAMPLES nor zero
+    # the spread median -- an unreliable cap_px could otherwise size the row.
+    letters = [{"ch": "A", "h": 0}, {"ch": "B", "h": None}, {"ch": "C", "h": 70.0}]
+    faces, _ = select_row_faces(
+        _measurement(
+            [_line("BIG ROW", cap=70.0, stroke=3.8, letters=letters)],
+            body_cap=50.0,
+        )
+    )
+    assert faces[normalize_face_key("BIG ROW")]["scale"] == 1.0
+
+
+def test_underline_kept_when_next_row_is_normal_video():
+    faces, _ = select_row_faces(
+        _measurement(
+            [
+                _line("SECTION HEADER", underline=True),
+                _line("1 BANANAS 0.99"),
+            ]
+        )
+    )
+    assert faces[normalize_face_key("SECTION HEADER")]["underline"] is True
 
 
 def test_missing_letters_falls_back_to_box_rung():
