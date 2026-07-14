@@ -426,6 +426,50 @@ def test_ocr_job_optional_fields_roundtrip_as_null():
     assert OCRJob.from_item(item) == job
 
 
+def test_ocr_job_from_item_tolerates_stale_gsi_status_partition():
+    """Legacy rows keep the GSI status partition they were written with.
+
+    Real OCRJob rows in dev/prod were persisted at status=PENDING and never had
+    their GSI status partitions rewritten when the status advanced, so a row can
+    carry status=COMPLETED while GSI1PK/GSI2PK still read OCR_JOB_STATUS#PENDING.
+    from_item must read these rows (the status field is authoritative), not
+    hard-fail them with "Invalid OCRJob keys".
+    """
+    job = make_ocr_job(status=OCRStatus.COMPLETED)
+    item = job.to_item()
+    # Reproduce the legacy shape: stale-but-valid PENDING partitions.
+    item["GSI1PK"] = {"S": "OCR_JOB_STATUS#PENDING"}
+    item["GSI2PK"] = {"S": "OCR_JOB_STATUS#PENDING"}
+
+    restored = OCRJob.from_item(item)
+
+    assert restored == job
+    assert restored.status == OCRStatus.COMPLETED.value
+
+
+@pytest.mark.parametrize("key", ["GSI1PK", "GSI2PK"])
+def test_ocr_job_from_item_rejects_malformed_gsi_status_partition(key):
+    """A GSI status partition that is not a valid OCR_JOB_STATUS#<status> is
+    still rejected, so genuine corruption is not silently accepted."""
+    item = make_ocr_job().to_item()
+    item[key] = {"S": "OCR_JOB_STATUS#NOT_A_STATUS"}
+
+    with pytest.raises(ValueError, match="keys"):
+        OCRJob.from_item(item)
+
+
+def test_ocr_job_from_item_rejects_divergent_gsi_status_partitions():
+    """GSI1PK and GSI2PK are written together from the same status, so a row
+    where they carry different (individually valid) statuses is corruption, not
+    a benign legacy drift, and must be rejected."""
+    item = make_ocr_job(status=OCRStatus.COMPLETED).to_item()
+    item["GSI1PK"] = {"S": "OCR_JOB_STATUS#PENDING"}
+    item["GSI2PK"] = {"S": "OCR_JOB_STATUS#COMPLETED"}
+
+    with pytest.raises(ValueError, match="keys"):
+        OCRJob.from_item(item)
+
+
 def test_ocr_job_revalidates_nested_map_after_mutation():
     job = make_ocr_job()
     job.reocr_region["height"] = float("inf")
