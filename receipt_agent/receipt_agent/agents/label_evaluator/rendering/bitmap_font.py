@@ -68,6 +68,7 @@ class BitmapFont:
         advance_ratio: float | None = None,
         *,
         thin: float = 0.0,
+        vscale: float = 1.0,
     ):
         data = np.load(atlas_path)
         self.glyphs = {
@@ -97,7 +98,14 @@ class BitmapFont:
             advance_ratio = (gw + 2.0) / self.cap_h
         self._advance_ratio = advance_ratio
         self.thin = max(0.0, min(0.9, float(thin or 0.0)))
-        self._cache: dict[tuple[str, int], tuple] = {}
+        # I2 cap-height correction: vertical-only glyph scale, applied about
+        # the baseline AFTER cap_px sizing. Layout (cell advance, line pitch,
+        # condense) is intentionally untouched -- the measured Costco gap is
+        # glyphs ~17% too TALL at correct pitch (GOLD_STANDARD.md I2), so the
+        # fix must be vertical-only. 1.0 (default) is byte-identical.
+        self.vscale = max(0.5, min(1.5, float(vscale or 1.0)))
+        # key: (char, cap_px, thin, vscale)
+        self._cache: dict[tuple[str, int, float, float], tuple] = {}
 
     def advance(self, cap_px: float) -> float:
         return cap_px * self._advance_ratio
@@ -112,7 +120,7 @@ class BitmapFont:
         g = self.glyphs.get(ch)
         if g is None:
             return None
-        key = (ch, int(cap_px), round(self.thin, 3))
+        key = (ch, int(cap_px), round(self.thin, 3), round(self.vscale, 4))
         hit = self._cache.get(key)
         if hit is not None:
             return hit
@@ -129,6 +137,13 @@ class BitmapFont:
         )
         im = thin_ink_mask(im, self.thin, preserve_top=preserve_top_arc(ch))
         off = int(round(self.offsets.get(ch, 0) * scale))
+        if self.vscale != 1.0:
+            # Vertical-only resize of the FINAL (thinned) mask; NEAREST keeps
+            # the hard bitmap dots. Baseline offsets scale with the glyph so
+            # descenders/hyphens keep their relative position.
+            h = max(1, int(round(im.height * self.vscale)))
+            im = im.resize((im.width, h), Image.NEAREST)
+            off = int(round(off * self.vscale))
         self._cache[key] = (im, h, off)
         return self._cache[key]
 

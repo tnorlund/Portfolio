@@ -190,6 +190,10 @@ class RenderConfig:
     mixed_layout: bool = False
     bitmap_cap_ratio: float = 0.72
     bitmap_thin: float = 0.0
+    # I2 (GOLD_STANDARD.md): opt-in vertical-only scale of bitmap glyph images,
+    # correcting cap-height without touching line pitch, cell advance or
+    # condense. 1.0 = off (byte-identical default).
+    bitmap_glyph_vscale: float = 1.0
     ink: tuple[int, int, int] | None = None
     # Data-built atlases can be sized directly from the receipt's OCR geometry:
     # median word-box height -> cap height, and median word width-per-char ->
@@ -499,11 +503,18 @@ def _render_grid(
         )
 
         bitmap_thin = max(0.0, min(0.9, float(config.bitmap_thin or 0.0)))
-        bmf = BitmapFont(config.bitmap_font["regular"], thin=bitmap_thin)
+        glyph_vscale = float(config.bitmap_glyph_vscale or 1.0)
+        bmf = BitmapFont(
+            config.bitmap_font["regular"],
+            thin=bitmap_thin,
+            vscale=glyph_vscale,
+        )
         heavy_path = config.bitmap_font.get(
             "heavy", config.bitmap_font["regular"]
         )
-        bmf_heavy = BitmapFont(heavy_path, thin=bitmap_thin)
+        bmf_heavy = BitmapFont(
+            heavy_path, thin=bitmap_thin, vscale=glyph_vscale
+        )
         cap_ratio = max(0.5, min(1.0, float(config.bitmap_cap_ratio)))
         cap_px = max(6, int(round(sizing.font_px * cap_ratio)))
         ocr_cap, ocr_advance = _ocr_grid_metrics(grid_words, sizing, config)
