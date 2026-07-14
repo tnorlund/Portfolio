@@ -1,13 +1,17 @@
 import React from "react";
-import { CHARGE_GREEN } from "./labelStyles";
+import {
+  CHARGE_GREEN,
+  ENTITY_DISPLAY_NAMES,
+  LABEL_COLORS,
+} from "./labelStyles";
 import styles from "./labelBoxOverlay.module.css";
 
 const LEGEND_GROUPS = [
   {
     color: "var(--color-yellow)",
     label: "Merchant",
-    title: "Merchant name",
-    types: ["MERCHANT_NAME"],
+    title: "Merchant name · Business name · Loyalty ID",
+    types: ["MERCHANT_NAME", "BUSINESS_NAME", "LOYALTY_ID"],
   },
   {
     color: "var(--color-blue)",
@@ -71,6 +75,17 @@ const LEGEND_GROUPS = [
     types: ["STORE_HOURS", "PAYMENT_METHOD"],
   },
 ] as const;
+
+const groupedFamilies: Set<string> = new Set(
+  LEGEND_GROUPS.flatMap((group) => [...group.types]),
+);
+
+const fallbackLabel = (family: string): string =>
+  ENTITY_DISPLAY_NAMES[family] ??
+  family
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/^./, (character) => character.toUpperCase());
 
 /**
  * The ground-truth label box layer, extracted verbatim from
@@ -136,6 +151,9 @@ export const LabelLegend: React.FC<{
   const visibleGroups = LEGEND_GROUPS.filter((group) =>
     group.types.some((type) => presentFamilies.has(type)),
   );
+  const unmatchedFamilies = Array.from(presentFamilies).filter(
+    (family) => family !== "O" && !groupedFamilies.has(family),
+  );
 
   return (
     <div
@@ -149,6 +167,17 @@ export const LabelLegend: React.FC<{
             style={{ backgroundColor: group.color }}
           />
           <span className={styles.legendLabel}>{group.label}</span>
+        </div>
+      ))}
+      {unmatchedFamilies.map((family) => (
+        <div key={family} title={family} className={styles.legendItem}>
+          <div
+            className={styles.legendDot}
+            style={{
+              backgroundColor: LABEL_COLORS[family] || LABEL_COLORS.O,
+            }}
+          />
+          <span className={styles.legendLabel}>{fallbackLabel(family)}</span>
         </div>
       ))}
     </div>

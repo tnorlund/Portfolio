@@ -12,6 +12,8 @@ const CHARGE_GREEN_LIGHT = "color-mix(in srgb, var(--color-green) 48%, white)";
 // family) vs credits (teal), plus QUANTITY (cyan) and ADDRESS_LINE.
 export const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
+  BUSINESS_NAME: "var(--color-yellow)",
+  LOYALTY_ID: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   PRODUCT_NAME: "var(--color-purple)",
@@ -44,6 +46,8 @@ export const LABEL_COLORS: Record<string, string> = {
 // Entity type display names
 export const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   MERCHANT_NAME: "Merchant",
+  BUSINESS_NAME: "Business name",
+  LOYALTY_ID: "Loyalty ID",
   DATE: "Date",
   TIME: "Time",
   PRODUCT_NAME: "Product",
