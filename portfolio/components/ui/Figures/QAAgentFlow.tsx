@@ -34,6 +34,7 @@ interface QAAgentFlowProps {
 const CDN_BASE = getCdnBaseUrl();
 const MAX_EVIDENCE_THUMBNAILS = 8;
 const MAX_STRUCTURED_RECEIPTS = 4;
+const MAX_ANSWER_SUMMARY_BODY_CHARS = 96;
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -55,13 +56,29 @@ const getAnswerSummaryMarkdown = (answer: string): string => {
   const firstBlock = blocks[0] ?? answer;
   const isHeading = (block: string): boolean => /^#{1,6}\s+\S/.test(block);
 
-  if (!isHeading(firstBlock)) return firstBlock;
+  const summarizeBlock = (block: string): string => {
+    const normalized = block.replace(/\s+/g, " ").trim();
+    if (normalized.length <= MAX_ANSWER_SUMMARY_BODY_CHARS) return normalized;
+
+    const sentence = normalized.match(
+      new RegExp(`^.{1,${MAX_ANSWER_SUMMARY_BODY_CHARS}}?[.!?](?=\\s|$)`),
+    )?.[0];
+    if (sentence) return sentence;
+
+    const wordBoundary = normalized
+      .slice(0, MAX_ANSWER_SUMMARY_BODY_CHARS + 1)
+      .lastIndexOf(" ");
+    const cutoff = wordBoundary > 0 ? wordBoundary : MAX_ANSWER_SUMMARY_BODY_CHARS;
+    return `${normalized.slice(0, cutoff).trimEnd()}…`;
+  };
+
+  if (!isHeading(firstBlock)) return summarizeBlock(firstBlock);
 
   const firstSubstantiveBlock = blocks
     .slice(1)
     .find((block) => !isHeading(block));
   return firstSubstantiveBlock
-    ? `${firstBlock}\n\n${firstSubstantiveBlock}`
+    ? `${firstBlock}\n\n${summarizeBlock(firstSubstantiveBlock)}`
     : firstBlock;
 };
 
@@ -95,16 +112,20 @@ interface ReceiptEvidenceThumbnailProps {
   receipt: ReceiptEvidence;
   index: number;
   isVisible: boolean;
-  overlapRatio: number;
+  thumbnailHeight: number;
+  leftOffset: number;
 }
 
 const EVIDENCE_THUMBNAIL_HEIGHT = 154;
+const EVIDENCE_STACK_EDGE_SAFETY = 16;
+const MAX_EVIDENCE_OVERLAP_RATIO = 0.82;
 
 const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
   receipt,
   index,
   isVisible,
-  overlapRatio,
+  thumbnailHeight,
+  leftOffset,
 }) => {
   const initialUrl = getCdnUrl(receipt.thumbnailKey);
   const fallbackUrl = getReceiptJpegFallbackUrl(receipt.thumbnailKey);
@@ -128,9 +149,8 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
   const merchant = receipt.merchant || "Unknown merchant";
   const sourceWidth = receipt.width > 0 ? receipt.width : 300;
   const sourceHeight = receipt.height > 0 ? receipt.height : 900;
-  const thumbnailWidth =
-    EVIDENCE_THUMBNAIL_HEIGHT * (sourceWidth / sourceHeight);
-  const overlap = Math.round(thumbnailWidth * overlapRatio);
+  const sourceAspectRatio = sourceWidth / sourceHeight;
+  const thumbnailWidth = thumbnailHeight * sourceAspectRatio;
   const evidenceDetail = [
     receipt.item,
     Number.isFinite(receipt.amount)
@@ -143,21 +163,25 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
   return (
     <div
       role="listitem"
+      data-testid="receipt-evidence-thumbnail"
+      data-source-aspect-ratio={sourceAspectRatio}
       title={evidenceDetail ? `${merchant}: ${evidenceDetail}` : merchant}
       style={
         {
-          position: "relative",
+          position: "absolute",
+          left: `${leftOffset}px`,
+          top: 0,
           width: `${thumbnailWidth}px`,
           minWidth: `${thumbnailWidth}px`,
-          height: `${EVIDENCE_THUMBNAIL_HEIGHT}px`,
+          height: `${thumbnailHeight}px`,
           flex: `0 0 ${thumbnailWidth}px`,
-          marginLeft: index === 0 ? 0 : `-${overlap}px`,
           zIndex: index + 1,
           border: 0,
-          borderRadius: "3px",
+          borderRadius: 0,
           backgroundColor: "transparent",
           boxShadow: "0 5px 16px rgba(0, 0, 0, 0.2)",
-          overflow: "hidden",
+          overflow: "visible",
+          transformOrigin: "center center",
           opacity: 0,
           "--receipt-evidence-rotation": `${rotation}deg`,
           animationName: "receiptEvidenceIn",
@@ -219,11 +243,97 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
   receipts,
   isVisible,
 }) => {
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = React.useState(374);
+
+  React.useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+
+    const updateAvailableWidth = (width: number) => {
+      setAvailableWidth((current) =>
+        Math.abs(current - width) >= 0.5 ? width : current,
+      );
+    };
+    updateAvailableWidth(list.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateAvailableWidth(entry.contentRect.width);
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
   if (receipts.length === 0) return null;
 
   const visibleReceipts = receipts.slice(0, MAX_EVIDENCE_THUMBNAILS);
   const hiddenCount = receipts.length - visibleReceipts.length;
-  const overlapRatio = visibleReceipts.length > 5 ? 0.48 : 0.28;
+  const baseOverlapRatio = visibleReceipts.length > 5 ? 0.48 : 0.28;
+  const receiptWidthRatios = visibleReceipts.map((receipt) => {
+    const width = receipt.width > 0 ? receipt.width : 300;
+    const height = receipt.height > 0 ? receipt.height : 900;
+    return width / height;
+  });
+  const targetStackWidth = Math.max(
+    1,
+    availableWidth - EVIDENCE_STACK_EDGE_SAFETY,
+  );
+  const baseWidths = receiptWidthRatios.map(
+    (ratio) => ratio * EVIDENCE_THUMBNAIL_HEIGHT,
+  );
+  const getStackBounds = (overlapRatio: number) => {
+    if (baseWidths.length === 0) {
+      return { positions: [] as number[], span: 0, min: 0 };
+    }
+
+    const positions = [0];
+    let previousRight = baseWidths[0];
+    let min = 0;
+    let max = previousRight;
+    for (let index = 1; index < baseWidths.length; index += 1) {
+      const width = baseWidths[index];
+      const left = previousRight - width * overlapRatio;
+      const right = left + width;
+      positions.push(left);
+      min = Math.min(min, left);
+      max = Math.max(max, right);
+      previousRight = right;
+    }
+    return { positions, span: max - min, min };
+  };
+  let overlapRatio = baseOverlapRatio;
+  let stackBounds = getStackBounds(overlapRatio);
+  let smallestBounds = stackBounds;
+  let smallestBoundsOverlap = overlapRatio;
+  const OVERLAP_SEARCH_STEPS = 80;
+  for (let step = 1; step <= OVERLAP_SEARCH_STEPS; step += 1) {
+    const candidateOverlap =
+      baseOverlapRatio +
+      ((MAX_EVIDENCE_OVERLAP_RATIO - baseOverlapRatio) * step) /
+        OVERLAP_SEARCH_STEPS;
+    const candidateBounds = getStackBounds(candidateOverlap);
+    if (candidateBounds.span < smallestBounds.span) {
+      smallestBounds = candidateBounds;
+      smallestBoundsOverlap = candidateOverlap;
+    }
+    if (candidateBounds.span <= targetStackWidth) {
+      overlapRatio = candidateOverlap;
+      stackBounds = candidateBounds;
+      break;
+    }
+    if (step === OVERLAP_SEARCH_STEPS) {
+      overlapRatio = smallestBoundsOverlap;
+      stackBounds = smallestBounds;
+    }
+  }
+  const thumbnailHeight =
+    EVIDENCE_THUMBNAIL_HEIGHT *
+    Math.min(1, targetStackWidth / Math.max(1, stackBounds.span));
+  const stackScale = thumbnailHeight / EVIDENCE_THUMBNAIL_HEIGHT;
+  const thumbnailLeftOffsets = stackBounds.positions.map(
+    (position) => (position - stackBounds.min) * stackScale,
+  );
+  const stackWidth = stackBounds.span * stackScale;
   const receiptLabel = `${receipts.length} ${
     receipts.length === 1 ? "receipt" : "receipts"
   }`;
@@ -263,37 +373,53 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
       </div>
 
       <div
+        ref={listRef}
         role="list"
+        data-testid="receipt-evidence-list"
+        data-available-width={availableWidth}
+        data-overlap-ratio={overlapRatio}
+        data-thumbnail-height={thumbnailHeight}
         aria-label={`${receiptLabel} used as evidence`}
         style={{
           display: "flex",
           justifyContent: "center",
-          alignItems: "flex-start",
+          alignItems: "center",
           width: "100%",
           maxWidth: "390px",
-          minHeight: "166px",
+          height: "166px",
           margin: "0 auto",
           padding: "0.35rem 0.8rem 0.65rem",
           boxSizing: "border-box",
-          overflow: "hidden",
+          overflow: "visible",
         }}
       >
-        {visibleReceipts.map((receipt, index) => (
-          <ReceiptEvidenceThumbnail
-            key={receipt.imageId}
-            receipt={receipt}
-            index={index}
-            isVisible={isVisible}
-            overlapRatio={overlapRatio}
-          />
-        ))}
+        <div
+          data-testid="receipt-evidence-stack"
+          style={{
+            position: "relative",
+            width: `${stackWidth}px`,
+            height: `${thumbnailHeight}px`,
+            flex: "0 0 auto",
+          }}
+        >
+          {visibleReceipts.map((receipt, index) => (
+            <ReceiptEvidenceThumbnail
+              key={receipt.imageId}
+              receipt={receipt}
+              index={index}
+              isVisible={isVisible}
+              thumbnailHeight={thumbnailHeight}
+              leftOffset={thumbnailLeftOffsets[index] ?? 0}
+            />
+          ))}
+        </div>
       </div>
 
       <style>{`
         @keyframes receiptEvidenceIn {
           from {
             opacity: 0;
-            transform: rotate(var(--receipt-evidence-rotation, 0deg)) translateY(-14px);
+            transform: rotate(var(--receipt-evidence-rotation, 0deg)) scale(0.98);
           }
           to {
             opacity: 1;
@@ -1416,22 +1542,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                       style={{
                         minWidth: 0,
                         flexShrink: 0,
-                        maxHeight:
-                          !showDetails && hasAnswerDetails
-                            ? "6.5rem"
-                            : undefined,
-                        overflow:
-                          !showDetails && hasAnswerDetails
-                            ? "hidden"
-                            : "visible",
-                        WebkitMaskImage:
-                          !showDetails && hasAnswerDetails
-                            ? "linear-gradient(to bottom, #000 78%, transparent 100%)"
-                            : undefined,
-                        maskImage:
-                          !showDetails && hasAnswerDetails
-                            ? "linear-gradient(to bottom, #000 78%, transparent 100%)"
-                            : undefined,
+                        overflow: "visible",
                       }}
                     >
                       <ReactMarkdown>
@@ -1510,6 +1621,26 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                 @keyframes qaResultReveal {
                   from { opacity: 0; transform: translateY(4px); }
                   to { opacity: 1; transform: translateY(0); }
+                }
+
+                [data-testid="qa-answer-summary"] > :first-child {
+                  margin-top: 0;
+                }
+
+                [data-testid="qa-answer-summary"] > :last-child {
+                  margin-bottom: 0;
+                }
+
+                [data-testid="qa-answer-summary"] > :is(h1, h2, h3) {
+                  margin-bottom: 0.35rem;
+                  font-size: 1.15rem;
+                  line-height: 1.25;
+                }
+
+                [data-testid="qa-answer-summary"] > p {
+                  margin-top: 0;
+                  font-size: 0.82rem;
+                  line-height: 1.35;
                 }
 
                 @media (prefers-reduced-motion: reduce) {

@@ -120,6 +120,31 @@ test.describe("QAAgentFlow", () => {
   test("renders deduplicated receipt evidence with image fallback", async ({
     page,
   }) => {
+    const denseEvidenceQuestion = {
+      ...mockQAQuestions[0],
+      trace: mockQAQuestions[0].trace.map((step) =>
+        step.type === "synthesize"
+          ? {
+              ...step,
+              receipts: [
+                ...("receipts" in step && Array.isArray(step.receipts)
+                  ? step.receipts
+                  : []),
+                ...[900, 720, 640, 560, 480, 400].map((width, index) => ({
+                  imageId: `dense-evidence-${index}`,
+                  merchant: `Dense Merchant ${index + 1}`,
+                  item: `Item ${index + 1}`,
+                  amount: index + 1,
+                  thumbnailKey: `assets/dense-evidence-${index}.webp`,
+                  width,
+                  height: 900,
+                })),
+              ],
+            }
+          : step,
+      ),
+    };
+
     await page.route("**/assets/evidence-receipt-a.webp", async (route) => {
       await route.fulfill({ status: 404 });
     });
@@ -131,7 +156,7 @@ test.describe("QAAgentFlow", () => {
         contentType: "application/json",
         body: JSON.stringify(
           url.searchParams.has("index")
-            ? { questions: [mockQAQuestions[0]] }
+            ? { questions: [denseEvidenceQuestion] }
             : { metadata: { total_questions: 1 }, questions: [] },
         ),
       });
@@ -153,9 +178,9 @@ test.describe("QAAgentFlow", () => {
     });
     await expect(evidence).toBeVisible();
     await expect(
-      evidence.getByText("2 receipts", { exact: true }),
+      evidence.getByText("8 receipts", { exact: true }),
     ).toBeVisible();
-    await expect(evidence.locator("img")).toHaveCount(2);
+    await expect(evidence.locator("img")).toHaveCount(8);
     await expect(
       evidence.getByAltText("Neighborhood Market receipt"),
     ).toHaveAttribute("src", /evidence-receipt-a\.jpg$/);
@@ -170,44 +195,124 @@ test.describe("QAAgentFlow", () => {
           const style = getComputedStyle(frame);
           return {
             aspectRatio: frame.clientWidth / frame.clientHeight,
+            sourceAspectRatio: Number(
+              frame.getAttribute("data-source-aspect-ratio"),
+            ),
             backgroundColor: style.backgroundColor,
             borderWidth: style.borderTopWidth,
+            borderRadius: style.borderRadius,
+            overflow: style.overflow,
           };
         }),
       );
-    expect(thumbnailFrames).toHaveLength(2);
+    expect(thumbnailFrames).toHaveLength(8);
     for (const frame of thumbnailFrames) {
-      expect(frame.aspectRatio).toBeCloseTo(300 / 900, 2);
+      expect(frame.aspectRatio).toBeCloseTo(frame.sourceAspectRatio, 2);
       expect(frame.backgroundColor).toBe("rgba(0, 0, 0, 0)");
       expect(frame.borderWidth).toBe("0px");
+      expect(frame.borderRadius).toBe("0px");
+      expect(frame.overflow).toBe("visible");
     }
 
+    await page.waitForTimeout(500);
     const evidenceGeometry = await evidence.evaluate((region) => {
-      const content = document.querySelector("#qa-result-content");
       const list = region.querySelector('[role="list"]');
       const thumbnails = Array.from(
         region.querySelectorAll('[role="listitem"]'),
       );
-      if (!content || !list || thumbnails.length === 0) return null;
+      if (!list || thumbnails.length === 0) return null;
 
-      const contentBottom = content.getBoundingClientRect().bottom;
+      const getClipping = (thumbnail: Element) => {
+        const receiptRect = thumbnail.getBoundingClientRect();
+        const clippingAncestors: Array<{
+          label: string;
+          overflowX: string;
+          overflowY: string;
+          clipped: { left: number; top: number; right: number; bottom: number };
+        }> = [];
+        let ancestor = thumbnail.parentElement;
+
+        while (ancestor) {
+          const style = getComputedStyle(ancestor);
+          const clipsX = style.overflowX !== "visible";
+          const clipsY = style.overflowY !== "visible";
+          if (clipsX || clipsY) {
+            const ancestorRect = ancestor.getBoundingClientRect();
+            clippingAncestors.push({
+              label:
+                ancestor.id ||
+                ancestor.getAttribute("data-testid") ||
+                ancestor.getAttribute("role") ||
+                ancestor.tagName,
+              overflowX: style.overflowX,
+              overflowY: style.overflowY,
+              clipped: {
+                left: clipsX
+                  ? Math.max(0, ancestorRect.left - receiptRect.left)
+                  : 0,
+                top: clipsY
+                  ? Math.max(0, ancestorRect.top - receiptRect.top)
+                  : 0,
+                right: clipsX
+                  ? Math.max(0, receiptRect.right - ancestorRect.right)
+                  : 0,
+                bottom: clipsY
+                  ? Math.max(0, receiptRect.bottom - ancestorRect.bottom)
+                  : 0,
+              },
+            });
+          }
+          ancestor = ancestor.parentElement;
+        }
+
+        return clippingAncestors;
+      };
+
       return {
-        contentBottom,
-        listBottom: list.getBoundingClientRect().bottom,
-        receiptBottom: Math.max(
-          ...thumbnails.map(
-            (thumbnail) => thumbnail.getBoundingClientRect().bottom,
-          ),
-        ),
+        listOverflow: getComputedStyle(list).overflow,
+        layout: {
+          availableWidth: list.getAttribute("data-available-width"),
+          overlapRatio: list.getAttribute("data-overlap-ratio"),
+          thumbnailHeight: list.getAttribute("data-thumbnail-height"),
+          listRect: list.getBoundingClientRect().toJSON(),
+        },
+        receipts: thumbnails.map((thumbnail) => ({
+          clippingAncestors: getClipping(thumbnail),
+          image: (() => {
+            const image = thumbnail.querySelector("img");
+            if (!image) return null;
+            const frameRect = thumbnail.getBoundingClientRect();
+            const imageRect = image.getBoundingClientRect();
+            return {
+              left: Math.abs(imageRect.left - frameRect.left),
+              top: Math.abs(imageRect.top - frameRect.top),
+              right: Math.abs(imageRect.right - frameRect.right),
+              bottom: Math.abs(imageRect.bottom - frameRect.bottom),
+            };
+          })(),
+        })),
       };
     });
     expect(evidenceGeometry).not.toBeNull();
-    expect(evidenceGeometry!.listBottom).toBeLessThanOrEqual(
-      evidenceGeometry!.contentBottom + 1,
-    );
-    expect(evidenceGeometry!.receiptBottom).toBeLessThanOrEqual(
-      evidenceGeometry!.contentBottom + 1,
-    );
+    expect(evidenceGeometry!.listOverflow).toBe("visible");
+    for (const receipt of evidenceGeometry!.receipts) {
+      expect(receipt.image).not.toBeNull();
+      expect(receipt.image!.left).toBeLessThanOrEqual(1);
+      expect(receipt.image!.top).toBeLessThanOrEqual(1);
+      expect(receipt.image!.right).toBeLessThanOrEqual(1);
+      expect(receipt.image!.bottom).toBeLessThanOrEqual(1);
+
+      for (const ancestor of receipt.clippingAncestors) {
+        const edgeContext = JSON.stringify({
+          ancestor,
+          layout: evidenceGeometry!.layout,
+        });
+        expect(ancestor.clipped.left, edgeContext).toBeLessThanOrEqual(1);
+        expect(ancestor.clipped.top, edgeContext).toBeLessThanOrEqual(1);
+        expect(ancestor.clipped.right, edgeContext).toBeLessThanOrEqual(1);
+        expect(ancestor.clipped.bottom, edgeContext).toBeLessThanOrEqual(1);
+      }
+    }
 
     await page.getByRole("button", { name: "View full answer" }).click();
     await expect(page.getByText("Structured receipts")).toBeVisible();
