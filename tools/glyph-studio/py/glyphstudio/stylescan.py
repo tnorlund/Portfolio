@@ -581,6 +581,15 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         out_lines.append(
             {
                 "reverse_video": reverse_video,
+                # OCR line ids feeding this visual line -- the join key to
+                # ReceiptSection.line_ids (face-map v2).
+                "line_ids": sorted(
+                    {
+                        int(w["line_id"])
+                        for w in line
+                        if w["line_id"] is not None
+                    }
+                ),
                 "text": text[:60],
                 "line_ids": line_ids,
                 "section": section,
