@@ -1,0 +1,280 @@
+{
+  "merchant": "sprouts",
+  "date": "2026-07-11",
+  "tool": "merchant_gold.py",
+  "render": ".out/sprouts/modern.webp",
+  "real": ".out/sprouts/real.webp",
+  "canvas": [
+    760,
+    2471
+  ],
+  "glyphscore_root": "/private/tmp/glyphscore",
+  "chart": "SKIPPED",
+  "aligned": true,
+  "align_residual_px": 3.7,
+  "n_anchors": 38,
+  "L0": {
+    "ink_ratio": {
+      "value": 1.7029091938711551,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "fill_render": {
+      "value": 0.2392578125,
+      "target": 0.2197265625,
+      "tol": 0.01,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.2197265625,
+      "spec_target": 0.271
+    },
+    "fill_real_ref": 0.2197265625,
+    "cap_h_ratio": {
+      "value": 1.3768552433335952,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "pitch_ratio": {
+      "value": 1.000244838539406,
+      "target": 1.0,
+      "tol": 0.02,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_px": {
+      "render": 19.76691993885595,
+      "real": 14.356570913727252
+    },
+    "pitch_px": {
+      "render": 35.9292838888617,
+      "real": 35.92048916875887
+    },
+    "interline_fill": {
+      "render": 0.5501618122977346,
+      "real": 0.39967637540453077
+    },
+    "pass": false
+  },
+  "L1": {
+    "gs_vs_crops": {
+      "value": 39.44332316338244,
+      "target": 50.0,
+      "tol": 5.0,
+      "dir": "min",
+      "pass": false
+    },
+    "gs_vs_chart": "SKIPPED",
+    "iou_re": 0.547371692126222,
+    "iou_rc": "SKIPPED",
+    "iou_ce": "SKIPPED",
+    "iou_rc_hygiene": "SKIPPED",
+    "iou_re_hygiene": {
+      "value": 0.5492311097594366,
+      "target": 0.611,
+      "tol": 0.03,
+      "dir": "min",
+      "pass": false
+    },
+    "self_agreement_ref": 0.611,
+    "worst_after_hygiene": [
+      {
+        "char": "Q",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.186,
+        "n": 13
+      },
+      {
+        "char": "U",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.244,
+        "n": 99
+      },
+      {
+        "char": "K",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.302,
+        "n": 65
+      },
+      {
+        "char": "u",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.336,
+        "n": 244
+      },
+      {
+        "char": "O",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.354,
+        "n": 151
+      },
+      {
+        "char": ",",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.374,
+        "n": 93
+      },
+      {
+        "char": "0",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.394,
+        "n": 937
+      },
+      {
+        "char": "a",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.401,
+        "n": 352
+      }
+    ],
+    "segmentation": "183/184",
+    "pass": false
+  },
+  "L2": {
+    "chamfer_dots": 0.7194456242031894,
+    "boundary_iou": 0.3562809233807894,
+    "advance_ratio": {
+      "value": 0.7580878831258704,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "max",
+      "pass": true
+    },
+    "advance_px": {
+      "render": 13.872172093762018,
+      "real": 18.298897004608538
+    },
+    "price_std_px": {
+      "value": 20.999047597450698,
+      "target": 8.0,
+      "tol": 0.0,
+      "dir": "max",
+      "pass": false
+    },
+    "barcode_caption_ratio": {
+      "value": 1.2308818581087702,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "cap_h_ratio": {
+      "value": 1.3768552433335952,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "interline_fill": {
+      "render": 0.5501618122977346,
+      "real": 0.39967637540453077
+    },
+    "pass": false
+  },
+  "L3": {
+    "ink_darkness": {
+      "value": 40.0,
+      "target": 40.0,
+      "tol": 6.0,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 40.0,
+      "spec_target": 69.0
+    },
+    "stroke_cov": {
+      "value": 0.08889109511330491,
+      "target": 0.14813988498848846,
+      "tol": 0.06,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.14813988498848846,
+      "spec_target": 0.35
+    },
+    "edge_transition_frac": {
+      "value": 0.33731917136134554,
+      "target": 0.28589807733542993,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.28589807733542993,
+      "spec_target": 0.16
+    },
+    "paper_clip_frac": {
+      "value": 0.007632856412876852,
+      "target": 0.6801268949071708,
+      "tol": 0.1,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.6801268949071708,
+      "spec_target": 0.55
+    },
+    "ink_tone_emd": {
+      "value": 14.50946023090189,
+      "target": 0.0,
+      "tol": 3.0,
+      "dir": "max",
+      "pass": false
+    },
+    "kanungo_p": {
+      "value": 0.009900990099009901,
+      "target": 0.05,
+      "tol": 0.0,
+      "dir": "p_min",
+      "pass": false
+    },
+    "kanungo_distance": 0.1035415099071984,
+    "pass": false
+  },
+  "L4": {
+    "ms_ssim": {
+      "value": 0.5361151942491776,
+      "target": 0.75,
+      "tol": 0.0,
+      "dir": "min",
+      "pass": false
+    },
+    "ms_ssim_raw": 0.3744006536108357,
+    "glcm_contrast": {
+      "real": 4.382789481987455,
+      "render": 2.1815335712549726
+    },
+    "forgery_auc": "NOT_IMPLEMENTED",
+    "tstr_gap": "NOT_IMPLEMENTED",
+    "ocr_jaccard": {
+      "value": 0.12,
+      "target": 1.0,
+      "tol": 0.1,
+      "dir": "min",
+      "pass": false
+    },
+    "ocr_recall": {
+      "real": 0.875,
+      "render": 0.7880434782608695
+    },
+    "ocr_cer": {
+      "real": 0.07272727272727272,
+      "render": 0.10578512396694215
+    },
+    "ocr_error_classes": {
+      "shared": 6,
+      "render_only": 31,
+      "real_only": 13
+    },
+    "spacing_jitter_render": 0.28024691581771427,
+    "pass": false
+  },
+  "overall_rung_cleared": "L0-fail",
+  "elapsed_sec": 10.2,
+  "_baseline_note": "Merchant #2 official starting line: Sprouts variant (b) MODERN = production render + composite true-bold heavy atlas (PR #1104 sprouts-heavy-composite.glyphs.npz). Gold receipt 00ded398-af6f-4a49-86f7-c79ccb554e48#1. Chart rungs SKIPPED (no Sprouts specimen chart); chart-free L1 gates GlyphScore-vs-crops AND render->real IoU (dir=min vs sprouts self-agreement 0.611). Overall L0-fail: too clean/heavy, same pattern as Costco baseline."
+}
