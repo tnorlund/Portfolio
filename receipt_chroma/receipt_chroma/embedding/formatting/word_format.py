@@ -97,60 +97,6 @@ def format_word_context_embedding_input(
     return " ".join(left_padded + [target_word.text] + right_padded)
 
 
-def parse_left_right_from_formatted(
-    fmt: str, context_size: int = 2
-) -> tuple[list[str], list[str]]:
-    """
-    Parse left and right context words from formatted embedding input.
-
-    New format: "left_words... word right_words..."
-    Example: "<EDGE> Subtotal Total Tax Discount"
-
-    The format is: [left_context (context_size tokens)] [target_word]
-    [right_context (context_size tokens)]
-    Total tokens = context_size + 1 + context_size = 2*context_size + 1
-
-    Args:
-        fmt: Formatted string with context words
-        context_size: Expected number of context words on each side
-            (default: 2)
-
-    Returns:
-        Tuple of (left_words, right_words) as lists, each of length
-        context_size
-    """
-    # Split by spaces to get all tokens
-    tokens = fmt.split()
-
-    # Expected format: [left_context] [target] [right_context]
-    # Total length should be: context_size + 1 + context_size =
-    # 2*context_size + 1
-    expected_length = 2 * context_size + 1
-
-    if len(tokens) < expected_length:
-        # Not enough tokens - pad with <EDGE>
-        tokens = (
-            ["<EDGE>"] * context_size + tokens + ["<EDGE>"] * context_size
-        )[:expected_length]
-    elif len(tokens) > expected_length:
-        # Too many tokens - take first context_size, middle word,
-        # last context_size
-        tokens = (
-            tokens[:context_size]
-            + [tokens[len(tokens) // 2]]
-            + tokens[-context_size:]
-        )
-
-    # Extract left context (first context_size tokens)
-    left_tokens = tokens[:context_size]
-    # Target word is at index context_size
-    # Extract right context (last context_size tokens)
-    right_tokens = tokens[context_size + 1 :]
-
-    # Return as-is (already includes <EDGE> tokens if present)
-    return left_tokens, right_tokens
-
-
 def get_word_neighbors(
     target_word: WordLike,
     all_words: Sequence[WordLike],

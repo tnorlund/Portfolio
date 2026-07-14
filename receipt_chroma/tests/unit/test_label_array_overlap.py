@@ -7,11 +7,8 @@ Also verifies that VALID→INVALID transitions are handled correctly in the
 incremental update path.
 """
 
-import pytest
-
 from receipt_chroma.data.operations import (
     _labels_from_array_metadata,
-    _normalize_labels,
     _set_label_array_fields,
 )
 

@@ -34,9 +34,48 @@ const question0 = {
     },
     {
       type: "synthesize" as const,
-      content: "You spent $42.00 on groceries",
+      content: [
+        "# Grocery spending",
+        "",
+        "You spent $42.00 on groceries across receipts with valid dates and reasonable totals, excluding extreme OCR outliers so the summary reflects typical spending.",
+      ].join("\n"),
       detail: "3 receipts with grocery items identified",
       durationMs: 0,
+      receipts: [
+        {
+          imageId: "evidence-receipt-a",
+          merchant: "Neighborhood Market",
+          item: "Organic Milk",
+          amount: 6.49,
+          thumbnailKey: "assets/evidence-receipt-a.webp",
+          width: 300,
+          height: 900,
+        },
+        {
+          imageId: "evidence-receipt-a",
+          merchant: "Neighborhood Market",
+          item: "Greek Yogurt",
+          amount: 5.29,
+          thumbnailKey: "assets/evidence-receipt-a-duplicate.webp",
+          width: 300,
+          height: 900,
+        },
+        {
+          imageId: "evidence-receipt-b",
+          merchant: "Corner Grocer",
+          item: "Coffee",
+          amount: 12.99,
+          thumbnailKey: "assets/evidence-receipt-b.webp",
+          width: 320,
+          height: 960,
+        },
+      ],
+      structuredData: [
+        {
+          merchant: "Neighborhood Market",
+          items: [{ name: "Organic Milk", amount: 6.49 }],
+        },
+      ],
     },
   ],
   stats: {
@@ -115,6 +154,51 @@ const question2 = {
 
 /** All 3 mock questions indexed by questionIndex */
 export const mockQAQuestions = [question0, question1, question2];
+
+/** A trace with two tool calls sharing the same wall-clock interval. */
+export const mockParallelQAQuestion = {
+  question: "Which grocery searches ran together?",
+  questionIndex: 0,
+  traceId: "trace-parallel-tools",
+  trace: [
+    {
+      type: "plan" as const,
+      content: "comparison → parallel_search",
+      durationMs: 1000,
+      startOffsetMs: 0,
+    },
+    {
+      type: "agent" as const,
+      content: "Run complementary grocery searches",
+      durationMs: 1000,
+      startOffsetMs: 1000,
+    },
+    {
+      type: "tools" as const,
+      content: "search_receipts",
+      durationMs: 2000,
+      startOffsetMs: 2000,
+    },
+    {
+      type: "tools" as const,
+      content: "search_receipt_descriptions",
+      durationMs: 1200,
+      startOffsetMs: 2000,
+    },
+    {
+      type: "synthesize" as const,
+      content: "Both searches completed in parallel",
+      durationMs: 1000,
+      startOffsetMs: 4000,
+    },
+  ],
+  stats: {
+    llmCalls: 2,
+    toolInvocations: 2,
+    receiptsProcessed: 4,
+    cost: 0.004,
+  },
+};
 
 /** All distinct answer texts — useful for assertions */
 export const MOCK_ANSWERS = [

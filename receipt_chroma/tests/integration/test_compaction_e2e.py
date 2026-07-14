@@ -16,17 +16,40 @@ import pytest
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction import process_collection_updates
-from receipt_chroma.storage import StorageManager, StorageMode
+from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_compaction_run_message,
     create_label_message,
-    create_mock_logger,
     create_mock_metrics,
     create_place_message,
     create_receipt_lines_in_dynamodb,
     create_receipt_words_in_dynamodb,
 )
+
+
+class _SnapshotStore:
+    """Minimal adapter around the package's production S3 snapshot API."""
+
+    def __init__(self, collection: str, bucket: str):
+        self.collection = collection
+        self.bucket = bucket
+
+    def upload_snapshot(self, local_path: str, metadata=None):
+        return upload_snapshot_atomic(
+            local_path=local_path,
+            bucket=self.bucket,
+            collection=self.collection,
+            metadata=metadata,
+        )
+
+    def download_snapshot(self, local_path: str, verify_integrity=True):
+        return download_snapshot_atomic(
+            bucket=self.bucket,
+            collection=self.collection,
+            local_path=local_path,
+            verify_integrity=verify_integrity,
+        )
 
 
 @pytest.mark.integration
@@ -66,11 +89,9 @@ class TestCompactionEndToEnd:
         )
         snapshot_client.close()
 
-        storage_manager = StorageManager(
+        storage_manager = _SnapshotStore(
             collection="lines",
             bucket=bucket_name,
-            mode=StorageMode.S3_ONLY,
-            logger=mock_logger,
         )
 
         upload_result = storage_manager.upload_snapshot(
@@ -205,11 +226,9 @@ class TestCompactionEndToEnd:
         )
         snapshot_client.close()
 
-        storage_manager = StorageManager(
+        storage_manager = _SnapshotStore(
             collection="lines",
             bucket=bucket_name,
-            mode=StorageMode.S3_ONLY,
-            logger=mock_logger,
         )
 
         storage_manager.upload_snapshot(snapshot_dir)
@@ -378,11 +397,9 @@ class TestCompactionEndToEnd:
         )
         snapshot_client.close()
 
-        storage_manager = StorageManager(
+        storage_manager = _SnapshotStore(
             collection="words",
             bucket=bucket_name,
-            mode=StorageMode.S3_ONLY,
-            logger=mock_logger,
         )
 
         storage_manager.upload_snapshot(snapshot_dir)
@@ -513,11 +530,9 @@ class TestCompactionEndToEnd:
         snapshot_client.close()
 
         # Upload initial snapshot
-        storage_manager = StorageManager(
+        storage_manager = _SnapshotStore(
             collection="lines",
             bucket=bucket_name,
-            mode=StorageMode.S3_ONLY,
-            logger=mock_logger,
         )
 
         storage_manager.upload_snapshot(snapshot_dir)
@@ -622,11 +637,9 @@ class TestCompactionEndToEnd:
         mock_metrics = create_mock_metrics()
 
         # Upload initial snapshot
-        storage_manager = StorageManager(
+        storage_manager = _SnapshotStore(
             collection="lines",
             bucket=bucket_name,
-            mode=StorageMode.S3_ONLY,
-            logger=mock_logger,
         )
 
         storage_manager.upload_snapshot(chroma_snapshot_with_data)

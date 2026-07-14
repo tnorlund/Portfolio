@@ -4,6 +4,25 @@ import Foundation
 import AppKit
 import Vision
 
+/// Remap cluster line indices from a filtered (compacted) line array back to the
+/// original line array. `keptIndices[i]` is the original index of the i-th kept
+/// line. Cluster keys (including the -1 noise cluster) are preserved. Used after
+/// `documentLineKeepIndices` drops colored-background lines so that the
+/// serialized clustering / receipt `line_indices` stay in the same index space
+/// as the full, unfiltered `lines` array in the output.
+private func remapClusterIndices(
+    _ clustering: ClusteringResult,
+    _ keptIndices: [Int]
+) -> ClusteringResult {
+    var out: [Int: [Int]] = [:]
+    for (key, vals) in clustering.clusters {
+        out[key] = vals.compactMap {
+            $0 >= 0 && $0 < keptIndices.count ? keptIndices[$0] : nil
+        }
+    }
+    return ClusteringResult(clusters: out)
+}
+
 // NOTE: Code Duplication with OCRSwift.swift
 //
 // This file contains duplicated code (data models, helper functions, and OCR logic)
@@ -540,33 +559,80 @@ public struct VisionOCREngine: OCREngineProtocol {
             var receiptOutputs: [ReceiptOutput]?
 
             if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
+                // Load pixels once: used both for scan-vs-photo classification
+                // (histogram signal) and, for non-native types, receipt
+                // extraction below.
+                let loadedImage = loadCGImage(from: imageURL)
                 // Classify the image
                 classification = classifier.classify(
                     lines: mutableLines,
                     imageWidth: imageDimensions.width,
-                    imageHeight: imageDimensions.height
+                    imageHeight: imageDimensions.height,
+                    image: loadedImage
                 )
 
                 // Cluster based on image type
                 if let classResult = classification {
+                    // Drop lines that sit on a colored (non-document)
+                    // background — e.g. a menu/flyer behind the receipt — so
+                    // they can't be clustered into the receipt. NATIVE fills
+                    // the frame with a single receipt, so it is left untouched.
+                    // Keep the ORIGINAL indices of the surviving lines so the
+                    // cluster/receipt indices can be remapped back to the full
+                    // `mutableLines` array (which is what the output serializes).
+                    let keptIndices: [Int]
+                    if classResult.imageType != .native, let img = loadedImage {
+                        keptIndices = documentLineKeepIndices(mutableLines, image: img)
+                    } else {
+                        keptIndices = Array(0..<mutableLines.count)
+                    }
+                    let docLines = keptIndices.map { mutableLines[$0] }
                     switch classResult.imageType {
                     case .native:
                         // Single receipt, no clustering needed
-                        clustering = ClusteringResult(clusters: [1: Array(0..<mutableLines.count)])
+                        clustering = ClusteringResult(clusters: [1: Array(0..<docLines.count)])
                     case .photo:
                         // Use 2D DBSCAN for photos
-                        let avgDiagonal = clusterer.averageDiagonalLength(lines: mutableLines)
+                        let avgDiagonal = clusterer.averageDiagonalLength(lines: docLines)
                         let eps = avgDiagonal * 2  // Dynamic eps based on line size
-                        clustering = clusterer.dbscanLines(lines: mutableLines, eps: eps, minSamples: 10)
+                        var photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
+                        // Small-receipt recovery: minSamples 10 is tuned for
+                        // full-resolution photos with many lines. A genuine small
+                        // receipt (or one reduced below 10 lines by the background
+                        // filter) leaves every line in the noise cluster and would
+                        // yield NO receipt. When the standard pass finds nothing
+                        // but a modest number of coherent lines remain, retry once
+                        // with a low minSamples so the receipt is recovered rather
+                        // than silently dropped. (Only fires when the normal pass
+                        // produced nothing, so it can't regress working images.)
+                        // Floor at 5 lines: a handful (2-4) of labels on a
+                        // uniformly-colored sign/menu that slipped past the color
+                        // filter must not be clustered into a fabricated receipt;
+                        // a real small receipt has a merchant + a few items + a
+                        // total. (A stricter low-saturation paper gate is a noted
+                        // follow-up.)
+                        if !photoClustering.clusters.contains(where: { $0.key != -1 && !$0.value.isEmpty }),
+                           docLines.count >= 5, docLines.count < 12 {
+                            photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 3)
+                        }
+                        clustering = photoClustering
                     case .scan:
                         // Use X-axis clustering for scans
-                        clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
+                        clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
+                    }
+
+                    // Filtering compacted the line array; remap cluster indices
+                    // back to the original `mutableLines` space so receipt
+                    // processing (below) and the serialized clustering both index
+                    // the same array the top-level `lines` is serialized from.
+                    if keptIndices.count != mutableLines.count, let c = clustering {
+                        clustering = remapClusterIndices(c, keptIndices)
                     }
 
                     // Process receipts if we have clustering (PHOTO or SCAN)
                     if classResult.imageType != .native,
                        let clusterResult = clustering,
-                       let cgImage = loadCGImage(from: imageURL) {
+                       let cgImage = loadedImage {
                         let receiptProcessor = ReceiptProcessor()
                         let processedReceipts = receiptProcessor.process(
                             image: cgImage,
@@ -778,27 +844,54 @@ public struct VisionOCREngine: OCREngineProtocol {
         var receiptOutputs: [ReceiptOutput]?
 
         if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
+            let loadedImage = loadCGImage(from: imageURL)
             classification = classifier.classify(
                 lines: mutableLines,
                 imageWidth: imageDimensions.width,
-                imageHeight: imageDimensions.height
+                imageHeight: imageDimensions.height,
+                image: loadedImage
             )
 
             if let classResult = classification {
+                // Drop colored-background (non-document) lines before clustering.
+                // Keep the ORIGINAL indices of the surviving lines so cluster /
+                // receipt indices can be remapped back to the full `mutableLines`
+                // array that the output serializes.
+                let keptIndices: [Int]
+                if classResult.imageType != .native, let img = loadedImage {
+                    keptIndices = documentLineKeepIndices(mutableLines, image: img)
+                } else {
+                    keptIndices = Array(0..<mutableLines.count)
+                }
+                let docLines = keptIndices.map { mutableLines[$0] }
                 switch classResult.imageType {
                 case .native:
-                    clustering = ClusteringResult(clusters: [1: Array(0..<mutableLines.count)])
+                    clustering = ClusteringResult(clusters: [1: Array(0..<docLines.count)])
                 case .photo:
-                    let avgDiagonal = clusterer.averageDiagonalLength(lines: mutableLines)
+                    let avgDiagonal = clusterer.averageDiagonalLength(lines: docLines)
                     let eps = avgDiagonal * 2
-                    clustering = clusterer.dbscanLines(lines: mutableLines, eps: eps, minSamples: 10)
+                    var photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 10)
+                    // Small-receipt recovery (see async path): recover a small
+                    // receipt that minSamples 10 leaves entirely as noise. Floor
+                    // at 5 lines so a few labels on a colored sign aren't
+                    // fabricated into a receipt.
+                    if !photoClustering.clusters.contains(where: { $0.key != -1 && !$0.value.isEmpty }),
+                       docLines.count >= 5, docLines.count < 12 {
+                        photoClustering = clusterer.dbscanLines(lines: docLines, eps: eps, minSamples: 3)
+                    }
+                    clustering = photoClustering
                 case .scan:
-                    clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
+                    clustering = clusterer.dbscanLinesXAxis(lines: docLines, eps: 0.08, minSamples: 2)
+                }
+
+                // Remap filtered cluster indices back to the original line space.
+                if keptIndices.count != mutableLines.count, let c = clustering {
+                    clustering = remapClusterIndices(c, keptIndices)
                 }
 
                 if classResult.imageType != .native,
                    let clusterResult = clustering,
-                   let cgImage = loadCGImage(from: imageURL) {
+                   let cgImage = loadedImage {
                     let receiptProcessor = ReceiptProcessor()
                     let processedReceipts = receiptProcessor.process(
                         image: cgImage,

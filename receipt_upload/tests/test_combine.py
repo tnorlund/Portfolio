@@ -99,7 +99,7 @@ def _make_label(
 def test_get_best_receipt_place_prefers_higher_quality_match():
     weak = _make_place(
         receipt_id=1,
-        place_id="",
+        place_id="place_weak",
         merchant_name="Cafe",
         validation_status=MerchantValidationStatus.UNSURE.value,
     )

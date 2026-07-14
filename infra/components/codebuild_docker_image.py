@@ -95,6 +95,9 @@ class CodeBuildDockerImage(ComponentResource):
         lambda_function_name: Optional[
             str
         ] = None,  # If provided, updates Lambda
+        lambda_function_names: Optional[
+            list[str]
+        ] = None,  # Existing Lambdas to update from one shared image build
         lambda_config: Optional[Dict[str, Any]] = None,  # Lambda configuration
         build_args: Optional[Dict[str, str]] = None,
         platform: str = "linux/arm64",
@@ -123,6 +126,12 @@ class CodeBuildDockerImage(ComponentResource):
             lambda_function_name or f"{name}-{pulumi.get_stack()}"
         )
         self.lambda_config = lambda_config or {}
+        self.lambda_function_names = list(lambda_function_names or [])
+        if (
+            self.lambda_config
+            and self.lambda_function_name not in self.lambda_function_names
+        ):
+            self.lambda_function_names.append(self.lambda_function_name)
         self.build_args = build_args or {}
         self.platform = platform
         self.lambda_aliases = (
@@ -206,12 +215,28 @@ class CodeBuildDockerImage(ComponentResource):
             pipeline_trigger_cmd,
         ) = self._setup_pipeline(content_hash)
 
-        # Push bootstrap image and create Lambda function if config provided
-        if self.lambda_config:
+        # A shared image can update several Lambda functions without owning
+        # their Pulumi resources. It still needs a bootstrap ``latest`` tag so
+        # those functions can be created before the asynchronous build ends.
+        bootstrap_cmd = None
+        if self.lambda_config or self.lambda_function_names:
             bootstrap_cmd = self._push_bootstrap_image()
+
+        # Create a Lambda directly only for the legacy single-function mode.
+        if self.lambda_config:
             self._create_lambda_function(bootstrap_cmd, pipeline_trigger_cmd)
         else:
             self.lambda_function = None
+
+        # Consumers that create Lambda resources from this image must wait for
+        # both the bootstrap image and the build trigger.  In async mode the
+        # trigger returns before CodeBuild pushes ``latest``, so depending on
+        # it alone can race a fresh ECR repository.
+        self.lambda_ready_dependencies = [
+            dependency
+            for dependency in (bootstrap_cmd, pipeline_trigger_cmd)
+            if dependency is not None
+        ] or [self.pipeline]
 
         # Export outputs
         self.repository_url = self.ecr_repo.repository_url
@@ -328,29 +353,14 @@ class CodeBuildDockerImage(ComponentResource):
             if full_path.exists():
                 paths.append(full_path)
 
-        # If source_paths specified, hash those plus shared packages (Lambda default)
+        # Hash only explicitly declared package paths.  Docker image callers
+        # own their build context: unrelated monorepo packages must not
+        # invalidate an image simply because its context root is ".".
         if self.source_paths:
             for source_path in sorted(self.source_paths):
                 full_path = Path(PROJECT_DIR) / source_path
                 if full_path.exists():
                     paths.append(full_path)
-
-            if self.build_context_path == ".":
-                # Also hash the default monorepo packages that are always copied
-                packages_to_hash = [
-                    "receipt_dynamo/receipt_dynamo",
-                    "receipt_dynamo/pyproject.toml",
-                    "receipt_chroma/receipt_chroma",
-                    "receipt_chroma/pyproject.toml",
-                    "receipt_places/receipt_places",
-                    "receipt_places/pyproject.toml",
-                    "receipt_agent/receipt_agent",
-                    "receipt_agent/pyproject.toml",
-                ]
-                for package_path in packages_to_hash:
-                    full_path = Path(PROJECT_DIR) / package_path
-                    if full_path.exists():
-                        paths.append(full_path)
 
             # ALWAYS hash the handler directory (Lambda-specific code)
             handler_dir = Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
@@ -364,25 +374,8 @@ class CodeBuildDockerImage(ComponentResource):
         else:
             # Hash only the files that will be included in the build context
             if self.build_context_path == ".":
-                # Lambda images - hash Python packages and handler directory
-                # Default packages that all Lambda images need
-                packages_to_hash = [
-                    "receipt_dynamo/receipt_dynamo",
-                    "receipt_dynamo/pyproject.toml",
-                    "receipt_chroma/receipt_chroma",
-                    "receipt_chroma/pyproject.toml",
-                    "receipt_places/receipt_places",
-                    "receipt_places/pyproject.toml",
-                    "receipt_agent/receipt_agent",
-                    "receipt_agent/pyproject.toml",
-                ]
-
-                for package_path in packages_to_hash:
-                    full_path = Path(PROJECT_DIR) / package_path
-                    if full_path.exists():
-                        paths.append(full_path)
-
-                # Also hash the handler directory
+                # Root-context Lambda images always include their handler
+                # directory. Package trees are opt-in via source_paths.
                 handler_dir = (
                     Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
                 )
@@ -447,22 +440,9 @@ class CodeBuildDockerImage(ComponentResource):
                 )
         extra_context_paths_str = " ".join(self.extra_context_paths)
 
-        # Generate rsync include patterns for packages
-        # Default minimal packages that all Lambdas need
-        packages_to_include = [
-            "receipt_dynamo",
-            "receipt_dynamo_stream",
-            "receipt_chroma",
-            "receipt_places",
-            "receipt_agent",
-        ]
-
-        # Add source_paths packages if specified
-        if self.source_paths:
-            packages_to_include.extend(self.source_paths)
-
-        # Remove duplicates and sort for consistent hashing
-        packages_to_include = sorted(set(packages_to_include))
+        # Package trees are explicit. This keeps an unrelated receipt_chroma
+        # edit from rebuilding a Lambda whose Dockerfile never copies it.
+        packages_to_include = sorted(set(self.source_paths))
 
         # Build rsync include patterns for each package
         rsync_includes = self._generate_package_rsync_patterns(
@@ -578,9 +558,6 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         return docker_image_buildspec(
             build_args=self.build_args,
             platform=self.platform,
-            lambda_function_name=(
-                self.lambda_function_name if self.lambda_config else None
-            ),
             debug_mode=self.debug_mode,
         )
 
@@ -715,13 +692,13 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                                     "lambda:GetFunction",
                                     "lambda:GetFunctionConfiguration",
                                 ],
-                                "Resource": (
+                                "Resource": [
                                     f"arn:aws:lambda:{config.region}:"
                                     f"{get_caller_identity().account_id}:function:"
-                                    f"{self.lambda_function_name}"
-                                    if self.lambda_config
-                                    else "*"
-                                ),
+                                    f"{function_name}"
+                                    for function_name in self.lambda_function_names
+                                ]
+                                or "*",
                             },
                         ],
                     }
@@ -775,6 +752,10 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                             if self.lambda_config
                             else ""
                         ),
+                    ),
+                    ProjectEnvironmentEnvironmentVariableArgs(
+                        name="LAMBDA_FUNCTION_NAMES",
+                        value=" ".join(self.lambda_function_names),
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="DEBUG_MODE",

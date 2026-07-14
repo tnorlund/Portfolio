@@ -1,5 +1,7 @@
 # pylint: disable=redefined-outer-name,protected-access
+import math
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -45,6 +47,20 @@ def example_receipt_place():
         reasoning="Matched via nearby location lookup with address confirmation",
         timestamp=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         places_api_version="v1",
+    )
+
+
+@pytest.fixture
+def pending_receipt_place():
+    """ReceiptPlace for the unmatched, needs-review workflow."""
+    return ReceiptPlace(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="",
+        merchant_name="Merchant Pending Review",
+        validation_status=MerchantValidationStatus.UNSURE.value,
+        reasoning="No searchable place data",
+        timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
 
 
@@ -346,9 +362,7 @@ def test_merchant_name_all_special_characters_fails():
 @pytest.mark.unit
 def test_merchant_name_whitespace_only_fails():
     """Test that whitespace-only merchant names are rejected."""
-    with pytest.raises(
-        ValueError, match="contains no alphanumeric characters"
-    ):
+    with pytest.raises(ValueError, match="merchant_name cannot be empty"):
         ReceiptPlace(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -381,6 +395,84 @@ def test_gsi2_key_place_id(example_receipt_place):
     assert gsi2["GSI2PK"]["S"] == f"PLACE#{rp.place_id}"
     assert "IMAGE#" in gsi2["GSI2SK"]["S"]
     assert "RECEIPT#" in gsi2["GSI2SK"]["S"]
+
+
+@pytest.mark.unit
+def test_empty_place_id_round_trip_uses_sparse_gsi2(pending_receipt_place):
+    """Unmatched places remain serializable without polluting GSI2."""
+    item = pending_receipt_place.to_item()
+
+    assert pending_receipt_place.gsi2_key == {}
+    assert item["place_id"] == {"S": ""}
+    assert "GSI2PK" not in item
+    assert "GSI2SK" not in item
+    assert ReceiptPlace.from_item(item) == pending_receipt_place
+
+
+@pytest.mark.unit
+def test_empty_place_id_accepts_exact_legacy_gsi2_keys(
+    pending_receipt_place,
+):
+    """Legacy PLACE# records can still be read and rewritten sparsely."""
+    legacy_item = pending_receipt_place.to_item()
+    legacy_item.update(
+        {
+            "GSI2PK": {"S": "PLACE#"},
+            "GSI2SK": {
+                "S": (
+                    "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+                    "RECEIPT#00001#PLACE"
+                )
+            },
+        }
+    )
+
+    restored = ReceiptPlace.from_item(legacy_item)
+
+    assert restored == pending_receipt_place
+    assert "GSI2PK" not in restored.to_item()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key_name", "value"),
+    [
+        ("GSI2PK", {"S": "PLACE#wrong"}),
+        ("GSI2SK", {"S": "IMAGE#wrong#RECEIPT#00001#PLACE"}),
+    ],
+)
+def test_empty_place_id_rejects_incorrect_legacy_gsi2_keys(
+    pending_receipt_place, key_name, value
+):
+    """Only the historically emitted empty-place index shape is accepted."""
+    legacy_item = pending_receipt_place.to_item()
+    legacy_item.update(
+        {
+            "GSI2PK": {"S": "PLACE#"},
+            "GSI2SK": {
+                "S": (
+                    "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+                    "RECEIPT#00001#PLACE"
+                )
+            },
+            key_name: value,
+        }
+    )
+
+    with pytest.raises(ValueError, match=f"{key_name} does not match"):
+        ReceiptPlace.from_item(legacy_item)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("place_id", [None, 123, "   "])
+def test_receipt_place_revalidates_mutated_place_id(
+    example_receipt_place, place_id
+):
+    """Serialization catches invalid place IDs introduced by mutation."""
+    example_receipt_place.place_id = place_id
+
+    with pytest.raises(ValueError, match="place_id"):
+        example_receipt_place.to_item()
 
 
 @pytest.mark.unit
@@ -563,3 +655,95 @@ def test_validated_by_enum_normalization():
         timestamp=datetime.now(timezone.utc),
     )
     assert rp.validated_by == ValidationMethod.INFERENCE.value
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("receipt_id", True),
+        ("latitude", True),
+        ("longitude", False),
+        ("confidence", True),
+        ("open_now", 1),
+    ],
+)
+def test_receipt_place_rejects_bool_number_confusion(
+    example_receipt_place, field_name, value
+):
+    kwargs = vars(example_receipt_place).copy()
+    kwargs[field_name] = value
+
+    with pytest.raises(ValueError):
+        ReceiptPlace(**kwargs)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("latitude", math.nan),
+        ("longitude", math.inf),
+        ("viewport_ne_lat", -math.inf),
+        ("confidence", math.nan),
+    ],
+)
+def test_receipt_place_rejects_non_finite_numbers(
+    example_receipt_place, field_name, value
+):
+    kwargs = vars(example_receipt_place).copy()
+    kwargs[field_name] = value
+
+    with pytest.raises(ValueError):
+        ReceiptPlace(**kwargs)
+
+
+@pytest.mark.unit
+def test_receipt_place_native_nested_round_trip(example_receipt_place):
+    kwargs = vars(example_receipt_place).copy()
+    kwargs["address_components"] = {
+        "parts": [{"primary": True, "rank": 1}],
+        "accuracy": Decimal("0.75"),
+    }
+    kwargs["hours_data"] = {"periods": [[{"day": 1, "open": False}, None]]}
+    place = ReceiptPlace(**kwargs)
+
+    item = place.to_item()
+    restored = ReceiptPlace.from_item(item)
+
+    assert item["merchant_types"]["L"][0] == {"S": "cafe"}
+    assert "M" in item["address_components"]
+    assert restored == place
+
+
+@pytest.mark.unit
+def test_receipt_place_mutable_defaults_are_independent():
+    common = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "receipt_id": 1,
+        "place_id": "place",
+        "merchant_name": "Merchant",
+    }
+    first = ReceiptPlace(**common)
+    second = ReceiptPlace(**common)
+
+    first.merchant_types.append("cafe")
+    first.address_components["city"] = "Seattle"
+
+    assert second.merchant_types == []
+    assert second.address_components == {}
+
+
+@pytest.mark.unit
+def test_receipt_place_from_item_rejects_type_and_key_mismatches(
+    example_receipt_place,
+):
+    item = example_receipt_place.to_item()
+    item["TYPE"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="TYPE must be RECEIPT_PLACE"):
+        ReceiptPlace.from_item(item)
+
+    item = example_receipt_place.to_item()
+    item["GSI4SK"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="GSI4SK does not match"):
+        ReceiptPlace.from_item(item)

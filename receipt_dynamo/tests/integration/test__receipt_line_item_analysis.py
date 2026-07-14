@@ -18,10 +18,43 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 
-# This entity is not used in production infrastructure
 pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
+
+
+def _client_error(error_code, operation, message=None):
+    return ClientError(
+        {
+            "Error": {
+                "Code": error_code,
+                "Message": message or f"Mocked {error_code}",
+            }
+        },
+        operation,
+    )
+
+
+def _set_client_error(mock_client, method, error_code, operation, message):
+    getattr(mock_client, method).side_effect = _client_error(
+        error_code, operation, message
+    )
+
+
+def _expected_client_exception(
+    error_code, conditional_exception=DynamoDBError
+):
+    return {
+        "ConditionalCheckFailedException": conditional_exception,
+        "ResourceNotFoundException": OperationError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": EntityValidationError,
+        "AccessDeniedException": DynamoDBError,
+        "TransactionCanceledException": DynamoDBError,
+    }.get(error_code, DynamoDBError)
 
 
 @pytest.fixture
@@ -67,14 +100,10 @@ def test_addReceiptLineItemAnalysis_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful addition of a ReceiptLineItemAnalysis to DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Act
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
-    # Assert
-    # Verify the item was added by retrieving it
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
@@ -106,11 +135,9 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test that adding a duplicate ReceiptLineItemAnalysis raises an error."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
-    # Act & Assert
     with pytest.raises(EntityAlreadyExistsError) as excinfo:
         client.add_receipt_line_item_analysis(
             sample_receipt_line_item_analysis
@@ -125,7 +152,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
         (None, "analysis cannot be None"),
         (
             "not-a-receipt-line-item-analysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -137,14 +164,11 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
     expected_error,
 ):
     """Test that invalid parameters raise appropriate errors."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.add_receipt_line_item_analysis(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -156,34 +180,34 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "already exists",
+            EntityAlreadyExistsError,
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_line_item_analysis",
+            OperationError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
         ),
         (
             "InternalServerError",
             "Internal server error",
-            "Internal server error",
+            DynamoDBServerError,
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt line item analysis to DynamoDB",
+            DynamoDBError,
         ),
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            EntityValidationError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        ("AccessDeniedException", "Access denied", DynamoDBError),
     ],
 )
 def test_addReceiptLineItemAnalysis_client_errors(
@@ -195,27 +219,22 @@ def test_addReceiptLineItemAnalysis_client_errors(
     expected_exception,
 ):
     """Test handling of various client errors when adding a ReceiptLineItemAnalysis."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
-    error_response = {"Error": {"Code": error_code, "Message": error_message}}
-    mock_client.put_item.side_effect = ClientError(error_response, "PutItem")
+    _set_client_error(
+        mock_client, "put_item", error_code, "PutItem", error_message
+    )
 
-    # Act & Assert
-    if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(EntityAlreadyExistsError) as excinfo:
-            client.add_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_exception in str(excinfo.value)
-    else:
-        with pytest.raises(Exception) as excinfo:
-            client.add_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_exception in str(excinfo.value)
+    error_match = (
+        "already exists"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(expected_exception, match=error_match):
+        client.add_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
 
 
 @pytest.mark.integration
@@ -224,10 +243,8 @@ def test_addReceiptLineItemAnalyses_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful addition of multiple ReceiptLineItemAnalyses to DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create a second analysis with a different receipt_id
     second_analysis = ReceiptLineItemAnalysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=2,
@@ -242,11 +259,8 @@ def test_addReceiptLineItemAnalyses_success(
 
     analyses = [sample_receipt_line_item_analysis, second_analysis]
 
-    # Act
     client.add_receipt_line_item_analyses(analyses)
 
-    # Assert
-    # Verify the items were added by retrieving them
     for analysis in analyses:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -265,10 +279,8 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
     dynamodb_table, sample_receipt_line_item_analysis
 ):
     """Test addition of a large batch of ReceiptLineItemAnalyses (requiring multiple batches)."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create 30 analyses (more than the batch size of 25)
     analyses = []
     for i in range(1, 31):
         analysis = ReceiptLineItemAnalysis(
@@ -284,11 +296,8 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
         )
         analyses.append(analysis)
 
-    # Act
     client.add_receipt_line_item_analyses(analyses)
 
-    # Assert
-    # Verify the first, middle, and last items were added
     for receipt_id in [1, 15, 30]:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -307,13 +316,10 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_line_item_analysis, mocker
 ):
     """Test that unprocessed items are retried when adding multiple ReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create mock responses for batch_write_item
     mock_client = mocker.patch.object(client, "_client")
 
-    # First call returns unprocessed items
     first_response = {
         "UnprocessedItems": {
             dynamodb_table: [
@@ -329,7 +335,6 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
         }
     }
 
-    # Second call returns empty unprocessed items
     second_response = {"UnprocessedItems": {}}
 
     mock_client.batch_write_item.side_effect = [
@@ -337,12 +342,8 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
         second_response,
     ]
 
-    # Act
     client.add_receipt_line_item_analyses([sample_receipt_line_item_analysis])
 
-    # Assert
-    # Should call batch_write_item twice: once for the initial request,
-    # once for the retry with unprocessed items
     assert mock_client.batch_write_item.call_count == 2
 
 
@@ -353,11 +354,11 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "All items in analyses must be instances of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -369,14 +370,11 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
     expected_error,
 ):
     """Test that invalid parameters raise appropriate errors."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.add_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -426,22 +424,20 @@ def test_addReceiptLineItemAnalyses_client_errors(
     expected_error_message,
 ):
     """Test handling of various client errors when adding multiple ReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
     error_response = {"Error": {"Code": error_code, "Message": error_message}}
     mock_client.batch_write_item.side_effect = ClientError(
         error_response, "BatchWriteItem"
     )
 
-    # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.add_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
-    assert expected_error_message in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -450,13 +446,10 @@ def test_updateReceiptLineItemAnalysis_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful update of a ReceiptLineItemAnalysis in DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # First add the item to be updated
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
-    # Modify the item
     updated_analysis = ReceiptLineItemAnalysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=sample_receipt_line_item_analysis.receipt_id,
@@ -469,11 +462,8 @@ def test_updateReceiptLineItemAnalysis_success(
         total=sample_receipt_line_item_analysis.total,
     )
 
-    # Act
     client.update_receipt_line_item_analysis(updated_analysis)
 
-    # Assert
-    # Verify the item was updated
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
@@ -495,7 +485,7 @@ def test_updateReceiptLineItemAnalysis_success(
         (None, "analysis cannot be None"),
         (
             "not a ReceiptLineItemAnalysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -507,14 +497,11 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
     expected_error,
 ):
     """Test that invalid parameters raise appropriate errors."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.update_receipt_line_item_analysis(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -569,27 +556,25 @@ def test_updateReceiptLineItemAnalysis_client_errors(
     expected_error,
 ):
     """Test handling of various client errors when updating a ReceiptLineItemAnalysis."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
-    error_response = {"Error": {"Code": error_code, "Message": error_message}}
-    mock_client.put_item.side_effect = ClientError(error_response, "PutItem")
+    _set_client_error(
+        mock_client, "put_item", error_code, "PutItem", error_message
+    )
 
-    # Act & Assert
-    if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(EntityNotFoundError) as excinfo:
-            client.update_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
-    else:
-        with pytest.raises(Exception) as excinfo:
-            client.update_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
+    exception_type = _expected_client_exception(
+        error_code, EntityNotFoundError
+    )
+    error_match = (
+        "does not exist"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(exception_type, match=error_match):
+        client.update_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
 
 
 @pytest.mark.integration
@@ -598,10 +583,8 @@ def test_updateReceiptLineItemAnalyses_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful update of multiple ReceiptLineItemAnalyses in DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create two analyses
     second_analysis = ReceiptLineItemAnalysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=2,
@@ -614,12 +597,10 @@ def test_updateReceiptLineItemAnalyses_success(
         total=sample_receipt_line_item_analysis.total,
     )
 
-    # Add the items first
     client.add_receipt_line_item_analyses(
         [sample_receipt_line_item_analysis, second_analysis]
     )
 
-    # Modify items for update
     updated_analysis1 = ReceiptLineItemAnalysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=sample_receipt_line_item_analysis.receipt_id,
@@ -644,13 +625,10 @@ def test_updateReceiptLineItemAnalyses_success(
         total=second_analysis.total,
     )
 
-    # Act
     client.update_receipt_line_item_analyses(
         [updated_analysis1, updated_analysis2]
     )
 
-    # Assert
-    # Verify the items were updated
     for analysis in [updated_analysis1, updated_analysis2]:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -671,10 +649,8 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
     dynamodb_table, sample_receipt_line_item_analysis
 ):
     """Test update of a large batch of ReceiptLineItemAnalyses (requiring multiple batches)."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create and add 30 analyses (more than the batch size of 25)
     analyses = []
     for i in range(1, 31):
         analysis = ReceiptLineItemAnalysis(
@@ -690,10 +666,8 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         )
         analyses.append(analysis)
 
-    # Add items first
     client.add_receipt_line_item_analyses(analyses)
 
-    # Create updated versions
     updated_analyses = []
     for i, analysis in enumerate(analyses):
         updated_analysis = ReceiptLineItemAnalysis(
@@ -709,10 +683,8 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         )
         updated_analyses.append(updated_analysis)
 
-    # Act
     client.update_receipt_line_item_analyses(updated_analyses)
 
-    # Assert - check a few of the updated items
     for receipt_id in [1, 15, 30]:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -735,11 +707,11 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "All items in analyses must be instances of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -751,39 +723,33 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
     expected_error,
 ):
     """Test that invalid inputs raise appropriate errors when updating multiple analyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.update_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,expected_exception,cancellation_reasons",
+    "error_code,error_message,expected_exception,cancellation_reasons",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_line_item_analyses",
-            DynamoDBError,
+            OperationError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more receipt line item analyses do not exist",
-            ValueError,
+            DynamoDBError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
             "InternalServerError",
-            "Internal server error",
             "Internal server error",
             DynamoDBServerError,
             None,
@@ -791,28 +757,24 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
             DynamoDBThroughputError,
             None,
         ),
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-            DynamoDBValidationError,
+            EntityValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied",
-            DynamoDBAccessError,
+            DynamoDBError,
             None,
         ),
         (
             "Exception",
             "Unknown error occurred",
-            "Could not update receipt line item analyses in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -824,18 +786,14 @@ def test_updateReceiptLineItemAnalyses_client_errors(
     mocker,
     error_code,
     error_message,
-    expected_error,
     expected_exception,
     cancellation_reasons,
 ):
     """Test handling of various client errors when updating multiple ReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
 
-    # For TransactionCanceledException, include the cancellation reasons
     if error_code == "TransactionCanceledException":
         error_response = {
             "Error": {
@@ -853,12 +811,10 @@ def test_updateReceiptLineItemAnalyses_client_errors(
         error_response, "BatchWriteItem"
     )
 
-    # Act & Assert
-    with pytest.raises(expected_exception) as excinfo:
+    with pytest.raises(expected_exception, match=error_message):
         client.update_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -867,13 +823,10 @@ def test_deleteReceiptLineItemAnalysis_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful deletion of a ReceiptLineItemAnalysis from DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Add the analysis first
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
-    # Verify the analysis exists
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
@@ -885,11 +838,8 @@ def test_deleteReceiptLineItemAnalysis_success(
     )
     assert "Item" in response
 
-    # Act
     client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
-    # Assert
-    # Verify the analysis was deleted
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
@@ -921,26 +871,11 @@ def test_deleteReceiptLineItemAnalysis_success(
     ],
 )
 def test_deleteReceiptLineItemAnalysis_invalid_parameters(
-    dynamodb_table, mocker, image_id, receipt_id, expected_error
+    image_id, receipt_id, expected_error
 ):
-    """Test that invalid parameters raise appropriate errors when deleting a ReceiptLineItemAnalysis."""
-    # Arrange
-    client = DynamoClient(table_name=dynamodb_table)
-
-    # Mock boto3 client to prevent actual calls for invalid inputs
-    mocker.patch.object(client, "_client")
-
-    # Act & Assert
-    # Try to create an invalid analysis object
-    with pytest.raises(ValueError) as excinfo:
-        # This will raise ValueError when trying to create the object with invalid parameters
-        from datetime import datetime
-
-        from receipt_dynamo.entities.receipt_line_item_analysis import (
-            ReceiptLineItemAnalysis,
-        )
-
-        analysis = ReceiptLineItemAnalysis(
+    """Invalid entity keys are rejected before a delete can be attempted."""
+    with pytest.raises(ValueError, match=expected_error):
+        ReceiptLineItemAnalysis(
             image_id=image_id,
             receipt_id=receipt_id,
             timestamp_added=datetime.now(),
@@ -948,8 +883,6 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
             reasoning="Test analysis",
             version="v1",
         )
-        client.delete_receipt_line_item_analysis(analysis)
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -998,28 +931,25 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     expected_error,
 ):
     """Test handling of various client errors when deleting a ReceiptLineItemAnalysis."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
-    mock_client.delete_item.side_effect = ClientError(
-        {"Error": {"Code": error_code, "Message": error_message}}, "DeleteItem"
+    _set_client_error(
+        mock_client, "delete_item", error_code, "DeleteItem", error_message
     )
 
-    # Act & Assert
-    if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(EntityNotFoundError) as excinfo:
-            client.delete_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
-    else:
-        with pytest.raises(Exception) as excinfo:
-            client.delete_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
+    exception_type = _expected_client_exception(
+        error_code, EntityNotFoundError
+    )
+    error_match = (
+        "does not exist"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(exception_type, match=error_match):
+        client.delete_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
 
 
 @pytest.mark.integration
@@ -1028,10 +958,8 @@ def test_deleteReceiptLineItemAnalyses_not_found(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test deletion of non-existent ReceiptLineItemAnalyses (should not raise an error)."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create proper ReceiptLineItemAnalysis objects with non-existent IDs
     non_existent_analyses = [
         ReceiptLineItemAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",  # Valid UUID
@@ -1057,10 +985,7 @@ def test_deleteReceiptLineItemAnalyses_not_found(
         ),
     ]
 
-    # Act - should not raise an error
     client.delete_receipt_line_item_analyses(non_existent_analyses)
-
-    # Assert - The items weren't there to begin with, so no assertions are needed
 
 
 @pytest.mark.integration
@@ -1069,15 +994,11 @@ def test_deleteReceiptLineItemAnalyses_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful deletion of multiple ReceiptLineItemAnalyses from DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create analyses based on the keys
     analyses = []
-    # Add first analysis
     analyses.append(sample_receipt_line_item_analysis)
 
-    # Add second analysis
     second_analysis = ReceiptLineItemAnalysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=2,
@@ -1091,10 +1012,8 @@ def test_deleteReceiptLineItemAnalyses_success(
     )
     analyses.append(second_analysis)
 
-    # Add the analyses
     client.add_receipt_line_item_analyses(analyses)
 
-    # Verify the analyses exist
     for analysis in analyses:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -1107,11 +1026,8 @@ def test_deleteReceiptLineItemAnalyses_success(
         )
         assert "Item" in response
 
-    # Act
     client.delete_receipt_line_item_analyses(analyses)
 
-    # Assert
-    # Verify the analyses were deleted
     for analysis in analyses:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -1130,10 +1046,8 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
     dynamodb_table, sample_receipt_line_item_analysis
 ):
     """Test deletion of a large batch of ReceiptLineItemAnalyses (requiring multiple batches)."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create and add 30 analyses (more than the batch size of 25)
     analyses = []
     for i in range(1, 31):
         analysis = ReceiptLineItemAnalysis(
@@ -1149,10 +1063,8 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         )
         analyses.append(analysis)
 
-    # Add items first
     client.add_receipt_line_item_analyses(analyses)
 
-    # Verify a sample of analyses exist
     for receipt_id in [1, 15, 30]:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -1165,10 +1077,8 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         )
         assert "Item" in response
 
-    # Act
     client.delete_receipt_line_item_analyses(analyses)
 
-    # Assert - check a sample of the deleted items
     for receipt_id in [1, 15, 30]:
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
@@ -1189,11 +1099,11 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list",
         ),
         (
             [123, "not-an-analysis"],
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "All items in analyses must be instances of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -1204,14 +1114,11 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
     expected_error,
 ):
     """Test that invalid inputs raise appropriate errors when deleting multiple analyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.delete_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -1257,22 +1164,20 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
     expected_error,
 ):
     """Test handling of various client errors when deleting multiple ReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
     mock_client.batch_write_item.side_effect = ClientError(
         {"Error": {"Code": error_code, "Message": error_message}},
         "BatchWriteItem",
     )
 
-    # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.delete_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1280,10 +1185,8 @@ def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_line_item_analysis, mocker
 ):
     """Test that unprocessed items are retried when deleting multiple analyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create a list of analyses to delete
     analyses = []
     for i in range(1, 4):
         analysis = ReceiptLineItemAnalysis(
@@ -1299,30 +1202,24 @@ def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
         )
         analyses.append(analysis)
 
-    # Mock boto3 client to simulate unprocessed items on first call, then success on second
     mock_client = mocker.patch.object(client, "_client")
 
-    # First call returns unprocessed items
     unprocessed_item = {
         "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
         "SK": {"S": "RECEIPT#3#ANALYSIS#LINE_ITEMS"},
     }
 
     mock_client.batch_write_item.side_effect = [
-        # First call returns unprocessed items
         {
             "UnprocessedItems": {
                 dynamodb_table: [{"DeleteRequest": {"Key": unprocessed_item}}]
             }
         },
-        # Second call succeeds
         {"UnprocessedItems": {}},
     ]
 
-    # Act
     client.delete_receipt_line_item_analyses(analyses)
 
-    # Assert - verify the batch_write_item was called twice
     assert mock_client.batch_write_item.call_count == 2
 
 
@@ -1332,19 +1229,15 @@ def test_getReceiptLineItemAnalysis_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful retrieval of a ReceiptLineItemAnalysis from DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Add the analysis first
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
-    # Act
     result = client.get_receipt_line_item_analysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=sample_receipt_line_item_analysis.receipt_id,
     )
 
-    # Assert
     assert result is not None
     assert isinstance(result, ReceiptLineItemAnalysis)
     assert result.image_id == sample_receipt_line_item_analysis.image_id
@@ -1367,14 +1260,10 @@ def test_getReceiptLineItemAnalysis_not_found(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test retrieval of a non-existent ReceiptLineItemAnalysis (should return None)."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
-    # Use a valid UUID but one that doesn't exist in the database
     valid_uuid = sample_receipt_line_item_analysis.image_id
     non_existent_receipt_id = 9999
 
-    # Act & Assert
-    # The implementation might either return None or raise an exception
     try:
         result = client.get_receipt_line_item_analysis(
             image_id=valid_uuid,
@@ -1382,7 +1271,6 @@ def test_getReceiptLineItemAnalysis_not_found(
         )
         assert result is None
     except ValueError as e:
-        # If it raises an exception, make sure it's the expected one
         assert (
             f"Receipt Line Item Analysis for Image ID {valid_uuid} and Receipt ID {non_existent_receipt_id} does not exist"
             in str(e)
@@ -1416,14 +1304,16 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
     dynamodb_table, mocker, image_id, receipt_id, expected_error
 ):
     """Test that invalid parameters raise appropriate errors when getting a ReceiptLineItemAnalysis."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    exception_type = (
+        OperationError
+        if image_id in ("", "invalid-uuid")
+        else EntityValidationError
+    )
+    with pytest.raises(exception_type) as excinfo:
         client.get_receipt_line_item_analysis(
             image_id=image_id, receipt_id=receipt_id
         )
@@ -1471,22 +1361,20 @@ def test_getReceiptLineItemAnalysis_client_errors(
     expected_error,
 ):
     """Test handling of various client errors when getting a ReceiptLineItemAnalysis."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
-    mock_client.get_item.side_effect = ClientError(
-        {"Error": {"Code": error_code, "Message": error_message}}, "GetItem"
+    _set_client_error(
+        mock_client, "get_item", error_code, "GetItem", error_message
     )
 
-    # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.get_receipt_line_item_analysis(
             image_id=sample_receipt_line_item_analysis.image_id,
             receipt_id=sample_receipt_line_item_analysis.receipt_id,
         )
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1494,14 +1382,11 @@ def test_getReceiptLineItemAnalysis_malformed_item(
     dynamodb_table, sample_receipt_line_item_analysis, mocker
 ):
     """Test handling of malformed items when getting a ReceiptLineItemAnalysis."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to return a malformed item
     mock_client = mocker.patch.object(client, "_client")
     mock_client.get_item.return_value = {
         "Item": {
-            # Missing required attributes
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
                 "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
@@ -1509,8 +1394,7 @@ def test_getReceiptLineItemAnalysis_malformed_item(
         }
     }
 
-    # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.get_receipt_line_item_analysis(
             image_id=sample_receipt_line_item_analysis.image_id,
             receipt_id=sample_receipt_line_item_analysis.receipt_id,
@@ -1524,10 +1408,8 @@ def test_listReceiptLineItemAnalyses_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful listing of all ReceiptLineItemAnalyses from DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create and add multiple analyses
     analyses = []
     for i in range(1, 4):
         analysis = ReceiptLineItemAnalysis(
@@ -1545,15 +1427,12 @@ def test_listReceiptLineItemAnalyses_success(
 
     client.add_receipt_line_item_analyses(analyses)
 
-    # Act
     result, last_evaluated_key = client.list_receipt_line_item_analyses()
 
-    # Assert
     assert result is not None
     assert isinstance(result, list)
     assert len(result) >= 3  # At least the ones we added
 
-    # Verify the analyses we added are in the results
     found_analyses = 0
     for analysis in result:
         assert isinstance(analysis, ReceiptLineItemAnalysis)
@@ -1571,13 +1450,10 @@ def test_listReceiptLineItemAnalyses_empty(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing ReceiptLineItemAnalyses when the table is empty."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Act - we assume the table has been cleared since our fixture runs for each test
     result, last_evaluated_key = client.list_receipt_line_item_analyses()
 
-    # Assert
     assert result is not None
     assert isinstance(result, list)
     assert len(result) == 0
@@ -1589,17 +1465,13 @@ def test_listReceiptLineItemAnalyses_with_prefix(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test listing ReceiptLineItemAnalyses with a specific image_id."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create and add analyses with different image_ids
-    # Using valid UUIDs
     uuid_base = "3f52804b-2fad-4e00-92c8-b593da3a8e"
     image_id_1 = uuid_base + "d1"
     image_id_2 = uuid_base + "f1"
 
     analyses = []
-    # Add 3 analyses with image_id_1
     for i in range(1, 4):
         analysis = ReceiptLineItemAnalysis(
             image_id=image_id_1,
@@ -1614,7 +1486,6 @@ def test_listReceiptLineItemAnalyses_with_prefix(
         )
         analyses.append(analysis)
 
-    # Add 2 analyses with image_id_2
     for i in range(1, 3):
         analysis = ReceiptLineItemAnalysis(
             image_id=image_id_2,
@@ -1631,18 +1502,14 @@ def test_listReceiptLineItemAnalyses_with_prefix(
 
     client.add_receipt_line_item_analyses(analyses)
 
-    # Act - list all analyses and filter in memory
     result, _ = client.list_receipt_line_item_analyses()
 
-    # Assert
     assert result is not None
     assert isinstance(result, list)
 
-    # Filter for analyses with image_id_1
     filtered_result = [a for a in result if a.image_id == image_id_1]
     assert len(filtered_result) == 3
 
-    # Verify all filtered results have the correct image_id
     for analysis in filtered_result:
         assert analysis.image_id == image_id_1
 
@@ -1654,24 +1521,13 @@ def test_listReceiptLineItemAnalyses_with_pagination(
     mocker,
 ):
     """Test pagination in listReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create a non-mocked client to add real items
-    real_client = boto3.client("dynamodb", region_name="us-east-1")
-
-    # Using valid UUIDs with a common prefix
     uuid_base = "3f52804b-2fad-4e00-92c8-b593da3a8e"
 
-    # Create and add 10 analyses
-    analyses = []
-    for i in range(1, 11):
-        # Ensure we create valid UUIDs by using incrementing hex values
-        uuid_suffix = format(i, "x").zfill(
-            2
-        )  # Convert i to hex, pad to 2 digits
-        analysis = ReceiptLineItemAnalysis(
-            image_id=f"{uuid_base}{uuid_suffix}",
+    analyses = [
+        ReceiptLineItemAnalysis(
+            image_id=f"{uuid_base}{i:02x}",
             receipt_id=i,
             timestamp_added=sample_receipt_line_item_analysis.timestamp_added,
             items=sample_receipt_line_item_analysis.items,
@@ -1681,83 +1537,17 @@ def test_listReceiptLineItemAnalyses_with_pagination(
             tax=sample_receipt_line_item_analysis.tax,
             total=sample_receipt_line_item_analysis.total,
         )
-        analyses.append(analysis)
+        for i in range(1, 11)
+    ]
 
     client.add_receipt_line_item_analyses(analyses)
 
-    # Mock the query method to return paginated results
     mock_client = mocker.patch.object(client, "_client")
 
-    # First page has 5 items and a LastEvaluatedKey
-    first_page_items = []
-    for i in range(1, 6):
-        uuid_suffix = format(i, "x").zfill(2)
-        item = {
-            "PK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}"},
-            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
-            "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
-            "receipt_id": {"N": str(i)},
-            "timestamp_added": {
-                "S": sample_receipt_line_item_analysis.timestamp_added
-            },
-            "items": {
-                "L": [{"M": {"description": {"S": "Test item"}}}]
-            },  # Simplified items structure
-            "reasoning": {"S": f"Reasoning for pagination-image{i}"},
-            "version": {"S": sample_receipt_line_item_analysis.version},
-            "subtotal": {"N": str(sample_receipt_line_item_analysis.subtotal)},
-            "tax": {"N": str(sample_receipt_line_item_analysis.tax)},
-            "total": {"N": str(sample_receipt_line_item_analysis.total)},
-            "total_found": {"N": "1"},
-            "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
-            "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {
-                "S": f"LINE_ITEMS#{sample_receipt_line_item_analysis.timestamp_added}"
-            },
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}#RECEIPT#{i}"},
-            "discrepancies": {"L": []},
-        }
-        first_page_items.append(item)
+    first_page_items = [analysis.to_item() for analysis in analyses[:5]]
+    second_page_items = [analysis.to_item() for analysis in analyses[5:]]
+    last_evaluated_key = analyses[4].key
 
-    last_evaluated_key = {
-        "PK": {"S": f"IMAGE#{uuid_base}05"},
-        "SK": {"S": "RECEIPT#5#ANALYSIS#LINE_ITEMS"},
-    }
-
-    # Second page has 5 items and no LastEvaluatedKey
-    second_page_items = []
-    for i in range(6, 11):
-        uuid_suffix = format(i, "x").zfill(2)
-        item = {
-            "PK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}"},
-            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
-            "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
-            "receipt_id": {"N": str(i)},
-            "timestamp_added": {
-                "S": sample_receipt_line_item_analysis.timestamp_added
-            },
-            "items": {
-                "L": [{"M": {"description": {"S": "Test item"}}}]
-            },  # Simplified items structure
-            "reasoning": {"S": f"Reasoning for pagination-image{i}"},
-            "version": {"S": sample_receipt_line_item_analysis.version},
-            "subtotal": {"N": str(sample_receipt_line_item_analysis.subtotal)},
-            "tax": {"N": str(sample_receipt_line_item_analysis.tax)},
-            "total": {"N": str(sample_receipt_line_item_analysis.total)},
-            "total_found": {"N": "1"},
-            "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
-            "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {
-                "S": f"LINE_ITEMS#{sample_receipt_line_item_analysis.timestamp_added}"
-            },
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}#RECEIPT#{i}"},
-            "discrepancies": {"L": []},
-        }
-        second_page_items.append(item)
-
-    # Set up the mock to return the paginated results
     mock_client.query.side_effect = [
         {
             "Items": first_page_items,
@@ -1768,18 +1558,14 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         },
     ]
 
-    # Act
     result, last_key = client.list_receipt_line_item_analyses()
 
-    # Assert
     assert result is not None
     assert isinstance(result, list)
     assert len(result) == 10
 
-    # Verify query was called twice (for pagination)
     assert mock_client.query.call_count == 2
 
-    # Check the second call included the ExclusiveStartKey from the first response
     _, kwargs = mock_client.query.call_args_list[1]
     assert "ExclusiveStartKey" in kwargs
     assert kwargs["ExclusiveStartKey"] == last_evaluated_key
@@ -1805,21 +1591,16 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
     expected_error: str,
 ):
     """Test handling of invalid parameters when listing ReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
 
-    # Configure the mock to raise the error when query is called
-    mock_client.query.side_effect = ValueError(expected_error)
-
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_line_item_analyses(
             limit=limit, last_evaluated_key=last_evaluated_key
         )
-    assert expected_error in str(excinfo.value)
+
+    mock_client.query.assert_not_called()
 
 
 @pytest.mark.integration
@@ -1858,24 +1639,16 @@ def test_listReceiptLineItemAnalyses_client_errors(
     dynamodb_table, mocker, error_code, error_message, expected_error
 ):
     """Test handling of various client errors when listing ReceiptLineItemAnalyses."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to simulate the error
     mock_client = mocker.patch.object(client, "_client")
 
-    # Create a ClientError with the specified error code and message
-    error = ClientError(
-        {"Error": {"Code": error_code, "Message": error_message}}, "Query"
-    )
+    _set_client_error(mock_client, "query", error_code, "Query", error_message)
 
-    # Configure the mock to raise the error when query is called
-    mock_client.query.side_effect = error
-
-    # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.list_receipt_line_item_analyses()
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1884,11 +1657,9 @@ def test_listReceiptLineItemAnalysesForImage_success(
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
     """Test successful listing of ReceiptLineItemAnalyses for a specific image from DynamoDB."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
     image_id = sample_receipt_line_item_analysis.image_id
 
-    # Create and add multiple analyses for the same image
     analyses = []
     for i in range(1, 4):
         analysis = ReceiptLineItemAnalysis(
@@ -1904,7 +1675,6 @@ def test_listReceiptLineItemAnalysesForImage_success(
         )
         analyses.append(analysis)
 
-    # Also add an analysis for a different image to ensure filtering works
     other_image_analysis = ReceiptLineItemAnalysis(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",  # Different but valid UUID
         receipt_id=1,
@@ -1920,17 +1690,14 @@ def test_listReceiptLineItemAnalysesForImage_success(
 
     client.add_receipt_line_item_analyses(analyses)
 
-    # Act
     result = client.list_receipt_line_item_analyses_for_image(
         image_id=image_id
     )
 
-    # Assert
     assert result is not None
     assert isinstance(result, list)
     assert len(result) == 3
 
-    # Verify all results are for the correct image
     for analysis in result:
         assert isinstance(analysis, ReceiptLineItemAnalysis)
         assert analysis.image_id == image_id
@@ -1941,18 +1708,15 @@ def test_listReceiptLineItemAnalysesForImage_not_found(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing ReceiptLineItemAnalyses for a non-existent image (should return empty list)."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
     non_existent_image_id = (
         "3f52804b-2fad-4e00-92c8-b593da3a8ed5"  # Valid UUID but doesn't exist
     )
 
-    # Act
     result = client.list_receipt_line_item_analyses_for_image(
         image_id=non_existent_image_id
     )
 
-    # Assert
     assert result is not None
     assert isinstance(result, list)
     assert len(result) == 0
@@ -1970,14 +1734,14 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
     dynamodb_table, mocker, image_id, expected_error
 ):
     """Test that invalid parameters raise appropriate errors when listing analyses for an image."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock boto3 client to prevent actual calls for invalid inputs
     mocker.patch.object(client, "_client")
 
-    # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    exception_type = (
+        EntityValidationError if image_id is None else OperationError
+    )
+    with pytest.raises(exception_type) as excinfo:
         client.list_receipt_line_item_analyses_for_image(image_id=image_id)
     assert expected_error in str(excinfo.value)
 
@@ -2027,22 +1791,14 @@ def test_listReceiptLineItemAnalysesForImage_client_errors(
     expected_error: str,
 ):
     """Test that client errors are handled correctly when listing analyses for an image."""
-    # Arrange
     client = DynamoClient(table_name=dynamodb_table)
     image_id = sample_receipt_line_item_analysis.image_id
 
-    # Mock boto3 client to raise the specified error
     mock_client = mocker.patch.object(client, "_client")
 
-    # Create a ClientError with the specified error code and message
-    error = ClientError(
-        {"Error": {"Code": error_code, "Message": error_message}}, "Query"
-    )
+    _set_client_error(mock_client, "query", error_code, "Query", error_message)
 
-    # Configure the mock to raise the error when query is called
-    mock_client.query.side_effect = error
-
-    # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.list_receipt_line_item_analyses_for_image(image_id=image_id)
-    assert expected_error in str(excinfo.value)

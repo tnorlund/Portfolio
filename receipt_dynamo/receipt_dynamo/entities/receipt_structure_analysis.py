@@ -11,10 +11,13 @@ This is used for storing and retrieving data from DynamoDB.
 
 import decimal
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Generator
 
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import assert_type, format_type_error
 
 
@@ -46,6 +49,8 @@ class SpatialPattern:
 
         if self.metadata is None:
             self.metadata = {}
+        else:
+            self.metadata = deepcopy(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the SpatialPattern to a dictionary."""
@@ -119,8 +124,12 @@ class ContentPattern:
 
         if self.examples is None:
             self.examples = []
+        else:
+            self.examples = list(self.examples)
         if self.metadata is None:
             self.metadata = {}
+        else:
+            self.metadata = deepcopy(self.metadata)
 
         # Validate that all examples are strings
         for i, example in enumerate(self.examples):
@@ -173,7 +182,7 @@ class ContentPattern:
         return (
             f"ContentPattern(pattern_type={self.pattern_type!r}, "
             f"description={self.description!r}, "
-            f"examples={len(self.examples)})"
+            f"examples={len(self.examples or [])})"
         )
 
 
@@ -227,9 +236,12 @@ class ReceiptSection:
         if metadata is not None:
             assert_type("metadata", metadata, dict)
 
-        # Validate line_ids are integers
+        # Validate line_ids are finite integers without mutating the input.
+        validated_line_ids = []
         for i, line_id in enumerate(line_ids):
-            if not isinstance(line_id, (int, float, decimal.Decimal)):
+            if isinstance(line_id, bool) or not isinstance(
+                line_id, (int, float, decimal.Decimal)
+            ):
                 raise TypeError(
                     format_type_error(
                         f"line_ids[{i}]",
@@ -237,16 +249,24 @@ class ReceiptSection:
                         (int, float, decimal.Decimal),
                     )
                 )
-            if isinstance(line_id, (float, decimal.Decimal)):
-                line_ids[i] = int(line_id)
+            if (
+                isinstance(line_id, float)
+                and not isfinite(line_id)
+                or isinstance(line_id, decimal.Decimal)
+                and not line_id.is_finite()
+                or int(line_id) != line_id
+            ):
+                raise ValueError(f"line_ids[{i}] must be a finite integer")
+            validated_line_ids.append(int(line_id))
 
         # Validate patterns are of correct type
+        validated_spatial_patterns = []
         for i, pattern in enumerate(spatial_patterns):
             if not isinstance(pattern, SpatialPattern):
                 if isinstance(pattern, dict):
-                    spatial_patterns[i] = SpatialPattern.from_dict(pattern)
+                    pattern = SpatialPattern.from_dict(pattern)
                 elif isinstance(pattern, str):
-                    spatial_patterns[i] = SpatialPattern(
+                    pattern = SpatialPattern(
                         pattern_type="legacy", description=pattern
                     )
                 else:
@@ -257,15 +277,15 @@ class ReceiptSection:
                             (SpatialPattern, dict),
                         )
                     )
+            validated_spatial_patterns.append(pattern)
 
+        validated_content_patterns = []
         for i, content_pattern in enumerate(content_patterns):
             if not isinstance(content_pattern, ContentPattern):
                 if isinstance(content_pattern, dict):
-                    content_patterns[i] = ContentPattern.from_dict(
-                        content_pattern
-                    )
+                    content_pattern = ContentPattern.from_dict(content_pattern)
                 elif isinstance(content_pattern, str):
-                    content_patterns[i] = ContentPattern(
+                    content_pattern = ContentPattern(
                         pattern_type="legacy", description=content_pattern
                     )
                 else:
@@ -276,11 +296,12 @@ class ReceiptSection:
                             (ContentPattern, dict),
                         )
                     )
+            validated_content_patterns.append(content_pattern)
 
         self.name = name
-        self.line_ids = line_ids
-        self.spatial_patterns = spatial_patterns
-        self.content_patterns = content_patterns
+        self.line_ids = validated_line_ids
+        self.spatial_patterns = validated_spatial_patterns
+        self.content_patterns = validated_content_patterns
         self.reasoning = reasoning
 
         # Calculate start and end lines if not provided
@@ -295,7 +316,7 @@ class ReceiptSection:
             self.start_line = start_line
             self.end_line = end_line
 
-        self.metadata = metadata or {}
+        self.metadata = deepcopy(metadata) if metadata is not None else {}
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the ReceiptSection to a dictionary."""
@@ -380,7 +401,17 @@ class ReceiptSection:
         # Ensure line_ids are integers
         line_ids = []
         for line_id in data.get("line_ids", []):
+            if isinstance(line_id, bool):
+                raise TypeError(format_type_error("line_id", line_id, int))
             if isinstance(line_id, (int, float, decimal.Decimal)):
+                if (
+                    isinstance(line_id, float)
+                    and not isfinite(line_id)
+                    or isinstance(line_id, decimal.Decimal)
+                    and not line_id.is_finite()
+                    or int(line_id) != line_id
+                ):
+                    raise ValueError("line_id must be a finite integer")
                 line_ids.append(int(line_id))
             else:
                 try:
@@ -438,7 +469,7 @@ class ReceiptSection:
         )
 
 
-class ReceiptStructureAnalysis:
+class ReceiptStructureAnalysis(SerializationMixin):
     """
     Represents the structure analysis for a receipt in DynamoDB.
 
@@ -466,7 +497,7 @@ class ReceiptStructureAnalysis:
         timestamp_updated: datetime | None = None,
         processing_metrics: dict[str, Any] | None = None,
         source_info: dict[str, Any] | None = None,
-        processing_history: list[dict[str, Any] | None] = None,
+        processing_history: list[dict[str, Any]] | None = None,
     ):
         """
         Initialize a ReceiptStructureAnalysis.
@@ -489,7 +520,9 @@ class ReceiptStructureAnalysis:
             ValueError: If required values are missing or invalid
         """
         # Type checking for each parameter
-        if not isinstance(receipt_id, (int, float, decimal.Decimal, str)):
+        if isinstance(receipt_id, bool) or not isinstance(
+            receipt_id, (int, float, decimal.Decimal, str)
+        ):
             raise TypeError(
                 format_type_error(
                     "receipt_id",
@@ -498,11 +531,20 @@ class ReceiptStructureAnalysis:
                 )
             )
         try:
-            receipt_id = int(receipt_id)
-        except (ValueError, TypeError) as e:
+            normalized_receipt_id = int(receipt_id)
+        except (ValueError, TypeError, OverflowError) as e:
             raise ValueError(
                 f"receipt_id must be convertible to int, got {receipt_id}"
             ) from e
+        if str(receipt_id).lower() in {"nan", "inf", "-inf", "infinity"}:
+            raise ValueError("receipt_id must be a finite integer")
+        if isinstance(receipt_id, (float, decimal.Decimal)) and (
+            normalized_receipt_id != receipt_id
+        ):
+            raise ValueError("receipt_id must be an integer")
+        if normalized_receipt_id <= 0:
+            raise ValueError("receipt_id must be positive")
+        receipt_id = normalized_receipt_id
 
         assert_type("image_id", image_id, str)
         assert_type("sections", sections, list)
@@ -520,6 +562,8 @@ class ReceiptStructureAnalysis:
             assert_type("source_info", source_info, dict)
         if processing_history is not None:
             assert_type("processing_history", processing_history, list)
+            for index, entry in enumerate(processing_history):
+                assert_type(f"processing_history[{index}]", entry, dict)
 
         # Validate each section is a ReceiptSection or can be converted to one
         validated_sections = []
@@ -540,7 +584,7 @@ class ReceiptStructureAnalysis:
         self.sections = validated_sections
         self.overall_reasoning = overall_reasoning
         self.version = version
-        self.metadata = metadata or {}
+        self.metadata = deepcopy(metadata) if metadata is not None else {}
         self.timestamp_added = timestamp_added or datetime.now()
         self.timestamp_updated = timestamp_updated
 
@@ -561,13 +605,15 @@ class ReceiptStructureAnalysis:
                 },
             }
         else:
-            self.processing_metrics = processing_metrics
+            self.processing_metrics = deepcopy(processing_metrics)
 
-        self.source_info = source_info or {}
+        self.source_info = (
+            deepcopy(source_info) if source_info is not None else {}
+        )
 
         # Initialize processing history if not provided
         if processing_history is None:
-            self.processing_history = [
+            self.processing_history: list[dict[str, Any]] = [
                 {
                     "event": "creation",
                     "timestamp": self.timestamp_added.isoformat(),
@@ -575,7 +621,7 @@ class ReceiptStructureAnalysis:
                 }
             ]
         else:
-            self.processing_history = processing_history
+            self.processing_history = deepcopy(processing_history)
 
         # Sort sections by start line for consistent order
         self.sections.sort(
@@ -635,120 +681,6 @@ class ReceiptStructureAnalysis:
         Returns:
             dict[str, Any]: The item representation for DynamoDB
         """
-        # Create a list of sections in DynamoDB format
-        section_list = []
-        for section in self.sections:
-            section_dict = {
-                "M": {
-                    "name": {"S": section.name},
-                    "line_ids": {
-                        "L": [
-                            {"N": str(line_id)} for line_id in section.line_ids
-                        ]
-                    },
-                    "reasoning": {"S": section.reasoning},
-                    "start_line": {"N": str(section.start_line)},
-                    "end_line": {"N": str(section.end_line)},
-                    "spatial_patterns": {
-                        "L": [
-                            {
-                                "M": {
-                                    "pattern_type": {
-                                        "S": pattern.pattern_type
-                                    },
-                                    "description": {"S": pattern.description},
-                                    "metadata": {
-                                        "M": {
-                                            k: {"S": str(v)}
-                                            for k, v in (
-                                                pattern.metadata or {}
-                                            ).items()
-                                        }
-                                    },
-                                }
-                            }
-                            for pattern in section.spatial_patterns
-                        ]
-                    },
-                    "content_patterns": {
-                        "L": [
-                            {
-                                "M": {
-                                    "pattern_type": {
-                                        "S": pattern.pattern_type
-                                    },
-                                    "description": {"S": pattern.description},
-                                    "examples": {
-                                        "L": [
-                                            {"S": ex}
-                                            for ex in (pattern.examples or [])
-                                        ]
-                                    },
-                                    "metadata": {
-                                        "M": {
-                                            k: {"S": str(v)}
-                                            for k, v in (
-                                                pattern.metadata or {}
-                                            ).items()
-                                        }
-                                    },
-                                }
-                            }
-                            for pattern in section.content_patterns
-                        ]
-                    },
-                    "metadata": {
-                        "M": {
-                            k: {"S": str(v)}
-                            for k, v in (section.metadata or {}).items()
-                        }
-                    },
-                }
-            }
-            section_list.append(section_dict)
-
-        # Format history entries
-        history_list = []
-        for entry in self.processing_history or []:
-            history_dict = {
-                "M": {
-                    "event": {"S": entry.get("event", "")},
-                    "timestamp": {"S": entry.get("timestamp", "")},
-                    "details": {"S": entry.get("details", "")},
-                }
-            }
-            history_list.append(history_dict)
-
-        # Format metrics
-        metrics_dict: dict[str, Any] = {"M": {}}
-        if self.processing_metrics:
-            for key, value in self.processing_metrics.items():
-                if key == "section_count":
-                    metrics_dict["M"][key] = {"N": str(value)}
-                elif key == "section_types":
-                    if isinstance(value, list):
-                        metrics_dict["M"][key] = {
-                            "L": [{"S": str(t)} for t in value]
-                        }
-                    else:
-                        metrics_dict["M"][key] = {"S": str(value)}
-                elif key == "pattern_counts":
-                    if isinstance(value, dict):
-                        metrics_dict["M"][key] = {
-                            "M": {k: {"N": str(v)} for k, v in value.items()}
-                        }
-                    else:
-                        metrics_dict["M"][key] = {"S": str(value)}
-                else:
-                    # Default to string for unknown values
-                    metrics_dict["M"][key] = {"S": str(value)}
-
-        # Format source info
-        source_info_dict: dict[str, Any] = {"M": {}}
-        if self.source_info:
-            for key, value in self.source_info.items():
-                source_info_dict["M"][key] = {"S": str(value)}
-
         # Create the item with properly formatted values
         item = {
             **self.key,
@@ -757,18 +689,20 @@ class ReceiptStructureAnalysis:
             "receipt_id": {"N": str(self.receipt_id)},
             "image_id": {"S": self.image_id},
             "entity_type": {"S": "STRUCTURE_ANALYSIS"},
-            "sections": {"L": section_list},
+            "sections": self._python_to_dynamo(
+                [section.to_dict() for section in self.sections]
+            ),
             "overall_reasoning": {"S": self.overall_reasoning},
             "version": {"S": self.version},
-            "metadata": {
-                "M": {
-                    k: {"S": str(v)} for k, v in (self.metadata or {}).items()
-                }
-            },
+            "metadata": self._python_to_dynamo(self.metadata),
             "timestamp_added": {"S": self.timestamp_added.isoformat()},
-            "processing_metrics": metrics_dict,
-            "source_info": source_info_dict,
-            "processing_history": {"L": history_list},
+            "processing_metrics": self._python_to_dynamo(
+                self.processing_metrics
+            ),
+            "source_info": self._python_to_dynamo(self.source_info),
+            "processing_history": self._python_to_dynamo(
+                self.processing_history
+            ),
         }
 
         if self.timestamp_updated:
@@ -884,6 +818,7 @@ class ReceiptStructureAnalysis:
             and self.timestamp_updated == other.timestamp_updated
             and self.processing_metrics == other.processing_metrics
             and self.source_info == other.source_info
+            and self.processing_history == other.processing_history
         )
 
     def __iter__(self) -> Generator[tuple[str, Any], None, None]:
@@ -978,14 +913,16 @@ class ReceiptStructureAnalysis:
         timestamp_updated = _parse_timestamp(item.get("timestamp_updated"))
 
         # Parse complex nested fields
-        processing_metrics = _parse_processing_metrics(
-            item.get("processing_metrics")
+        processing_metrics = cls._dynamo_to_python(
+            item.get("processing_metrics", {"M": {}})
         )
-        source_info = _parse_string_map(item.get("source_info"))
-        processing_history = _parse_processing_history(
-            item.get("processing_history")
+        source_info = cls._dynamo_to_python(item.get("source_info", {"M": {}}))
+        processing_history = cls._dynamo_to_python(
+            item.get("processing_history", {"L": []})
         )
-        overall_metadata = _parse_string_map(item.get("metadata"))
+        overall_metadata = cls._dynamo_to_python(
+            item.get("metadata", {"M": {}})
+        )
 
         return cls(
             receipt_id=receipt_id,
@@ -1013,14 +950,11 @@ class ReceiptStructureAnalysis:
         )
 
         for section_dict in sections_list:
-            try:
-                if isinstance(section_dict, dict) and "M" in section_dict:
-                    section_data = _parse_section_map(section_dict["M"])
-                    sections.append(ReceiptSection.from_dict(section_data))
-                else:
-                    sections.append(ReceiptSection.from_dict(section_dict))
-            except (TypeError, ValueError):
-                continue
+            if isinstance(section_dict, dict) and "M" in section_dict:
+                section_data = cls._dynamo_to_python(section_dict)
+                sections.append(ReceiptSection.from_dict(section_data))
+            else:
+                sections.append(ReceiptSection.from_dict(section_dict))
 
         return sections
 
@@ -1032,185 +966,31 @@ def _extract_string_field(
     item: dict[str, Any], field_name: str, default: str
 ) -> str:
     """Extract a string field from DynamoDB item format."""
-    field_attr = item.get(field_name, {"S": default})
-    if isinstance(field_attr, dict):
-        return field_attr.get("S", default)
-    return str(field_attr)
+    if field_name not in item:
+        return default
+    field_attr = item[field_name]
+    if (
+        not isinstance(field_attr, dict)
+        or set(field_attr) != {"S"}
+        or not isinstance(field_attr["S"], str)
+    ):
+        raise ValueError(f"{field_name} must be a DynamoDB string attribute")
+    return field_attr["S"]
 
 
 def _parse_timestamp(attr: Any) -> datetime | None:
     """Parse a timestamp from DynamoDB attribute format."""
-    if not attr:
+    if not attr or (isinstance(attr, dict) and attr.get("NULL")):
         return None
-    timestamp_str = attr.get("S", "") if isinstance(attr, dict) else str(attr)
+    if not isinstance(attr, dict) or "S" not in attr:
+        raise ValueError("timestamp must be a DynamoDB string attribute")
+    timestamp_str = attr["S"]
     try:
         return datetime.fromisoformat(timestamp_str)
-    except (ValueError, TypeError):
-        return None
-
-
-def _parse_string_map(attr: Any) -> dict[str, Any]:
-    """Parse a simple string map from DynamoDB attribute format."""
-    if not attr or not isinstance(attr, dict):
-        return {}
-    if "M" not in attr:
-        return attr
-    result: dict[str, Any] = {}
-    for k, v in attr["M"].items():
-        if isinstance(v, dict) and "S" in v:
-            result[k] = v["S"]
-        else:
-            result[k] = str(v)
-    return result
-
-
-def _parse_processing_metrics(attr: Any) -> dict[str, Any]:
-    """Parse processing metrics from DynamoDB attribute format."""
-    if not attr or not isinstance(attr, dict):
-        return {}
-    if "M" not in attr:
-        return attr
-
-    result: dict[str, Any] = {}
-    for k, v in attr["M"].items():
-        if not isinstance(v, dict):
-            result[k] = v
-        elif "N" in v:
-            result[k] = int(v["N"])
-        elif "S" in v:
-            result[k] = v["S"]
-        elif "L" in v:
-            result[k] = [li.get("S", "") for li in v["L"]]
-        elif "M" in v:
-            result[k] = {
-                sub_k: (
-                    int(sub_v.get("N", 0))
-                    if "N" in sub_v
-                    else sub_v.get("S", "")
-                )
-                for sub_k, sub_v in v["M"].items()
-            }
-    return result
-
-
-def _parse_processing_history(attr: Any) -> list[dict[str, Any]]:
-    """Parse processing history from DynamoDB attribute format."""
-    if not attr or not isinstance(attr, dict):
-        return []
-    if "L" not in attr:
-        return attr if isinstance(attr, list) else []
-
-    result = []
-    for entry in attr["L"]:
-        if isinstance(entry, dict) and "M" in entry:
-            entry_map = entry["M"]
-            result.append(
-                {
-                    "event": entry_map.get("event", {}).get("S", ""),
-                    "timestamp": entry_map.get("timestamp", {}).get("S", ""),
-                    "details": entry_map.get("details", {}).get("S", ""),
-                }
-            )
-        else:
-            result.append(entry)
-    return result
-
-
-def _parse_section_map(section_map: dict[str, Any]) -> dict[str, Any]:
-    """Parse a section map from DynamoDB format to plain dict."""
-    section_data: dict[str, Any] = {}
-
-    # Basic properties
-    section_data["name"] = section_map.get("name", {}).get("S", "")
-    section_data["reasoning"] = section_map.get("reasoning", {}).get("S", "")
-
-    # Line IDs
-    section_data["line_ids"] = _parse_line_ids(
-        section_map.get("line_ids", {}).get("L", [])
-    )
-
-    # Start/end lines - default to None so ReceiptSection can compute from line_ids
-    start_line_attr = section_map.get("start_line", {}).get("N")
-    section_data["start_line"] = (
-        int(start_line_attr) if start_line_attr else None
-    )
-    end_line_attr = section_map.get("end_line", {}).get("N")
-    section_data["end_line"] = int(end_line_attr) if end_line_attr else None
-
-    # Patterns
-    section_data["spatial_patterns"] = _parse_spatial_patterns(
-        section_map.get("spatial_patterns", {}).get("L", [])
-    )
-    section_data["content_patterns"] = _parse_content_patterns(
-        section_map.get("content_patterns", {}).get("L", [])
-    )
-
-    # Metadata
-    section_data["metadata"] = _parse_pattern_metadata(
-        section_map.get("metadata", {}).get("M", {})
-    )
-
-    return section_data
-
-
-def _parse_line_ids(line_ids_attr: list[Any]) -> list[int]:
-    """Parse line IDs from DynamoDB list format."""
-    return [
-        int(line_id["N"])
-        for line_id in line_ids_attr
-        if isinstance(line_id, dict) and "N" in line_id
-    ]
-
-
-def _parse_spatial_patterns(patterns_attr: list[Any]) -> list[dict[str, Any]]:
-    """Parse spatial patterns from DynamoDB list format."""
-    patterns = []
-    for sp in patterns_attr:
-        if isinstance(sp, dict) and "M" in sp:
-            sp_map = sp["M"]
-            patterns.append(
-                {
-                    "pattern_type": sp_map.get("pattern_type", {}).get(
-                        "S", ""
-                    ),
-                    "description": sp_map.get("description", {}).get("S", ""),
-                    "metadata": _parse_pattern_metadata(
-                        sp_map.get("metadata", {}).get("M", {})
-                    ),
-                }
-            )
-    return patterns
-
-
-def _parse_content_patterns(patterns_attr: list[Any]) -> list[dict[str, Any]]:
-    """Parse content patterns from DynamoDB list format."""
-    patterns = []
-    for cp in patterns_attr:
-        if isinstance(cp, dict) and "M" in cp:
-            cp_map = cp["M"]
-            examples = [
-                ex["S"]
-                for ex in cp_map.get("examples", {}).get("L", [])
-                if isinstance(ex, dict) and "S" in ex
-            ]
-            patterns.append(
-                {
-                    "pattern_type": cp_map.get("pattern_type", {}).get(
-                        "S", ""
-                    ),
-                    "description": cp_map.get("description", {}).get("S", ""),
-                    "examples": examples,
-                    "metadata": _parse_pattern_metadata(
-                        cp_map.get("metadata", {}).get("M", {})
-                    ),
-                }
-            )
-    return patterns
-
-
-def _parse_pattern_metadata(metadata_attr: dict[str, Any]) -> dict[str, Any]:
-    """Parse pattern metadata from DynamoDB map format."""
-    return {k: v.get("S", "") for k, v in metadata_attr.items()}
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            "timestamp must contain a valid ISO timestamp"
+        ) from exc
 
 
 def item_to_receipt_structure_analysis(

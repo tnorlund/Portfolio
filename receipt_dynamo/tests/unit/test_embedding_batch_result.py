@@ -38,6 +38,12 @@ def test_embedding_batch_result_to_item_and_back(
     example_embedding_batch_result,
 ):
     item = example_embedding_batch_result.to_item()
+    assert item["SK"] == {
+        "S": (
+            "RESULT#IMAGE#1d5ab3e0-7d81-4de4-b23d-1f490f85d89c"
+            "#RECEIPT#00001#LINE#027#WORD#003"
+        )
+    }
     restored = item_to_embedding_batch_result(item)
     assert restored == example_embedding_batch_result
 
@@ -263,25 +269,16 @@ def test_item_to_embedding_batch_result_success(
     example_embedding_batch_result,
 ):
     item = example_embedding_batch_result.to_item()
-    item["GSI3SK"] = {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#LINE#2#WORD#3#LABEL#ITEM"
-    }
     result = item_to_embedding_batch_result(item)
-    assert isinstance(result, EmbeddingBatchResult)
+    assert result == example_embedding_batch_result
 
 
 @pytest.mark.unit
-def test_embedding_batch_result_deserialization_raises():
-    item = {
-        "PK": {"S": "BATCH#abc"},
-        "SK": {"S": "RESULT#RECEIPT#1#LINE#2#WORD#3#LABEL#ITEM"},
-        "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "pinecone_id": {"S": "RECEIPT#1#LINE#2#WORD#3"},
-        "text": {"S": "Bananas"},
-        "status": {"S": "SUCCESS"},
-        "error_message": {"NULL": True},
-        "view": {"S": "WORD"},
-    }
+def test_embedding_batch_result_deserialization_raises(
+    example_embedding_batch_result,
+):
+    item = example_embedding_batch_result.to_item()
+    item["SK"] = {"S": "RESULT#MALFORMED"}
     with pytest.raises(
         ValueError, match="Error converting item to EmbeddingBatchResult"
     ):
@@ -308,40 +305,19 @@ def test_embedding_batch_result_malformed_sk_parsing():
 
 
 @pytest.mark.unit
-def test_embedding_batch_result_deserialization_without_error_message():
-    item = {
-        "PK": {"S": "BATCH#dc7e61ba-5722-43a2-8e99-9df9f54287a9"},
-        "SK": {
-            "S": "RESULT#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"
-        },
-        "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "pinecone_id": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003"
-        },
-        "text": {"S": "Bananas"},
-        "status": {"S": "SUCCESS"},
-        "error_message": {"NULL": True},
-        "view": {"S": "WORD"},
-    }
+def test_embedding_batch_result_deserialization_without_error_message(
+    example_embedding_batch_result,
+):
+    item = example_embedding_batch_result.to_item()
     result = item_to_embedding_batch_result(item)
     assert result.error_message is None
 
 
 @pytest.mark.unit
-def test_embedding_batch_result_deserialization_with_error_message():
-    item = {
-        "PK": {"S": "BATCH#dc7e61ba-5722-43a2-8e99-9df9f54287a9"},
-        "SK": {
-            "S": "RESULT#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"
-        },
-        "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "pinecone_id": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003"
-        },
-        "text": {"S": "Bananas"},
-        "status": {"S": "SUCCESS"},
-        "error_message": {"S": "Here is an error message"},
-        "view": {"S": "WORD"},
-    }
+def test_embedding_batch_result_deserialization_with_error_message(
+    example_embedding_batch_result,
+):
+    item = example_embedding_batch_result.to_item()
+    item["error_message"] = {"S": "Here is an error message"}
     result = item_to_embedding_batch_result(item)
     assert result.error_message == "Here is an error message"

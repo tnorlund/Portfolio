@@ -2,14 +2,24 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Generator
 
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.dynamodb_utils import (
+    dict_to_dynamodb_map,
+    freeze_for_hash,
+    parse_dynamodb_map,
+)
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_non_negative_int,
+    validate_positive_int,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptLineItemAnalysis:
+class ReceiptLineItemAnalysis:  # pylint: disable=too-many-instance-attributes
     """
     Represents a receipt line item analysis stored in a DynamoDB table.
 
@@ -68,7 +78,7 @@ class ReceiptLineItemAnalysis:
     total_found: int | None = None
     discrepancies: list[str] | None = None
     metadata: dict[str, Any] | None = None
-    word_labels: dict[tuple[int, int | None, Any]] = None
+    word_labels: dict[tuple[int, int | None], dict[str, Any]] | None = None
     timestamp_updated: str | None = None
 
     def __post_init__(self):
@@ -80,10 +90,7 @@ class ReceiptLineItemAnalysis:
         """
         assert_valid_uuid(self.image_id)
 
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
 
         # Validate and convert timestamps
         self.timestamp_added = self._validate_timestamp(
@@ -97,6 +104,7 @@ class ReceiptLineItemAnalysis:
         # Validate required fields
         if not isinstance(self.items, list):
             raise ValueError("items must be a list")
+        self.items = [self._validate_item(item) for item in self.items]
         if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
         if not isinstance(self.version, str):
@@ -112,7 +120,11 @@ class ReceiptLineItemAnalysis:
 
         # Process total_found
         if self.total_found is not None:
-            if not isinstance(self.total_found, int) or self.total_found < 0:
+            if (
+                isinstance(self.total_found, bool)
+                or not isinstance(self.total_found, int)
+                or self.total_found < 0
+            ):
                 raise ValueError("total_found must be a non-negative integer")
         else:
             self.total_found = len(self.items)
@@ -124,17 +136,21 @@ class ReceiptLineItemAnalysis:
         self, value: datetime | str, field_name: str
     ) -> str:
         """Validate and convert a timestamp to ISO format string."""
-        if isinstance(value, datetime):
-            return value.isoformat()
-        if isinstance(value, str):
-            return value
-        raise ValueError(f"{field_name} must be a datetime object or a string")
+        return validate_iso_timestamp(value, field_name, default_now=False)
 
-    def _init_optional_fields(self) -> None:
+    def _init_optional_fields(  # pylint: disable=too-many-branches
+        self,
+    ) -> None:
         """Initialize optional collection fields with defaults."""
         if self.discrepancies is not None:
             if not isinstance(self.discrepancies, list):
                 raise ValueError("discrepancies must be a list")
+            if any(
+                not isinstance(discrepancy, str)
+                for discrepancy in self.discrepancies
+            ):
+                raise ValueError("discrepancies must be a list of strings")
+            self.discrepancies = list(self.discrepancies)
         else:
             self.discrepancies = []
 
@@ -151,23 +167,105 @@ class ReceiptLineItemAnalysis:
         if self.word_labels is not None:
             if not isinstance(self.word_labels, dict):
                 raise ValueError("word_labels must be a dictionary")
+            normalized_word_labels = {}
+            for key, label_info in self.word_labels.items():
+                if not isinstance(key, tuple) or len(key) != 2:
+                    raise ValueError(
+                        "word_labels keys must be (line_id, word_id) tuples"
+                    )
+                line_id, word_id = key
+                validate_non_negative_int("line_id", line_id)
+                if word_id is not None:
+                    validate_non_negative_int("word_id", word_id)
+                if not isinstance(label_info, dict):
+                    raise ValueError("word label values must be dictionaries")
+                normalized_word_labels[(line_id, word_id)] = dict(label_info)
+            self.word_labels = normalized_word_labels
         else:
             self.word_labels = {}
+
+    def _validate_item(  # pylint: disable=too-many-branches
+        self, item: Any
+    ) -> dict[str, Any]:
+        """Validate and detach one line-item analysis payload."""
+        if not isinstance(item, dict):
+            raise ValueError("each item must be a dictionary")
+        allowed_keys = {
+            "description",
+            "reasoning",
+            "line_ids",
+            "quantity",
+            "price",
+            "metadata",
+        }
+        if not set(item).issubset(allowed_keys):
+            raise ValueError("line item contains unsupported fields")
+        normalized = dict(item)
+        for field_name in ("description", "reasoning"):
+            if field_name in normalized and not isinstance(
+                normalized[field_name], str
+            ):
+                raise ValueError(f"item {field_name} must be a string")
+        if "line_ids" in normalized:
+            line_ids = normalized["line_ids"]
+            if not isinstance(line_ids, list):
+                raise ValueError("line_ids must be a list")
+            for line_id in line_ids:
+                validate_non_negative_int("line_id", line_id)
+            normalized["line_ids"] = list(line_ids)
+        if "quantity" in normalized:
+            quantity = normalized["quantity"]
+            if not isinstance(quantity, dict) or not set(quantity).issubset(
+                {"amount", "unit"}
+            ):
+                raise ValueError("quantity must be a dictionary")
+            quantity = dict(quantity)
+            if "amount" in quantity:
+                quantity["amount"] = self._process_decimal(
+                    quantity["amount"], "quantity amount"
+                )
+            if "unit" in quantity and not isinstance(quantity["unit"], str):
+                raise ValueError("quantity unit must be a string")
+            normalized["quantity"] = quantity
+        if "price" in normalized:
+            price = normalized["price"]
+            if not isinstance(price, dict) or not set(price).issubset(
+                {"unit_price", "extended_price"}
+            ):
+                raise ValueError("price must be a dictionary")
+            price = dict(price)
+            for field_name in ("unit_price", "extended_price"):
+                if field_name in price:
+                    price[field_name] = self._process_decimal(
+                        price[field_name], field_name
+                    )
+            normalized["price"] = price
+        if "metadata" in normalized and not isinstance(
+            normalized["metadata"], dict
+        ):
+            raise ValueError("item metadata must be a dictionary")
+        return normalized
 
     def _process_decimal(self, value, field_name):
         """Process a value that could be a Decimal, string, or None."""
         if value is None:
             return None
         if isinstance(value, Decimal):
-            return value
-        if isinstance(value, str):
+            result = value
+        elif isinstance(value, str):
             try:
-                return Decimal(value)
-            except Exception as e:
+                result = Decimal(value)
+            except (InvalidOperation, ValueError) as e:
                 raise ValueError(
                     f"{field_name} string must be convertible to Decimal"
                 ) from e
-        raise ValueError(f"{field_name} must be a Decimal, string, or None")
+        else:
+            raise ValueError(
+                f"{field_name} must be a Decimal, string, or None"
+            )
+        if not result.is_finite():
+            raise ValueError(f"{field_name} must be finite")
+        return result
 
     @property
     def key(self) -> dict[str, Any]:
@@ -213,6 +311,7 @@ class ReceiptLineItemAnalysis:
                 A dictionary representing the ReceiptLineItemAnalysis object as
                 a DynamoDB item.
         """
+        self.__post_init__()
         item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key(),
@@ -236,7 +335,7 @@ class ReceiptLineItemAnalysis:
 
         # Convert discrepancies list to DynamoDB format
         discrepancies_list: list[dict[str, str]] = [
-            {"S": discrepancy} for discrepancy in self.discrepancies
+            {"S": discrepancy} for discrepancy in (self.discrepancies or [])
         ]
         item["discrepancies"] = {"L": discrepancies_list}
 
@@ -272,7 +371,7 @@ class ReceiptLineItemAnalysis:
             return {"NULL": True}
         word_labels_dynamo: dict[str, Any] = {}
         for (line_id, word_id), label_info in self.word_labels.items():
-            key = f"{line_id}:{word_id}"
+            key = f"{line_id}:{'' if word_id is None else word_id}"
             word_labels_dynamo[key] = {
                 "M": self._convert_dict_to_dynamo(label_info)
             }
@@ -357,32 +456,7 @@ class ReceiptLineItemAnalysis:
         Returns:
             Dict: The dictionary in DynamoDB format.
         """
-        result: dict[str, Any] = {}
-        for k, v in d.items():
-            if isinstance(v, dict):
-                result[k] = {"M": self._convert_dict_to_dynamo(v)}
-            elif isinstance(v, list):
-                result[k] = {
-                    "L": [
-                        (
-                            {"M": self._convert_dict_to_dynamo(item)}
-                            if isinstance(item, dict)
-                            else (
-                                {"N": str(item)}
-                                if isinstance(item, (int, float, Decimal))
-                                else {"S": str(item)}
-                            )
-                        )
-                        for item in v
-                    ]
-                }
-            elif isinstance(v, (int, float, Decimal)):
-                result[k] = {"N": str(v)}
-            elif v is None:
-                result[k] = {"NULL": True}
-            else:
-                result[k] = {"S": str(v)}
-        return result
+        return dict_to_dynamodb_map(d)
 
     def add_processing_metric(self, metric_name: str, value: Any) -> None:
         """Adds a processing metric to the metadata.
@@ -391,10 +465,12 @@ class ReceiptLineItemAnalysis:
             metric_name (str): The name of the metric.
             value (Any): The value of the metric.
         """
-        if "processing_metrics" not in self.metadata:
-            self.metadata["processing_metrics"] = {}
+        metadata = self.metadata if self.metadata is not None else {}
+        self.metadata = metadata
+        if "processing_metrics" not in metadata:
+            metadata["processing_metrics"] = {}
 
-        self.metadata["processing_metrics"][metric_name] = value
+        metadata["processing_metrics"][metric_name] = value
 
     def add_history_event(
         self, event_type: str, details: dict[str, Any] | None = None
@@ -406,8 +482,10 @@ class ReceiptLineItemAnalysis:
             details (Dict, optional):
                 Additional details about the event. Defaults to None.
         """
-        if "processing_history" not in self.metadata:
-            self.metadata["processing_history"] = []
+        metadata = self.metadata if self.metadata is not None else {}
+        self.metadata = metadata
+        if "processing_history" not in metadata:
+            metadata["processing_history"] = []
 
         event = {
             "event_type": event_type,
@@ -417,7 +495,7 @@ class ReceiptLineItemAnalysis:
         if details:
             event.update(details)
 
-        self.metadata["processing_history"].append(event)
+        metadata["processing_history"].append(event)
 
     def generate_reasoning(self) -> str:
         """Generate a comprehensive reasoning explanation for the line item
@@ -550,8 +628,7 @@ class ReceiptLineItemAnalysis:
                 self.receipt_id,
                 self.timestamp_added,
                 self.timestamp_updated,
-                # Can't hash a list directly, so we'll use a tuple of counts
-                len(self.items),
+                freeze_for_hash(self.items),
                 self.reasoning,
                 self.subtotal,
                 self.tax,
@@ -560,16 +637,17 @@ class ReceiptLineItemAnalysis:
                 self.discounts,
                 self.tips,
                 self.total_found,
-                tuple(self.discrepancies) if self.discrepancies else None,
+                freeze_for_hash(self.discrepancies),
                 self.version,
-                # Can't hash a dict, so we'll just include its presence
-                bool(self.metadata),
-                bool(self.word_labels),
+                freeze_for_hash(self.metadata),
+                freeze_for_hash(self.word_labels),
             )
         )
 
     @classmethod
-    def from_item(cls, item: dict[str, Any]) -> "ReceiptLineItemAnalysis":
+    def from_item(  # pylint: disable=too-many-locals
+        cls, item: dict[str, Any]
+    ) -> "ReceiptLineItemAnalysis":
         """Converts a DynamoDB item to a ReceiptLineItemAnalysis object.
 
         Args:
@@ -591,9 +669,25 @@ class ReceiptLineItemAnalysis:
                 f"{missing_keys}\nadditional keys: {additional_keys}"
             )
         try:
+            if item["TYPE"] != {"S": "RECEIPT_LINE_ITEM_ANALYSIS"}:
+                raise ValueError("TYPE must be RECEIPT_LINE_ITEM_ANALYSIS")
+
             # Extract primary identifiers
-            image_id = item["PK"]["S"].split("#")[1]
+            pk_parts = item["PK"]["S"].split("#")
+            if len(pk_parts) != 2 or pk_parts[0] != "IMAGE":
+                raise ValueError(
+                    "Invalid PK format for ReceiptLineItemAnalysis"
+                )
+            image_id = pk_parts[1]
             receipt_parts = item["SK"]["S"].split("#")
+            if (
+                len(receipt_parts) != 4
+                or receipt_parts[0] != "RECEIPT"
+                or receipt_parts[2:] != ["ANALYSIS", "LINE_ITEMS"]
+            ):
+                raise ValueError(
+                    "Invalid SK format for ReceiptLineItemAnalysis"
+                )
             receipt_id = int(receipt_parts[1])
 
             # Extract required fields
@@ -631,18 +725,22 @@ class ReceiptLineItemAnalysis:
             )
 
             # Extract word_labels
-            word_labels: dict[tuple[int, int | None, dict[str, Any]]] = None
+            word_labels: (
+                dict[tuple[int, int | None], dict[str, Any]] | None
+            ) = None
             if "word_labels" in item and item["word_labels"].get("M"):
                 word_labels = {}
                 word_labels_dynamo = item["word_labels"]["M"]
                 for key, value in word_labels_dynamo.items():
-                    line_id, word_id = map(int, key.split(":"))
+                    line_part, word_part = key.split(":", 1)
+                    line_id = int(line_part)
+                    word_id = int(word_part) if word_part else None
                     if word_labels is not None:
                         word_labels[(line_id, word_id)] = (
                             _convert_dynamo_to_dict(value["M"])
                         )
 
-            return cls(
+            result = cls(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 timestamp_added=timestamp_added,
@@ -661,7 +759,15 @@ class ReceiptLineItemAnalysis:
                 metadata=metadata,
                 word_labels=word_labels,
             )
-        except KeyError as e:
+            for key_name, expected_value in {
+                **result.key,
+                **result.gsi1_key(),
+                **result.gsi2_key(),
+            }.items():
+                if key_name in item and item[key_name] != expected_value:
+                    raise ValueError(f"{key_name} does not match entity keys")
+            return result
+        except (KeyError, TypeError, ValueError, IndexError) as e:
             raise ValueError(
                 f"Error converting item to ReceiptLineItemAnalysis: {e}"
             ) from e
@@ -752,23 +858,4 @@ def _convert_dynamo_to_dict(dynamo_dict: dict) -> dict:
     Returns:
         Dict: The dictionary as a Python dictionary.
     """
-    result: dict[str, Any] = {}
-    for k, v in dynamo_dict.items():
-        if "M" in v:
-            result[k] = _convert_dynamo_to_dict(v["M"])
-        elif "L" in v:
-            result[k] = [
-                (
-                    _convert_dynamo_to_dict(item["M"])
-                    if "M" in item
-                    else (int(item["N"]) if "N" in item else item["S"])
-                )
-                for item in v["L"]
-            ]
-        elif "N" in v:
-            result[k] = int(v["N"]) if v["N"].isdigit() else Decimal(v["N"])
-        elif "S" in v:
-            result[k] = v["S"]
-        # Handle NULL, BOOL, etc. if needed
-
-    return result
+    return parse_dynamodb_map(dynamo_dict)

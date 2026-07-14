@@ -22,12 +22,29 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 
-# This entity is not used in production infrastructure
 pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
 
-# =============================================================================
-# TEST DATA AND FIXTURES
-# =============================================================================
+
+def _client_error(error_code, operation, message=None):
+    return ClientError(
+        {
+            "Error": {
+                "Code": error_code,
+                "Message": message or f"Mocked {error_code}",
+            }
+        },
+        operation,
+    )
+
+
+def _patch_client_error(
+    mocker, client, method, error_code, operation, message=None
+):
+    return mocker.patch.object(
+        client._client,
+        method,
+        side_effect=_client_error(error_code, operation, message),
+    )
 
 
 @pytest.fixture
@@ -54,11 +71,6 @@ def sample_receipt_validation_result() -> ReceiptValidationResult:
     )
 
 
-# -------------------------------------------------------------------
-#                   PARAMETERIZED CLIENT ERROR TESTS
-# -------------------------------------------------------------------
-
-# Common error scenarios for all operations
 ERROR_SCENARIOS = [
     (
         "ProvisionedThroughputExceededException",
@@ -75,7 +87,6 @@ ERROR_SCENARIOS = [
     ),
 ]
 
-# Additional error for add operations
 ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
@@ -84,7 +95,6 @@ ADD_ERROR_SCENARIOS = [
     ),
 ] + ERROR_SCENARIOS
 
-# Additional error for update operations
 UPDATE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
@@ -93,18 +103,14 @@ UPDATE_ERROR_SCENARIOS = [
     ),
 ] + ERROR_SCENARIOS
 
-# Additional error for delete operations
 DELETE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "receiptvalidationresult not found during delete_receipt_validation_result",
+        "does not exist",
     ),
 ] + ERROR_SCENARIOS
 
-# -------------------------------------------------------------------
-#                   PARAMETERIZED VALIDATION ERROR TESTS
-# -------------------------------------------------------------------
 
 ADD_VALIDATION_SCENARIOS = [
     (None, "result cannot be None"),
@@ -123,21 +129,16 @@ UPDATE_VALIDATION_SCENARIOS = [
 ]
 
 
-# Now let's implement test for addReceiptValidationResult
 @pytest.mark.integration
 def test_addReceiptValidationResult_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test adding a validation result successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Act
     client.add_receipt_validation_result(sample_receipt_validation_result)
 
-    # Assert
-    # Verify the item was added by retrieving it
     response = client._client.get_item(
         TableName=dynamodb_table,
         Key={
@@ -159,18 +160,14 @@ def test_addReceiptValidationResult_duplicate_raises(
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test that adding a duplicate validation result raises an error"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Add the result first time
     client.add_receipt_validation_result(sample_receipt_validation_result)
 
-    # Act & Assert
     with pytest.raises(
         EntityAlreadyExistsError,
         match="already exists",
     ):
-        # Try to add the same result again
         client.add_receipt_validation_result(sample_receipt_validation_result)
 
 
@@ -203,36 +200,22 @@ def test_addReceiptValidationResult_client_errors(
     """Tests that add_receipt_validation_result raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "PutItem",
-        ),
+    mock_put = _patch_client_error(
+        mocker, client, "put_item", error_code, "PutItem"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.add_receipt_validation_result(sample_receipt_validation_result)
     mock_put.assert_called_once()
 
 
-# Now let's implement tests for addReceiptValidationResults
 @pytest.mark.integration
 def test_addReceiptValidationResults_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test adding multiple validation results successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create a few different validation results
     result1 = sample_receipt_validation_result
 
     result2 = deepcopy(result1)
@@ -245,11 +228,8 @@ def test_addReceiptValidationResults_success(
 
     validation_results = [result1, result2, result3]
 
-    # Act
     client.add_receipt_validation_results(validation_results)
 
-    # Assert
-    # Verify each result was added correctly
     for result in validation_results:
         response = client._client.get_item(
             TableName=dynamodb_table,
@@ -270,21 +250,16 @@ def test_addReceiptValidationResults_with_large_batch(
     dynamodb_table, sample_receipt_validation_result
 ):
     """Test adding a large batch of validation results (more than 25)"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 30 different validation results (which exceeds the batch limit of 25)
     validation_results = []
     for i in range(30):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # Act
     client.add_receipt_validation_results(validation_results)
 
-    # Assert
-    # Verify each result was added correctly
     for result in validation_results:
         response = client._client.get_item(
             TableName=dynamodb_table,
@@ -305,24 +280,19 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_validation_result, mocker
 ):
     """Test that unprocessed items are retried when adding validation results"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 5 different validation results
     validation_results = []
     for i in range(5):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # Mock batch_write_item to simulate unprocessed items on first call
     original_batch_write = client._client.batch_write_item
 
-    # Create a side effect that returns unprocessed items on first call, then succeeds
     def batch_write_side_effect(*args, **kwargs):
         if batch_write_side_effect.call_count == 0:
             batch_write_side_effect.call_count += 1
-            # Return unprocessed items on first call
             return {
                 "UnprocessedItems": {
                     dynamodb_table: [
@@ -335,7 +305,6 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
                 }
             }
         else:
-            # Return empty unprocessed items on subsequent calls
             return {"UnprocessedItems": {}}
 
     batch_write_side_effect.call_count = 0
@@ -344,11 +313,8 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
         client._client, "batch_write_item", side_effect=batch_write_side_effect
     )
 
-    # Act
     client.add_receipt_validation_results(validation_results)
 
-    # Assert
-    # Verify batch_write_item was called at least twice (once for initial write, once for retry)
     assert mock_batch_write.call_count >= 2
 
 
@@ -397,55 +363,36 @@ def test_addReceiptValidationResults_client_errors(
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
 
-    # Create 3 different validation results
     validation_results = []
     for i in range(3):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # pylint: disable=protected-access
-    mock_batch_write = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "BatchWriteItem",
-        ),
+    mock_batch_write = _patch_client_error(
+        mocker, client, "batch_write_item", error_code, "BatchWriteItem"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.add_receipt_validation_results(validation_results)
     mock_batch_write.assert_called_once()
 
 
-# Now let's implement tests for updateReceiptValidationResult
 @pytest.mark.integration
 def test_updateReceiptValidationResult_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test updating a validation result successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # First add the result
     client.add_receipt_validation_result(sample_receipt_validation_result)
 
-    # Modify the result
     updated_result = deepcopy(sample_receipt_validation_result)
     updated_result.message = "Updated message for testing"
     updated_result.reasoning = "Updated reasoning for testing"
 
-    # Act
     client.update_receipt_validation_result(updated_result)
 
-    # Assert
-    # Verify the item was updated correctly
     response = client._client.get_item(
         TableName=dynamodb_table,
         Key={
@@ -494,19 +441,8 @@ def test_updateReceiptValidationResult_client_errors(
     """Tests that update_receipt_validation_result raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "PutItem",
-        ),
+    mock_put = _patch_client_error(
+        mocker, client, "put_item", error_code, "PutItem"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.update_receipt_validation_result(
@@ -515,17 +451,14 @@ def test_updateReceiptValidationResult_client_errors(
     mock_put.assert_called_once()
 
 
-# Now let's implement tests for updateReceiptValidationResults
 @pytest.mark.integration
 def test_updateReceiptValidationResults_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test updating multiple validation results successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create a few different validation results
     result1 = sample_receipt_validation_result
 
     result2 = deepcopy(result1)
@@ -538,10 +471,8 @@ def test_updateReceiptValidationResults_success(
 
     validation_results = [result1, result2, result3]
 
-    # First add all the results
     client.add_receipt_validation_results(validation_results)
 
-    # Create updated versions
     updated_results = []
     for i, result in enumerate(validation_results):
         updated = deepcopy(result)
@@ -549,11 +480,8 @@ def test_updateReceiptValidationResults_success(
         updated.reasoning = f"Updated reasoning {i}"
         updated_results.append(updated)
 
-    # Act
     client.update_receipt_validation_results(updated_results)
 
-    # Assert
-    # Verify each result was updated correctly
     for i, result in enumerate(updated_results):
         response = client._client.get_item(
             TableName=dynamodb_table,
@@ -575,31 +503,24 @@ def test_updateReceiptValidationResults_with_large_batch(
     dynamodb_table, sample_receipt_validation_result
 ):
     """Test updating a large batch of validation results (more than 25)"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 30 different validation results (which exceeds the batch limit of 25)
     validation_results = []
     for i in range(30):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # First add all the results
     client.add_receipt_validation_results(validation_results)
 
-    # Create updated versions
     updated_results = []
     for i, result in enumerate(validation_results):
         updated = deepcopy(result)
         updated.message = f"Large batch updated message {i}"
         updated_results.append(updated)
 
-    # Act
     client.update_receipt_validation_results(updated_results)
 
-    # Assert
-    # Verify each result was updated correctly (check a sample)
     for i in [0, 15, 29]:  # Check first, middle, and last
         result = updated_results[i]
         response = client._client.get_item(
@@ -661,46 +582,34 @@ def test_updateReceiptValidationResults_client_errors(
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
 
-    # Create 3 different validation results
     validation_results = []
     for i in range(3):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
+    mock_transact = _patch_client_error(
+        mocker,
+        client,
         "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "TransactWriteItems",
-        ),
+        error_code,
+        "TransactWriteItems",
     )
     with pytest.raises(expected_exception, match=error_match):
         client.update_receipt_validation_results(validation_results)
     mock_transact.assert_called_once()
 
 
-# Now let's implement tests for deleteReceiptValidationResult
 @pytest.mark.integration
 def test_deleteReceiptValidationResult_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test deleting a validation result successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # First add the result
     client.add_receipt_validation_result(sample_receipt_validation_result)
 
-    # Verify it was added
     response = client._client.get_item(
         TableName=dynamodb_table,
         Key={
@@ -712,11 +621,8 @@ def test_deleteReceiptValidationResult_success(
     )
     assert "Item" in response
 
-    # Act
     client.delete_receipt_validation_result(sample_receipt_validation_result)
 
-    # Assert
-    # Verify the item was deleted
     response = client._client.get_item(
         TableName=dynamodb_table,
         Key={
@@ -769,19 +675,8 @@ def test_deleteReceiptValidationResult_client_errors(
     """Tests that delete_receipt_validation_result raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "DeleteItem",
-        ),
+    mock_delete = _patch_client_error(
+        mocker, client, "delete_item", error_code, "DeleteItem"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_validation_result(
@@ -790,17 +685,14 @@ def test_deleteReceiptValidationResult_client_errors(
     mock_delete.assert_called_once()
 
 
-# Now let's implement tests for deleteReceiptValidationResults
 @pytest.mark.integration
 def test_deleteReceiptValidationResults_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test deleting multiple validation results successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create a few different validation results
     result1 = sample_receipt_validation_result
 
     result2 = deepcopy(result1)
@@ -812,10 +704,8 @@ def test_deleteReceiptValidationResults_success(
 
     validation_results = [result1, result2, result3]
 
-    # First add all the results
     client.add_receipt_validation_results(validation_results)
 
-    # Verify they were added
     for result in validation_results:
         response = client._client.get_item(
             TableName=dynamodb_table,
@@ -828,11 +718,8 @@ def test_deleteReceiptValidationResults_success(
         )
         assert "Item" in response
 
-    # Act
     client.delete_receipt_validation_results(validation_results)
 
-    # Assert
-    # Verify all items were deleted
     for result in validation_results:
         response = client._client.get_item(
             TableName=dynamodb_table,
@@ -891,26 +778,14 @@ def test_deleteReceiptValidationResults_client_errors(
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
 
-    # Create 3 different validation results
     validation_results = []
     for i in range(3):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # pylint: disable=protected-access
-    mock_batch_write = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "BatchWriteItem",
-        ),
+    mock_batch_write = _patch_client_error(
+        mocker, client, "batch_write_item", error_code, "BatchWriteItem"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_validation_results(validation_results)
@@ -922,24 +797,19 @@ def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_validation_result, mocker
 ):
     """Test that unprocessed items are retried when deleting validation results"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 5 different validation results
     validation_results = []
     for i in range(5):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # First add the results so we can delete them
     client.add_receipt_validation_results(validation_results)
 
-    # Create a side effect that returns unprocessed items on first call, then succeeds
     def batch_write_side_effect(*args, **kwargs):
         if batch_write_side_effect.call_count == 0:
             batch_write_side_effect.call_count += 1
-            # Return unprocessed items on first call
             return {
                 "UnprocessedItems": {
                     dynamodb_table: [
@@ -948,7 +818,6 @@ def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
                 }
             }
         else:
-            # Return empty unprocessed items on subsequent calls
             return {"UnprocessedItems": {}}
 
     batch_write_side_effect.call_count = 0
@@ -957,11 +826,8 @@ def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
         client._client, "batch_write_item", side_effect=batch_write_side_effect
     )
 
-    # Act
     client.delete_receipt_validation_results(validation_results)
 
-    # Assert
-    # Verify batch_write_item was called at least twice (once for initial write, once for retry)
     assert mock_batch_write.call_count >= 2
 
 
@@ -970,20 +836,16 @@ def test_deleteReceiptValidationResults_with_large_batch(
     dynamodb_table, sample_receipt_validation_result
 ):
     """Test deleting a large batch of validation results (more than 25)"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 30 different validation results (which exceeds the batch limit of 25)
     validation_results = []
     for i in range(30):
         result = deepcopy(sample_receipt_validation_result)
         result.result_index = i
         validation_results.append(result)
 
-    # First add all the results
     client.add_receipt_validation_results(validation_results)
 
-    # Verify they were added
     for result in validation_results:
         response = client._client.get_item(
             TableName=dynamodb_table,
@@ -996,11 +858,8 @@ def test_deleteReceiptValidationResults_with_large_batch(
         )
         assert "Item" in response
 
-    # Act
     client.delete_receipt_validation_results(validation_results)
 
-    # Assert
-    # Verify all items were deleted (check a sample)
     for i in [0, 15, 29]:  # Check first, middle, and last
         result = validation_results[i]
         response = client._client.get_item(
@@ -1015,20 +874,16 @@ def test_deleteReceiptValidationResults_with_large_batch(
         assert "Item" not in response
 
 
-# Now let's implement tests for getReceiptValidationResult
 @pytest.mark.integration
 def test_getReceiptValidationResult_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test retrieving a validation result successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # First add the result
     client.add_receipt_validation_result(sample_receipt_validation_result)
 
-    # Act
     result = client.get_receipt_validation_result(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
@@ -1036,7 +891,6 @@ def test_getReceiptValidationResult_success(
         result_index=sample_receipt_validation_result.result_index,
     )
 
-    # Assert
     assert result is not None
     assert result == sample_receipt_validation_result
     assert result.message == sample_receipt_validation_result.message
@@ -1049,18 +903,14 @@ def test_getReceiptValidationResult_not_found(
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
     """Test retrieving a validation result that doesn't exist"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
     field_name = sample_receipt_validation_result.field_name
     result_index = sample_receipt_validation_result.result_index
 
-    # Mock get_item to return an empty response (no Item key)
     empty_response: Dict[str, Any] = {}
 
-    # Create a mock for the DynamoDB client
     client._client.get_item = MagicMock(return_value=empty_response)  # type: ignore[method-assign]
 
-    # Act & Assert
     with pytest.raises(
         EntityNotFoundError,
         match=f"ReceiptValidationResult with field {field_name} and index {result_index} not found",
@@ -1131,10 +981,8 @@ def test_getReceiptValidationResult_invalid_parameters(
     expected_error: str,
 ) -> None:
     """Test retrieving a validation result with invalid parameters"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Act & Assert
     with pytest.raises(EntityValidationError, match=expected_error):
         client.get_receipt_validation_result(
             receipt_id=receipt_id,
@@ -1159,19 +1007,8 @@ def test_getReceiptValidationResult_client_errors(
     """Tests that get_receipt_validation_result raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_get = mocker.patch.object(
-        client._client,
-        "get_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "GetItem",
-        ),
+    mock_get = _patch_client_error(
+        mocker, client, "get_item", error_code, "GetItem"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.get_receipt_validation_result(
@@ -1183,7 +1020,6 @@ def test_getReceiptValidationResult_client_errors(
     mock_get.assert_called_once()
 
 
-# Now let's implement tests for listReceiptValidationResults
 @pytest.mark.integration
 def test_listReceiptValidationResults_success(
     dynamodb_table: Literal["MyMockedTable"],
@@ -1191,10 +1027,8 @@ def test_listReceiptValidationResults_success(
     mocker,
 ):
     """Test listing all validation results successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create a few different validation results
     result1 = sample_receipt_validation_result
 
     result2 = deepcopy(result1)
@@ -1205,10 +1039,8 @@ def test_listReceiptValidationResults_success(
     result3.result_index = 2
     result3.field_name = "tax_amount"
 
-    # Add all the results
     client.add_receipt_validation_results([result1, result2, result3])
 
-    # Mock the scan response since we'll get all results
     mock_scan = mocker.patch.object(client._client, "scan")
     mock_scan.return_value = {
         "Items": [result1.to_item(), result2.to_item(), result3.to_item()],
@@ -1216,14 +1048,11 @@ def test_listReceiptValidationResults_success(
         "ScannedCount": 3,
     }
 
-    # Act
     results, last_key = client.list_receipt_validation_results()
 
-    # Assert
     assert len(results) == 3
     assert last_key is None
 
-    # Verify all expected results are in the list
     field_names = [r.field_name for r in results]
     assert "total_amount" in field_names
     assert "subtotal" in field_names
@@ -1237,10 +1066,8 @@ def test_listReceiptValidationResults_with_pagination(
     mocker,
 ):
     """Test listing validation results with pagination"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 10 different validation results
     validation_results = []
     for i in range(10):
         result = deepcopy(sample_receipt_validation_result)
@@ -1248,13 +1075,10 @@ def test_listReceiptValidationResults_with_pagination(
         result.field_name = f"field_{i}"
         validation_results.append(result)
 
-    # Add all the results
     client.add_receipt_validation_results(validation_results)
 
-    # Mock the scan response for pagination
     mock_scan = mocker.patch.object(client._client, "scan")
 
-    # First page with pagination token
     first_page_items = [r.to_item() for r in validation_results[:3]]
     first_page_response = {
         "Items": first_page_items,
@@ -1263,7 +1087,6 @@ def test_listReceiptValidationResults_with_pagination(
         "LastEvaluatedKey": {"PK": {"S": "some_key"}, "SK": {"S": "some_sk"}},
     }
 
-    # Second page with pagination token
     second_page_items = [r.to_item() for r in validation_results[3:6]]
     second_page_response = {
         "Items": second_page_items,
@@ -1275,7 +1098,6 @@ def test_listReceiptValidationResults_with_pagination(
         },
     }
 
-    # Third page with pagination token
     third_page_items = [r.to_item() for r in validation_results[6:9]]
     third_page_response = {
         "Items": third_page_items,
@@ -1287,7 +1109,6 @@ def test_listReceiptValidationResults_with_pagination(
         },
     }
 
-    # Fourth page (last) without pagination token
     fourth_page_items = [r.to_item() for r in validation_results[9:]]
     fourth_page_response = {
         "Items": fourth_page_items,
@@ -1295,7 +1116,6 @@ def test_listReceiptValidationResults_with_pagination(
         "ScannedCount": 1,
     }
 
-    # Setup the mock to return different responses on subsequent calls
     mock_scan.side_effect = [
         first_page_response,
         second_page_response,
@@ -1303,43 +1123,34 @@ def test_listReceiptValidationResults_with_pagination(
         fourth_page_response,
     ]
 
-    # Act - Get first page with limit of 3
     page1_results, pagination_key1 = client.list_receipt_validation_results(
         limit=3
     )
 
-    # Check pagination info from first page
     assert pagination_key1 is not None
     assert len(page1_results) == 3
 
-    # Get second page
     page2_results, pagination_key2 = client.list_receipt_validation_results(
         limit=3, last_evaluated_key=pagination_key1
     )
 
-    # Check pagination info from second page
     assert pagination_key2 is not None
     assert len(page2_results) == 3
 
-    # Get third page
     page3_results, pagination_key3 = client.list_receipt_validation_results(
         limit=3, last_evaluated_key=pagination_key2
     )
 
-    # Check pagination info from third page
     assert pagination_key3 is not None
     assert len(page3_results) == 3
 
-    # Get fourth page (should be last with just 1 item)
     page4_results, pagination_key4 = client.list_receipt_validation_results(
         limit=3, last_evaluated_key=pagination_key3
     )
 
-    # Check pagination info from fourth page
     assert pagination_key4 is None  # Should be None as this is the last page
     assert len(page4_results) == 1
 
-    # Ensure all field names across pages are as expected
     all_field_names = [
         r.field_name
         for r in page1_results + page2_results + page3_results + page4_results
@@ -1354,10 +1165,8 @@ def test_listReceiptValidationResults_empty_results(
     mocker,
 ):
     """Test listing validation results when none exist"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Mock the scan response with no results
     mock_scan = mocker.patch.object(client._client, "scan")
     mock_scan.return_value = {
         "Items": [],
@@ -1365,10 +1174,8 @@ def test_listReceiptValidationResults_empty_results(
         "ScannedCount": 0,
     }
 
-    # Act
     results, last_key = client.list_receipt_validation_results()
 
-    # Assert
     assert len(results) == 0
     assert last_key is None
 
@@ -1378,10 +1185,8 @@ def test_listReceiptValidationResults_with_negative_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing validation results with a negative limit should raise EntityValidationError"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Act & Assert
     with pytest.raises(
         EntityValidationError, match="Invalid value for parameter Limit"
     ):
@@ -1402,26 +1207,14 @@ def test_listReceiptValidationResults_client_errors(
     """Tests that list_receipt_validation_results raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "Query",
-        ),
+    mock_query = _patch_client_error(
+        mocker, client, "query", error_code, "Query"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.list_receipt_validation_results()
     mock_query.assert_called_once()
 
 
-# Now let's implement tests for listReceiptValidationResultsByType
 @pytest.mark.integration
 def test_listReceiptValidationResultsByType_success(
     dynamodb_table: Literal["MyMockedTable"],
@@ -1429,10 +1222,8 @@ def test_listReceiptValidationResultsByType_success(
     mocker,
 ):
     """Test listing validation results by type successfully"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create results with different types
     result1 = deepcopy(sample_receipt_validation_result)
     result1.type = "error"
 
@@ -1451,14 +1242,10 @@ def test_listReceiptValidationResultsByType_success(
     result4.field_name = "date"
     result4.type = "info"
 
-    # Add all the results
     client.add_receipt_validation_results([result1, result2, result3, result4])
 
-    # Since GSI3 might not be available in the mocked DynamoDB,
-    # we'll mock the query response
     mock_query = mocker.patch.object(client._client, "query")
 
-    # Create a mock response for the error type
     error_response = {
         "Items": [result1.to_item(), result2.to_item()],
         "Count": 2,
@@ -1466,19 +1253,15 @@ def test_listReceiptValidationResultsByType_success(
     }
     mock_query.return_value = error_response
 
-    # Act - Get results of type "error"
     error_results, _ = client.list_receipt_validation_results_by_type(
         result_type="error"
     )
 
-    # Assert
     assert len(error_results) == 2
 
-    # Verify all results have the correct type
     for result in error_results:
         assert result.type == "error"
 
-    # Create a mock response for the warning type
     warning_response = {
         "Items": [result3.to_item()],
         "Count": 1,
@@ -1486,17 +1269,14 @@ def test_listReceiptValidationResultsByType_success(
     }
     mock_query.return_value = warning_response
 
-    # Act - Get results of type "warning"
     warning_results, _ = client.list_receipt_validation_results_by_type(
         result_type="warning"
     )
 
-    # Assert
     assert len(warning_results) == 1
     assert warning_results[0].type == "warning"
     assert warning_results[0].field_name == "tax_amount"
 
-    # Create a mock response for the info type
     info_response = {
         "Items": [result4.to_item()],
         "Count": 1,
@@ -1504,12 +1284,10 @@ def test_listReceiptValidationResultsByType_success(
     }
     mock_query.return_value = info_response
 
-    # Act - Get results of type "info"
     info_results, _ = client.list_receipt_validation_results_by_type(
         result_type="info"
     )
 
-    # Assert
     assert len(info_results) == 1
     assert info_results[0].type == "info"
     assert info_results[0].field_name == "date"
@@ -1522,10 +1300,8 @@ def test_listReceiptValidationResultsByType_pagination(
     mocker,
 ):
     """Test listing validation results by type with pagination"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Create 10 different validation results of type "error"
     validation_results = []
     for i in range(10):
         result = deepcopy(sample_receipt_validation_result)
@@ -1534,16 +1310,10 @@ def test_listReceiptValidationResultsByType_pagination(
         result.type = "error"
         validation_results.append(result)
 
-    # Add all the results
     client.add_receipt_validation_results(validation_results)
 
-    # Since GSI3 might not be available in the mocked DynamoDB,
-    # we'll mock the query response for pagination
     mock_query = mocker.patch.object(client._client, "query")
 
-    # Create mock responses for each page
-
-    # First page with pagination token
     first_page_items = [r.to_item() for r in validation_results[:3]]
     first_page_response = {
         "Items": first_page_items,
@@ -1556,7 +1326,6 @@ def test_listReceiptValidationResultsByType_pagination(
         },
     }
 
-    # Second page with pagination token
     second_page_items = [r.to_item() for r in validation_results[3:6]]
     second_page_response = {
         "Items": second_page_items,
@@ -1569,7 +1338,6 @@ def test_listReceiptValidationResultsByType_pagination(
         },
     }
 
-    # Third page with pagination token
     third_page_items = [r.to_item() for r in validation_results[6:9]]
     third_page_response = {
         "Items": third_page_items,
@@ -1582,7 +1350,6 @@ def test_listReceiptValidationResultsByType_pagination(
         },
     }
 
-    # Fourth page (last) without pagination token
     fourth_page_items = [r.to_item() for r in validation_results[9:]]
     fourth_page_response = {
         "Items": fourth_page_items,
@@ -1590,7 +1357,6 @@ def test_listReceiptValidationResultsByType_pagination(
         "ScannedCount": 1,
     }
 
-    # Setup the mock to return different responses on subsequent calls
     mock_query.side_effect = [
         first_page_response,
         second_page_response,
@@ -1598,51 +1364,42 @@ def test_listReceiptValidationResultsByType_pagination(
         fourth_page_response,
     ]
 
-    # Act - Get first page with limit of 3
     page1_results, pagination_key1 = (
         client.list_receipt_validation_results_by_type(
             result_type="error", limit=3
         )
     )
 
-    # Check pagination info from first page
     assert pagination_key1 is not None
     assert len(page1_results) == 3
 
-    # Get second page
     page2_results, pagination_key2 = (
         client.list_receipt_validation_results_by_type(
             result_type="error", limit=3, last_evaluated_key=pagination_key1
         )
     )
 
-    # Check pagination info from second page
     assert pagination_key2 is not None
     assert len(page2_results) == 3
 
-    # Get third page
     page3_results, pagination_key3 = (
         client.list_receipt_validation_results_by_type(
             result_type="error", limit=3, last_evaluated_key=pagination_key2
         )
     )
 
-    # Check pagination info from third page
     assert pagination_key3 is not None
     assert len(page3_results) == 3
 
-    # Get fourth page (should be last with just 1 item)
     page4_results, pagination_key4 = (
         client.list_receipt_validation_results_by_type(
             result_type="error", limit=3, last_evaluated_key=pagination_key3
         )
     )
 
-    # Check pagination info from fourth page
     assert pagination_key4 is None  # Should be None as this is the last page
     assert len(page4_results) == 1
 
-    # Verify all results across pages are of type "error"
     all_results = page1_results + page2_results + page3_results + page4_results
     assert len(all_results) == 10
     assert all(r.type == "error" for r in all_results)
@@ -1655,15 +1412,12 @@ def test_listReceiptValidationResultsByType_empty_results(
     mocker,
 ):
     """Test listing validation results by type when none exist"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Add a single result of type "error"
     result = deepcopy(sample_receipt_validation_result)
     result.type = "error"
     client.add_receipt_validation_result(result)
 
-    # Mock the query response for a different type with no results
     mock_query = mocker.patch.object(client._client, "query")
     mock_query.return_value = {
         "Items": [],
@@ -1671,12 +1425,10 @@ def test_listReceiptValidationResultsByType_empty_results(
         "ScannedCount": 0,
     }
 
-    # Act - Get results of type "warning" (which doesn't exist)
     results, pagination_key = client.list_receipt_validation_results_by_type(
         result_type="warning"
     )
 
-    # Assert
     assert len(results) == 0
     assert pagination_key is None
 
@@ -1695,10 +1447,8 @@ def test_listReceiptValidationResultsByType_invalid_parameters(
     expected_error: str,
 ) -> None:
     """Test listing validation results by type with invalid parameters"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Act & Assert
     with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_validation_results_by_type(result_type=result_type)
 
@@ -1708,10 +1458,8 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing validation results by type with a negative limit should raise EntityValidationError"""
-    # Arrange
     client = DynamoClient(dynamodb_table)
 
-    # Act & Assert
     with pytest.raises(
         EntityValidationError, match="Invalid value for parameter Limit"
     ):
@@ -1734,19 +1482,8 @@ def test_listReceiptValidationResultsByType_client_errors(
     """Tests that list_receipt_validation_results_by_type raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "Query",
-        ),
+    mock_query = _patch_client_error(
+        mocker, client, "query", error_code, "Query"
     )
     with pytest.raises(expected_exception, match=error_match):
         client.list_receipt_validation_results_by_type(result_type="error")
@@ -1762,10 +1499,8 @@ def test_listReceiptValidationResultsForField_success(
     """
     Tests that listReceiptValidationResultsForField successfully retrieves validation results for a specific field.
     """
-    # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock the query response
     mock_query = mocker.patch.object(client._client, "query")
     mock_query.return_value = {
         "Items": [
@@ -1811,21 +1546,18 @@ def test_listReceiptValidationResultsForField_success(
         "ScannedCount": 1,
     }
 
-    # Execute
     results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
     )
 
-    # Assert
     assert len(results) == 1
     assert results[0].receipt_id == sample_receipt_validation_result.receipt_id
     assert results[0].image_id == sample_receipt_validation_result.image_id
     assert results[0].field_name == sample_receipt_validation_result.field_name
     assert results[0].type == sample_receipt_validation_result.type
 
-    # Verify query parameters
     mock_query.assert_called_once()
     call_args = mock_query.call_args
     assert call_args[1]["TableName"] == dynamodb_table
@@ -1851,17 +1583,13 @@ def test_listReceiptValidationResultsForField_with_pagination(
     """
     Tests that listReceiptValidationResultsForField correctly handles pagination.
     """
-    # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Create a copy of the sample result with a different result_index
     result2 = deepcopy(sample_receipt_validation_result)
     result2.result_index = 1
 
-    # Mock the query response with pagination
     mock_query = mocker.patch.object(client._client, "query")
 
-    # First response with LastEvaluatedKey
     first_response = {
         "Items": [
             {
@@ -1912,7 +1640,6 @@ def test_listReceiptValidationResultsForField_with_pagination(
         },
     }
 
-    # Second response without LastEvaluatedKey
     second_response = {
         "Items": [
             {
@@ -1947,31 +1674,26 @@ def test_listReceiptValidationResultsForField_with_pagination(
 
     mock_query.side_effect = [first_response, second_response]
 
-    # Execute
     results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
     )
 
-    # Assert
     assert len(results) == 2
     assert results[0].receipt_id == sample_receipt_validation_result.receipt_id
     assert results[0].result_index == 0
     assert results[1].receipt_id == result2.receipt_id
     assert results[1].result_index == 1
 
-    # Verify query parameters for both calls
     assert mock_query.call_count == 2
 
-    # First call
     first_call_args = mock_query.call_args_list[0][1]
     assert first_call_args["TableName"] == dynamodb_table
     assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(
         mock_query.call_args_list[0]
     )
 
-    # Second call with ExclusiveStartKey
     second_call_args = mock_query.call_args_list[1][1]
     assert second_call_args["TableName"] == dynamodb_table
     assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(
@@ -1991,10 +1713,8 @@ def test_listReceiptValidationResultsForField_empty_results(
     """
     Tests that listReceiptValidationResultsForField returns an empty list when no results are found.
     """
-    # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock the query response with no items
     mock_query = mocker.patch.object(client._client, "query")
     mock_query.return_value = {
         "Items": [],
@@ -2002,14 +1722,12 @@ def test_listReceiptValidationResultsForField_empty_results(
         "ScannedCount": 0,
     }
 
-    # Execute
     results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         field_name="total_amount",
     )
 
-    # Assert
     assert len(results) == 0
     assert isinstance(results, list)
 
@@ -2067,10 +1785,8 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
     """
     Tests that listReceiptValidationResultsForField raises appropriate errors for invalid parameters.
     """
-    # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Execute and Assert
     with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_validation_results_for_field(
             receipt_id=receipt_id,
@@ -2093,24 +1809,11 @@ def test_listReceiptValidationResultsForField_client_errors(
     """
     Tests that listReceiptValidationResultsForField handles client errors appropriately.
     """
-    # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # pylint: disable=protected-access
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "Query",
-        ),
+    mock_query = _patch_client_error(
+        mocker, client, "query", error_code, "Query"
     )
-    # Execute and Assert
     with pytest.raises(expected_exception, match=error_match):
         client.list_receipt_validation_results_for_field(
             receipt_id=1,

@@ -116,22 +116,6 @@ def build_full_address_from_words(words: Iterable[object]) -> str:
     return ""
 
 
-def build_full_address_from_lines(lines: Iterable[object]) -> str:
-    """
-    Build a receipt-level full address by joining line texts in reading order.
-    """
-    try:
-        sorted_lines = sorted(lines, key=lambda x: int(getattr(x, "line_id")))
-    except (TypeError, ValueError, AttributeError):
-        sorted_lines = list(lines)
-    parts = [
-        str(getattr(ln, "text", "") or "")
-        for ln in sorted_lines
-        if not getattr(ln, "is_noise", False)
-    ]
-    return normalize_address(" ".join(parts))
-
-
 def normalize_url(text: Optional[str]) -> str:
     """
     Normalize a URL for matching:

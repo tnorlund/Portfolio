@@ -1,9 +1,6 @@
 """Unit tests for receipt_chroma.compaction.deletions module."""
 
-from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from receipt_chroma.compaction.deletions import (
     _build_chromadb_id,
@@ -12,7 +9,6 @@ from receipt_chroma.compaction.deletions import (
     _delete_word_embedding,
     apply_receipt_deletions,
 )
-from receipt_chroma.compaction.models import ReceiptDeletionResult
 from receipt_dynamo.constants import ChromaDBCollection
 
 

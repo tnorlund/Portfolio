@@ -1,6 +1,91 @@
 import React from "react";
-import { ENTITY_DISPLAY_NAMES, LABEL_COLORS } from "./labelStyles";
+import {
+  CHARGE_GREEN,
+  ENTITY_DISPLAY_NAMES,
+  LABEL_COLORS,
+} from "./labelStyles";
 import styles from "./labelBoxOverlay.module.css";
+
+const LEGEND_GROUPS = [
+  {
+    color: "var(--color-yellow)",
+    label: "Merchant",
+    title: "Merchant name · Business name · Loyalty ID",
+    types: ["MERCHANT_NAME", "BUSINESS_NAME", "LOYALTY_ID"],
+  },
+  {
+    color: "var(--color-blue)",
+    label: "Date / Time",
+    title: "Date · Time",
+    types: ["DATE", "TIME"],
+  },
+  {
+    color: CHARGE_GREEN,
+    label: "Charges",
+    title: "Total · Subtotal · Tax · Line total · Unit price",
+    types: [
+      "GRAND_TOTAL",
+      "SUBTOTAL",
+      "TAX",
+      "LINE_TOTAL",
+      "UNIT_PRICE",
+      "AMOUNT",
+    ],
+  },
+  {
+    color: "var(--color-teal)",
+    label: "Credits",
+    title: "Discount · Coupon · Tip · Change · Cash back · Refund",
+    types: ["DISCOUNT", "COUPON", "TIP", "CHANGE", "CASH_BACK", "REFUND"],
+  },
+  {
+    color: "var(--color-cyan)",
+    label: "Quantity",
+    title: "Quantity",
+    types: ["QUANTITY"],
+  },
+  {
+    color: "var(--color-red)",
+    label: "Address",
+    title: "Address line",
+    types: ["ADDRESS", "ADDRESS_LINE"],
+  },
+  {
+    color: "var(--color-pink)",
+    label: "Phone",
+    title: "Phone number",
+    types: ["PHONE_NUMBER"],
+  },
+  {
+    color: "var(--color-purple)",
+    label: "Product",
+    title: "Product name",
+    types: ["PRODUCT_NAME"],
+  },
+  {
+    color: "var(--color-purple)",
+    label: "Website",
+    title: "Website",
+    types: ["WEBSITE"],
+  },
+  {
+    color: "var(--color-orange)",
+    label: "Hours / Pay",
+    title: "Store hours · Payment method",
+    types: ["STORE_HOURS", "PAYMENT_METHOD"],
+  },
+] as const;
+
+const groupedFamilies: Set<string> = new Set(
+  LEGEND_GROUPS.flatMap((group) => [...group.types]),
+);
+
+const fallbackLabel = (family: string): string =>
+  ENTITY_DISPLAY_NAMES[family] ??
+  family
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/^./, (character) => character.toUpperCase());
 
 /**
  * The ground-truth label box layer, extracted verbatim from
@@ -54,27 +139,47 @@ export const LabelBoxOverlay: React.FC<{
 );
 
 /**
- * The label legend, matching LayoutLMBatchVisualization's legend markup/classes
- * (a colored dot + display name per family) so both figures read the same.
+ * The label legend, matching LayoutLMBatchVisualization's compact taxonomy
+ * groups and dot/label styling so both figures read the same without letting a
+ * granular receipt-specific label list outgrow the fixed carousel stage.
  */
 export const LabelLegend: React.FC<{
   families: string[];
   className?: string;
-}> = ({ families, className }) => (
-  <div
-    className={className ? `${styles.legend} ${className}` : styles.legend}
-    aria-label="Label families"
-  >
-    {families.map((family) => (
-      <div key={family} className={styles.legendItem}>
-        <div
-          className={styles.legendDot}
-          style={{ backgroundColor: LABEL_COLORS[family] || LABEL_COLORS.O }}
-        />
-        <span className={styles.legendLabel}>
-          {ENTITY_DISPLAY_NAMES[family] ?? family}
-        </span>
-      </div>
-    ))}
-  </div>
-);
+}> = ({ families, className }) => {
+  const presentFamilies = new Set(families);
+  const visibleGroups = LEGEND_GROUPS.filter((group) =>
+    group.types.some((type) => presentFamilies.has(type)),
+  );
+  const unmatchedFamilies = Array.from(presentFamilies).filter(
+    (family) => family !== "O" && !groupedFamilies.has(family),
+  );
+
+  return (
+    <div
+      className={className ? `${styles.legend} ${className}` : styles.legend}
+      aria-label="Label families"
+    >
+      {visibleGroups.map((group) => (
+        <div key={group.label} title={group.title} className={styles.legendItem}>
+          <div
+            className={styles.legendDot}
+            style={{ backgroundColor: group.color }}
+          />
+          <span className={styles.legendLabel}>{group.label}</span>
+        </div>
+      ))}
+      {unmatchedFamilies.map((family) => (
+        <div key={family} title={family} className={styles.legendItem}>
+          <div
+            className={styles.legendDot}
+            style={{
+              backgroundColor: LABEL_COLORS[family] || LABEL_COLORS.O,
+            }}
+          />
+          <span className={styles.legendLabel}>{fallbackLabel(family)}</span>
+        </div>
+      ))}
+    </div>
+  );
+};

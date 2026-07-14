@@ -5,6 +5,7 @@ This file contains refactored tests using pytest.mark.parametrize to ensure
 complete test coverage matching test__receipt_line.py standards.
 """
 
+from math import radians
 from typing import Any, Literal, Type
 from uuid import uuid4
 
@@ -34,12 +35,56 @@ def _unique_image_id() -> str:
     return str(uuid4())
 
 
+def _make_line(
+    image_id: str,
+    line_id: int = 1,
+    *,
+    geometry: tuple[float, float, float, float] | None = None,
+    angle_degrees: float | None = None,
+    **overrides: Any,
+) -> Line:
+    """Build a valid line while keeping test-specific fields explicit."""
+    values: dict[str, Any] = {
+        "image_id": image_id,
+        "line_id": line_id,
+        "text": f"Line {line_id}",
+        "bounding_box": {"x": 0, "y": 0, "width": 1, "height": 0.1},
+        "top_left": {"x": 0, "y": 0},
+        "top_right": {"x": 1, "y": 0},
+        "bottom_left": {"x": 0, "y": 0.1},
+        "bottom_right": {"x": 1, "y": 0.1},
+        "angle_degrees": 0,
+        "angle_radians": 0,
+        "confidence": 0.95,
+    }
+    if geometry is not None:
+        x, y, width, height = geometry
+        values.update(
+            {
+                "bounding_box": {
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                },
+                "top_left": {"x": x, "y": y},
+                "top_right": {"x": x + width, "y": y},
+                "bottom_left": {"x": x, "y": y + height},
+                "bottom_right": {"x": x + width, "y": y + height},
+            }
+        )
+    if angle_degrees is not None:
+        values["angle_degrees"] = angle_degrees
+        values["angle_radians"] = radians(angle_degrees)
+    values.update(overrides)
+    return Line(**values)
+
+
 @pytest.fixture(name="sample_line")
 def _sample_line(unique_image_id: str) -> Line:
     """Returns a valid Line object with unique data."""
-    return Line(
-        image_id=unique_image_id,
-        line_id=1,
+    return _make_line(
+        unique_image_id,
         text="test_string",
         bounding_box={
             "x": 0.4454263367632384,
@@ -102,227 +147,92 @@ FIXED_UUIDS = [
 
 
 # -------------------------------------------------------------------
-#           PARAMETERIZED SINGLE OPERATION CLIENT ERROR TESTS
+#           PARAMETERIZED CLIENT ERROR TESTS
 # -------------------------------------------------------------------
+
+
+LINE_CLIENT_ERROR_CASES = (
+    [
+        ("add_line", "put_item", "PutItem", False, "entity", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("update_line", "put_item", "PutItem", True, "entity", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("delete_line", "delete_item", "DeleteItem", True, "key", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        ("get_line", "get_item", "GetItem", False, "key", *case)
+        for case in ERROR_SCENARIOS
+    ]
+    + [
+        (
+            method_name,
+            "transact_write_items",
+            "TransactWriteItems",
+            False,
+            "batch",
+            *case,
+        )
+        for method_name, scenarios in (
+            ("add_lines", ERROR_SCENARIOS),
+            ("update_lines", UPDATE_BATCH_ERROR_SCENARIOS),
+            ("delete_lines", DELETE_BATCH_ERROR_SCENARIOS),
+        )
+        for case in scenarios
+    ]
+)
+
+
+def _line_args(sample_line: Line, arg_source: str) -> tuple[Any, ...]:
+    """Return DynamoClient method args for a line case."""
+    return {
+        "entity": (sample_line,),
+        "key": (sample_line.image_id, sample_line.line_id),
+        "batch": ([sample_line],),
+    }[arg_source]
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+    "method_name,api_method,operation_name,pre_add,arg_source,"
+    "error_code,expected_exception,error_match",
+    LINE_CLIENT_ERROR_CASES,
 )
-# pylint: disable=too-many-arguments
-def test_add_line_client_errors(
+# pylint: disable=too-many-arguments,protected-access
+def test_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_line: Line,
     mocker: MockerFixture,
+    method_name: str,
+    api_method: str,
+    operation_name: str,
+    pre_add: bool,
+    arg_source: str,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """Tests error handling for add_line operations."""
+    """Tests error handling for line operations."""
     client = DynamoClient(dynamodb_table)
-
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "PutItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
+    if pre_add:
         client.add_line(sample_line)
 
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_line_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for update_line operations."""
-    client = DynamoClient(dynamodb_table)
-    client.add_line(sample_line)
-
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
+    mock_api = mocker.patch.object(
         client._client,
-        "put_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "PutItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_line(sample_line)
-
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_line_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for delete_line operations."""
-    client = DynamoClient(dynamodb_table)
-    client.add_line(sample_line)
-
-    # pylint: disable=protected-access
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "DeleteItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_line(sample_line.image_id, sample_line.line_id)
-
-    mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_get_line_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for get_line operations."""
-    client = DynamoClient(dynamodb_table)
-
-    # pylint: disable=protected-access
-    mock_get = mocker.patch.object(
-        client._client,
-        "get_item",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "GetItem"),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.get_line(sample_line.image_id, sample_line.line_id)
-
-    mock_get.assert_called_once()
-
-
-# -------------------------------------------------------------------
-#           PARAMETERIZED BATCH OPERATION CLIENT ERROR TESTS
-# -------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_add_lines_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for add_lines batch operations."""
-    client = DynamoClient(dynamodb_table)
-    lines = [sample_line]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
+        api_method,
         side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
+            {"Error": {"Code": error_code}}, operation_name
         ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
-        client.add_lines(lines)
+        getattr(client, method_name)(*_line_args(sample_line, arg_source))
 
-    mock_transact.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_lines_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for update_lines batch operations."""
-    client = DynamoClient(dynamodb_table)
-    lines = [sample_line]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_lines(lines)
-
-    mock_transact.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_lines_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_line: Line,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests error handling for delete_lines batch operations."""
-    client = DynamoClient(dynamodb_table)
-    lines = [sample_line]
-
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_lines(lines)
-
-    mock_transact.assert_called_once()
+    mock_api.assert_called_once()
 
 
 # -------------------------------------------------------------------
@@ -787,17 +697,10 @@ def test_add_lines_success(
     client = DynamoClient(dynamodb_table)
 
     lines = [
-        Line(
-            image_id=unique_image_id,
-            line_id=i,
+        _make_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0.0, "y": i * 0.1, "width": 1.0, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
             confidence=0.95 + i * 0.01,
         )
         for i in range(1, 4)
@@ -819,7 +722,7 @@ def test_add_lines_empty_list(
     """Tests add_lines with empty list."""
     client = DynamoClient(dynamodb_table)
 
-    # Current implementation treats empty list as no-op (does not call DynamoDB)
+    # Empty input is a no-op and must not call DynamoDB.
     client.add_lines([])
 
 
@@ -834,18 +737,10 @@ def test_update_lines_success(
 
     # First add lines
     lines = [
-        Line(
-            image_id=unique_image_id,
-            line_id=i,
+        _make_line(
+            unique_image_id,
+            i,
             text=f"Original line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         for i in range(1, 4)
     ]
@@ -876,18 +771,10 @@ def test_delete_lines_success(
 
     # First add lines
     lines = [
-        Line(
-            image_id=unique_image_id,
-            line_id=i,
+        _make_line(
+            unique_image_id,
+            i,
             text=f"Line to delete {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         for i in range(1, 4)
     ]
@@ -920,18 +807,10 @@ def test_list_lines_with_pagination(
 
     # Add multiple lines
     for i in range(1, 6):
-        line = Line(
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         client.add_line(line)
 
@@ -976,34 +855,19 @@ def test_list_lines_from_image_success(
 
     # Add lines for specific image
     for i in range(1, 3):
-        line = Line(
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_line(
+            unique_image_id,
+            i,
             text=f"Image Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         client.add_line(line)
 
     # Add line for different image
     other_image_id = str(uuid4())
-    other_line = Line(
-        image_id=other_image_id,
-        line_id=10,
+    other_line = _make_line(
+        other_image_id,
+        10,
         text="Other Image Line",
-        bounding_box={"x": 0.2, "y": 0.2, "width": 0.1, "height": 0.1},
-        top_left={"x": 0.2, "y": 0.2},
-        top_right={"x": 0.3, "y": 0.2},
-        bottom_left={"x": 0.2, "y": 0.3},
-        bottom_right={"x": 0.3, "y": 0.3},
-        angle_degrees=10,
-        angle_radians=0.17453,
         confidence=0.99,
     )
     client.add_line(other_line)
@@ -1030,18 +894,9 @@ def test_line_with_unicode_text(
 ) -> None:
     """Tests line with unicode characters in text."""
     client = DynamoClient(dynamodb_table)
-    unicode_line = Line(
-        image_id=unique_image_id,
-        line_id=1,
+    unicode_line = _make_line(
+        unique_image_id,
         text="测试文本 Test émojis: 🎉🚀",
-        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
-        top_left={"x": 0, "y": 0},
-        top_right={"x": 1, "y": 0},
-        bottom_left={"x": 0, "y": 0.1},
-        bottom_right={"x": 1, "y": 0.1},
-        angle_degrees=0,
-        angle_radians=0,
-        confidence=0.95,
     )
 
     client.add_line(unicode_line)
@@ -1057,9 +912,8 @@ def test_line_with_extreme_coordinates(
 ) -> None:
     """Tests line with extreme coordinate values."""
     client = DynamoClient(dynamodb_table)
-    extreme_line = Line(
-        image_id=unique_image_id,
-        line_id=1,
+    extreme_line = _make_line(
+        unique_image_id,
         text="Extreme coordinates",
         bounding_box={
             "x": 0.00001,
@@ -1092,17 +946,12 @@ def test_large_batch_operations(
 
     # Create 100 lines (DynamoDB batch limit is 25, so this tests chunking)
     lines = [
-        Line(
-            image_id=unique_image_id,
-            line_id=i,
+        _make_line(
+            unique_image_id,
+            i,
             text=f"Batch line {i}",
-            bounding_box={"x": 0, "y": i * 0.01, "width": 1, "height": 0.01},
-            top_left={"x": 0, "y": i * 0.01},
-            top_right={"x": 1, "y": i * 0.01},
-            bottom_left={"x": 0, "y": (i + 1) * 0.01},
-            bottom_right={"x": 1, "y": (i + 1) * 0.01},
+            geometry=(0, i * 0.01, 1, 0.01),
             angle_degrees=i % 360,
-            angle_radians=(i % 360) * 0.017453,
             confidence=0.9 + (i % 10) * 0.01,
         )
         for i in range(1, 101)
@@ -1114,7 +963,13 @@ def test_large_batch_operations(
     # Verify a sample
     for i in [1, 25, 50, 75, 100]:
         result = client.get_line(unique_image_id, i)
-        assert result.text == f"Batch line {i}"
+        expected = lines[i - 1]
+        assert result.text == expected.text
+        assert result.bounding_box == expected.bounding_box
+        assert result.top_left == expected.top_left
+        assert result.bottom_right == expected.bottom_right
+        assert result.angle_degrees == expected.angle_degrees
+        assert result.angle_radians == expected.angle_radians
 
     # Update all
     for line in lines:

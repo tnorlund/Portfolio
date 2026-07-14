@@ -1,4 +1,5 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_result.py
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,9 +66,11 @@ class ReceiptValidationResult(SerializationMixin):
         # most methods, adding complexity without benefit.
         if self.validation_timestamp is not None:
             self.validation_timestamp = validate_iso_timestamp(
-                self.validation_timestamp, "validation_timestamp"
+                self.validation_timestamp,
+                "validation_timestamp",
+                default_now=False,
             )
-        self.metadata = validate_metadata_field(self.metadata)
+        self.metadata = deepcopy(validate_metadata_field(self.metadata))
 
     @property
     def key(self) -> dict[str, dict[str, str]]:
@@ -86,6 +89,8 @@ class ReceiptValidationResult(SerializationMixin):
     @property
     def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
+        if self.validation_timestamp is None:
+            return {}
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {
@@ -123,11 +128,11 @@ class ReceiptValidationResult(SerializationMixin):
         item["type"] = {"S": self.type}
         item["message"] = {"S": self.message}
         item["reasoning"] = {"S": self.reasoning}
-        # Add validation_timestamp conditionally to avoid type conflicts
-        if self.validation_timestamp is not None:
-            item["validation_timestamp"] = {"S": self.validation_timestamp}
-        else:
-            item["validation_timestamp"] = {"NULL": True}
+        item["validation_timestamp"] = (
+            {"S": self.validation_timestamp}
+            if self.validation_timestamp is not None
+            else {"NULL": True}
+        )
 
         # Add metadata as a map
         item["metadata"] = self._python_to_dynamo(self.metadata)
@@ -145,6 +150,10 @@ class ReceiptValidationResult(SerializationMixin):
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationResult":
         """Create a ReceiptValidationResult from a DynamoDB item."""
+        cls.validate_required_keys(
+            item,
+            {"PK", "SK", "type", "message", "reasoning"},
+        )
         # Extract image_id, receipt_id, field_name, and result_index from keys
         image_id = item["PK"]["S"].split("#")[1]
         sk_parts = item["SK"]["S"].split("#")

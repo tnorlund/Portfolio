@@ -56,8 +56,6 @@ class HybridLambdaDeployment(ComponentResource):
         dynamodb_stream_arn: str,
         vpc_subnet_ids=None,
         lambda_security_group_id: str | None = None,
-        efs_access_point_arn: str | None = None,
-        storage_mode: str = "auto",
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -130,26 +128,6 @@ class HybridLambdaDeployment(ComponentResource):
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
         )
 
-        # Normalize and validate storage mode once
-        normalized_storage_mode = storage_mode.lower()
-        if normalized_storage_mode not in {"auto", "s3", "efs"}:
-            raise ValueError(
-                f"Invalid storage_mode='{storage_mode}'. "
-                "Expected one of: 'auto', 's3', or 'efs'."
-            )
-
-        # Decide whether to mount EFS based on access point and mode
-        use_efs_mount = (
-            efs_access_point_arn is not None and normalized_storage_mode != "s3"
-        )
-
-        # Validate storage_mode='efs' requires EFS access point
-        if normalized_storage_mode == "efs" and not use_efs_mount:
-            raise ValueError(
-                "storage_mode='efs' requires efs_access_point_arn to be provided. "
-                "Cannot set CHROMADB_STORAGE_MODE='efs' without an EFS access point."
-            )
-
         self.docker_image = DockerImageComponent(
             f"{name}-docker",
             lambda_config={
@@ -191,9 +169,9 @@ class HybridLambdaDeployment(ComponentResource):
                     "ManagedBy": "Pulumi",
                 },
                 "environment": {
-                    "DYNAMODB_TABLE_NAME": Output.all(dynamodb_table_arn).apply(
-                        lambda args: args[0].split("/")[-1]
-                    ),
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
@@ -201,14 +179,6 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
-                    "CHROMA_ROOT": (
-                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"  # noqa: S108
-                    ),
-                    # Storage mode configuration: "auto", "s3", or "efs"
-                    # - "auto": Use EFS if available, fallback to S3
-                    # - "s3": Force S3-only mode (ignore EFS)
-                    # - "efs": Force EFS mode (fail if EFS not available)
-                    "CHROMADB_STORAGE_MODE": normalized_storage_mode,
                     # Enable custom CloudWatch metrics now that Lambda has internet
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
@@ -247,15 +217,6 @@ class HybridLambdaDeployment(ComponentResource):
                     "subnet_ids": vpc_subnet_ids,
                     "security_group_ids": [lambda_security_group_id],
                 },
-                # EFS mount enabled for networking
-                "file_system_config": (
-                    {
-                        "arn": efs_access_point_arn,
-                        "local_mount_path": "/mnt/chroma",
-                    }
-                    if use_efs_mount
-                    else None
-                ),
             },
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
@@ -283,16 +244,6 @@ class HybridLambdaDeployment(ComponentResource):
                 "ManagedBy": "Pulumi",
             },
             opts=ResourceOptions(parent=self),
-        )
-
-        # Optional VPC configuration
-        vpc_cfg = (
-            aws.lambda_.FunctionVpcConfigArgs(
-                subnet_ids=vpc_subnet_ids,
-                security_group_ids=[lambda_security_group_id],
-            )
-            if vpc_subnet_ids and lambda_security_group_id
-            else None
         )
 
         # Create zip-based Lambda for stream processing
@@ -426,63 +377,14 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
-        # VPC and EFS configuration is now handled in lambda_config
-
         # Use the Lambda function created by DockerImageComponent
         self.enhanced_compaction_function = (
             self.docker_image.docker_image.lambda_function
         )
 
         # Create event source mappings
-        self._create_event_source_mappings(name, dynamodb_stream_arn, chromadb_queues)
-
-        # Diagnostic EFS listing Lambda (zip-based, same role/VPC/EFS)
-        diag_code = pulumi.AssetArchive(
-            {
-                "handler.py": pulumi.FileAsset(
-                    str(
-                        Path(__file__).parent.parent
-                        / "lambdas"
-                        / "efs_diag"
-                        / "handler.py"
-                    )
-                )
-            }
-        )
-
-        self.efs_diag_function = aws.lambda_.Function(
-            f"{name}-efs-diag",
-            runtime="python3.12",
-            architectures=["arm64"],
-            code=diag_code,
-            handler="handler.lambda_handler",
-            role=self.lambda_role.arn,
-            timeout=30,
-            memory_size=256,
-            environment={
-                "variables": {
-                    "CHROMA_ROOT": (
-                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"  # noqa: S108
-                    ),
-                }
-            },
-            vpc_config=(
-                aws.lambda_.FunctionVpcConfigArgs(
-                    subnet_ids=vpc_subnet_ids,
-                    security_group_ids=[lambda_security_group_id],
-                )
-                if vpc_subnet_ids and lambda_security_group_id
-                else None
-            ),
-            file_system_config=(
-                aws.lambda_.FunctionFileSystemConfigArgs(
-                    arn=efs_access_point_arn,
-                    local_mount_path="/mnt/chroma",
-                )
-                if use_efs_mount
-                else None
-            ),
-            opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
+        self._create_event_source_mappings(
+            name, dynamodb_stream_arn, chromadb_queues
         )
 
         # Receipt Summary Updater Lambda (zip-based)
@@ -529,9 +431,9 @@ class HybridLambdaDeployment(ComponentResource):
             memory_size=256,  # Lightweight processing
             environment={
                 "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(dynamodb_table_arn).apply(
-                        lambda args: args[0].split("/")[-1]
-                    ),
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
                     "LOG_LEVEL": "INFO",
                 }
             },
@@ -582,7 +484,6 @@ class HybridLambdaDeployment(ComponentResource):
                 "summary_updater_arn": self.summary_updater_arn,
                 "role_arn": self.role_arn,
                 "docker_image_uri": self.docker_image.image_uri,
-                "efs_diag_arn": self.efs_diag_function.arn,
             }
         )
 
@@ -825,8 +726,6 @@ def create_hybrid_lambda_deployment(
     dynamodb_stream_arn: str = None,
     vpc_subnet_ids=None,
     lambda_security_group_id: str | None = None,
-    efs_access_point_arn: str | None = None,
-    storage_mode: str = "auto",
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -860,7 +759,5 @@ def create_hybrid_lambda_deployment(
         dynamodb_stream_arn=dynamodb_stream_arn,
         vpc_subnet_ids=vpc_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
-        efs_access_point_arn=efs_access_point_arn,
-        storage_mode=storage_mode,
         opts=opts,
     )

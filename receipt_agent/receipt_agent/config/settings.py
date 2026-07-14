@@ -71,11 +71,6 @@ class Settings(BaseSettings):
         default=None,
         description="Local ChromaDB persistence directory",
     )
-    chroma_http_url: Optional[str] = Field(
-        default=None,
-        description="ChromaDB HTTP server URL",
-    )
-
     # ==========================================================================
     # DynamoDB Configuration
     # ==========================================================================
@@ -88,7 +83,9 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(
         default="us-east-1",
-        validation_alias=AliasChoices("RECEIPT_AGENT_AWS_REGION", "AWS_REGION"),
+        validation_alias=AliasChoices(
+            "RECEIPT_AGENT_AWS_REGION", "AWS_REGION"
+        ),
         description="AWS region for DynamoDB",
     )
 

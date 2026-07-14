@@ -344,10 +344,9 @@
   image-rendering: pixelated;
 }
 
-/* Dark mode: the consensus cloud + real prints are dark-ink-on-white PNGs, so
-   invert them to read as light ink on the dark stage — no glaring white slab.
-   The blue pen path and the --text-color (white) thermal dots already contrast
-   on the dark stage. */
+/* The source receipt paper is knocked out to real alpha in ReceiptInkLayer.
+   Dark mode only recolors the remaining black ink pixels to white; transparent
+   paper pixels stay transparent, even inside the act's animated layers. */
 @media (prefers-color-scheme: dark) {
   .charCloudFill,
   .charPrintLayer {
@@ -467,6 +466,7 @@
 
 /* No tile chrome: the glyphs sit directly on the page background like type. */
 .fontCell {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -498,8 +498,12 @@
 /* Alpha-mask glyph: painted in the page text color (currentColor) through the
    glyph's alpha, so it reads as type-on-page and is theme-aware. */
 .fontGlyph {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 78%;
   height: 78%;
+  transform: translate(-50%, -50%);
   background-color: currentColor;
   mask-mode: alpha;
   mask-repeat: no-repeat;
@@ -559,9 +563,11 @@
 .assembleSide {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
-  max-width: min(300px, 42%);
+  width: 180px;
+  max-width: 42%;
+  flex-shrink: 0;
   animation: side-in 0.5s ease both;
 }
 
@@ -866,6 +872,7 @@
   .assembleSide {
     max-width: 100%;
     width: 100%;
+    align-items: center;
   }
 
   /* Finale: swap the two corner badges (which collide on narrow cards) for a

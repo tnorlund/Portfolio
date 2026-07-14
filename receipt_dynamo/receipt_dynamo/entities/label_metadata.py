@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -13,6 +14,8 @@ from receipt_dynamo.entities.util import (
 @dataclass(eq=True, unsafe_hash=False)
 class LabelMetadata:
     REQUIRED_KEYS = {
+        "PK",
+        "SK",
         "status",
         "aliases",
         "description",
@@ -27,7 +30,7 @@ class LabelMetadata:
     schema_version: int
     last_updated: datetime
     label_target: str | None = None
-    receipt_refs: list[tuple[str, int | None]] = None
+    receipt_refs: list[tuple[str, int]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         # Convert datetime to str if needed for last_updated
@@ -36,33 +39,47 @@ class LabelMetadata:
             pass
 
         assert_type("label", self.label, str, ValueError)
+        if not self.label or "#" in self.label:
+            raise ValueError("label must be non-empty and exclude '#'")
 
         self.status = normalize_enum(self.status, LabelStatus)
 
         assert_type("aliases", self.aliases, list, ValueError)
+        if not all(isinstance(alias, str) and alias for alias in self.aliases):
+            raise ValueError("aliases must contain non-empty strings")
+        if len(set(self.aliases)) != len(self.aliases):
+            raise ValueError("aliases must not contain duplicates")
+        self.aliases = deepcopy(self.aliases)
 
         assert_type("description", self.description, str, ValueError)
 
         assert_type("schema_version", self.schema_version, int, ValueError)
+        if self.schema_version <= 0:
+            raise ValueError("schema_version must be positive")
 
         assert_type("last_updated", self.last_updated, datetime, ValueError)
 
         if self.label_target is not None:
             assert_type("label_target", self.label_target, str, ValueError)
+            if not self.label_target:
+                raise ValueError("label_target must be non-empty or None")
 
-        if self.receipt_refs is not None:
-            assert_type("receipt_refs", self.receipt_refs, list, ValueError)
-            if not all(
-                isinstance(ref, tuple)
-                and len(ref) == 2
-                and isinstance(ref[0], str)
-                and isinstance(ref[1], int)
-                for ref in self.receipt_refs
-            ):
-                raise ValueError(
-                    "receipt_refs must be a list of (image_id: str, "
-                    "receipt_id: int) tuples"
-                )
+        assert_type("receipt_refs", self.receipt_refs, list, ValueError)
+        if not all(
+            isinstance(ref, tuple)
+            and len(ref) == 2
+            and isinstance(ref[0], str)
+            and bool(ref[0])
+            and isinstance(ref[1], int)
+            and not isinstance(ref[1], bool)
+            and ref[1] > 0
+            for ref in self.receipt_refs
+        ):
+            raise ValueError(
+                "receipt_refs must be a list of (image_id: str, "
+                "receipt_id: int) tuples"
+            )
+        self.receipt_refs = deepcopy(self.receipt_refs)
 
     @property
     def key(self) -> dict[str, Any]:
@@ -84,11 +101,13 @@ class LabelMetadata:
         }
 
     def to_item(self) -> dict[str, Any]:
-        return {
+        self.__post_init__()
+        item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key(),
+            "TYPE": {"S": "LABEL_METADATA"},
             "status": {"S": self.status},
-            "aliases": {"SS": self.aliases},
+            "aliases": {"SS": self.aliases} if self.aliases else {"L": []},
             "description": {"S": self.description},
             "schema_version": {"N": str(self.schema_version)},
             "last_updated": {"S": self.last_updated.isoformat()},
@@ -110,9 +129,12 @@ class LabelMetadata:
                     ]
                 }
                 if self.receipt_refs
-                else {"NULL": True}
+                else {"L": []}
             ),
         }
+        if self.label_target is not None:
+            item.update(self.gsi2_key())
+        return item
 
     def __repr__(self) -> str:
         return (
@@ -154,7 +176,13 @@ class LabelMetadata:
         try:
             label = item["PK"]["S"].split("#")[1]
             status = item["status"]["S"]
-            aliases = item["aliases"]["SS"]
+            aliases_field = item["aliases"]
+            if "SS" in aliases_field:
+                aliases = list(aliases_field["SS"])
+            elif aliases_field == {"L": []}:
+                aliases = []
+            else:
+                raise ValueError("aliases must be SS or an empty L")
             description = item["description"]["S"]
             schema_version = int(item["schema_version"]["N"])
             last_updated = datetime.fromisoformat(item["last_updated"]["S"])
@@ -167,12 +195,11 @@ class LabelMetadata:
                     (r["M"]["image_id"]["S"], int(r["M"]["receipt_id"]["N"]))
                     for r in item["receipt_refs"]["L"]
                 ]
-                if "receipt_refs" in item
-                and item["receipt_refs"] != {"NULL": True}
-                else None
+                if "receipt_refs" in item and "L" in item["receipt_refs"]
+                else []
             )
 
-            return cls(
+            metadata = cls(
                 label=label,
                 status=status,
                 aliases=aliases,
@@ -182,6 +209,20 @@ class LabelMetadata:
                 label_target=label_target,
                 receipt_refs=receipt_refs,
             )
+            expected = metadata.to_item()
+            key_names = ("PK", "SK", "GSI1PK", "GSI1SK")
+            if any(item.get(key) != expected.get(key) for key in key_names):
+                raise ValueError("Invalid LabelMetadata keys")
+            if "TYPE" in item and item["TYPE"] != expected["TYPE"]:
+                raise ValueError("Invalid LabelMetadata TYPE")
+            gsi2_keys = ("GSI2PK", "GSI2SK")
+            present_gsi2_keys = [key for key in gsi2_keys if key in item]
+            if present_gsi2_keys and (
+                len(present_gsi2_keys) != len(gsi2_keys)
+                or any(item[key] != expected.get(key) for key in gsi2_keys)
+            ):
+                raise ValueError("Invalid LabelMetadata GSI2 keys")
+            return metadata
         except Exception as e:
             raise ValueError(
                 f"Error converting item to LabelMetadata: {e}"
