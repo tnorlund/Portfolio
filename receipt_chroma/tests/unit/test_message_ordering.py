@@ -1,7 +1,5 @@
 """Unit tests for message ordering and deduplication logic."""
 
-import pytest
-
 from receipt_chroma.compaction.message_ordering import (
     _get_entity_key,
     sort_and_deduplicate_messages,

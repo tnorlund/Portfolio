@@ -15,6 +15,25 @@ from receipt_dynamo.entities.util import (
 )
 
 
+def _validated_point(point: dict[str, Any]) -> dict[str, int | float]:
+    """Validate a receipt corner without silently dropping extra keys."""
+    assert_valid_point(point)
+    if set(point) != {"x", "y"}:
+        raise ValueError("point must contain exactly 'x' and 'y' keys")
+    return {"x": point["x"], "y": point["y"]}
+
+
+def _serialize_point(point: dict[str, Any]) -> dict[str, Any]:
+    """Validate current mutable state and serialize one receipt corner."""
+    validated = _validated_point(point)
+    return {
+        "M": {
+            "x": {"N": _format_float(validated["x"], 18, 20)},
+            "y": {"N": _format_float(validated["y"], 18, 20)},
+        }
+    }
+
+
 @dataclass(eq=True, unsafe_hash=False)
 class Receipt(DynamoDBEntity, CDNFieldsMixin):
     """
@@ -93,18 +112,18 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             self.timestamp_added, "timestamp_added", default_now=False
         )
 
-        if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
+        if not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
-        if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
+        if not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
 
-        assert_valid_point(self.top_right)
-        assert_valid_point(self.top_left)
-        assert_valid_point(self.bottom_left)
-        assert_valid_point(self.bottom_right)
+        self.top_right = _validated_point(self.top_right)
+        self.top_left = _validated_point(self.top_left)
+        self.bottom_left = _validated_point(self.bottom_left)
+        self.bottom_right = _validated_point(self.bottom_right)
 
         # Use CDNFieldsMixin to validate sha256 and all CDN fields
-        if self.sha256 and not isinstance(self.sha256, str):
+        if self.sha256 is not None and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
         self.validate_cdn_fields()
 
@@ -166,6 +185,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         Returns:
             dict: Dictionary representing the receipt as a DynamoDB item.
         """
+        self.__post_init__()
         return {
             **self.key,
             **self.gsi1_key(),
@@ -177,30 +197,10 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             "timestamp_added": {"S": self.timestamp_added},
             "raw_s3_bucket": {"S": self.raw_s3_bucket},
             "raw_s3_key": {"S": self.raw_s3_key},
-            "top_left": {
-                "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
-                }
-            },
-            "top_right": {
-                "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
-                }
-            },
-            "bottom_left": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
-                }
-            },
-            "bottom_right": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
-                }
-            },
+            "top_left": _serialize_point(self.top_left),
+            "top_right": _serialize_point(self.top_right),
+            "bottom_left": _serialize_point(self.bottom_left),
+            "bottom_right": _serialize_point(self.bottom_right),
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
                 {"S": self.cdn_s3_bucket}
@@ -244,10 +244,10 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
                 self.timestamp_added,
                 self.raw_s3_bucket,
                 self.raw_s3_key,
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
+                tuple(sorted(self.top_right.items())),
+                tuple(sorted(self.top_left.items())),
+                tuple(sorted(self.bottom_right.items())),
+                tuple(sorted(self.bottom_left.items())),
                 self.sha256,
                 self.cdn_s3_bucket,
                 self.cdn_s3_key,

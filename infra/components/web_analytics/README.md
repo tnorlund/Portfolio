@@ -11,9 +11,10 @@ No new data pipeline — it's a thin query layer over logs that already exist.
 ```
 INGEST     CloudFront → s3://<logs-bucket>/cloudfront/prod/   (already exists)
               │
-TRANSFORM   transform Lambda (scheduled daily + backfillable), Athena INSERT:
+TRANSFORM   transform Lambda (scheduled hourly + backfillable), Athena UNLOAD:
               parse beacon · dedup(request_id) · classify warp/bot · PT-ready
-              → web_events  (Parquet, partitioned by UTC `dt`)   [single source of truth]
+              → per-run Parquet staging → atomic `dt` location swap
+              → web_events                                  [single source of truth]
               │
 SERVE       analytics_* MCP tools SELECT from web_events (partition-pruned)
 ```
@@ -27,7 +28,7 @@ SERVE       analytics_* MCP tools SELECT from web_events (partition-pruned)
 - **Curated table** `web_events` — Parquet, **partitioned by UTC `dt`**, parsed
   + de-duplicated + WARP/bot-classified; what the MCP tools read
 - **Transform Lambda** (`transform_lambda/handler.py`) — incremental, idempotent
-  per-day partition rebuild; scheduled daily, and invokable with
+  per-day partition rebuild; scheduled hourly, and invokable with
   `{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}` to backfill
 - **Athena workgroup** `portfolio_analytics` + a **results bucket** (30-day expiry)
 - A **curated bucket** for the Parquet output
@@ -38,8 +39,11 @@ SERVE       analytics_* MCP tools SELECT from web_events (partition-pruned)
 
 - Reads **only the target day's** raw files via the Athena `$path` pseudo-column
   (`WHERE "$path" LIKE '%.<dt>-%'`), so scan cost stays flat as history grows.
-- **Idempotent:** drops the `dt` partition + deletes its S3 objects, then
-  re-`INSERT`s — safe to re-run / backfill.
+- **Gap-free and idempotent:** writes each rebuilt day to a unique
+  `staging/web_events/dt=<dt>/run=<uuid>/` Parquet location, atomically repoints
+  the existing Glue partition with `SET LOCATION`, then removes the superseded
+  partition objects and abandoned staging runs. First-time partitions are
+  registered only after their staged output is complete.
 - **Dedups** on `request_id` (CloudFront can re-deliver lines).
 - Partition is the **UTC** log date; the serve layer buckets to PT and widens
   the scan ±1 day so PT-day edges are correct.

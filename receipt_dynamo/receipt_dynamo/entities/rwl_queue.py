@@ -68,6 +68,7 @@ class Queue:
 
         if (
             not isinstance(self.max_concurrent_jobs, int)
+            or isinstance(self.max_concurrent_jobs, bool)
             or self.max_concurrent_jobs < 1
         ):
             raise ValueError("max_concurrent_jobs must be a positive integer")
@@ -80,7 +81,11 @@ class Queue:
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = self.priority.lower()
 
-        if not isinstance(self.job_count, int) or self.job_count < 0:
+        if (
+            not isinstance(self.job_count, int)
+            or isinstance(self.job_count, bool)
+            or self.job_count < 0
+        ):
             raise ValueError("job_count must be a non-negative integer")
 
     @property

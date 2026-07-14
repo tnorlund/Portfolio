@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Generator
 
 from receipt_dynamo.constants import CoreMLExportStatus
@@ -89,16 +90,34 @@ class CoreMLExportJob:
         ):
             raise ValueError("completed_at must be a datetime or None")
 
-        if self.model_size_bytes is not None and not isinstance(
-            self.model_size_bytes, int
+        for field_name in (
+            "output_s3_prefix",
+            "mlpackage_s3_uri",
+            "bundle_s3_uri",
+            "error_message",
         ):
-            raise ValueError("model_size_bytes must be an integer or None")
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{field_name} must be a string or None")
 
-        if self.export_duration_seconds is not None and not isinstance(
-            self.export_duration_seconds, (int, float)
+        if self.model_size_bytes is not None and (
+            not isinstance(self.model_size_bytes, int)
+            or isinstance(self.model_size_bytes, bool)
+            or self.model_size_bytes < 0
         ):
             raise ValueError(
-                "export_duration_seconds must be a number or None"
+                "model_size_bytes must be a non-negative integer or None"
+            )
+
+        if self.export_duration_seconds is not None and (
+            not isinstance(self.export_duration_seconds, (int, float))
+            or isinstance(self.export_duration_seconds, bool)
+            or not isfinite(self.export_duration_seconds)
+            or self.export_duration_seconds < 0
+        ):
+            raise ValueError(
+                "export_duration_seconds must be a non-negative finite "
+                "number or None"
             )
 
     @property

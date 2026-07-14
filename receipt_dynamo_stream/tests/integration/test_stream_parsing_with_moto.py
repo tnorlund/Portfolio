@@ -111,12 +111,10 @@ def test_parse_stream_record_for_place_insert_and_modify(
     assert parsed_insert.new_entity.merchant_name == "Cafe Nero"
     assert parsed_insert.old_entity is None
 
-    dynamodb.update_item(
+    updated_place = _place_entity("New Merchant")
+    dynamodb.put_item(
         TableName=table_name,
-        Key={"PK": place.key["PK"], "SK": place.key["SK"]},
-        UpdateExpression="SET merchant_name = :m",
-        ExpressionAttributeValues={":m": {"S": "New Merchant"}},
-        ReturnValues="ALL_NEW",
+        Item=updated_place.to_item(),
     )
 
     updated_records = _get_stream_records(dynamodb, streams, table_name)

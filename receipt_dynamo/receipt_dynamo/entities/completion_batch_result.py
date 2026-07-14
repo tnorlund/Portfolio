@@ -21,6 +21,13 @@ class CompletionBatchResult(BatchResultGSIMixin):
     REQUIRED_KEYS = {
         "PK",
         "SK",
+        "TYPE",
+        "GSI1PK",
+        "GSI1SK",
+        "GSI2PK",
+        "GSI2SK",
+        "GSI3PK",
+        "GSI3SK",
         "original_label",
         "gpt_suggested_label",
         "status",
@@ -48,7 +55,18 @@ class CompletionBatchResult(BatchResultGSIMixin):
 
         assert_type("word_id", self.word_id, int, ValueError)
 
+        if self.receipt_id <= 0:
+            raise ValueError("receipt_id must be greater than zero")
+        if self.line_id < 0:
+            raise ValueError("line_id must be greater than or equal to zero")
+        if self.word_id < 0:
+            raise ValueError("word_id must be greater than or equal to zero")
+
         assert_type("original_label", self.original_label, str, ValueError)
+        if not self.original_label or "#" in self.original_label:
+            raise ValueError(
+                "original_label must be non-empty and exclude '#'"
+            )
 
         if not isinstance(self.gpt_suggested_label, str | None):
             raise ValueError(
@@ -122,7 +140,7 @@ class CompletionBatchResult(BatchResultGSIMixin):
             "original_label": {"S": self.original_label},
             "gpt_suggested_label": (
                 {"S": self.gpt_suggested_label}
-                if self.gpt_suggested_label
+                if self.gpt_suggested_label is not None
                 else {"NULL": True}
             ),
             "status": {"S": self.status},
@@ -199,18 +217,57 @@ class CompletionBatchResult(BatchResultGSIMixin):
                 f"additional keys: {additional_keys}"
             )
         try:
-            batch_id = item["PK"]["S"].split("#")[1]
+            pk = item["PK"]["S"]
+            if not pk.startswith("BATCH#") or len(pk.split("#", 1)[1]) == 0:
+                raise ValueError(f"Invalid completion batch PK: {pk}")
+            if item.get("TYPE", {}).get("S") != "COMPLETION_BATCH_RESULT":
+                raise ValueError("Invalid completion batch result TYPE")
+            batch_id = pk.split("#", 1)[1]
             sk_parts = item["SK"]["S"].split("#")
+            if (
+                len(sk_parts) != 9
+                or sk_parts[0] != "RESULT"
+                or sk_parts[1] != "RECEIPT"
+                or sk_parts[3] != "LINE"
+                or sk_parts[5] != "WORD"
+                or sk_parts[7] != "LABEL"
+            ):
+                raise ValueError("Invalid completion batch result SK")
             receipt_id = int(sk_parts[2])
             line_id = int(sk_parts[4])
             word_id = int(sk_parts[6])
             original_label = sk_parts[8]
+            if item["original_label"].get("S") != original_label:
+                raise ValueError("original_label does not match SK")
             # Handle NULL or absent gpt_suggested_label
             gpt_field = item.get("gpt_suggested_label", {})
-            gpt_suggested_label = gpt_field.get("S") or None
+            gpt_suggested_label = gpt_field["S"] if "S" in gpt_field else None
             status = item["status"]["S"]
             validated_at = datetime.fromisoformat(item["validated_at"]["S"])
             image_id = item["GSI3PK"]["S"].split("#")[1]
+            expected_gsi2 = {
+                "GSI2PK": {"S": f"BATCH#{batch_id}"},
+                "GSI2SK": {"S": f"STATUS#{status}"},
+            }
+            expected_gsi3pk = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+            expected_gsi3sk = f"BATCH#{batch_id}#STATUS#{status}"
+            expected_gsi1 = {
+                "GSI1PK": {"S": f"LABEL#{original_label}"},
+                "GSI1SK": {"S": f"STATUS#{status}"},
+            }
+            if any(
+                item.get(key) != value for key, value in expected_gsi1.items()
+            ):
+                raise ValueError("Invalid completion batch result GSI1 keys")
+            if any(
+                item.get(key) != value for key, value in expected_gsi2.items()
+            ):
+                raise ValueError("Invalid completion batch result GSI2 keys")
+            if (
+                item.get("GSI3PK", {}).get("S") != expected_gsi3pk
+                or item.get("GSI3SK", {}).get("S") != expected_gsi3sk
+            ):
+                raise ValueError("Invalid completion batch result GSI3 keys")
             return cls(
                 batch_id=batch_id,
                 image_id=image_id,

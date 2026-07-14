@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "receipt-chroma"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="Tyler Norlund", email="tnorlund@icloud.com" },
 ]
 description = "A Python interface for accessing ChromaDB for receipt vector storage and retrieval"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -26,14 +26,13 @@ dependencies = [
     "chromadb>=1.5.0,<1.6.0",  # pin to tested 1.5.x line; 1.6+ untested for snapshot/tenant compat
     "openai>=2.8.1,<3.0.0",
     "receipt-dynamo",
-    "receipt-dynamo-stream",
     "typing-extensions>=4.0.0",  # Required for Required/NotRequired on Python <3.11
 ]
 keywords = ["chroma", "chromadb", "receipts", "vector", "embeddings", "database"]
 
 [project.urls]
-"Homepage" = "https://github.com/tnorlund/example"
-"Bug Tracker" = "https://github.com/tnorlund/example/issues"
+"Homepage" = "https://github.com/tnorlund/Portfolio"
+"Bug Tracker" = "https://github.com/tnorlund/Portfolio/issues"
 
 [project.optional-dependencies]
 test = [
@@ -43,6 +42,7 @@ test = [
     "pytest-xdist>=3.6.0,<4.0.0",
     "pytest-timeout>=2.1.0,<3.0.0",
     "moto>=5.1.0,<6.0.0",
+    "receipt-dynamo-stream",
 ]
 lint = [
     "black==26.5.1",

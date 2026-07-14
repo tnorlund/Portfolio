@@ -192,313 +192,126 @@ ERROR_SCENARIOS = [
 ]
 
 
+SINGLE_OPERATION_CASES = [
+    ("add_receipt", "put_item", "PutItem"),
+    ("update_receipt", "put_item", "PutItem"),
+    ("delete_receipt", "delete_item", "DeleteItem"),
+    ("get_receipt", "get_item", "GetItem"),
+]
+
+
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "operation,client_method,aws_operation", SINGLE_OPERATION_CASES
+)
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-# pylint: disable=too-many-arguments
-def test_add_receipt_client_errors(
+def test_single_receipt_operation_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
     mocker: MockerFixture,
+    operation: str,
+    client_method: str,
+    aws_operation: str,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """Tests that add_receipt raises appropriate exceptions for various
-    ClientError scenarios."""
+    """Map identical client-error handling across single operations."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
+    mocked = mocker.patch.object(
+        client._client,  # pylint: disable=protected-access
+        client_method,
         side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "PutItem",
+            {"Error": {"Code": error_code, "Message": "Mocked error"}},
+            aws_operation,
         ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
-        client.add_receipt(sample_receipt)
-    mock_put.assert_called_once()
+        if operation == "get_receipt":
+            client.get_receipt(
+                sample_receipt.image_id, sample_receipt.receipt_id
+            )
+        else:
+            getattr(client, operation)(sample_receipt)
+    mocked.assert_called_once()
 
 
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_update_receipt_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt: Receipt,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """
-    Tests that update_receipt raises appropriate exceptions for various
-    ClientError scenarios.
-    """
-    client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "PutItem",
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_receipt(sample_receipt)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_delete_receipt_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt: Receipt,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """
-    Tests that delete_receipt raises appropriate exceptions for various
-    ClientError scenarios.
-    """
-    client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "DeleteItem",
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipt(sample_receipt)
-    mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_get_receipt_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt: Receipt,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """
-    Tests that get_receipt raises appropriate exceptions for various
-    ClientError scenarios.
-    """
-    client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_get = mocker.patch.object(
-        client._client,
-        "get_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "GetItem",
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
-    mock_get.assert_called_once()
-
-
-# -------------------------------------------------------------------
-#             PARAMETERIZED BATCH OPERATION CLIENT ERROR TESTS
-# -------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
-# pylint: disable=too-many-arguments
-def test_add_receipts_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt: Receipt,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """
-    Tests that add_receipts raises appropriate exceptions for various
-    ClientError scenarios.
-    """
-    client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_batch = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "BatchWriteItem",
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.add_receipts([sample_receipt])
-    mock_batch.assert_called_once()
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match",
+UPDATE_BATCH_ERRORS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "Cannot update receipts: one or more receipts not found",
+    ),
+] + ERROR_SCENARIOS
+DELETE_BATCH_ERRORS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "Cannot delete receipts: one or more receipts not found",
+    ),
+] + ERROR_SCENARIOS
+BATCH_CLIENT_ERROR_CASES = (
     [
+        ("add_receipts", "batch_write_item", "BatchWriteItem", *error)
+        for error in ERROR_SCENARIOS
+    ]
+    + [
         (
-            "ConditionalCheckFailedException",
-            EntityNotFoundError,
-            "Cannot update receipts: one or more receipts not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            DynamoDBThroughputError,
-            "Throughput exceeded",
-        ),
-        ("InternalServerError", DynamoDBServerError, "DynamoDB server error"),
-        ("ValidationException", EntityValidationError, "Validation error"),
-        ("AccessDeniedException", DynamoDBError, "DynamoDB error during"),
-        (
-            "ResourceNotFoundException",
-            OperationError,
-            "DynamoDB resource not found",
-        ),
-    ],
-)
-# pylint: disable=too-many-arguments
-def test_update_receipts_client_errors(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt: Receipt,
-    mocker: MockerFixture,
-    error_code: str,
-    expected_exception: Type[Exception],
-    error_match: str,
-) -> None:
-    """
-    Tests that update_receipts raises appropriate exceptions for various
-    ClientError scenarios.
-    """
-    client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
+            "update_receipts",
+            "transact_write_items",
             "TransactWriteItems",
-        ),
-    )
-
-    with pytest.raises(expected_exception, match=error_match):
-        client.update_receipts([sample_receipt])
-    mock_transact.assert_called_once()
+            *error,
+        )
+        for error in UPDATE_BATCH_ERRORS
+    ]
+    + [
+        (
+            "delete_receipts",
+            "transact_write_items",
+            "TransactWriteItems",
+            *error,
+        )
+        for error in DELETE_BATCH_ERRORS
+    ]
+)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,expected_exception,error_match",
-    [
-        (
-            "ConditionalCheckFailedException",
-            EntityNotFoundError,
-            "Cannot delete receipts: one or more receipts not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            DynamoDBThroughputError,
-            "Throughput exceeded",
-        ),
-        ("InternalServerError", DynamoDBServerError, "DynamoDB server error"),
-        ("ValidationException", EntityValidationError, "Validation error"),
-        ("AccessDeniedException", DynamoDBError, "DynamoDB error during"),
-        (
-            "ResourceNotFoundException",
-            OperationError,
-            "DynamoDB resource not found",
-        ),
-    ],
+    (
+        "operation,client_method,aws_operation,error_code,"
+        "expected_exception,error_match"
+    ),
+    BATCH_CLIENT_ERROR_CASES,
 )
-# pylint: disable=too-many-arguments
-def test_delete_receipts_client_errors(
+def test_batch_receipt_operation_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
     mocker: MockerFixture,
+    operation: str,
+    client_method: str,
+    aws_operation: str,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
 ) -> None:
-    """
-    Tests that delete_receipts raises appropriate exceptions for various
-    ClientError scenarios.
-    """
+    """Map identical client-error handling across batch operations."""
     client = DynamoClient(dynamodb_table)
-    # pylint: disable=protected-access
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
+    mocked = mocker.patch.object(
+        client._client,  # pylint: disable=protected-access
+        client_method,
         side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": error_code,
-                    "Message": f"Mocked {error_code}",
-                }
-            },
-            "TransactWriteItems",
+            {"Error": {"Code": error_code, "Message": "Mocked error"}},
+            aws_operation,
         ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipts([sample_receipt])
-    mock_transact.assert_called_once()
+        getattr(client, operation)([sample_receipt])
+    mocked.assert_called_once()
 
 
 # -------------------------------------------------------------------

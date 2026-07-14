@@ -113,17 +113,7 @@ def test_addJobCheckpoint_success(
     checkpoint = job_checkpoint_dynamo.get_job_checkpoint(
         sample_job_checkpoint.job_id, sample_job_checkpoint.timestamp
     )
-    assert checkpoint.job_id == sample_job_checkpoint.job_id
-    assert checkpoint.timestamp == sample_job_checkpoint.timestamp
-    assert checkpoint.s3_bucket == sample_job_checkpoint.s3_bucket
-    assert checkpoint.s3_key == sample_job_checkpoint.s3_key
-    assert checkpoint.size_bytes == sample_job_checkpoint.size_bytes
-    assert checkpoint.step == sample_job_checkpoint.step
-    assert checkpoint.epoch == sample_job_checkpoint.epoch
-    assert checkpoint.model_state == sample_job_checkpoint.model_state
-    assert checkpoint.optimizer_state == sample_job_checkpoint.optimizer_state
-    assert checkpoint.metrics == sample_job_checkpoint.metrics
-    assert checkpoint.is_best == sample_job_checkpoint.is_best
+    assert checkpoint == sample_job_checkpoint
 
 
 @pytest.mark.integration
@@ -217,18 +207,7 @@ def test_getJobCheckpoint_success(
         sample_job_checkpoint.job_id, sample_job_checkpoint.timestamp
     )
 
-    # Verify
-    assert checkpoint.job_id == sample_job_checkpoint.job_id
-    assert checkpoint.timestamp == sample_job_checkpoint.timestamp
-    assert checkpoint.s3_bucket == sample_job_checkpoint.s3_bucket
-    assert checkpoint.s3_key == sample_job_checkpoint.s3_key
-    assert checkpoint.size_bytes == sample_job_checkpoint.size_bytes
-    assert checkpoint.step == sample_job_checkpoint.step
-    assert checkpoint.epoch == sample_job_checkpoint.epoch
-    assert checkpoint.model_state == sample_job_checkpoint.model_state
-    assert checkpoint.optimizer_state == sample_job_checkpoint.optimizer_state
-    assert checkpoint.metrics == sample_job_checkpoint.metrics
-    assert checkpoint.is_best == sample_job_checkpoint.is_best
+    assert checkpoint == sample_job_checkpoint
 
 
 @pytest.mark.integration

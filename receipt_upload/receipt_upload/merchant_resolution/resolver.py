@@ -30,10 +30,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from receipt_chroma import ChromaClient
-from receipt_chroma.embedding.formatting.line_format import (
+from receipt_chroma.embedding.formatting import (
     format_line_context_embedding_input,
 )
-from receipt_chroma.embedding.utils.normalize import (
+from receipt_chroma.embedding.utils import (
     normalize_address,
     normalize_phone,
 )
@@ -642,9 +642,8 @@ class MerchantResolver:
             return None
 
         try:
-            from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
-                embed_texts,
-            )
+            # pylint: disable-next=import-outside-toplevel
+            from receipt_chroma.embedding.openai import embed_texts
 
             embeddings = embed_texts(
                 client=self.openai_client,
@@ -1680,9 +1679,8 @@ class MerchantResolver:
             def embed_fn(texts: List[str]) -> List[List[float]]:
                 if not self.openai_client or not texts:
                     return []
-                from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
-                    embed_texts,
-                )
+                # pylint: disable-next=import-outside-toplevel
+                from receipt_chroma.embedding.openai import embed_texts
 
                 return embed_texts(
                     client=self.openai_client,

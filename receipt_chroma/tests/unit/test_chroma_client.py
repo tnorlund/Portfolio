@@ -5,11 +5,29 @@ These tests focus on client behavior, context managers, and resource management
 without requiring actual ChromaDB operations or file I/O.
 """
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from receipt_chroma import ChromaClient
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("mode", ["read", "write", "delta", "WRITE"])
+def test_supported_modes_are_normalized(mode):
+    """Supported client modes are explicit and case-insensitive."""
+    client = ChromaClient(mode=mode)
+
+    assert client.mode == mode.lower()
+    client.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("mode", ["", "readonly", "invalid"])
+def test_unsupported_mode_raises(mode):
+    """Unknown modes fail at construction instead of behaving as write mode."""
+    with pytest.raises(ValueError, match="Unsupported ChromaClient mode"):
+        ChromaClient(mode=mode)
 
 
 @pytest.mark.unit
@@ -73,12 +91,63 @@ def test_close_without_persist_directory():
 
 
 @pytest.mark.unit
-def test_collection_context_manager():
-    """Test the collection context manager."""
-    with ChromaClient(mode="write", metadata_only=True) as client:  # In-memory
-        with client.collection("test", create_if_missing=True) as coll:
-            coll.upsert(ids=["1"], documents=["test"])
-            assert coll.count() == 1
+def test_uninitialized_persistent_close_skips_heavy_cleanup(tmp_path):
+    """A lazy persistent client does not pay initialized-client cleanup cost."""
+    client = ChromaClient(
+        persist_directory=str(tmp_path), mode="write", metadata_only=True
+    )
+
+    with (
+        patch("receipt_chroma.data.chroma_client.gc.collect") as collect,
+        patch("receipt_chroma.data.chroma_client.time.sleep") as sleep,
+    ):
+        client.close()
+
+    collect.assert_not_called()
+    sleep.assert_not_called()
+
+
+@pytest.mark.unit
+def test_ephemeral_close_skips_heavy_cleanup():
+    """An initialized in-memory client has no persistent files to flush."""
+    client = ChromaClient(mode="write", metadata_only=True)
+    client.get_collection("test", create_if_missing=True)
+
+    with (
+        patch("receipt_chroma.data.chroma_client.gc.collect") as collect,
+        patch("receipt_chroma.data.chroma_client.time.sleep") as sleep,
+    ):
+        client.close()
+
+    collect.assert_not_called()
+    sleep.assert_not_called()
+
+
+@pytest.mark.unit
+def test_persistent_flush_failure_is_observable(tmp_path):
+    """Callers can stop an upload when the persistent flush fails."""
+    client = ChromaClient(
+        persist_directory=str(tmp_path), mode="write", metadata_only=True
+    )
+    internal_client = MagicMock()
+    internal_client._system.stop.side_effect = OSError("flush failed")
+    internal_client._identifier = str(tmp_path)
+    client._client = internal_client  # pylint: disable=protected-access
+
+    with (
+        patch(
+            "receipt_chroma.data.chroma_client.SharedSystemClient."
+            "_identifier_to_system",
+            {str(tmp_path): internal_client._system},
+        ) as system_cache,
+        patch("receipt_chroma.data.chroma_client.gc.collect"),
+        patch("receipt_chroma.data.chroma_client.time.sleep"),
+        pytest.raises(RuntimeError, match="Failed to flush persistent"),
+    ):
+        client.close()
+
+    assert system_cache == {}
+    assert client._closed  # pylint: disable=protected-access
 
 
 @pytest.mark.unit
@@ -139,24 +208,6 @@ def test_count():
 
 
 @pytest.mark.unit
-def test_reset():
-    """Test reset() method."""
-    with ChromaClient(mode="write", metadata_only=True) as client:
-        # Add some data
-        client.upsert(
-            collection_name="reset_test", ids=["1"], documents=["doc1"]
-        )
-
-        assert client.count("reset_test") == 1
-
-        # Reset
-        client.reset()
-
-        # Collection should be gone
-        assert not client.collection_exists("reset_test")
-
-
-@pytest.mark.unit
 def test_query_requires_embeddings_or_texts():
     """Test that query() requires either embeddings or texts."""
     with ChromaClient(mode="write", metadata_only=True) as client:
@@ -192,9 +243,7 @@ def test_custom_embedding_function():
     with ChromaClient(
         mode="write", embedding_function=custom_embedding_fn
     ) as client:
-        collection = client.get_collection(
-            "test_custom_embed", create_if_missing=True
-        )
+        client.get_collection("test_custom_embed", create_if_missing=True)
         # Verify custom embedding function is set
         assert client._embedding_function is custom_embedding_fn
 
@@ -397,69 +446,6 @@ def test_closed_client_raises_error():
 
 
 @pytest.mark.unit
-def test_http_client_creation():
-    """Test HTTP client creation when http_url is provided."""
-    # Import dynamically to get fresh module after potential resets
-    import importlib
-
-    import receipt_chroma.data.chroma_client
-
-    importlib.reload(receipt_chroma.data.chroma_client)
-
-    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_http_client = MagicMock()
-        mock_chromadb.HttpClient.return_value = mock_http_client
-
-        # Import ChromaClient after patching
-        from receipt_chroma.data.chroma_client import (
-            ChromaClient as FreshChromaClient,
-        )
-
-        client = FreshChromaClient(
-            http_url="http://localhost:8000", mode="write"
-        )
-        # Trigger client creation
-        _ = client.client
-
-        # Verify HttpClient was created
-        mock_chromadb.HttpClient.assert_called_once()
-        call_kwargs = mock_chromadb.HttpClient.call_args[1]
-        assert call_kwargs["host"] == "localhost"
-        assert call_kwargs["port"] == 8000
-
-
-@pytest.mark.unit
-def test_http_client_creation_with_url():
-    """Test HTTP client creation with full URL."""
-    # Import dynamically to get fresh module after potential resets
-    import importlib
-
-    import receipt_chroma.data.chroma_client
-
-    importlib.reload(receipt_chroma.data.chroma_client)
-
-    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_http_client = MagicMock()
-        mock_chromadb.HttpClient.return_value = mock_http_client
-
-        # Import ChromaClient after patching
-        from receipt_chroma.data.chroma_client import (
-            ChromaClient as FreshChromaClient,
-        )
-
-        client = FreshChromaClient(
-            http_url="https://chromadb.example.com:9000", mode="write"
-        )
-        _ = client.client
-
-        # Verify HttpClient was created with parsed URL
-        mock_chromadb.HttpClient.assert_called_once()
-        call_kwargs = mock_chromadb.HttpClient.call_args[1]
-        assert call_kwargs["host"] == "chromadb.example.com"
-        assert call_kwargs["port"] == 9000
-
-
-@pytest.mark.unit
 def test_collection_not_found_without_create():
     """Error when collection missing and create_if_missing=False."""
     with ChromaClient(mode="write", metadata_only=True) as client:
@@ -482,38 +468,6 @@ def test_closed_client_context_manager_raises_error():
 
 
 @pytest.mark.unit
-def test_http_client_invalid_port():
-    """HTTP client creation with invalid port is handled."""
-    # Import dynamically to get fresh module after potential resets
-    import importlib
-
-    import receipt_chroma.data.chroma_client
-
-    importlib.reload(receipt_chroma.data.chroma_client)
-
-    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_http_client = MagicMock()
-        mock_chromadb.HttpClient.return_value = mock_http_client
-
-        # Import ChromaClient after patching
-        from receipt_chroma.data.chroma_client import (
-            ChromaClient as FreshChromaClient,
-        )
-
-        # URL with invalid port (non-numeric)
-        client = FreshChromaClient(
-            http_url="http://localhost:invalid", mode="write"
-        )
-        _ = client.client
-
-        # Should still create client, but port should be None
-        mock_chromadb.HttpClient.assert_called_once()
-        call_kwargs = mock_chromadb.HttpClient.call_args[1]
-        assert call_kwargs["host"] == "localhost"
-        assert "port" not in call_kwargs or call_kwargs.get("port") is None
-
-
-@pytest.mark.unit
 def test_upsert_value_error_not_duplicate():
     """Test that non-duplicate ValueError in upsert is re-raised."""
     with ChromaClient(mode="write", metadata_only=True) as client:
@@ -522,8 +476,6 @@ def test_upsert_value_error_not_duplicate():
         )
 
         # Mock collection to raise ValueError that's not about duplicates
-        original_upsert = collection.upsert
-
         def mock_upsert(**kwargs):
             raise ValueError("Some other error")
 
@@ -598,40 +550,8 @@ def test_cloud_client_missing_tenant_raises_error():
 
 
 @pytest.mark.unit
-def test_cloud_client_takes_precedence_over_http():
-    """Test that cloud_api_key takes precedence over http_url."""
-    import importlib
-
-    import receipt_chroma.data.chroma_client
-
-    importlib.reload(receipt_chroma.data.chroma_client)
-
-    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_cloud_client = MagicMock()
-        mock_chromadb.CloudClient.return_value = mock_cloud_client
-
-        from receipt_chroma.data.chroma_client import (
-            ChromaClient as FreshChromaClient,
-        )
-
-        # Provide both cloud_api_key and http_url
-        client = FreshChromaClient(
-            cloud_api_key="test-api-key",
-            cloud_tenant="test-tenant",
-            cloud_database="test-database",
-            http_url="http://localhost:8000",  # This should be ignored
-            mode="write",
-        )
-        _ = client.client
-
-        # CloudClient should be created, not HttpClient
-        mock_chromadb.CloudClient.assert_called_once()
-        mock_chromadb.HttpClient.assert_not_called()
-
-
-@pytest.mark.unit
 def test_cloud_client_empty_api_key_falls_through():
-    """Test that empty cloud_api_key falls through to other client types."""
+    """Test that empty cloud_api_key falls through to an ephemeral client."""
     import importlib
 
     import receipt_chroma.data.chroma_client
@@ -639,8 +559,8 @@ def test_cloud_client_empty_api_key_falls_through():
     importlib.reload(receipt_chroma.data.chroma_client)
 
     with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_http_client = MagicMock()
-        mock_chromadb.HttpClient.return_value = mock_http_client
+        mock_ephemeral = MagicMock()
+        mock_chromadb.EphemeralClient.return_value = mock_ephemeral
 
         from receipt_chroma.data.chroma_client import (
             ChromaClient as FreshChromaClient,
@@ -649,14 +569,13 @@ def test_cloud_client_empty_api_key_falls_through():
         # Empty API key should not trigger CloudClient
         client = FreshChromaClient(
             cloud_api_key="",  # Empty
-            http_url="http://localhost:8000",
             mode="write",
         )
         _ = client.client
 
-        # HttpClient should be created instead
+        # An ephemeral client should be created instead
         mock_chromadb.CloudClient.assert_not_called()
-        mock_chromadb.HttpClient.assert_called_once()
+        mock_chromadb.EphemeralClient.assert_called_once()
 
 
 @pytest.mark.unit
@@ -669,8 +588,8 @@ def test_cloud_client_whitespace_api_key_falls_through():
     importlib.reload(receipt_chroma.data.chroma_client)
 
     with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_http_client = MagicMock()
-        mock_chromadb.HttpClient.return_value = mock_http_client
+        mock_ephemeral = MagicMock()
+        mock_chromadb.EphemeralClient.return_value = mock_ephemeral
 
         from receipt_chroma.data.chroma_client import (
             ChromaClient as FreshChromaClient,
@@ -679,14 +598,13 @@ def test_cloud_client_whitespace_api_key_falls_through():
         # Whitespace-only API key should not trigger CloudClient
         client = FreshChromaClient(
             cloud_api_key="   ",  # Whitespace only
-            http_url="http://localhost:8000",
             mode="write",
         )
         _ = client.client
 
-        # HttpClient should be created instead
+        # An ephemeral client should be created instead
         mock_chromadb.CloudClient.assert_not_called()
-        mock_chromadb.HttpClient.assert_called_once()
+        mock_chromadb.EphemeralClient.assert_called_once()
 
 
 @pytest.mark.unit

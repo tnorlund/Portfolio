@@ -2,8 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from unittest.mock import MagicMock
 
 import boto3
 import pytest
@@ -148,24 +147,6 @@ class TestChromaClientErrorPaths:
         with pytest.raises(Exception, match="Get error"):
             client.get(collection_name="test", ids=["1"])
 
-    def test_reset_error_handling(self, temp_chromadb_dir, mocker):
-        """Test error handling in reset method."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir,
-            mode="write",
-            metadata_only=True,
-        )
-        collection = client.get_collection("test", create_if_missing=True)
-        collection.upsert(ids=["1"], documents=["test"])
-
-        # Mock client.reset to raise an exception
-        mocker.patch.object(
-            client._client, "reset", side_effect=Exception("Reset error")
-        )
-
-        with pytest.raises(Exception, match="Reset error"):
-            client.reset()
-
     def test_query_with_where_clause(self, temp_chromadb_dir):
         """Test query with where clause (line 393)."""
         client = ChromaClient(
@@ -241,7 +222,7 @@ class TestChromaClientErrorPaths:
         assert client._closed
 
     def test_close_internal_client_error(self, temp_chromadb_dir, mocker):
-        """Test error handling when closing internal client (lines 215-222)."""
+        """A persistent flush error is observable to the caller."""
         client = ChromaClient(
             persist_directory=temp_chromadb_dir,
             mode="write",
@@ -249,19 +230,14 @@ class TestChromaClientErrorPaths:
         )
         client.upsert(collection_name="test", ids=["1"], documents=["test"])
 
-        # Mock internal client close to raise an exception
-        if (
-            hasattr(client._client, "_client")
-            and client._client._client is not None
-        ):
-            mocker.patch.object(
-                client._client._client,
-                "close",
-                side_effect=Exception("Internal close error"),
-            )
+        mocker.patch.object(
+            client._client._system,
+            "stop",
+            side_effect=Exception("Persistent flush error"),
+        )
 
-        # Close should handle the error gracefully (lines 215-222)
-        client.close()
+        with pytest.raises(RuntimeError, match="Failed to flush persistent"):
+            client.close()
         assert client._closed
 
     def test_close_exception_during_cleanup(self, temp_chromadb_dir, mocker):
@@ -283,26 +259,6 @@ class TestChromaClientErrorPaths:
         # (lines 241-248)
         client.close()
         assert client._closed
-
-    def test_upsert_vectors_alias(self, temp_chromadb_dir):
-        """Test upsert_vectors alias method (line 505)."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir,
-            mode="write",
-            metadata_only=True,
-        )
-
-        # Use upsert_vectors alias
-        client.upsert_vectors(
-            collection_name="test",
-            ids=["1", "2"],
-            documents=["doc1", "doc2"],
-            metadatas=[{"key": "value1"}, {"key": "value2"}],
-        )
-
-        # Verify data was inserted
-        results = client.get(collection_name="test", ids=["1", "2"])
-        assert len(results["ids"]) == 2
 
 
 @pytest.mark.integration
@@ -469,45 +425,6 @@ class TestPersistAndUploadDelta:
         assert s3_prefix.startswith("deltas/test/")
         assert s3_prefix.endswith("/")
         assert len(s3_prefix) > len("deltas/test/")  # Should include UUID
-
-
-@pytest.mark.integration
-class TestHTTPClientErrorHandling:
-    """Test HTTP client creation error handling."""
-
-    def test_http_client_invalid_port(self):
-        """Test HTTP client creation with invalid port (lines 215-222)."""
-        # ChromaDB will try to connect, but we can test the error path
-        # by checking if it raises an exception or handles it gracefully
-        try:
-            client = ChromaClient(
-                http_url="http://localhost:99999", mode="write"
-            )
-            # If it doesn't raise, that's fine - ChromaDB handles it
-            assert client is not None
-        except Exception:
-            # If it raises, that's also fine
-            pass
-
-    def test_http_client_creation_error_handling(self, mocker):
-        """Test error handling during HTTP client creation (lines 215-222)."""
-        # This is hard to test because HttpClient initialization happens in
-        # __init__ and ChromaDB handles connection errors gracefully. Instead,
-        # we test that HTTP client creation path is covered by creating a
-        # valid HTTP client. The error handling paths (lines 215-222) are
-        # internal to ChromaDB. For coverage, we verify HTTP client can be
-        # created.
-        try:
-            # This may fail if no server is running, but that's okay
-            # The important part is that the code path is executed
-            client = ChromaClient(
-                http_url="http://localhost:8000", mode="write"
-            )
-            # If it succeeds, that's fine - we've covered the creation path
-            assert client is not None
-        except Exception:
-            # If it fails, that's also fine - error handling is tested
-            pass
 
 
 @pytest.mark.integration

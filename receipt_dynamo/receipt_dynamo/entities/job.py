@@ -116,6 +116,7 @@ class Job:
         if self.estimated_duration is not None:
             if (
                 not isinstance(self.estimated_duration, int)
+                or isinstance(self.estimated_duration, bool)
                 or self.estimated_duration <= 0
             ):
                 raise ValueError(
@@ -126,6 +127,11 @@ class Job:
             raise ValueError("tags must be a dictionary")
         if self.tags is None:
             self.tags = {}
+        if any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in self.tags.items()
+        ):
+            raise ValueError("tags keys and values must be strings")
 
         # Validate optional storage map
         if self.storage is not None:

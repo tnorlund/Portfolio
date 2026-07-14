@@ -16,17 +16,16 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 from chromadb.errors import NotFoundError
-from receipt_chroma import LockManager  # type: ignore[attr-defined]
-from receipt_chroma.compaction.dual_write import (
+from receipt_chroma import ChromaClient, LockManager
+from receipt_chroma.compaction import (
     CloudConfig,
     sync_collection_to_cloud,
 )
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
+    upload_snapshot_with_hash,
 )
-from receipt_chroma.s3.helpers import upload_snapshot_with_hash
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.constants import ChromaDBCollection
@@ -43,24 +42,6 @@ logger = get_operation_logger(__name__)
 ATOMIC_UPLOAD_AVAILABLE = True
 ATOMIC_DOWNLOAD_AVAILABLE = True
 HASH_UPLOAD_AVAILABLE = True
-
-# Try to import EFS snapshot manager (available in container Lambda)
-try:
-    # Try absolute import first (Lambda environment)
-    from compaction.efs_snapshot_manager import get_efs_snapshot_manager
-
-    EFS_AVAILABLE = True
-except ImportError:
-    try:
-        # Try relative import (test environment)
-        from .compaction.efs_snapshot_manager import get_efs_snapshot_manager
-
-        EFS_AVAILABLE = True
-    except ImportError:
-        EFS_AVAILABLE = False
-        logger.info(
-            "EFS snapshot manager not available, will use S3-only mode"
-        )
 
 # Initialize clients
 s3_client = boto3.client("s3")
@@ -89,30 +70,24 @@ def close_chromadb_client(
     if client is None:
         return
 
+    logger.debug(
+        "Cleaning up ChromaDB client",
+        collection=collection_name or "unknown",
+    )
+
     try:
-        logger.debug(
-            "Cleaning up ChromaDB client",
+        client.close()
+    except Exception:
+        logger.exception(
+            "Failed to flush ChromaDB client",
             collection=collection_name or "unknown",
         )
-
-        # Use the close() method from receipt_chroma.ChromaClient
-        if hasattr(client, "close"):
-            client.close()
-        elif hasattr(client, "_client") and hasattr(client._client, "close"):
-            # Fallback for direct chromadb.PersistentClient instances
-            client._client.close()
-
+        raise
+    else:
         logger.debug(
             "ChromaDB client cleaned up",
             collection=collection_name or "unknown",
         )
-    except Exception as e:
-        logger.debug(
-            "Error cleaning up ChromaDB client (non-critical)",
-            error=str(e),
-            collection=collection_name or "unknown",
-        )
-
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # pylint: disable=unused-argument
@@ -2508,98 +2483,11 @@ def perform_final_merge(
         collection_name = "words"  # Default for backward compatibility
         logger.info("Using unified snapshot path for backward compatibility")
 
-    # Storage mode configuration - check if EFS should be used
-    storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
-    efs_root = os.environ.get("CHROMA_ROOT")
-
-    # Determine storage mode
-    if storage_mode == "s3":
-        use_efs = False
-        mode_reason = "explicitly set to S3-only"
-    elif storage_mode == "efs":
-        use_efs = EFS_AVAILABLE
-        mode_reason = (
-            "explicitly set to EFS" if use_efs else "EFS not available"
-        )
-    elif storage_mode == "auto":
-        # Auto-detect based on EFS availability
-        use_efs = bool(
-            EFS_AVAILABLE and efs_root and efs_root != "/tmp/chroma"
-        )
-        mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
-    else:
-        # Default to S3-only for unknown modes
-        use_efs = False
-        mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
-
-    logger.info(
-        "Storage mode configuration",
-        storage_mode=storage_mode,
-        efs_root=efs_root,
-        use_efs=use_efs,
-        mode_reason=mode_reason,
-        collection=collection_name,
-        efs_available=EFS_AVAILABLE,
-    )
-
-    efs_manager = None
-    efs_snapshot_path = None
-    local_snapshot_path = None
+    use_efs = False
+    logger.info("Using S3 snapshot storage", collection=collection_name)
 
     try:
-        # Load snapshot from EFS if available, otherwise from S3
-        if use_efs and EFS_AVAILABLE:
-            logger.info(
-                "Using EFS + S3 hybrid approach", collection=collection_name
-            )
-            efs_manager = get_efs_snapshot_manager(
-                collection_name, bucket, logger, metrics=None
-            )
-
-            # Get latest version from S3 pointer
-            latest_version = efs_manager.get_latest_s3_version()
-            if not latest_version:
-                logger.warning(
-                    "Failed to get latest S3 version, falling back to S3-only"
-                )
-                use_efs = False
-            else:
-                # Ensure snapshot is available on EFS
-                snapshot_result = efs_manager.ensure_snapshot_available(
-                    latest_version
-                )
-                if snapshot_result["status"] != "available":
-                    logger.warning(
-                        "Failed to ensure snapshot availability on EFS, falling back to S3",
-                        result=snapshot_result,
-                    )
-                    use_efs = False
-                else:
-                    # Copy EFS snapshot to local temp directory for ChromaDB operations
-                    efs_snapshot_path = snapshot_result["efs_path"]
-                    local_snapshot_path = tempfile.mkdtemp()
-
-                    copy_start_time = time.time()
-                    shutil.copytree(
-                        efs_snapshot_path,
-                        local_snapshot_path,
-                        dirs_exist_ok=True,
-                    )
-                    copy_time_ms = (time.time() - copy_start_time) * 1000
-
-                    temp_dir = local_snapshot_path
-
-                    logger.info(
-                        "Using EFS snapshot (copied to local)",
-                        collection=collection_name,
-                        version=latest_version,
-                        efs_path=efs_snapshot_path,
-                        local_path=local_snapshot_path,
-                        copy_time_ms=copy_time_ms,
-                        source=snapshot_result.get("source", "unknown"),
-                    )
-
-        # Fallback to S3 if EFS not available or failed
+        # Load or initialize the authoritative S3 snapshot.
         if not use_efs:
             # Use atomic download which automatically initializes empty snapshot if needed
             if ATOMIC_DOWNLOAD_AVAILABLE:
@@ -2716,15 +2604,6 @@ def perform_final_merge(
                             collection=collection_name,
                             count=collection.count(),
                         )
-        else:
-            # Create ChromaDB client from EFS snapshot
-            # Use "delta" mode to allow collection creation and data upsert
-            chroma_client = ChromaClient(
-                persist_directory=temp_dir,
-                mode="delta",
-                metadata_only=True,
-            )
-
         # Merge intermediate chunks - handle both legacy and new formats
         if chunk_results:
             # New format: we have specific intermediate_key objects
@@ -2923,7 +2802,9 @@ def perform_final_merge(
                         error=cloud_sync_result.error,
                         failed_batches=cloud_sync_result.failed_batches,
                     )
-        except Exception as cloud_err:  # pylint: disable=broad-exception-caught
+        except (
+            Exception
+        ) as cloud_err:  # pylint: disable=broad-exception-caught
             logger.error(
                 "Cloud sync raised (non-blocking) - continuing with local snapshot",
                 error=str(cloud_err),
@@ -3008,55 +2889,13 @@ def perform_final_merge(
                 validation_duration=validation_duration,
             )
 
-            # Update EFS cache if EFS was used
-            if use_efs and efs_manager and atomic_result.get("version_id"):
-                try:
-                    new_version = atomic_result.get("version_id")
-                    if new_version:
-                        # Copy updated snapshot back to EFS
-                        new_efs_snapshot_path = os.path.join(
-                            efs_manager.efs_snapshots_dir, new_version
-                        )
-                        if os.path.exists(new_efs_snapshot_path):
-                            shutil.rmtree(new_efs_snapshot_path)
-                        os.makedirs(
-                            os.path.dirname(new_efs_snapshot_path),
-                            exist_ok=True,
-                        )
-                        shutil.copytree(temp_dir, new_efs_snapshot_path)
-
-                        # Update EFS version file
-                        efs_manager.set_efs_version(new_version)
-
-                        logger.info(
-                            "Updated EFS snapshot cache",
-                            collection=collection_name,
-                            version=new_version,
-                            efs_path=new_efs_snapshot_path,
-                        )
-
-                        # Clean up old EFS snapshots
-                        try:
-                            efs_manager.cleanup_old_snapshots()
-                        except Exception as cleanup_error:
-                            logger.warning(
-                                "Failed to cleanup old EFS snapshots (non-critical)",
-                                error=str(cleanup_error),
-                            )
-                except Exception as efs_error:
-                    logger.warning(
-                        "Failed to update EFS cache (non-critical)",
-                        error=str(efs_error),
-                        collection=collection_name,
-                    )
-
             return {
                 "snapshot_key": atomic_result.get("versioned_key"),
                 "total_embeddings": total_embeddings,
                 "processing_time": time.time() - start_time,
                 "atomic_upload": True,
                 "version_id": atomic_result.get("version_id"),
-                "used_efs": use_efs,
+                "used_efs": False,
             }
         else:
             # Fallback to legacy non-atomic upload
@@ -3188,8 +3027,6 @@ def perform_final_merge(
         # Clean up temporary directories
         if temp_dir:
             shutil.rmtree(temp_dir, ignore_errors=True)
-        if local_snapshot_path and local_snapshot_path != temp_dir:
-            shutil.rmtree(local_snapshot_path, ignore_errors=True)
 
 
 def cleanup_intermediate_chunks(batch_id: str, total_chunks: int) -> None:

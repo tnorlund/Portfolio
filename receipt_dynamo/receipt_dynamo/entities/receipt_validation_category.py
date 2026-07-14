@@ -1,4 +1,5 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -41,11 +42,18 @@ class ReceiptValidationCategory(SerializationMixin):
 
         if not isinstance(self.result_summary, dict):
             raise ValueError("result_summary must be a dictionary")
+        for name, count in self.result_summary.items():
+            validate_non_empty_string("result_summary key", name)
+            if isinstance(count, bool) or not isinstance(count, int):
+                raise ValueError("result_summary values must be integers")
+            if count < 0:
+                raise ValueError("result_summary values must be non-negative")
+        self.result_summary = deepcopy(self.result_summary)
 
         self.validation_timestamp = validate_iso_timestamp(
             self.validation_timestamp, "validation_timestamp"
         )
-        self.metadata = validate_metadata_field(self.metadata)
+        self.metadata = deepcopy(validate_metadata_field(self.metadata))
 
     @property
     def key(self) -> dict[str, dict[str, str]]:
@@ -85,6 +93,7 @@ class ReceiptValidationCategory(SerializationMixin):
 
     def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
+        assert self.validation_timestamp is not None
         # Start with the keys which are already properly formatted
         item = {
             **self.key,
@@ -107,6 +116,17 @@ class ReceiptValidationCategory(SerializationMixin):
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationCategory":
         """Create a ReceiptValidationCategory from a DynamoDB item."""
+        cls.validate_required_keys(
+            item,
+            {
+                "PK",
+                "SK",
+                "field_category",
+                "status",
+                "reasoning",
+                "result_summary",
+            },
+        )
         # Extract image_id, receipt_id, and field_name from keys
         image_id = item["PK"]["S"].split("#")[1]
         sk_parts = item["SK"]["S"].split("#")
@@ -168,33 +188,61 @@ def _extract_receipt_id(item: dict[str, Any], sk_parts: list[str]) -> int:
             return int(receipt_id_str)
 
     if "receipt_id" in item:
-        return (
-            int(item["receipt_id"]["N"])
-            if "N" in item["receipt_id"]
-            else item["receipt_id"]
-        )
+        receipt_id = item["receipt_id"]
+        if isinstance(receipt_id, dict):
+            if set(receipt_id) != {"N"} or not isinstance(
+                receipt_id["N"], str
+            ):
+                raise ValueError(
+                    "receipt_id must be a DynamoDB number attribute"
+                )
+            return int(receipt_id["N"])
+        if isinstance(receipt_id, bool) or not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer")
+        return receipt_id
     raise ValueError("Could not extract receipt_id from item")
 
 
 def _extract_image_id(item: dict[str, Any]) -> str:
     """Extract image_id from PK or item attributes."""
-    pk_parts = item["PK"]["S"].split("#")
+    pk = item.get("PK")
+    if (
+        not isinstance(pk, dict)
+        or set(pk) != {"S"}
+        or not isinstance(pk["S"], str)
+    ):
+        raise ValueError("PK must be a DynamoDB string attribute")
+    pk_parts = pk["S"].split("#")
     if len(pk_parts) > 1:
         return pk_parts[1]
 
     if "image_id" in item:
-        return (
-            item["image_id"]["S"]
-            if "S" in item["image_id"]
-            else item["image_id"]
-        )
+        image_id = item["image_id"]
+        if isinstance(image_id, dict):
+            if set(image_id) != {"S"} or not isinstance(image_id["S"], str):
+                raise ValueError(
+                    "image_id must be a DynamoDB string attribute"
+                )
+            return image_id["S"]
+        if not isinstance(image_id, str):
+            raise ValueError("image_id must be a string")
+        return image_id
     raise ValueError("Could not extract image_id from item")
 
 
 def _extract_field_category(item: dict[str, Any], sk_parts: list[str]) -> str:
     """Extract field_category from item or SK."""
     if "field_category" in item:
-        return item["field_category"]["S"]
+        field_category = item["field_category"]
+        if (
+            not isinstance(field_category, dict)
+            or set(field_category) != {"S"}
+            or not isinstance(field_category["S"], str)
+        ):
+            raise ValueError(
+                "field_category must be a DynamoDB string attribute"
+            )
+        return field_category["S"]
 
     # Try SK pattern: CATEGORY#<field_name>#<category>
     for i, part in enumerate(sk_parts):

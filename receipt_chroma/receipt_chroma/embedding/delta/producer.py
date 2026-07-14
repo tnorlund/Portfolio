@@ -14,8 +14,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import boto3
 
-from receipt_chroma import ChromaClient
 from receipt_chroma.chroma_types import ChromaMetadataInput
+from receipt_chroma.data.chroma_client import ChromaClient
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,6 @@ def produce_embedding_delta(
     batch_id: Optional[str] = None,
     delta_prefix: str = "delta/",
     local_temp_dir: Optional[str] = None,
-    compress: bool = False,
 ) -> Dict[str, Any]:
     """
     Create a ChromaDB delta and send to SQS for compaction.
@@ -53,7 +52,6 @@ def produce_embedding_delta(
         batch_id: Optional batch identifier for tracking purposes
         delta_prefix: S3 prefix for delta files (default: "delta/")
         local_temp_dir: Optional local directory for temporary files
-        compress: Whether to compress the delta (default: False)
 
     Returns:
         Dict with status and delta_key
@@ -119,7 +117,7 @@ def produce_embedding_delta(
             len(ids),
             collection_name,
         )
-        chroma.upsert_vectors(
+        chroma.upsert(
             collection_name=collection_name,
             ids=ids,
             embeddings=embeddings,
@@ -141,7 +139,7 @@ def produce_embedding_delta(
                 bucket=bucket_name, s3_prefix=delta_prefix
             )
             logger.info("Successfully uploaded delta to S3: %s", s3_key)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to upload delta to S3")
             logger.debug("Delta directory was: %s", delta_dir)
             # Re-raise the exception to be caught by the outer try/except
@@ -194,7 +192,7 @@ def produce_embedding_delta(
 
                 logger.info("Sent delta notification to SQS: %s", s3_key)
 
-            except Exception as e:
+            except Exception:
                 logger.exception("Error sending to SQS")
                 # Delta is still in S3, compactor can find it later
 
@@ -217,11 +215,6 @@ def produce_embedding_delta(
             "delta_size_bytes": delta_size,
             "batch_id": batch_id,
         }
-
-        if compress:
-            result["compression_ratio"] = (
-                0.8  # Mock compression ratio for tests
-            )
 
         return result
 

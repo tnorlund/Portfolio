@@ -1025,7 +1025,6 @@ class ReceiptPlaceFinder:
                 address_components={},
                 latitude=latitude,
                 longitude=longitude,
-                geohash="",  # Auto-calculated in __post_init__
                 viewport_ne_lat=viewport_ne_lat,
                 viewport_ne_lng=viewport_ne_lng,
                 viewport_sw_lat=viewport_sw_lat,

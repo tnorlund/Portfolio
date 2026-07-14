@@ -16,7 +16,6 @@ import boto3
 from botocore.config import Config
 from handlers.skipped_all import build_skipped_all_s3_result
 from openai import OpenAI
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
 from receipt_chroma.embedding.openai import (
     download_openai_batch_result,
@@ -24,12 +23,8 @@ from receipt_chroma.embedding.openai import (
     get_unique_receipt_and_image_ids,
     handle_batch_status,
     mark_items_for_retry,
+    mark_words_embedded,
 )
-from receipt_chroma.embedding.records import (
-    WordEmbeddingRecord,
-    build_word_payload,
-)
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
@@ -1030,6 +1025,19 @@ def _handle_internal_core(
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
 
+        # Flip word embedding_status now that the delta is durably in S3
+        # (#990: this was skipped, stranding words in PENDING forever)
+        with operation_with_timeout("mark_words_embedded", max_duration=120):
+            words_marked = mark_words_embedded(
+                results, descriptions, dynamo_client
+            )
+        collected_metrics["WordsMarkedSuccess"] = words_marked
+        logger.info(
+            "Marked words as embedded",
+            words_marked=words_marked,
+            batch_id=batch_id,
+        )
+
         # Mark batch complete only if NOT in step function mode
         # (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
@@ -1228,10 +1236,13 @@ def _handle_internal_core(
                     sqs_queue_url,
                 )
 
-                # Skip writing to DynamoDB - we only store in ChromaDB now
+                words_marked_partial = mark_words_embedded(
+                    partial_results, descriptions, dynamo_client
+                )
                 logger.info(
                     "Processed partial embedding results",
                     count=len(partial_results),
+                    words_marked=words_marked_partial,
                 )
 
         # Mark failed items for retry

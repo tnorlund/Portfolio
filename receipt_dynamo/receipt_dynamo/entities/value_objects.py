@@ -21,11 +21,20 @@ Classes:
 
 from dataclasses import dataclass
 from math import degrees as math_degrees
-from math import pi
+from math import isfinite, pi
 from math import radians as math_radians
 from typing import Any
 
 from receipt_dynamo.entities.util import _format_float
+
+
+def _is_number(value: Any) -> bool:
+    """Return whether value is a finite, non-bool int or float."""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    return isinstance(value, float) and isfinite(value)
 
 
 @dataclass(frozen=True)
@@ -46,9 +55,9 @@ class Point:
 
     def __post_init__(self) -> None:
         """Validate and normalize to float."""
-        if not isinstance(self.x, (int, float)):
+        if not _is_number(self.x):
             raise ValueError(f"x must be numeric, got {type(self.x).__name__}")
-        if not isinstance(self.y, (int, float)):
+        if not _is_number(self.y):
             raise ValueError(f"y must be numeric, got {type(self.y).__name__}")
         # Convert to float if int (frozen dataclass workaround)
         object.__setattr__(self, "x", float(self.x))
@@ -89,7 +98,7 @@ class Point:
         Returns:
             Point instance
         """
-        return cls(x=float(d["x"]), y=float(d["y"]))
+        return cls(x=d["x"], y=d["y"])
 
     @classmethod
     def from_dynamodb(cls, item: dict[str, Any]) -> "Point":
@@ -130,7 +139,7 @@ class BoundingBox:
         """Validate and normalize all fields to float."""
         for field_name in ["x", "y", "width", "height"]:
             val = getattr(self, field_name)
-            if not isinstance(val, (int, float)):
+            if not _is_number(val):
                 raise ValueError(
                     f"{field_name} must be numeric, got {type(val).__name__}"
                 )
@@ -167,10 +176,10 @@ class BoundingBox:
     def from_dict(cls, d: dict[str, Any]) -> "BoundingBox":
         """Create from dictionary."""
         return cls(
-            x=float(d["x"]),
-            y=float(d["y"]),
-            width=float(d["width"]),
-            height=float(d["height"]),
+            x=d["x"],
+            y=d["y"],
+            width=d["width"],
+            height=d["height"],
         )
 
     @classmethod
@@ -341,6 +350,13 @@ class Angle:
 
     def __post_init__(self) -> None:
         """Normalize to float."""
+        for field_name in ("degrees", "radians"):
+            value = getattr(self, field_name)
+            if not _is_number(value):
+                raise ValueError(
+                    f"{field_name} must be numeric, "
+                    f"got {type(value).__name__}"
+                )
         object.__setattr__(self, "degrees", float(self.degrees))
         object.__setattr__(self, "radians", float(self.radians))
 
@@ -554,7 +570,8 @@ class CDNVariants:
 
         def get_optional(key: str) -> str | None:
             if key in item and "S" in item[key]:
-                return item[key]["S"]
+                value = item[key]["S"]
+                return value if isinstance(value, str) else None
             return None
 
         return cls(

@@ -1,16 +1,13 @@
 import uuid
 from datetime import datetime
-from typing import Type
+from typing import Any
 
 import botocore
 import pytest
-from pytest_mock import MockerFixture
 
 from receipt_dynamo import DynamoClient, Instance, InstanceJob
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
@@ -18,6 +15,37 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 
 pytestmark = pytest.mark.integration
+
+
+def make_instance(**overrides: Any) -> Instance:
+    """Build a valid instance with selected fields replaced."""
+    values = {
+        "instance_id": str(uuid.uuid4()),
+        "instance_type": "p3.2xlarge",
+        "gpu_count": 4,
+        "status": "running",
+        "launched_at": datetime.now().isoformat(),
+        "ip_address": "192.168.1.1",
+        "availability_zone": "us-east-1a",
+        "is_spot": True,
+        "health_status": "healthy",
+    }
+    return Instance(**(values | overrides))
+
+
+def make_instance_job(instance_id: str, **overrides: Any) -> InstanceJob:
+    """Build a valid job assignment for an instance."""
+    values = {
+        "instance_id": instance_id,
+        "job_id": str(uuid.uuid4()),
+        "assigned_at": datetime.now().isoformat(),
+        "status": "running",
+        "resource_utilization": {
+            "cpu_utilization": 75,
+            "memory_utilization": 60,
+        },
+    }
+    return InstanceJob(**(values | overrides))
 
 
 @pytest.fixture
@@ -29,29 +57,13 @@ def instance_dynamo(dynamodb_table):
 @pytest.fixture
 def sample_instance():
     """Returns a sample Instance for testing."""
-    return Instance(
-        instance_id=str(uuid.uuid4()),
-        instance_type="p3.2xlarge",
-        gpu_count=4,
-        status="running",
-        launched_at=datetime.now().isoformat(),
-        ip_address="192.168.1.1",
-        availability_zone="us-east-1a",
-        is_spot=True,
-        health_status="healthy",
-    )
+    return make_instance()
 
 
 @pytest.fixture
 def sample_instance_job(sample_instance):
     """Returns a sample InstanceJob for testing."""
-    return InstanceJob(
-        instance_id=sample_instance.instance_id,
-        job_id=str(uuid.uuid4()),
-        assigned_at=datetime.now().isoformat(),
-        status="running",
-        resource_utilization={"cpu_utilization": 75, "memory_utilization": 60},
-    )
+    return make_instance_job(sample_instance.instance_id)
 
 
 @pytest.mark.integration
@@ -219,12 +231,10 @@ def test_addInstances_success(instance_dynamo, sample_instance):
     # Create multiple instances
     instances = [
         sample_instance,
-        Instance(
-            instance_id=str(uuid.uuid4()),
+        make_instance(
             instance_type="g4dn.xlarge",
             gpu_count=1,
             status="pending",
-            launched_at=datetime.now().isoformat(),
             ip_address="192.168.1.2",
             availability_zone="us-east-1b",
             is_spot=False,
@@ -503,12 +513,10 @@ def test_listInstances_success(instance_dynamo, sample_instance):
     instance_dynamo.add_instance(sample_instance)
 
     # Add another instance
-    second_instance = Instance(
-        instance_id=str(uuid.uuid4()),
+    second_instance = make_instance(
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
-        launched_at=datetime.now().isoformat(),
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
@@ -533,12 +541,10 @@ def test_listInstances_with_limit(instance_dynamo, sample_instance):
     instance_dynamo.add_instance(sample_instance)
 
     # Add another instance
-    second_instance = Instance(
-        instance_id=str(uuid.uuid4()),
+    second_instance = make_instance(
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
-        launched_at=datetime.now().isoformat(),
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
@@ -569,12 +575,10 @@ def test_listInstancesByStatus_success(instance_dynamo, sample_instance):
     instance_dynamo.add_instance(sample_instance)
 
     # Add another instance with a different status
-    second_instance = Instance(
-        instance_id=str(uuid.uuid4()),
+    second_instance = make_instance(
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
-        launched_at=datetime.now().isoformat(),
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
@@ -606,58 +610,66 @@ def test_listInstancesByStatus_success(instance_dynamo, sample_instance):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Method list_instance_jobs not implemented in DynamoClient"
-)
 def test_listInstanceJobs_success(
     instance_dynamo, sample_instance, sample_instance_job
 ):
-    """Test listing jobs associated with an instance successfully."""
-    # Add the instance and instance-job
+    """Instance-job listing isolates one parent and paginates."""
     instance_dynamo.add_instance(sample_instance)
     instance_dynamo.add_instance_job(sample_instance_job)
 
-    # Add another instance-job for the same instance
-    second_instance_job = InstanceJob(
-        instance_id=sample_instance.instance_id,
-        job_id=str(uuid.uuid4()),
-        assigned_at=datetime.now().isoformat(),
+    second_instance_job = make_instance_job(
+        sample_instance.instance_id,
         status="completed",
         resource_utilization={"cpu_utilization": 50},
     )
     instance_dynamo.add_instance_job(second_instance_job)
+    unrelated_job = make_instance_job(str(uuid.uuid4()))
+    instance_dynamo.add_instance_job(unrelated_job)
 
-    # List instance jobs
-    instance_jobs, _ = instance_dynamo.list_instance_jobs(
-        sample_instance.instance_id
+    first_page, last_evaluated_key = instance_dynamo.list_instance_jobs(
+        sample_instance.instance_id, limit=1
+    )
+    assert len(first_page) == 1
+    assert last_evaluated_key is not None
+    assert set(last_evaluated_key) == {"PK", "SK"}
+    second_page, final_key = instance_dynamo.list_instance_jobs(
+        sample_instance.instance_id,
+        limit=1,
+        last_evaluated_key=last_evaluated_key,
     )
 
-    # Verify the result
-    assert len(instance_jobs) == 2
-    instance_job_ids = [instance_job.job_id for instance_job in instance_jobs]
-    assert sample_instance_job.job_id in instance_job_ids
-    assert second_instance_job.job_id in instance_job_ids
+    assert final_key is None
+    assert {item.job_id for item in first_page + second_page} == {
+        sample_instance_job.job_id,
+        second_instance_job.job_id,
+    }
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Method list_instances_for_job not implemented in DynamoClient"
-)
+@pytest.mark.parametrize("instance_id", [None, ""])
+def test_listInstanceJobs_rejects_invalid_instance_id(
+    instance_dynamo, instance_id
+):
+    """Instance-job listing requires a non-empty string identifier."""
+    with pytest.raises(
+        EntityValidationError,
+        match="instance_id must be a non-empty string",
+    ):
+        instance_dynamo.list_instance_jobs(instance_id)
+
+
+@pytest.mark.integration
 def test_listInstancesForJob_success(
     instance_dynamo, sample_instance, sample_instance_job
 ):
-    """Test listing instances associated with a job successfully."""
-    # Add the instance and instance-job
+    """Job-instance listing isolates one job and paginates its GSI."""
     instance_dynamo.add_instance(sample_instance)
     instance_dynamo.add_instance_job(sample_instance_job)
 
-    # Add another instance with the same job
-    second_instance = Instance(
-        instance_id=str(uuid.uuid4()),
+    second_instance = make_instance(
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
-        launched_at=datetime.now().isoformat(),
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
@@ -665,22 +677,37 @@ def test_listInstancesForJob_success(
     )
     instance_dynamo.add_instance(second_instance)
 
-    second_instance_job = InstanceJob(
-        instance_id=second_instance.instance_id,
+    second_instance_job = make_instance_job(
+        second_instance.instance_id,
         job_id=sample_instance_job.job_id,
-        assigned_at=datetime.now().isoformat(),
         status="assigned",
         resource_utilization={},
     )
     instance_dynamo.add_instance_job(second_instance_job)
+    unrelated_job = make_instance_job(sample_instance.instance_id)
+    instance_dynamo.add_instance_job(unrelated_job)
 
-    # List instances for job
-    instance_jobs, _ = instance_dynamo.list_instances_for_job(
-        sample_instance_job.job_id
+    first_page, last_evaluated_key = instance_dynamo.list_instances_for_job(
+        sample_instance_job.job_id, limit=1
+    )
+    assert len(first_page) == 1
+    assert last_evaluated_key is not None
+    assert set(last_evaluated_key) == {"PK", "SK", "GSI1PK", "GSI1SK"}
+    second_page, final_key = instance_dynamo.list_instances_for_job(
+        sample_instance_job.job_id,
+        limit=1,
+        last_evaluated_key=last_evaluated_key,
     )
 
-    # Verify the result
-    assert len(instance_jobs) == 2
-    instance_ids = [instance_job.instance_id for instance_job in instance_jobs]
-    assert sample_instance.instance_id in instance_ids
-    assert second_instance.instance_id in instance_ids
+    assert final_key is None
+    assert {item.instance_id for item in first_page + second_page} == {
+        sample_instance.instance_id,
+        second_instance.instance_id,
+    }
+
+
+@pytest.mark.integration
+def test_listInstancesForJob_rejects_missing_job_id(instance_dynamo):
+    """Job-instance listing requires a job identifier."""
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
+        instance_dynamo.list_instances_for_job(None)

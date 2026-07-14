@@ -269,7 +269,7 @@ class WebAnalytics(ComponentResource):
             opts=child,
         )
 
-        # --- Transform Lambda (incremental, idempotent per-day rebuild) ---
+        # --- Transform Lambda (atomic, idempotent per-day rebuild) ---
         transform_role = aws.iam.Role(
             f"{name}-transform-role",
             assume_role_policy=json.dumps(
@@ -313,9 +313,8 @@ class WebAnalytics(ComponentResource):
             role=transform_role.arn,
             timeout=600,
             memory_size=256,
-            # Serialize runs: the per-day drop/delete/INSERT rebuild is not
-            # atomic, so a backfill overlapping the scheduled run must not
-            # interleave on the same partition.
+            # Serialize runs so staging cleanup and partition-location swaps
+            # cannot interleave when a backfill overlaps the scheduled run.
             reserved_concurrent_executions=1,
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
@@ -323,15 +322,22 @@ class WebAnalytics(ComponentResource):
                     "ANALYTICS_WORKGROUP": database_name,
                     "CURATED_BUCKET": self.curated_bucket.bucket,
                     "CURATED_PREFIX": "web_events/",
+                    "STAGING_PREFIX": "staging/web_events/",
                 },
             ),
             opts=child,
         )
-        # Daily schedule (logs are low-latency; one daily pass + the
-        # yesterday/today default keeps partitions fresh and idempotent).
+        # Hourly schedule: the no-payload run idempotently rebuilds today +
+        # yesterday (UTC), so web_events -- and every analytics_* tool that reads
+        # it -- stays at most ~1h behind instead of ~24h, for negligible added
+        # Athena cost at this traffic. Each partition is written to a unique
+        # staging prefix and exposed with one metadata-location swap, so
+        # readers continue seeing a complete prior generation while the
+        # rebuild runs. Off-minute (:17) dodges the top-of-hour scheduler
+        # crowd.
         schedule = aws.cloudwatch.EventRule(
             f"{name}-transform-schedule",
-            schedule_expression="cron(30 9 * * ? *)",  # 09:30 UTC ~ 02:30 PT
+            schedule_expression="cron(17 * * * ? *)",  # hourly at :17 UTC
             opts=child,
         )
         aws.cloudwatch.EventTarget(
