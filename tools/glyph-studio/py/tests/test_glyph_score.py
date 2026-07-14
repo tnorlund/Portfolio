@@ -1,0 +1,355 @@
+"""Unit tests for glyphstudio.glyph_score (pure, no network)."""
+
+import numpy as np
+import pytest
+
+from glyphstudio.family_cluster import normalize_glyph
+from glyphstudio.glyph_score import (
+    GlyphResult,
+    anchor_similarity,
+    build_anchor_references,
+    build_self_references,
+    crop_exemplar,
+    group_rollup,
+    load_refpack,
+    per_char_table,
+    percentile_of,
+    save_refpack,
+    score_glyph,
+    score_instances,
+    self_similarity,
+    shifted_iou_stack,
+    weighted_glyphscore,
+)
+from glyphstudio.typography import shifted_iou
+
+RNG = np.random.default_rng(7)
+
+
+def _letter_E(size: int = 32) -> np.ndarray:
+    g = np.zeros((size, size), bool)
+    g[:, 2:7] = True
+    g[0:5, 2:28] = True
+    g[14:18, 2:24] = True
+    g[27:32, 2:28] = True
+    return g
+
+
+def _letter_O(size: int = 32) -> np.ndarray:
+    g = np.zeros((size, size), bool)
+    yy, xx = np.mgrid[0:size, 0:size]
+    r = ((yy - 15.5) / 15.0) ** 2 + ((xx - 15.5) / 12.0) ** 2
+    return (r <= 1.0) & (r >= 0.45)
+
+
+def _jitter(g: np.ndarray, p: float = 0.04, seed: int = 0) -> np.ndarray:
+    """A 'printed' copy: flip a few pixels near the shape + 1px shift."""
+    rng = np.random.default_rng(seed)
+    out = g.copy()
+    flip = rng.random(g.shape) < p
+    out ^= flip
+    dy, dx = rng.integers(-1, 2, 2)
+    return normalize_glyph(np.roll(np.roll(out, dy, 0), dx, 1))
+
+
+def _stack(g, n=12, seed0=0):
+    return np.stack([_jitter(g, seed=seed0 + i) for i in range(n)])
+
+
+# --- primitives ---------------------------------------------------------------
+
+
+def test_shifted_iou_stack_matches_scalar():
+    e, o = _letter_E(), _letter_O()
+    stack = np.stack([e, o, _jitter(e, seed=3)])
+    vec = shifted_iou_stack(e, stack)
+    ref = [shifted_iou(e, s) for s in stack]
+    assert np.allclose(vec, ref)
+
+
+def test_shifted_iou_stack_empty():
+    assert shifted_iou_stack(_letter_E(), np.zeros((0, 32, 32), bool)).size == 0
+
+
+def test_percentile_midrank():
+    dist = np.array([0.1, 0.2, 0.3, 0.4])
+    assert percentile_of(dist, 0.05) == pytest.approx(0.5 / 5)
+    assert percentile_of(dist, 0.9) == pytest.approx(4.5 / 5)
+    # tie: value equal to one member sits between its neighbors
+    assert 0.2 < percentile_of(dist, 0.3) < 0.8
+    assert np.isnan(percentile_of(np.array([]), 0.5))
+
+
+def test_self_similarity_spread_is_tight_for_consistent_prints():
+    st = _stack(_letter_E(), n=10)
+    d = self_similarity(st)
+    assert d.shape == (10,)
+    assert d.min() > 0.5  # jittered copies of one shape agree strongly
+
+
+def test_crop_exemplar_recovers_letterform_from_noisy_prints():
+    e = _letter_E()
+    ex = crop_exemplar(_stack(e, n=20))
+    # the vote cancels jitter noise: exemplar ~= the designed shape
+    from glyphstudio.typography import shifted_iou
+
+    assert shifted_iou(ex, e) > 0.8
+
+
+def test_self_mode_designed_font_beats_other_typeface():
+    # THE negative-control property (metric revision 1): the merchant's own
+    # designed glyph must outscore a different typeface's glyph against the
+    # merchant's crops — blur statistics must not trump letterform.
+    refs = build_self_references({"E": _stack(_letter_E(), n=16)})
+    own = score_glyph(refs["E"], _letter_E())
+    other = score_glyph(refs["E"], _letter_O())
+    assert own.raw > other.raw
+    assert own.pct > 0.3 > other.pct
+
+
+# --- self mode: the metric must separate same-face from different-face --------
+
+
+def test_self_mode_same_letterform_scores_high():
+    refs = build_self_references({"E": _stack(_letter_E(), n=12)})
+    picks = [
+        score_glyph(refs["E"], _jitter(_letter_E(), seed=s)).pct
+        for s in range(90, 100)
+    ]
+    # same-face candidates land INSIDE the real variation: the MASS sits
+    # mid-distribution (individual samples may straddle the n=12 min — that
+    # is what a percentile of a small distribution does at the edges)
+    assert float(np.mean(picks)) > 0.3
+    assert sum(p > 0.05 for p in picks) >= 8
+
+
+def test_self_mode_wrong_letterform_scores_floor():
+    refs = build_self_references({"E": _stack(_letter_E(), n=12)})
+    r = score_glyph(refs["E"], _letter_O())
+    assert r.raw < 0.4
+    assert r.pct < 0.1  # below every real crop
+
+
+def test_noise_glyph_scores_floor():
+    refs = build_self_references({"E": _stack(_letter_E(), n=12)})
+    noise = normalize_glyph(RNG.random((32, 32)) < 0.3)
+    assert score_glyph(refs["E"], noise).pct < 0.1
+
+
+def test_min_ref_enforced():
+    refs = build_self_references({"E": _stack(_letter_E(), n=3)})
+    assert refs == {}  # distributions, not n=3
+
+
+# --- anchor mode ---------------------------------------------------------------
+
+
+def test_anchor_mode_crops_center_the_distribution():
+    e = _letter_E()
+    crops = _stack(e, n=12)
+    refs = build_anchor_references({"E": crops}, {"E": e})
+    # the designed glyph itself beats its own printed copies
+    r = score_glyph(refs["E"], e)
+    assert r.pct > 0.8
+    # a printed copy sits INSIDE the distortion spread
+    r2 = score_glyph(refs["E"], _jitter(e, seed=55))
+    assert 0.05 < r2.pct
+    # a different letterform sits below it
+    assert score_glyph(refs["E"], _letter_O()).pct < 0.1
+
+
+def test_anchor_similarity_values_match_scalar():
+    e = _letter_E()
+    crops = _stack(e, n=8)
+    d = anchor_similarity(crops, e)
+    assert np.allclose(d, [shifted_iou(c, e) for c in crops])
+
+
+def test_anchor_mode_skips_chars_missing_either_side():
+    refs = build_anchor_references(
+        {"E": _stack(_letter_E(), 12), "O": _stack(_letter_O(), 12)},
+        {"E": _letter_E()},
+    )
+    assert set(refs) == {"E"}
+
+
+# --- aggregation -----------------------------------------------------------------
+
+
+def test_score_instances_skips_unknown_chars_and_keeps_groups():
+    refs = build_self_references({"E": _stack(_letter_E(), n=12)})
+    res = score_instances(
+        refs,
+        [("E", _jitter(_letter_E(), seed=1), "line0"), ("Z", _letter_O(), "line0")],
+    )
+    assert len(res) == 1 and res[0].group == "line0"
+
+
+def test_per_char_table_and_rollup():
+    results = [
+        GlyphResult("E", 0.6, 0.5, "l0"),
+        GlyphResult("E", 0.6, 0.7, "l0"),
+        GlyphResult("O", 0.2, 0.1, "l1"),
+    ]
+    tab = per_char_table(results)
+    assert tab["E"]["n"] == 2 and tab["E"]["pct_mean"] == pytest.approx(0.6)
+    roll = group_rollup(results)
+    assert roll["l0"]["n"] == 2 and roll["l1"]["pct_mean"] == pytest.approx(0.1)
+
+
+def test_weighted_glyphscore_instance_pooling_and_char_weights():
+    results = [
+        GlyphResult("E", 0.6, 0.8),
+        GlyphResult("E", 0.6, 0.8),
+        GlyphResult("O", 0.2, 0.2),
+    ]
+    assert weighted_glyphscore(results) == pytest.approx(60.0)
+    # char-weighted: E is used 9x as often as O in the corpus
+    refs = build_self_references(
+        {"E": _stack(_letter_E(), 9), "O": _stack(_letter_O(), 9)},
+        min_ref=9,
+    )
+    refs["E"].count, refs["O"].count = 90, 10
+    per_char = [GlyphResult("E", 0.6, 0.8), GlyphResult("O", 0.2, 0.2)]
+    assert weighted_glyphscore(per_char, refs) == pytest.approx(
+        100 * (0.8 * 90 + 0.2 * 10) / 100
+    )
+    assert np.isnan(weighted_glyphscore([]))
+
+
+# --- render word segmentation -----------------------------------------------------
+
+
+def _word_mask(glyphs, cell=36):
+    """Monospace word image: each glyph centered in a fixed-pitch cell —
+    the geometry the grid renderer actually produces."""
+    def crop(g):
+        ys, xs = np.where(g)
+        return g[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+    glyphs = [crop(g) for g in glyphs]
+    h = max(g.shape[0] for g in glyphs)
+    out = np.zeros((h, cell * len(glyphs)), bool)
+    for i, g in enumerate(glyphs):
+        x = i * cell + (cell - g.shape[1]) // 2
+        out[h - g.shape[0]:, x : x + g.shape[1]] = g
+    return out
+
+
+def test_segment_word_mask_splits_monospace_word():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    e, o = _letter_E(), _letter_O()
+    parts = segment_word_mask(_word_mask([e, o, e]), "EOE")
+    assert parts is not None and len(parts) == 3
+    # left-to-right assignment: middle cell is the O
+    assert np.array_equal(normalize_glyph(parts[1]), normalize_glyph(o))
+    assert np.array_equal(normalize_glyph(parts[0]), normalize_glyph(e))
+
+
+def test_segment_word_mask_keeps_stacked_parts_together():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    colon = np.zeros((32, 32), bool)
+    colon[6:10, 14:18] = True
+    colon[22:26, 14:18] = True
+    parts = segment_word_mask(_word_mask([_letter_E(), colon]), "E:")
+    assert parts is not None and len(parts) == 2
+    assert parts[1].sum() == colon.sum()
+
+
+def test_segment_word_mask_survives_shattered_dot_matrix_glyphs():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    # dot-matrix: punch holes so each glyph breaks into many components
+    def dotty(g):
+        out = g.copy()
+        out[::3, :] = False
+        return out
+
+    parts = segment_word_mask(
+        _word_mask([dotty(_letter_E()), dotty(_letter_O())]), "EO"
+    )
+    assert parts is not None and len(parts) == 2
+
+
+def test_segment_word_mask_splits_touching_condensed_letters():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    e = _letter_E()
+    parts = segment_word_mask(_word_mask([e, e], cell=30), "EE")
+    assert parts is not None and len(parts) == 2
+    assert abs(int(parts[0].sum()) - int(parts[1].sum())) < 0.2 * e.sum()
+
+
+def test_segment_word_mask_refuses_hopeless_input():
+    from glyphstudio.glyph_score import segment_word_mask
+
+    assert segment_word_mask(np.zeros((8, 8), bool), "E") is None
+    # a 4-char word squeezed into 6 columns: pitch < 2
+    tiny = np.ones((8, 6), bool)
+    assert segment_word_mask(tiny, "ABCD") is None
+
+
+# --- refpack I/O -----------------------------------------------------------------
+
+
+def test_refpack_roundtrip(tmp_path):
+    pack = {"E": _stack(_letter_E(), 9), ".": _stack(_letter_O(), 8)}
+    p = str(tmp_path / "pack.npz")
+    save_refpack(p, pack)
+    loaded = load_refpack(p)
+    assert set(loaded) == {"E", "."}
+    assert np.array_equal(loaded["E"], pack["E"])
+    assert loaded["."].dtype == bool
+
+
+# --- CLI segmentation helpers (row-band, NaN policy) -------------------------
+
+
+def test_locate_row_band_keeps_stacked_glyph_parts():
+    import glyph_score_cli as cli
+
+    # a 40px-tall crop: neighbor-line fragment rows 0-2, then a colon word
+    # whose two dots sit at rows 14-17 and 26-29 (a 9-row internal gap)
+    m = np.zeros((40, 20), bool)
+    m[0:3, :] = True  # previous line's bottoms
+    m[14:18, 8:12] = True
+    m[26:30, 8:12] = True
+    band = cli._locate_row_band(m, box=(12, 32))
+    assert band is not None
+    a, b = band
+    assert a <= 14 and b >= 30  # both dots survive
+    assert a >= 3  # the neighbor fragment does not
+
+
+def test_locate_row_band_still_drops_far_neighbor():
+    import glyph_score_cli as cli
+
+    m = np.zeros((60, 20), bool)
+    m[0:6, :] = True  # neighbor line
+    m[30:44, 4:16] = True  # the word
+    band = cli._locate_row_band(m, box=(28, 46))
+    assert band == (30, 44)
+
+
+def test_report_null_glyphscore_when_nothing_scored():
+    import glyph_score_cli as cli
+
+    doc = cli._report([], {}, "self/single")
+    assert doc["glyphscore"] is None
+    assert doc["n_instances"] == 0
+    import json as _json
+
+    _json.dumps(doc, allow_nan=False)  # strict-JSON safe
+
+
+def test_load_refpack_rejects_malformed(tmp_path):
+    p = str(tmp_path / "bad.npz")
+    np.savez_compressed(p, **{"r65": np.zeros((32, 32), bool)})  # 2-D, not 3-D
+    with pytest.raises(ValueError, match="must be"):
+        load_refpack(p)
+    p2 = str(tmp_path / "empty.npz")
+    np.savez_compressed(p2, other=np.zeros(3))
+    with pytest.raises(ValueError, match="no r<codepoint>"):
+        load_refpack(p2)
