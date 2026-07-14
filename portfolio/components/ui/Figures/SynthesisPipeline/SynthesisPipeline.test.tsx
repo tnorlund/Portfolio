@@ -5,6 +5,7 @@ import SynthesisPipeline, { advanceAutoplay } from ".";
 import { knockOutReceiptPaper } from "./Acts";
 import { ACT_COUNT, ACTS } from "./pipelineData";
 import { LABEL_COLORS } from "../labelStyles";
+import { LabelLegend } from "../labelBoxOverlay";
 
 jest.mock("react-intersection-observer", () => ({
   useInView: () => ({ ref: jest.fn(), inView: true }),
@@ -459,6 +460,28 @@ describe("SynthesisPipeline (reduced motion)", () => {
     );
     // The caption was dropped — the boxes + legend carry the act.
     expect(screen.queryByTestId("labels-counter")).not.toBeInTheDocument();
+    const legend = screen.getByLabelText("Label families");
+    expect(legend).toHaveTextContent("Date / Time");
+    expect(legend).toHaveTextContent("Charges");
+    expect(legend).toHaveTextContent("Hours / Pay");
+  });
+
+  test("the legend groups merchant aliases and preserves unknown families", () => {
+    render(
+      <LabelLegend
+        families={[
+          "MERCHANT_NAME",
+          "BUSINESS_NAME",
+          "LOYALTY_ID",
+          "CUSTOM_FIELD",
+        ]}
+      />,
+    );
+
+    const legend = screen.getByLabelText("Label families");
+    expect(legend).toHaveTextContent("Merchant");
+    expect(legend).toHaveTextContent("Custom field");
+    expect(legend.children).toHaveLength(2);
   });
 
   test("assemble label boxes use the LayoutLM LABEL_COLORS + stroke styling", async () => {
