@@ -76,6 +76,9 @@ export const dotParamsSrc = (merchant: Merchant): string =>
 export const fontGlyphSrc = (merchant: Merchant, codepoint: number): string =>
   `${assetRoot(merchant)}/font_grid/${codepoint}.png`;
 
+export const fontMetricsSrc = (merchant: Merchant): string =>
+  `${assetRoot(merchant)}/font_metrics.json`;
+
 export const styleAnnotatedSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/style_annotated.json`;
 
@@ -136,6 +139,19 @@ export interface DotParams {
   samples: number;
   /** Cloud PNG pixel geometry for act-3/4 alignment (added incrementally). */
   cloudGeom?: CloudGeom;
+}
+
+export interface FontGlyphMetric {
+  width: number;
+  height: number;
+  /** Ink-bottom row relative to the shared baseline. */
+  offset: number;
+}
+
+export interface FontMetrics {
+  /** Pixel cap height used when the tightly cropped glyph masks were exported. */
+  capHeight: number;
+  glyphs: Record<string, FontGlyphMetric>;
 }
 
 export const DEFAULT_DOT_PARAMS: DotParams = {
@@ -204,6 +220,7 @@ export interface ComposeSteps {
 export interface MerchantAssets {
   skeleton: GlyphSkeleton | null;
   dotParams: DotParams | null;
+  fontMetrics: FontMetrics | null;
   style: StyleAnnotated | null;
   compose: ComposeSteps | null;
   finalLabels: ShowcaseLabelFile | null;
@@ -212,6 +229,7 @@ export interface MerchantAssets {
 export const EMPTY_ASSETS: MerchantAssets = {
   skeleton: null,
   dotParams: null,
+  fontMetrics: null,
   style: null,
   compose: null,
   finalLabels: null,

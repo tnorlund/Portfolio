@@ -22,6 +22,7 @@ import {
   charPrintSrc,
   COMPOSE_GROUP_ORDER,
   FONT_CODEPOINTS,
+  FontGlyphMetric,
   fontGlyphSrc,
   finalSrc,
   logoSrc,
@@ -389,6 +390,25 @@ const CharacterAct: React.FC<ActProps> = ({
 
 const FONT_GRID_COLS = 12; // matches grid-template-columns on desktop
 const HERO_FLIGHT_SCALE = 5.2; // how big the hero rides in from stage center
+const FONT_GRID_CAP_PERCENT = 70;
+const FONT_GRID_BASELINE_PERCENT = 78.5;
+
+const normalizedGlyphStyle = (
+  metric: FontGlyphMetric | undefined,
+  capHeight: number | undefined,
+): React.CSSProperties | undefined => {
+  if (!metric || !capHeight || capHeight <= 0) {
+    return undefined;
+  }
+  const scale = FONT_GRID_CAP_PERCENT / capHeight;
+  return {
+    width: `${metric.width * scale}%`,
+    height: `${metric.height * scale}%`,
+    top: "auto",
+    bottom: `${100 - FONT_GRID_BASELINE_PERCENT - metric.offset * scale}%`,
+    transform: "translateX(-50%)",
+  };
+};
 
 /** Smoothstep ease for the flight. */
 const smooth = (t: number): number => t * t * (3 - 2 * t);
@@ -438,12 +458,18 @@ const WholeFontAct: React.FC<ActProps> = ({
             }
           : undefined;
         const maskUrl = `url(${fontGlyphSrc(merchant, cp)})`;
+        const glyphMetric = assets.fontMetrics?.glyphs[String(cp)];
+        const metricStyle = normalizedGlyphStyle(
+          glyphMetric,
+          assets.fontMetrics?.capHeight,
+        );
         return (
           <div
             key={cp}
             className={`${styles.fontCell}${isHero ? ` ${styles.fontCellHero}` : ""}`}
             data-shown={shown}
             data-hero={isHero || undefined}
+            data-codepoint={cp}
             data-testid="font-cell"
             style={heroStyle}
           >
@@ -452,7 +478,11 @@ const WholeFontAct: React.FC<ActProps> = ({
                 themes. */}
             <div
               className={styles.fontGlyph}
-              style={{ WebkitMaskImage: maskUrl, maskImage: maskUrl }}
+              style={{
+                WebkitMaskImage: maskUrl,
+                maskImage: maskUrl,
+                ...metricStyle,
+              }}
               aria-hidden="true"
             />
           </div>

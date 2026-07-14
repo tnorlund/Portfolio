@@ -72,6 +72,28 @@ const flushAssets = async () => {
   });
 };
 
+test("font metrics cover every glyph and match the committed PNG dimensions", () => {
+  const metrics = JSON.parse(
+    fs.readFileSync(path.join(PIPELINE_DIR, "sprouts/font_metrics.json"), "utf-8"),
+  ) as {
+    capHeight: number;
+    glyphs: Record<string, { width: number; height: number; offset: number }>;
+  };
+
+  expect(metrics.capHeight).toBe(40);
+  expect(Object.keys(metrics.glyphs)).toHaveLength(94);
+  for (let codepoint = 33; codepoint <= 126; codepoint += 1) {
+    const metric = metrics.glyphs[String(codepoint)];
+    const png = fs.readFileSync(
+      path.join(PIPELINE_DIR, `sprouts/font_grid/${codepoint}.png`),
+    );
+    expect(metric).toBeDefined();
+    expect(metric.width).toBe(png.readUInt32BE(16));
+    expect(metric.height).toBe(png.readUInt32BE(20));
+    expect(Number.isFinite(metric.offset)).toBe(true);
+  }
+});
+
 describe("advanceAutoplay (pure timeline math)", () => {
   test("advancing within a dwell increments progress, same act", () => {
     const s = advanceAutoplay(2, 0.2, 1000, 5000, ACT_COUNT);
@@ -341,6 +363,25 @@ describe("SynthesisPipeline (reduced motion)", () => {
       .firstElementChild as HTMLElement;
     const style = glyph.getAttribute("style") || "";
     expect(style).toMatch(/mask-image:\s*url\([^)]*font_grid[^)]*\.png/);
+  });
+
+  test("atlas glyphs preserve receipt-relative cap height and baseline", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    const cellFor = (codepoint: number) =>
+      screen
+        .getAllByTestId("font-cell")
+        .find((cell) => cell.getAttribute("data-codepoint") === String(codepoint));
+    const uppercase = cellFor(65)?.firstElementChild as HTMLElement;
+    const lowercase = cellFor(97)?.firstElementChild as HTMLElement;
+
+    expect(uppercase).toBeInTheDocument();
+    expect(lowercase).toBeInTheDocument();
+    expect(Number.parseFloat(uppercase.style.height)).toBeCloseTo(70, 3);
+    expect(Number.parseFloat(lowercase.style.height)).toBeCloseTo(49, 3);
+    expect(Number.parseFloat(uppercase.style.bottom)).toBeCloseTo(23.25, 3);
+    expect(Number.parseFloat(lowercase.style.bottom)).toBeCloseTo(23.25, 3);
   });
 
   test("pen-path act draws SVG paths + anchor dots from the real skeleton", async () => {
