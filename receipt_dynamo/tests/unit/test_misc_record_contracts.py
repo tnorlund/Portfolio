@@ -458,6 +458,18 @@ def test_ocr_job_from_item_rejects_malformed_gsi_status_partition(key):
         OCRJob.from_item(item)
 
 
+def test_ocr_job_from_item_rejects_divergent_gsi_status_partitions():
+    """GSI1PK and GSI2PK are written together from the same status, so a row
+    where they carry different (individually valid) statuses is corruption, not
+    a benign legacy drift, and must be rejected."""
+    item = make_ocr_job(status=OCRStatus.COMPLETED).to_item()
+    item["GSI1PK"] = {"S": "OCR_JOB_STATUS#PENDING"}
+    item["GSI2PK"] = {"S": "OCR_JOB_STATUS#COMPLETED"}
+
+    with pytest.raises(ValueError, match="keys"):
+        OCRJob.from_item(item)
+
+
 def test_ocr_job_revalidates_nested_map_after_mutation():
     job = make_ocr_job()
     job.reocr_region["height"] = float("inf")

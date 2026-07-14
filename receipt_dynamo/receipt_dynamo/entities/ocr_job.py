@@ -344,6 +344,7 @@ class OCRJob:
         valid_status_partitions = {
             f"OCR_JOB_STATUS#{status.value}" for status in OCRStatus
         }
+        partitions = []
         for key in ("GSI1PK", "GSI2PK"):
             partition = item.get(key, {})
             if (
@@ -351,6 +352,12 @@ class OCRJob:
                 or partition.get("S") not in valid_status_partitions
             ):
                 raise ValueError("Invalid OCRJob keys")
+            partitions.append(partition["S"])
+        # GSI1PK and GSI2PK are always written together from the same status, so
+        # legitimate legacy rows keep them equal even when both are stale.
+        # Divergent partitions indicate corruption, not a benign status drift.
+        if partitions[0] != partitions[1]:
+            raise ValueError("Invalid OCRJob keys")
         return job
 
 
