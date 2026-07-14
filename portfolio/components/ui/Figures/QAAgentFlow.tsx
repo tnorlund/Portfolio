@@ -1,7 +1,7 @@
 import React from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
-import { useSpring, animated, config } from "@react-spring/web";
+import { useSpring, animated } from "@react-spring/web";
 import { getReceiptMotionScale } from "./ReceiptFlow/receiptFlowUtils";
 import type {
   QAQuestionData,
@@ -119,7 +119,11 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
           overflow: "hidden",
           opacity: 0,
           "--receipt-evidence-rotation": `${rotation}deg`,
-          animation: `receiptEvidenceIn 320ms ease-out ${index * 55}ms forwards`,
+          animationName: "receiptEvidenceIn",
+          animationDuration: "320ms",
+          animationTimingFunction: "ease-out",
+          animationDelay: `${index * 55}ms`,
+          animationFillMode: "forwards",
           animationPlayState: isVisible ? "running" : "paused",
         } as React.CSSProperties
       }
@@ -498,6 +502,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
   const [showAnswer, setShowAnswer] = React.useState(false);
+  const [showDetails, setShowDetails] = React.useState(false);
   const motionScale = getReceiptMotionScale();
 
   // Use real data when available, fall back to example trace
@@ -513,6 +518,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
       .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
       .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
       .trim() || undefined;
+  const answerSummary = answerText?.split(/\n\s*\n/, 1)[0];
   const evidenceReceipts = React.useMemo(
     () => deduplicateReceiptEvidence(trace),
     [trace],
@@ -529,6 +535,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
   React.useEffect(() => {
     setActiveStep(-1);
     setShowAnswer(false);
+    setShowDetails(false);
   }, [questionIndex]);
 
   React.useEffect(() => {
@@ -583,6 +590,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
         // questionIndex (-1 → -1) and the questionIndex effect doesn't fire.
         setActiveStep(-1);
         setShowAnswer(false);
+        setShowDetails(false);
         onCycleComplete?.();
       }, 10000 * motionScale);
       return () => clearTimeout(id);
@@ -601,41 +609,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
     onCycleComplete,
     motionScale,
   ]);
-
-  // Measure answer content height and spring the container open
-  const answerRef = React.useRef<HTMLDivElement>(null);
-  const [measuredHeight, setMeasuredHeight] = React.useState(0);
-
-  React.useEffect(() => {
-    if (showAnswer && answerRef.current) {
-      const raf = requestAnimationFrame(() => {
-        if (answerRef.current) {
-          setMeasuredHeight(answerRef.current.scrollHeight);
-        }
-      });
-      return () => cancelAnimationFrame(raf);
-    }
-    setMeasuredHeight(0);
-  }, [showAnswer, questionIndex]);
-
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const lastSpringHeight = React.useRef(0);
-
-  const answerHeightSpring = useSpring({
-    height: measuredHeight,
-    config: config.gentle,
-    onChange: (result: { value: { height: number } }) => {
-      const h = result.value.height;
-      const delta = h - lastSpringHeight.current;
-      lastSpringHeight.current = h;
-      if (delta !== 0 && containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        if (rect.bottom < 0) {
-          window.scrollBy(0, delta);
-        }
-      }
-    },
-  });
 
   // Reveal the wall-clock timeline through the furthest completed step.
   // Overlapping steps share the same x-range and occupy separate lanes.
@@ -856,7 +829,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                   strokeDashoffset={circumference}
                   transform={`rotate(-90 ${cx} ${cy})`}
                   style={{
-                    animation: `clockFill ${fillDurationSec}s linear forwards`,
+                    animationName: "clockFill",
+                    animationDuration: `${fillDurationSec}s`,
+                    animationTimingFunction: "linear",
+                    animationFillMode: "forwards",
                     animationPlayState: isVisible ? "running" : "paused",
                   }}
                 />
@@ -1195,46 +1171,173 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
               })}
             </div>
 
-            {/* Answer + Receipt stack (inside card) */}
-            <animated.div
-              ref={containerRef}
+            {/* Stable answer frame: content changes never resize the page. */}
+            <section
+              data-testid="qa-result-frame"
+              role="region"
+              aria-label="QA answer result"
+              aria-busy={!showAnswer}
               style={{
-                ...answerHeightSpring,
+                height: "30rem",
                 overflow: "hidden",
+                overflowAnchor: "none",
                 display: "flex",
                 flexDirection: "column",
                 marginTop: "0.75rem",
                 marginBottom: "0.75rem",
+                border: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14)",
+                borderRadius: "8px",
+                backgroundColor: "var(--background-color)",
+                color: "var(--text-color)",
+                boxSizing: "border-box",
               }}
             >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  minHeight: "2.75rem",
+                  padding: "0.65rem 0.8rem",
+                  borderBottom:
+                    "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12)",
+                  boxSizing: "border-box",
+                }}
+              >
+                <strong style={{ fontSize: "0.78rem" }}>Result</strong>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "0.67rem",
+                    opacity: 0.62,
+                  }}
+                >
+                  {showAnswer ? "Answer ready" : "Answer pending"}
+                </span>
+              </div>
+
               {showAnswer && answerText ? (
                 <div
-                  ref={answerRef}
+                  key={`answer-${questionIndex}`}
+                  aria-live="polite"
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: "1rem",
+                    flex: 1,
+                    minHeight: 0,
                     width: "100%",
-                    alignItems: "stretch",
+                    padding: "0.8rem",
+                    boxSizing: "border-box",
+                    animationName: "qaResultReveal",
+                    animationDuration: "220ms",
+                    animationTimingFunction: "ease-out",
+                    animationFillMode: "both",
                   }}
                 >
                   <div
+                    id="qa-result-content"
                     style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "1rem",
+                      flex: 1,
+                      minHeight: 0,
+                      paddingRight: showDetails ? "0.35rem" : 0,
+                      overflowX: "hidden",
+                      overflowY: showDetails ? "auto" : "hidden",
+                      overscrollBehavior: "contain",
                       fontSize: "0.9rem",
                       color: "var(--text-color)",
-                      minWidth: 0,
                     }}
                   >
-                    <ReactMarkdown>{answerText}</ReactMarkdown>
+                    <div style={{ minWidth: 0 }}>
+                      <ReactMarkdown>
+                        {showDetails ? answerText : answerSummary}
+                      </ReactMarkdown>
+                    </div>
+                    {showDetails ? (
+                      <StructuredReceiptSummary receipts={structuredReceipts} />
+                    ) : null}
+                    <ReceiptEvidenceStack
+                      receipts={evidenceReceipts}
+                      isVisible={isVisible}
+                    />
                   </div>
-                  <StructuredReceiptSummary receipts={structuredReceipts} />
-                  <ReceiptEvidenceStack
-                    receipts={evidenceReceipts}
-                    isVisible={isVisible}
-                  />
+
+                  {answerText !== answerSummary ||
+                  structuredReceipts.length > 0 ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        paddingTop: "0.65rem",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        data-testid="qa-result-details-toggle"
+                        aria-expanded={showDetails}
+                        aria-controls="qa-result-content"
+                        onClick={() => setShowDetails((current) => !current)}
+                        style={{
+                          padding: "0.4rem 0.65rem",
+                          border:
+                            "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.24)",
+                          borderRadius: "999px",
+                          backgroundColor: "transparent",
+                          color: "var(--text-color)",
+                          fontFamily: "inherit",
+                          fontSize: "0.72rem",
+                          fontWeight: 650,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {showDetails ? "Show summary" : "View full answer"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </animated.div>
+              ) : (
+                <div
+                  aria-live="polite"
+                  style={{
+                    display: "grid",
+                    flex: 1,
+                    placeItems: "center",
+                    minHeight: 0,
+                    padding: "1rem",
+                    textAlign: "center",
+                    opacity: 0.46,
+                  }}
+                >
+                  <div>
+                    <strong
+                      style={{ display: "block", marginBottom: "0.35rem" }}
+                    >
+                      Tracing your question
+                    </strong>
+                    <span style={{ fontSize: "0.76rem" }}>
+                      The completed answer and its receipt evidence will appear
+                      here.
+                    </span>
+                  </div>
+                </div>
+              )}
+              <style>{`
+                @keyframes qaResultReveal {
+                  from { opacity: 0; transform: translateY(4px); }
+                  to { opacity: 1; transform: translateY(0); }
+                }
+
+                @media (prefers-reduced-motion: reduce) {
+                  [data-testid="qa-result-frame"] > [aria-live="polite"] {
+                    animation-duration: 1ms !important;
+                  }
+                }
+              `}</style>
+            </section>
           </div>
         );
       })()}

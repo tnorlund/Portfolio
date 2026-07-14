@@ -160,9 +160,100 @@ test.describe("QAAgentFlow", () => {
       evidence.getByAltText("Neighborhood Market receipt"),
     ).toHaveAttribute("src", /evidence-receipt-a\.jpg$/);
 
+    await page.getByRole("button", { name: "View full answer" }).click();
     await expect(page.getByText("Structured receipts")).toBeVisible();
     await expect(page.getByText("Organic Milk")).toBeVisible();
     await expect(page.getByText("$6.49")).toBeVisible();
+  });
+
+  test("keeps the result frame stable while revealing and expanding the answer", async ({
+    page,
+  }) => {
+    const longAnswerQuestion = {
+      ...mockQAQuestions[0],
+      trace: mockQAQuestions[0].trace.map((step) =>
+        step.type === "synthesize"
+          ? {
+              ...step,
+              content: [
+                "You spent $42.00 on groceries.",
+                "",
+                "## Breakdown",
+                "",
+                "- Neighborhood Market: $18.25",
+                "- Corner Grocer: $13.75",
+                "- Farmers Market: $10.00",
+                "",
+                "This longer explanation verifies that result content does not resize the outer visualization when it appears.",
+              ].join("\n"),
+            }
+          : step,
+      ),
+    };
+
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("index")
+            ? { questions: [longAnswerQuestion] }
+            : { metadata: { total_questions: 1 }, questions: [] },
+        ),
+      });
+    });
+
+    await page.goto("/receipt?receiptMotionScale=0.5");
+    await expect(
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
+    await qaHeading.scrollIntoViewIfNeeded();
+
+    const resultFrame = page.getByTestId("qa-result-frame");
+    await expect(resultFrame).toBeVisible();
+    await expect(resultFrame.getByText("Answer pending")).toBeVisible();
+    await resultFrame.scrollIntoViewIfNeeded();
+
+    const beforeReveal = await resultFrame.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollY: window.scrollY,
+    }));
+
+    await expect(
+      resultFrame.getByText("You spent $42.00 on groceries.", {
+        exact: false,
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const afterReveal = await resultFrame.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollY: window.scrollY,
+    }));
+    expect(Math.abs(afterReveal.height - beforeReveal.height)).toBeLessThan(1);
+    expect(Math.abs(afterReveal.scrollY - beforeReveal.scrollY)).toBeLessThan(
+      2,
+    );
+
+    const detailsButton = resultFrame.getByTestId("qa-result-details-toggle");
+    await detailsButton.scrollIntoViewIfNeeded();
+    const beforeExpandScrollY = await page.evaluate(() => window.scrollY);
+    await detailsButton.evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+    await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
+    await expect(resultFrame.getByText("Structured receipts")).toBeVisible();
+
+    const afterExpand = await resultFrame.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollY: window.scrollY,
+    }));
+    expect(Math.abs(afterExpand.height - beforeReveal.height)).toBeLessThan(1);
+    expect(Math.abs(afterExpand.scrollY - beforeExpandScrollY)).toBeLessThan(
+      2,
+    );
   });
 
   test("renders concurrent tool calls on parallel timeline lanes", async ({
