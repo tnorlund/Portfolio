@@ -46,6 +46,7 @@ from receipt_upload.receipt_processing.photo import process_photo
 from receipt_upload.receipt_processing.rows import persist_receipt_rows
 from receipt_upload.receipt_processing.scan import process_scan
 from receipt_upload.route_images import classify_image_layout
+from receipt_upload.typeface_fingerprint import persist_receipt_fingerprint
 from receipt_upload.utils import (
     download_file_from_s3,
     download_image_from_s3,
@@ -213,12 +214,31 @@ class OCRProcessor:
             refine_receipt,
         )
 
+        receipt_image = None
+        try:
+            receipt = self.dynamo.get_receipt(
+                ocr_job.image_id, ocr_job.receipt_id
+            )
+            receipt_path = download_image_from_s3(
+                receipt.raw_s3_bucket,
+                receipt.raw_s3_key,
+                ocr_job.image_id,
+                unique_suffix=f"receipt-{ocr_job.receipt_id}",
+            )
+            receipt_image = PIL_Image.open(receipt_path).copy()
+        except (ClientError, OSError, ValueError):
+            logger.warning(
+                "Receipt crop unavailable for refinement fingerprint",
+                exc_info=True,
+            )
+
         refine_receipt(
             dynamo_table_name=self.table_name,
             receipt_lines=receipt_lines,
             receipt_words=receipt_words,
             receipt_letters=receipt_letters,
             ocr_routing_decision=ocr_routing_decision,
+            receipt_image=receipt_image,
         )
 
         return {
@@ -1436,6 +1456,9 @@ class OCRProcessor:
                 persist_receipt_rows(self.dynamo, receipt_lines, receipt_words)
             if receipt_letters:
                 self.dynamo.add_receipt_letters(receipt_letters)
+                persist_receipt_fingerprint(
+                    self.dynamo, crop_image, receipt_letters
+                )
 
             # Barcodes / QR codes detected on the warped receipt crop.
             receipt_barcodes = self._parse_receipt_barcodes_from_swift(

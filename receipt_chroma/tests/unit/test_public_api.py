@@ -7,7 +7,11 @@ from receipt_chroma import (
     ChromaClient,
     LockManager,
     Propagation,
+    TypefaceFingerprint,
+    clean_letter_mask,
+    match_typeface,
     propagate_knn,
+    shifted_iou,
 )
 from receipt_chroma.compaction import (
     CloudConfig,
@@ -60,7 +64,17 @@ from receipt_chroma.embedding.orchestration import (
 from receipt_chroma.embedding.orchestration import (
     upload_words_delta as internal_upload_words_delta,
 )
+from receipt_chroma.glyph_matching import (
+    clean_letter_mask as internal_clean_letter_mask,
+)
+from receipt_chroma.glyph_matching import shifted_iou as internal_shifted_iou
 from receipt_chroma.lock_manager import LockManager as InternalLockManager
+from receipt_chroma.merchant_fingerprint import (
+    TypefaceFingerprint as InternalTypefaceFingerprint,
+)
+from receipt_chroma.merchant_fingerprint import (
+    match_typeface as internal_match_typeface,
+)
 from receipt_chroma.s3 import upload_snapshot_with_hash
 from receipt_chroma.s3.helpers import (
     upload_snapshot_with_hash as internal_upload_snapshot_with_hash,
@@ -84,6 +98,15 @@ def test_public_section_propagation_exports_match_implementations() -> None:
 
     assert Propagation is InternalPropagation
     assert propagate_knn is internal_propagate_knn
+
+
+def test_public_typeface_exports_match_implementations() -> None:
+    """Upload callers use the stable root facade for glyph matching."""
+
+    assert TypefaceFingerprint is InternalTypefaceFingerprint
+    assert clean_letter_mask is internal_clean_letter_mask
+    assert match_typeface is internal_match_typeface
+    assert shifted_iou is internal_shifted_iou
 
 
 def test_compaction_facade_exports_match_implementations() -> None:
@@ -159,6 +182,8 @@ def test_external_runtime_callers_use_public_facades() -> None:
         "receipt_chroma.embedding.openai.realtime",
         "receipt_chroma.embedding.orchestration",
         "receipt_chroma.embedding.utils.normalize",
+        "receipt_chroma.glyph_matching",
+        "receipt_chroma.merchant_fingerprint",
         "receipt_chroma.s3.helpers",
     }
     violations = []

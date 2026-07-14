@@ -2,6 +2,16 @@
 
 from typing import TYPE_CHECKING, Any
 
+from receipt_chroma.glyph_matching import (
+    clean_letter_mask,
+    normalize_glyph,
+    shifted_iou,
+    shifted_iou_stack,
+)
+from receipt_chroma.merchant_fingerprint import (
+    TypefaceFingerprint,
+    match_typeface,
+)
 from receipt_chroma.section_propagation import Propagation, propagate_knn
 
 __version__ = "0.2.0"
@@ -15,7 +25,13 @@ __all__ = [
     "ChromaClient",
     "LockManager",
     "Propagation",
+    "TypefaceFingerprint",
+    "clean_letter_mask",
+    "match_typeface",
+    "normalize_glyph",
     "propagate_knn",
+    "shifted_iou",
+    "shifted_iou_stack",
 ]
 
 

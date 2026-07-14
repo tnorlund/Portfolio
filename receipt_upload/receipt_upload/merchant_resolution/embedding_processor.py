@@ -70,6 +70,7 @@ from receipt_upload.merchant_resolution.resolver import (
 from receipt_upload.merchant_resolution.resolver import (
     redact_pii as _redact_pii,
 )
+from receipt_upload.typeface_fingerprint import crosscheck_places
 
 logger = logging.getLogger(__name__)
 
@@ -1543,6 +1544,12 @@ class MerchantResolvingEmbeddingProcessor:
             else:
                 _log("No merchant found - receipt will not be enriched")
 
+            self._crosscheck_typeface_fingerprint(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                merchant_result=merchant_result,
+            )
+
             _log("Phase 4 complete: logged merchant + enriched receipt")
 
         except Exception as e:
@@ -1575,6 +1582,29 @@ class MerchantResolvingEmbeddingProcessor:
             "merchant_confidence": merchant_result.confidence,
             **validation_stats,
         }
+
+    def _crosscheck_typeface_fingerprint(
+        self,
+        image_id: str,
+        receipt_id: int,
+        merchant_result: MerchantResult,
+    ) -> None:
+        """Record Places agreement without changing either proposal."""
+        try:
+            fingerprint = self.dynamo.get_receipt_typeface_fingerprint(
+                image_id, receipt_id
+            )
+        except Exception:  # fingerprint is additive for older receipts
+            return
+        places_name = None
+        try:
+            place = self.dynamo.get_receipt_place(image_id, receipt_id)
+            places_name = place.merchant_name
+        except Exception:
+            if merchant_result.place_id:
+                places_name = merchant_result.merchant_name
+        crosscheck_places(fingerprint, places_name)
+        self.dynamo.put_receipt_typeface_fingerprint(fingerprint)
 
     def _enrich_receipt_place(
         self,

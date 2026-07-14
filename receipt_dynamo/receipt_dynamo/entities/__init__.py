@@ -163,6 +163,10 @@ from receipt_dynamo.entities.receipt_summary_record import (
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
     ReceiptTextGeometryEntity,
 )
+from receipt_dynamo.entities.receipt_typeface_fingerprint import (
+    ReceiptTypefaceFingerprint,
+    item_to_receipt_typeface_fingerprint,
+)
 from receipt_dynamo.entities.receipt_validation_category import (  # noqa: F401
     ReceiptValidationCategory,
     item_to_receipt_validation_category,
@@ -215,6 +219,7 @@ __all__ = [
     # Base classes and mixins
     "TextGeometryEntity",
     "ReceiptTextGeometryEntity",
+    "ReceiptTypefaceFingerprint",
     "GeometryEntity",  # Backwards compatibility alias
     "ImageIdentifierMixin",
     "ImageLineIdentifierMixin",
@@ -330,6 +335,7 @@ __all__ = [
     "item_to_receipt_place",
     "item_to_receipt_row",
     "item_to_receipt_section",
+    "item_to_receipt_typeface_fingerprint",
     "validate_section_row_coverage",
     "item_to_receipt_structure_analysis",
     "item_to_receipt_validation_category",
