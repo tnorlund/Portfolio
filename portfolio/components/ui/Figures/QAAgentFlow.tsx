@@ -95,12 +95,16 @@ interface ReceiptEvidenceThumbnailProps {
   receipt: ReceiptEvidence;
   index: number;
   isVisible: boolean;
+  overlapRatio: number;
 }
+
+const EVIDENCE_THUMBNAIL_HEIGHT = 154;
 
 const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
   receipt,
   index,
   isVisible,
+  overlapRatio,
 }) => {
   const initialUrl = getCdnUrl(receipt.thumbnailKey);
   const fallbackUrl = getReceiptJpegFallbackUrl(receipt.thumbnailKey);
@@ -122,6 +126,11 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
 
   const rotation = ((index % 5) - 2) * 1.8;
   const merchant = receipt.merchant || "Unknown merchant";
+  const sourceWidth = receipt.width > 0 ? receipt.width : 300;
+  const sourceHeight = receipt.height > 0 ? receipt.height : 900;
+  const thumbnailWidth =
+    EVIDENCE_THUMBNAIL_HEIGHT * (sourceWidth / sourceHeight);
+  const overlap = Math.round(thumbnailWidth * overlapRatio);
   const evidenceDetail = [
     receipt.item,
     Number.isFinite(receipt.amount)
@@ -138,15 +147,15 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
       style={
         {
           position: "relative",
-          width: "76px",
-          minWidth: "42px",
-          height: "154px",
-          flex: "0 1 76px",
-          marginLeft: index === 0 ? 0 : "-24px",
+          width: `${thumbnailWidth}px`,
+          minWidth: `${thumbnailWidth}px`,
+          height: `${EVIDENCE_THUMBNAIL_HEIGHT}px`,
+          flex: `0 0 ${thumbnailWidth}px`,
+          marginLeft: index === 0 ? 0 : `-${overlap}px`,
           zIndex: index + 1,
-          border: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.24)",
+          border: 0,
           borderRadius: "3px",
-          backgroundColor: "var(--background-color)",
+          backgroundColor: "transparent",
           boxShadow: "0 5px 16px rgba(0, 0, 0, 0.2)",
           overflow: "hidden",
           opacity: 0,
@@ -183,9 +192,9 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
         <Image
           src={currentUrl}
           alt={`${merchant} receipt`}
-          width={receipt.width > 0 ? receipt.width : 300}
-          height={receipt.height > 0 ? receipt.height : 900}
-          sizes="76px"
+          width={sourceWidth}
+          height={sourceHeight}
+          sizes={`${Math.ceil(thumbnailWidth)}px`}
           loading={index < 3 ? "eager" : "lazy"}
           style={{
             width: "100%",
@@ -214,6 +223,7 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
 
   const visibleReceipts = receipts.slice(0, MAX_EVIDENCE_THUMBNAILS);
   const hiddenCount = receipts.length - visibleReceipts.length;
+  const overlapRatio = visibleReceipts.length > 5 ? 0.48 : 0.28;
   const receiptLabel = `${receipts.length} ${
     receipts.length === 1 ? "receipt" : "receipts"
   }`;
@@ -274,6 +284,7 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
             receipt={receipt}
             index={index}
             isVisible={isVisible}
+            overlapRatio={overlapRatio}
           />
         ))}
       </div>

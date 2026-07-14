@@ -163,6 +163,25 @@ test.describe("QAAgentFlow", () => {
       evidence.getByAltText("Neighborhood Market receipt"),
     ).toHaveCSS("object-fit", "contain");
 
+    const thumbnailFrames = await evidence
+      .getByRole("listitem")
+      .evaluateAll((frames) =>
+        frames.map((frame) => {
+          const style = getComputedStyle(frame);
+          return {
+            aspectRatio: frame.clientWidth / frame.clientHeight,
+            backgroundColor: style.backgroundColor,
+            borderWidth: style.borderTopWidth,
+          };
+        }),
+      );
+    expect(thumbnailFrames).toHaveLength(2);
+    for (const frame of thumbnailFrames) {
+      expect(frame.aspectRatio).toBeCloseTo(300 / 900, 2);
+      expect(frame.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+      expect(frame.borderWidth).toBe("0px");
+    }
+
     const evidenceGeometry = await evidence.evaluate((region) => {
       const content = document.querySelector("#qa-result-content");
       const list = region.querySelector('[role="list"]');
