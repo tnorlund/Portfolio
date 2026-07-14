@@ -12,6 +12,11 @@ import pulumi_aws as aws
 from pulumi import Output
 
 import api_gateway
+from components.http_api_route import (
+    RouteDefinition,
+    create_lambda_route,
+    create_lambda_routes,
+)
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -383,33 +388,16 @@ word_similarity_lambda = create_word_similarity_lambda(
 pulumi.export("word_similarity_lambda_arn", word_similarity_lambda.arn)
 pulumi.export("word_similarity_lambda_name", word_similarity_lambda.name)
 
-# Create API Gateway route for word_similarity
-if hasattr(api_gateway, "api"):
-    integration_word_similarity = aws.apigatewayv2.Integration(
-        "word_similarity_lambda_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=word_similarity_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_word_similarity = aws.apigatewayv2.Route(
-        "word_similarity_route",
-        api_id=api_gateway.api.id,
-        route_key="GET /word_similarity",
-        target=integration_word_similarity.id.apply(lambda id: f"integrations/{id}"),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    lambda_permission_word_similarity = aws.lambda_.Permission(
-        "word_similarity_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=word_similarity_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-    )
+# This Lambda is created after the cache bucket, so its API route is registered
+# here rather than in api_gateway's static route manifest.
+create_lambda_route(
+    api=api_gateway.api,
+    integration_name="word_similarity_lambda_integration",
+    route_name="word_similarity_route",
+    route_key="GET /word_similarity",
+    lambda_function=word_similarity_lambda,
+    permission_name="word_similarity_lambda_permission",
+)
 
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
@@ -584,81 +572,31 @@ if layoutlm_training_bucket_name is not None:
     )
     epochs_module.layoutlm_epochs_lambda = layoutlm_epochs_lambda
 
-    # Create API Gateway route for layoutlm_inference
-    # This must be done here after Lambda is created, not in api_gateway.py
-    # because api_gateway.py is imported before the Lambda exists
-    import api_gateway
-
-    if hasattr(api_gateway, "api"):
-        integration_layoutlm_inference = aws.apigatewayv2.Integration(
-            "layoutlm_inference_lambda_integration",
-            api_id=api_gateway.api.id,
-            integration_type="AWS_PROXY",
-            integration_uri=layoutlm_inference_lambda.invoke_arn,
-            integration_method="POST",
-            payload_format_version="2.0",
-        )
-        route_layoutlm_inference = aws.apigatewayv2.Route(
-            "layoutlm_inference_route",
-            api_id=api_gateway.api.id,
-            route_key="GET /layoutlm_inference",
-            target=integration_layoutlm_inference.id.apply(
-                lambda id: f"integrations/{id}"
+    # These routes are late-bound because the model and cache buckets determine
+    # whether their Lambda functions exist for this stack.
+    create_lambda_routes(
+        api=api_gateway.api,
+        integration_name="layoutlm_inference_lambda_integration",
+        lambda_function=layoutlm_inference_lambda,
+        routes=(
+            RouteDefinition(
+                "layoutlm_inference_route", "GET /layoutlm_inference"
             ),
-            opts=pulumi.ResourceOptions(
-                replace_on_changes=["route_key", "target"],
-                delete_before_replace=True,
+            RouteDefinition(
+                "layoutlm_inference_cache_route",
+                "GET /layoutlm-inference-cache",
             ),
-        )
-        # Also add alias route with hyphens for convenience
-        route_layoutlm_inference_cache = aws.apigatewayv2.Route(
-            "layoutlm_inference_cache_route",
-            api_id=api_gateway.api.id,
-            route_key="GET /layoutlm-inference-cache",
-            target=integration_layoutlm_inference.id.apply(
-                lambda id: f"integrations/{id}"
-            ),
-            opts=pulumi.ResourceOptions(
-                replace_on_changes=["route_key", "target"],
-                delete_before_replace=True,
-            ),
-        )
-        lambda_permission_layoutlm_inference = aws.lambda_.Permission(
-            "layoutlm_inference_lambda_permission",
-            action="lambda:InvokeFunction",
-            function=layoutlm_inference_lambda.name,
-            principal="apigateway.amazonaws.com",
-            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-        )
-
-        # Route for the per-epoch evaluation API.
-        integration_layoutlm_epochs = aws.apigatewayv2.Integration(
-            "layoutlm_epochs_lambda_integration",
-            api_id=api_gateway.api.id,
-            integration_type="AWS_PROXY",
-            integration_uri=layoutlm_epochs_lambda.invoke_arn,
-            integration_method="POST",
-            payload_format_version="2.0",
-        )
-        route_layoutlm_epochs = aws.apigatewayv2.Route(
-            "layoutlm_epochs_route",
-            api_id=api_gateway.api.id,
-            route_key="GET /layoutlm_epochs",
-            target=integration_layoutlm_epochs.id.apply(
-                lambda id: f"integrations/{id}"
-            ),
-            opts=pulumi.ResourceOptions(
-                replace_on_changes=["route_key", "target"],
-                delete_before_replace=True,
-            ),
-        )
-        lambda_permission_layoutlm_epochs = aws.lambda_.Permission(
-            "layoutlm_epochs_lambda_permission",
-            action="lambda:InvokeFunction",
-            function=layoutlm_epochs_lambda.name,
-            principal="apigateway.amazonaws.com",
-            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-        )
+        ),
+        permission_name="layoutlm_inference_lambda_permission",
+    )
+    create_lambda_route(
+        api=api_gateway.api,
+        integration_name="layoutlm_epochs_lambda_integration",
+        route_name="layoutlm_epochs_route",
+        route_key="GET /layoutlm_epochs",
+        lambda_function=layoutlm_epochs_lambda,
+        permission_name="layoutlm_epochs_lambda_permission",
+    )
 
     pulumi.export(
         "layoutlm_inference_cache_bucket",
@@ -1589,35 +1527,14 @@ label_validation_timeline_lambda = create_label_validation_timeline_lambda(
     cache_bucket_name=timeline_cache_bucket.id,
 )
 
-# Create API Gateway route for label_validation_timeline
-if hasattr(api_gateway, "api"):
-    integration_label_validation_timeline = aws.apigatewayv2.Integration(
-        "label_validation_timeline_lambda_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=label_validation_timeline_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_label_validation_timeline = aws.apigatewayv2.Route(
-        "label_validation_timeline_route",
-        api_id=api_gateway.api.id,
-        route_key="GET /label_validation_timeline",
-        target=integration_label_validation_timeline.id.apply(
-            lambda id: f"integrations/{id}"
-        ),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    lambda_permission_label_validation_timeline = aws.lambda_.Permission(
-        "label_validation_timeline_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=label_validation_timeline_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-    )
+create_lambda_route(
+    api=api_gateway.api,
+    integration_name="label_validation_timeline_lambda_integration",
+    route_name="label_validation_timeline_route",
+    route_key="GET /label_validation_timeline",
+    lambda_function=label_validation_timeline_lambda,
+    permission_name="label_validation_timeline_lambda_permission",
+)
 
 pulumi.export("label_validation_timeline_cache_bucket", timeline_cache_bucket.id)
 pulumi.export(
@@ -1643,31 +1560,13 @@ if hasattr(api_gateway, "api"):
         label_evaluator_shared.viz_cache_bucket_name,
     )
 
-    # Label evaluator visualization endpoint
-    integration_viz = aws.apigatewayv2.Integration(
-        "label_evaluator_viz_cache_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_viz = aws.apigatewayv2.Route(
-        "label_evaluator_viz_cache_route",
-        api_id=api_gateway.api.id,
+    create_lambda_route(
+        api=api_gateway.api,
+        integration_name="label_evaluator_viz_cache_integration",
+        route_name="label_evaluator_viz_cache_route",
         route_key="GET /label_evaluator/visualization",
-        target=integration_viz.id.apply(lambda id: f"integrations/{id}"),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    aws.lambda_.Permission(
-        "label_evaluator_viz_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=label_evaluator_viz_cache.api_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+        lambda_function=label_evaluator_viz_cache.api_lambda,
+        permission_name="label_evaluator_viz_lambda_permission",
     )
 
     # Additional label evaluator visualization endpoints (same Lambda, different paths)
@@ -1682,45 +1581,23 @@ if hasattr(api_gateway, "api"):
         "receipt_health",
         "receipt_health_issues",
     ]:
-        _integration = aws.apigatewayv2.Integration(
-            f"label_evaluator_{viz_name}_integration",
-            api_id=api_gateway.api.id,
-            integration_type="AWS_PROXY",
-            integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
-            integration_method="POST",
-            payload_format_version="2.0",
-        )
-        aws.apigatewayv2.Route(
-            f"label_evaluator_{viz_name}_route",
-            api_id=api_gateway.api.id,
+        create_lambda_route(
+            api=api_gateway.api,
+            integration_name=f"label_evaluator_{viz_name}_integration",
+            route_name=f"label_evaluator_{viz_name}_route",
             route_key=f"GET /label_evaluator/{viz_name}",
-            target=_integration.id.apply(lambda id: f"integrations/{id}"),
-            opts=pulumi.ResourceOptions(
-                replace_on_changes=["route_key", "target"],
-                delete_before_replace=True,
-            ),
+            lambda_function=label_evaluator_viz_cache.api_lambda,
         )
 
-    receipt_health_issues_post_integration = aws.apigatewayv2.Integration(
-        "label_evaluator_receipt_health_issues_post_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    aws.apigatewayv2.Route(
-        "label_evaluator_receipt_health_issues_post_route",
-        api_id=api_gateway.api.id,
+    create_lambda_route(
+        api=api_gateway.api,
+        integration_name=(
+            "label_evaluator_receipt_health_issues_post_integration"
+        ),
+        route_name="label_evaluator_receipt_health_issues_post_route",
         route_key="POST /label_evaluator/receipt_health_issues",
+        lambda_function=label_evaluator_viz_cache.api_lambda,
         authorization_type="AWS_IAM",
-        target=receipt_health_issues_post_integration.id.apply(
-            lambda id: f"integrations/{id}"
-        ),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
     )
 
     # Label Validation Visualization Cache (uses label_validation_project_name)
@@ -1751,33 +1628,13 @@ if hasattr(api_gateway, "api"):
         label_validation_viz_cache.step_function.arn,
     )
 
-    # Label validation visualization endpoint
-    integration_label_validation_viz = aws.apigatewayv2.Integration(
-        "label_validation_viz_cache_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=label_validation_viz_cache.api_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_label_validation_viz = aws.apigatewayv2.Route(
-        "label_validation_viz_cache_route",
-        api_id=api_gateway.api.id,
+    create_lambda_route(
+        api=api_gateway.api,
+        integration_name="label_validation_viz_cache_integration",
+        route_name="label_validation_viz_cache_route",
         route_key="GET /label_validation/visualization",
-        target=integration_label_validation_viz.id.apply(
-            lambda id: f"integrations/{id}"
-        ),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    aws.lambda_.Permission(
-        "label_validation_viz_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=label_validation_viz_cache.api_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+        lambda_function=label_validation_viz_cache.api_lambda,
+        permission_name="label_validation_viz_lambda_permission",
     )
 
 # QA Agent Step Function pipeline
@@ -1811,29 +1668,11 @@ if hasattr(api_gateway, "api"):
     )
     pulumi.export("qa_viz_cache_bucket", qa_agent_sf.batch_bucket_name)
 
-    # QA visualization endpoint
-    integration_qa_viz = aws.apigatewayv2.Integration(
-        "qa_viz_cache_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=qa_viz_cache.api_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_qa_viz = aws.apigatewayv2.Route(
-        "qa_viz_cache_route",
-        api_id=api_gateway.api.id,
+    create_lambda_route(
+        api=api_gateway.api,
+        integration_name="qa_viz_cache_integration",
+        route_name="qa_viz_cache_route",
         route_key="GET /qa/visualization",
-        target=integration_qa_viz.id.apply(lambda id: f"integrations/{id}"),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    aws.lambda_.Permission(
-        "qa_viz_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=qa_viz_cache.api_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+        lambda_function=qa_viz_cache.api_lambda,
+        permission_name="qa_viz_lambda_permission",
     )
