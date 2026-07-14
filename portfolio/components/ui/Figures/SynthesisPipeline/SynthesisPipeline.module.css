@@ -559,9 +559,11 @@
 .assembleSide {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
-  max-width: min(300px, 42%);
+  width: 180px;
+  max-width: 42%;
+  flex-shrink: 0;
   animation: side-in 0.5s ease both;
 }
 
@@ -866,6 +868,7 @@
   .assembleSide {
     max-width: 100%;
     width: 100%;
+    align-items: center;
   }
 
   /* Finale: swap the two corner badges (which collide on narrow cards) for a

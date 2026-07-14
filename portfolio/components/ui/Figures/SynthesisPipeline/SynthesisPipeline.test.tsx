@@ -382,6 +382,10 @@ describe("SynthesisPipeline (reduced motion)", () => {
     );
     // The caption was dropped — the boxes + legend carry the act.
     expect(screen.queryByTestId("labels-counter")).not.toBeInTheDocument();
+    const legend = screen.getByLabelText("Label families");
+    expect(legend).toHaveTextContent("Date / Time");
+    expect(legend).toHaveTextContent("Charges");
+    expect(legend).toHaveTextContent("Hours / Pay");
   });
 
   test("assemble label boxes use the LayoutLM LABEL_COLORS + stroke styling", async () => {
