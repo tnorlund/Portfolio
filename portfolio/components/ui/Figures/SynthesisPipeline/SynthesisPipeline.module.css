@@ -508,10 +508,10 @@
   mask-mode: alpha;
   mask-repeat: no-repeat;
   mask-position: center;
-  mask-size: 100% 100%;
+  mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
-  -webkit-mask-size: 100% 100%;
+  -webkit-mask-size: contain;
 }
 
 /* ==== Act 6: the receipt assembles (typing + LayoutLM boxes) ========= */

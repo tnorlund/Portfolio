@@ -547,6 +547,7 @@ const WholeFontAct: React.FC<ActProps> = ({
           glyphMetric,
           assets.fontMetrics?.capHeight,
         );
+        const maskSize = metricStyle ? "100% 100%" : "contain";
         return (
           <div
             key={cp}
@@ -565,6 +566,8 @@ const WholeFontAct: React.FC<ActProps> = ({
               style={{
                 WebkitMaskImage: maskUrl,
                 maskImage: maskUrl,
+                WebkitMaskSize: maskSize,
+                maskSize,
                 ...metricStyle,
               }}
               aria-hidden="true"

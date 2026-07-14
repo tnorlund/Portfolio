@@ -384,6 +384,21 @@ describe("SynthesisPipeline (reduced motion)", () => {
       .firstElementChild as HTMLElement;
     const style = glyph.getAttribute("style") || "";
     expect(style).toMatch(/mask-image:\s*url\([^)]*font_grid[^)]*\.png/);
+    expect(style).toMatch(/mask-size:\s*100% 100%/);
+  });
+
+  test("atlas fallback keeps glyph masks proportional while metrics load", () => {
+    global.fetch = jest.fn(
+      () => new Promise<Response>(() => {}),
+    ) as jest.Mock;
+
+    render(<SynthesisPipeline />);
+
+    const glyph = screen
+      .getAllByTestId("font-cell")[0]
+      .firstElementChild as HTMLElement;
+    const style = glyph.getAttribute("style") || "";
+    expect(style).toMatch(/mask-size:\s*contain/);
   });
 
   test("atlas glyphs preserve receipt-relative cap height and baseline", async () => {
