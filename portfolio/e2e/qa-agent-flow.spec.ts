@@ -2,6 +2,7 @@ import { expect, test, devices } from "@playwright/test";
 
 import {
   mockQAMetadata,
+  mockParallelQAQuestion,
   mockQAQuestions,
   MOCK_ANSWERS,
   EXAMPLE_TRACE_ANSWER,
@@ -31,7 +32,7 @@ test.describe("QAAgentFlow", () => {
           `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
             <rect width="300" height="400" fill="#e8e8e8"/>
             <text x="150" y="200" text-anchor="middle" fill="#666" font-family="sans-serif" font-size="12">Mock</text>
-          </svg>`
+          </svg>`,
         ),
       });
     });
@@ -43,7 +44,7 @@ test.describe("QAAgentFlow", () => {
         body: Buffer.from(
           `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
             <rect width="300" height="400" fill="#e8e8e8"/>
-          </svg>`
+          </svg>`,
         ),
       });
     });
@@ -91,27 +92,112 @@ test.describe("QAAgentFlow", () => {
 
     // Wait for page to be ready
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Scroll to the QA section
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Wait for one of the real mock answers to appear (not the EXAMPLE_TRACE)
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });
 
     // The EXAMPLE_TRACE answer should NOT be visible
     await expect(
-      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false })
+      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false }),
     ).not.toBeVisible();
+  });
+
+  test("renders deduplicated receipt evidence with image fallback", async ({
+    page,
+  }) => {
+    await page.route("**/assets/evidence-receipt-a.webp", async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("index")
+            ? { questions: [mockQAQuestions[0]] }
+            : { metadata: { total_questions: 1 }, questions: [] },
+        ),
+      });
+    });
+
+    await page.goto("/receipt");
+    await expect(
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
+    await qaHeading.scrollIntoViewIfNeeded();
+    await expect(page.getByText(MOCK_ANSWERS[0], { exact: false })).toBeVisible(
+      { timeout: 30_000 },
+    );
+
+    const evidence = page.getByRole("region", {
+      name: "Receipt evidence",
+    });
+    await expect(evidence).toBeVisible();
+    await expect(
+      evidence.getByText("2 receipts", { exact: true }),
+    ).toBeVisible();
+    await expect(evidence.locator("img")).toHaveCount(2);
+    await expect(
+      evidence.getByAltText("Neighborhood Market receipt"),
+    ).toHaveAttribute("src", /evidence-receipt-a\.jpg$/);
+
+    await expect(page.getByText("Structured receipts")).toBeVisible();
+    await expect(page.getByText("Organic Milk")).toBeVisible();
+    await expect(page.getByText("$6.49")).toBeVisible();
+  });
+
+  test("renders concurrent tool calls on parallel timeline lanes", async ({
+    page,
+  }) => {
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("index")
+            ? { questions: [mockParallelQAQuestion] }
+            : { metadata: { total_questions: 1 }, questions: [] },
+        ),
+      });
+    });
+
+    await page.goto("/receipt?receiptMotionScale=0.1");
+    await expect(
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
+    await qaHeading.scrollIntoViewIfNeeded();
+
+    await expect(page.getByTestId("parallel-tool-indicator")).toContainText(
+      "Parallel tool calls · 2 lanes",
+      { timeout: 15_000 },
+    );
+    const timeline = page.getByLabel("QA trace wall-clock timeline");
+    await expect(timeline.locator('[data-timeline-lane="1"]')).toHaveCount(1);
+    await expect(
+      timeline.getByLabel(/search_receipt_descriptions/),
+    ).toBeAttached();
   });
 
   test("answer updates when auto-advancing between questions", async ({
@@ -141,18 +227,20 @@ test.describe("QAAgentFlow", () => {
 
     await page.goto("/receipt");
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Wait for the first answer to appear
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });
@@ -164,7 +252,7 @@ test.describe("QAAgentFlow", () => {
 
     // Wait for that first answer to disappear (cycle reset)
     await expect(
-      page.getByText(firstAnswer!, { exact: false })
+      page.getByText(firstAnswer!, { exact: false }),
     ).not.toBeVisible({ timeout: 30_000 });
 
     // Wait for a different answer to appear
@@ -173,7 +261,7 @@ test.describe("QAAgentFlow", () => {
       hasText: new RegExp(
         otherAnswers
           .map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-          .join("|")
+          .join("|"),
       ),
     });
     await expect(otherAnswerLocator.first()).toBeVisible({ timeout: 60_000 });
@@ -253,10 +341,12 @@ test.describe("QAAgentFlow", () => {
 
     await page.goto("/receipt");
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Phase 1: Wait for the real answer from mock data to appear.
@@ -264,8 +354,8 @@ test.describe("QAAgentFlow", () => {
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });
@@ -280,7 +370,7 @@ test.describe("QAAgentFlow", () => {
     // The other 2 indices returned empty → not cached.
     // After first cycle, advance() hits an uncached index → null data.
     await expect(
-      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false })
+      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false }),
     ).toBeVisible({ timeout: 60_000 });
 
     // Phase 3: Wait for the EXAMPLE_TRACE cycle to complete (~26s for
@@ -299,7 +389,7 @@ test.describe("QAAgentFlow", () => {
     // If the bug is present, this assertion FAILS (answer stays stuck).
     // If the bug is fixed, the reset fires and the answer disappears.
     await expect(
-      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false })
+      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false }),
     ).not.toBeVisible({ timeout: 15_000 });
   });
 
@@ -331,18 +421,20 @@ test.describe("QAAgentFlow", () => {
 
     await page.goto("/receipt");
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Wait for the component to render and animate through one cycle
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });

@@ -1,14 +1,19 @@
 import React from "react";
+import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import { useSpring, animated, config } from "@react-spring/web";
 import { getReceiptMotionScale } from "./ReceiptFlow/receiptFlowUtils";
 import type {
   QAQuestionData,
+  ReceiptEvidence,
   StepType,
   TraceStep,
   StructuredReceipt,
 } from "../../../hooks/qaTypes";
 import { useRevealInView } from "../../../hooks/useOptimizedInView";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
+import { getJpegFallbackUrl } from "../../../utils/imageFormat";
+import { buildTimelineLayout } from "./qaTimeline";
 
 interface QAAgentFlowProps {
   /** Whether to auto-play the animation */
@@ -21,12 +26,346 @@ interface QAAgentFlowProps {
   children?: React.ReactNode;
 }
 
+const CDN_BASE = getCdnBaseUrl();
+const MAX_EVIDENCE_THUMBNAILS = 8;
+const MAX_STRUCTURED_RECEIPTS = 4;
+const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+const getCdnUrl = (key: string): string =>
+  `${CDN_BASE}/${key.replace(/^\/+/, "")}`;
+
+const getReceiptJpegFallbackUrl = (key: string): string => {
+  const jpegKey = key.replace(/\.(?:avif|webp)$/i, ".jpg");
+  return getJpegFallbackUrl({ cdn_s3_key: jpegKey.replace(/^\/+/, "") });
+};
+
+const deduplicateReceiptEvidence = (trace: TraceStep[]): ReceiptEvidence[] => {
+  const seenImageIds = new Set<string>();
+  const receipts: ReceiptEvidence[] = [];
+
+  for (const step of trace) {
+    for (const receipt of step.receipts ?? []) {
+      if (!receipt.imageId || !receipt.thumbnailKey) continue;
+      if (seenImageIds.has(receipt.imageId)) continue;
+
+      seenImageIds.add(receipt.imageId);
+      receipts.push(receipt);
+    }
+  }
+
+  return receipts;
+};
+
+interface ReceiptEvidenceThumbnailProps {
+  receipt: ReceiptEvidence;
+  index: number;
+  isVisible: boolean;
+}
+
+const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
+  receipt,
+  index,
+  isVisible,
+}) => {
+  const initialUrl = getCdnUrl(receipt.thumbnailKey);
+  const fallbackUrl = getReceiptJpegFallbackUrl(receipt.thumbnailKey);
+  const [currentUrl, setCurrentUrl] = React.useState(initialUrl);
+  const [hasErrored, setHasErrored] = React.useState(false);
+
+  React.useEffect(() => {
+    setCurrentUrl(initialUrl);
+    setHasErrored(false);
+  }, [initialUrl]);
+
+  const handleError = React.useCallback(() => {
+    if (currentUrl !== fallbackUrl) {
+      setCurrentUrl(fallbackUrl);
+      return;
+    }
+    setHasErrored(true);
+  }, [currentUrl, fallbackUrl]);
+
+  const rotation = ((index % 5) - 2) * 1.8;
+  const merchant = receipt.merchant || "Unknown merchant";
+  const evidenceDetail = [
+    receipt.item,
+    Number.isFinite(receipt.amount)
+      ? CURRENCY_FORMATTER.format(receipt.amount)
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div
+      role="listitem"
+      title={evidenceDetail ? `${merchant}: ${evidenceDetail}` : merchant}
+      style={
+        {
+          position: "relative",
+          width: "76px",
+          minWidth: "42px",
+          height: "154px",
+          flex: "0 1 76px",
+          marginLeft: index === 0 ? 0 : "-24px",
+          zIndex: index + 1,
+          border: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.24)",
+          borderRadius: "3px",
+          backgroundColor: "var(--background-color)",
+          boxShadow: "0 5px 16px rgba(0, 0, 0, 0.2)",
+          overflow: "hidden",
+          opacity: 0,
+          "--receipt-evidence-rotation": `${rotation}deg`,
+          animation: `receiptEvidenceIn 320ms ease-out ${index * 55}ms forwards`,
+          animationPlayState: isVisible ? "running" : "paused",
+        } as React.CSSProperties
+      }
+    >
+      {hasErrored ? (
+        <div
+          aria-label={`${merchant} receipt unavailable`}
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "grid",
+            placeItems: "center",
+            padding: "0.35rem",
+            boxSizing: "border-box",
+            color: "var(--text-color)",
+            fontSize: "0.62rem",
+            lineHeight: 1.25,
+            textAlign: "center",
+            opacity: 0.65,
+          }}
+        >
+          Receipt unavailable
+        </div>
+      ) : (
+        <Image
+          src={currentUrl}
+          alt={`${merchant} receipt`}
+          width={receipt.width > 0 ? receipt.width : 300}
+          height={receipt.height > 0 ? receipt.height : 900}
+          sizes="76px"
+          loading={index < 3 ? "eager" : "lazy"}
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            objectFit: "cover",
+            objectPosition: "top",
+          }}
+          onError={handleError}
+        />
+      )}
+    </div>
+  );
+};
+
+interface ReceiptEvidenceStackProps {
+  receipts: ReceiptEvidence[];
+  isVisible: boolean;
+}
+
+const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
+  receipts,
+  isVisible,
+}) => {
+  if (receipts.length === 0) return null;
+
+  const visibleReceipts = receipts.slice(0, MAX_EVIDENCE_THUMBNAILS);
+  const hiddenCount = receipts.length - visibleReceipts.length;
+  const receiptLabel = `${receipts.length} ${
+    receipts.length === 1 ? "receipt" : "receipts"
+  }`;
+
+  return (
+    <section
+      role="region"
+      aria-label="Receipt evidence"
+      style={{
+        width: "100%",
+        paddingTop: "0.9rem",
+        borderTop: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14)",
+        color: "var(--text-color)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+          marginBottom: "0.65rem",
+        }}
+      >
+        <strong style={{ fontSize: "0.78rem" }}>Evidence</strong>
+        <span
+          style={{
+            fontFamily: "var(--font-mono, monospace)",
+            fontSize: "0.68rem",
+            opacity: 0.65,
+          }}
+        >
+          <span>{receiptLabel}</span>
+          {hiddenCount > 0 ? ` · showing ${visibleReceipts.length}` : null}
+        </span>
+      </div>
+
+      <div
+        role="list"
+        aria-label={`${receiptLabel} used as evidence`}
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          width: "100%",
+          maxWidth: "390px",
+          minHeight: "166px",
+          margin: "0 auto",
+          padding: "0.35rem 0.8rem 0.65rem",
+          boxSizing: "border-box",
+          overflow: "hidden",
+        }}
+      >
+        {visibleReceipts.map((receipt, index) => (
+          <ReceiptEvidenceThumbnail
+            key={receipt.imageId}
+            receipt={receipt}
+            index={index}
+            isVisible={isVisible}
+          />
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes receiptEvidenceIn {
+          from {
+            opacity: 0;
+            transform: rotate(var(--receipt-evidence-rotation, 0deg)) translateY(-14px);
+          }
+          to {
+            opacity: 1;
+            transform: rotate(var(--receipt-evidence-rotation, 0deg)) translateY(0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          [aria-label="Receipt evidence"] [role="listitem"] {
+            animation-duration: 1ms !important;
+            animation-delay: 0ms !important;
+          }
+        }
+      `}</style>
+    </section>
+  );
+};
+
+interface StructuredReceiptSummaryProps {
+  receipts: StructuredReceipt[];
+}
+
+const StructuredReceiptSummary: React.FC<StructuredReceiptSummaryProps> = ({
+  receipts,
+}) => {
+  if (receipts.length === 0) return null;
+
+  const visibleReceipts = receipts.slice(0, MAX_STRUCTURED_RECEIPTS);
+  const hiddenCount = receipts.length - visibleReceipts.length;
+
+  return (
+    <section aria-label="Structured receipts" style={{ width: "100%" }}>
+      <strong
+        style={{
+          display: "block",
+          marginBottom: "0.5rem",
+          color: "var(--text-color)",
+          fontSize: "0.78rem",
+        }}
+      >
+        Structured receipts
+      </strong>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: "0.5rem",
+        }}
+      >
+        {visibleReceipts.map((receipt, receiptIndex) => (
+          <div
+            key={`${receipt.merchant}-${receiptIndex}`}
+            style={{
+              padding: "0.55rem 0.65rem",
+              border: "1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14)",
+              borderRadius: "6px",
+              backgroundColor: "var(--background-color)",
+              color: "var(--text-color)",
+            }}
+          >
+            <div style={{ fontSize: "0.72rem", fontWeight: 700 }}>
+              {receipt.merchant || "Unknown merchant"}
+            </div>
+            {receipt.items.slice(0, 3).map((item, itemIndex) => (
+              <div
+                key={`${item.name}-${itemIndex}`}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "0.5rem",
+                  marginTop: "0.25rem",
+                  fontSize: "0.68rem",
+                  opacity: 0.72,
+                }}
+              >
+                <span>{item.name}</span>
+                <span>{CURRENCY_FORMATTER.format(item.amount)}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      {hiddenCount > 0 ? (
+        <div
+          style={{
+            marginTop: "0.4rem",
+            color: "var(--text-color)",
+            fontSize: "0.65rem",
+            textAlign: "right",
+            opacity: 0.58,
+          }}
+        >
+          +{hiddenCount} more
+        </div>
+      ) : null}
+    </section>
+  );
+};
+
 // Structured receipt summaries (output of shape node)
 const STRUCTURED_RECEIPTS: StructuredReceipt[] = [
-  { merchant: "Neighborhood Market", items: [{ name: "WHOLE BEAN COFFEE", amount: 15.99 }] },
-  { merchant: "La La Land", items: [{ name: "Large Americano", amount: 4.70 }, { name: "Cappuccino", amount: 5.30 }] },
+  {
+    merchant: "Neighborhood Market",
+    items: [{ name: "WHOLE BEAN COFFEE", amount: 15.99 }],
+  },
+  {
+    merchant: "La La Land",
+    items: [
+      { name: "Large Americano", amount: 4.7 },
+      { name: "Cappuccino", amount: 5.3 },
+    ],
+  },
   { merchant: "Blue Bottle", items: [{ name: "Pour Over", amount: 5.25 }] },
-  { merchant: "Le Pain Quotidien", items: [{ name: "Iced Latte", amount: 6.25 }, { name: "Iced Americano", amount: 5.00 }] },
+  {
+    merchant: "Le Pain Quotidien",
+    items: [
+      { name: "Iced Latte", amount: 6.25 },
+      { name: "Iced Americano", amount: 5.0 },
+    ],
+  },
   { merchant: "Costco", items: [{ name: "KS ESPRESSO", amount: 15.89 }] },
 ];
 
@@ -83,14 +422,53 @@ const EXAMPLE_TRACE: TraceStep[] = [
   },
 ];
 
-const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string; node: string; description: string }> = {
-  plan: { color: "var(--color-purple)", label: "Plan", icon: "📋", node: "1", description: "Classifying the question and picking a retrieval strategy" },
-  agent: { color: "var(--color-blue)", label: "Agent", icon: "🤖", node: "2", description: "Reasoning about the question and deciding which tools to call" },
-  tools: { color: "var(--color-green)", label: "Tools", icon: "🔧", node: "3", description: "Searching DynamoDB and ChromaDB for relevant receipts" },
-  shape: { color: "var(--color-orange)", label: "Shape", icon: "📊", node: "4", description: "Filtering and structuring receipt summaries for synthesis" },
-  synthesize: { color: "var(--color-red)", label: "Synthesize", icon: "✓", node: "5", description: "Composing the final answer with evidence citations" },
+const STEP_CONFIG: Record<
+  StepType,
+  {
+    color: string;
+    label: string;
+    icon: string;
+    node: string;
+    description: string;
+  }
+> = {
+  plan: {
+    color: "var(--color-purple)",
+    label: "Plan",
+    icon: "📋",
+    node: "1",
+    description: "Classifying the question and picking a retrieval strategy",
+  },
+  agent: {
+    color: "var(--color-blue)",
+    label: "Agent",
+    icon: "🤖",
+    node: "2",
+    description:
+      "Reasoning about the question and deciding which tools to call",
+  },
+  tools: {
+    color: "var(--color-green)",
+    label: "Tools",
+    icon: "🔧",
+    node: "3",
+    description: "Searching DynamoDB and ChromaDB for relevant receipts",
+  },
+  shape: {
+    color: "var(--color-orange)",
+    label: "Shape",
+    icon: "📊",
+    node: "4",
+    description: "Filtering and structuring receipt summaries for synthesis",
+  },
+  synthesize: {
+    color: "var(--color-red)",
+    label: "Synthesize",
+    icon: "✓",
+    node: "5",
+    description: "Composing the final answer with evidence citations",
+  },
 };
-
 
 /** Default step duration (ms) when durationMs is not available */
 const DEFAULT_STEP_MS = 1500;
@@ -100,8 +478,14 @@ const TARGET_TOTAL_MS = 12000;
 const MIN_STEP_MS = 600;
 /** Maximum per-step duration to prevent a single slow step dominating */
 const MAX_STEP_MS = 3500;
+const TIMELINE_LANE_HEIGHT = 24;
 
-const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete, children }) => {
+const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
+  autoPlay = true,
+  questionData,
+  onCycleComplete,
+  children,
+}) => {
   // threshold 0 (any pixel intersecting the rootMargin-expanded viewport),
   // NOT a fraction of the element: the tall intro stack makes a 10% area
   // threshold unreachable on mobile, which froze the flow on the intro and
@@ -118,6 +502,27 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
 
   // Use real data when available, fall back to example trace
   const trace = questionData?.trace ?? EXAMPLE_TRACE;
+  const timelineLayout = React.useMemo(
+    () => buildTimelineLayout(trace, DEFAULT_STEP_MS),
+    [trace],
+  );
+  const synthesizeStep = trace.find((step) => step.type === "synthesize");
+  const rawAnswer = synthesizeStep?.content ?? "";
+  const answerText =
+    rawAnswer
+      .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
+      .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
+      .trim() || undefined;
+  const evidenceReceipts = React.useMemo(
+    () => deduplicateReceiptEvidence(trace),
+    [trace],
+  );
+  const structuredReceipts = React.useMemo(
+    () =>
+      trace.find((step) => (step.structuredData?.length ?? 0) > 0)
+        ?.structuredData ?? [],
+    [trace],
+  );
 
   // Reset animation when question changes (use index to avoid stale-data issues on mobile)
   const questionIndex = questionData?.questionIndex ?? -1;
@@ -132,7 +537,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
 
   // Compute per-step animation durations from durationMs, scaled proportionally
   const stepDurations = React.useMemo(() => {
-    const hasTiming = trace.some((s) => s.durationMs != null && s.durationMs > 0);
+    const hasTiming = trace.some(
+      (s) => s.durationMs != null && s.durationMs > 0,
+    );
     if (!hasTiming) return trace.map(() => DEFAULT_STEP_MS * motionScale);
 
     const rawMs = trace.map((s) => s.durationMs ?? DEFAULT_STEP_MS);
@@ -143,8 +550,11 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     return rawMs.map((d) =>
       Math.max(
         MIN_STEP_MS * motionScale,
-        Math.min(MAX_STEP_MS * motionScale, Math.round(d * scale * motionScale)),
-      )
+        Math.min(
+          MAX_STEP_MS * motionScale,
+          Math.round(d * scale * motionScale),
+        ),
+      ),
     );
   }, [trace, motionScale]);
 
@@ -161,7 +571,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     if (activeStep >= trace.length - 1) {
       // Last step reached — reveal answer after its duration, then hold 5s
       if (!showAnswer) {
-        const id = setTimeout(() => setShowAnswer(true), stepDurations[trace.length - 1]);
+        const id = setTimeout(
+          () => setShowAnswer(true),
+          stepDurations[trace.length - 1],
+        );
         return () => clearTimeout(id);
       }
       const id = setTimeout(() => {
@@ -175,10 +588,19 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
       return () => clearTimeout(id);
     }
 
-    const delay = activeStep < 0 ? 400 * motionScale : stepDurations[activeStep];
+    const delay =
+      activeStep < 0 ? 400 * motionScale : stepDurations[activeStep];
     const id = setTimeout(() => setActiveStep((prev) => prev + 1), delay);
     return () => clearTimeout(id);
-  }, [isPlaying, activeStep, trace.length, stepDurations, showAnswer, onCycleComplete, motionScale]);
+  }, [
+    isPlaying,
+    activeStep,
+    trace.length,
+    stepDurations,
+    showAnswer,
+    onCycleComplete,
+    motionScale,
+  ]);
 
   // Measure answer content height and spring the container open
   const answerRef = React.useRef<HTMLDivElement>(null);
@@ -215,23 +637,20 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     },
   });
 
-  // Compute flame-graph bar target (cumulative width% through the current step)
-  const barWidths = React.useMemo(() => {
-    const totalMs = trace.reduce(
-      (sum, s) => sum + (s.durationMs ?? DEFAULT_STEP_MS),
-      0,
-    );
-    return trace.map((s) => {
-      const duration = s.durationMs ?? DEFAULT_STEP_MS;
-      return totalMs > 0 ? (duration / totalMs) * 100 : 100 / trace.length;
-    });
-  }, [trace]);
-
+  // Reveal the wall-clock timeline through the furthest completed step.
+  // Overlapping steps share the same x-range and occupy separate lanes.
   const barTarget = React.useMemo(() => {
     if (activeStep < 0) return 0;
     if (activeStep >= trace.length - 1) return 100;
-    return barWidths.slice(0, activeStep + 1).reduce((a, b) => a + b, 0);
-  }, [activeStep, trace.length, barWidths]);
+    const revealedEndMs = timelineLayout.segments.reduce(
+      (furthestEnd, segment) =>
+        segment.stepIndex <= activeStep
+          ? Math.max(furthestEnd, segment.endMs)
+          : furthestEnd,
+      0,
+    );
+    return (revealedEndMs / timelineLayout.totalMs) * 100;
+  }, [activeStep, trace.length, timelineLayout]);
 
   const barSpring = useSpring({
     progress: barTarget,
@@ -249,21 +668,32 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   }, [activeStep, trace]);
 
   // Determine which node is currently active
-  const activeType: StepType | null = activeStep >= 0 && activeStep < trace.length ? trace[activeStep].type : null;
+  const activeType: StepType | null =
+    activeStep >= 0 && activeStep < trace.length
+      ? trace[activeStep].type
+      : null;
   // Determine the loop phase bounds dynamically based on trace content
-  const loopEndIdx = trace.length > 0 ? trace.reduce((last, s, i) => (s.type === "agent" || s.type === "tools" ? i : last), -1) : 5;
+  const loopEndIdx =
+    trace.length > 0
+      ? trace.reduce(
+          (last, s, i) => (s.type === "agent" || s.type === "tools" ? i : last),
+          -1,
+        )
+      : 5;
   const inLoopPhase = activeStep >= 1 && activeStep <= loopEndIdx;
 
   return (
     <div
       ref={flowRef}
-      style={{
-        fontSize: "0.85rem",
-        maxWidth: "1000px",
-        margin: "0 auto",
-        padding: "0.5rem",
-        "--marquee-play-state": isVisible ? "running" : "paused",
-      } as React.CSSProperties}
+      style={
+        {
+          fontSize: "0.85rem",
+          maxWidth: "1000px",
+          margin: "0 auto",
+          padding: "0.5rem",
+          "--marquee-play-state": isVisible ? "running" : "paused",
+        } as React.CSSProperties
+      }
     >
       {/* Flame Graph Timeline + Node Diagram */}
       {(() => {
@@ -282,7 +712,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           const stepIndices = trace
             .map((s, i) => (s.type === type ? i : -1))
             .filter((i) => i >= 0);
-          const visitedCount = stepIndices.filter((i) => i <= activeStep).length;
+          const visitedCount = stepIndices.filter(
+            (i) => i <= activeStep,
+          ).length;
           const fillPercent =
             stepIndices.length > 0
               ? (visitedCount / stepIndices.length) * 100
@@ -306,10 +738,15 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const toolsX = agentX;
 
         const forwardArrows: [number, number][] = [
-          [0, 1], [1, 2], [2, 3],
+          [0, 1],
+          [1, 2],
+          [2, 3],
         ];
 
-        const isForwardArrowActive = (fromIdx: number, toIdx: number): boolean => {
+        const isForwardArrowActive = (
+          fromIdx: number,
+          toIdx: number,
+        ): boolean => {
           if (activeStep < 0) return false;
           const toType = mainNodes[toIdx];
           if (activeType !== toType) return false;
@@ -321,7 +758,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const ahHalf = Math.round(4 * S);
         const edgeGap = Math.round(4 * S);
 
-        const angle = 40 * Math.PI / 180;
+        const angle = (40 * Math.PI) / 180;
         const edgeR = nodeR + edgeGap;
         const dx = Math.round(edgeR * Math.sin(angle));
         const dy = Math.round(edgeR * Math.cos(angle));
@@ -329,9 +766,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const tx = Math.cos(angle);
         const ty = Math.sin(angle);
 
-        const rsx = agentX + dx, rsy = rowY + dy;
-        const rTipX = agentX + dx, rTipY = toolsY - dy;
-        const rex = rTipX + ahLen * tx, rey = rTipY - ahLen * ty;
+        const rsx = agentX + dx,
+          rsy = rowY + dy;
+        const rTipX = agentX + dx,
+          rTipY = toolsY - dy;
+        const rex = rTipX + ahLen * tx,
+          rey = rTipY - ahLen * ty;
         const downD = [
           `M ${rsx} ${rsy}`,
           `C ${rsx + armLen * tx} ${rsy + armLen * ty},`,
@@ -339,9 +779,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           `${rex} ${rey}`,
         ].join(" ");
 
-        const lsx = agentX - dx, lsy = toolsY - dy;
-        const lTipX = agentX - dx, lTipY = rowY + dy;
-        const lex = lTipX - ahLen * tx, ley = lTipY + ahLen * ty;
+        const lsx = agentX - dx,
+          lsy = toolsY - dy;
+        const lTipX = agentX - dx,
+          lTipY = rowY + dy;
+        const lex = lTipX - ahLen * tx,
+          ley = lTipY + ahLen * ty;
         const upD = [
           `M ${lsx} ${lsy}`,
           `C ${lsx - armLen * tx} ${lsy - armLen * ty},`,
@@ -350,7 +793,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         ].join(" ");
 
         const downActive = activeType === "tools" && inLoopPhase;
-        const upActive = activeType === "agent" && activeStep > 1 && inLoopPhase;
+        const upActive =
+          activeType === "agent" && activeStep > 1 && inLoopPhase;
         const loopVisible = inLoopPhase || activeStep === loopEndIdx + 1;
 
         const badgeX = agentX;
@@ -359,7 +803,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const downArrowAngle = 180 - 40;
         const upArrowAngle = -40;
 
-        const renderArrowhead = (tipX: number, tipY: number, angleDeg: number, color: string) => (
+        const renderArrowhead = (
+          tipX: number,
+          tipY: number,
+          angleDeg: number,
+          color: string,
+        ) => (
           <polygon
             points={`0,0 ${-ahLen},${-ahHalf} ${-ahLen},${ahHalf}`}
             fill={color}
@@ -373,18 +822,32 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
           const isNodeActive = activeType === node;
-          const wasVisited = activeStep >= 0 && trace.slice(0, activeStep + 1).some((s) => s.type === node);
+          const wasVisited =
+            activeStep >= 0 &&
+            trace.slice(0, activeStep + 1).some((s) => s.type === node);
           return (
-            <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isNodeActive ? 1 : wasVisited ? 0.85 : 0.3}>
+            <g
+              key={node}
+              style={{ transition: "opacity 0.3s ease" }}
+              opacity={isNodeActive ? 1 : wasVisited ? 0.85 : 0.3}
+            >
               <circle
-                cx={cx} cy={cy} r={nodeR}
-                fill={wasVisited && !isNodeActive ? cfg.color : "var(--code-background)"}
-                stroke={cfg.color} strokeWidth={2 * S}
+                cx={cx}
+                cy={cy}
+                r={nodeR}
+                fill={
+                  wasVisited && !isNodeActive
+                    ? cfg.color
+                    : "var(--code-background)"
+                }
+                stroke={cfg.color}
+                strokeWidth={2 * S}
               />
               {isNodeActive && (
                 <circle
                   key={`clock-${node}-${activeStep}`}
-                  cx={cx} cy={cy}
+                  cx={cx}
+                  cy={cy}
                   r={nodeR / 2}
                   fill="none"
                   stroke={cfg.color}
@@ -438,54 +901,102 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   const tipX = mainXs[toIdx] - nodeR - edgeGap;
                   const x2 = tipX - ahLen;
                   const active = isForwardArrowActive(fromIdx, toIdx);
-                  const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "var(--text-color)";
+                  const color = active
+                    ? STEP_CONFIG[mainNodes[toIdx]].color
+                    : "var(--text-color)";
                   return (
-                    <g key={`fwd-${fromIdx}-${toIdx}`} opacity={active ? 1 : 0.2} style={{ transition: "opacity 0.3s ease" }}>
+                    <g
+                      key={`fwd-${fromIdx}-${toIdx}`}
+                      opacity={active ? 1 : 0.2}
+                      style={{ transition: "opacity 0.3s ease" }}
+                    >
                       <line
-                        x1={x1} y1={rowY} x2={x2} y2={rowY}
-                        stroke={color} strokeWidth={active ? 2.5 * S : 2 * S}
+                        x1={x1}
+                        y1={rowY}
+                        x2={x2}
+                        y2={rowY}
+                        stroke={color}
+                        strokeWidth={active ? 2.5 * S : 2 * S}
                       />
                       {renderArrowhead(tipX, rowY, 0, color)}
                     </g>
                   );
                 })}
 
-                <g opacity={downActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
+                <g
+                  opacity={downActive ? 1 : loopVisible ? 0.35 : 0.15}
+                  style={{ transition: "opacity 0.3s ease" }}
+                >
                   <path
-                    d={downD} fill="none"
-                    stroke={downActive ? "var(--color-green)" : "var(--text-color)"}
+                    d={downD}
+                    fill="none"
+                    stroke={
+                      downActive ? "var(--color-green)" : "var(--text-color)"
+                    }
                     strokeWidth={downActive ? 2.5 * S : 2 * S}
                   />
-                  {renderArrowhead(rTipX, rTipY, downArrowAngle, downActive ? "var(--color-green)" : "var(--text-color)")}
+                  {renderArrowhead(
+                    rTipX,
+                    rTipY,
+                    downArrowAngle,
+                    downActive ? "var(--color-green)" : "var(--text-color)",
+                  )}
                 </g>
 
-                <g opacity={upActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
+                <g
+                  opacity={upActive ? 1 : loopVisible ? 0.35 : 0.15}
+                  style={{ transition: "opacity 0.3s ease" }}
+                >
                   <path
-                    d={upD} fill="none"
-                    stroke={upActive ? "var(--color-blue)" : "var(--text-color)"}
+                    d={upD}
+                    fill="none"
+                    stroke={
+                      upActive ? "var(--color-blue)" : "var(--text-color)"
+                    }
                     strokeWidth={upActive ? 2.5 * S : 2 * S}
                   />
-                  {renderArrowhead(lTipX, lTipY, upArrowAngle, upActive ? "var(--color-blue)" : "var(--text-color)")}
+                  {renderArrowhead(
+                    lTipX,
+                    lTipY,
+                    upArrowAngle,
+                    upActive ? "var(--color-blue)" : "var(--text-color)",
+                  )}
                 </g>
 
                 {loopCount > 0 && (
-                  <g style={{ transition: "opacity 0.3s ease" }} opacity={loopVisible ? 1 : 0}>
+                  <g
+                    style={{ transition: "opacity 0.3s ease" }}
+                    opacity={loopVisible ? 1 : 0}
+                  >
                     <rect
-                      x={badgeX - 14 * S} y={badgeY - 9 * S}
-                      width={28 * S} height={18 * S} rx={4 * S}
-                      fill="var(--code-background)" stroke="var(--color-green)" strokeWidth={1 * S} opacity={0.9}
+                      x={badgeX - 14 * S}
+                      y={badgeY - 9 * S}
+                      width={28 * S}
+                      height={18 * S}
+                      rx={4 * S}
+                      fill="var(--code-background)"
+                      stroke="var(--color-green)"
+                      strokeWidth={1 * S}
+                      opacity={0.9}
                     />
                     <text
-                      x={badgeX} y={badgeY}
-                      textAnchor="middle" dominantBaseline="central" fontSize={11 * S} fontWeight={700}
-                      fontFamily="var(--font-mono, monospace)" fill="var(--color-green)"
+                      x={badgeX}
+                      y={badgeY}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={11 * S}
+                      fontWeight={700}
+                      fontFamily="var(--font-mono, monospace)"
+                      fill="var(--color-green)"
                     >
                       {`×${loopCount}`}
                     </text>
                   </g>
                 )}
 
-                {mainNodes.map((node, idx) => renderNode(node, mainXs[idx], rowY))}
+                {mainNodes.map((node, idx) =>
+                  renderNode(node, mainXs[idx], rowY),
+                )}
                 {renderNode("tools", toolsX, toolsY)}
               </svg>
             </div>
@@ -505,7 +1016,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
             >
               {activeStep >= 0 && trace[activeStep] ? (
                 <>
-                  <strong style={{ color: STEP_CONFIG[trace[activeStep].type].color }}>
+                  <strong
+                    style={{ color: STEP_CONFIG[trace[activeStep].type].color }}
+                  >
                     {STEP_CONFIG[trace[activeStep].type].label}:
                   </strong>{" "}
                   {STEP_CONFIG[trace[activeStep].type].description}
@@ -515,12 +1028,34 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               )}
             </div>
 
-            {/* Progress bar — animated with spring */}
+            {/* Wall-clock flame timeline — animated with spring */}
+            {timelineLayout.hasParallelTools ? (
+              <div
+                data-testid="parallel-tool-indicator"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: "0.35rem",
+                  marginBottom: "0.35rem",
+                  color: "var(--color-green)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "0.67rem",
+                  fontWeight: 650,
+                }}
+              >
+                <span aria-hidden="true">⇉</span>
+                <span>
+                  Parallel tool calls · {timelineLayout.laneCount} lanes
+                </span>
+              </div>
+            ) : null}
             <div
+              aria-label="QA trace wall-clock timeline"
               style={{
                 position: "relative",
                 width: "100%",
-                height: "24px",
+                height: `${timelineLayout.laneCount * TIMELINE_LANE_HEIGHT}px`,
                 marginBottom: "0.75rem",
                 borderRadius: "4px",
                 overflow: "hidden",
@@ -535,6 +1070,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   height: "100%",
                   backgroundColor: "var(--background-color)",
                   borderRadius: "4px",
+                  backgroundImage:
+                    "linear-gradient(to bottom, transparent calc(100% - 1px), rgba(var(--text-color-rgb, 0, 0, 0), 0.1) calc(100% - 1px))",
+                  backgroundSize: `100% ${TIMELINE_LANE_HEIGHT}px`,
                 }}
               />
               <animated.div
@@ -542,26 +1080,42 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   position: "absolute",
                   top: 0,
                   left: 0,
-                  display: "flex",
                   width: "100%",
                   height: "100%",
-                  clipPath: barSpring.progress.to((p) => `inset(0 ${100 - p}% 0 0)`),
+                  clipPath: barSpring.progress.to(
+                    (p) => `inset(0 ${100 - p}% 0 0)`,
+                  ),
                 }}
               >
-                {trace.map((step, idx) => {
+                {timelineLayout.segments.map((segment) => {
+                  const step = trace[segment.stepIndex];
                   const cfg = STEP_CONFIG[step.type];
-                  // Only render a duration label if the segment is wide enough to read it
-                  const widthPct = barWidths[idx];
-                  const showLabel = widthPct >= 6 && step.durationMs;
+                  const widthPct =
+                    (segment.durationMs / timelineLayout.totalMs) * 100;
+                  const leftPct =
+                    (segment.startMs / timelineLayout.totalMs) * 100;
+                  const durationLabel = formatMs(segment.durationMs);
+                  const showToolName = step.type === "tools" && widthPct >= 12;
+                  const showDuration = !showToolName && widthPct >= 6;
+                  const visibleLabel = showToolName
+                    ? step.content
+                    : showDuration
+                      ? durationLabel
+                      : "";
                   return (
                     <div
-                      key={`bar-${idx}-${step.type}`}
-                      title={`${cfg.label}: ${step.durationMs ? formatMs(step.durationMs) : "—"} (${widthPct.toFixed(1)}%)`}
+                      key={`bar-${segment.stepIndex}-${step.type}`}
+                      data-timeline-lane={segment.lane}
+                      aria-label={`${cfg.label}: ${step.content}; ${durationLabel}; starts at ${formatMs(segment.startMs)}`}
+                      title={`${cfg.label}: ${step.content} · ${durationLabel} · starts at ${formatMs(segment.startMs)}`}
                       style={{
+                        position: "absolute",
+                        top: `${segment.lane * TIMELINE_LANE_HEIGHT}px`,
+                        left: `${leftPct}%`,
                         width: `${widthPct}%`,
-                        height: "100%",
+                        minWidth: "2px",
+                        height: `${TIMELINE_LANE_HEIGHT - 2}px`,
                         backgroundColor: cfg.color,
-                        flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -572,9 +1126,11 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                         textShadow: "0 0 2px rgba(0,0,0,0.4)",
                         overflow: "hidden",
                         whiteSpace: "nowrap",
+                        padding: visibleLabel ? "0 0.25rem" : 0,
+                        boxSizing: "border-box",
                       }}
                     >
-                      {showLabel && formatMs(step.durationMs!)}
+                      {visibleLabel}
                     </div>
                   );
                 })}
@@ -591,9 +1147,11 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               }}
             >
               {legendEntries.map((entry, index) => {
-                const prevComplete = index === 0 || legendEntries[index - 1].fillPercent >= 100;
+                const prevComplete =
+                  index === 0 || legendEntries[index - 1].fillPercent >= 100;
                 const isComplete = entry.fillPercent >= 100;
-                const isActive = entry.fillPercent > 0 && entry.fillPercent < 100;
+                const isActive =
+                  entry.fillPercent > 0 && entry.fillPercent < 100;
                 const circleSize = 14;
                 return (
                   <div
@@ -603,7 +1161,13 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                       alignItems: "center",
                       gap: "0.5rem",
                       color: "var(--text-color)",
-                      opacity: isComplete ? 1 : isActive ? 1 : prevComplete ? 0.6 : 0.3,
+                      opacity: isComplete
+                        ? 1
+                        : isActive
+                          ? 1
+                          : prevComplete
+                            ? 0.6
+                            : 0.3,
                       transition: "opacity 0.15s ease",
                     }}
                   >
@@ -632,56 +1196,48 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
             </div>
 
             {/* Answer + Receipt stack (inside card) */}
-            {(() => {
-              const synthesizeStep = trace.find((s) => s.type === "synthesize");
-              const rawAnswer = synthesizeStep?.content ?? "";
-              const answerText = rawAnswer
-                .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
-                .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
-                .trim() || undefined;
-              return (
-                <animated.div
-                  ref={containerRef}
+            <animated.div
+              ref={containerRef}
+              style={{
+                ...answerHeightSpring,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                marginTop: "0.75rem",
+                marginBottom: "0.75rem",
+              }}
+            >
+              {showAnswer && answerText ? (
+                <div
+                  ref={answerRef}
                   style={{
-                    ...answerHeightSpring,
-                    overflow: "hidden",
                     display: "flex",
                     flexDirection: "column",
-                    marginTop: "0.75rem",
-                    marginBottom: "0.75rem",
+                    gap: "1rem",
+                    width: "100%",
+                    alignItems: "stretch",
                   }}
                 >
-                  {showAnswer && answerText ? (
-                    <div
-                      ref={answerRef}
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "1rem",
-                        width: "100%",
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <div
-                        style={{
-                          flex: "1 1 250px",
-                          fontSize: "0.9rem",
-                          color: "var(--text-color)",
-                          minWidth: 0,
-                        }}
-                      >
-                        <ReactMarkdown>{answerText}</ReactMarkdown>
-                      </div>
-                    </div>
-                  ) : null}
-                </animated.div>
-              );
-            })()}
-
+                  <div
+                    style={{
+                      fontSize: "0.9rem",
+                      color: "var(--text-color)",
+                      minWidth: 0,
+                    }}
+                  >
+                    <ReactMarkdown>{answerText}</ReactMarkdown>
+                  </div>
+                  <StructuredReceiptSummary receipts={structuredReceipts} />
+                  <ReceiptEvidenceStack
+                    receipts={evidenceReceipts}
+                    isVisible={isVisible}
+                  />
+                </div>
+              ) : null}
+            </animated.div>
           </div>
         );
       })()}
-
     </div>
   );
 };
