@@ -1,0 +1,15 @@
+{
+  "image_id": "223c03e2-9f7e-481d-bc33-2b0631fbaaf9",
+  "receipt_id": 2,
+  "lines": 93,
+  "rows": 56,
+  "sections": 6,
+  "sectioned_rows": 40,
+  "straddle_rows": 0,
+  "straddle_methods": {},
+  "sections_updated": 6,
+  "sections_line_ids_changed": 0,
+  "sections_emptied": 0,
+  "sections_row_aligned_before": 6,
+  "stale_rows_deleted": 0
+}

@@ -89,6 +89,12 @@ section's `line_ids`. Words inherit their line's section. This keeps the
 *structure*, not word labels. (Earlier draft persisted `SECTION_*`
 `ReceiptWordLabel` rows; rejected — it pollutes the label table.)
 
+- **Row-anchoring amendment (2026-07-10, ROW_SCHEMA.md):** visual rows are
+  materialized as `ReceiptRow` entities (keyed by the row's primary line id,
+  matching the Chroma lines-collection ids) and sections carry an optional
+  `row_ids` field moving them to row granularity — measured: rows are 97.0 %
+  section-atomic while only 54.3 % of sections align to whole rows.
+  `line_ids` stays authoritative; see ROW_SCHEMA.md for schema + migration.
 - `SectionType` carries the 10 canonical sections. The 4-value 2025-05
   classifier experiment vocab (`HEADER/FOOTER/ITEMS_VALUE/ITEMS_DESCRIPTION`)
   is deprecated; its stale 818-row batch (219 receipts, `model_source` unset)

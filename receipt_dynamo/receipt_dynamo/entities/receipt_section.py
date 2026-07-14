@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from math import isfinite
-from typing import Any, Generator
+from typing import TYPE_CHECKING, Any, Generator, Sequence
 
 from receipt_dynamo.constants import SectionType, ValidationStatus
 from receipt_dynamo.entities.util import (
@@ -10,6 +10,9 @@ from receipt_dynamo.entities.util import (
     validate_non_negative_int,
     validate_positive_int,
 )
+
+if TYPE_CHECKING:
+    from receipt_dynamo.entities.receipt_row import ReceiptRow
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -36,8 +39,14 @@ class ReceiptSection:
         validation_status (str | None): Optional QA status
             (PENDING / VALID / INVALID / NEEDS_REVIEW) — machine-seeded rows
             land PENDING and are promoted by QA.
+        row_ids (list[int] | None): Optional ReceiptRow references (each id
+            is a row's primary line id). When set, the section is
+            row-granular and ``line_ids`` must equal the union of the
+            referenced rows' ``line_ids`` (see
+            ``validate_section_row_coverage``). ``line_ids`` remains the
+            authoritative field for all existing consumers.
 
-    The three optional fields are additive: rows written before they existed
+    The optional fields are additive: rows written before they existed
     (and readers that ignore them) remain valid.
     """
 
@@ -57,6 +66,7 @@ class ReceiptSection:
     confidence: float | None = None
     model_source: str | None = None
     validation_status: str | None = None
+    row_ids: list[int] | None = None
 
     def __post_init__(self):
         """Validate and initialize the ReceiptSection instance."""
@@ -133,6 +143,22 @@ class ReceiptSection:
                 )
             self.validation_status = status
 
+        if self.row_ids is not None:
+            if not isinstance(self.row_ids, list):
+                raise ValueError("row_ids must be a list or None")
+            if not self.row_ids:
+                raise ValueError("row_ids must not be empty when set")
+            if not all(
+                isinstance(row_id, int) and not isinstance(row_id, bool)
+                for row_id in self.row_ids
+            ):
+                raise ValueError("row_ids must contain only integers")
+            if any(row_id < 0 for row_id in self.row_ids):
+                # ReceiptRow.row_id is non-negative; match its contract.
+                raise ValueError("row_ids must be non-negative")
+            if len(set(self.row_ids)) != len(self.row_ids):
+                raise ValueError("row_ids must not contain duplicates")
+
     @property
     def key(self) -> dict[str, Any]:
         """Generate the primary key for the receipt section."""
@@ -170,6 +196,10 @@ class ReceiptSection:
             item["model_source"] = {"S": self.model_source}
         if self.validation_status is not None:
             item["validation_status"] = {"S": self.validation_status}
+        if self.row_ids is not None:
+            item["row_ids"] = {
+                "L": [{"N": str(row_id)} for row_id in self.row_ids]
+            }
         return item
 
     def __repr__(self) -> str:
@@ -188,7 +218,8 @@ class ReceiptSection:
             f"created_at={_repr_str(created_at)}, "
             f"confidence={self.confidence}, "
             f"model_source={_repr_str(self.model_source)}, "
-            f"validation_status={_repr_str(self.validation_status)}"
+            f"validation_status={_repr_str(self.validation_status)}, "
+            f"row_ids={self.row_ids}"
             f")"
         )
 
@@ -207,6 +238,7 @@ class ReceiptSection:
         yield "confidence", self.confidence
         yield "model_source", self.model_source
         yield "validation_status", self.validation_status
+        yield "row_ids", self.row_ids
 
     def __hash__(self) -> int:
         """Return a hash of the ReceiptSection."""
@@ -224,6 +256,7 @@ class ReceiptSection:
                 self.confidence,
                 self.model_source,
                 self.validation_status,
+                tuple(self.row_ids) if self.row_ids is not None else None,
             )
         )
 
@@ -268,6 +301,11 @@ class ReceiptSection:
                 if "validation_status" in item
                 else None
             )
+            row_ids = (
+                [int(ri["N"]) for ri in item["row_ids"]["L"]]
+                if "row_ids" in item
+                else None
+            )
 
             return cls(
                 receipt_id=receipt_id,
@@ -278,11 +316,71 @@ class ReceiptSection:
                 confidence=confidence,
                 model_source=model_source,
                 validation_status=validation_status,
+                row_ids=row_ids,
             )
         except (KeyError, IndexError, ValueError) as e:
             raise ValueError(
                 f"Error converting item to ReceiptSection: {e}"
             ) from e
+
+
+def validate_section_row_coverage(
+    section: ReceiptSection,
+    rows: Sequence["ReceiptRow"],
+) -> None:
+    """Validate the row-granularity invariant of a ReceiptSection.
+
+    When a section carries ``row_ids``, its ``line_ids`` must equal the
+    union of the referenced ReceiptRows' ``line_ids`` (as sets — ordering
+    is not significant). Sections without ``row_ids`` are exempt (legacy
+    line-granular sections).
+
+    Args:
+        section: The section to validate.
+        rows: ReceiptRow entities for the section's receipt. Extra rows
+            (not referenced by the section) are ignored; every referenced
+            row must be present.
+
+    Raises:
+        ValueError: If a referenced row is missing from ``rows``, a row
+            belongs to a different receipt, or the line_ids union does not
+            match the section's line_ids.
+    """
+    if section.row_ids is None:
+        return
+
+    rows_by_id: dict[int, "ReceiptRow"] = {}
+    for row in rows:
+        if (
+            row.image_id != section.image_id
+            or row.receipt_id != section.receipt_id
+        ):
+            raise ValueError(
+                f"row {row.row_id} belongs to "
+                f"image_id={row.image_id} receipt_id={row.receipt_id}, "
+                f"not the section's image_id={section.image_id} "
+                f"receipt_id={section.receipt_id}"
+            )
+        rows_by_id[row.row_id] = row
+
+    missing = [rid for rid in section.row_ids if rid not in rows_by_id]
+    if missing:
+        raise ValueError(
+            f"section {section.section_type} references row_ids {missing} "
+            "with no matching ReceiptRow"
+        )
+
+    union: set[int] = set()
+    for rid in section.row_ids:
+        union.update(rows_by_id[rid].line_ids)
+
+    if union != set(section.line_ids):
+        raise ValueError(
+            f"section {section.section_type} line_ids do not equal the "
+            f"union of its rows' line_ids: "
+            f"line_ids={sorted(set(section.line_ids))}, "
+            f"row union={sorted(union)}"
+        )
 
 
 def item_to_receipt_section(item: dict[str, Any]) -> ReceiptSection:
