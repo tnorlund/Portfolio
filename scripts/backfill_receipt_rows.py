@@ -128,7 +128,7 @@ def build_receipt_rows(client: Any, image_id: str, receipt_id: int):
     list-of-lists of ReceiptLine from group_lines_into_visual_rows (top to
     bottom, each row left to right).
     """
-    from receipt_chroma.embedding.formatting.line_format import (
+    from receipt_chroma.embedding.formatting import (
         get_primary_line_id,
         group_lines_into_visual_rows,
     )
