@@ -3,8 +3,10 @@ AI Usage Metric entity for tracking costs and usage of AI services.
 """
 
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
+from math import isfinite
 from typing import Any, Dict
 
 from .base import DynamoDBEntity
@@ -28,6 +30,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     """
 
     REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
         "service",
         "model",
         "operation",
@@ -61,21 +66,90 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
+        self._validate_fields()
         self.service = self.service.lower()
         if not self.request_id:
             self.request_id = str(uuid.uuid4())
 
         # Calculate total_tokens if not provided
         if self.total_tokens is None and (
-            self.input_tokens or self.output_tokens
+            self.input_tokens is not None or self.output_tokens is not None
         ):
             self.total_tokens = (self.input_tokens or 0) + (
                 self.output_tokens or 0
             )
 
         # Ensure metadata is a dict
-        if self.metadata is None:
-            self.metadata = {}
+        self.metadata = deepcopy(self.metadata or {})
+
+        self._refresh_computed_fields()
+
+    def _validate_fields(self) -> None:
+        """Validate fields both at construction and before persistence."""
+        for field_name in ("service", "model", "operation"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} must be a non-empty string")
+
+        if not isinstance(self.timestamp, datetime):
+            raise ValueError("timestamp must be a datetime")
+
+        if self.request_id is not None and not isinstance(
+            self.request_id, str
+        ):
+            raise ValueError("request_id must be a string or None")
+
+        for field_name in ("user_id", "job_id", "batch_id", "environment"):
+            value = getattr(self, field_name)
+            if value is not None and (not isinstance(value, str) or not value):
+                raise ValueError(
+                    f"{field_name} must be a non-empty string or None"
+                )
+
+        if self.error is not None and not isinstance(self.error, str):
+            raise ValueError("error must be a string or None")
+
+        for field_name in (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "latency_ms",
+            "github_pr",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"{field_name} must be a non-negative integer or None"
+                )
+
+        if (
+            isinstance(self.api_calls, bool)
+            or not isinstance(self.api_calls, int)
+            or self.api_calls < 1
+        ):
+            raise ValueError("api_calls must be a positive integer")
+
+        if self.cost_usd is not None:
+            if (
+                isinstance(self.cost_usd, bool)
+                or not isinstance(self.cost_usd, (int, float))
+                or not isfinite(self.cost_usd)
+                or self.cost_usd < 0
+            ):
+                raise ValueError(
+                    "cost_usd must be a finite non-negative number"
+                )
+            self.cost_usd = float(self.cost_usd)
+
+        if self.metadata is not None and not isinstance(self.metadata, dict):
+            raise ValueError("metadata must be a dictionary or None")
+
+    def _refresh_computed_fields(self) -> None:
+        """Keep persisted date dimensions aligned with the timestamp."""
 
         # Computed fields
         self.date = self.timestamp.strftime("%Y-%m-%d")
@@ -154,6 +228,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
     def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item format using SerializationMixin."""
+        self._validate_fields()
+        self.service = self.service.lower()
+        self._refresh_computed_fields()
         # Build GSI keys
         gsi_keys = {
             "GSI1PK": {"S": self.gsi1pk},
@@ -253,6 +330,12 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":
         """Create instance from DynamoDB item using type-safe EntityFactory."""
+        required_index_keys = {"GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK"}
+        missing_index_keys = required_index_keys - item.keys()
+        if missing_index_keys:
+            raise ValueError(
+                f"Item is missing required keys: {missing_index_keys}"
+            )
         # Type-safe extractors for all fields
         custom_extractors = {
             "service": EntityFactory.extract_string_field("service"),
@@ -280,15 +363,34 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         }
 
         # No field mappings needed - using snake_case consistently
-        field_mappings = {}
+        field_mappings: dict[str, str] = {}
 
-        return EntityFactory.create_entity(
+        metric = EntityFactory.create_entity(
             entity_class=cls,
             item=item,
             required_keys=cls.REQUIRED_KEYS,
             field_mappings=field_mappings,
             custom_extractors=custom_extractors,
         )
+        expected = metric.to_item()
+        key_names = (
+            "PK",
+            "SK",
+            "TYPE",
+            "GSI1PK",
+            "GSI1SK",
+            "GSI2PK",
+            "GSI2SK",
+        )
+        if any(item.get(key) != expected.get(key) for key in key_names):
+            raise ValueError("AIUsageMetric item has inconsistent keys")
+
+        for key in ("GSI3PK", "GSI3SK"):
+            if item.get(key) != expected.get(key):
+                raise ValueError(
+                    "AIUsageMetric item has inconsistent GSI3 keys"
+                )
+        return metric
 
     @classmethod
     def from_item(cls, item: Dict) -> "AIUsageMetric":
@@ -355,7 +457,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         costs_by_service: dict[str, Any] = {}
         for item in response.get("Items", []):
             metric = cls.from_dynamodb_item(item)
-            if metric.cost_usd:
+            if metric.cost_usd is not None:
                 if metric.service not in costs_by_service:
                     costs_by_service[metric.service] = 0.0
                 costs_by_service[metric.service] += metric.cost_usd
@@ -364,6 +466,24 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
     def __hash__(self) -> int:
         """Returns the hash value of the AIUsageMetric object."""
+
+        def freeze(value: Any) -> Any:
+            if isinstance(value, dict):
+                return tuple(
+                    sorted(
+                        (key, freeze(child)) for key, child in value.items()
+                    )
+                )
+            if isinstance(value, (list, tuple)):
+                return tuple(freeze(child) for child in value)
+            if isinstance(value, set):
+                return frozenset(freeze(child) for child in value)
+            try:
+                hash(value)
+            except TypeError:
+                return repr(value)
+            return value
+
         return hash(
             (
                 self.service,
@@ -383,7 +503,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
                 self.github_pr,
                 self.environment,
                 self.error,
-                tuple(self.metadata.items()) if self.metadata else None,
+                freeze(self.metadata) if self.metadata else None,
             )
         )
 

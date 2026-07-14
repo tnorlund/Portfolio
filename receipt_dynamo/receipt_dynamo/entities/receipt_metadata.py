@@ -1,3 +1,5 @@
+"""DynamoDB entity for validated receipt merchant metadata."""
+
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -5,6 +7,7 @@ from typing import Any, Generator
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.entity_factory import (
+    DynamoDBItemExtractor,
     EntityFactory,
     create_image_receipt_pk_parser,
     create_image_receipt_sk_parser,
@@ -26,7 +29,9 @@ MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptMetadata(SerializationMixin):
+class ReceiptMetadata(  # pylint: disable=too-many-instance-attributes
+    SerializationMixin
+):
     """
     Represents validated metadata for a receipt, specifically merchant-related
     information derived from Google Places API and optionally validated by GPT.
@@ -90,7 +95,9 @@ class ReceiptMetadata(SerializationMixin):
     canonical_phone_number: str = ""
     validation_status: str = ""
 
-    def __post_init__(self) -> None:
+    def __post_init__(  # pylint: disable=too-many-branches
+        self,
+    ) -> None:
         """Validate and normalize initialization arguments."""
         validate_positive_int("receipt_id", self.receipt_id)
 
@@ -114,7 +121,7 @@ class ReceiptMetadata(SerializationMixin):
         if not isinstance(self.matched_fields, list):
             raise ValueError("matched fields must be a list")
         for field in self.matched_fields:
-            if not isinstance(field, str):
+            if not isinstance(field, str) or not field.strip():
                 raise ValueError("matched fields must be a list of strings")
         # Check that they are unique
         if len(self.matched_fields) != len(set(self.matched_fields)):
@@ -141,22 +148,39 @@ class ReceiptMetadata(SerializationMixin):
         if not isinstance(self.canonical_phone_number, str):
             raise ValueError("canonical phone number must be a string")
 
-        # Validate field quality before determining validation status
-        high_quality_fields = self._get_high_quality_matched_fields()
-        num_fields = len(high_quality_fields)
+        # Detach caller-owned mutable input. DynamoDB treats these values as a
+        # collection, but preserving order keeps equality deterministic.
+        self.matched_fields = list(self.matched_fields)
 
-        # Use configurable thresholds from environment variables
-        min_fields_for_match = int(os.environ.get("MIN_FIELDS_FOR_MATCH", 2))
-        min_fields_for_unsure = int(os.environ.get("MIN_FIELDS_FOR_UNSURE", 1))
-
-        if num_fields >= min_fields_for_match:
-            self.validation_status = MerchantValidationStatus.MATCHED.value
-        elif num_fields >= min_fields_for_unsure:
-            self.validation_status = MerchantValidationStatus.UNSURE.value
+        if self.validation_status:
+            self.validation_status = normalize_enum(
+                self.validation_status, MerchantValidationStatus
+            )
         else:
-            self.validation_status = MerchantValidationStatus.NO_MATCH.value
+            # Derive a status only when the caller or stored record did not
+            # provide one. Persisted and curated statuses must remain stable
+            # if environment thresholds change later.
+            high_quality_fields = self._get_high_quality_matched_fields()
+            num_fields = len(high_quality_fields)
+            min_fields_for_match = int(
+                os.environ.get("MIN_FIELDS_FOR_MATCH", 2)
+            )
+            min_fields_for_unsure = int(
+                os.environ.get("MIN_FIELDS_FOR_UNSURE", 1)
+            )
 
-    def _get_high_quality_matched_fields(self) -> list[str]:
+            if num_fields >= min_fields_for_match:
+                self.validation_status = MerchantValidationStatus.MATCHED.value
+            elif num_fields >= min_fields_for_unsure:
+                self.validation_status = MerchantValidationStatus.UNSURE.value
+            else:
+                self.validation_status = (
+                    MerchantValidationStatus.NO_MATCH.value
+                )
+
+    def _get_high_quality_matched_fields(  # pylint: disable=too-many-branches
+        self,
+    ) -> list[str]:
         """
         Validates the quality of matched fields and returns only
         high-quality matches.
@@ -322,6 +346,7 @@ class ReceiptMetadata(SerializationMixin):
         item. Includes primary key and GSI keys, as well as all
         merchant-related metadata.
         """
+        self.__post_init__()
         item = {
             **self.key,
             **self.gsi1_key(),
@@ -435,7 +460,7 @@ class ReceiptMetadata(SerializationMixin):
                 self.merchant_category,
                 self.address,
                 self.phone_number,
-                self.matched_fields,
+                tuple(self.matched_fields),
                 self.validated_by,
                 self.timestamp,
                 self.reasoning,
@@ -460,8 +485,26 @@ class ReceiptMetadata(SerializationMixin):
         Raises:
             ValueError: When the item format is invalid.
         """
+        cls.validate_required_keys(item, cls.REQUIRED_KEYS)
+        if item["TYPE"] != {"S": "RECEIPT_METADATA"}:
+            raise ValueError("TYPE must be RECEIPT_METADATA")
+        try:
+            pk = item["PK"]["S"]
+            sk = item["SK"]["S"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError("Invalid ReceiptMetadata key attributes") from exc
+        if not pk.startswith("IMAGE#") or not pk.removeprefix("IMAGE#"):
+            raise ValueError(f"Invalid PK format: {pk}")
+        sk_parts = sk.split("#")
+        if (
+            len(sk_parts) != 3
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "METADATA"
+        ):
+            raise ValueError(f"Invalid SK format: {sk}")
+
         # Type-safe extractors
-        custom_extractors = {
+        custom_extractors: dict[str, DynamoDBItemExtractor | None] = {
             "place_id": EntityFactory.extract_string_field("place_id", ""),
             "merchant_name": EntityFactory.extract_string_field(
                 "merchant_name", ""
@@ -498,7 +541,7 @@ class ReceiptMetadata(SerializationMixin):
             ),
         }
 
-        return EntityFactory.create_entity(
+        result = EntityFactory.create_entity(
             entity_class=cls,
             item=item,
             required_keys=cls.REQUIRED_KEYS,
@@ -508,6 +551,15 @@ class ReceiptMetadata(SerializationMixin):
             },
             custom_extractors=custom_extractors,
         )
+        for key_name, expected_value in {
+            **result.key,
+            **result.gsi1_key(),
+            **result.gsi2_key(),
+            **result.gsi3_key(),
+        }.items():
+            if key_name in item and item[key_name] != expected_value:
+                raise ValueError(f"{key_name} does not match entity keys")
+        return result
 
 
 def item_to_receipt_metadata(item: dict[str, Any]) -> ReceiptMetadata:

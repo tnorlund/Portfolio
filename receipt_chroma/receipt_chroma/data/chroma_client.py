@@ -16,22 +16,23 @@ import os
 import random
 import time
 from collections.abc import Sequence
-from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
 from typing import (
     Any,
     Callable,
     Dict,
-    Generator,
     List,
+    Literal,
     Optional,
     Protocol,
     Type,
     TypeVar,
+    cast,
 )
 
 import chromadb
+from chromadb.api.shared_system_client import SharedSystemClient
 from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
 from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
@@ -44,6 +45,8 @@ from receipt_chroma.chroma_types import (
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+ChromaMode = Literal["read", "write", "delta"]
+_VALID_MODES = frozenset(("read", "write", "delta"))
 
 # Default retry settings for Chroma Cloud rate limits
 _DEFAULT_MAX_RETRIES = 4
@@ -193,10 +196,9 @@ class ChromaClient:
     def __init__(  # pylint: disable=too-many-positional-arguments
         self,
         persist_directory: Optional[str] = None,
-        mode: str = "read",
+        mode: ChromaMode = "read",
         embedding_function: Optional[Any] = None,
         metadata_only: bool = False,
-        http_url: Optional[str] = None,
         # Chroma Cloud parameters
         cloud_api_key: Optional[str] = None,
         cloud_tenant: Optional[str] = None,
@@ -208,11 +210,10 @@ class ChromaClient:
         Args:
             persist_directory: Directory for local ChromaDB persistence.
                              If None, uses in-memory storage.
-            mode: Operation mode - "read", "write", "delta", or "snapshot"
+            mode: Operation mode - "read", "write", or "delta"
             embedding_function: Optional custom embedding function
             metadata_only: If True, uses default embedding function to
                           avoid API costs
-            http_url: Optional HTTP URL for remote ChromaDB server
             cloud_api_key: Optional Chroma Cloud API key for cloud-hosted
                           multi-tenant database
             cloud_tenant: Chroma Cloud tenant UUID (required when
@@ -221,11 +222,17 @@ class ChromaClient:
                            cloud_api_key is set, e.g. 'receipt_dev')
         """
         self.persist_directory = persist_directory
-        self.mode = mode.lower()
+        normalized_mode = mode.lower()
+        if normalized_mode not in _VALID_MODES:
+            supported_modes = ", ".join(sorted(_VALID_MODES))
+            raise ValueError(
+                f"Unsupported ChromaClient mode {mode!r}; "
+                f"expected one of: {supported_modes}"
+            )
+        self.mode = cast(ChromaMode, normalized_mode)
         self.use_persistent_client = persist_directory is not None
         self._client: Optional[Any] = None
         self._collections: Dict[str, Any] = {}
-        self._http_url: Optional[str] = (http_url or "").strip() or None
         self._closed = False
 
         # Chroma Cloud configuration
@@ -313,32 +320,6 @@ class ChromaClient:
                     self._cloud_database,
                 )
 
-            elif self._http_url:
-                # Parse host and optional port from a url or host:port
-                host = self._http_url
-                port: Optional[int] = None
-                if "://" in host:
-                    host = host.split("://", 1)[1]
-                if ":" in host:
-                    host, port_str = host.rsplit(":", 1)
-                    try:
-                        port = int(port_str)
-                    except (ValueError, TypeError):
-                        port = None
-
-                http_kwargs: Dict[str, Any] = {
-                    "host": host,
-                    "tenant": DEFAULT_TENANT,
-                    "database": DEFAULT_DATABASE,
-                }
-                if port is not None:
-                    http_kwargs["port"] = port
-
-                self._client = chromadb.HttpClient(**http_kwargs)
-                logger.debug(
-                    "Created HTTP ChromaDB client for %s", self._http_url
-                )
-
             elif self.use_persistent_client and self.persist_directory:
                 # Ensure directory exists
                 Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
@@ -378,111 +359,86 @@ class ChromaClient:
         return self._ensure_client()
 
     def close(self) -> None:
-        """
-        Close the ChromaDB client and release all resources.
+        """Close this client and release persistent ChromaDB resources.
 
-        CRITICAL: This method must be called before:
-        - Uploading ChromaDB files to S3
-        - Switching between read/write modes
-        - Running in parallel tests (pytest-xdist)
-        - Accessing files with os.walk() or similar
+        Initialized persistent clients require ChromaDB's internal system stop
+        plus a shared-system cache reset before their files are safe to copy.
+        A failure in either flush step is observable to callers so snapshot
+        uploads cannot silently proceed with a potentially incomplete database.
 
-        Why close() is complex (see ChromaDB issue #5868):
-        https://github.com/chroma-core/chroma/issues/5868
-
-        ChromaDB does not expose a public close() method. This implementation:
-        1. Clears collection cache to release references
-        2. Accesses internal _client to close SQLite connections directly
-        3. Forces 3 GC passes to clear circular references
-        4. Sleeps 0.5s to allow OS to release file handles
-
-        Each of these steps is necessary:
-        - Step 1: Allows Step 2 to work by removing Python references
-        - Step 2: Closes SQLite's internal file handles
-        - Step 3: Clears Python's reference tracking (chromadb has circular refs)
-        - Step 4: Gives OS time to release actual file descriptors
-
-        Without all steps, file locks remain and cause:
-        - "File is locked" errors when uploading to S3
-        - Test flakiness in parallel execution
-        - Database corruption
-
-        DO NOT add extra time.sleep() calls in test code. The 0.5s delay
-        in this method is carefully tuned. Adding test-level delays creates
-        cascading waits that cause slow, flaky tests.
-
-        ALWAYS use context managers (with statement) instead of calling this
-        directly. The __exit__ method calls close() automatically.
-
-        After calling close(), the client cannot be used again. Create a new
-        instance if you need to use ChromaDB again.
+        Ephemeral clients and clients that were never initialized only release
+        Python references; they do not need the persistent-client GC and file
+        handle delay.
         """
         if self._closed:
             return
 
+        logger.debug(
+            "Closing ChromaDB client: %s",
+            self.persist_directory or "in-memory",
+        )
+        active_client = self._client
+        needs_persistent_flush = (
+            active_client is not None and self.use_persistent_client
+        )
+
+        self._collections.clear()
+        self._client = None
+        self._closed = True
+
+        if not needs_persistent_flush:
+            logger.debug("ChromaDB client closed successfully")
+            return
+
+        flush_error: Optional[Exception] = None
+        system: Optional[Any] = None
+        identifier = getattr(active_client, "_identifier", None)
         try:
-            logger.debug(
-                "Closing ChromaDB client: %s",
-                self.persist_directory or "in-memory",
+            system = getattr(active_client, "_system", None)
+            if system is None:
+                raise RuntimeError(
+                    "Persistent ChromaDB client has no system to flush"
+                )
+            system.stop()
+            logger.info("Stopped persistent ChromaDB system")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            flush_error = exc
+
+        try:
+            if identifier is None:
+                raise RuntimeError(
+                    "Persistent ChromaDB client has no system identifier"
+                )
+            cached_system = SharedSystemClient._identifier_to_system.get(
+                identifier
             )
+            if cached_system is system:
+                del SharedSystemClient._identifier_to_system[identifier]
+            elif cached_system is not None:
+                raise RuntimeError(
+                    "Persistent ChromaDB cache entry changed during close"
+                )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            if flush_error is None:
+                flush_error = exc
+            else:
+                logger.warning(
+                    "ChromaDB system cache cleanup also failed: %s", exc
+                )
 
-            # Clear collections cache
-            if hasattr(self, "_collections"):
-                self._collections.clear()
-
-            # For PersistentClient, call _system.stop() to flush SQLite before S3 upload.
-            # This is CRITICAL - without it, snapshots uploaded to S3 may be corrupted.
-            #
-            # WARNING: _system.stop() corrupts global ChromaDB Rust bindings state.
-            # Tests that create multiple PersistentClients must run in separate
-            # processes or use proper test isolation fixtures.
-            # See GitHub issue #5868 and conftest.py for test setup details.
-            if self._client is not None:
-                if self.use_persistent_client and hasattr(
-                    self._client, "_system"
-                ):
-                    try:
-                        self._client._system.stop()  # pylint: disable=protected-access
-                        logger.info(
-                            "Called _system.stop() to close ChromaDB connections"
-                        )
-                    except (
-                        Exception
-                    ) as e:  # pylint: disable=broad-exception-caught
-                        logger.warning("Error calling _system.stop(): %s", e)
-
-                self._client = None
-
-            # Force garbage collection to ensure SQLite connections are closed
-            # This is necessary because ChromaDB doesn't expose a close()
-            # method (issue #5868)
-            gc.collect()
-
-            # Multiple GC passes to ensure all references are cleared
-            # ChromaDB's internal connections may have circular references
+        try:
             for _ in range(3):
                 gc.collect()
+            time.sleep(0.5)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Error during ChromaDB cleanup: %s", exc)
 
-            # Longer delay to ensure file handles are released by OS
-            # This is critical for preventing file locking issues when
-            # uploading to S3
-            # Issue #5868: SQLite files can remain locked even after client
-            # is "closed"
-            time.sleep(
-                0.5
-            )  # Increased from 0.1s to 0.5s for more reliable unlocking
+        if flush_error is not None:
+            raise RuntimeError(
+                "Failed to flush persistent ChromaDB client"
+            ) from flush_error
 
-            self._closed = True
-            logger.debug("ChromaDB client closed successfully")
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            # Catch all exceptions during cleanup to ensure client is
-            # marked as closed even if cleanup fails
-            logger.warning(
-                "Error closing ChromaDB client (non-critical): %s", e
-            )
-            # Mark as closed even if there was an error
-            self._closed = True
+        logger.debug("ChromaDB client closed successfully")
 
     def get_collection(
         self,
@@ -726,43 +682,6 @@ class ChromaClient:
         """Check if a collection exists."""
         return name in self.list_collections()
 
-    def reset(self) -> None:
-        """Reset the client and clear all collections (useful for testing)."""
-        if self._client is not None:
-            self._client.reset()
-            self._collections.clear()
-            logger.debug("Reset ChromaDB client")
-
-    def upsert_vectors(
-        self,
-        collection_name: str,
-        ids: List[str],
-        embeddings: Optional[List[List[float]]] = None,
-        documents: Optional[List[str]] = None,
-        metadatas: Optional[Sequence[ChromaMetadataInput]] = None,
-    ) -> None:
-        """
-        Upsert vectors into a collection (alias for upsert for backward
-        compatibility).
-
-        This method provides compatibility with the old ChromaDBClient
-        interface.
-
-        Args:
-            collection_name: Name of the collection
-            ids: List of unique IDs
-            embeddings: Optional list of embedding vectors
-            documents: Optional list of documents (for auto-embedding)
-            metadatas: Optional list of metadata dictionaries
-        """
-        self.upsert(
-            collection_name=collection_name,
-            ids=ids,
-            embeddings=embeddings,
-            documents=documents,
-            metadatas=metadatas,
-        )
-
     def persist_and_upload_delta(
         self,
         bucket: str,
@@ -849,21 +768,3 @@ class ChromaClient:
         )
 
         return actual_delta_key
-
-    @contextmanager
-    def collection(
-        self, name: str, create_if_missing: bool = False
-    ) -> Generator[Any, None, None]:
-        """
-        Context manager for a collection that ensures proper cleanup.
-
-        Usage:
-            with client.collection("my_collection") as coll:
-                coll.query(...)
-        """
-        coll = self.get_collection(name, create_if_missing=create_if_missing)
-        try:
-            yield coll
-        finally:
-            # Collections are managed by the client, no explicit cleanup needed
-            pass

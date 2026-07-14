@@ -128,7 +128,7 @@ def test_receipt_field_init_invalid_words():
         )
 
     # Missing required keys
-    with pytest.raises(ValueError, match="word missing required keys"):
+    with pytest.raises(ValueError, match="word must contain exactly"):
         ReceiptField(
             field_type="BUSINESS_NAME",
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -139,7 +139,7 @@ def test_receipt_field_init_invalid_words():
         )
 
     # Invalid word_id
-    with pytest.raises(ValueError, match="word_id must be a positive integer"):
+    with pytest.raises(ValueError, match="word_id must be positive"):
         ReceiptField(
             field_type="BUSINESS_NAME",
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -150,7 +150,7 @@ def test_receipt_field_init_invalid_words():
         )
 
     # Invalid line_id
-    with pytest.raises(ValueError, match="line_id must be a positive integer"):
+    with pytest.raises(ValueError, match="line_id must be positive"):
         ReceiptField(
             field_type="BUSINESS_NAME",
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -216,7 +216,7 @@ def test_receipt_field_init_invalid_timestamp():
     """Constructing a ReceiptField with an invalid timestamp raises ValueError."""
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be a datetime object or ISO format string",
     ):
         ReceiptField(
             field_type="BUSINESS_NAME",
@@ -357,6 +357,7 @@ def test_item_to_receipt_field_invalid_format():
         "SK": {
             "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
         },
+        "TYPE": {"S": "RECEIPT_FIELD"},
         "words": {
             "L": [
                 {
@@ -375,3 +376,55 @@ def test_item_to_receipt_field_invalid_format():
         ValueError, match="Error converting item to ReceiptField"
     ):
         item_to_receipt_field(invalid_item)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [("receipt_id", True), ("word_id", True), ("line_id", False)],
+)
+def test_receipt_field_rejects_bool_identifiers(
+    example_receipt_field, field_name, value
+):
+    """Python bool must not pass integer identifier validation."""
+    kwargs = dict(example_receipt_field)
+    if field_name == "receipt_id":
+        kwargs[field_name] = value
+    else:
+        kwargs["words"] = [dict(example_receipt_field.words[0])]
+        kwargs["words"][0][field_name] = value
+
+    with pytest.raises(ValueError, match=f"{field_name} must be an integer"):
+        ReceiptField(**kwargs)
+
+
+@pytest.mark.unit
+def test_receipt_field_rejects_invalid_iso_timestamp(example_receipt_field):
+    kwargs = dict(example_receipt_field)
+    kwargs["timestamp_added"] = "not-a-timestamp"
+
+    with pytest.raises(ValueError, match="valid ISO format timestamp"):
+        ReceiptField(**kwargs)
+
+
+@pytest.mark.unit
+def test_receipt_field_revalidates_mutated_state(example_receipt_field):
+    example_receipt_field.words[0]["word_id"] = True
+
+    with pytest.raises(ValueError, match="word_id must be an integer"):
+        example_receipt_field.to_item()
+
+
+@pytest.mark.unit
+def test_receipt_field_from_item_rejects_type_and_gsi_mismatches(
+    example_receipt_field,
+):
+    item = example_receipt_field.to_item()
+    item["TYPE"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="TYPE must be RECEIPT_FIELD"):
+        item_to_receipt_field(item)
+
+    item = example_receipt_field.to_item()
+    item["GSI1SK"] = {"S": "RECEIPT#99999#FIELD#BUSINESS_NAME"}
+    with pytest.raises(ValueError, match="GSI1SK does not match"):
+        item_to_receipt_field(item)

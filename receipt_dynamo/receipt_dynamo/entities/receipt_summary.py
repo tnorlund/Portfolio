@@ -17,10 +17,12 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from math import isfinite
 from typing import TYPE_CHECKING
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.identifier_mixins import ReceiptIdentifierMixin
+from receipt_dynamo.entities.util import validate_non_negative_int
 
 if TYPE_CHECKING:
     from receipt_dynamo.entities.receipt import Receipt
@@ -46,6 +48,22 @@ class MonetaryTotals:
     subtotal: float | None = None
     tax: float | None = None
     tip: float | None = None
+
+    def __post_init__(self) -> None:
+        """Reject values that DynamoDB cannot safely store as numbers."""
+        for field_name in ("grand_total", "subtotal", "tax", "tip"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
+            if not isfinite(value):
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
+            setattr(self, field_name, float(value))
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -288,8 +306,17 @@ class ReceiptSummary(ReceiptIdentifierMixin):
     item_count: int = 0
 
     def __post_init__(self) -> None:
-        """Validate identifiers."""
+        """Validate identifiers and computed summary fields."""
         self._validate_receipt_identifiers()
+        if self.merchant_name is not None and not isinstance(
+            self.merchant_name, str
+        ):
+            raise ValueError("merchant_name must be a string or None")
+        if self.date is not None and not isinstance(self.date, datetime):
+            raise ValueError("date must be a datetime or None")
+        if not isinstance(self.totals, MonetaryTotals):
+            raise ValueError("totals must be a MonetaryTotals object")
+        validate_non_negative_int("item_count", self.item_count)
 
     # Convenience properties for backwards compatibility
     @property

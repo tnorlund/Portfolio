@@ -263,6 +263,8 @@ def test_item_to_places_cache_invalid_json():
         "PK": {"S": "PLACES#ADDRESS"},
         "SK": {"S": "VALUE#test"},
         "TYPE": {"S": "PLACES_CACHE"},
+        "GSI1PK": {"S": "PLACE_ID"},
+        "GSI1SK": {"S": "PLACE_ID#test123"},
         "place_id": {"S": "test123"},
         "places_response": {"S": "invalid json"},
         "last_updated": {"S": datetime.now().isoformat()},

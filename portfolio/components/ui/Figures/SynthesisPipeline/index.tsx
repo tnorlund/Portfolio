@@ -15,6 +15,8 @@ import {
   DotParams,
   EMPTY_ASSETS,
   finalLabelsSrc,
+  fontMetricsSrc,
+  FontMetrics,
   MerchantAssets,
   PIPELINE_MERCHANT,
   skeletonSrc,
@@ -128,14 +130,22 @@ const SynthesisPipeline: React.FC = () => {
     Promise.all([
       fetchJson<GlyphSkeleton>(skeletonSrc(PIPELINE_MERCHANT)),
       fetchJson<DotParams>(dotParamsSrc(PIPELINE_MERCHANT)),
+      fetchJson<FontMetrics>(fontMetricsSrc(PIPELINE_MERCHANT)),
       fetchJson<StyleAnnotated>(styleAnnotatedSrc(PIPELINE_MERCHANT)),
       fetchJson<ComposeSteps>(composeStepsSrc(PIPELINE_MERCHANT)),
       fetchJson<ShowcaseLabelFile>(finalLabelsSrc(PIPELINE_MERCHANT)),
-    ]).then(([skeleton, dotParams, style, compose, finalLabels]) => {
+    ]).then(([skeleton, dotParams, fontMetrics, style, compose, finalLabels]) => {
       if (cancelled) {
         return;
       }
-      setAssets({ skeleton, dotParams, style, compose, finalLabels });
+      setAssets({
+        skeleton,
+        dotParams,
+        fontMetrics,
+        style,
+        compose,
+        finalLabels,
+      });
     });
 
     return () => {

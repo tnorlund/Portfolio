@@ -79,7 +79,11 @@ class ReceiptWordLabel:
         )
 
         # Always assign a valid enum value for validation_status
-        status = self.validation_status or ValidationStatus.NONE.value
+        status = (
+            ValidationStatus.NONE.value
+            if self.validation_status is None
+            else self.validation_status
+        )
         self.validation_status = normalize_enum(status, ValidationStatus)
 
         if self.label_proposed_by is not None:
@@ -161,11 +165,13 @@ class ReceiptWordLabel:
         # This is important because if it's an Enum, str() gives
         # "ValidationStatus.INVALID"
         # instead of just "INVALID"
-        status_value = (
-            self.validation_status.value
-            if hasattr(self.validation_status, "value")
-            else str(self.validation_status)
-        )
+        status = self.validation_status
+        if isinstance(status, ValidationStatus):
+            status_value = status.value
+        elif isinstance(status, str):
+            status_value = status
+        else:
+            raise ValueError("validation_status must be a valid string")
         return {
             "GSI3PK": {"S": f"VALIDATION_STATUS#{status_value}"},
             "GSI3SK": {
@@ -202,6 +208,7 @@ class ReceiptWordLabel:
             dict: A dictionary representing the ReceiptWordLabel object as a
                 DynamoDB item.
         """
+        self.__post_init__()
         return {
             **self.key,
             **self.gsi1_key(),

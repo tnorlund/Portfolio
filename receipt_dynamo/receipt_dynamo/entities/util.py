@@ -2,7 +2,22 @@ import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
+from math import isfinite
 from typing import Any
+
+
+def _is_number(value: Any) -> bool:
+    """Return whether value is a finite, non-bool int or float."""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    return isinstance(value, float) and isfinite(value)
+
+
+def _is_int(value: Any) -> bool:
+    """Return whether value is an int but not Python's bool subtype."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _repr_str(value: Any) -> str:
@@ -31,7 +46,13 @@ def assert_type(
     exc_type: type[Exception] = TypeError,
 ) -> None:
     """Raise an exception if ``value`` is not an instance of ``expected``."""
-    if not isinstance(value, expected):
+    expected_types = expected if isinstance(expected, tuple) else (expected,)
+    expects_number = int in expected_types or float in expected_types
+    if not isinstance(value, expected) or (
+        expects_number
+        and bool not in expected_types
+        and isinstance(value, bool)
+    ):
         raise exc_type(format_type_error(name, value, expected))
 
 
@@ -57,7 +78,7 @@ def assert_valid_bounding_box(
     for key in ["x", "y", "width", "height"]:
         if key not in bounding_box:
             raise ValueError(f"bounding_box must contain the key '{key}'")
-        if not isinstance(bounding_box[key], (int, float)):
+        if not _is_number(bounding_box[key]):
             raise ValueError(f"bounding_box['{key}'] must be a number")
     return bounding_box
 
@@ -73,7 +94,7 @@ def assert_valid_point(
     for key in ["x", "y"]:
         if key not in point:
             raise ValueError(f"point must contain the key '{key}'")
-        if not isinstance(point[key], (int, float)):
+        if not _is_number(point[key]):
             raise ValueError(f"point['{key}'] must be a number")
     return point
 
@@ -387,7 +408,7 @@ def validate_positive_int(field_name: str, value: Any) -> None:
     Raises:
         ValueError: If value is not an integer or not positive
     """
-    if not isinstance(value, int):
+    if not _is_int(value):
         raise ValueError(f"{field_name} must be an integer")
     if value <= 0:
         raise ValueError(f"{field_name} must be positive")
@@ -407,7 +428,7 @@ def validate_non_negative_int(field_name: str, value: Any) -> None:
     Raises:
         ValueError: If value is not an integer or is negative
     """
-    if not isinstance(value, int):
+    if not _is_int(value):
         raise ValueError(f"{field_name} must be an integer")
     if value < 0:
         raise ValueError(f"{field_name} must be non-negative")
@@ -427,12 +448,7 @@ def validate_positive_dimensions(width: Any, height: Any) -> None:
     Raises:
         ValueError: If values are not integers or not positive
     """
-    if (
-        not isinstance(width, int)
-        or not isinstance(height, int)
-        or width <= 0
-        or height <= 0
-    ):
+    if not _is_int(width) or not _is_int(height) or width <= 0 or height <= 0:
         raise ValueError("width and height must be positive integers")
 
 
@@ -454,10 +470,13 @@ def validate_confidence_range(field_name: str, value: Any) -> float:
         ValueError: If value is not numeric or not in valid range
     """
     # Convert int to float if needed
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a float")
+
     if isinstance(value, int):
         value = float(value)
 
-    if not isinstance(value, float):
+    if not isinstance(value, float) or not isfinite(value):
         raise ValueError(f"{field_name} must be a float")
 
     if value <= 0.0 or value > 1.0:

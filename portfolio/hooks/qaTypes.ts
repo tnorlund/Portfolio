@@ -22,6 +22,8 @@ export interface TraceStep {
   detail?: string;
   /** Step duration in milliseconds (from LangSmith trace timestamps) */
   durationMs?: number;
+  /** Milliseconds from the trace start; enables parallel timeline lanes. */
+  startOffsetMs?: number;
   receipts?: ReceiptEvidence[];
   structuredData?: StructuredReceipt[];
 }

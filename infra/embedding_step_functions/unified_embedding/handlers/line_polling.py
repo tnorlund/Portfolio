@@ -12,9 +12,8 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 from botocore.config import Config
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_line_embeddings_as_delta
-from receipt_chroma.embedding.formatting.line_format import (
+from receipt_chroma.embedding.formatting import (
     get_primary_line_id,
     group_lines_into_visual_rows,
 )
@@ -25,13 +24,6 @@ from receipt_chroma.embedding.openai import (
     handle_batch_status,
     mark_items_for_retry,
 )
-from receipt_chroma.embedding.records import (
-    LineEmbeddingRecord,
-    RowEmbeddingRecord,
-    build_line_payload,
-    build_row_payload,
-)
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError

@@ -5,13 +5,14 @@ import logging
 import shutil
 import tempfile
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError
 
-from receipt_chroma import ChromaClient
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3.helpers import (
     _cleanup_old_snapshot_versions,
     _cleanup_s3_prefix,
@@ -22,6 +23,12 @@ from receipt_chroma.s3.helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_snapshot_version_id() -> str:
+    """Return a sortable identifier that is unique across concurrent uploads."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    return f"{timestamp}_{uuid.uuid4().hex[:8]}"
 
 
 def upload_snapshot_atomic(
@@ -68,14 +75,12 @@ def upload_snapshot_atomic(
                 "collection": collection,
             }
 
-        # Generate version identifier using timestamp
-        version_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        version_id = _generate_snapshot_version_id()
         versioned_key = f"{collection}/snapshot/timestamped/{version_id}/"
         pointer_key = f"{collection}/snapshot/latest-pointer.txt"
 
         logger.info(
-            "Starting atomic snapshot upload: collection=%s, version=%s, "
-            "local_path=%s",
+            "Starting atomic snapshot upload: collection=%s, version=%s, local_path=%s",
             collection,
             version_id,
             local_path,
@@ -115,8 +120,7 @@ def upload_snapshot_atomic(
         # Step 2: Final lock validation before atomic promotion
         if lock_manager and not lock_manager.validate_ownership():
             logger.error(
-                "Step 2 failed - lock validation failed, "
-                "cleaning up versioned upload"
+                "Step 2 failed - lock validation failed, cleaning up versioned upload"
             )
             # Clean up versioned upload
             try:
@@ -162,8 +166,7 @@ def upload_snapshot_atomic(
             logger.warning("Failed to cleanup old versions: %s", cleanup_error)
 
         logger.info(
-            "Atomic snapshot upload completed successfully: collection=%s, "
-            "version=%s",
+            "Atomic snapshot upload completed successfully: collection=%s, version=%s",
             collection,
             version_id,
         )
@@ -234,8 +237,7 @@ def download_snapshot_atomic(
             if e.response["Error"]["Code"] == "NoSuchKey":
                 # No pointer found - try to initialize empty snapshot
                 logger.info(
-                    "No pointer found, will attempt to initialize empty "
-                    "snapshot: %s",
+                    "No pointer found, will attempt to initialize empty snapshot: %s",
                     collection,
                 )
                 # Set versioned_key to trigger initialization in download

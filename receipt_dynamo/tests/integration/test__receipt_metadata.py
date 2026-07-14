@@ -85,7 +85,6 @@ def _batch_receipt_metadatas() -> List[ReceiptMetadata]:
                 merchant_category="Restaurant" if i % 2 == 0 else "Retail",
                 address=f"{i+1} Test St, City {i % 5}, TC {10000 + i}",
                 phone_number=f"+123456{i:04d}",
-                validation_status="VALID" if i % 2 == 0 else "PENDING",
                 matched_fields=["name", "address"] if i % 3 == 0 else ["name"],
                 validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][
                     i % 3

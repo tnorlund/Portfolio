@@ -5,7 +5,7 @@ import pytest
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.labels import apply_label_updates
 from receipt_dynamo.constants import ChromaDBCollection
-from tests.helpers.factories import create_label_message, create_mock_logger
+from tests.helpers.factories import create_label_message
 
 
 @pytest.mark.integration

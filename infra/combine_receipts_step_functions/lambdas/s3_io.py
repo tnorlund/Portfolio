@@ -1,8 +1,7 @@
 """
 S3 I/O utilities for receipt combination.
 
-This module contains functions for saving receipt records to S3 and exporting
-NDJSON files for embedding processing.
+This module contains functions for saving receipt records to S3.
 """
 
 import json
@@ -11,7 +10,6 @@ import os
 from typing import Any, Dict, Optional
 
 import boto3
-from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()
 
@@ -82,85 +80,3 @@ def save_records_json_to_s3(
         "records_s3_key": records_key,
         "records_s3_bucket": records_bucket,
     }
-
-
-def export_receipt_ndjson_and_queue(
-    client: DynamoClient,
-    artifacts_bucket: str,
-    embed_ndjson_queue_url: Optional[str],
-    image_id: str,
-    receipt_id: int,
-) -> None:
-    """
-    Export receipt lines and words to NDJSON files and queue for stream processor.
-
-    This matches the upload workflow pattern from process_ocr_results.py.
-    If embed_ndjson_queue_url is None or empty, NDJSON files are still uploaded
-    but not queued.
-
-    Args:
-        client: DynamoDB client
-        artifacts_bucket: S3 bucket for artifacts
-        embed_ndjson_queue_url: Optional SQS queue URL for embedding queue
-        image_id: Image ID containing the receipt
-        receipt_id: Receipt ID to export
-    """
-    if not embed_ndjson_queue_url:
-        logger.info("EMBED_NDJSON_QUEUE_URL not set; skipping embedding queue")
-        return
-
-    # Fetch authoritative words/lines from DynamoDB (just saved)
-    receipt_words = client.list_receipt_words_from_receipt(
-        image_id, receipt_id
-    )
-    receipt_lines = client.list_receipt_lines_from_receipt(
-        image_id, receipt_id
-    )
-
-    prefix = f"receipts/{image_id}/receipt-{receipt_id:05d}/"
-    lines_key = prefix + "lines.ndjson"
-    words_key = prefix + "words.ndjson"
-
-    # Serialize full dataclass objects so the consumer can rehydrate with
-    # ReceiptLine(**d)/ReceiptWord(**d) preserving geometry and methods
-    line_rows = [dict(line) for line in (receipt_lines or [])]
-    word_rows = [dict(word) for word in (receipt_words or [])]
-
-    # Upload NDJSON files to S3
-    s3_client = boto3.client("s3")
-
-    # Upload lines NDJSON
-    lines_ndjson_content = "\n".join(
-        json.dumps(row, default=str) for row in line_rows
-    )
-    s3_client.put_object(
-        Bucket=artifacts_bucket,
-        Key=lines_key,
-        Body=lines_ndjson_content.encode("utf-8"),
-        ContentType="application/x-ndjson",
-    )
-
-    # Upload words NDJSON
-    words_ndjson_content = "\n".join(
-        json.dumps(row, default=str) for row in word_rows
-    )
-    s3_client.put_object(
-        Bucket=artifacts_bucket,
-        Key=words_key,
-        Body=words_ndjson_content.encode("utf-8"),
-        ContentType="application/x-ndjson",
-    )
-
-    # Enqueue for batched embedding from NDJSON via SQS
-    sqs_client = boto3.client("sqs")
-    payload = {
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "artifacts_bucket": artifacts_bucket,
-        "lines_key": lines_key,
-        "words_key": words_key,
-    }
-    sqs_client.send_message(
-        QueueUrl=embed_ndjson_queue_url,
-        MessageBody=json.dumps(payload),
-    )

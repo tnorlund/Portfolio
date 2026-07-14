@@ -126,7 +126,7 @@ def setup_environment():
                 import shutil
                 import tempfile
 
-                from receipt_chroma import download_snapshot_atomic
+                from receipt_chroma.s3 import download_snapshot_atomic
 
                 os.makedirs(lines_snapshot_dir, exist_ok=True)
                 os.makedirs(words_snapshot_dir, exist_ok=True)
@@ -236,22 +236,7 @@ def setup_environment():
 
                             traceback.print_exc()
                     else:
-                        print(
-                            f"⚠️  One or both downloads failed, falling back to HTTP URL if available"
-                        )
-                        chroma_dns = env.get("chroma_service_dns")
-                        if chroma_dns:
-                            chroma_host = chroma_dns.split(":")[0]
-                            os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
-                                f"http://{chroma_host}:8000"
-                            )
-                            print(
-                                f"✅ ChromaDB URL: http://{chroma_host}:8000"
-                            )
-                        else:
-                            print(
-                                "⚠️  ChromaDB not available - will fail if needed"
-                            )
+                        print("⚠️  One or both ChromaDB downloads failed")
                 finally:
                     shutil.rmtree(lines_temp, ignore_errors=True)
                     shutil.rmtree(words_temp, ignore_errors=True)
@@ -261,27 +246,9 @@ def setup_environment():
                 import traceback
 
                 traceback.print_exc()
-                # Fall back to HTTP URL if available
-                chroma_dns = env.get("chroma_service_dns")
-                if chroma_dns:
-                    chroma_host = chroma_dns.split(":")[0]
-                    os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
-                        f"http://{chroma_host}:8000"
-                    )
-                    print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
-                else:
-                    print("⚠️  ChromaDB not available - will fail if needed")
+                print("⚠️  ChromaDB not available - will fail if needed")
         else:
-            # Fall back to HTTP URL if available
-            chroma_dns = env.get("chroma_service_dns")
-            if chroma_dns:
-                chroma_host = chroma_dns.split(":")[0]
-                os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
-                    f"http://{chroma_host}:8000"
-                )
-                print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
-            else:
-                print("⚠️  ChromaDB not found - will fail if needed")
+            print("⚠️  ChromaDB not found - will fail if needed")
 
     # API Keys
     openai_key = secrets.get("portfolio:OPENAI_API_KEY", "")

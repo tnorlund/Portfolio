@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Generator
 
 from receipt_dynamo.constants import SectionType, ValidationStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_non_negative_int,
+    validate_positive_int,
 )
 
 
@@ -57,10 +60,7 @@ class ReceiptSection:
 
     def __post_init__(self):
         """Validate and initialize the ReceiptSection instance."""
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
 
         assert_valid_uuid(self.image_id)
 
@@ -85,8 +85,15 @@ class ReceiptSection:
             raise ValueError("line_ids must be a list")
         if not self.line_ids:
             raise ValueError("line_ids must not be empty")
-        if not all(isinstance(line_id, int) for line_id in self.line_ids):
-            raise ValueError("line_ids must contain only integers")
+        for line_id in self.line_ids:
+            try:
+                validate_non_negative_int("line_id", line_id)
+            except ValueError as exc:
+                raise ValueError(
+                    "line_ids must contain only integers greater than or "
+                    "equal to zero"
+                ) from exc
+        self.line_ids = list(self.line_ids)
 
         if isinstance(self.created_at, str):
             self.created_at = datetime.fromisoformat(self.created_at)
@@ -102,6 +109,8 @@ class ReceiptSection:
             ):
                 raise ValueError("confidence must be a number or None")
             self.confidence = float(self.confidence)
+            if not isfinite(self.confidence):
+                raise ValueError("confidence must be finite")
             if not 0.0 <= self.confidence <= 1.0:
                 raise ValueError("confidence must be in [0, 1]")
 
@@ -143,6 +152,9 @@ class ReceiptSection:
         Optional fields are only emitted when set, so rows stay identical to
         the pre-existing schema when the new fields are unused.
         """
+        self.__post_init__()
+        if not isinstance(self.created_at, datetime):
+            raise ValueError("created_at must be a datetime or ISO string")
         item = {
             **self.key,
             "TYPE": {"S": "RECEIPT_SECTION"},
@@ -162,13 +174,18 @@ class ReceiptSection:
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptSection object."""
+        created_at = (
+            self.created_at.isoformat()
+            if isinstance(self.created_at, datetime)
+            else self.created_at
+        )
         return (
             f"ReceiptSection("
             f"receipt_id={self.receipt_id}, "
             f"image_id={_repr_str(self.image_id)}, "
             f"section_type='{self.section_type}', "
             f"line_ids={self.line_ids}, "
-            f"created_at={_repr_str(self.created_at.isoformat())}, "
+            f"created_at={_repr_str(created_at)}, "
             f"confidence={self.confidence}, "
             f"model_source={_repr_str(self.model_source)}, "
             f"validation_status={_repr_str(self.validation_status)}"
@@ -182,7 +199,11 @@ class ReceiptSection:
 
         yield "section_type", self.section_type
         yield "line_ids", self.line_ids
-        yield "created_at", self.created_at.isoformat()
+        yield "created_at", (
+            self.created_at.isoformat()
+            if isinstance(self.created_at, datetime)
+            else self.created_at
+        )
         yield "confidence", self.confidence
         yield "model_source", self.model_source
         yield "validation_status", self.validation_status
@@ -195,7 +216,11 @@ class ReceiptSection:
                 self.image_id,
                 self.section_type,
                 tuple(self.line_ids),
-                self.created_at.isoformat(),
+                (
+                    self.created_at.isoformat()
+                    if isinstance(self.created_at, datetime)
+                    else self.created_at
+                ),
                 self.confidence,
                 self.model_source,
                 self.validation_status,

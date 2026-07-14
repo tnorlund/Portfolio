@@ -5,6 +5,10 @@ from receipt_dynamo.entities.entity_factory import (
     create_receipt_barcode_sk_parser,
 )
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
+from receipt_dynamo.entities.util import (
+    validate_non_negative_int,
+    validate_positive_int,
+)
 
 
 @dataclass(kw_only=True)
@@ -43,15 +47,8 @@ class ReceiptBarcode(TextGeometryEntity):
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
-        if not isinstance(self.barcode_id, int):
-            raise ValueError("barcode_id must be an integer")
-        if self.barcode_id < 0:
-            raise ValueError("barcode_id must be non-negative")
+        validate_positive_int("receipt_id", self.receipt_id)
+        validate_non_negative_int("barcode_id", self.barcode_id)
 
         if not isinstance(self.symbology, str) or not self.symbology:
             raise ValueError("symbology must be a non-empty string")
@@ -103,6 +100,7 @@ class ReceiptBarcode(TextGeometryEntity):
 
     def to_item(self) -> dict[str, Any]:
         """Convert the ReceiptBarcode to a DynamoDB item."""
+        self.__post_init__()
         return {
             **self.key,
             "TYPE": {"S": "RECEIPT_BARCODE"},
@@ -143,7 +141,14 @@ class ReceiptBarcode(TextGeometryEntity):
         """Convert a DynamoDB item to a ReceiptBarcode object."""
 
         def extract_symbology(itm: dict[str, Any]) -> str:
-            return itm["symbology"]["S"]
+            attribute = itm["symbology"]
+            if (
+                not isinstance(attribute, dict)
+                or set(attribute) != {"S"}
+                or not isinstance(attribute["S"], str)
+            ):
+                raise ValueError("symbology must be a DynamoDB string (S)")
+            return attribute["S"]
 
         return cls._from_item_with_geometry(
             item,

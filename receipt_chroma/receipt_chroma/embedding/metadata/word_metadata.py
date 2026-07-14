@@ -118,7 +118,9 @@ def enrich_word_metadata_with_labels(
     ]
 
     if auto_suggestions:
-        latest = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
+        latest = sorted(
+            auto_suggestions, key=lambda label: label.timestamp_added
+        )[-1]
         label_confidence = getattr(latest, "confidence", None)
         label_proposed_by = latest.label_proposed_by
         if label_confidence is not None:
@@ -168,9 +170,9 @@ def enrich_word_metadata_with_labels(
         if lbl.validation_status == ValidationStatus.VALID.value
     ]
     if valids:
-        label_validated_at = sorted(valids, key=lambda l: l.timestamp_added)[
-            -1
-        ].timestamp_added
+        label_validated_at = sorted(
+            valids, key=lambda label: label.timestamp_added
+        )[-1].timestamp_added
         if hasattr(label_validated_at, "isoformat"):
             metadata["label_validated_at"] = label_validated_at.isoformat()
         else:

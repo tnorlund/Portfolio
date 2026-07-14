@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Unit tests for dual-write sync_collection_to_cloud functionality.
 
 Tests the BulkSyncResult dataclass and sync_collection_to_cloud function
@@ -19,7 +20,6 @@ for _var in _CHROMA_ENV_VARS:
     os.environ.pop(_var, None)
 
 import tempfile
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -642,7 +642,7 @@ class TestSyncCollectionToCloud:
 
                 mock_create.return_value = mock_cloud_client
 
-                result = sync_collection_to_cloud(
+                sync_collection_to_cloud(
                     local_client=local_client,
                     collection_name="test_collection",
                     cloud_config=cloud_config,

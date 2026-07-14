@@ -463,7 +463,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
@@ -509,7 +508,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",

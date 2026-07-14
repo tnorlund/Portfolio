@@ -27,7 +27,9 @@
         "condense": 0.93,
         "dash_around_phrases": [
           "SHOP CARD"
-        ]
+        ],
+        "_face_source_comment": "M4 pilot flag. 'stylemap' (default, no-op) = display_headings text rules + logo overlay; 'measured' consumes a per-row row_faces map built by glyphstudio.face_select from stylescan measurements of the mimicked receipt.",
+        "face_source": "stylemap"
       },
       "logo": "bitMatrix-C2_logo.png",
       "logo_anchor": {
@@ -350,7 +352,9 @@
         "ocr_font_sizing": true,
         "ocr_cap_height_ratio": 0.79,
         "stylemap": "wildfork.stylemap.json",
-        "pitch_ratio": 0.538
+        "pitch_ratio": 0.538,
+        "_face_source_comment": "M4 pilot flag. 'stylemap' (default, no-op) = text-rule faces; 'measured' consumes a per-row row_faces map built by glyphstudio.face_select from stylescan measurements of the mimicked receipt.",
+        "face_source": "stylemap"
       },
       "logo_anchor": {
         "phrases": [

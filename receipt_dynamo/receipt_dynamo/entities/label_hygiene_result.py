@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -43,9 +44,15 @@ class LabelHygieneResult:
 
         if not isinstance(self.alias, str):
             raise ValueError("alias must be a string")
+        if not self.alias or "#" in self.alias:
+            raise ValueError("alias must be non-empty and exclude '#'")
 
         if not isinstance(self.canonical_label, str):
             raise ValueError("canonical_label must be a string")
+        if not self.canonical_label or "#" in self.canonical_label:
+            raise ValueError(
+                "canonical_label must be non-empty and exclude '#'"
+            )
 
         if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
@@ -57,15 +64,26 @@ class LabelHygieneResult:
             self.source_batch_id, str
         ):
             raise ValueError("source_batch_id must be a string or None")
+        if self.source_batch_id == "":
+            raise ValueError("source_batch_id must be non-empty or None")
 
-        if not isinstance(self.example_ids, list):
-            raise ValueError("example_ids must be a list")
+        if not isinstance(self.example_ids, list) or not all(
+            isinstance(example_id, str) and example_id
+            for example_id in self.example_ids
+        ):
+            raise ValueError("example_ids must be a list of non-empty strings")
+        if len(set(self.example_ids)) != len(self.example_ids):
+            raise ValueError("example_ids must not contain duplicates")
+        self.example_ids = deepcopy(self.example_ids)
 
-        if not isinstance(self.image_id, str):
-            raise ValueError("image_id must be a string")
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(self.receipt_id, int):
+        if isinstance(self.receipt_id, bool) or not isinstance(
+            self.receipt_id, int
+        ):
             raise ValueError("receipt_id must be an integer")
+        if self.receipt_id <= 0:
+            raise ValueError("receipt_id must be greater than zero")
 
         if not isinstance(self.timestamp, datetime):
             raise ValueError("timestamp must be a datetime object")
@@ -90,6 +108,7 @@ class LabelHygieneResult:
         }
 
     def to_item(self) -> dict[str, Any]:
+        self.__post_init__()
         return {
             **self.key,
             **self.gsi1_key(),
@@ -99,14 +118,18 @@ class LabelHygieneResult:
             "canonical_label": {"S": self.canonical_label},
             "reasoning": {"S": self.reasoning},
             "gpt_agreed": {"BOOL": self.gpt_agreed},
-            "source_batch_id": {"S": self.source_batch_id or ""},
-            "example_ids": {"SS": self.example_ids},
+            "source_batch_id": (
+                {"S": self.source_batch_id}
+                if self.source_batch_id is not None
+                else {"NULL": True}
+            ),
+            "example_ids": (
+                {"SS": self.example_ids} if self.example_ids else {"L": []}
+            ),
             "image_id": {
                 "S": self.image_id
             },  # Include image_id in serialization
-            "receipt_id": {
-                "N": self.receipt_id
-            },  # Include receipt_id in serialization
+            "receipt_id": {"N": str(self.receipt_id)},
             "timestamp": {"S": self.timestamp.isoformat()},
         }
 
@@ -183,12 +206,19 @@ class LabelHygieneResult:
             canonical_label = item["canonical_label"]["S"]
             reasoning = item["reasoning"]["S"]
             gpt_agreed = item["gpt_agreed"]["BOOL"]
-            source_batch_id = item["source_batch_id"]["S"]
-            example_ids = item["example_ids"]["SS"]
+            source_field = item["source_batch_id"]
+            source_batch_id = source_field.get("S") or None
+            example_field = item["example_ids"]
+            if "SS" in example_field:
+                example_ids = list(example_field["SS"])
+            elif example_field == {"L": []}:
+                example_ids = []
+            else:
+                raise ValueError("example_ids must be SS or an empty L")
             image_id = item["image_id"]["S"]
             receipt_id = int(item["receipt_id"]["N"])
             timestamp = datetime.fromisoformat(item["timestamp"]["S"])
-            return cls(
+            result = cls(
                 hygiene_id,
                 alias,
                 canonical_label,
@@ -200,6 +230,17 @@ class LabelHygieneResult:
                 image_id,
                 receipt_id,
             )
+            expected_keys = {
+                **result.key,
+                **result.gsi1_key(),
+                **result.gsi2_key(),
+                "TYPE": {"S": "LABEL_HYGIENE_RESULT"},
+            }
+            if any(
+                item.get(key) != value for key, value in expected_keys.items()
+            ):
+                raise ValueError("Invalid LabelHygieneResult keys")
+            return result
         except Exception as e:
             raise ValueError(
                 f"Error converting item to LabelHygieneResult: {e}"
