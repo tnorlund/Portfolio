@@ -444,6 +444,40 @@ def test_item_to_receipt_row(example_receipt_row):
     row = item_to_receipt_row(item)
     assert row == example_receipt_row
 
+
+def test_receipt_row_round_trips_price_pairing(example_receipt_row):
+    """New rows preserve the receipt-derived price pairing metadata."""
+
+    example_receipt_row.price_column_x = 0.94
+    example_receipt_row.label_text = "ORGANIC APPLES"
+    example_receipt_row.amount_text = "$4.99"
+    example_receipt_row.amount_line_id = 6
+    example_receipt_row.amount_word_id = 2
+
+    restored = item_to_receipt_row(example_receipt_row.to_item())
+
+    assert restored == example_receipt_row
+
+
+def test_receipt_row_rejects_partial_price_pairing(example_receipt_row):
+    """An amount always keeps enough identity to trace back to OCR."""
+
+    with pytest.raises(ValueError, match="must be set together"):
+        ReceiptRow(
+            receipt_id=example_receipt_row.receipt_id,
+            image_id=example_receipt_row.image_id,
+            row_id=example_receipt_row.row_id,
+            line_ids=example_receipt_row.line_ids,
+            grouping_version=example_receipt_row.grouping_version,
+            y_min=example_receipt_row.y_min,
+            y_max=example_receipt_row.y_max,
+            x_min=example_receipt_row.x_min,
+            x_max=example_receipt_row.x_max,
+            created_at=example_receipt_row.created_at,
+            price_column_x=0.94,
+            amount_text="$4.99",
+        )
+
     # Test with missing keys
     with pytest.raises(ValueError, match="Item is missing required keys"):
         item_to_receipt_row({})
