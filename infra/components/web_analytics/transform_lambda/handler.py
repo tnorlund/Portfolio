@@ -294,10 +294,13 @@ def _target_dates(event: dict) -> list:
             days.append(day.isoformat())
             day += timedelta(days=1)
         return days
-    # Reprocess a few trailing UTC days so late-delivered CloudFront logs
-    # (delivery can lag hours) get folded into their partitions. Idempotent.
+    # Rebuild today + yesterday (UTC) so late-delivered CloudFront logs (which
+    # lag hours, not days) get folded into their partitions. On the hourly
+    # cadence each run re-absorbs stragglers within the hour, so a 2-day window
+    # keeps partitions fresh while halving the destructive-rebuild footprint of
+    # the former 4-day default (and matches this module's documented default).
     today = datetime.now(timezone.utc).date()
-    return [(today - timedelta(days=n)).isoformat() for n in (3, 2, 1, 0)]
+    return [(today - timedelta(days=n)).isoformat() for n in (1, 0)]
 
 
 def handler(event, context):

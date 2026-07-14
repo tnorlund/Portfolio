@@ -327,11 +327,18 @@ class WebAnalytics(ComponentResource):
             ),
             opts=child,
         )
-        # Daily schedule (logs are low-latency; one daily pass + the
-        # yesterday/today default keeps partitions fresh and idempotent).
+        # Hourly schedule: the no-payload run idempotently rebuilds today +
+        # yesterday (UTC), so web_events -- and every analytics_* tool that reads
+        # it -- stays at most ~1h behind instead of ~24h, for negligible added
+        # Athena cost at this traffic. Known limitation: _rebuild_partition is a
+        # non-atomic drop+reinsert, so a query landing during the sub-minute
+        # rebuild of a live partition can momentarily see partial data; on a
+        # personal-scale tool that window is ~seconds/hour and self-heals on
+        # re-query. A gap-free (staging-swap / Iceberg) rebuild is the proper
+        # follow-up. Off-minute (:17) dodges the top-of-hour scheduler crowd.
         schedule = aws.cloudwatch.EventRule(
             f"{name}-transform-schedule",
-            schedule_expression="cron(30 9 * * ? *)",  # 09:30 UTC ~ 02:30 PT
+            schedule_expression="cron(17 * * * ? *)",  # hourly at :17 UTC
             opts=child,
         )
         aws.cloudwatch.EventTarget(
