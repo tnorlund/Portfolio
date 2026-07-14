@@ -497,6 +497,47 @@ def underline_probe(
     return False
 
 
+def _load_receipt_letters(table: str, image_id: str):
+    """Receipt letters for one image, tolerant of post-re-OCR row drift.
+
+    ``get_image_details`` scans the whole IMAGE# partition and reconstructs
+    every entity, so a single re-OCR-written OCR_JOB row that no longer
+    round-trips through its strict loader aborts the read. Measurement only
+    needs RECEIPT_LETTER rows, so query the partition directly and convert just
+    those, skipping any individual letter that fails to parse.
+    """
+    import boto3
+
+    from receipt_dynamo.entities.receipt_letter import item_to_receipt_letter
+
+    dynamo = boto3.client("dynamodb")
+    letters = []
+    lek = None
+    while True:
+        kw = dict(
+            TableName=table,
+            KeyConditionExpression="#pk = :pk",
+            ExpressionAttributeNames={"#pk": "PK", "#t": "TYPE"},
+            ExpressionAttributeValues={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":t": {"S": "RECEIPT_LETTER"},
+            },
+            FilterExpression="#t = :t",
+        )
+        if lek:
+            kw["ExclusiveStartKey"] = lek
+        resp = dynamo.query(**kw)
+        for it in resp["Items"]:
+            try:
+                letters.append(item_to_receipt_letter(it))
+            except Exception:  # noqa: BLE001 - skip a drifted row, not the receipt
+                continue
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
+    return letters
+
+
 def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     from receipt_line_scorecard import _load_words_and_real
 
@@ -508,12 +549,11 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     gray = np.asarray(real.convert("L"))
     H, W = gray.shape
 
-    client = DynamoClient(
-        os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
-    )
-    details = client.get_image_details(image_id)
+    table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
     letters = [
-        l for l in details.receipt_letters if str(l.receipt_id) == str(receipt_id)
+        l
+        for l in _load_receipt_letters(table, image_id)
+        if str(l.receipt_id) == str(receipt_id)
     ]
 
     def box_px(obj):
