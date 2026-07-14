@@ -1,6 +1,6 @@
 # Glyph Studio MCP Server Lambda (read-only).
 # Wraps the Glyph Studio inspection tools for remote HTTP access via a
-# Lambda Function URL. numpy + PIL only — no scipy/skimage/node.
+# API Gateway and Lambda Function URL. numpy + PIL only — no scipy/skimage/node.
 
 # Stage 1: dependencies (cached layer — rebuilds only when these change)
 FROM public.ecr.aws/lambda/python:3.12 AS dependencies
@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir /tmp/glyphstudio_pkg && \
     pip install --no-cache-dir \
         mcp \
         boto3 \
-        run-mcp-servers-with-aws-lambda && \
+        run-mcp-servers-with-aws-lambda==0.5.21 && \
     rm -rf /tmp/glyphstudio_pkg
 
 # Stage 2: Lambda-specific code (changes often; doesn't bust the deps cache)

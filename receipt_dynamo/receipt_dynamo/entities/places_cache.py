@@ -1,5 +1,6 @@
 import hashlib
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator, Literal
@@ -33,6 +34,9 @@ class PlacesCache:
     REQUIRED_KEYS = {
         "PK",
         "SK",
+        "TYPE",
+        "GSI1PK",
+        "GSI1SK",
         "search_type",
         "place_id",
         "places_response",
@@ -62,21 +66,41 @@ class PlacesCache:
         Raises:
             ValueError: If any of the parameters are invalid
         """
+        self._validate_fields()
+        self.places_response = deepcopy(self.places_response)
+        if self.search_type == "ADDRESS":
+            value = self.search_value.strip()
+            self.value_hash = hashlib.md5(
+                value.encode(), usedforsecurity=False
+            ).hexdigest()[:8]
+            self.normalized_value = normalize_address(value)
+
+    def _validate_fields(self) -> None:
+        """Validate fields at construction and before persistence."""
         # Validate search_type
         if self.search_type not in ["ADDRESS", "PHONE", "URL"]:
             raise ValueError("search_type must be one of: ADDRESS, PHONE, URL")
 
         # Validate search_value
-        if not self.search_value or not isinstance(self.search_value, str):
+        if (
+            not isinstance(self.search_value, str)
+            or not self.search_value.strip()
+        ):
             raise ValueError("search_value cannot be empty")
 
         # Validate place_id
-        if not self.place_id or not isinstance(self.place_id, str):
+        if not isinstance(self.place_id, str) or not self.place_id:
             raise ValueError("place_id cannot be empty")
 
         # Validate places_response
         if not isinstance(self.places_response, dict):
             raise ValueError("places_response must be a dictionary")
+        try:
+            json.dumps(self.places_response, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "places_response must be JSON serializable"
+            ) from exc
 
         # Validate last_updated
         try:
@@ -87,13 +111,26 @@ class PlacesCache:
             ) from e
 
         # Validate query_count
-        if not isinstance(self.query_count, int) or self.query_count < 0:
+        if (
+            isinstance(self.query_count, bool)
+            or not isinstance(self.query_count, int)
+            or self.query_count < 0
+        ):
             raise ValueError("query_count must be non-negative")
 
         # Validate time_to_live
         if self.time_to_live is not None:
-            if not isinstance(self.time_to_live, int) or self.time_to_live < 0:
+            if (
+                isinstance(self.time_to_live, bool)
+                or not isinstance(self.time_to_live, int)
+                or self.time_to_live < 0
+            ):
                 raise ValueError("time_to_live must be non-negative")
+
+        for field_name in ("normalized_value", "value_hash"):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{field_name} must be a string or None")
 
     def _pad_search_value(self, value: str) -> str:
         """Pad the search value to a fixed length.
@@ -107,6 +144,8 @@ class PlacesCache:
         value = value.strip()
 
         if self.search_type == "ADDRESS":
+            if len(value) > self._MAX_ADDRESS_LENGTH:
+                raise ValueError("ADDRESS search_value is too long")
             # Create a hash of the original OCR text
             value_hash = hashlib.md5(
                 value.encode(), usedforsecurity=False
@@ -122,12 +161,20 @@ class PlacesCache:
             # Return padded original value with hash
             return f"{value_hash}_{value:_>{self._MAX_ADDRESS_LENGTH}}"
         if self.search_type == "PHONE":
+            self.normalized_value = None
+            self.value_hash = None
             # Keep only digits and basic formatting characters
             value = "".join(c for c in value if c.isdigit() or c in "()+-")
+            if not value or len(value) > self._MAX_PHONE_LENGTH:
+                raise ValueError("PHONE search_value is empty or too long")
             return f"{value:_>{self._MAX_PHONE_LENGTH}}"
         if self.search_type == "URL":
+            self.normalized_value = None
+            self.value_hash = None
             # Replace spaces with underscores and lowercase
             value = value.lower().replace(" ", "_")
+            if len(value) > self._MAX_URL_LENGTH:
+                raise ValueError("URL search_value is too long")
             return f"{value:_>{self._MAX_URL_LENGTH}}"
         raise ValueError(f"Invalid search type: {self.search_type}")
 
@@ -169,6 +216,7 @@ class PlacesCache:
         Returns:
             Dict: The DynamoDB item representation with all required attributes
         """
+        self._validate_fields()
         key = self.key
         item = {
             **key,  # Base table keys (PK, SK)
@@ -176,7 +224,9 @@ class PlacesCache:
             "TYPE": {"S": "PLACES_CACHE"},
             # Item attributes
             "place_id": {"S": self.place_id},
-            "places_response": {"S": json.dumps(self.places_response)},
+            "places_response": {
+                "S": json.dumps(self.places_response, allow_nan=False)
+            },
             "last_updated": {"S": self.last_updated},
             "query_count": {"N": str(self.query_count)},
             "search_type": {"S": self.search_type},
@@ -212,7 +262,7 @@ class PlacesCache:
             yield "normalized_value", self.normalized_value
         if self.value_hash:
             yield "value_hash", self.value_hash
-        if self.time_to_live:
+        if self.time_to_live is not None:
             yield "time_to_live", self.time_to_live
 
     def __repr__(self) -> str:
@@ -232,7 +282,7 @@ class PlacesCache:
             base += f", normalized_value='{self.normalized_value}'"
         if self.value_hash:
             base += f", value_hash='{self.value_hash}'"
-        if self.time_to_live:
+        if self.time_to_live is not None:
             base += f", time_to_live={self.time_to_live}"
         return base + ")"
 
@@ -253,6 +303,8 @@ class PlacesCache:
             raise ValueError("Item is missing required keys")
 
         try:
+            if item["TYPE"].get("S") != "PLACES_CACHE":
+                raise ValueError("Invalid PlacesCache TYPE")
             places_response = json.loads(item["places_response"]["S"])
             search_type = item["search_type"]["S"]
 
@@ -261,16 +313,10 @@ class PlacesCache:
                 search_value = item["search_value"]["S"]
             else:
                 # Fall back to extracting from SK if search_value is missing
-                padded_value = item["SK"]["S"].split("#")[1]
+                padded_value = item["SK"]["S"].split("#", 1)[1]
                 if search_type == "ADDRESS":
-                    # Extract the original value after the hash
-                    parts = padded_value.split("_")
-                    if len(parts) >= 2:
-                        search_value = parts[1].lstrip("_").replace("_", " ")
-                    else:
-                        search_value = padded_value.lstrip("_").replace(
-                            "_", " "
-                        )
+                    # Address keys are <8-char-hash>_<left-padded-original>.
+                    search_value = padded_value[9:].lstrip("_")
                 elif search_type == "PHONE":
                     search_value = padded_value.lstrip("_")
                     search_value = "".join(
@@ -288,7 +334,7 @@ class PlacesCache:
             if "normalized_value" in item and "S" in item["normalized_value"]:
                 normalized_value = item["normalized_value"]["S"]
             elif search_type == "ADDRESS":
-                parts = item["SK"]["S"].split("#")[1].split("_")
+                parts = item["SK"]["S"].split("#", 1)[1].split("_")
                 if len(parts) >= 2:
                     value_hash = parts[0]
 
@@ -304,7 +350,7 @@ class PlacesCache:
             last_updated = item["last_updated"]["S"]
             query_count = int(item["query_count"]["N"])
 
-            return cls(
+            cache = cls(
                 search_type=search_type,
                 search_value=search_value,
                 place_id=place_id,
@@ -315,6 +361,11 @@ class PlacesCache:
                 value_hash=value_hash,
                 time_to_live=time_to_live,
             )
+            expected = cache.to_item()
+            for key in ("PK", "SK", "TYPE", "GSI1PK", "GSI1SK"):
+                if item.get(key) != expected.get(key):
+                    raise ValueError("Invalid PlacesCache keys")
+            return cache
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             raise ValueError(
                 f"Error converting item to PlacesCache: {str(e)}"

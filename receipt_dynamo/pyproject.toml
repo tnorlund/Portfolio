@@ -104,7 +104,6 @@ include = ["receipt_dynamo/py.typed"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v"
-asyncio_default_fixture_loop_scope = "function"
 markers = [
     "unit: mark test as a unit test",
     "integration: mark test as an integration test",

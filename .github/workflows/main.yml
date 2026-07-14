@@ -187,11 +187,14 @@ jobs:
           # ("localhost:3001 already used") and skips the rest of the
           # pipeline including Deploy. Self-hosted runners share state
           # across jobs, so we can't rely on container teardown.
-          lsof -ti:3001 | xargs -r kill -9 2>/dev/null || true
+          PIDS="$(lsof -ti:3001 2>/dev/null || true)"
+          if [ -n "$PIDS" ]; then
+            kill -9 $PIDS 2>/dev/null || true
+          fi
 
           # Re-free the port on exit so the next job starts clean even
           # if Playwright crashes mid-run.
-          trap 'lsof -ti:3001 | xargs -r kill -9 2>/dev/null || true' EXIT
+          trap 'PIDS="$(lsof -ti:3001 2>/dev/null || true)"; [ -z "$PIDS" ] || kill -9 $PIDS 2>/dev/null || true' EXIT
 
           npm ci --prefer-offline
           npm run build

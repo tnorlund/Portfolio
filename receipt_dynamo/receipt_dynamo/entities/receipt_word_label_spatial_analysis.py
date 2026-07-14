@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Generator
 
 from receipt_dynamo.entities.util import (
@@ -38,11 +39,22 @@ class SpatialRelationship:
         validate_positive_int("to_line_id", self.to_line_id)
         validate_positive_int("to_word_id", self.to_word_id)
 
-        if not isinstance(self.distance, (int, float)) or self.distance < 0:
+        if (
+            isinstance(self.distance, bool)
+            or not isinstance(self.distance, (int, float))
+            or not isfinite(self.distance)
+            or self.distance < 0
+        ):
             raise ValueError("distance must be a non-negative number")
+        self.distance = float(self.distance)
 
-        if not isinstance(self.angle, (int, float)):
+        if (
+            isinstance(self.angle, bool)
+            or not isinstance(self.angle, (int, float))
+            or not isfinite(self.angle)
+        ):
             raise ValueError("angle must be a number")
+        self.angle = float(self.angle)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -112,9 +124,24 @@ class ReceiptWordLabelSpatialAnalysis:
 
         if not isinstance(self.from_position, dict):
             raise ValueError("from_position must be a dictionary")
-        required_position_keys = {"x", "y"}
-        if not required_position_keys.issubset(self.from_position.keys()):
-            raise ValueError("from_position must contain 'x' and 'y' keys")
+        if set(self.from_position) != {"x", "y"}:
+            raise ValueError(
+                "from_position must contain exactly 'x' and 'y' keys"
+            )
+        for coordinate in ("x", "y"):
+            value = self.from_position[coordinate]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isfinite(value)
+            ):
+                raise ValueError(
+                    f"from_position['{coordinate}'] must be a finite number"
+                )
+        self.from_position = {
+            "x": float(self.from_position["x"]),
+            "y": float(self.from_position["y"]),
+        }
 
         if not isinstance(self.spatial_relationships, list):
             raise ValueError("spatial_relationships must be a list")
@@ -125,6 +152,7 @@ class ReceiptWordLabelSpatialAnalysis:
                 raise ValueError(
                     f"spatial_relationships[{i}] must be a SpatialRelationship"
                 )
+        self.spatial_relationships = list(self.spatial_relationships)
 
         # Convert datetime to string for storage and validate ISO format
         self.timestamp_added = validate_iso_timestamp(
@@ -194,8 +222,10 @@ class ReceiptWordLabelSpatialAnalysis:
             dict: A dictionary representing the object as a DynamoDB item.
         """
         # Convert spatial relationships to DynamoDB format
+        self.__post_init__()
         relationships_list = []
         for rel in self.spatial_relationships:
+            rel.__post_init__()
             relationships_list.append(
                 {
                     "M": {

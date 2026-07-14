@@ -1,135 +1,95 @@
 # receipt-chroma
 
-A Python interface for accessing ChromaDB for receipt vector storage and retrieval.
+`receipt-chroma` owns the receipt vector-store boundary: a resource-safe
+ChromaDB client, receipt embedding payloads, S3 snapshot and delta operations,
+and the compaction helpers used by the deployed embedding pipeline.
 
-## Features
+## Deployed architecture
 
-- **Proper Resource Management**: Implements context manager support and explicit `close()` method to prevent SQLite file locking issues
-- **Clean API**: Simple, consistent interface for ChromaDB operations
-- **Multiple Modes**: Support for read-only, read-write, delta, and snapshot modes
-- **AWS Integration**: Built-in support for S3 operations and EFS access
+The upload path queries Chroma Cloud when it is enabled. Writes are emitted as
+receipt-scoped deltas in S3, and DynamoDB compaction records trigger the async
+compactor. The compactor merges those deltas into compressed, versioned S3
+snapshots and advances each collection's pointer atomically.
 
-## Installation
+The package does not manage EFS and no longer supports the retired ECS Chroma
+HTTP service. Local persistent clients are still used while creating deltas,
+compacting snapshots, and running offline tools and tests.
 
-```bash
-pip install receipt-chroma
+Both currently deployed S3 delta layouts remain supported. They should only be
+consolidated after the remaining producers and stored objects have been
+migrated.
+
+## Public API
+
+The package root is intentionally small and lazy:
+
+```python
+from receipt_chroma import ChromaClient, LockManager
 ```
 
-## Usage
+Import workflow-specific APIs from their nearest public facade:
 
-### Basic Usage with Context Manager (Recommended)
+```python
+from receipt_chroma.embedding import (
+    EmbeddingConfig,
+    create_embeddings_and_compaction_run,
+)
+from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
+```
+
+Implementation modules such as `receipt_chroma.data.chroma_client` are private.
+Repository callers are checked to ensure they use the public client facade.
+
+`ChromaClient` accepts three modes:
+
+- `read`: query/get only; collections are never created implicitly.
+- `write`: create or update a persistent, ephemeral, or Chroma Cloud
+  collection.
+- `delta`: create a local delta database before uploading it to S3.
+
+Always close persistent clients before copying or uploading their directory.
+The context-manager form is preferred:
 
 ```python
 from receipt_chroma import ChromaClient
 
-# Use as context manager for automatic cleanup
-with ChromaClient(persist_directory="/path/to/db") as client:
-    collection = client.get_collection("my_collection")
-    results = client.query(
-        collection_name="my_collection",
-        query_texts=["search query"],
-        n_results=10
-    )
-    # Client is automatically closed when exiting the context
-```
-
-### Manual Resource Management
-
-```python
-from receipt_chroma import ChromaClient
-
-client = ChromaClient(persist_directory="/path/to/db")
-try:
-    # Upsert vectors
+with ChromaClient(
+    persist_directory="/tmp/receipt-vectors",
+    mode="write",
+    metadata_only=True,
+) as client:
     client.upsert(
-        collection_name="my_collection",
-        ids=["id1", "id2"],
-        documents=["doc1", "doc2"],
-        metadatas=[{"key": "value1"}, {"key": "value2"}]
+        collection_name="lines",
+        ids=["line-1"],
+        embeddings=[[0.1, 0.2, 0.3]],
+        documents=["example receipt line"],
+        metadatas=[{"image_id": "image-1", "receipt_id": 1}],
     )
-
-    # Query vectors
-    results = client.query(
-        collection_name="my_collection",
-        query_texts=["search query"],
-        n_results=10
-    )
-finally:
-    # Always close the client to release SQLite connections
-    client.close()
 ```
 
-### Uploading to S3
+For Chroma Cloud, pass `cloud_api_key`, `cloud_tenant`, and `cloud_database`.
+The embedding upload service reads these values from the corresponding
+`CHROMA_CLOUD_*` environment variables.
 
-```python
-import boto3
-from receipt_chroma import ChromaClient
+## 0.2 migration
 
-client = ChromaClient(persist_directory="/tmp/chromadb", mode="delta")
-try:
-    # Perform operations
-    client.upsert(...)
-
-    # CRITICAL: Close client before uploading to prevent file locking
-    client.close()
-
-    # Now safe to upload files to S3
-    s3_client = boto3.client("s3")
-    # ... upload files ...
-finally:
-    client.close()  # Safe to call multiple times
-```
-
-## Why This Package?
-
-This package addresses [GitHub issue #5868](https://github.com/chroma-core/chroma/issues/5868) where ChromaDB's `PersistentClient` doesn't expose a `close()` method, causing SQLite file locking issues when uploading databases to S3.
-
-### Key Improvements
-
-1. **Explicit `close()` method**: Properly releases SQLite connections and file locks
-2. **Context manager support**: Automatic cleanup with `with` statements
-3. **Consolidated accessors**: All ChromaDB operations in one clean package
-4. **Better testing**: Dedicated package allows for comprehensive test coverage
-
-## Migration from Existing Code
-
-If you're currently using ChromaDB clients from `receipt_label` or `infra/`, you can migrate to this package:
-
-### Before:
-```python
-from receipt_label.utils.chroma_client import ChromaDBClient
-
-client = ChromaDBClient(persist_directory="/path/to/db")
-# ... use client ...
-# No explicit close() - relies on GC
-```
-
-### After:
-```python
-from receipt_chroma import ChromaClient
-
-with ChromaClient(persist_directory="/path/to/db") as client:
-    # ... use client ...
-    # Automatic cleanup
-```
+Version 0.2 removes the retired HTTP/EFS architecture and its compatibility
+surface. Replace `http_url` with Chroma Cloud configuration or a local
+`persist_directory`; use `read`, `write`, or `delta` instead of `snapshot`;
+use `upsert()` instead of `upsert_vectors()`; and import `ChromaClient` from
+the package root. The removed `receipt_chroma.storage` package has no runtime
+replacement because S3 snapshots are now the deployed persistence boundary.
 
 ## Development
 
+Python 3.12 is the production and test baseline. From this directory:
+
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev,test]"
-
-# Run tests
-pytest
-
-# Format code
-black receipt_chroma/
-
-# Lint
-pylint receipt_chroma/
+python3.12 -m pip install -e ".[test,dev]"
+python3.12 -m pytest tests/unit
+python3.12 -m pytest tests/integration
 ```
 
-## License
-
-MIT
-
+The S3 integration suite uses Moto and does not require writes to a live AWS
+account. A Pulumi deployment is a separate operation and is not performed by
+the package tests.

@@ -9,12 +9,6 @@ if str(package_dir) not in sys.path:
     sys.path.insert(0, str(package_dir))
 
 
-def pytest_configure(config):
-    """Configure pytest with custom settings."""
-    # This helps with test discovery in parallel mode
-    config.option.continue_on_collection_errors = True
-
-
 # Configure coverage for parallel execution
 def pytest_sessionstart(session):
     """Run after Session creation and before test collection."""

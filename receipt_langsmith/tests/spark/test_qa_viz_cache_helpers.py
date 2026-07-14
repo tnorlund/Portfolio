@@ -135,6 +135,43 @@ class TestDeriveTraceStepsExpandsToolChildren:
         assert steps[0]["durationMs"] == 2000
         assert steps[1]["durationMs"] == 1000
 
+    def test_parallel_tool_steps_include_relative_start_offsets(self):
+        wrapper = _make_run(
+            id="parallel-wrapper",
+            name="tools",
+            run_type="chain",
+            start_time="2025-01-01 00:00:00",
+            end_time="2025-01-01 00:00:04",
+        )
+        tool_a = _make_run(
+            id="parallel-tool-a",
+            name="search_receipts",
+            run_type="tool",
+            parent_run_id="parallel-wrapper",
+            dotted_order="1.1.1",
+            start_time="2025-01-01 00:00:01",
+            end_time="2025-01-01 00:00:03",
+        )
+        tool_b = _make_run(
+            id="parallel-tool-b",
+            name="search_receipt_descriptions",
+            run_type="tool",
+            parent_run_id="parallel-wrapper",
+            dotted_order="1.1.2",
+            start_time="2025-01-01 00:00:01.500",
+            end_time="2025-01-01 00:00:02.500",
+        )
+
+        steps = derive_trace_steps(
+            child_runs=[wrapper],
+            question_result={},
+            receipts_lookup={},
+            all_runs=[wrapper, tool_a, tool_b],
+        )
+
+        assert [step["startOffsetMs"] for step in steps] == [1000, 1500]
+        assert [step["durationMs"] for step in steps] == [2000, 1000]
+
 
 # ---------------------------------------------------------------------------
 # Test: derive_trace_steps with all_runs=None skips wrapper (backward compat)

@@ -2,6 +2,7 @@ import { expect, test, devices } from "@playwright/test";
 
 import {
   mockQAMetadata,
+  mockParallelQAQuestion,
   mockQAQuestions,
   MOCK_ANSWERS,
   EXAMPLE_TRACE_ANSWER,
@@ -31,7 +32,7 @@ test.describe("QAAgentFlow", () => {
           `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
             <rect width="300" height="400" fill="#e8e8e8"/>
             <text x="150" y="200" text-anchor="middle" fill="#666" font-family="sans-serif" font-size="12">Mock</text>
-          </svg>`
+          </svg>`,
         ),
       });
     });
@@ -43,7 +44,7 @@ test.describe("QAAgentFlow", () => {
         body: Buffer.from(
           `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
             <rect width="300" height="400" fill="#e8e8e8"/>
-          </svg>`
+          </svg>`,
         ),
       });
     });
@@ -91,27 +92,413 @@ test.describe("QAAgentFlow", () => {
 
     // Wait for page to be ready
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Scroll to the QA section
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Wait for one of the real mock answers to appear (not the EXAMPLE_TRACE)
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });
 
     // The EXAMPLE_TRACE answer should NOT be visible
     await expect(
-      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false })
+      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false }),
     ).not.toBeVisible();
+  });
+
+  test("renders deduplicated receipt evidence with image fallback", async ({
+    page,
+  }) => {
+    const denseEvidenceQuestion = {
+      ...mockQAQuestions[0],
+      trace: mockQAQuestions[0].trace.map((step) =>
+        step.type === "synthesize"
+          ? {
+              ...step,
+              receipts: [
+                ...("receipts" in step && Array.isArray(step.receipts)
+                  ? step.receipts
+                  : []),
+                ...[900, 720, 640, 560, 480, 400].map((width, index) => ({
+                  imageId: `dense-evidence-${index}`,
+                  merchant: `Dense Merchant ${index + 1}`,
+                  item: `Item ${index + 1}`,
+                  amount: index + 1,
+                  thumbnailKey: `assets/dense-evidence-${index}.webp`,
+                  width,
+                  height: 900,
+                })),
+              ],
+            }
+          : step,
+      ),
+    };
+
+    await page.route("**/assets/evidence-receipt-a.webp", async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("index")
+            ? { questions: [denseEvidenceQuestion] }
+            : { metadata: { total_questions: 1 }, questions: [] },
+        ),
+      });
+    });
+
+    await page.goto("/receipt");
+    await expect(
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
+    await qaHeading.scrollIntoViewIfNeeded();
+    await expect(page.getByText(MOCK_ANSWERS[0], { exact: false })).toBeVisible(
+      { timeout: 30_000 },
+    );
+
+    const evidence = page.getByRole("region", {
+      name: "Receipt evidence",
+    });
+    await expect(evidence).toBeVisible();
+    await expect(
+      evidence.getByText("8 receipts", { exact: true }),
+    ).toBeVisible();
+    await expect(evidence.locator("img")).toHaveCount(8);
+    await expect(
+      evidence.getByAltText("Neighborhood Market receipt"),
+    ).toHaveAttribute("src", /evidence-receipt-a\.jpg$/);
+    await expect(
+      evidence.getByAltText("Neighborhood Market receipt"),
+    ).toHaveCSS("object-fit", "contain");
+
+    const thumbnailFrames = await evidence
+      .getByRole("listitem")
+      .evaluateAll((frames) =>
+        frames.map((frame) => {
+          const style = getComputedStyle(frame);
+          return {
+            aspectRatio: frame.clientWidth / frame.clientHeight,
+            sourceAspectRatio: Number(
+              frame.getAttribute("data-source-aspect-ratio"),
+            ),
+            backgroundColor: style.backgroundColor,
+            borderWidth: style.borderTopWidth,
+            borderRadius: style.borderRadius,
+            overflow: style.overflow,
+          };
+        }),
+      );
+    expect(thumbnailFrames).toHaveLength(8);
+    for (const frame of thumbnailFrames) {
+      expect(frame.aspectRatio).toBeCloseTo(frame.sourceAspectRatio, 2);
+      expect(frame.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+      expect(frame.borderWidth).toBe("0px");
+      expect(frame.borderRadius).toBe("0px");
+      expect(frame.overflow).toBe("visible");
+    }
+
+    await page.waitForTimeout(500);
+    const evidenceGeometry = await evidence.evaluate((region) => {
+      const list = region.querySelector('[role="list"]');
+      const thumbnails = Array.from(
+        region.querySelectorAll('[role="listitem"]'),
+      );
+      if (!list || thumbnails.length === 0) return null;
+
+      const getClipping = (thumbnail: Element) => {
+        const receiptRect = thumbnail.getBoundingClientRect();
+        const clippingAncestors: Array<{
+          label: string;
+          overflowX: string;
+          overflowY: string;
+          clipped: { left: number; top: number; right: number; bottom: number };
+        }> = [];
+        let ancestor = thumbnail.parentElement;
+
+        while (ancestor) {
+          const style = getComputedStyle(ancestor);
+          const clipsX = style.overflowX !== "visible";
+          const clipsY = style.overflowY !== "visible";
+          if (clipsX || clipsY) {
+            const ancestorRect = ancestor.getBoundingClientRect();
+            clippingAncestors.push({
+              label:
+                ancestor.id ||
+                ancestor.getAttribute("data-testid") ||
+                ancestor.getAttribute("role") ||
+                ancestor.tagName,
+              overflowX: style.overflowX,
+              overflowY: style.overflowY,
+              clipped: {
+                left: clipsX
+                  ? Math.max(0, ancestorRect.left - receiptRect.left)
+                  : 0,
+                top: clipsY
+                  ? Math.max(0, ancestorRect.top - receiptRect.top)
+                  : 0,
+                right: clipsX
+                  ? Math.max(0, receiptRect.right - ancestorRect.right)
+                  : 0,
+                bottom: clipsY
+                  ? Math.max(0, receiptRect.bottom - ancestorRect.bottom)
+                  : 0,
+              },
+            });
+          }
+          ancestor = ancestor.parentElement;
+        }
+
+        return clippingAncestors;
+      };
+
+      return {
+        listOverflow: getComputedStyle(list).overflow,
+        layout: {
+          availableWidth: list.getAttribute("data-available-width"),
+          overlapRatio: list.getAttribute("data-overlap-ratio"),
+          thumbnailHeight: list.getAttribute("data-thumbnail-height"),
+          listRect: list.getBoundingClientRect().toJSON(),
+        },
+        receipts: thumbnails.map((thumbnail) => ({
+          clippingAncestors: getClipping(thumbnail),
+          image: (() => {
+            const image = thumbnail.querySelector("img");
+            if (!image) return null;
+            const frameRect = thumbnail.getBoundingClientRect();
+            const imageRect = image.getBoundingClientRect();
+            return {
+              left: Math.abs(imageRect.left - frameRect.left),
+              top: Math.abs(imageRect.top - frameRect.top),
+              right: Math.abs(imageRect.right - frameRect.right),
+              bottom: Math.abs(imageRect.bottom - frameRect.bottom),
+            };
+          })(),
+        })),
+      };
+    });
+    expect(evidenceGeometry).not.toBeNull();
+    expect(evidenceGeometry!.listOverflow).toBe("visible");
+    for (const receipt of evidenceGeometry!.receipts) {
+      expect(receipt.image).not.toBeNull();
+      expect(receipt.image!.left).toBeLessThanOrEqual(1);
+      expect(receipt.image!.top).toBeLessThanOrEqual(1);
+      expect(receipt.image!.right).toBeLessThanOrEqual(1);
+      expect(receipt.image!.bottom).toBeLessThanOrEqual(1);
+
+      for (const ancestor of receipt.clippingAncestors) {
+        const edgeContext = JSON.stringify({
+          ancestor,
+          layout: evidenceGeometry!.layout,
+        });
+        expect(ancestor.clipped.left, edgeContext).toBeLessThanOrEqual(1);
+        expect(ancestor.clipped.top, edgeContext).toBeLessThanOrEqual(1);
+        expect(ancestor.clipped.right, edgeContext).toBeLessThanOrEqual(1);
+        expect(ancestor.clipped.bottom, edgeContext).toBeLessThanOrEqual(1);
+      }
+    }
+
+    await page.getByRole("button", { name: "View full answer" }).click();
+    await expect(page.getByText("Structured receipts")).toBeVisible();
+    await expect(page.getByText("Organic Milk")).toBeVisible();
+    await expect(page.getByText("$6.49")).toBeVisible();
+  });
+
+  test("keeps the result frame stable while revealing and expanding the answer", async ({
+    page,
+  }) => {
+    const longAnswerQuestion = {
+      ...mockQAQuestions[0],
+      trace: mockQAQuestions[0].trace.map((step) =>
+        step.type === "synthesize"
+          ? {
+              ...step,
+              content: [
+                "# Grocery spending",
+                "",
+                "You spent $42.00 on groceries.",
+                "",
+                "## Breakdown",
+                "",
+                "| Store | Example item | Price range |",
+                "| --- | --- | ---: |",
+                "| Neighborhood Market | Organic Milk | $6.49–$8.99 |",
+                "| Corner Grocer | Coffee | $12.99–$15.99 |",
+                "| Farmers Market | Produce | $10.00–$18.25 |",
+                "",
+                "This longer explanation verifies that result content does not resize the outer visualization when it appears.",
+              ].join("\n"),
+            }
+          : step,
+      ),
+    };
+
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("index")
+            ? { questions: [longAnswerQuestion] }
+            : { metadata: { total_questions: 1 }, questions: [] },
+        ),
+      });
+    });
+
+    await page.goto("/receipt?receiptMotionScale=0.2");
+    await expect(
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
+    await qaHeading.scrollIntoViewIfNeeded();
+
+    const resultFrame = page.getByTestId("qa-result-frame");
+    await expect(resultFrame).toBeVisible();
+    await expect(resultFrame.getByText("Answer pending")).toBeVisible();
+    await resultFrame.scrollIntoViewIfNeeded();
+
+    const beforeReveal = await resultFrame.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollY: window.scrollY,
+    }));
+
+    await expect(
+      resultFrame.getByText("You spent $42.00 on groceries.", {
+        exact: false,
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const afterReveal = await resultFrame.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollY: window.scrollY,
+    }));
+    expect(Math.abs(afterReveal.height - beforeReveal.height)).toBeLessThan(1);
+    expect(Math.abs(afterReveal.scrollY - beforeReveal.scrollY)).toBeLessThan(
+      2,
+    );
+
+    const detailsButton = resultFrame.getByTestId("qa-result-details-toggle");
+    await detailsButton.scrollIntoViewIfNeeded();
+    const beforeExpandScrollY = await page.evaluate(() => window.scrollY);
+    await detailsButton.evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+    await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
+    await expect(resultFrame.getByText("Structured receipts")).toBeVisible();
+    const markdownTable = resultFrame.getByRole("table");
+    await expect(markdownTable).toBeVisible();
+    await expect(
+      markdownTable.getByRole("columnheader", { name: "Store" }),
+    ).toBeVisible();
+    await expect(markdownTable.getByText("Neighborhood Market")).toBeVisible();
+    const tableScroller = resultFrame.getByTestId("qa-markdown-table-scroll");
+    const tableGeometry = await tableScroller.evaluate((element) => ({
+      overflowX: getComputedStyle(element).overflowX,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(tableGeometry.overflowX).toBe("auto");
+    expect(tableGeometry.scrollWidth).toBeGreaterThanOrEqual(
+      tableGeometry.clientWidth,
+    );
+    await page.waitForTimeout(2200);
+    await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      resultFrame.getByText("You spent $42.00 on groceries.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+
+    const afterExpand = await resultFrame.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollY: window.scrollY,
+    }));
+    expect(Math.abs(afterExpand.height - beforeReveal.height)).toBeLessThan(1);
+    expect(Math.abs(afterExpand.scrollY - beforeExpandScrollY)).toBeLessThan(2);
+  });
+
+  test("renders concurrent tool calls on parallel timeline lanes", async ({
+    page,
+  }) => {
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("index")
+            ? { questions: [mockParallelQAQuestion] }
+            : { metadata: { total_questions: 1 }, questions: [] },
+        ),
+      });
+    });
+
+    await page.goto("/receipt?receiptMotionScale=0.5");
+    await expect(
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
+    await qaHeading.scrollIntoViewIfNeeded();
+
+    await expect(page.getByTestId("parallel-tool-indicator")).toContainText(
+      "Parallel tool calls · 2 lanes",
+      { timeout: 15_000 },
+    );
+    const timeline = page.getByLabel("QA trace wall-clock timeline");
+    await expect(timeline.locator('[data-timeline-lane="1"]')).toHaveCount(1);
+    await expect(
+      timeline.getByLabel(/search_receipt_descriptions/),
+    ).toBeAttached();
+    const parallelDetails = page.getByRole("list", {
+      name: "Parallel tool call details",
+    });
+    await expect(parallelDetails.getByText("search_receipts")).toBeVisible();
+    await expect(
+      parallelDetails.getByText("search_receipt_descriptions"),
+    ).toBeVisible();
+    await expect(page.getByTestId("active-parallel-tools")).toContainText(
+      "2 tools running together",
+      { timeout: 15_000 },
+    );
+    await expect(timeline.locator('[data-active="true"]')).toHaveCount(2);
+
+    const durationBars = timeline.locator('[data-label-kind="duration"]');
+    await expect(durationBars).toHaveText(["1s", "1s", "1s"]);
+    const overflowingDurationLabels = await durationBars.evaluateAll((bars) =>
+      bars
+        .filter((bar) => bar.scrollWidth > bar.clientWidth)
+        .map((bar) => bar.textContent),
+    );
+    expect(overflowingDurationLabels).toEqual([]);
+
+    const qaBoundary = page.locator('[data-figure-boundary="qa-agent"]');
+    const renderedHeights = await qaBoundary.evaluate((boundary) => ({
+      boundary: boundary.getBoundingClientRect().height,
+      component:
+        boundary.firstElementChild?.getBoundingClientRect().height ?? 0,
+    }));
+    expect(
+      Math.abs(renderedHeights.boundary - renderedHeights.component),
+    ).toBeLessThan(2);
   });
 
   test("answer updates when auto-advancing between questions", async ({
@@ -141,18 +528,20 @@ test.describe("QAAgentFlow", () => {
 
     await page.goto("/receipt");
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Wait for the first answer to appear
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });
@@ -164,7 +553,7 @@ test.describe("QAAgentFlow", () => {
 
     // Wait for that first answer to disappear (cycle reset)
     await expect(
-      page.getByText(firstAnswer!, { exact: false })
+      page.getByText(firstAnswer!, { exact: false }),
     ).not.toBeVisible({ timeout: 30_000 });
 
     // Wait for a different answer to appear
@@ -173,7 +562,7 @@ test.describe("QAAgentFlow", () => {
       hasText: new RegExp(
         otherAnswers
           .map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-          .join("|")
+          .join("|"),
       ),
     });
     await expect(otherAnswerLocator.first()).toBeVisible({ timeout: 60_000 });
@@ -253,10 +642,12 @@ test.describe("QAAgentFlow", () => {
 
     await page.goto("/receipt");
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Phase 1: Wait for the real answer from mock data to appear.
@@ -264,8 +655,8 @@ test.describe("QAAgentFlow", () => {
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });
@@ -280,7 +671,7 @@ test.describe("QAAgentFlow", () => {
     // The other 2 indices returned empty → not cached.
     // After first cycle, advance() hits an uncached index → null data.
     await expect(
-      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false })
+      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false }),
     ).toBeVisible({ timeout: 60_000 });
 
     // Phase 3: Wait for the EXAMPLE_TRACE cycle to complete (~26s for
@@ -299,7 +690,7 @@ test.describe("QAAgentFlow", () => {
     // If the bug is present, this assertion FAILS (answer stays stuck).
     // If the bug is fixed, the reset fires and the answer disappears.
     await expect(
-      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false })
+      page.getByText(EXAMPLE_TRACE_ANSWER, { exact: false }),
     ).not.toBeVisible({ timeout: 15_000 });
   });
 
@@ -331,18 +722,20 @@ test.describe("QAAgentFlow", () => {
 
     await page.goto("/receipt");
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
-    ).toBeVisible({ timeout: 15_000 });
+      page.locator("h1:visible", { hasText: "Introduction" }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const qaHeading = page.locator("h1", { hasText: "So Now What?" });
+    const qaHeading = page.locator("h1:visible", { hasText: "So Now What?" });
     await qaHeading.scrollIntoViewIfNeeded();
 
     // Wait for the component to render and animate through one cycle
     const anyMockAnswer = page.locator("p").filter({
       hasText: new RegExp(
         MOCK_ANSWERS.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-          "|"
-        )
+          "|",
+        ),
       ),
     });
     await expect(anyMockAnswer.first()).toBeVisible({ timeout: 30_000 });

@@ -1,17 +1,14 @@
 import uuid
-from datetime import datetime
-from typing import Any, List, Literal, Type
+from datetime import datetime, timedelta
 
 import pytest
 from botocore.exceptions import ClientError
-from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
@@ -584,9 +581,6 @@ def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Implementation bug: _add_entity called with wrong signature"
-)
 def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
     """Test adding a job status successfully"""
     # Add the job first
@@ -606,35 +600,20 @@ def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Implementation bug: _add_entity called with wrong signature"
+@pytest.mark.parametrize(
+    ("value", "match"),
+    [
+        (None, "job_status cannot be None"),
+        ("not a job status", "job_status must be an instance of JobStatus"),
+    ],
 )
-def test_addJobStatus_raises_value_error_status_none(job_dynamo):
-    """Test that addJobStatus raises ValueError when status is None"""
-    with pytest.raises(OperationError, match="job_status cannot be None"):
-        job_dynamo.add_job_status(None)
+def test_addJobStatus_rejects_invalid_status(job_dynamo, value, match):
+    """Job-status writes reject missing and incorrectly typed entities."""
+    with pytest.raises(OperationError, match=match):
+        job_dynamo.add_job_status(value)
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Implementation bug: _add_entity called with wrong signature"
-)
-def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
-    """
-    Test that addJobStatus raises ValueError when status is not an instance
-    of JobStatus
-    """
-    with pytest.raises(
-        OperationError,
-        match="job_status must be an instance of JobStatus",
-    ):
-        job_dynamo.add_job_status("not a job status")
-
-
-@pytest.mark.integration
-@pytest.mark.skip(
-    reason="Depends on add_job_status which has implementation bug"
-)
 def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
     """Test getting a job with its status updates"""
     # Add the job
@@ -647,7 +626,10 @@ def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
     new_status = JobStatus(
         job_id=sample_job.job_id,
         status="succeeded",
-        updated_at=datetime.now(),
+        updated_at=(
+            datetime.fromisoformat(sample_job_status.updated_at)
+            + timedelta(microseconds=1)
+        ),
         progress=100.0,
         message="Job completed successfully",
         updated_by="test_system",
@@ -661,10 +643,7 @@ def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
     # Verify
     assert job.job_id == sample_job.job_id
     assert len(statuses) == 2
-    assert statuses[0].status in ["running", "succeeded"]
-    assert statuses[1].status in ["running", "succeeded"]
-    # The statuses should be different
-    assert statuses[0].status != statuses[1].status
+    assert [status.status for status in statuses] == ["running", "succeeded"]
     assert statuses[0].job_id == sample_job.job_id
 
 
@@ -715,9 +694,6 @@ def test_listJobs_with_limit(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Depends on add_job_status which has implementation bug"
-)
 def test_listJobStatuses_success(job_dynamo, sample_job_status):
     """Test listJobStatuses successfully lists job statuses"""
     # Add the job status first
@@ -736,21 +712,37 @@ def test_listJobStatuses_success(job_dynamo, sample_job_status):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Depends on add_job_status which has implementation bug"
-)
 def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
-    """Test listJobStatuses with a limit parameter"""
-    # Add the job status first
+    """A status limit returns a usable key for the next page."""
     job_dynamo.add_job_status(sample_job_status)
+    second_status = JobStatus(
+        job_id=sample_job_status.job_id,
+        status="succeeded",
+        updated_at=(
+            datetime.fromisoformat(sample_job_status.updated_at)
+            + timedelta(microseconds=1)
+        ),
+        progress=100,
+    )
+    job_dynamo.add_job_status(second_status)
 
-    # List job statuses with limit=1
-    job_statuses, last_evaluated_key = job_dynamo.list_job_statuses(
+    first_page, last_evaluated_key = job_dynamo.list_job_statuses(
         sample_job_status.job_id, limit=1
     )
+    assert len(first_page) == 1
+    assert last_evaluated_key is not None
 
-    # Verify
-    assert len(job_statuses) <= 1
+    second_page, final_key = job_dynamo.list_job_statuses(
+        sample_job_status.job_id,
+        limit=1,
+        last_evaluated_key=last_evaluated_key,
+    )
+    assert len(second_page) == 1
+    assert final_key is None
+    assert {status.status for status in first_page + second_page} == {
+        "running",
+        "succeeded",
+    }
 
 
 @pytest.mark.integration
@@ -828,70 +820,44 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Job status related test - implementation has bugs")
-def test_listJobStatuses_raises_client_error_resource_not_found(
-    job_dynamo, mocker
+@pytest.mark.parametrize(
+    ("error_code", "error_message", "error_type", "match"),
+    [
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            OperationError,
+            "DynamoDB resource not found during query_by_parent: Table not found",
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            DynamoDBServerError,
+            "DynamoDB server error during query_by_parent: Internal server error",
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            DynamoDBError,
+            (
+                "DynamoDB error during query_by_parent: "
+                "AccessDeniedException - Access denied"
+            ),
+        ),
+    ],
+)
+def test_listJobStatuses_maps_client_errors(
+    job_dynamo, mocker, error_code, error_message, error_type, match
 ):
-    """
-    Test that listJobStatuses raises an exception when
-    ResourceNotFoundException occurs
-    """
-    # Mock the client to raise a ResourceNotFoundException
-    mocked_response = {
-        "Error": {
-            "Code": "ResourceNotFoundException",
-            "Message": "Table not found",
-        }
-    }
-    mocked_error = ClientError(mocked_response, "Query")
+    """Status queries map AWS errors to the exact public domain contract."""
+    mocked_error = ClientError(
+        {"Error": {"Code": error_code, "Message": error_message}}, "Query"
+    )
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
-    # Call the method and verify it raises the expected exception
-    with pytest.raises(DynamoDBError, match="DynamoDB error during"):
+    with pytest.raises(error_type, match=match) as exc_info:
         job_dynamo.list_job_statuses(str(uuid.uuid4()))
-
-
-@pytest.mark.integration
-@pytest.mark.skip(reason="Job status related test - implementation has bugs")
-def test_listJobStatuses_raises_client_error_internal_server_error(
-    job_dynamo, mocker
-):
-    """
-    Test that listJobStatuses raises an exception when InternalServerError
-    occurs
-    """
-    # Mock the client to raise an InternalServerError
-    mocked_response = {
-        "Error": {
-            "Code": "InternalServerError",
-            "Message": "Internal server error",
-        }
-    }
-    mocked_error = ClientError(mocked_response, "Query")
-    mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
-
-    # Call the method and verify it raises the expected exception
-    with pytest.raises(Exception, match="Internal server error"):
-        job_dynamo.list_job_statuses(str(uuid.uuid4()))
-
-
-@pytest.mark.integration
-@pytest.mark.skip(reason="Job status related test - implementation has bugs")
-def test_listJobStatuses_raises_client_error_access_denied(job_dynamo, mocker):
-    """
-    Test that listJobStatuses raises an exception when AccessDeniedException
-    occurs
-    """
-    # Mock the client to raise an AccessDeniedException
-    mocked_response = {
-        "Error": {"Code": "AccessDeniedException", "Message": "Access denied"}
-    }
-    mocked_error = ClientError(mocked_response, "Query")
-    mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
-
-    # Call the method and verify it raises the expected exception
-    with pytest.raises(DynamoDBError, match="DynamoDB error during"):
-        job_dynamo.list_job_statuses(str(uuid.uuid4()))
+    assert exc_info.type is error_type
 
 
 @pytest.mark.integration
@@ -961,7 +927,6 @@ def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Job status related test - implementation has bugs")
 def test_getLatestJobStatus_raises_client_error_resource_not_found(
     job_dynamo, mocker
 ):
@@ -979,10 +944,14 @@ def test_getLatestJobStatus_raises_client_error_resource_not_found(
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
-    # Call the method and verify it raises the expected exception
-    from receipt_dynamo.data.shared_exceptions import DynamoDBError
-
-    with pytest.raises(DynamoDBError, match="Could not get latest job status"):
+    # Resource loss is surfaced as an operation failure with method context.
+    with pytest.raises(
+        OperationError,
+        match=(
+            "DynamoDB resource not found during get_latest_job_status: "
+            "Table not found"
+        ),
+    ):
         job_dynamo.get_latest_job_status(str(uuid.uuid4()))
 
 

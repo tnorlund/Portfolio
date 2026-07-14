@@ -7,12 +7,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pulumi
-from pulumi import ComponentResource, Output, ResourceOptions
-from pulumi_aws.ecr import (
-    LifecyclePolicy,
-    Repository,
-    RepositoryImageScanningConfigurationArgs,
-)
+from pulumi import ComponentResource, ResourceOptions
+from pulumi_aws.ecr import LifecyclePolicy
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
@@ -101,7 +97,11 @@ class DockerImageComponent(ComponentResource):
             f"{name}-image",
             dockerfile_path="infra/chromadb_compaction/lambdas/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
-            source_paths=None,  # Use default rsync with exclusions
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+            ],
             lambda_function_name=f"{name}-{stack}" if lambda_config else None,
             lambda_config=lambda_config,
             platform="linux/arm64",

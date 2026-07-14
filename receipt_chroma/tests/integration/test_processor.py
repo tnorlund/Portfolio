@@ -12,8 +12,6 @@ from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_compaction_run_message,
     create_label_message,
-    create_mock_logger,
-    create_mock_metrics,
     create_place_message,
     create_receipt_lines_in_dynamodb,
     create_receipt_words_in_dynamodb,

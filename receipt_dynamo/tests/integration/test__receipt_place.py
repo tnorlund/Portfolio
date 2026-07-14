@@ -288,6 +288,34 @@ def test_list_receipt_places_with_place_id(
 
 
 @pytest.mark.integration
+def test_empty_place_id_round_trip_is_absent_from_gsi2(
+    dynamodb_table: str,
+) -> None:
+    """Needs-review records persist without entering the place-id index."""
+    client = DynamoClient(dynamodb_table)
+    place = ReceiptPlace(
+        image_id=str(uuid4()),
+        receipt_id=1,
+        place_id="",
+        merchant_name="Merchant Pending Review",
+        validation_status=MerchantValidationStatus.UNSURE.value,
+        reasoning="No place ID found",
+        timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+
+    client.add_receipt_place(place)
+
+    restored = client.get_receipt_place(place.image_id, place.receipt_id)
+    raw_item = client._client.get_item(
+        TableName=dynamodb_table,
+        Key=place.key,
+    )["Item"]
+    assert restored == place
+    assert "GSI2PK" not in raw_item
+    assert "GSI2SK" not in raw_item
+
+
+@pytest.mark.integration
 def test_get_receipt_places_by_status(
     batch_receipt_places, dynamodb_table: str
 ) -> None:

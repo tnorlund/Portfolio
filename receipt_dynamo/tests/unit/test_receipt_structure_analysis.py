@@ -949,7 +949,7 @@ def test_receipt_structure_analysis_to_item(
     assert section_item["reasoning"]["S"] == "Contains store name and logo"
     assert section_item["start_line"]["N"] == "1"
     assert section_item["end_line"]["N"] == "3"
-    assert section_item["metadata"]["M"]["confidence"]["S"] == "0.9"
+    assert section_item["metadata"]["M"]["confidence"]["N"] == "0.9"
     assert (
         item["overall_reasoning"]["S"]
         == "Clear structure with distinct sections"
@@ -958,9 +958,64 @@ def test_receipt_structure_analysis_to_item(
     assert item["metadata"]["M"]["source"]["S"] == "test"
     assert item["timestamp_added"]["S"] == "2023-01-01T12:00:00"
     assert item["timestamp_updated"]["S"] == "2023-01-02T12:00:00"
-    assert item["processing_metrics"]["M"]["time_ms"]["S"] == "150"
+    assert item["processing_metrics"]["M"]["time_ms"]["N"] == "150"
     assert item["source_info"]["M"]["model"]["S"] == "test_model"
-    assert len(item["processing_history"]) == 1
+    assert len(item["processing_history"]["L"]) == 1
+
+
+@pytest.mark.parametrize("receipt_id", [True, 0, -1, 1.5, float("inf")])
+def test_receipt_structure_analysis_rejects_invalid_numeric_ids(receipt_id):
+    """Receipt IDs cannot be bool, fractional, non-finite, or non-positive."""
+    with pytest.raises((TypeError, ValueError)):
+        ReceiptStructureAnalysis(
+            receipt_id=receipt_id,
+            image_id="abc123",
+            sections=[],
+            overall_reasoning="test",
+        )
+
+
+def test_receipt_structure_analysis_round_trip_preserves_nested_types(
+    example_receipt_structure_analysis,
+):
+    """Nested metadata, metrics, and history retain their Python types."""
+    example_receipt_structure_analysis.metadata = {
+        "nested": {"enabled": True, "scores": [1, 0.5, None]}
+    }
+    example_receipt_structure_analysis.processing_metrics = {
+        "section_count": 1,
+        "success": True,
+    }
+    example_receipt_structure_analysis.source_info = {
+        "attempt": 2,
+        "settings": {"strict": False},
+    }
+    example_receipt_structure_analysis.processing_history = [
+        {
+            "event": "creation",
+            "timestamp": "2023-01-01T12:00:00",
+            "details": {"duration": 1.5, "cached": False},
+        }
+    ]
+
+    restored = ReceiptStructureAnalysis.from_item(
+        example_receipt_structure_analysis.to_item()
+    )
+
+    assert restored == example_receipt_structure_analysis
+    assert restored.processing_history == (
+        example_receipt_structure_analysis.processing_history
+    )
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_receipt_structure_analysis_rejects_non_finite_nested_numbers(
+    example_receipt_structure_analysis, value
+):
+    example_receipt_structure_analysis.metadata = {"score": value}
+
+    with pytest.raises(ValueError, match="numbers must be finite"):
+        example_receipt_structure_analysis.to_item()
 
 
 @pytest.mark.unit
@@ -1175,6 +1230,16 @@ def test_receipt_structure_analysis_from_dynamo(
     assert (
         analysis.overall_reasoning == "Clear structure with distinct sections"
     )
+
+
+@pytest.mark.parametrize("value", [{"N": "1"}, {"S": 1}, "reasoning"])
+def test_receipt_structure_analysis_rejects_malformed_string_attributes(
+    example_dynamo_item, value
+):
+    example_dynamo_item["overall_reasoning"] = value
+
+    with pytest.raises(ValueError, match="overall_reasoning"):
+        item_to_receipt_structure_analysis(example_dynamo_item)
 
 
 @pytest.mark.unit

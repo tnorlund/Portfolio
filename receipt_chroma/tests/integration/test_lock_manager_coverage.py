@@ -373,7 +373,6 @@ class TestLockManagerEdgeCases:
 
         # Mock thread.join to simulate timeout
         assert manager.heartbeat_thread is not None
-        original_join = manager.heartbeat_thread.join
         call_count = {"count": 0}
 
         def mock_join(timeout=None):

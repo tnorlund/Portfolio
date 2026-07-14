@@ -399,7 +399,7 @@ def answer_correctness_evaluator(run: Run, example: Example) -> dict:
 
 def run_evaluation(env: str, model: str):
     """Run evaluation on the golden dataset."""
-    from receipt_chroma.data.chroma_client import ChromaClient
+    from receipt_chroma import ChromaClient
     from receipt_dynamo.data._pulumi import load_env, load_secrets
 
     from receipt_agent.agents.question_answering import (

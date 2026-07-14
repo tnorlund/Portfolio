@@ -10,7 +10,6 @@ compaction:
 """
 
 from .docker_image import DockerImageComponent
-from .efs import ChromaEfs
 from .lambda_functions import (
     HybridLambdaDeployment,
     create_hybrid_lambda_deployment,
@@ -28,5 +27,4 @@ __all__ = [
     "DockerImageComponent",
     "HybridLambdaDeployment",
     "create_hybrid_lambda_deployment",
-    "ChromaEfs",
 ]

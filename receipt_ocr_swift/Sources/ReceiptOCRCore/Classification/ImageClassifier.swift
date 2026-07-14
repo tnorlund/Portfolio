@@ -57,6 +57,14 @@ public struct ImageClassifier {
     /// Threshold for margin detection (1% = 0.01)
     private let marginThreshold: CGFloat
 
+    /// Max border block-mean luminance std dev (normalized 0-1) still considered
+    /// a flat, uniformly-lit scan. A real scan's border blocks are near-constant
+    /// (measured ~0.0-0.05 on fixtures); a photo's border carries shading
+    /// gradients / vignetting that push it above this. Anything above is treated
+    /// as photo-consistent. Calibrated with margin above observed real scans so
+    /// genuine scans are never demoted; catches strong non-uniformity.
+    private let scanBorderStdDevThreshold: CGFloat = 0.10
+
     public init(marginThreshold: CGFloat = 0.01) {
         self.marginThreshold = marginThreshold
     }
@@ -141,7 +149,8 @@ public struct ImageClassifier {
     public func classify(
         lines: [Line],
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        image: CGImage? = nil
     ) -> ClassificationResult {
         let margins = findMargins(lines: lines)
 
@@ -165,7 +174,33 @@ public struct ImageClassifier {
         if margins.allBelow(marginThreshold) {
             // Text fills the image - single receipt
             imageType = .native
+        } else if let image = image, let feat = pixelFeatures(image: image) {
+            // PRIMARY signal: a SCAN is a document that fills the frame, so its
+            // border is a UNIFORM field of paper (or, lid-open, near-black) with
+            // ~0 saturation. A PHOTO has a table/scene background -> lower
+            // border-white, higher saturation. This is resolution-invariant,
+            // unlike comparing pixel dimensions to fixed references (which
+            // mislabels downscaled photos as scans).
+            //
+            // Illumination-uniformity refinement: a white receipt photographed
+            // on a WHITE counter also reads high border-white + low saturation,
+            // so border color alone misfires. A real flat scan has near-constant
+            // border luminance (stddev ~0); a photo has shading gradients /
+            // vignetting (higher stddev). Require a uniform border for SCAN, and
+            // if the border luminance is non-uniform prefer PHOTO even when
+            // border-white is high.
+            let uniformBorder = feat.borderLumStdDev < scanBorderStdDevThreshold
+            // Bright, uniform paper border -> scan.
+            let brightScan =
+                feat.borderWhite > 0.5 && feat.meanSat < 0.05 && uniformBorder
+            // Scanner lid left open: a near-black, near-zero-saturation, uniform
+            // border is also scan-consistent (Fable's note) — an all-dark
+            // uniform frame must not be called PHOTO.
+            let darkScan =
+                feat.borderMeanLum < 0.15 && feat.meanSat < 0.05 && uniformBorder
+            imageType = (brightScan || darkScan) ? .scan : .photo
         } else if scanDistance < photoDistance {
+            // Fallback (no pixels available): dimension heuristic.
             imageType = .scan
         } else {
             // When scanDistance == photoDistance, defaults to .photo
@@ -180,6 +215,120 @@ public struct ImageClassifier {
             imageWidth: imageWidth,
             imageHeight: imageHeight
         )
+    }
+
+    /// Cheap pixel-histogram features for scan-vs-photo discrimination.
+    ///
+    /// Downscales the image to a 64x64 thumbnail (one draw, ~4k pixels) and
+    /// measures how "document-like" the frame is:
+    ///   - borderWhite: fraction of near-white, near-zero-saturation pixels in
+    ///     the outer 12% border. A scanned document fills the frame in white
+    ///     paper (~0.9-1.0); a photo shows a table/scene background (~0).
+    ///   - meanSat: mean HSV saturation over the whole thumbnail. Scans are
+    ///     grayscale paper+ink (~0); photos have color (>0.1).
+    ///   - borderLumStdDev: std dev of the outer-border luminance, mean-pooled
+    ///     into coarse blocks first so sparse dark ink / receipt edges that
+    ///     intrude into a real scan's border don't inflate it. A flat scan's
+    ///     border blocks are near-constant (~0); a photo's border has shading
+    ///     gradients / vignetting (higher). Distinguishes a true scan from a
+    ///     white receipt shot on a white counter.
+    ///   - borderMeanLum: mean luminance over the outer-border pixels. Lets a
+    ///     near-black, uniform border (scanner lid left open) count as
+    ///     scan-consistent rather than photo.
+    ///
+    /// Returns nil if a bitmap context can't be created.
+    private func pixelFeatures(
+        image: CGImage
+    ) -> (
+        borderWhite: CGFloat, meanSat: CGFloat,
+        borderLumStdDev: CGFloat, borderMeanLum: CGFloat
+    )? {
+        let side = 64
+        let bytesPerRow = side * 4
+        var data = [UInt8](repeating: 0, count: side * side * 4)
+        guard
+            let ctx = CGContext(
+                data: &data,
+                width: side,
+                height: side,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else { return nil }
+        ctx.interpolationQuality = .low
+        ctx.draw(
+            image,
+            in: CGRect(x: 0, y: 0, width: side, height: side)
+        )
+
+        let borderPx = max(1, Int(CGFloat(side) * 0.12))
+        // Coarse block grid (8x8 px) used to mean-pool the border into
+        // low-frequency luminance samples. Pooling averages out sparse dark ink
+        // / receipt edges that intrude into a real scan's border (which would
+        // otherwise inflate a per-pixel std dev), while preserving the smooth
+        // shading gradients / vignetting that mark a PHOTO.
+        let blk = 8
+        let grid = (side + blk - 1) / blk
+        var blockLumSum = [CGFloat](repeating: 0, count: grid * grid)
+        var blockCount = [Int](repeating: 0, count: grid * grid)
+        var whiteBorder = 0
+        var borderCount = 0
+        var satSum: CGFloat = 0
+        var borderLumSum: CGFloat = 0
+
+        for y in 0..<side {
+            for x in 0..<side {
+                let i = (y * side + x) * 4
+                let r = CGFloat(data[i]) / 255.0
+                let g = CGFloat(data[i + 1]) / 255.0
+                let b = CGFloat(data[i + 2]) / 255.0
+                let mx = max(r, max(g, b))
+                let mn = min(r, min(g, b))
+                let sat = mx > 0 ? (mx - mn) / mx : 0
+                let lum = 0.299 * r + 0.587 * g + 0.114 * b
+                satSum += sat
+
+                let isBorder =
+                    x < borderPx || x >= side - borderPx
+                    || y < borderPx || y >= side - borderPx
+                if isBorder {
+                    borderCount += 1
+                    borderLumSum += lum
+                    if lum > 0.85 && sat < 0.12 {
+                        whiteBorder += 1
+                    }
+                    let bi = (y / blk) * grid + (x / blk)
+                    blockLumSum[bi] += lum
+                    blockCount[bi] += 1
+                }
+            }
+        }
+
+        let borderWhite =
+            borderCount > 0
+            ? CGFloat(whiteBorder) / CGFloat(borderCount) : 0
+        let meanSat = satSum / CGFloat(side * side)
+        let borderMeanLum =
+            borderCount > 0 ? borderLumSum / CGFloat(borderCount) : 0
+
+        // Illumination-uniformity: std dev of the border BLOCK mean luminances.
+        // A flat scan's border blocks are all ~equal (stddev ~0); a photo's
+        // shading gradient / vignetting spreads them out. Computed on the same
+        // single 64x64 draw (no extra image passes).
+        var blockMeans: [CGFloat] = []
+        for bi in 0..<(grid * grid) where blockCount[bi] > 0 {
+            blockMeans.append(blockLumSum[bi] / CGFloat(blockCount[bi]))
+        }
+        var borderLumStdDev: CGFloat = 0
+        if !blockMeans.isEmpty {
+            let bm = blockMeans.reduce(0, +) / CGFloat(blockMeans.count)
+            let v = blockMeans.map { ($0 - bm) * ($0 - bm) }.reduce(0, +)
+                / CGFloat(blockMeans.count)
+            borderLumStdDev = max(0, v).squareRoot()
+        }
+        return (borderWhite, meanSat, borderLumStdDev, borderMeanLum)
     }
 }
 #endif

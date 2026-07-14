@@ -8,6 +8,7 @@ it contains. One item exists per (merchant, face) pair.
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any
 
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -89,6 +90,15 @@ class MerchantFont(DynamoDBEntity):
 
     # ────────────────────────── validation ────────────────────────────
     def __post_init__(self) -> None:
+        self._validate_fields()
+        if isinstance(self.compiled_at, datetime):
+            self.compiled_at = self.compiled_at.isoformat()
+
+        self.cap_h = float(self.cap_h)
+        self.advance_ratio = float(self.advance_ratio)
+
+    def _validate_fields(self) -> None:
+        """Validate fields at construction and before persistence."""
         if (
             not isinstance(self.merchant_name, str)
             or not self.merchant_name.strip()
@@ -111,22 +121,32 @@ class MerchantFont(DynamoDBEntity):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{field_name} must be a non-empty string")
 
-        if isinstance(self.compiled_at, datetime):
-            self.compiled_at = self.compiled_at.isoformat()
-        elif not isinstance(self.compiled_at, str):
+        if isinstance(self.compiled_at, str):
+            try:
+                datetime.fromisoformat(self.compiled_at)
+            except ValueError as exc:
+                raise ValueError(
+                    "compiled_at must be datetime or ISO-8601 string"
+                ) from exc
+        elif not isinstance(self.compiled_at, datetime):
             raise ValueError("compiled_at must be datetime or ISO-8601 string")
 
         if isinstance(self.cap_h, bool) or not isinstance(
             self.cap_h, (int, float)
         ):
             raise ValueError("cap_h must be a number")
-        self.cap_h = float(self.cap_h)
+        if not isfinite(float(self.cap_h)) or float(self.cap_h) <= 0:
+            raise ValueError("cap_h must be a finite positive number")
 
         if isinstance(self.advance_ratio, bool) or not isinstance(
             self.advance_ratio, (int, float)
         ):
             raise ValueError("advance_ratio must be a number")
-        self.advance_ratio = float(self.advance_ratio)
+        if (
+            not isfinite(float(self.advance_ratio))
+            or float(self.advance_ratio) <= 0
+        ):
+            raise ValueError("advance_ratio must be a finite positive number")
 
         if isinstance(self.glyph_count, bool) or not isinstance(
             self.glyph_count, int
@@ -135,20 +155,16 @@ class MerchantFont(DynamoDBEntity):
         if self.glyph_count < 0:
             raise ValueError("glyph_count must be non-negative")
 
-        if self.stylemap_s3_key is not None and not isinstance(
-            self.stylemap_s3_key, str
+        for field_name in (
+            "stylemap_s3_key",
+            "cache_filename",
+            "logo_s3_key",
         ):
-            raise ValueError("stylemap_s3_key must be a string or None")
-
-        if self.cache_filename is not None and not isinstance(
-            self.cache_filename, str
-        ):
-            raise ValueError("cache_filename must be a string or None")
-
-        if self.logo_s3_key is not None and not isinstance(
-            self.logo_s3_key, str
-        ):
-            raise ValueError("logo_s3_key must be a string or None")
+            value = getattr(self, field_name)
+            if value is not None and (not isinstance(value, str) or not value):
+                raise ValueError(
+                    f"{field_name} must be a non-empty string or None"
+                )
 
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
@@ -160,6 +176,7 @@ class MerchantFont(DynamoDBEntity):
 
     # ───────────────────── DynamoDB marshalling ───────────────────────
     def to_item(self) -> dict[str, Any]:
+        self._validate_fields()
         compiled_at_str = (
             self.compiled_at
             if isinstance(self.compiled_at, str)
@@ -229,6 +246,8 @@ class MerchantFont(DynamoDBEntity):
             raise ValueError(f"MerchantFont item missing keys: {missing}")
 
         try:
+            if item["TYPE"].get("S") != "MERCHANT_FONT":
+                raise ValueError("Invalid MerchantFont TYPE")
             pk = item["PK"]["S"]
             if not pk.startswith("MERCHANT_FONT#"):
                 raise ValueError(f"Invalid MerchantFont PK format: {pk}")

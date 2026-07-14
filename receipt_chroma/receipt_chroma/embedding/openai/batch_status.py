@@ -573,6 +573,76 @@ def mark_items_for_retry(
     return marked_count
 
 
+def mark_words_embedded(
+    embed_results: List[dict],
+    descriptions: Dict[str, Dict[int, dict]],
+    dynamo_client: DynamoClient,
+) -> int:
+    """
+    Flip embedding_status to SUCCESS for every word whose embedding was
+    saved to the delta.
+
+    Unlike lines (visual-row grouping with stale resets), words embed
+    one-per-custom_id, so a straight id match suffices. A word replaced
+    between submit and poll has no row to match and is skipped — its
+    receipt was already filtered out, or its word_id no longer exists.
+    Without this flip words stay PENDING forever: discovery only selects
+    NONE, so they are never resubmitted, and drains gated on PENDING never
+    finish.
+
+    Args:
+        embed_results: OpenAI batch result rows (each with a custom_id in
+            IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id> format)
+        descriptions: image_id -> receipt_id -> {"words": [ReceiptWord]}
+            as returned by get_receipt_details
+        dynamo_client: DynamoDB client instance
+
+    Returns:
+        Number of words marked SUCCESS
+    """
+    words_by_receipt: Dict[Tuple[str, int], Dict[Tuple[int, int], Any]] = {}
+    for image_id, receipts in descriptions.items():
+        for receipt_id, details in receipts.items():
+            words_by_receipt[(image_id, receipt_id)] = {
+                (w.line_id, w.word_id): w for w in details["words"]
+            }
+
+    to_update: Dict[Tuple[str, int], list] = {}
+    for result in embed_results:
+        try:
+            parts = result["custom_id"].split("#")
+            if len(parts) != 8 or parts[4] != "LINE" or parts[6] != "WORD":
+                raise ValueError("not a word custom_id")
+            image_id = parts[1]
+            receipt_id = int(parts[3])
+            line_id = int(parts[5])
+            word_id = int(parts[7])
+        except (KeyError, IndexError, ValueError, AttributeError) as e:
+            logger.warning(
+                "Skipping result with invalid custom_id: %s (%s)",
+                result.get("custom_id") if isinstance(result, dict) else None,
+                e,
+            )
+            continue
+        word = words_by_receipt.get((image_id, receipt_id), {}).get(
+            (line_id, word_id)
+        )
+        if (
+            word is not None
+            and word.embedding_status != EmbeddingStatus.SUCCESS.value
+        ):
+            word.embedding_status = EmbeddingStatus.SUCCESS.value
+            to_update.setdefault((image_id, receipt_id), []).append(word)
+
+    # Update per receipt to avoid transaction conflicts when multiple
+    # batches are processed concurrently (same pattern as line polling)
+    for words_to_update in to_update.values():
+        dynamo_client.update_receipt_words(words_to_update)
+    marked = sum(len(w) for w in to_update.values())
+    logger.info("Marked %d words as embedded (SUCCESS)", marked)
+    return marked
+
+
 def should_retry_batch(
     batch_summary: BatchSummary,
     max_retries: int = 3,  # pylint: disable=unused-argument

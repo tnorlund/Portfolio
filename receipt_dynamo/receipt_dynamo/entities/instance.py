@@ -67,7 +67,11 @@ class Instance:
         if not isinstance(self.instance_type, str) or not self.instance_type:
             raise ValueError("instance_type must be a non-empty string")
 
-        if not isinstance(self.gpu_count, int) or self.gpu_count < 0:
+        if (
+            not isinstance(self.gpu_count, int)
+            or isinstance(self.gpu_count, bool)
+            or self.gpu_count < 0
+        ):
             raise ValueError("gpu_count must be a non-negative integer")
 
         valid_statuses = ["pending", "running", "stopped", "terminated"]

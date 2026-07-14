@@ -65,7 +65,11 @@ class QueueJob:
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = self.priority.lower()
 
-        if not isinstance(self.position, int) or self.position < 0:
+        if (
+            not isinstance(self.position, int)
+            or isinstance(self.position, bool)
+            or self.position < 0
+        ):
             raise ValueError("position must be a non-negative integer")
 
     @property

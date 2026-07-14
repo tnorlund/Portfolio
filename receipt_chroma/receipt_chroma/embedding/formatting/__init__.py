@@ -9,7 +9,6 @@ from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
     format_row_embedding_input,
     format_visual_row,
-    get_line_neighbors,
     get_primary_line_id,
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
@@ -18,7 +17,6 @@ from receipt_chroma.embedding.formatting.line_format import (
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
     get_word_neighbors,
-    parse_left_right_from_formatted,
 )
 
 __all__ = [
@@ -32,9 +30,7 @@ __all__ = [
     # Line formatting (legacy)
     "format_line_context_embedding_input",
     "parse_prev_next_from_formatted",
-    "get_line_neighbors",
     # Word formatting
     "format_word_context_embedding_input",
-    "parse_left_right_from_formatted",
     "get_word_neighbors",
 ]

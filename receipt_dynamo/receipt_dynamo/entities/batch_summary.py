@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Generator
 
@@ -8,6 +8,7 @@ from receipt_dynamo.entities.util import (
     assert_type,
     format_type_error,
     normalize_enum,
+    validate_non_negative_int,
 )
 
 
@@ -30,7 +31,7 @@ class BatchSummary:
     submitted_at: str | datetime
     status: str | BatchStatus
     result_file_id: str
-    receipt_refs: list[tuple[str, int | None]] = None
+    receipt_refs: list[tuple[str, int]] = field(default_factory=list)
 
     def __post_init__(self):
         assert_type("batch_id", self.batch_id, str, ValueError)
@@ -62,6 +63,16 @@ class BatchSummary:
             raise ValueError(
                 "receipt_refs must be a list of (image_id, receipt_id) tuples"
             )
+        for ref in self.receipt_refs:
+            if not isinstance(ref, tuple) or len(ref) != 2:
+                raise ValueError(
+                    "receipt_refs must be a list of "
+                    "(image_id, receipt_id) tuples"
+                )
+            image_id, receipt_id = ref
+            if not isinstance(image_id, str) or not image_id:
+                raise ValueError("receipt_refs image_id must be non-empty str")
+            validate_non_negative_int("receipt_refs receipt_id", receipt_id)
 
     @property
     def key(self) -> dict[str, Any]:
@@ -78,6 +89,12 @@ class BatchSummary:
             },
         }
 
+    def _submitted_at_iso(self) -> str:
+        """Return the normalized submission time as an ISO string."""
+        if isinstance(self.submitted_at, datetime):
+            return self.submitted_at.isoformat()
+        return self.submitted_at
+
     def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
@@ -85,7 +102,7 @@ class BatchSummary:
             "TYPE": {"S": "BATCH_SUMMARY"},
             "batch_type": {"S": self.batch_type},
             "openai_batch_id": {"S": self.openai_batch_id},
-            "submitted_at": {"S": self.submitted_at.isoformat()},
+            "submitted_at": {"S": self._submitted_at_iso()},
             "status": {"S": self.status},
             "result_file_id": {"S": self.result_file_id},
             "receipt_refs": {
@@ -112,7 +129,7 @@ class BatchSummary:
             f"batch_id={_repr_str(self.batch_id)}, "
             f"batch_type={_repr_str(self.batch_type)}, "
             f"openai_batch_id={_repr_str(self.openai_batch_id)}, "
-            f"submitted_at={_repr_str(self.submitted_at.isoformat())}, "
+            f"submitted_at={_repr_str(self._submitted_at_iso())}, "
             f"status={_repr_str(self.status)}, "
             f"result_file_id={_repr_str(self.result_file_id)}, "
             f"receipt_refs={self.receipt_refs}"
@@ -126,7 +143,7 @@ class BatchSummary:
         yield "batch_id", self.batch_id
         yield "batch_type", self.batch_type
         yield "openai_batch_id", self.openai_batch_id
-        yield "submitted_at", self.submitted_at.isoformat()
+        yield "submitted_at", self._submitted_at_iso()
         yield "status", self.status
         yield "result_file_id", self.result_file_id
         yield "receipt_refs", self.receipt_refs

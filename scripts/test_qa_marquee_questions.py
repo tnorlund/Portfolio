@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 # Removed get_settings import - using enhanced graph with defaults
-from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma import ChromaClient
 from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 from receipt_agent.agents.question_answering.graph import (
