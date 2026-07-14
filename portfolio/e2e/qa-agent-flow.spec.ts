@@ -336,9 +336,11 @@ test.describe("QAAgentFlow", () => {
                 "",
                 "## Breakdown",
                 "",
-                "- Neighborhood Market: $18.25",
-                "- Corner Grocer: $13.75",
-                "- Farmers Market: $10.00",
+                "| Store | Example item | Price range |",
+                "| --- | --- | ---: |",
+                "| Neighborhood Market | Organic Milk | $6.49–$8.99 |",
+                "| Corner Grocer | Coffee | $12.99–$15.99 |",
+                "| Farmers Market | Produce | $10.00–$18.25 |",
                 "",
                 "This longer explanation verifies that result content does not resize the outer visualization when it appears.",
               ].join("\n"),
@@ -401,6 +403,22 @@ test.describe("QAAgentFlow", () => {
     });
     await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
     await expect(resultFrame.getByText("Structured receipts")).toBeVisible();
+    const markdownTable = resultFrame.getByRole("table");
+    await expect(markdownTable).toBeVisible();
+    await expect(
+      markdownTable.getByRole("columnheader", { name: "Store" }),
+    ).toBeVisible();
+    await expect(markdownTable.getByText("Neighborhood Market")).toBeVisible();
+    const tableScroller = resultFrame.getByTestId("qa-markdown-table-scroll");
+    const tableGeometry = await tableScroller.evaluate((element) => ({
+      overflowX: getComputedStyle(element).overflowX,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(tableGeometry.overflowX).toBe("auto");
+    expect(tableGeometry.scrollWidth).toBeGreaterThanOrEqual(
+      tableGeometry.clientWidth,
+    );
     await page.waitForTimeout(2200);
     await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
     await expect(

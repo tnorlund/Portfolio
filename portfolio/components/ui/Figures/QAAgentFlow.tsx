@@ -1,6 +1,7 @@
 import React from "react";
 import Image from "next/image";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useSpring, animated } from "@react-spring/web";
 import { getReceiptMotionScale } from "./ReceiptFlow/receiptFlowUtils";
 import type {
@@ -35,6 +36,20 @@ const CDN_BASE = getCdnBaseUrl();
 const MAX_EVIDENCE_THUMBNAILS = 8;
 const MAX_STRUCTURED_RECEIPTS = 4;
 const MAX_ANSWER_SUMMARY_BODY_CHARS = 96;
+const QA_MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+const QA_MARKDOWN_COMPONENTS: Components = {
+  table: ({ node: _node, ...tableProps }) => (
+    <div
+      className="qa-markdown-table-scroll"
+      data-testid="qa-markdown-table-scroll"
+      role="region"
+      aria-label="Scrollable answer table"
+      tabIndex={0}
+    >
+      <table {...tableProps} />
+    </div>
+  ),
+};
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -1545,7 +1560,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                         overflow: "visible",
                       }}
                     >
-                      <ReactMarkdown>
+                      <ReactMarkdown
+                        remarkPlugins={QA_MARKDOWN_REMARK_PLUGINS}
+                        components={QA_MARKDOWN_COMPONENTS}
+                      >
                         {showDetails ? answerText : answerSummary}
                       </ReactMarkdown>
                     </div>
@@ -1641,6 +1659,58 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                   margin-top: 0;
                   font-size: 0.82rem;
                   line-height: 1.35;
+                }
+
+                .qa-markdown-table-scroll {
+                  width: 100%;
+                  margin: 0.65rem 0 1rem;
+                  overflow-x: auto;
+                  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
+                  border-radius: 6px;
+                  overscroll-behavior-x: contain;
+                  scrollbar-width: thin;
+                  -webkit-overflow-scrolling: touch;
+                }
+
+                .qa-markdown-table-scroll:focus-visible {
+                  outline: 2px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.5);
+                  outline-offset: 2px;
+                }
+
+                .qa-markdown-table-scroll table {
+                  width: 100%;
+                  min-width: 32rem;
+                  border-collapse: collapse;
+                  color: var(--text-color);
+                  font-size: 0.72rem;
+                  line-height: 1.4;
+                }
+
+                .qa-markdown-table-scroll :is(th, td) {
+                  padding: 0.5rem 0.6rem;
+                  border-right: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+                  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+                  text-align: left;
+                  vertical-align: top;
+                  overflow-wrap: anywhere;
+                }
+
+                .qa-markdown-table-scroll th {
+                  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.07);
+                  font-weight: 700;
+                  white-space: nowrap;
+                }
+
+                .qa-markdown-table-scroll tbody tr:nth-child(even) {
+                  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.025);
+                }
+
+                .qa-markdown-table-scroll :is(th, td):last-child {
+                  border-right: 0;
+                }
+
+                .qa-markdown-table-scroll tbody tr:last-child td {
+                  border-bottom: 0;
                 }
 
                 @media (prefers-reduced-motion: reduce) {
