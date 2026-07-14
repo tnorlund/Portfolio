@@ -94,8 +94,7 @@ _RULES: list[tuple[str, re.Pattern]] = [
     (
         "transaction",
         re.compile(
-            r"Ticket\s?#|Station:|Sales Rep|User:|"
-            r"^\d{1,2}/\d{1,2}/\d{4}",
+            r"Ticket\s?#|Station:|Sales Rep|User:|" r"^\d{1,2}/\d{1,2}/\d{4}",
             re.I,
         ),
     ),
@@ -137,8 +136,36 @@ _RULES: list[tuple[str, re.Pattern]] = [
     ),
 ]
 _BARCODE_RE = re.compile(r"^\d{10,}$")
+# Smith's (Kroger banner), M6 cold-start pilot: rules derived from the QA'd
+# VALID ReceiptSection rows on its 10 vetted dev scans. Only the sections whose
+# measured face departs from body are classified -- storefront (wordmark block
+# "Smith's" / "FRESH FOR EVERYONE", measured 1.27x cap / 1.36x stroke = bold)
+# and footer (fuel-points/recall block, 1.10x cap). Everything else measured
+# body-normal, so it deliberately falls through to "item"/"other".
+_SMITHS_RULES: list[tuple[str, re.Pattern]] = [
+    (
+        "store_header",
+        re.compile(
+            r"Smith'?s|FRESH\s+FOR\s+EVERYONE|^(FRESH|FOR|EVERYONE)[-.,]*$",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            # Anchored to the measured footer templates (fuel-points block,
+            # cashier line, thank-you/recall trailer) so ordinary item or
+            # coupon rows containing these words are not swept in.
+            r"Fuel Points|^Your cashier was\b|^Thank you\b|"
+            r"^If you have any questions|^please call 1-8|"
+            r"^RECALL NOTICE|^UPC:",
+            re.I,
+        ),
+    ),
+]
 _MERCHANT_RULES = {
     "innout": _INNOUT_RULES,
+    "smiths": _SMITHS_RULES,
 }
 
 
