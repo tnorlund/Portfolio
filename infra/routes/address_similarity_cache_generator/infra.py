@@ -200,7 +200,10 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             f"{name}-image",
             dockerfile_path=dockerfile_path,
             build_context_path=build_context_path,
-            source_paths=None,  # Use default rsync (already includes receipt_dynamo, receipt_label, and handler directory)
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_chroma",
+            ],
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,  # CodeBuildDockerImage expects role_arn

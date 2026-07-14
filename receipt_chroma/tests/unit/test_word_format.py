@@ -5,7 +5,6 @@ import pytest
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
     get_word_neighbors,
-    parse_left_right_from_formatted,
 )
 
 
@@ -283,45 +282,3 @@ class TestGetWordNeighbors:
         # even if they have the same x-coordinate
         assert len(left_words) == 0
         assert len(right_words) == 0
-
-
-@pytest.mark.unit
-class TestParseLeftRightFromFormatted:
-    """Test parsing left/right from new formatted string."""
-
-    def test_parse_valid_format(self) -> None:
-        """Test parsing valid formatted string with context."""
-        fmt = "left1 left2 word right1 right2"
-        left_words, right_words = parse_left_right_from_formatted(
-            fmt, context_size=2
-        )
-        assert len(left_words) == 2
-        assert len(right_words) == 2
-        assert "left1" in left_words
-        assert "left2" in left_words
-        assert "right1" in right_words
-        assert "right2" in right_words
-
-    def test_parse_with_edge(self) -> None:
-        """Test parsing with edge markers."""
-        fmt = "<EDGE> left word right <EDGE>"
-        left_words, right_words = parse_left_right_from_formatted(
-            fmt, context_size=2
-        )
-        assert len(left_words) == 2
-        assert len(right_words) == 2
-        assert "<EDGE>" in left_words
-        assert "left" in left_words
-        assert "right" in right_words
-        assert "<EDGE>" in right_words
-
-    def test_parse_all_edges(self) -> None:
-        """Test parsing word at edge with all <EDGE> tags."""
-        fmt = "<EDGE> <EDGE> word <EDGE> <EDGE>"
-        left_words, right_words = parse_left_right_from_formatted(
-            fmt, context_size=2
-        )
-        assert len(left_words) == 2
-        assert len(right_words) == 2
-        assert all(w == "<EDGE>" for w in left_words)
-        assert all(w == "<EDGE>" for w in right_words)

@@ -1,7 +1,6 @@
 """Integration tests for delta producer using moto."""
 
 import tempfile
-from pathlib import Path
 
 import boto3
 import pytest

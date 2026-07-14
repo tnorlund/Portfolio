@@ -1,6 +1,5 @@
 import json
 import os
-from pathlib import Path
 from typing import Optional
 
 import pulumi
@@ -188,14 +187,15 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         lambda_function_name = f"{name}-lambda-{stack}"
 
         # Build Docker image using CodeBuild
-        # Include receipt_layoutlm in source_paths since it's not in default packages
+        # Declare the package copied by this image's Dockerfile.
         self.docker_image = CodeBuildDockerImage(
             f"{name}-image",
             dockerfile_path=dockerfile_path,
             build_context_path=build_context_path,
             source_paths=[
-                "receipt_layoutlm"
-            ],  # Include receipt_layoutlm package
+                "receipt_dynamo",
+                "receipt_layoutlm",
+            ],  # Include packages copied by the Dockerfile
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,

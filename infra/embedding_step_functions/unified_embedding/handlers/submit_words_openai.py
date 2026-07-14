@@ -17,7 +17,7 @@ from embedding_ingest import (  # pylint: disable=import-error
     write_ndjson,
 )
 from openai import OpenAI
-from receipt_chroma.embedding.formatting.word_format import (
+from receipt_chroma.embedding.formatting import (
     format_word_context_embedding_input,
 )
 from receipt_chroma.embedding.openai import (

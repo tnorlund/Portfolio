@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma import ChromaClient
 from receipt_dynamo.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)

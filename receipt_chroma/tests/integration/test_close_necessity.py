@@ -5,8 +5,6 @@ These tests demonstrate that without proper cleanup (GC + delay), SQLite files
 remain locked and cannot be safely copied or uploaded.
 """
 
-import gc
-import os
 import shutil
 import tempfile
 import time

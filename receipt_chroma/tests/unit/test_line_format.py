@@ -6,7 +6,6 @@ from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
     format_row_embedding_input,
     format_visual_row,
-    get_line_neighbors,
     get_primary_line_id,
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
@@ -87,56 +86,6 @@ class TestFormatLineContextEmbeddingInput:
         target = lines[1]
         result = format_line_context_embedding_input(target, lines)
         assert "<POS>1</POS>" in result  # Second line (index 1)
-
-
-@pytest.mark.unit
-class TestGetLineNeighbors:
-    """Test getting line neighbors."""
-
-    def test_get_neighbors(self):
-        """Test getting previous and next lines."""
-        # Lines sorted by y-coordinate (higher y sorts first).
-        # y=0.8 -> index 0, y=0.5 -> index 1, y=0.2 -> index 2.
-        # In receipt coords, higher y might be lower on page.
-        # Function treats index-1 as prev and index+1 as next.
-        lines = [
-            MockReceiptLine("img1", "rec1", "line1", "prev", y=0.8),
-            MockReceiptLine("img1", "rec1", "line2", "target", y=0.5),
-            MockReceiptLine("img1", "rec1", "line3", "next", y=0.2),
-        ]
-        target = lines[1]
-        prev, next_line = get_line_neighbors(target, lines)
-        # Actual: prev=next, next=prev (reversed due to coordinate system)
-        assert prev == "next"  # Line with lower y (index 2)
-        assert next_line == "prev"  # Line with higher y (index 0)
-
-    def test_get_neighbors_first_line(self):
-        """Test getting neighbors for first line."""
-        # First line has highest y (sorts to index 0)
-        # Due to coordinate system, higher y is treated as later in sequence
-        lines = [
-            MockReceiptLine("img1", "rec1", "line1", "first", y=0.8),
-            MockReceiptLine("img1", "rec1", "line2", "second", y=0.5),
-        ]
-        target = lines[0]
-        prev, next_line = get_line_neighbors(target, lines)
-        # Actual: prev=second, next=<EDGE> (reversed due to coordinate system)
-        assert prev == "second"
-        assert next_line == "<EDGE>"
-
-    def test_get_neighbors_last_line(self):
-        """Test getting neighbors for last line."""
-        # Last line has lowest y (sorts to last index)
-        # Due to coordinate system, lower y is treated as earlier in sequence
-        lines = [
-            MockReceiptLine("img1", "rec1", "line1", "first", y=0.8),
-            MockReceiptLine("img1", "rec1", "line2", "last", y=0.5),
-        ]
-        target = lines[1]
-        prev, next_line = get_line_neighbors(target, lines)
-        # Actual: prev=<EDGE>, next=first (reversed due to coordinate system)
-        assert prev == "<EDGE>"
-        assert next_line == "first"
 
 
 @pytest.mark.unit

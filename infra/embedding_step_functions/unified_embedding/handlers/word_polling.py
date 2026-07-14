@@ -15,7 +15,6 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 import boto3
 from botocore.config import Config
 from openai import OpenAI
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
 from receipt_chroma.embedding.openai import (
     download_openai_batch_result,
@@ -25,11 +24,6 @@ from receipt_chroma.embedding.openai import (
     mark_items_for_retry,
     mark_words_embedded,
 )
-from receipt_chroma.embedding.records import (
-    WordEmbeddingRecord,
-    build_word_payload,
-)
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError

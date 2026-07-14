@@ -20,9 +20,13 @@ from components.http_api_route import (
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
-if config.get_bool("docker-buildkit") is not False:  # Default to True if not set
+if (
+    config.get_bool("docker-buildkit") is not False
+):  # Default to True if not set
     os.environ["DOCKER_BUILDKIT"] = "1"
-    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = "1"  # Also enable for docker-compose
+    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
+        "1"  # Also enable for docker-compose
+    )
 
     # Warning if BuildKit might not be inherited by Docker
     if not os.environ.get("DOCKER_BUILDKIT"):
@@ -34,8 +38,6 @@ if config.get_bool("docker-buildkit") is not False:  # Default to True if not se
 
 from typing import Optional
 
-from pulumi import ResourceOptions
-
 # Import our infrastructure components
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
@@ -46,9 +48,8 @@ from dynamo_db import (
 from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
-from merge_receipt_lambda import create_merge_receipt_lambda
-from trigger_reocr_lambda import create_trigger_reocr_lambda
 from label_refresh_lambda import create_label_refresh_lambda
+from merge_receipt_lambda import create_merge_receipt_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -56,6 +57,7 @@ from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
+from trigger_reocr_lambda import create_trigger_reocr_lambda
 from upload_images import UploadImages
 
 # Receipt Label Validation project name - single source of truth
@@ -82,9 +84,6 @@ except ImportError as e:
     print(f"⚠️  Failed to import label cache updater: {e}")
 # import step_function  # Legacy - receipt_processor depends on removed receipt_label
 from chroma.nat_egress import NatEgress
-from chroma.orchestrator import ChromaOrchestrator
-from chroma.service import ChromaEcsService
-from chroma.workers import ChromaWorkers
 
 # from step_function_enhanced import create_enhanced_receipt_processor  # Legacy
 # - depends on receipt_processor which needs receipt_label
@@ -100,10 +99,6 @@ pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 # Task 2: Security (depends on VPC)
 security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
 pulumi.export("sg_lambda_id", security.sg_lambda_id)
-pulumi.export("sg_chroma_id", security.sg_chroma_id)
-pulumi.export("ecs_task_role_arn", security.ecs_task_role_arn)
-pulumi.export("lambda_role_arn", security.lambda_role_arn)
-pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
 
 # Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
 
@@ -170,7 +165,9 @@ pulumi.export(
     "step_function_failure_topic_arn",
     notification_system.step_function_topic_arn,
 )
-pulumi.export("critical_error_topic_arn", notification_system.critical_error_topic_arn)
+pulumi.export(
+    "critical_error_topic_arn", notification_system.critical_error_topic_arn
+)
 
 # Create billing alerts for CloudWatch custom metrics costs
 billing_alerts = BillingAlerts(
@@ -191,36 +188,6 @@ billing_alerts = BillingAlerts(
 # pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 # Commented out - legacy code
 
-# Task 6: ECS Service (scale-to-zero) using our Chroma container
-chroma_service = ChromaEcsService(
-    name=f"chroma-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    public_subnet_ids=public_vpc.public_subnet_ids,
-    security_group_id=security.sg_chroma_id,
-    task_role_arn=security.ecs_task_role_arn,
-    task_role_name=security.ecs_task_role_name,
-    execution_role_arn=security.ecs_task_execution_role_arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    collection="lines",
-    desired_count=0,
-)
-
-pulumi.export("chroma_cluster_arn", chroma_service.cluster.arn)
-pulumi.export("chroma_service_arn", chroma_service.svc.arn)
-pulumi.export("chroma_service_dns", chroma_service.endpoint_dns)
-
-# Task 7: Workers - Lambda functions that query Chroma via HTTP
-workers = ChromaWorkers(
-    name=f"chroma-workers-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    subnets=public_vpc.public_subnet_ids,
-    security_group_id=security.sg_lambda_id,
-    dynamodb_table_name=dynamodb_table.name,
-    chroma_service_dns=chroma_service.endpoint_dns,
-)
-
-pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
-
 # NAT egress (public subnet) + private subnets for Lambda internet access
 nat = NatEgress(
     name=f"nat-egress-{pulumi.get_stack()}",
@@ -230,52 +197,19 @@ nat = NatEgress(
 pulumi.export("nat_instance_id", nat.nat_instance_id)
 pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 
-# Create ChromaDB compaction infrastructure using shared bucket
-# Now that nat is defined, we can use both public and private subnets for EFS
-# Create EFS with mount targets in unique AZs only
-# EFS only allows one mount target per AZ, so we need to deduplicate by AZ
-
-# Strategy: Select first public subnet + first private subnet
-# Based on subnet query: public subnets are in us-east-1a and us-east-1b
-# Both private subnets are in us-east-1b
-# So we need: first public (us-east-1a) + first private (us-east-1b) = 2 unique AZs
-unique_efs_subnets = Output.all(
-    public_vpc.public_subnet_ids, nat.private_subnet_ids
-).apply(
-    lambda args: [args[0][0], args[1][0]]  # First public + first private
-)
-
-# Compaction lambda needs to be in private subnets for EFS access
-# Use only first private subnet to ensure Lambda is in subnet with EFS mount target
-compaction_lambda_subnets = nat.private_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single subnet for EFS access
-
-compaction_use_efs = portfolio_config.get_bool("compaction-use-efs")
-if compaction_use_efs is None:
-    compaction_use_efs = False  # default to S3-only mode to avoid EFS costs
-compaction_storage_mode = "s3"  # Force S3-only mode to avoid EFS costs
+# Create ChromaDB compaction infrastructure using the shared S3 bucket.
+compaction_lambda_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])
 
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     chromadb_buckets=shared_chromadb_buckets,
-    vpc_id=public_vpc.vpc_id,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
-    # EFS requires unique AZs (public + first private)
-    efs_subnet_ids=unique_efs_subnets,
     lambda_security_group_id=security.sg_lambda_id,
-    use_efs=compaction_use_efs,
-    storage_mode=compaction_storage_mode,
 )
 
 # Create embedding infrastructure using shared bucket and queues
-# Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
-embedding_depends_on = (
-    chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None
-)
-
 embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
@@ -283,17 +217,6 @@ embedding_infrastructure = EmbeddingInfrastructure(
     # Use same subnets as compaction Lambda
     vpc_subnet_ids=compaction_lambda_subnets,
     lambda_security_group_id=security.sg_lambda_id,
-    efs_access_point_arn=(
-        chromadb_infrastructure.efs.access_point_arn
-        if chromadb_infrastructure.efs
-        else None
-    ),
-    efs_mount_targets=(
-        chromadb_infrastructure.efs.mount_targets
-        if chromadb_infrastructure.efs
-        else None
-    ),  # Pass mount targets dependency
-    opts=ResourceOptions(depends_on=embedding_depends_on),
 )
 
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
@@ -338,7 +261,7 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
 )
 
 # SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
-# Enables upload lambda to use EFS (private subnets) while accessing SQS without internet
+# Keep upload Lambdas private while allowing SQS access without internet.
 # Single AZ for cost savings ($0.12/day savings)
 # Lambda functions can access endpoints from any AZ in the VPC
 # If endpoint AZ fails, Lambda falls back to NAT (slower but works)
@@ -399,32 +322,6 @@ create_lambda_route(
     permission_name="word_similarity_lambda_permission",
 )
 
-# Recreate workers to use NAT private subnets for egress
-workers_nat = ChromaWorkers(
-    name=f"chroma-workers-nat-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    subnets=nat.private_subnet_ids,
-    security_group_id=security.sg_lambda_id,
-    dynamodb_table_name=dynamodb_table.name,
-    chroma_service_dns=chroma_service.endpoint_dns,
-)
-pulumi.export("chroma_query_words_lambda_nat_arn", workers_nat.query_words.arn)
-
-# Task 8: Orchestration - Step Functions to scale up, wait, run, scale down
-orchestrator = ChromaOrchestrator(
-    name=f"chroma-orchestrator-{pulumi.get_stack()}",
-    cluster_arn=chroma_service.cluster.arn,
-    service_arn=chroma_service.svc.arn,
-    chroma_endpoint=chroma_service.endpoint_dns,
-    worker_lambda_arn=workers_nat.query_words.arn,
-    nat_instance_id=nat.nat_instance_id,
-    lambda_role_name=security.lambda_role_arn,
-    subnets=public_vpc.public_subnet_ids,
-    security_group_id=security.sg_lambda_id,
-)
-
-pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
-
 # ValidateMerchantStepFunctions removed - redundant with LangGraph metadata creation
 # Metadata is now created by:
 # - Upload OCR Handler (LangGraph)
@@ -432,35 +329,24 @@ pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 # - Embedding polling handlers (LangGraph)
 # Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
-# Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
-# When using EFS, use only first private subnet to ensure Lambda is in subnet with EFS mount target
-upload_images_subnets = nat.private_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single subnet for EFS access
+# Wire upload-images after NAT is available so it can reach external APIs.
+upload_images_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])
 
 upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    embed_ndjson_queue_url=None,  # Will use internal queue
-    vpc_subnet_ids=upload_images_subnets,  # Single subnet when EFS is used
+    vpc_subnet_ids=upload_images_subnets,
     security_group_id=security.sg_lambda_id,
-    chroma_http_endpoint=chroma_service.endpoint_dns,
-    _ecs_cluster_arn=chroma_service.cluster.arn,
-    _ecs_service_arn=chroma_service.svc.arn,
-    _nat_instance_id=nat.nat_instance_id,
-    efs_access_point_arn=(
-        chromadb_infrastructure.efs.access_point_arn
-        if chromadb_infrastructure.efs
-        else None
-    ),
     label_validation_project_name=label_validation_project_name,
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
-pulumi.export("llm_validation_queue_url", upload_images.llm_validation_queue.url)
+pulumi.export(
+    "llm_validation_queue_url", upload_images.llm_validation_queue.url
+)
 
 # ML Training Infrastructure
 # -------------------------
@@ -481,12 +367,16 @@ if enable_sagemaker:
         raw_bucket_arn=upload_images.image_bucket.arn,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
-    pulumi.export("layoutlm_training_bucket", sagemaker_training.output_bucket.bucket)
+    pulumi.export(
+        "layoutlm_training_bucket", sagemaker_training.output_bucket.bucket
+    )
     pulumi.export(
         "layoutlm_sagemaker_ecr_repo",
         sagemaker_training.ecr_repo.repository_url,
     )
-    pulumi.export("layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn)
+    pulumi.export(
+        "layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn
+    )
     pulumi.export(
         "layoutlm_start_training_lambda",
         sagemaker_training.start_training_lambda.arn,
@@ -495,7 +385,9 @@ if enable_sagemaker:
         "layoutlm_codebuild_project", sagemaker_training.codebuild_project.name
     )
     # Export model location for Swift OCR CLI to download LayoutLM model
-    pulumi.export("layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket)
+    pulumi.export(
+        "layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket
+    )
     pulumi.export("layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip")
 
     # Per-epoch checkpoint evaluation. Reuses the training container image and
@@ -523,7 +415,9 @@ else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
     if training_bucket_config:
-        layoutlm_training_bucket_name = Output.from_input(training_bucket_config)
+        layoutlm_training_bucket_name = Output.from_input(
+            training_bucket_config
+        )
 
 # Create LayoutLM inference API if we have a training bucket (either from training infra or config)
 if layoutlm_training_bucket_name is not None:
@@ -564,8 +458,8 @@ if layoutlm_training_bucket_name is not None:
 
     # Per-epoch evaluation API: serves epoch-eval/ artifacts from the training
     # bucket (written by the eval-checkpoints Processing job).
-    from routes.layoutlm_epochs.infra import create_layoutlm_epochs_lambda
     import routes.layoutlm_epochs.infra as epochs_module
+    from routes.layoutlm_epochs.infra import create_layoutlm_epochs_lambda
 
     layoutlm_epochs_lambda = create_layoutlm_epochs_lambda(
         cache_bucket_name=layoutlm_training_bucket_name,
@@ -1180,8 +1074,12 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # ChromaDB infrastructure exports (hybrid deployment)
 pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
-pulumi.export("chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url)
-pulumi.export("chromadb_words_queue_url", chromadb_infrastructure.words_queue_url)
+pulumi.export(
+    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
+)
+pulumi.export(
+    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
+)
 pulumi.export(
     "stream_processor_function_arn",
     chromadb_infrastructure.stream_processor_arn,
@@ -1356,7 +1254,9 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
-pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
+pulumi.export(
+    "merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name
+)
 
 # Trigger Re-OCR Lambda (for manually triggering regional re-OCR)
 # Can be invoked with: {image_id, receipt_id, reocr_region, reocr_reason}
@@ -1367,7 +1267,9 @@ trigger_reocr_lambda = create_trigger_reocr_lambda(
     ocr_job_queue_arn=upload_images.ocr_queue.arn,
 )
 pulumi.export("trigger_reocr_lambda_arn", trigger_reocr_lambda.lambda_arn)
-pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name)
+pulumi.export(
+    "trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name
+)
 
 # Label Refresh Lambda — subscribes to the DynamoDB stream and
 # automatically re-evaluates ReceiptWord labels whenever a word's
@@ -1378,7 +1280,9 @@ pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.
 # deploy is observe-only. Flip per stack with:
 #   pulumi config set portfolio:label_refresh_dry_run false --stack dev
 # Then verify dev for 48h before flipping prod.
-_label_refresh_dry_run = pulumi.Config("portfolio").get_bool("label_refresh_dry_run")
+_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
+    "label_refresh_dry_run"
+)
 label_refresh_lambda = create_label_refresh_lambda(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
@@ -1386,7 +1290,9 @@ label_refresh_lambda = create_label_refresh_lambda(
     dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
 )
 pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
-pulumi.export("label_refresh_lambda_name", label_refresh_lambda.lambda_function.name)
+pulumi.export(
+    "label_refresh_lambda_name", label_refresh_lambda.lambda_function.name
+)
 pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
@@ -1397,9 +1303,15 @@ langsmith_bulk_export = LangSmithBulkExport(
     f"langsmith-export-{stack}",
     project_name=f"label-evaluator-{stack}",
 )
-pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
-pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
-pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
+pulumi.export(
+    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+)
+pulumi.export(
+    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
+)
+pulumi.export(
+    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
+)
 
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
@@ -1484,7 +1396,9 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
-pulumi.export("label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name)
+pulumi.export(
+    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
+)
 
 # CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
 # Only create if SageMaker training is enabled (we need the training bucket)
@@ -1502,7 +1416,9 @@ if enable_sagemaker and layoutlm_training_bucket_name is not None:
     )
 
     pulumi.export("coreml_export_job_queue_url", coreml_export.job_queue_url)
-    pulumi.export("coreml_export_results_queue_url", coreml_export.results_queue_url)
+    pulumi.export(
+        "coreml_export_results_queue_url", coreml_export.results_queue_url
+    )
     pulumi.export(
         "coreml_export_process_results_lambda_arn",
         coreml_export.process_results_lambda.arn,
@@ -1536,7 +1452,9 @@ create_lambda_route(
     permission_name="label_validation_timeline_lambda_permission",
 )
 
-pulumi.export("label_validation_timeline_cache_bucket", timeline_cache_bucket.id)
+pulumi.export(
+    "label_validation_timeline_cache_bucket", timeline_cache_bucket.id
+)
 pulumi.export(
     "label_validation_timeline_cache_generator_lambda",
     timeline_cache_generator_lambda.name,

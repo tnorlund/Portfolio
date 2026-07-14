@@ -54,7 +54,7 @@ def _get_clients():
     """Initialize DynamoDB + Chroma clients once per container."""
     global _dynamo_client, _chroma_client, _words_collection
     if _dynamo_client is None:
-        from receipt_chroma.data.chroma_client import ChromaClient
+        from receipt_chroma import ChromaClient
         from receipt_dynamo import DynamoClient
 
         _dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])

@@ -119,7 +119,7 @@ async def _run_place_finder(
         create_receipt_place_finder_graph,
         run_receipt_place_finder,
     )
-    from receipt_chroma.data.chroma_client import ChromaClient
+    from receipt_chroma import ChromaClient
     from receipt_dynamo import DynamoClient
 
     table_name = os.environ["DYNAMODB_TABLE_NAME"]

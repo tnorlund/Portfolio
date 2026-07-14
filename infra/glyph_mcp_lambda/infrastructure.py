@@ -164,9 +164,10 @@ class GlyphMcpLambda(ComponentResource):
             f"{name}-img",
             dockerfile_path="infra/glyph_mcp_lambda/lambdas/Dockerfile",
             build_context_path=".",
-            # receipt_agent is copied by the default rsync (BitmapFont shim);
-            # the glyphstudio package + baked fonts are non-package trees, so
-            # they ride along as extra literal context paths.
+            # receipt_agent supplies the BitmapFont shim. The glyphstudio
+            # package + baked fonts are non-package trees, so they ride along
+            # as extra literal context paths.
+            source_paths=["receipt_agent"],
             extra_context_paths=[
                 "tools/glyph-studio/py",
                 "tools/glyph-studio/fonts",

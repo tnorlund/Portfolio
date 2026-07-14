@@ -1,9 +1,8 @@
 """Unit tests for LockManager (without DynamoDB)."""
 
-import threading
 import time
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

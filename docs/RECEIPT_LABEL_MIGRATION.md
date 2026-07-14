@@ -113,7 +113,10 @@ receipt_upload          → Receipt upload and processing pipeline
 
 ```python
 # New production helper
-from receipt_chroma.orchestration import create_embeddings_and_compaction_run, EmbeddingResult
+from receipt_chroma.embedding.orchestration import (
+    EmbeddingResult,
+    create_embeddings_and_compaction_run,
+)
 
 # Complete embedding pipeline with local querying capability
 result: EmbeddingResult = create_embeddings_and_compaction_run(
@@ -199,7 +202,7 @@ except ImportError:
   - `receipt_agent/examples/validate_single_receipt.py` (try/except for PlacesAPI)
 
 ### Phase 2: Functional Migration (✅ Complete)
-- Implemented `receipt_chroma.orchestration` helpers
+- Implemented `receipt_chroma.embedding.orchestration` helpers
 - Created `receipt_places` for Places API
 - Moved streaming logic to `receipt_dynamo_stream`
 - **Status**: All alternative implementations ready; agents work with or without receipt_label
@@ -287,7 +290,7 @@ queries = result.local_client.query(...)            # Immediate results!
 
 2. **Use receipt_chroma for embeddings**
    ```python
-   from receipt_chroma.orchestration import create_embeddings_and_compaction_run
+   from receipt_chroma.embedding.orchestration import create_embeddings_and_compaction_run
    ```
 
 3. **Use receipt_places for geographical data**

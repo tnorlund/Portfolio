@@ -190,10 +190,8 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 ### Key Documentation Files
 
 - [System Architecture](docs/architecture/overview.md)
-- [Complete Flow Documentation](docs/architecture/COMPLETE_FLOW_DOCUMENTATION.md) - End-to-end receipt processing flow
 - [Testing Strategy](docs/development/TESTING_STRATEGY.md)
-- [Lambda Networking](docs/architecture/LAMBDA_NETWORKING_ARCHITECTURE.md)
-- [ChromaDB Architecture](docs/chromadb-efs-architecture.md)
+- [ChromaDB Package and Deployed Flow](receipt_chroma/README.md)
 
 ## 🏗 Infrastructure
 

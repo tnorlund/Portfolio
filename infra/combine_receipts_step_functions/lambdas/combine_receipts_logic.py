@@ -42,7 +42,7 @@ from receipt_upload.combine import (
     get_best_receipt_place,
     migrate_receipt_word_labels,
 )
-from s3_io import export_receipt_ndjson_and_queue, save_records_json_to_s3
+from s3_io import save_records_json_to_s3
 
 logger = logging.getLogger()
 
@@ -54,8 +54,6 @@ def combine_receipts(
     raw_bucket: str,
     site_bucket: str,
     chromadb_bucket: str,
-    artifacts_bucket: Optional[str] = None,
-    embed_ndjson_queue_url: Optional[str] = None,
     batch_bucket: Optional[str] = None,
     execution_id: Optional[str] = None,
     dry_run: bool = True,
@@ -389,27 +387,6 @@ def combine_receipts(
                 client.add_receipt_word_label(label)
             if compaction_run:
                 client.add_compaction_run(compaction_run)
-
-            # Export NDJSON and queue to stream processor (same as upload workflow)
-            if artifacts_bucket and embed_ndjson_queue_url:
-                try:
-                    export_receipt_ndjson_and_queue(
-                        client=client,
-                        artifacts_bucket=artifacts_bucket,
-                        embed_ndjson_queue_url=embed_ndjson_queue_url,
-                        image_id=image_id,
-                        receipt_id=new_receipt_id,
-                    )
-                except Exception as e:  # pylint: disable=broad-except
-                    # Best-effort: do not fail main processing if NDJSON export fails
-                    # Log error but continue
-                    logger.error(
-                        "Failed to export NDJSON and queue for receipt %s/%s: %s",
-                        image_id,
-                        new_receipt_id,
-                        e,
-                        exc_info=True,
-                    )
 
         # Step 3: Wait for compaction and delete original receipts (only if not dry_run)
         deleted_receipts = []

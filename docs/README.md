@@ -4,10 +4,10 @@ Active documentation now covers only the handful of Markdown files that are refe
 
 ## 🔍 Active sections
 
-- **Architecture & ADRs**: `docs/architecture/overview.md`, `docs/architecture/LAMBDA_NETWORKING_ARCHITECTURE.md`, `docs/architecture/CANONICAL_FIELDS_DEPRECATION.md`, and the networking/performance callouts capture the up-to-date service map referenced by the infrastructure code.
+- **Architecture & ADRs**: `docs/architecture/overview.md`, `docs/architecture/CANONICAL_FIELDS_DEPRECATION.md`, and the networking/performance callouts capture the up-to-date service map referenced by the infrastructure code.
 - **Package Architecture**: `RECEIPT_LABEL_MIGRATION.md` explains the evolution from monolithic `receipt_label` to specialized packages (`receipt_chroma`, `receipt_places`, `receipt_agent`, etc.) and the architectural decisions behind the split.
 - **Metadata & agents**: `AGENT_REFACTORING_PLAN.md`, `METADATA_AGENTS_DIRECTORY.md`, `METADATA_AGENTS_EVOLUTION.md`, `METADATA_AGENTS_REVIEW.md`, `REFACTORING_SUMMARY.md`, and `PENDING_LABELS_BEST_PRACTICES.md` document the ongoing metadata & agent workflows the step functions and Lambdas still rely on.
-- **Chroma/delta guidance**: `CHROMADB_EMBEDDING_WRITE_PATHS.md`, `DELTA_VALIDATION_AND_RETRY_IMPLEMENTATION.md`, and `chromadb-efs-architecture.md` describe the Chroma/EFS behaviors referenced in multiple handlers.
+- **Chroma/delta guidance**: [`receipt_chroma/README.md`](../receipt_chroma/README.md) describes the current Chroma Cloud, S3 delta, and snapshot flow. `DELTA_VALIDATION_AND_RETRY_IMPLEMENTATION.md` documents delta validation details.
 - **Development onboarding**: `development/setup.md`, `development/testing.md`, `development/ci-cd.md`, and `development/TESTING_STRATEGY.md` contain the scripts and workflow instructions the repo tooling still consults.
 - **Operations runbook**: `operations/deployment.md` remains the deployment playbook referenced in `infra/` automation.
 
