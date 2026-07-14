@@ -65,6 +65,15 @@ const getAnswerSummaryMarkdown = (answer: string): string => {
     : firstBlock;
 };
 
+const formatTimelineBarDuration = (ms: number): string => {
+  if (ms >= 1000) {
+    const seconds = ms / 1000;
+    return `${Number.isInteger(seconds) ? seconds.toFixed(0) : seconds.toFixed(1)}s`;
+  }
+
+  return `${Math.max(1, Math.round(ms))}ms`;
+};
+
 const deduplicateReceiptEvidence = (trace: TraceStep[]): ReceiptEvidence[] => {
   const seenImageIds = new Set<string>();
   const receipts: ReceiptEvidence[] = [];
@@ -1191,17 +1200,27 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                   const leftPct =
                     (segment.startMs / timelineLayout.totalMs) * 100;
                   const durationLabel = formatMs(segment.durationMs);
+                  const compactDurationLabel = formatTimelineBarDuration(
+                    segment.durationMs,
+                  );
                   const showToolName = step.type === "tools" && widthPct >= 12;
                   const showDuration = !showToolName && widthPct >= 6;
                   const visibleLabel = showToolName
                     ? step.content
                     : showDuration
-                      ? durationLabel
+                      ? compactDurationLabel
                       : "";
                   return (
                     <div
                       key={`bar-${segment.stepIndex}-${step.type}`}
                       data-timeline-lane={segment.lane}
+                      data-label-kind={
+                        showToolName
+                          ? "tool"
+                          : showDuration
+                            ? "duration"
+                            : "none"
+                      }
                       data-active={
                         activeStepIndices.includes(segment.stepIndex)
                           ? "true"
@@ -1221,13 +1240,15 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                         alignItems: "center",
                         justifyContent: "center",
                         color: "rgba(255,255,255,0.95)",
-                        fontSize: "0.7rem",
+                        fontSize: "clamp(0.58rem, 2.3vw, 0.7rem)",
                         fontFamily: "var(--font-mono, monospace)",
                         fontWeight: 600,
                         textShadow: "0 0 2px rgba(0,0,0,0.4)",
                         overflow: "hidden",
                         whiteSpace: "nowrap",
-                        padding: visibleLabel ? "0 0.25rem" : 0,
+                        padding: visibleLabel
+                          ? "0 clamp(0.125rem, 0.75vw, 0.25rem)"
+                          : 0,
                         boxSizing: "border-box",
                       }}
                     >

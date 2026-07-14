@@ -309,6 +309,15 @@ test.describe("QAAgentFlow", () => {
     );
     await expect(timeline.locator('[data-active="true"]')).toHaveCount(2);
 
+    const durationBars = timeline.locator('[data-label-kind="duration"]');
+    await expect(durationBars).toHaveText(["1s", "1s", "1s"]);
+    const overflowingDurationLabels = await durationBars.evaluateAll((bars) =>
+      bars
+        .filter((bar) => bar.scrollWidth > bar.clientWidth)
+        .map((bar) => bar.textContent),
+    );
+    expect(overflowingDurationLabels).toEqual([]);
+
     const qaBoundary = page.locator('[data-figure-boundary="qa-agent"]');
     const renderedHeights = await qaBoundary.evaluate((boundary) => ({
       boundary: boundary.getBoundingClientRect().height,
