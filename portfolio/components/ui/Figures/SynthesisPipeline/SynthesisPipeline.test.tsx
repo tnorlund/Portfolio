@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import fs from "fs";
 import path from "path";
 import SynthesisPipeline, { advanceAutoplay } from ".";
+import { knockOutReceiptPaper } from "./Acts";
 import { ACT_COUNT, ACTS } from "./pipelineData";
 import { LABEL_COLORS } from "../labelStyles";
 
@@ -71,6 +72,26 @@ const flushAssets = async () => {
     await Promise.resolve();
   });
 };
+
+test("receipt-paper knockout converts luminance to transparent ink alpha", () => {
+  const pixels = new Uint8ClampedArray([
+    255, 255, 255, 255, // white paper -> transparent
+    0, 0, 0, 255, // black ink -> opaque
+    127, 127, 127, 255, // gray antialiasing -> partial alpha
+    230, 230, 230, 255, // near-paper scan shading -> transparent
+    0, 0, 0, 0, // transparent source remains transparent
+  ]);
+
+  knockOutReceiptPaper(pixels);
+
+  expect(Array.from(pixels)).toEqual([
+    0, 0, 0, 0,
+    0, 0, 0, 255,
+    0, 0, 0, 124,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+  ]);
+});
 
 test("font metrics cover every glyph and match the committed PNG dimensions", () => {
   const metrics = JSON.parse(
