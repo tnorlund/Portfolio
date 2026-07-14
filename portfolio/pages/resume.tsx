@@ -11,26 +11,40 @@ export interface ResumeRoleProps {
 
 const roles: ResumeRoleProps[] = [
   {
-    title: "Freelance",
-    business: "tnor",
-    location: "Westlake Village, CA",
-    dateRange: "Sept 2020 - Now",
+    title: "Staff Data Engineer",
+    business: "MonkeyTilt",
+    location: "Las Vegas, NV",
+    dateRange: "Feb 2026 - Jun 2026",
     bullets: [
-      "Built full-stack applications to process and visualize large datasets using Python, React, and SQL databases",
-      "Established CI/CD best practices to automate and streamline production deployments",
-      "Integrated PostgreSQL and DynamoDB to support scalable, data-driven applications",
+      "Architected a governed, real-time data platform on ClickHouse, Kafka, Django, and Kubernetes, centralizing player, transaction, and reporting data into a trusted source of truth for finance, product, and operations",
+      "Modernized executive finance reporting into a production, SQL-first pipeline, reconciling sports betting, manual adjustments, wallet balances, and test players across ClickHouse, OpenSearch, and Google Sheets",
+      "Established analytics governance and lineage with dbt-managed ClickHouse layers, semantic metadata, PII classification, and OpenLineage patterns, making business logic auditable and reported metrics trustworthy",
+      "Operationalized product data delivery with profile-archive, backfill, and downstream flows across OpenSearch, S3, ClickHouse, and rewards services, enabling historical replay, safer rollouts, and CI/CD",
     ],
   },
   {
-    title: "Data Engineer",
+    title: "Staff Data Engineer, E-commerce & Law",
+    business: "TNOR",
+    location: "Remote",
+    dateRange: "Sept 2020 - Present",
+    bullets: [
+      "Architected an enterprise-scale streaming platform (Kafka/Kinesis) processing 20k+ events/second, powering real-time ML feature stores that drove product decisions",
+      "Designed a high-performance search architecture with distributed vector search (FAISS + ChromaDB), achieving 100x faster telemetry retrieval for real-time anomaly detection",
+      "Pioneered self-service analytics through RAG systems and MCP servers, eliminating 80% of ad-hoc reporting requests and giving non-technical stakeholders direct data access",
+      "Migrated ML systems from MongoDB to PostgreSQL with zero downtime, improving query performance 75% across 50+ services",
+      "Owned cloud platform architecture with infrastructure-as-code (Terraform) for EKS, Lambda, and Step Functions, reducing deployment time 90% via GitHub Actions",
+    ],
+  },
+  {
+    title: "Software Engineer, Data Platform",
     business: "Dollar Shave Club",
     location: "Marina Del Rey, CA",
     dateRange: "May 2021 - Feb 2024",
     bullets: [
-      "Developed and optimized scalable data pipelines, handling large data streams for data-driven decisions",
-      "Designed and deployed mission-critical applications to enhance data integration and streamline processes",
-      "Collaborated on system architecture and deployment strategies, improving data processing efficiency by 80%",
-      "Leveraged Apache Kafka and Spark to manage high-volume, real-time data, boosting system reliability",
+      "Led an enterprise analytics platform transformation, migrating from Databricks/Scala to AWS EMR/Python, cutting operational cost 80% while improving query performance 10x for 100+ users",
+      "Redesigned the ETL ecosystem with Apache Airflow, AWS EMR, and dbt, automating 500+ daily workflows at 99.9% uptime for critical business reporting",
+      "Drove $10M in revenue impact through marketing analytics, integrating Braze CRM with Tableau to improve customer acquisition cost 40% and retention 25%",
+      "Scaled real-time infrastructure for D2C operations with a production Kafka/Spark streaming platform for personalization and inventory optimization",
     ],
   },
   {
