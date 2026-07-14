@@ -344,7 +344,31 @@ def _collect(merchants, max_receipts):
     # poison the median-vote consensus) can drive the build. See
     # ADD_MERCHANT.md step 0.
     keys_json = os.environ.get("GLYPH_KEYS_JSON")
-    if keys_json:
+    # Section-conditioned pooling: GLYPH_LINE_KEYS_JSON points at a JSON dict
+    # {"<image_id>#<receipt_id>": [line_id, ...]} and RESTRICTS the corpus to
+    # exactly those printed lines (e.g. the bold-tier rows of a merchant's QA'd
+    # ReceiptSections), so a heavy atlas is minted from real bold letterforms
+    # rather than a uniform dilation of the body face. The receipt set is the
+    # keys of the map, so it also replaces the merchant query.
+    line_keys_json = os.environ.get("GLYPH_LINE_KEYS_JSON")
+    line_filter: dict[tuple[str, int], set[int]] | None = None
+    if line_keys_json:
+        import json  # noqa: PLC0415
+
+        with open(line_keys_json, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        line_filter = {}
+        for k, lids in raw.items():
+            iid, _, rid = str(k).partition("#")
+            line_filter[(iid, int(rid))] = {int(x) for x in lids}
+        targets = sorted(line_filter.keys())
+        n_lines = sum(len(v) for v in line_filter.values())
+        print(
+            f"GLYPH_LINE_KEYS_JSON: {len(targets)} receipts, "
+            f"{n_lines} allowed lines",
+            flush=True,
+        )
+    elif keys_json:
         import json  # noqa: PLC0415
 
         with open(keys_json, encoding="utf-8") as fh:
@@ -379,7 +403,10 @@ def _collect(merchants, max_receipts):
         lines = defaultdict(list)
         for lt in letters:
             lines[lt.line_id].append(lt)
-        for _, lts in lines.items():
+        allowed = line_filter.get((iid, rid)) if line_filter else None
+        for line_id, lts in lines.items():
+            if allowed is not None and int(line_id) not in allowed:
+                continue
             glyphs = []  # (ch, mask, ink_bottom_abs, ink_h)
             for lt in lts:
                 ch = (lt.text or "").strip()

@@ -118,7 +118,7 @@ def parse_entity(
         if parser:
             return parser(complete_item)
 
-    except ValueError:
+    except (ValueError, TypeError):
         logger.exception(
             "Failed to parse entity",
             extra={

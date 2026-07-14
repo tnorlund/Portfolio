@@ -7,6 +7,12 @@ Main entry point for creating and deleting receipts across DynamoDB and ChromaDB
 from dataclasses import dataclass
 from typing import List, Optional
 
+from receipt_agent.lifecycle.compaction_manager import (
+    check_compaction_status,
+    wait_for_compaction,
+)
+from receipt_agent.lifecycle.embedding_manager import create_embeddings
+from receipt_agent.lifecycle.ndjson_manager import export_receipt_ndjson
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     Receipt,
@@ -15,13 +21,6 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
-
-from receipt_agent.lifecycle.compaction_manager import (
-    check_compaction_status,
-    wait_for_compaction,
-)
-from receipt_agent.lifecycle.embedding_manager import create_embeddings
-from receipt_agent.lifecycle.ndjson_manager import export_receipt_ndjson
 
 
 @dataclass
@@ -53,7 +52,6 @@ def create_receipt(
     receipt_labels: Optional[List[ReceiptWordLabel]] = None,
     chromadb_bucket: Optional[str] = None,
     artifacts_bucket: Optional[str] = None,
-    embed_ndjson_queue_url: Optional[str] = None,
     merchant_name: Optional[str] = None,
     create_embeddings_flag: bool = True,
     export_ndjson_flag: bool = True,
@@ -78,7 +76,6 @@ def create_receipt(
         receipt_labels: Optional list of ReceiptWordLabel entities
         chromadb_bucket: S3 bucket for ChromaDB deltas (required if create_embeddings_flag is True)
         artifacts_bucket: S3 bucket for artifacts/NDJSON (required if export_ndjson_flag is True)
-        embed_ndjson_queue_url: Optional queue URL for NDJSON processing (not used if create_embeddings_flag is True)
         merchant_name: Optional merchant name for embedding context
         create_embeddings_flag: If True, create embeddings and CompactionRun
         export_ndjson_flag: If True, export NDJSON files to S3

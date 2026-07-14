@@ -49,7 +49,7 @@ class PlaceValidatorAgent:
         ```python
         from receipt_agent.agents.place_validator import PlaceValidatorAgent
         from receipt_dynamo.data.dynamo_client import DynamoClient
-        from receipt_chroma.data.chroma_client import ChromaClient
+        from receipt_chroma import ChromaClient
 
         # Initialize clients
         dynamo = DynamoClient(table_name="receipts")

@@ -8,7 +8,7 @@
 
 > **initializeScrollDepthTracking**(): () => `void`
 
-Defined in: [utils/analytics.ts:333](https://github.com/tnorlund/Portfolio/blob/ad94039030f38e33e4efbb50b02601fae6d0725f/portfolio/utils/analytics.ts#L333)
+Defined in: [utils/analytics.ts:333](https://github.com/tnorlund/Portfolio/blob/6b5d67d363d83507de3c561c777f56bffa60eebc/portfolio/utils/analytics.ts#L333)
 
 ## Returns
 

@@ -62,14 +62,8 @@ class UploadImages(ComponentResource):
         raw_bucket: Bucket,
         site_bucket: Bucket,
         chromadb_bucket_name: pulumi.Input[str] | None = None,
-        embed_ndjson_queue_url: pulumi.Input[str] | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
-        chroma_http_endpoint: pulumi.Input[str] | None = None,
-        _ecs_cluster_arn: pulumi.Input[str] | None = None,
-        _ecs_service_arn: pulumi.Input[str] | None = None,
-        _nat_instance_id: pulumi.Input[str] | None = None,
-        efs_access_point_arn: pulumi.Input[str] | None = None,
         label_validation_project_name: pulumi.Input[str] | None = None,
         opts: ResourceOptions | None = None,
     ):  # pylint: disable=too-many-positional-arguments
@@ -189,10 +183,6 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Store embed_ndjson_queue_url for use in Lambda environment
-        # If not provided, we'll use the internal queue created below
-        self._external_embed_ndjson_queue_url = embed_ndjson_queue_url
-
         # --- Combined upload_receipt Lambda (presign + job record) ---
 
         upload_receipt_role = Role(
@@ -293,7 +283,9 @@ class UploadImages(ComponentResource):
             source_paths=["receipt_dynamo"],  # Only need receipt_dynamo
             lambda_config=upload_receipt_lambda_config,
             platform="linux/arm64",
-            opts=ResourceOptions(parent=self, depends_on=[upload_receipt_role]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[upload_receipt_role]
+            ),
         )
 
         upload_receipt_lambda = cast(
@@ -334,7 +326,7 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Attach VPC access policy if VPC is configured (required for EFS)
+        # Attach VPC access policy when private subnets are configured.
         if vpc_subnet_ids and security_group_id:
             RolePolicyAttachment(
                 f"{name}-process-ocr-vpc-exec",
@@ -393,7 +385,9 @@ class UploadImages(ComponentResource):
                                         args[5] + "/*",  # artifacts_bucket
                                     ]
                                     + (
-                                        [f"arn:aws:s3:::{args[6]}/*"] if args[6] else []
+                                        [f"arn:aws:s3:::{args[6]}/*"]
+                                        if args[6]
+                                        else []
                                     ),
                                 },
                                 {
@@ -512,9 +506,6 @@ class UploadImages(ComponentResource):
         # - Compaction trigger
         # ---------------------------------------------
 
-        # Step Function removed - no longer need embed_ndjson_queue
-        # The container Lambda handles everything directly
-
         # Create container-based process_ocr Lambda with merchant validation
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
         process_ocr_lambda_config = {
@@ -534,7 +525,6 @@ class UploadImages(ComponentResource):
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
-                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
                 # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
                 "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
@@ -558,11 +548,6 @@ class UploadImages(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "LANGCHAIN_LABEL_PROJECT": label_validation_project_name
                 or "receipt-validation",
-                # EFS configuration for ChromaDB read-only access
-                "CHROMA_ROOT": (
-                    "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
-                ),
-                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3 (debugging EFS access)
             },
             "vpc_config": (
                 {
@@ -570,15 +555,6 @@ class UploadImages(ComponentResource):
                     "security_group_ids": [security_group_id],
                 }
                 if vpc_subnet_ids and security_group_id
-                else None
-            ),
-            # EFS mount enabled for networking
-            "file_system_config": (
-                {
-                    "arn": efs_access_point_arn,
-                    "local_mount_path": "/mnt/chroma",
-                }
-                if efs_access_point_arn
                 else None
             ),
         }
@@ -590,7 +566,6 @@ class UploadImages(ComponentResource):
             build_context_path=".",  # Project root for monorepo access
             source_paths=[
                 "receipt_dynamo",
-                "receipt_dynamo_stream",
                 "receipt_chroma",
                 "receipt_agent",
                 "receipt_places",
@@ -603,7 +578,9 @@ class UploadImages(ComponentResource):
         )
 
         # Use the Lambda function created by CodeBuildDockerImage
-        process_ocr_lambda = cast(Function, process_ocr_docker_image.lambda_function)
+        process_ocr_lambda = cast(
+            Function, process_ocr_docker_image.lambda_function
+        )
 
         # Adopt existing mapping if already present to avoid ResourceConflict
         existing_mapping_uuid = pulumi.Config("portfolio").get(
@@ -617,7 +594,9 @@ class UploadImages(ComponentResource):
             enabled=True,
             opts=ResourceOptions(
                 parent=self,
-                import_=(existing_mapping_uuid if existing_mapping_uuid else None),
+                import_=(
+                    existing_mapping_uuid if existing_mapping_uuid else None
+                ),
             ),
         )
 
@@ -642,216 +621,11 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # =========================================================================
-        # OBSOLETE: embed_from_ndjson role and policies (kept for cleanup)
-        # =========================================================================
-        # These resources are for the now-obsolete embed_ndjson Lambda.
-        # They are left in place to avoid Pulumi trying to delete them.
-        # When the Lambda is manually deleted from AWS, remove these as well.
-        # =========================================================================
-        embed_ndjson_role = Role(
-            f"{name}-embed-ndjson-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Attach basic execution policy
-        RolePolicyAttachment(
-            f"{name}-embed-ndjson-basic-exec",
-            role=embed_ndjson_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Attach SQS queue execution policy
-        RolePolicyAttachment(
-            f"{name}-embed-ndjson-sqs-exec",
-            role=embed_ndjson_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Attach VPC access policy if VPC is configured (required for EFS)
-        if vpc_subnet_ids and security_group_id:
-            RolePolicyAttachment(
-                f"{name}-embed-ndjson-vpc-exec",
-                role=embed_ndjson_role.name,
-                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
-                opts=ResourceOptions(parent=self),
-            )
-
-        # Add DynamoDB, S3, and EFS access policies
-        RolePolicy(
-            f"{name}-embed-ndjson-policy",
-            role=embed_ndjson_role.id,
-            policy=Output.all(
-                dynamodb_table.name,
-                artifacts_bucket.arn,
-                pulumi.Output.from_input(chromadb_bucket_name),
-            ).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "dynamodb:DescribeTable",
-                                    "dynamodb:GetItem",
-                                    "dynamodb:BatchGetItem",
-                                    "dynamodb:Query",
-                                    "dynamodb:PutItem",
-                                    "dynamodb:UpdateItem",
-                                    "dynamodb:BatchWriteItem",
-                                ],
-                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:HeadObject",
-                                ],
-                                "Resource": [args[1] + "/*"]  # artifacts_bucket
-                                + ([f"arn:aws:s3:::{args[2]}/*"] if args[2] else []),
-                            },
-                        ]
-                        + (
-                            [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": "s3:ListBucket",
-                                    "Resource": f"arn:aws:s3:::{args[2]}",
-                                }
-                            ]
-                            if args[2]
-                            else []
-                        )
-                        + [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "elasticfilesystem:ClientMount",
-                                    "elasticfilesystem:ClientWrite",
-                                    "elasticfilesystem:ClientRootAccess",
-                                ],
-                                "Resource": "*",
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create embed_from_ndjson container Lambda config
-        _embed_ndjson_lambda_config = {
-            "role_arn": embed_ndjson_role.arn,
-            "timeout": 600,  # 10 minutes
-            "memory_size": 2048,  # More memory for ChromaDB operations
-            "environment": {
-                "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                "CHROMADB_BUCKET": chromadb_bucket_name,
-                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
-                # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
-                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
-                # Note: SQS queue URLs removed - DynamoDB streams handle routing
-                "GOOGLE_PLACES_API_KEY": google_places_api_key,
-                "OPENAI_API_KEY": openai_api_key,
-                # OpenRouter LLM provider
-                "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "x-ai/grok-4.3",
-                "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
-                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
-                "OPENROUTER_API_KEY": openrouter_api_key,
-                # EFS configuration for ChromaDB (optional, can use S3 for non-time-sensitive)
-                "CHROMA_ROOT": (
-                    "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
-                ),
-                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3
-            },
-            "vpc_config": (
-                {
-                    "subnet_ids": vpc_subnet_ids,
-                    "security_group_ids": [security_group_id],
-                }
-                if vpc_subnet_ids and security_group_id
-                else None
-            ),
-            # EFS mount enabled (optional, can use S3 for non-time-sensitive processing)
-            "file_system_config": (
-                {
-                    "arn": efs_access_point_arn,
-                    "local_mount_path": "/mnt/chroma",
-                }
-                if efs_access_point_arn
-                else None
-            ),
-        }
-
-        # =========================================================================
-        # CONSOLIDATED: embed_ndjson Lambda is now obsolete
-        # =========================================================================
-        # The embed_ndjson functionality has been consolidated into container_ocr.
-        # The container_ocr handler now:
-        # 1. Processes OCR results
-        # 2. Generates embeddings using receipt_chroma.create_embeddings_and_compaction_run()
-        # 3. Resolves merchant information (two-tier: metadata filter + Place ID Finder)
-        # 4. Enriches receipts in DynamoDB
-        #
-        # TODO: After verifying the new container_ocr flow works correctly:
-        # 1. Delete the embed-from-ndjson Lambda from AWS console
-        # 2. Delete the associated IAM role and policies
-        # 3. Remove the commented code below
-        # =========================================================================
-
-        # OBSOLETE - embed_ndjson Lambda removed, functionality in container_ocr
-        # embed_ndjson_docker_image = CodeBuildDockerImage(
-        #     f"{name}-embed-ndjson-image",
-        #     dockerfile_path="infra/upload_images/container/Dockerfile",
-        #     build_context_path=".",
-        #     source_paths=[
-        #         "receipt_dynamo",
-        #         "receipt_dynamo_stream",
-        #         "receipt_chroma",
-        #         "receipt_agent",
-        #         "receipt_places",
-        #     ],
-        #     lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
-        #     lambda_config=embed_ndjson_lambda_config,
-        #     platform="linux/arm64",
-        #     opts=ResourceOptions(
-        #         parent=self,
-        #         depends_on=[embed_ndjson_role],
-        #     ),
-        # )
-        # embed_ndjson_lambda = embed_ndjson_docker_image.lambda_function
-
-        # Set to None since the Lambda is now obsolete
-        self.embed_ndjson_lambda = None
-
-        # Remove Step Function embedding path in favor of SQS batching
-
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",
-            name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
+            name=api.id.apply(
+                lambda id: f"API-Gateway-Execution-Logs_{id}_default"
+            ),
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )

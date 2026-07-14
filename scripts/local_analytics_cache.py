@@ -244,7 +244,8 @@ class DynamoSQLiteWriter:
         self.connection.execute("PRAGMA journal_mode=OFF")
         self.connection.execute("PRAGMA synchronous=OFF")
         self.connection.execute("PRAGMA temp_store=MEMORY")
-        self.connection.executescript("""
+        self.connection.executescript(
+            """
             CREATE TABLE dynamo_items (
                 pk TEXT NOT NULL,
                 sk TEXT NOT NULL,
@@ -275,7 +276,8 @@ class DynamoSQLiteWriter:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             ) WITHOUT ROWID;
-            """)
+            """
+        )
         self.lock = threading.Lock()
         self.row_count = 0
 
@@ -349,15 +351,19 @@ class DynamoSQLiteWriter:
             self.connection.execute(
                 "CREATE INDEX dynamo_items_image_idx ON dynamo_items(image_id)"
             )
-            self.connection.execute("""CREATE INDEX dynamo_items_raw_s3_idx
-                ON dynamo_items(raw_s3_bucket, raw_s3_key)""")
-            self.connection.executescript("""
+            self.connection.execute(
+                """CREATE INDEX dynamo_items_raw_s3_idx
+                ON dynamo_items(raw_s3_bucket, raw_s3_key)"""
+            )
+            self.connection.executescript(
+                """
                 CREATE VIEW images AS
                 SELECT * FROM dynamo_items WHERE entity_type = 'IMAGE';
 
                 CREATE VIEW receipts AS
                 SELECT * FROM dynamo_items WHERE entity_type = 'RECEIPT';
-                """)
+                """
+            )
             self.connection.executemany(
                 "INSERT OR REPLACE INTO cache_metadata(key, value) VALUES (?, ?)",
                 [(key, _json_dump(value)) for key, value in metadata.items()],
@@ -981,6 +987,33 @@ def _local_dynamo_client(endpoint_url: str, region: str | None = None) -> Any:
     )
 
 
+def _robust_local_dynamo_client(
+    endpoint_url: str, region: str | None = None, workers: int = 4
+) -> Any:
+    """Local client for BULK work (hydration import, big scans).
+
+    ``_local_dynamo_client``'s aggressive timeouts (read_timeout=1s, zero
+    retries) are right for the is-the-server-there probe but fatal for a large
+    ``batch_write_item`` stream: a disk-backed DynamoDB Local occasionally
+    takes >1s per batch (JVM GC, bind-mount I/O), which killed hydration on a
+    Mac mini ~3k items in, on every attempt. Bulk paths get real timeouts,
+    retries, and a pool sized to the worker count.
+    """
+    return boto3.client(
+        "dynamodb",
+        endpoint_url=endpoint_url,
+        region_name=region or "us-east-1",
+        aws_access_key_id="local",
+        aws_secret_access_key="local",
+        config=Config(
+            connect_timeout=5,
+            read_timeout=60,
+            retries={"max_attempts": 8, "mode": "adaptive"},
+            max_pool_connections=max(10, workers * 2),
+        ),
+    )
+
+
 def _container_name(env: str, port: int) -> str:
     safe_env = re.sub(r"[^a-zA-Z0-9_.-]+", "-", env).strip("-") or "cache"
     return f"portfolio-dynamodb-local-{safe_env}-{port}"
@@ -1189,8 +1222,13 @@ def serve_dynamodb_cache(args: argparse.Namespace) -> dict[str, Any]:
         LOG.info("DynamoDB Local already matches the cache; skipping import")
     else:
         LOG.info("Importing the cache into DynamoDB Local at %s", endpoint_url)
+        # The probe client above uses 1s/no-retry timeouts on purpose; the bulk
+        # import needs a client that tolerates slow batches (see docstring).
+        import_client = _robust_local_dynamo_client(
+            endpoint_url, args.region, args.import_workers
+        )
         imported = _import_local_dynamo(
-            client,
+            import_client,
             table_name,
             db_path,
             state["table_schema"],

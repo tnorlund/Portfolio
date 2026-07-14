@@ -6,14 +6,18 @@ duplication.
 """
 
 from datetime import datetime
+from math import isfinite
 from typing import (
     Any,
     Callable,
+    Mapping,
     Protocol,
     Type,
     TypeVar,
     cast,
 )
+
+from receipt_dynamo.constants import EmbeddingStatus
 
 from .entity_mixins import SerializationMixin
 from .util import (
@@ -50,8 +54,10 @@ class EntityFactory(SerializationMixin):
         item: dict[str, Any],
         required_keys: set[str],
         field_mappings: dict[str, str] | None = None,
-        custom_extractors: dict[str, DynamoDBItemExtractor | None] = None,
-        key_parsers: dict[str, KeyParser | None] = None,
+        custom_extractors: (
+            Mapping[str, DynamoDBItemExtractor | None] | None
+        ) = None,
+        key_parsers: Mapping[str, KeyParser | None] | None = None,
     ) -> T:
         """
         Generic entity creation from DynamoDB item with full type safety.
@@ -71,40 +77,72 @@ class EntityFactory(SerializationMixin):
         Raises:
             ValueError: If required keys are missing or parsing fails
         """
-        # Validate required keys
-        cls.validate_required_keys(item, required_keys)
-
         field_mappings = field_mappings or {}
         custom_extractors = custom_extractors or {}
         key_parsers = key_parsers or {}
+
+        # Resolve required DynamoDB fields to constructor arguments.  The
+        # documented mapping orientation is item field -> constructor field.
+        # Preserve the historical inverse orientation when only the mapped
+        # item field is present.
+        resolved_fields: list[tuple[str, str]] = []
+        missing_keys: set[str] = set()
+        for required_name in required_keys:
+            if required_name in {"PK", "SK", "TYPE"}:
+                if required_name not in item:
+                    missing_keys.add(required_name)
+                continue
+            if required_name in item:
+                resolved_fields.append(
+                    (
+                        required_name,
+                        field_mappings.get(required_name, required_name),
+                    )
+                )
+                continue
+            mapped_name = field_mappings.get(required_name)
+            if mapped_name is not None and mapped_name in item:
+                resolved_fields.append((mapped_name, required_name))
+                continue
+            inverse_mapping = next(
+                (
+                    item_name
+                    for item_name, constructor_name in field_mappings.items()
+                    if constructor_name == required_name and item_name in item
+                ),
+                None,
+            )
+            if inverse_mapping is not None:
+                resolved_fields.append((inverse_mapping, required_name))
+            else:
+                missing_keys.add(required_name)
+        if missing_keys:
+            raise ValueError(f"Item is missing required keys: {missing_keys}")
 
         # Extract constructor arguments
         kwargs: dict[str, Any] = {}
 
         # Parse key components if needed
         for key_name, parser in key_parsers.items():
+            if parser is None:
+                continue
             if key_name == "PK" and "PK" in item:
-                parsed_data = parser(item["PK"]["S"])
+                parsed_data = parser(cls._extract_key_string(item, "PK"))
                 kwargs.update(parsed_data)
             elif key_name == "SK" and "SK" in item:
-                parsed_data = parser(item["SK"]["S"])
+                parsed_data = parser(cls._extract_key_string(item, "SK"))
                 kwargs.update(parsed_data)
 
         # Extract fields using custom extractors first
         for field_name, extractor in custom_extractors.items():
+            if extractor is None:
+                continue
             kwargs[field_name] = extractor(item)
 
         # Extract remaining required fields
-        for field_name in required_keys:
-            if field_name in {"PK", "SK", "TYPE"}:
-                continue  # Already handled by key parsers or not a
-                # constructor param
-
-            if field_name in custom_extractors:
+        for item_key, field_name in resolved_fields:
+            if custom_extractors.get(field_name) is not None:
                 continue  # Already handled above
-
-            # Map field name if needed
-            item_key = field_mappings.get(field_name, field_name)
 
             # Use safe deserialization
             kwargs[field_name] = cls.safe_deserialize_field(item, item_key)
@@ -115,6 +153,21 @@ class EntityFactory(SerializationMixin):
             raise ValueError(
                 f"Failed to create {entity_class.__name__}: {e}"
             ) from e
+
+    @staticmethod
+    def _extract_key_string(item: dict[str, Any], key_name: str) -> str:
+        """Return a DynamoDB string key or raise a stable validation error."""
+        key = item[key_name]
+        if not isinstance(key, dict) or set(key) != {"S"}:
+            raise ValueError(
+                f"Field '{key_name}' must be a DynamoDB string (S)"
+            )
+        value = key["S"]
+        if not isinstance(value, str) or not value:
+            raise ValueError(
+                f"Field '{key_name}' must contain a non-empty string"
+            )
+        return value
 
     @classmethod
     def parse_image_receipt_key(cls, pk: str, sk: str) -> dict[str, Any]:
@@ -133,11 +186,15 @@ class EntityFactory(SerializationMixin):
             if not pk.startswith("IMAGE#"):
                 raise ValueError(f"Invalid PK format: {pk}")
             image_id = pk.split("#", 1)[1]
+            if not image_id:
+                raise ValueError(f"Invalid PK format: {pk}")
 
             # Parse SK: RECEIPT#{id:05d}#...
             if not sk.startswith("RECEIPT#"):
                 raise ValueError(f"Invalid SK format: {sk}")
             sk_parts = sk.split("#")
+            if len(sk_parts) < 2 or not sk_parts[1]:
+                raise ValueError(f"Invalid SK format: {sk}")
             receipt_id = int(sk_parts[1])
 
             return {
@@ -166,6 +223,8 @@ class EntityFactory(SerializationMixin):
             if not pk.startswith("IMAGE#"):
                 raise ValueError(f"Invalid PK format: {pk}")
             image_id = pk.split("#", 1)[1]
+            if not image_id:
+                raise ValueError(f"Invalid PK format: {pk}")
 
             # Parse SK: RECEIPT#{receipt:05d}#LINE#{line:05d}#WORD#{word:05d}
             if not sk.startswith("RECEIPT#"):
@@ -173,7 +232,7 @@ class EntityFactory(SerializationMixin):
             sk_parts = sk.split("#")
 
             if (
-                len(sk_parts) < 6
+                len(sk_parts) != 6
                 or sk_parts[2] != "LINE"
                 or sk_parts[4] != "WORD"
             ):
@@ -224,50 +283,138 @@ class EntityFactory(SerializationMixin):
         """Extract text field from DynamoDB item with type safety."""
         if "text" not in item:
             raise ValueError("Missing required field: text")
-        if "S" not in item["text"]:
+        attribute = item["text"]
+        if (
+            not isinstance(attribute, dict)
+            or set(attribute) != {"S"}
+            or not isinstance(attribute["S"], str)
+        ):
             raise ValueError(
                 "Field 'text' must be a string type (S), got: "
-                + str(item["text"])
+                + str(attribute)
             )
-        return cast(str, item["text"]["S"])
+        return cast(str, attribute["S"])
 
     @staticmethod
     def extract_optional_extracted_data(
         item: dict[str, Any],
     ) -> dict[str, Any] | None:
         """Extract optional extracted_data field with type safety."""
-        if "extracted_data" not in item or item["extracted_data"].get("NULL"):
+        if "extracted_data" not in item:
             return None
-
-        extracted_data = item["extracted_data"]["M"]
+        attribute = item["extracted_data"]
+        if attribute == {"NULL": True}:
+            return None
+        if not isinstance(attribute, dict) or set(attribute) != {"M"}:
+            raise ValueError(
+                "extracted_data must be a DynamoDB map (M) or NULL"
+            )
+        extracted_data = attribute["M"]
+        if not isinstance(extracted_data, dict) or not set(
+            extracted_data
+        ).issubset({"type", "value"}):
+            raise ValueError(
+                "extracted_data must contain only type and value strings"
+            )
         result: dict[str, Any] = {}
 
-        # Extract type if present
-        if "type" in extracted_data and "S" in extracted_data["type"]:
-            result["type"] = cast(str, extracted_data["type"]["S"])
-
-        # Extract value if present
-        if "value" in extracted_data and "S" in extracted_data["value"]:
-            result["value"] = cast(str, extracted_data["value"]["S"])
+        for field_name in ("type", "value"):
+            if field_name not in extracted_data:
+                continue
+            value = extracted_data[field_name]
+            if (
+                not isinstance(value, dict)
+                or set(value) != {"S"}
+                or not isinstance(value["S"], str)
+            ):
+                raise ValueError(
+                    f"extracted_data.{field_name} must be a "
+                    "DynamoDB string (S)"
+                )
+            result[field_name] = cast(str, value["S"])
 
         return result if result else None
 
     @staticmethod
+    def extract_optional_string_map(
+        item: dict[str, Any], field_name: str = "extracted_data"
+    ) -> dict[str, Any] | None:
+        """Extract an optional DynamoDB map containing arbitrary strings."""
+        if field_name not in item:
+            return None
+        attribute = item[field_name]
+        if attribute == {"NULL": True}:
+            return None
+        if not isinstance(attribute, dict) or set(attribute) != {"M"}:
+            raise ValueError(
+                f"{field_name} must be a DynamoDB map (M) or NULL"
+            )
+        string_map = attribute["M"]
+        if not isinstance(string_map, dict):
+            raise ValueError(f"{field_name}.M must be a map")
+
+        result: dict[str, Any] = {}
+        for key, value in string_map.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{field_name} keys must be strings")
+            if (
+                not isinstance(value, dict)
+                or set(value) != {"S"}
+                or not isinstance(value["S"], str)
+            ):
+                raise ValueError(
+                    f"{field_name}.{key} must be a DynamoDB string (S)"
+                )
+            result[key] = cast(str, value["S"])
+        return result
+
+    @staticmethod
     def extract_embedding_status(item: dict[str, Any]) -> str:
         """Extract embedding_status with default and type safety."""
-        return cast(str, item.get("embedding_status", {}).get("S", "none"))
+        if "embedding_status" not in item:
+            return EmbeddingStatus.NONE.value
+        attribute = item["embedding_status"]
+        if attribute == {"NULL": True}:
+            return EmbeddingStatus.NONE.value
+        if (
+            not isinstance(attribute, dict)
+            or set(attribute) != {"S"}
+            or not isinstance(attribute["S"], str)
+        ):
+            raise ValueError("embedding_status must be a DynamoDB string (S)")
+        return cast(str, attribute["S"])
 
     @staticmethod
     def extract_is_noise(item: dict[str, Any]) -> bool:
         """Extract is_noise boolean with default False and type safety."""
-        return cast(bool, item.get("is_noise", {}).get("BOOL", False))
+        if "is_noise" not in item:
+            return False
+        attribute = item["is_noise"]
+        if attribute == {"NULL": True}:
+            return False
+        if (
+            not isinstance(attribute, dict)
+            or set(attribute) != {"BOOL"}
+            or not isinstance(attribute["BOOL"], bool)
+        ):
+            raise ValueError("is_noise must be a DynamoDB boolean (BOOL)")
+        return cast(bool, attribute["BOOL"])
 
     @staticmethod
     def extract_datetime_field(field_name: str) -> DynamoDBItemExtractor:
         """Create a type-safe datetime field extractor."""
 
         def extractor(item: dict[str, Any]) -> datetime:
-            return datetime.fromisoformat(cast(str, item[field_name]["S"]))
+            if field_name not in item:
+                raise ValueError(f"Missing required field: {field_name}")
+            attribute = item[field_name]
+            if (
+                not isinstance(attribute, dict)
+                or set(attribute) != {"S"}
+                or not isinstance(attribute["S"], str)
+            ):
+                raise ValueError(f"{field_name} must be a DynamoDB string (S)")
+            return datetime.fromisoformat(cast(str, attribute["S"]))
 
         return extractor
 
@@ -280,7 +427,18 @@ class EntityFactory(SerializationMixin):
         def extractor(item: dict[str, Any]) -> str | None:
             if field_name not in item:
                 return default
-            value = item[field_name].get("S")
+            attribute = item[field_name]
+            if attribute == {"NULL": True}:
+                return default
+            if (
+                not isinstance(attribute, dict)
+                or set(attribute) != {"S"}
+                or not isinstance(attribute["S"], str)
+            ):
+                raise ValueError(
+                    f"{field_name} must be a DynamoDB string (S) or NULL"
+                )
+            value = attribute["S"]
             return value if value else default
 
         return extractor
@@ -290,7 +448,28 @@ class EntityFactory(SerializationMixin):
         """Create a type-safe string list field extractor."""
 
         def extractor(item: dict[str, Any]) -> list[str]:
-            return cast(list[str], item.get(field_name, {}).get("SS", []))
+            if field_name not in item:
+                return []
+            attribute = item[field_name]
+            if attribute == {"NULL": True}:
+                return []
+            if not isinstance(attribute, dict) or set(attribute) != {"SS"}:
+                raise ValueError(
+                    f"{field_name} must be a DynamoDB string set (SS) or NULL"
+                )
+            values = attribute["SS"]
+            if (
+                not isinstance(values, list)
+                or not values
+                or any(
+                    not isinstance(value, str) or not value for value in values
+                )
+                or len(values) != len(set(values))
+            ):
+                raise ValueError(
+                    f"{field_name} must contain unique non-empty strings"
+                )
+            return list(cast(list[str], values))
 
         return extractor
 
@@ -303,8 +482,19 @@ class EntityFactory(SerializationMixin):
         def extractor(item: dict[str, Any]) -> int | None:
             if field_name not in item:
                 return default
-            n_value = item[field_name].get("N")
-            return int(n_value) if n_value is not None else default
+            attribute = item[field_name]
+            if attribute == {"NULL": True}:
+                return default
+            if (
+                not isinstance(attribute, dict)
+                or set(attribute) != {"N"}
+                or not isinstance(attribute["N"], str)
+                or not attribute["N"]
+            ):
+                raise ValueError(
+                    f"{field_name} must be a DynamoDB number (N) or NULL"
+                )
+            return int(attribute["N"])
 
         return extractor
 
@@ -317,8 +507,22 @@ class EntityFactory(SerializationMixin):
         def extractor(item: dict[str, Any]) -> float | None:
             if field_name not in item:
                 return default
-            n_value = item[field_name].get("N")
-            return float(n_value) if n_value is not None else default
+            attribute = item[field_name]
+            if attribute == {"NULL": True}:
+                return default
+            if (
+                not isinstance(attribute, dict)
+                or set(attribute) != {"N"}
+                or not isinstance(attribute["N"], str)
+                or not attribute["N"]
+            ):
+                raise ValueError(
+                    f"{field_name} must be a DynamoDB number (N) or NULL"
+                )
+            value = float(attribute["N"])
+            if not isfinite(value):
+                raise ValueError(f"{field_name} must be finite")
+            return value
 
         return extractor
 
@@ -354,12 +558,11 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     """Create a type-safe SK parser for RECEIPT#/LINE#/WORD# pattern."""
 
     def parser(sk: str) -> dict[str, Any]:
-        parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
-        sk_parts = sk.split("#")
+        parsed = EntityFactory.parse_receipt_line_word_key("IMAGE#dummy", sk)
         return {
             "receipt_id": parsed["receipt_id"],
-            "line_id": int(sk_parts[3]),  # LINE is at position 3
-            "word_id": int(sk_parts[5]),  # WORD is at position 5
+            "line_id": parsed["line_id"],
+            "word_id": parsed["word_id"],
         }
 
     return parser
@@ -371,6 +574,8 @@ def create_receipt_barcode_sk_parser() -> KeyParser:
     def parser(sk: str) -> dict[str, Any]:
         parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
         sk_parts = sk.split("#")
+        if len(sk_parts) != 4 or sk_parts[2] != "BARCODE" or not sk_parts[3]:
+            raise ValueError(f"Invalid receipt barcode SK format: {sk}")
         return {
             "receipt_id": parsed["receipt_id"],
             "barcode_id": int(sk_parts[3]),  # BARCODE is at position 3
@@ -411,12 +616,16 @@ def create_geometry_extractors() -> dict[str, DynamoDBItemExtractor]:
 def create_ocr_job_sk_parser() -> KeyParser:
     """Create a type-safe SK parser for OCR_JOB# pattern.
 
-    Parses SK like "OCR_JOB#{job_id}" or "OCR_ROUTING#{job_id}"
+    Parses SK like "OCR_JOB#{job_id}" or "ROUTING#{job_id}"
     """
 
     def parser(sk: str) -> dict[str, Any]:
         sk_parts = sk.split("#")
-        if len(sk_parts) < 2:
+        if (
+            len(sk_parts) != 2
+            or sk_parts[0] not in {"OCR_JOB", "ROUTING"}
+            or not sk_parts[1]
+        ):
             raise ValueError(f"Invalid OCR job SK format: {sk}")
         return {"job_id": sk_parts[1]}
 

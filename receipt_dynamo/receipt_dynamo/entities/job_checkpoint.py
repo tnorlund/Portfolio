@@ -1,3 +1,5 @@
+"""DynamoDB entity for model checkpoints produced by a job."""
+
 from dataclasses import dataclass
 from typing import Any, Generator
 
@@ -77,13 +79,25 @@ class JobCheckpoint:
         if not isinstance(self.s3_key, str) or not self.s3_key:
             raise ValueError("s3_key must be a non-empty string")
 
-        if not isinstance(self.size_bytes, int) or self.size_bytes < 0:
+        if (
+            isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 0
+        ):
             raise ValueError("size_bytes must be a non-negative integer")
 
-        if not isinstance(self.step, int) or self.step < 0:
+        if (
+            isinstance(self.step, bool)
+            or not isinstance(self.step, int)
+            or self.step < 0
+        ):
             raise ValueError("step must be a non-negative integer")
 
-        if not isinstance(self.epoch, int) or self.epoch < 0:
+        if (
+            isinstance(self.epoch, bool)
+            or not isinstance(self.epoch, int)
+            or self.epoch < 0
+        ):
             raise ValueError("epoch must be a non-negative integer")
 
         if not isinstance(self.model_state, bool):
@@ -246,7 +260,11 @@ class JobCheckpoint:
         """
         try:
             metrics: dict[str, Any] = {}
-            if "metrics" in item and "M" in item["metrics"]:
+            if "metrics" in item:
+                if "M" not in item["metrics"]:
+                    raise ValueError(
+                        f"Unsupported metrics format: {item['metrics']}"
+                    )
                 metrics = parse_dynamodb_map(item["metrics"]["M"])
 
             size_bytes = int(item["size_bytes"]["N"])

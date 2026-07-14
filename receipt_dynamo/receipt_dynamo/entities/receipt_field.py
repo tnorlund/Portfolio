@@ -1,3 +1,5 @@
+"""DynamoDB entity for a normalized receipt field and its source words."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -5,6 +7,8 @@ from typing import Any, Generator
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_positive_int,
 )
 
 
@@ -36,6 +40,7 @@ class ReceiptField:
     REQUIRED_KEYS = {
         "PK",
         "SK",
+        "TYPE",
         "words",
         "reasoning",
         "timestamp_added",
@@ -57,49 +62,48 @@ class ReceiptField:
         """
         if not isinstance(self.field_type, str):
             raise ValueError("field_type must be a string")
-        if not self.field_type:
+        if not self.field_type.strip():
             raise ValueError("field_type cannot be empty")
-        self.field_type = (
-            self.field_type.upper()
-        )  # Store field type in uppercase for consistency
+        self.field_type = self.field_type.strip().upper()
 
         assert_valid_uuid(self.image_id)
 
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
 
         if not isinstance(self.words, list):
             raise ValueError("words must be a list")
+        normalized_words = []
+        required_keys = {"word_id", "line_id", "label"}
         for word in self.words:
             if not isinstance(word, dict):
                 raise ValueError("each word must be a dictionary")
-            required_keys = {"word_id", "line_id", "label"}
-            if not required_keys.issubset(word.keys()):
+            if set(word) != required_keys:
                 missing_keys = required_keys - word.keys()
-                raise ValueError(f"word missing required keys: {missing_keys}")
-            if not isinstance(word["word_id"], int) or word["word_id"] <= 0:
-                raise ValueError("word_id must be a positive integer")
-            if not isinstance(word["line_id"], int) or word["line_id"] <= 0:
-                raise ValueError("line_id must be a positive integer")
-            if not isinstance(word["label"], str) or not word["label"]:
+                extra_keys = word.keys() - required_keys
+                raise ValueError(
+                    "word must contain exactly word_id, line_id, and label; "
+                    f"missing keys: {missing_keys}; extra keys: {extra_keys}"
+                )
+            validate_positive_int("word_id", word["word_id"])
+            validate_positive_int("line_id", word["line_id"])
+            if not isinstance(word["label"], str) or not word["label"].strip():
                 raise ValueError("label must be a non-empty string")
-            word["label"] = word["label"].upper()  # Store labels in uppercase
+            normalized_words.append(
+                {
+                    "word_id": word["word_id"],
+                    "line_id": word["line_id"],
+                    "label": word["label"].strip().upper(),
+                }
+            )
+        self.words = normalized_words
 
         if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        if not self.reasoning:
+        if not self.reasoning.strip():
             raise ValueError("reasoning cannot be empty")
-
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif isinstance(self.timestamp_added, str):
-            pass  # Already a string, no conversion needed
-        else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+        self.timestamp_added = validate_iso_timestamp(
+            self.timestamp_added, "timestamp_added", default_now=False
+        )
 
     @property
     def key(self) -> dict[str, Any]:
@@ -135,6 +139,7 @@ class ReceiptField:
             dict: A dictionary representing the ReceiptField object as a
                 DynamoDB item.
         """
+        self.__post_init__()
         return {
             **self.key,
             **self.gsi1_key(),
@@ -204,7 +209,9 @@ class ReceiptField:
         )
 
     @classmethod
-    def from_item(cls, item: dict[str, Any]) -> "ReceiptField":
+    def from_item(  # pylint: disable=too-many-locals,too-many-branches
+        cls, item: dict[str, Any]
+    ) -> "ReceiptField":
         """Converts a DynamoDB item to a ReceiptField object.
 
         Args:
@@ -224,13 +231,25 @@ class ReceiptField:
                 f"additional keys: {additional_keys}"
             )
         try:
+            if item["TYPE"] != {"S": "RECEIPT_FIELD"}:
+                raise ValueError("TYPE must be RECEIPT_FIELD")
+
             # Parse SK to get image_id and receipt_id
             sk_parts = item["SK"]["S"].split("#")
+            if (
+                len(sk_parts) != 4
+                or sk_parts[0] != "IMAGE"
+                or sk_parts[2] != "RECEIPT"
+            ):
+                raise ValueError("Invalid SK format for ReceiptField")
             image_id = sk_parts[1]
             receipt_id = int(sk_parts[3])
 
             # Parse PK to get field_type
-            field_type = item["PK"]["S"].split("#")[1]
+            pk_parts = item["PK"]["S"].split("#")
+            if len(pk_parts) != 2 or pk_parts[0] != "FIELD":
+                raise ValueError("Invalid PK format for ReceiptField")
+            field_type = pk_parts[1]
 
             # Convert words from DynamoDB format to list of dicts
             words = []
@@ -251,7 +270,7 @@ class ReceiptField:
                         word_dict[key] = value
                 words.append(word_dict)
 
-            return cls(
+            result = cls(
                 field_type=field_type,
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -259,6 +278,13 @@ class ReceiptField:
                 reasoning=item["reasoning"]["S"],
                 timestamp_added=item["timestamp_added"]["S"],
             )
+            for key_name, expected_value in {
+                **result.key,
+                **result.gsi1_key(),
+            }.items():
+                if key_name in item and item[key_name] != expected_value:
+                    raise ValueError(f"{key_name} does not match entity keys")
+            return result
         except Exception as e:
             raise ValueError(
                 f"Error converting item to ReceiptField: {e}"

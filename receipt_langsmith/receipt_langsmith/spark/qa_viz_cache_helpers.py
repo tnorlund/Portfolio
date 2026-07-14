@@ -297,10 +297,13 @@ def derive_trace_steps(
 ) -> list[dict]:
     """Derive trace steps from child runs for the React component.
 
-    Maps each child run to a TraceStep with type, content, detail, and
-    durationMs based on the node name, outputs, and timestamps.
+    Maps each child run to a TraceStep with type, content, detail,
+    durationMs, and startOffsetMs based on the node name, outputs, and
+    timestamps.
     """
     steps: list[dict] = []
+    timing_runs = all_runs if all_runs is not None else child_runs
+    trace_start = _get_trace_start_seconds(timing_runs)
 
     for run in child_runs:
         name = run.get("name", "").lower()
@@ -310,7 +313,8 @@ def derive_trace_steps(
         step_type = _classify_run(name, run_type)
 
         # Expand ToolNode wrappers: depth-1 "tools" node has run_type="chain",
-        # but its depth-2 children have run_type="tool" with individual details.
+        # Its depth-2 children have run_type="tool" with individual
+        # details.
         if step_type is None and "tool" in name and all_runs is not None:
             wrapper_id = run.get("id", "")
             tool_children = sorted(
@@ -329,7 +333,7 @@ def derive_trace_steps(
                                 if child_inputs
                                 else ""
                             ),
-                            "durationMs": _compute_duration_ms(child),
+                            **_build_timing_fields(child, trace_start),
                         }
                     )
             if tool_children:
@@ -340,7 +344,7 @@ def derive_trace_steps(
 
         content = ""
         detail = ""
-        duration_ms = _compute_duration_ms(run)
+        timing_fields = _build_timing_fields(run, trace_start)
 
         if step_type == "plan":
             content = outputs.get("query", "") or outputs.get("question", "")
@@ -372,7 +376,7 @@ def derive_trace_steps(
                     "type": "synthesize",
                     "content": content,
                     "detail": detail,
-                    "durationMs": duration_ms,
+                    **timing_fields,
                     "receipts": receipts,
                 }
             )
@@ -383,7 +387,7 @@ def derive_trace_steps(
                 "type": step_type,
                 "content": content,
                 "detail": detail,
-                "durationMs": duration_ms,
+                **timing_fields,
             }
         )
 
@@ -407,29 +411,56 @@ def _classify_run(name: str, run_type: str) -> Optional[str]:
     return None
 
 
-def _compute_duration_ms(run: dict) -> Optional[int]:
-    """Compute step duration in milliseconds from start_time and end_time."""
-    start = run.get("start_time")
-    end = run.get("end_time")
-    if start is None or end is None:
+def _timestamp_seconds(value: Any) -> Optional[float]:
+    """Convert a supported trace timestamp value to epoch seconds."""
+    if value is None:
         return None
 
     try:
-        if isinstance(start, str) and isinstance(end, str):
-            fmt = "%Y-%m-%d %H:%M:%S"
-            s = datetime.strptime(start[:19], fmt)
-            e = datetime.strptime(end[:19], fmt)
-            return max(int((e - s).total_seconds() * 1000), 0)
-
-        if hasattr(start, "timestamp") and hasattr(end, "timestamp"):
-            return max(int((end.timestamp() - start.timestamp()) * 1000), 0)
-
-        if isinstance(start, (int, float)) and isinstance(end, (int, float)):
-            return max(int((end - start) * 1000), 0)
+        if isinstance(value, str):
+            normalized = value.strip().replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized).timestamp()
+        if hasattr(value, "timestamp"):
+            return float(value.timestamp())
+        if isinstance(value, (int, float)):
+            return float(value)
     except (ValueError, TypeError, AttributeError, OverflowError):
         return None
-
     return None
+
+
+def _compute_duration_ms(run: dict) -> Optional[int]:
+    """Compute step duration in milliseconds from start_time and end_time."""
+    start = _timestamp_seconds(run.get("start_time"))
+    end = _timestamp_seconds(run.get("end_time"))
+    if start is None or end is None:
+        return None
+    return max(int(round((end - start) * 1000)), 0)
+
+
+def _get_trace_start_seconds(runs: list[dict]) -> Optional[float]:
+    """Return the earliest start time in a trace."""
+    start_times = [
+        timestamp
+        for run in runs
+        if (timestamp := _timestamp_seconds(run.get("start_time"))) is not None
+    ]
+    return min(start_times) if start_times else None
+
+
+def _build_timing_fields(
+    run: dict, trace_start: Optional[float]
+) -> dict[str, Optional[int]]:
+    """Build the frontend timing fields for a trace step."""
+    fields: dict[str, Optional[int]] = {
+        "durationMs": _compute_duration_ms(run)
+    }
+    start = _timestamp_seconds(run.get("start_time"))
+    if start is not None and trace_start is not None:
+        fields["startOffsetMs"] = max(
+            int(round((start - trace_start) * 1000)), 0
+        )
+    return fields
 
 
 def _extract_agent_content(outputs: dict) -> str:

@@ -9,7 +9,6 @@ from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.metadata import apply_place_updates
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
-    create_mock_logger,
     create_place_message,
     create_receipt_lines_in_dynamodb,
     create_receipt_words_in_dynamodb,

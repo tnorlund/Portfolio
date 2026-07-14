@@ -1,4 +1,6 @@
-from typing import Any, Dict
+"""DynamoDB data-access operations for instances and job assignments."""
+
+from typing import Any, Dict, cast
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -118,7 +120,7 @@ class _Instance(FlattenedStandardMixin):
                 f"Instance with instance id {instance_id} does not exist"
             )
 
-        return result
+        return cast(Instance, result)
 
     @handle_dynamodb_errors("get_instance_with_jobs")
     def get_instance_with_jobs(
@@ -244,7 +246,7 @@ class _Instance(FlattenedStandardMixin):
                 )
             )
 
-        return result
+        return cast(InstanceJob, result)
 
     @handle_dynamodb_errors("list_instances")
     def list_instances(
@@ -269,11 +271,14 @@ class _Instance(FlattenedStandardMixin):
             Exception: If the request failed due to an unknown error.
         """
         # Validate the last_evaluated_key if provided
-        return self._query_by_type(
-            entity_type="INSTANCE",
-            converter_func=item_to_instance,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
+        return cast(
+            tuple[list[Instance], Dict | None],
+            self._query_by_type(
+                entity_type="INSTANCE",
+                converter_func=item_to_instance,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+            ),
         )
 
     @handle_dynamodb_errors("list_instances_by_status")
@@ -320,6 +325,85 @@ class _Instance(FlattenedStandardMixin):
                 ":gsi1pk": {"S": f"STATUS#{status.lower()}"},
             },
             converter_func=item_to_instance,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
+
+    @handle_dynamodb_errors("list_instance_jobs")
+    def list_instance_jobs(
+        self,
+        instance_id: str,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[InstanceJob], dict[str, Any] | None]:
+        """List the job assignments belonging to an instance.
+
+        Args:
+            instance_id: ID of the instance whose assignments to list.
+            limit: Maximum number of assignments to return.
+            last_evaluated_key: Pagination key returned by a previous query.
+
+        Returns:
+            The matching assignments and an optional pagination key.
+
+        Raises:
+            EntityValidationError: If an argument is invalid.
+        """
+        if not isinstance(instance_id, str) or not instance_id:
+            raise EntityValidationError(
+                "instance_id must be a non-empty string"
+            )
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
+
+        return cast(
+            tuple[list[InstanceJob], dict[str, Any] | None],
+            self._query_by_parent(
+                parent_key_prefix=f"INSTANCE#{instance_id}",
+                child_key_prefix="JOB#",
+                converter_func=item_to_instance_job,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+            ),
+        )
+
+    @handle_dynamodb_errors("list_instances_for_job")
+    def list_instances_for_job(
+        self,
+        job_id: str,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[InstanceJob], dict[str, Any] | None]:
+        """List the instance assignments belonging to a job.
+
+        Args:
+            job_id: UUID of the job whose assignments to list.
+            limit: Maximum number of assignments to return.
+            last_evaluated_key: Pagination key returned by a previous query.
+
+        Returns:
+            The matching assignments and an optional pagination key.
+
+        Raises:
+            EntityValidationError: If an argument is invalid.
+        """
+        self._validate_job_id(job_id)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
+
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression=(
+                "GSI1PK = :entity_type AND begins_with(GSI1SK, :job)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":entity_type": {"S": "JOB"},
+                ":job": {"S": f"JOB#{job_id}#INSTANCE#"},
+            },
+            converter_func=item_to_instance_job,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )

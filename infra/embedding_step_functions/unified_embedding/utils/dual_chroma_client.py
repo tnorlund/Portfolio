@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma import ChromaClient
 
 
 class DualChromaClient:

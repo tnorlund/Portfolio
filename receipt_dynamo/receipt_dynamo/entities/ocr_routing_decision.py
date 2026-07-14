@@ -61,14 +61,23 @@ class OCRRoutingDecision(DynamoDBEntity):
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
+        self._validate_fields()
+        self.status = normalize_enum(self.status, OCRStatus)
+
+    def _validate_fields(self) -> None:
+        """Validate fields at construction and before persistence."""
         assert_valid_uuid(self.image_id)
         assert_valid_uuid(self.job_id)
 
         if not isinstance(self.s3_bucket, str):
             raise ValueError("s3_bucket must be a string")
+        if not self.s3_bucket:
+            raise ValueError("s3_bucket must be non-empty")
 
         if not isinstance(self.s3_key, str):
             raise ValueError("s3_key must be a string")
+        if not self.s3_key:
+            raise ValueError("s3_key must be non-empty")
 
         # Handle datetime conversion from string
         if isinstance(self.created_at, str):
@@ -82,11 +91,15 @@ class OCRRoutingDecision(DynamoDBEntity):
             if not isinstance(self.updated_at, datetime):
                 raise ValueError("updated_at must be a datetime or a string")
 
-        if not isinstance(self.receipt_count, int):
+        if isinstance(self.receipt_count, bool) or not isinstance(
+            self.receipt_count, int
+        ):
             raise ValueError("receipt_count must be an integer")
+        if self.receipt_count < 0:
+            raise ValueError("receipt_count must be non-negative")
 
         # Normalize status
-        self.status = normalize_enum(self.status, OCRStatus)
+        normalize_enum(self.status, OCRStatus)
 
     @property
     def key(self) -> dict[str, Any]:
@@ -102,6 +115,8 @@ class OCRRoutingDecision(DynamoDBEntity):
         }
 
     def to_item(self) -> dict[str, Any]:
+        self.status = normalize_enum(self.status, OCRStatus)
+        self._validate_fields()
         return {
             **self.key,
             **self.gsi1_key(),
@@ -164,7 +179,12 @@ class OCRRoutingDecision(DynamoDBEntity):
             "receipt_count": EntityFactory.extract_int_field("receipt_count"),
         }
 
-        return EntityFactory.create_entity(
+        if item.get("TYPE", {}).get("S") != "OCR_ROUTING_DECISION":
+            raise ValueError("Invalid OCRRoutingDecision TYPE")
+        if not item.get("SK", {}).get("S", "").startswith("ROUTING#"):
+            raise ValueError("Invalid OCRRoutingDecision SK format")
+
+        decision = EntityFactory.create_entity(
             entity_class=cls,
             item=item,
             required_keys=cls.REQUIRED_KEYS,
@@ -174,6 +194,11 @@ class OCRRoutingDecision(DynamoDBEntity):
             },
             custom_extractors=custom_extractors,
         )
+        expected = decision.to_item()
+        for key in ("PK", "SK", "TYPE", "GSI1PK", "GSI1SK"):
+            if item.get(key) != expected.get(key):
+                raise ValueError("Invalid OCRRoutingDecision keys")
+        return decision
 
 
 def item_to_ocr_routing_decision(item: dict[str, Any]) -> OCRRoutingDecision:
