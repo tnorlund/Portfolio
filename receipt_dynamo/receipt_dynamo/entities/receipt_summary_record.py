@@ -69,6 +69,8 @@ class ReceiptSummaryRecord:
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
+        if not isinstance(self.summary, ReceiptSummary):
+            raise ValueError("summary must be a ReceiptSummary object")
         # Set timestamp if not provided
         if self.timestamp_computed is None:
             self.timestamp_computed = datetime.now(timezone.utc).isoformat()
@@ -194,9 +196,21 @@ class ReceiptSummaryRecord:
             missing = cls.REQUIRED_KEYS - item.keys()
             raise ValueError(f"Missing required keys: {missing}")
 
+        if item["TYPE"].get("S") != "RECEIPT_SUMMARY":
+            raise ValueError("TYPE must be RECEIPT_SUMMARY")
+
         # Parse primary key
-        image_id = item["PK"]["S"].split("#")[1]
+        pk_parts = item["PK"].get("S", "").split("#")
         sk_parts = item["SK"]["S"].split("#")
+        if len(pk_parts) != 2 or pk_parts[0] != "IMAGE":
+            raise ValueError("PK must match IMAGE#<image_id>")
+        if (
+            len(sk_parts) != 3
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "SUMMARY"
+        ):
+            raise ValueError("SK must match RECEIPT#<receipt_id>#SUMMARY")
+        image_id = pk_parts[1]
         receipt_id = int(sk_parts[1])
 
         # Parse optional fields
@@ -208,16 +222,20 @@ class ReceiptSummaryRecord:
         if "date" in item and "S" in item["date"]:
             try:
                 date = datetime.fromisoformat(item["date"]["S"])
-            except ValueError:
-                pass
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "date must contain a valid ISO timestamp"
+                ) from exc
 
         # Parse numeric fields
         def parse_number(field_name: str) -> float | None:
             if field_name in item and "N" in item[field_name]:
                 try:
                     return float(item[field_name]["N"])
-                except ValueError:
-                    pass
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"{field_name} must contain a valid number"
+                    ) from exc
             return None
 
         totals = MonetaryTotals(
@@ -228,13 +246,20 @@ class ReceiptSummaryRecord:
         )
 
         # Create ReceiptSummary for composition
+        try:
+            item_count = int(item.get("item_count", {}).get("N", "0"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "item_count must contain a valid integer"
+            ) from exc
+
         summary = ReceiptSummary(
             image_id=image_id,
             receipt_id=receipt_id,
             merchant_name=merchant_name,
             date=date,
             totals=totals,
-            item_count=int(item.get("item_count", {}).get("N", "0")),
+            item_count=item_count,
         )
 
         return cls(

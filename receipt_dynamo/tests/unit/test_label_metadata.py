@@ -94,6 +94,7 @@ def test_label_metadata_deserialization_invalid_date_format():
     item = {
         "PK": {"S": "LABEL#SUBTOTAL"},
         "SK": {"S": "METADATA"},
+        "TYPE": {"S": "LABEL_METADATA"},
         "status": {"S": "ACTIVE"},
         "aliases": {"SS": ["A"]},
         "description": {"S": "example"},

@@ -1,4 +1,6 @@
+import math
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -6,6 +8,9 @@ from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
 )
+
+IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+OTHER_IMAGE_ID = "8a76bfa1-4f63-42c9-bfeb-e216c7fe8bf8"
 
 
 @pytest.fixture
@@ -59,7 +64,7 @@ def example_receipt_label_analysis():
     }
 
     return ReceiptLabelAnalysis(
-        image_id="test_image_123",
+        image_id=IMAGE_ID,
         receipt_id=456,
         labels=labels,
         timestamp_added=datetime.now(),
@@ -72,7 +77,7 @@ def example_receipt_label_analysis():
 @pytest.mark.unit
 def test_receipt_label_analysis_init_valid(example_receipt_label_analysis):
     """Test that ReceiptLabelAnalysis initializes correctly with valid parameters."""
-    assert example_receipt_label_analysis.image_id == "test_image_123"
+    assert example_receipt_label_analysis.image_id == IMAGE_ID
     assert example_receipt_label_analysis.receipt_id == 456
     assert len(example_receipt_label_analysis.labels) == 2
     assert isinstance(example_receipt_label_analysis.timestamp_added, str)
@@ -89,7 +94,7 @@ def test_receipt_label_analysis_init_valid(example_receipt_label_analysis):
 @pytest.mark.unit
 def test_receipt_label_analysis_init_invalid_image_id():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid image_id."""
-    with pytest.raises(ValueError, match="image_id must be a string"):
+    with pytest.raises(ValueError, match="uuid must be a string"):
         ReceiptLabelAnalysis(
             image_id=123,  # Should be a string
             receipt_id=456,
@@ -103,7 +108,7 @@ def test_receipt_label_analysis_init_invalid_receipt_id():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid receipt_id."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         ReceiptLabelAnalysis(
-            image_id="test_image_123",
+            image_id=IMAGE_ID,
             receipt_id="456",  # Should be an integer
             labels=[],
             timestamp_added=datetime.now(),
@@ -115,7 +120,7 @@ def test_receipt_label_analysis_init_invalid_labels():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid labels."""
     with pytest.raises(ValueError, match="labels must be a list"):
         ReceiptLabelAnalysis(
-            image_id="test_image_123",
+            image_id=IMAGE_ID,
             receipt_id=456,
             labels="not a list",  # Should be a list
             timestamp_added=datetime.now(),
@@ -127,10 +132,10 @@ def test_receipt_label_analysis_init_invalid_timestamp():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid timestamp_added."""
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be a datetime object or ISO format string",
     ):
         ReceiptLabelAnalysis(
-            image_id="test_image_123",
+            image_id=IMAGE_ID,
             receipt_id=456,
             labels=[],
             timestamp_added=123,  # Should be a datetime object or string
@@ -142,7 +147,7 @@ def test_receipt_label_analysis_init_invalid_version():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid version."""
     with pytest.raises(ValueError, match="version must be a string"):
         ReceiptLabelAnalysis(
-            image_id="test_image_123",
+            image_id=IMAGE_ID,
             receipt_id=456,
             labels=[],
             timestamp_added=datetime.now(),
@@ -155,7 +160,7 @@ def test_receipt_label_analysis_init_invalid_reasoning():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid overall_reasoning."""
     with pytest.raises(ValueError, match="overall_reasoning must be a string"):
         ReceiptLabelAnalysis(
-            image_id="test_image_123",
+            image_id=IMAGE_ID,
             receipt_id=456,
             labels=[],
             timestamp_added=datetime.now(),
@@ -167,7 +172,7 @@ def test_receipt_label_analysis_init_invalid_reasoning():
 def test_receipt_label_analysis_default_metadata():
     """Test that ReceiptLabelAnalysis creates default metadata when none is provided."""
     label_analysis = ReceiptLabelAnalysis(
-        image_id="test_image_123",
+        image_id=IMAGE_ID,
         receipt_id=456,
         labels=[],
         timestamp_added=datetime.now(),
@@ -188,7 +193,7 @@ def test_receipt_label_analysis_key_generation(example_receipt_label_analysis):
     """Test that key() generates the correct DynamoDB primary key."""
     key = example_receipt_label_analysis.key
 
-    assert key["PK"]["S"] == "IMAGE#test_image_123"
+    assert key["PK"]["S"] == f"IMAGE#{IMAGE_ID}"
     assert key["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABELS"
 
 
@@ -211,7 +216,7 @@ def test_receipt_label_analysis_gsi2_key_generation(
     gsi2_key = example_receipt_label_analysis.gsi2_key()
 
     assert gsi2_key["GSI2PK"]["S"] == "RECEIPT"
-    assert gsi2_key["GSI2SK"]["S"] == "IMAGE#test_image_123#RECEIPT#00456"
+    assert gsi2_key["GSI2SK"]["S"] == f"IMAGE#{IMAGE_ID}#RECEIPT#00456"
 
 
 @pytest.mark.unit
@@ -220,12 +225,12 @@ def test_receipt_label_analysis_to_item(example_receipt_label_analysis):
     item = example_receipt_label_analysis.to_item()
 
     # Check keys
-    assert item["PK"]["S"] == "IMAGE#test_image_123"
+    assert item["PK"]["S"] == f"IMAGE#{IMAGE_ID}"
     assert item["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABELS"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert item["GSI1SK"]["S"].startswith("LABELS#")
     assert item["GSI2PK"]["S"] == "RECEIPT"
-    assert item["GSI2SK"]["S"] == "IMAGE#test_image_123#RECEIPT#00456"
+    assert item["GSI2SK"]["S"] == f"IMAGE#{IMAGE_ID}#RECEIPT#00456"
 
     # Check attributes
     assert item["TYPE"]["S"] == "RECEIPT_LABEL_ANALYSIS"
@@ -262,7 +267,7 @@ def test_receipt_label_analysis_to_item(example_receipt_label_analysis):
     # Can deserialize the metadata JSON
     import json
 
-    metadata = json.loads(item["metadata"]["S"])
+    metadata = item_to_receipt_label_analysis(item).metadata
     assert "processing_metrics" in metadata
     assert "processing_history" in metadata
     assert "source_information" in metadata
@@ -295,7 +300,7 @@ def test_convert_bounding_box(example_receipt_label_analysis):
 def test_convert_bounding_box_empty():
     """Test that _convert_bounding_box() handles empty bounding box."""
     analysis = ReceiptLabelAnalysis(
-        image_id="test_image_123",
+        image_id=IMAGE_ID,
         receipt_id=456,
         labels=[],
         timestamp_added=datetime.now(),
@@ -314,7 +319,7 @@ def test_receipt_label_analysis_repr(example_receipt_label_analysis):
     repr_str = repr(example_receipt_label_analysis)
 
     assert "ReceiptLabelAnalysis" in repr_str
-    assert "image_id=test_image_123" in repr_str
+    assert f"image_id={IMAGE_ID}" in repr_str
     assert "receipt_id=456" in repr_str
     assert "labels_count=2" in repr_str
     assert "version=1.2" in repr_str
@@ -325,7 +330,7 @@ def test_receipt_label_analysis_iter(example_receipt_label_analysis):
     """Test that __iter__() returns all expected attributes."""
     items = dict(example_receipt_label_analysis)
 
-    assert items["image_id"] == "test_image_123"
+    assert items["image_id"] == IMAGE_ID
     assert items["receipt_id"] == 456
     assert len(items["labels"]) == 2
     assert isinstance(items["timestamp_added"], str)
@@ -342,7 +347,7 @@ def test_receipt_label_analysis_eq(example_receipt_label_analysis):
     """Test that __eq__() correctly compares two ReceiptLabelAnalysis objects."""
     # Create a copy with the same values
     same_analysis = ReceiptLabelAnalysis(
-        image_id="test_image_123",
+        image_id=IMAGE_ID,
         receipt_id=456,
         labels=example_receipt_label_analysis.labels,
         timestamp_added=datetime.fromisoformat(
@@ -355,7 +360,7 @@ def test_receipt_label_analysis_eq(example_receipt_label_analysis):
 
     # Create a different analysis
     different_analysis = ReceiptLabelAnalysis(
-        image_id="different_image",
+        image_id=OTHER_IMAGE_ID,
         receipt_id=789,
         labels=[],
         timestamp_added=datetime.now(),
@@ -382,8 +387,9 @@ def test_itemToReceiptLabelAnalysis_valid_input():
     now_str = now.isoformat()
 
     item = {
-        "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS#1.0"},
+        "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+        "SK": {"S": "RECEIPT#00456#ANALYSIS#LABELS"},
+        "TYPE": {"S": "RECEIPT_LABEL_ANALYSIS"},
         "labels": {
             "L": [
                 {
@@ -425,7 +431,7 @@ def test_itemToReceiptLabelAnalysis_valid_input():
     result = item_to_receipt_label_analysis(item)
 
     # Verify conversion
-    assert result.image_id == "test_image_123"
+    assert result.image_id == IMAGE_ID
     assert result.receipt_id == 456
     assert len(result.labels) == 1
     assert result.labels[0]["label_type"] == "business_name"
@@ -451,8 +457,9 @@ def test_itemToReceiptLabelAnalysis_missing_keys():
 def test_itemToReceiptLabelAnalysis_invalid_format():
     """Test that item_to_receipt_label_analysis raises ValueError with invalid SK format."""
     item = {
-        "PK": {"S": "IMAGE#test_image_123"},
+        "PK": {"S": f"IMAGE#{IMAGE_ID}"},
         "SK": {"S": "INVALID_FORMAT"},
+        "TYPE": {"S": "RECEIPT_LABEL_ANALYSIS"},
         "labels": {"L": []},
         "timestamp_added": {"S": "2023-01-01T00:00:00"},
     }
@@ -467,15 +474,16 @@ def test_itemToReceiptLabelAnalysis_invalid_format():
 def test_itemToReceiptLabelAnalysis_with_defaults():
     """Test that item_to_receipt_label_analysis provides default values."""
     item = {
-        "PK": {"S": "IMAGE#test_image_123"},
+        "PK": {"S": f"IMAGE#{IMAGE_ID}"},
         "SK": {"S": "RECEIPT#00456#ANALYSIS#LABELS"},
+        "TYPE": {"S": "RECEIPT_LABEL_ANALYSIS"},
         "labels": {"L": []},
         "timestamp_added": {"S": "2023-01-01T00:00:00"},
     }
 
     result = item_to_receipt_label_analysis(item)
 
-    assert result.image_id == "test_image_123"
+    assert result.image_id == IMAGE_ID
     assert result.receipt_id == 456
     assert result.labels == []
     assert result.version == "1.0"
@@ -484,3 +492,100 @@ def test_itemToReceiptLabelAnalysis_with_defaults():
     assert "processing_history" in result.metadata
     assert "source_information" in result.metadata
     assert result.metadata["processing_history"][0]["event_type"] == "creation"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("field_name", ["receipt_id", "line_id", "word_id"])
+def test_receipt_label_analysis_rejects_bool_identifiers(
+    example_receipt_label_analysis, field_name
+):
+    kwargs = dict(example_receipt_label_analysis)
+    if field_name == "receipt_id":
+        kwargs[field_name] = True
+    else:
+        kwargs["labels"] = [dict(example_receipt_label_analysis.labels[0])]
+        kwargs["labels"][0][field_name] = True
+
+    with pytest.raises(ValueError, match=f"{field_name} must be an integer"):
+        ReceiptLabelAnalysis(**kwargs)
+
+
+@pytest.mark.unit
+def test_receipt_label_analysis_rejects_non_finite_bounding_box(
+    example_receipt_label_analysis,
+):
+    kwargs = dict(example_receipt_label_analysis)
+    kwargs["labels"] = [dict(example_receipt_label_analysis.labels[0])]
+    kwargs["labels"][0]["bounding_box"] = {"top_left": {"x": math.nan, "y": 1}}
+
+    with pytest.raises(ValueError, match="coordinates must be finite"):
+        ReceiptLabelAnalysis(**kwargs)
+
+
+@pytest.mark.unit
+def test_receipt_label_analysis_native_nested_metadata_round_trip(
+    example_receipt_label_analysis,
+):
+    example_receipt_label_analysis.metadata = {
+        "enabled": True,
+        "runs": [{"score": Decimal("0.75"), "notes": [None, "ok"]}],
+    }
+
+    item = example_receipt_label_analysis.to_item()
+    restored = item_to_receipt_label_analysis(item)
+
+    assert "M" in item["metadata"]
+    assert item["metadata"]["M"]["enabled"] == {"BOOL": True}
+    assert restored.metadata == {
+        "enabled": True,
+        "runs": [{"score": 0.75, "notes": [None, "ok"]}],
+    }
+
+
+@pytest.mark.unit
+def test_receipt_label_analysis_hash_is_order_independent(
+    example_receipt_label_analysis,
+):
+    kwargs = dict(example_receipt_label_analysis)
+    kwargs["labels"] = [
+        dict(reversed(list(label.items())))
+        for label in example_receipt_label_analysis.labels
+    ]
+    kwargs["metadata"] = dict(
+        reversed(list(example_receipt_label_analysis.metadata.items()))
+    )
+    reordered = ReceiptLabelAnalysis(**kwargs)
+
+    assert reordered == example_receipt_label_analysis
+    assert hash(reordered) == hash(example_receipt_label_analysis)
+
+
+@pytest.mark.unit
+def test_receipt_label_analysis_mutable_defaults_are_independent():
+    common = {
+        "image_id": IMAGE_ID,
+        "receipt_id": 1,
+        "labels": [],
+        "timestamp_added": "2024-01-01T00:00:00",
+    }
+    first = ReceiptLabelAnalysis(**common)
+    second = ReceiptLabelAnalysis(**common)
+
+    first.metadata["processing_metrics"]["calls"] = 1
+
+    assert "calls" not in second.metadata["processing_metrics"]
+
+
+@pytest.mark.unit
+def test_receipt_label_analysis_from_item_rejects_type_and_gsi_mismatches(
+    example_receipt_label_analysis,
+):
+    item = example_receipt_label_analysis.to_item()
+    item["TYPE"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="TYPE must be"):
+        item_to_receipt_label_analysis(item)
+
+    item = example_receipt_label_analysis.to_item()
+    item["GSI2SK"] = {"S": "IMAGE#wrong#RECEIPT#00001"}
+    with pytest.raises(ValueError, match="GSI2SK does not match"):
+        item_to_receipt_label_analysis(item)

@@ -5,6 +5,7 @@ This file contains refactored tests using pytest.mark.parametrize to ensure
 complete test coverage matching test__receipt_line.py standards.
 """
 
+from math import radians
 from typing import Any, Literal, Type
 from uuid import uuid4
 
@@ -35,13 +36,63 @@ def _unique_image_id() -> str:
     return str(uuid4())
 
 
+def _make_receipt_letter(
+    image_id: str,
+    *,
+    receipt_id: int = 1,
+    line_id: int = 1,
+    word_id: int = 1,
+    letter_id: int = 1,
+    geometry: tuple[float, float, float, float] | None = None,
+    angle_degrees: float | None = None,
+    **overrides: Any,
+) -> ReceiptLetter:
+    """Build a valid receipt letter with concise test-specific overrides."""
+    values: dict[str, Any] = {
+        "receipt_id": receipt_id,
+        "image_id": image_id,
+        "line_id": line_id,
+        "word_id": word_id,
+        "letter_id": letter_id,
+        "text": "A",
+        "bounding_box": {"x": 0.15, "y": 0.2, "width": 0.02, "height": 0.02},
+        "top_left": {"x": 0.15, "y": 0.2},
+        "top_right": {"x": 0.17, "y": 0.2},
+        "bottom_left": {"x": 0.15, "y": 0.22},
+        "bottom_right": {"x": 0.17, "y": 0.22},
+        "angle_degrees": 0,
+        "angle_radians": 0,
+        "confidence": 0.95,
+    }
+    if geometry is not None:
+        x, y, width, height = geometry
+        values.update(
+            {
+                "bounding_box": {
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                },
+                "top_left": {"x": x, "y": y},
+                "top_right": {"x": x + width, "y": y},
+                "bottom_left": {"x": x, "y": y + height},
+                "bottom_right": {"x": x + width, "y": y + height},
+            }
+        )
+    if angle_degrees is not None:
+        values["angle_degrees"] = angle_degrees
+        values["angle_radians"] = radians(angle_degrees)
+    values.update(overrides)
+    return ReceiptLetter(**values)
+
+
 # pylint: disable=redefined-outer-name
 @pytest.fixture(name="sample_receipt_letter")
 def _sample_receipt_letter(unique_image_id: str) -> ReceiptLetter:
     """Returns a valid ReceiptLetter object with unique data."""
-    return ReceiptLetter(
-        receipt_id=1,
-        image_id=unique_image_id,
+    return _make_receipt_letter(
+        unique_image_id,
         line_id=10,
         word_id=5,
         letter_id=2,
@@ -853,25 +904,12 @@ def test_add_receipt_letters_success(
     client = DynamoClient(dynamodb_table)
 
     letters = [
-        ReceiptLetter(
-            receipt_id=1,
-            image_id=unique_image_id,
+        _make_receipt_letter(
+            unique_image_id,
             line_id=1,
             word_id=1,
             letter_id=i + 1,
             text=chr(65 + i),  # A, B, C
-            bounding_box={
-                "x": 0.1 * i,
-                "y": 0.2,
-                "width": 0.02,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1 * i, "y": 0.2},
-            top_right={"x": 0.1 * i + 0.02, "y": 0.2},
-            bottom_left={"x": 0.1 * i, "y": 0.22},
-            bottom_right={"x": 0.1 * i + 0.02, "y": 0.22},
-            angle_degrees=0,
-            angle_radians=0,
             confidence=0.95 + i * 0.01,
         )
         for i in range(3)
@@ -914,26 +952,12 @@ def test_update_receipt_letters_success(
 
     # First add letters
     letters = [
-        ReceiptLetter(
-            receipt_id=1,
-            image_id=unique_image_id,
+        _make_receipt_letter(
+            unique_image_id,
             line_id=1,
             word_id=1,
             letter_id=i + 1,
             text=chr(65 + i),  # A, B, C
-            bounding_box={
-                "x": 0.1 * i,
-                "y": 0.2,
-                "width": 0.02,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1 * i, "y": 0.2},
-            top_right={"x": 0.1 * i + 0.02, "y": 0.2},
-            bottom_left={"x": 0.1 * i, "y": 0.22},
-            bottom_right={"x": 0.1 * i + 0.02, "y": 0.22},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         for i in range(3)
     ]
@@ -970,26 +994,12 @@ def test_delete_receipt_letters_success(
 
     # First add letters
     letters = [
-        ReceiptLetter(
-            receipt_id=1,
-            image_id=unique_image_id,
+        _make_receipt_letter(
+            unique_image_id,
             line_id=1,
             word_id=1,
             letter_id=i + 1,
             text=chr(65 + i),  # A, B, C
-            bounding_box={
-                "x": 0.1 * i,
-                "y": 0.2,
-                "width": 0.02,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1 * i, "y": 0.2},
-            top_right={"x": 0.1 * i + 0.02, "y": 0.2},
-            bottom_left={"x": 0.1 * i, "y": 0.22},
-            bottom_right={"x": 0.1 * i + 0.02, "y": 0.22},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         for i in range(3)
     ]
@@ -1027,26 +1037,12 @@ def test_list_receipt_letters_with_pagination(
     # Add multiple letters across different words
     for word_id in range(1, 3):
         for letter_id in range(1, 4):
-            letter = ReceiptLetter(
-                receipt_id=1,
-                image_id=unique_image_id,
+            letter = _make_receipt_letter(
+                unique_image_id,
                 line_id=1,
                 word_id=word_id,
                 letter_id=letter_id,
                 text=chr(65 + letter_id - 1),
-                bounding_box={
-                    "x": 0.1 * letter_id,
-                    "y": 0.2,
-                    "width": 0.02,
-                    "height": 0.02,
-                },
-                top_left={"x": 0.1 * letter_id, "y": 0.2},
-                top_right={"x": 0.1 * letter_id + 0.02, "y": 0.2},
-                bottom_left={"x": 0.1 * letter_id, "y": 0.22},
-                bottom_right={"x": 0.1 * letter_id + 0.02, "y": 0.22},
-                angle_degrees=0,
-                angle_radians=0,
-                confidence=0.95,
             )
             client.add_receipt_letter(letter)
 
@@ -1097,44 +1093,22 @@ def test_list_receipt_letters_from_word_success(
 
     # Add letters for specific word
     for letter_id in range(1, 4):
-        letter = ReceiptLetter(
-            receipt_id=1,
-            image_id=unique_image_id,
+        letter = _make_receipt_letter(
+            unique_image_id,
             line_id=1,
             word_id=1,
             letter_id=letter_id,
             text=chr(65 + letter_id - 1),
-            bounding_box={
-                "x": 0.1 * letter_id,
-                "y": 0.2,
-                "width": 0.02,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1 * letter_id, "y": 0.2},
-            top_right={"x": 0.1 * letter_id + 0.02, "y": 0.2},
-            bottom_left={"x": 0.1 * letter_id, "y": 0.22},
-            bottom_right={"x": 0.1 * letter_id + 0.02, "y": 0.22},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         client.add_receipt_letter(letter)
 
     # Add letter for different word
-    other_letter = ReceiptLetter(
-        receipt_id=1,
-        image_id=unique_image_id,
+    other_letter = _make_receipt_letter(
+        unique_image_id,
         line_id=1,
         word_id=2,
         letter_id=1,
         text="X",
-        bounding_box={"x": 0.5, "y": 0.2, "width": 0.02, "height": 0.02},
-        top_left={"x": 0.5, "y": 0.2},
-        top_right={"x": 0.52, "y": 0.2},
-        bottom_left={"x": 0.5, "y": 0.22},
-        bottom_right={"x": 0.52, "y": 0.22},
-        angle_degrees=0,
-        angle_radians=0,
         confidence=0.99,
     )
     client.add_receipt_letter(other_letter)
@@ -1163,21 +1137,12 @@ def test_receipt_letter_with_unicode_text(
 ) -> None:
     """Tests receipt letter with unicode characters in text."""
     client = DynamoClient(dynamodb_table)
-    unicode_letter = ReceiptLetter(
-        receipt_id=1,
-        image_id=unique_image_id,
+    unicode_letter = _make_receipt_letter(
+        unique_image_id,
         line_id=1,
         word_id=1,
         letter_id=1,
         text="测",  # Chinese character
-        bounding_box={"x": 0, "y": 0, "width": 0.02, "height": 0.02},
-        top_left={"x": 0, "y": 0},
-        top_right={"x": 0.02, "y": 0},
-        bottom_left={"x": 0, "y": 0.02},
-        bottom_right={"x": 0.02, "y": 0.02},
-        angle_degrees=0,
-        angle_radians=0,
-        confidence=0.95,
     )
 
     client.add_receipt_letter(unicode_letter)
@@ -1199,9 +1164,8 @@ def test_receipt_letter_with_extreme_coordinates(
 ) -> None:
     """Tests receipt letter with extreme coordinate values."""
     client = DynamoClient(dynamodb_table)
-    extreme_letter = ReceiptLetter(
-        receipt_id=1,
-        image_id=unique_image_id,
+    extreme_letter = _make_receipt_letter(
+        unique_image_id,
         line_id=1,
         word_id=1,
         letter_id=1,
@@ -1246,34 +1210,19 @@ def test_large_batch_operations(
     for word_id in range(1, 11):  # 10 words
         for letter_id in range(1, 11):  # 10 letters per word
             letters.append(
-                ReceiptLetter(
-                    receipt_id=1,
-                    image_id=unique_image_id,
+                _make_receipt_letter(
+                    unique_image_id,
                     line_id=1,
                     word_id=word_id,
                     letter_id=letter_id,
                     text=chr(65 + (letter_id - 1) % 26),  # Cycle through A-Z
-                    bounding_box={
-                        "x": 0.01 * word_id,
-                        "y": 0.01 * letter_id,
-                        "width": 0.01,
-                        "height": 0.01,
-                    },
-                    top_left={"x": 0.01 * word_id, "y": 0.01 * letter_id},
-                    top_right={
-                        "x": 0.01 * word_id + 0.01,
-                        "y": 0.01 * letter_id,
-                    },
-                    bottom_left={
-                        "x": 0.01 * word_id,
-                        "y": 0.01 * letter_id + 0.01,
-                    },
-                    bottom_right={
-                        "x": 0.01 * word_id + 0.01,
-                        "y": 0.01 * letter_id + 0.01,
-                    },
+                    geometry=(
+                        0.01 * word_id,
+                        0.01 * letter_id,
+                        0.01,
+                        0.01,
+                    ),
                     angle_degrees=word_id % 360,
-                    angle_radians=(word_id % 360) * 0.017453,
                     confidence=0.9 + (letter_id % 10) * 0.01,
                 )
             )
@@ -1291,7 +1240,7 @@ def test_large_batch_operations(
             word_id=letter.word_id,
             letter_id=letter.letter_id,
         )
-        assert result.text == letter.text
+        assert result == letter
 
     # Update all
     for letter in letters:

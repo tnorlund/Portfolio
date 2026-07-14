@@ -1,7 +1,21 @@
+"""DynamoDB entity for receipt label-analysis results."""
+
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Generator
+
+from receipt_dynamo.entities.dynamodb_utils import (
+    freeze_for_hash,
+    parse_dynamodb_value,
+    to_dynamodb_value,
+)
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_positive_int,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -32,6 +46,7 @@ class ReceiptLabelAnalysis:
     REQUIRED_KEYS = {
         "PK",
         "SK",
+        "TYPE",
         "labels",
         "timestamp_added",
     }
@@ -51,26 +66,59 @@ class ReceiptLabelAnalysis:
             ValueError: If any parameter is of an invalid type or has an
                 invalid value.
         """
-        if not isinstance(self.image_id, str):
-            raise ValueError("image_id must be a string")
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
+        assert_valid_uuid(self.image_id)
+        validate_positive_int("receipt_id", self.receipt_id)
         if not isinstance(self.labels, list):
             raise ValueError("labels must be a list")
+
+        normalized_labels = []
+        required_keys = {
+            "label_type",
+            "line_id",
+            "word_id",
+            "text",
+            "reasoning",
+        }
+        allowed_keys = required_keys | {"bounding_box"}
+        for label in self.labels:
+            if not isinstance(label, dict):
+                raise ValueError("each label must be a dictionary")
+            if not required_keys.issubset(label) or not set(label).issubset(
+                allowed_keys
+            ):
+                raise ValueError(
+                    "labels must contain label_type, line_id, word_id, text, "
+                    "and reasoning, with optional bounding_box"
+                )
+            if not isinstance(label["label_type"], str):
+                raise ValueError("label_type must be a string")
+            validate_positive_int("line_id", label["line_id"])
+            validate_positive_int("word_id", label["word_id"])
+            if not isinstance(label["text"], str):
+                raise ValueError("text must be a string")
+            if not isinstance(label["reasoning"], str):
+                raise ValueError("label reasoning must be a string")
+            normalized = dict(label)
+            if "bounding_box" in label:
+                # Validate without retaining a DynamoDB-encoded structure.
+                self._convert_bounding_box(label["bounding_box"])
+                normalized["bounding_box"] = {
+                    corner: dict(point)
+                    for corner, point in label["bounding_box"].items()
+                }
+            normalized_labels.append(normalized)
+        self.labels = normalized_labels
 
         if not isinstance(self.version, str):
             raise ValueError("version must be a string")
         if not isinstance(self.overall_reasoning, str):
             raise ValueError("overall_reasoning must be a string")
+        self.timestamp_added = validate_iso_timestamp(
+            self.timestamp_added, "timestamp_added", default_now=False
+        )
 
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif isinstance(self.timestamp_added, str):
-            pass  # Already a string, no conversion needed
-        else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+        if self.metadata is not None and not isinstance(self.metadata, dict):
+            raise ValueError("metadata must be a dictionary")
 
         # Initialize default metadata if not provided
         if self.metadata is None:
@@ -138,6 +186,7 @@ class ReceiptLabelAnalysis:
             dict: A dictionary representing the ReceiptLabelAnalysis object as
                 a DynamoDB item.
         """
+        self.__post_init__()
         return {
             **self.key,
             **self.gsi1_key(),
@@ -165,7 +214,7 @@ class ReceiptLabelAnalysis:
             "timestamp_added": {"S": self.timestamp_added},
             "version": {"S": self.version},
             "overall_reasoning": {"S": self.overall_reasoning},
-            "metadata": {"S": json.dumps(self.metadata)},
+            "metadata": to_dynamodb_value(self.metadata),
         }
 
     def _convert_bounding_box(
@@ -182,19 +231,34 @@ class ReceiptLabelAnalysis:
         """
         if not bounding_box:
             return {}
+        if not isinstance(bounding_box, dict):
+            raise ValueError("bounding_box must be a dictionary")
 
         result: dict[str, Any] = {}
+        corners = {"top_left", "top_right", "bottom_left", "bottom_right"}
+        if not set(bounding_box).issubset(corners):
+            raise ValueError("bounding_box contains unsupported corners")
 
-        for key in ["top_left", "top_right", "bottom_left", "bottom_right"]:
+        for key in corners:
             if key in bounding_box:
                 point = bounding_box[key]
-                if isinstance(point, dict) and "x" in point and "y" in point:
-                    result[key] = {
-                        "M": {
-                            "x": {"N": str(point["x"])},
-                            "y": {"N": str(point["y"])},
-                        }
+                if not isinstance(point, dict) or set(point) != {"x", "y"}:
+                    raise ValueError(
+                        f"bounding_box {key} must contain exactly x and y"
+                    )
+                if any(
+                    isinstance(point[axis], bool)
+                    or not isinstance(point[axis], (int, float))
+                    or not isfinite(float(point[axis]))
+                    for axis in ("x", "y")
+                ):
+                    raise ValueError("bounding_box coordinates must be finite")
+                result[key] = {
+                    "M": {
+                        "x": {"N": str(point["x"])},
+                        "y": {"N": str(point["y"])},
                     }
+                }
 
         return result
 
@@ -237,16 +301,18 @@ class ReceiptLabelAnalysis:
             (
                 self.image_id,
                 self.receipt_id,
-                str(self.labels),  # Convert to string for hashing
+                freeze_for_hash(self.labels),
                 self.timestamp_added,
                 self.version,
                 self.overall_reasoning,
-                str(self.metadata),  # Convert to string for hashing
+                freeze_for_hash(self.metadata),
             )
         )
 
     @classmethod
-    def from_item(cls, item: dict[str, Any]) -> "ReceiptLabelAnalysis":
+    def from_item(  # pylint: disable=too-many-locals,too-many-branches
+        cls, item: dict[str, Any]
+    ) -> "ReceiptLabelAnalysis":
         """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
 
         Args:
@@ -262,12 +328,22 @@ class ReceiptLabelAnalysis:
             missing_keys = cls.REQUIRED_KEYS - item.keys()
             raise ValueError(f"Item is missing required keys: {missing_keys}")
 
+        if item["TYPE"] != {"S": "RECEIPT_LABEL_ANALYSIS"}:
+            raise ValueError("TYPE must be RECEIPT_LABEL_ANALYSIS")
+
         # Extract image_id and receipt_id from PK and SK
-        image_id = item["PK"]["S"].replace("IMAGE#", "")
-        sk_parts = item["SK"]["S"].split("#")
+        try:
+            pk = item["PK"]["S"]
+            sk = item["SK"]["S"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError("Invalid ReceiptLabelAnalysis keys") from exc
+        if not pk.startswith("IMAGE#") or not pk.removeprefix("IMAGE#"):
+            raise ValueError("Invalid PK format for ReceiptLabelAnalysis")
+        image_id = pk.removeprefix("IMAGE#")
+        sk_parts = sk.split("#")
 
         if (
-            len(sk_parts) < 4
+            len(sk_parts) != 4
             or sk_parts[0] != "RECEIPT"
             or sk_parts[2] != "ANALYSIS"
             or sk_parts[3] != "LABELS"
@@ -277,14 +353,14 @@ class ReceiptLabelAnalysis:
         receipt_id = int(sk_parts[1])
 
         # Extract labels
+        if "L" not in item["labels"]:
+            raise ValueError("labels must be a DynamoDB list")
         labels = _parse_labels_list(item)
 
         # Extract timestamp_added
-        timestamp_added = (
-            datetime.fromisoformat(item["timestamp_added"]["S"])
-            if "timestamp_added" in item and "S" in item["timestamp_added"]
-            else datetime.now()
-        )
+        if "S" not in item["timestamp_added"]:
+            raise ValueError("timestamp_added must be a DynamoDB string")
+        timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
 
         # Extract version
         version = (
@@ -302,13 +378,16 @@ class ReceiptLabelAnalysis:
 
         # Extract metadata
         metadata = None
-        if "metadata" in item and "S" in item["metadata"]:
-            try:
-                metadata = json.loads(item["metadata"]["S"])
-            except json.JSONDecodeError:
-                metadata = None
+        if "metadata" in item:
+            if "S" in item["metadata"]:
+                try:
+                    metadata = json.loads(item["metadata"]["S"])
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Invalid metadata JSON") from exc
+            else:
+                metadata = parse_dynamodb_value(item["metadata"])
 
-        return cls(
+        result = cls(
             image_id=image_id,
             receipt_id=receipt_id,
             labels=labels,
@@ -317,11 +396,19 @@ class ReceiptLabelAnalysis:
             overall_reasoning=overall_reasoning,
             metadata=metadata,
         )
+        for key_name, expected_value in {
+            **result.key,
+            **result.gsi1_key(),
+            **result.gsi2_key(),
+        }.items():
+            if key_name in item and item[key_name] != expected_value:
+                raise ValueError(f"{key_name} does not match entity keys")
+        return result
 
 
 def _parse_labels_list(item: dict[str, Any]) -> list[dict[str, Any]]:
     """Parse labels list from DynamoDB item format."""
-    labels = []
+    labels: list[dict[str, Any]] = []
     if "labels" not in item or "L" not in item["labels"]:
         return labels
 
@@ -375,7 +462,7 @@ def _parse_bounding_box(bbox_map: dict[str, Any]) -> dict[str, Any]:
 
 def _parse_corner_point(
     point_map: dict[str, Any],
-) -> dict[str, float | None]:
+) -> dict[str, float] | None:
     """Parse a corner point (x, y) from DynamoDB map format."""
     point: dict[str, float] = {}
     if "x" in point_map and "N" in point_map["x"]:

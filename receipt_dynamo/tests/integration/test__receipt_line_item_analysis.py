@@ -18,6 +18,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
@@ -39,6 +41,20 @@ def _set_client_error(mock_client, method, error_code, operation, message):
     getattr(mock_client, method).side_effect = _client_error(
         error_code, operation, message
     )
+
+
+def _expected_client_exception(
+    error_code, conditional_exception=DynamoDBError
+):
+    return {
+        "ConditionalCheckFailedException": conditional_exception,
+        "ResourceNotFoundException": OperationError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": EntityValidationError,
+        "AccessDeniedException": DynamoDBError,
+        "TransactionCanceledException": DynamoDBError,
+    }.get(error_code, DynamoDBError)
 
 
 @pytest.fixture
@@ -136,7 +152,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
         (None, "analysis cannot be None"),
         (
             "not-a-receipt-line-item-analysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -152,7 +168,7 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.add_receipt_line_item_analysis(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -164,34 +180,34 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "already exists",
+            EntityAlreadyExistsError,
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_line_item_analysis",
+            OperationError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
         ),
         (
             "InternalServerError",
             "Internal server error",
-            "Internal server error",
+            DynamoDBServerError,
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt line item analysis to DynamoDB",
+            DynamoDBError,
         ),
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            EntityValidationError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        ("AccessDeniedException", "Access denied", DynamoDBError),
     ],
 )
 def test_addReceiptLineItemAnalysis_client_errors(
@@ -210,18 +226,15 @@ def test_addReceiptLineItemAnalysis_client_errors(
         mock_client, "put_item", error_code, "PutItem", error_message
     )
 
-    if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(EntityAlreadyExistsError) as excinfo:
-            client.add_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_exception in str(excinfo.value)
-    else:
-        with pytest.raises(Exception) as excinfo:
-            client.add_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_exception in str(excinfo.value)
+    error_match = (
+        "already exists"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(expected_exception, match=error_match):
+        client.add_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
 
 
 @pytest.mark.integration
@@ -341,11 +354,11 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "All items in analyses must be instances of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -361,7 +374,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.add_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -419,11 +432,12 @@ def test_addReceiptLineItemAnalyses_client_errors(
         error_response, "BatchWriteItem"
     )
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.add_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
-    assert expected_error_message in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -471,7 +485,7 @@ def test_updateReceiptLineItemAnalysis_success(
         (None, "analysis cannot be None"),
         (
             "not a ReceiptLineItemAnalysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -487,7 +501,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.update_receipt_line_item_analysis(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -549,18 +563,18 @@ def test_updateReceiptLineItemAnalysis_client_errors(
         mock_client, "put_item", error_code, "PutItem", error_message
     )
 
-    if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(EntityNotFoundError) as excinfo:
-            client.update_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
-    else:
-        with pytest.raises(Exception) as excinfo:
-            client.update_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
+    exception_type = _expected_client_exception(
+        error_code, EntityNotFoundError
+    )
+    error_match = (
+        "does not exist"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(exception_type, match=error_match):
+        client.update_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
 
 
 @pytest.mark.integration
@@ -693,11 +707,11 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "All items in analyses must be instances of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -713,32 +727,29 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.update_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,expected_exception,cancellation_reasons",
+    "error_code,error_message,expected_exception,cancellation_reasons",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_line_item_analyses",
-            DynamoDBError,
+            OperationError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more receipt line item analyses do not exist",
-            ValueError,
+            DynamoDBError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
             "InternalServerError",
-            "Internal server error",
             "Internal server error",
             DynamoDBServerError,
             None,
@@ -746,28 +757,24 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
             DynamoDBThroughputError,
             None,
         ),
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-            DynamoDBValidationError,
+            EntityValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied",
-            DynamoDBAccessError,
+            DynamoDBError,
             None,
         ),
         (
             "Exception",
             "Unknown error occurred",
-            "Could not update receipt line item analyses in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -779,7 +786,6 @@ def test_updateReceiptLineItemAnalyses_client_errors(
     mocker,
     error_code,
     error_message,
-    expected_error,
     expected_exception,
     cancellation_reasons,
 ):
@@ -805,11 +811,10 @@ def test_updateReceiptLineItemAnalyses_client_errors(
         error_response, "BatchWriteItem"
     )
 
-    with pytest.raises(expected_exception) as excinfo:
+    with pytest.raises(expected_exception, match=error_message):
         client.update_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -866,21 +871,11 @@ def test_deleteReceiptLineItemAnalysis_success(
     ],
 )
 def test_deleteReceiptLineItemAnalysis_invalid_parameters(
-    dynamodb_table, mocker, image_id, receipt_id, expected_error
+    image_id, receipt_id, expected_error
 ):
-    """Test that invalid parameters raise appropriate errors when deleting a ReceiptLineItemAnalysis."""
-    client = DynamoClient(table_name=dynamodb_table)
-
-    mocker.patch.object(client, "_client")
-
-    with pytest.raises(ValueError) as excinfo:
-        from datetime import datetime
-
-        from receipt_dynamo.entities.receipt_line_item_analysis import (
-            ReceiptLineItemAnalysis,
-        )
-
-        analysis = ReceiptLineItemAnalysis(
+    """Invalid entity keys are rejected before a delete can be attempted."""
+    with pytest.raises(ValueError, match=expected_error):
+        ReceiptLineItemAnalysis(
             image_id=image_id,
             receipt_id=receipt_id,
             timestamp_added=datetime.now(),
@@ -888,8 +883,6 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
             reasoning="Test analysis",
             version="v1",
         )
-        client.delete_receipt_line_item_analysis(analysis)
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -945,18 +938,18 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
         mock_client, "delete_item", error_code, "DeleteItem", error_message
     )
 
-    if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(EntityNotFoundError) as excinfo:
-            client.delete_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
-    else:
-        with pytest.raises(Exception) as excinfo:
-            client.delete_receipt_line_item_analysis(
-                sample_receipt_line_item_analysis
-            )
-        assert expected_error in str(excinfo.value)
+    exception_type = _expected_client_exception(
+        error_code, EntityNotFoundError
+    )
+    error_match = (
+        "does not exist"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(exception_type, match=error_match):
+        client.delete_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
 
 
 @pytest.mark.integration
@@ -1106,11 +1099,11 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list",
         ),
         (
             [123, "not-an-analysis"],
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "All items in analyses must be instances of ReceiptLineItemAnalysis",
         ),
     ],
 )
@@ -1125,7 +1118,7 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.delete_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
@@ -1179,11 +1172,12 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
         "BatchWriteItem",
     )
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.delete_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1314,7 +1308,12 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    exception_type = (
+        OperationError
+        if image_id in ("", "invalid-uuid")
+        else EntityValidationError
+    )
+    with pytest.raises(exception_type) as excinfo:
         client.get_receipt_line_item_analysis(
             image_id=image_id, receipt_id=receipt_id
         )
@@ -1369,12 +1368,13 @@ def test_getReceiptLineItemAnalysis_client_errors(
         mock_client, "get_item", error_code, "GetItem", error_message
     )
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.get_receipt_line_item_analysis(
             image_id=sample_receipt_line_item_analysis.image_id,
             receipt_id=sample_receipt_line_item_analysis.receipt_id,
         )
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1394,7 +1394,7 @@ def test_getReceiptLineItemAnalysis_malformed_item(
         }
     }
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(OperationError) as excinfo:
         client.get_receipt_line_item_analysis(
             image_id=sample_receipt_line_item_analysis.image_id,
             receipt_id=sample_receipt_line_item_analysis.receipt_id,
@@ -1523,17 +1523,11 @@ def test_listReceiptLineItemAnalyses_with_pagination(
     """Test pagination in listReceiptLineItemAnalyses."""
     client = DynamoClient(table_name=dynamodb_table)
 
-    real_client = boto3.client("dynamodb", region_name="us-east-1")
-
     uuid_base = "3f52804b-2fad-4e00-92c8-b593da3a8e"
 
-    analyses = []
-    for i in range(1, 11):
-        uuid_suffix = format(i, "x").zfill(
-            2
-        )  # Convert i to hex, pad to 2 digits
-        analysis = ReceiptLineItemAnalysis(
-            image_id=f"{uuid_base}{uuid_suffix}",
+    analyses = [
+        ReceiptLineItemAnalysis(
+            image_id=f"{uuid_base}{i:02x}",
             receipt_id=i,
             timestamp_added=sample_receipt_line_item_analysis.timestamp_added,
             items=sample_receipt_line_item_analysis.items,
@@ -1543,78 +1537,16 @@ def test_listReceiptLineItemAnalyses_with_pagination(
             tax=sample_receipt_line_item_analysis.tax,
             total=sample_receipt_line_item_analysis.total,
         )
-        analyses.append(analysis)
+        for i in range(1, 11)
+    ]
 
     client.add_receipt_line_item_analyses(analyses)
 
     mock_client = mocker.patch.object(client, "_client")
 
-    first_page_items = []
-    for i in range(1, 6):
-        uuid_suffix = format(i, "x").zfill(2)
-        item = {
-            "PK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}"},
-            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
-            "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
-            "receipt_id": {"N": str(i)},
-            "timestamp_added": {
-                "S": sample_receipt_line_item_analysis.timestamp_added
-            },
-            "items": {
-                "L": [{"M": {"description": {"S": "Test item"}}}]
-            },  # Simplified items structure
-            "reasoning": {"S": f"Reasoning for pagination-image{i}"},
-            "version": {"S": sample_receipt_line_item_analysis.version},
-            "subtotal": {"N": str(sample_receipt_line_item_analysis.subtotal)},
-            "tax": {"N": str(sample_receipt_line_item_analysis.tax)},
-            "total": {"N": str(sample_receipt_line_item_analysis.total)},
-            "total_found": {"N": "1"},
-            "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
-            "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {
-                "S": f"LINE_ITEMS#{sample_receipt_line_item_analysis.timestamp_added}"
-            },
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}#RECEIPT#{i}"},
-            "discrepancies": {"L": []},
-        }
-        first_page_items.append(item)
-
-    last_evaluated_key = {
-        "PK": {"S": f"IMAGE#{uuid_base}05"},
-        "SK": {"S": "RECEIPT#5#ANALYSIS#LINE_ITEMS"},
-    }
-
-    second_page_items = []
-    for i in range(6, 11):
-        uuid_suffix = format(i, "x").zfill(2)
-        item = {
-            "PK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}"},
-            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
-            "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
-            "receipt_id": {"N": str(i)},
-            "timestamp_added": {
-                "S": sample_receipt_line_item_analysis.timestamp_added
-            },
-            "items": {
-                "L": [{"M": {"description": {"S": "Test item"}}}]
-            },  # Simplified items structure
-            "reasoning": {"S": f"Reasoning for pagination-image{i}"},
-            "version": {"S": sample_receipt_line_item_analysis.version},
-            "subtotal": {"N": str(sample_receipt_line_item_analysis.subtotal)},
-            "tax": {"N": str(sample_receipt_line_item_analysis.tax)},
-            "total": {"N": str(sample_receipt_line_item_analysis.total)},
-            "total_found": {"N": "1"},
-            "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
-            "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {
-                "S": f"LINE_ITEMS#{sample_receipt_line_item_analysis.timestamp_added}"
-            },
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}#RECEIPT#{i}"},
-            "discrepancies": {"L": []},
-        }
-        second_page_items.append(item)
+    first_page_items = [analysis.to_item() for analysis in analyses[:5]]
+    second_page_items = [analysis.to_item() for analysis in analyses[5:]]
+    last_evaluated_key = analyses[4].key
 
     mock_client.query.side_effect = [
         {
@@ -1663,13 +1595,12 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
 
     mock_client = mocker.patch.object(client, "_client")
 
-    mock_client.query.side_effect = ValueError(expected_error)
-
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_line_item_analyses(
             limit=limit, last_evaluated_key=last_evaluated_key
         )
-    assert expected_error in str(excinfo.value)
+
+    mock_client.query.assert_not_called()
 
 
 @pytest.mark.integration
@@ -1714,9 +1645,10 @@ def test_listReceiptLineItemAnalyses_client_errors(
 
     _set_client_error(mock_client, "query", error_code, "Query", error_message)
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.list_receipt_line_item_analyses()
-    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1806,7 +1738,10 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
 
     mocker.patch.object(client, "_client")
 
-    with pytest.raises(ValueError) as excinfo:
+    exception_type = (
+        EntityValidationError if image_id is None else OperationError
+    )
+    with pytest.raises(exception_type) as excinfo:
         client.list_receipt_line_item_analyses_for_image(image_id=image_id)
     assert expected_error in str(excinfo.value)
 
@@ -1863,6 +1798,7 @@ def test_listReceiptLineItemAnalysesForImage_client_errors(
 
     _set_client_error(mock_client, "query", error_code, "Query", error_message)
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(
+        _expected_client_exception(error_code), match=error_message
+    ):
         client.list_receipt_line_item_analyses_for_image(image_id=image_id)
-    assert expected_error in str(excinfo.value)

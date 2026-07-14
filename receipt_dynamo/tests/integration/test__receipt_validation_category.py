@@ -46,7 +46,7 @@ def make_category(
         reasoning=reasoning,
         result_summary={"valid": valid, "invalid": invalid},
         validation_timestamp=validation_timestamp,
-        metadata=metadata or {"confidence": 0.95},
+        metadata={"confidence": 0.95} if metadata is None else metadata,
     )
 
 
@@ -82,7 +82,11 @@ def make_updated_category(
         valid=valid,
         invalid=invalid,
         validation_timestamp=UPDATED_TIMESTAMP,
-        metadata=metadata or {"confidence": 0.85, "updated": True},
+        metadata=(
+            {"confidence": 0.85, "updated": True}
+            if metadata is None
+            else metadata
+        ),
     )
 
 
@@ -94,17 +98,14 @@ def assert_category_items(
     present: bool = True,
 ) -> None:
     for category in categories:
-        response = client._client.get_item(TableName=table_name, Key=category.key)
-        assert ("Item" in response) is present, (
+        response = client._client.get_item(
+            TableName=table_name, Key=category.key
+        )
+        assert (
+            "Item" in response
+        ) is present, (
             f"Category {category.field_name} presence should be {present}."
         )
-
-
-def delete_category_items(
-    client: DynamoClient, table_name: str, categories: list[ReceiptValidationCategory]
-) -> None:
-    for category in categories:
-        client._client.delete_item(TableName=table_name, Key=category.key)
 
 
 @pytest.fixture
@@ -306,7 +307,6 @@ def test_addReceiptValidationCategories_success(
     client.add_receipt_validation_categories(categories)
 
     assert_category_items(client, dynamodb_table, categories)
-    delete_category_items(client, dynamodb_table, categories)
 
 
 @pytest.mark.integration
@@ -322,7 +322,6 @@ def test_addReceiptValidationCategories_with_large_batch(
     client.add_receipt_validation_categories(categories)
 
     assert_category_items(client, dynamodb_table, categories)
-    delete_category_items(client, dynamodb_table, categories)
 
 
 @pytest.mark.integration
@@ -460,7 +459,10 @@ def test_addReceiptValidationCategories_client_errors(
     )
 
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error_message):
+    exception_type = {
+        code: exception for code, exception, _ in ERROR_SCENARIOS
+    }.get(error_code, DynamoDBError)
+    with pytest.raises(exception_type, match=error_message):
         client.add_receipt_validation_categories(
             [sample_receipt_validation_category]
         )
@@ -477,7 +479,9 @@ def test_updateReceiptValidationCategory_success(
     # First, add the category
     client.add_receipt_validation_category(sample_receipt_validation_category)
 
-    updated_category = make_updated_category(sample_receipt_validation_category)
+    updated_category = make_updated_category(
+        sample_receipt_validation_category
+    )
 
     # Execute
     client.update_receipt_validation_category(updated_category)
@@ -497,8 +501,6 @@ def test_updateReceiptValidationCategory_success(
     assert (
         item["reasoning"]["S"] == "Updated reasoning after review"
     ), "Reasoning was not updated correctly"
-
-    delete_category_items(client, dynamodb_table, [updated_category])
 
 
 @pytest.mark.integration
@@ -590,7 +592,15 @@ def test_updateReceiptValidationCategory_client_errors(
     )
 
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error):
+    expected_exception = {
+        code: exception for code, exception, _ in UPDATE_ERROR_SCENARIOS
+    }.get(error_code, DynamoDBError)
+    error_match = (
+        "does not exist"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(expected_exception, match=error_match):
         client.update_receipt_validation_category(
             sample_receipt_validation_category
         )
@@ -650,8 +660,6 @@ def test_updateReceiptValidationCategories_success(
             item["status"]["S"] == "invalid"
         ), f"Category {category.field_name} status was not updated correctly"
 
-    delete_category_items(client, dynamodb_table, updated_categories)
-
 
 @pytest.mark.integration
 def test_updateReceiptValidationCategories_with_large_batch(
@@ -692,8 +700,6 @@ def test_updateReceiptValidationCategories_with_large_batch(
         assert (
             item["status"]["S"] == "updated"
         ), f"Category {category.field_name} status was not updated correctly"
-
-    delete_category_items(client, dynamodb_table, updated_categories)
 
 
 @pytest.mark.integration
@@ -884,7 +890,15 @@ def test_deleteReceiptValidationCategory_client_errors(
     )
 
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error):
+    expected_exception = {
+        code: exception for code, exception, _ in DELETE_ERROR_SCENARIOS
+    }.get(error_code, DynamoDBError)
+    error_match = (
+        "does not exist"
+        if error_code == "ConditionalCheckFailedException"
+        else error_message
+    )
+    with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_validation_category(
             sample_receipt_validation_category
         )
@@ -972,54 +986,10 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "DynamoDB error during delete_receipt_validation_category",
-        ),
-    ],
-)
-@pytest.mark.integration
-@pytest.mark.skip(
-    reason="Test structure issue: This is named as a 'success' test but has error parameters. "
-    "Appears to be a copy-paste error where error test parameters were applied to a success test. "
-    "Should be refactored into separate success and error tests."
-)
 def test_listReceiptValidationCategoriesForReceipt_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
     mocker,
-    error_code,
-    error_message,
-    expected_error,
 ):
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
@@ -1076,18 +1046,22 @@ def test_listReceiptValidationCategoriesForReceipt_success(
 
     # Verify the query parameters
     mock_query.assert_called_once()
-    args, kwargs = mock_query.call_args
-    assert "TableName" in kwargs, "Should specify table name"
+    _, kwargs = mock_query.call_args
+    assert kwargs["TableName"] == dynamodb_table
     assert (
-        kwargs["TableName"] == dynamodb_table
-    ), "Should use the correct table name"
-    assert (
-        "KeyConditionExpression" in kwargs
-    ), "Should have key condition expression"
-    assert (
-        "PK = :pkVal AND begins_with(SK, :skPrefix)"
-        in kwargs["KeyConditionExpression"]
-    ), "Should have correct key condition"
+        kwargs["KeyConditionExpression"]
+        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+    )
+    assert kwargs["ExpressionAttributeNames"] == {
+        "#pk": "PK",
+        "#sk": "SK",
+    }
+    assert kwargs["ExpressionAttributeValues"] == {
+        ":pk": {"S": f"IMAGE#{image_id}"},
+        ":sk_prefix": {
+            "S": (f"RECEIPT#{receipt_id:05d}#" "ANALYSIS#VALIDATION#CATEGORY#")
+        },
+    }
 
 
 @pytest.mark.integration
@@ -1221,7 +1195,7 @@ def test_listReceiptValidationCategoriesForReceipt_invalid_parameters(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
@@ -1311,7 +1285,10 @@ def test_listReceiptValidationCategoriesForReceipt_client_errors(
     )
 
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error):
+    exception_type = {
+        code: exception for code, exception, _ in ERROR_SCENARIOS
+    }.get(error_code, DynamoDBError)
+    with pytest.raises(exception_type, match=error_message):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,

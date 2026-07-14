@@ -1,13 +1,10 @@
-import copy
-import json
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional, Type
-from unittest.mock import MagicMock, patch
+from typing import Any, Literal, Mapping
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
     ContentPattern,
@@ -15,14 +12,107 @@ from receipt_dynamo import (
     SpatialPattern,
 )
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    EntityValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.receipt_structure_analysis import ReceiptSection
 
 # This entity is not used in production infrastructure
 pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
 
 
+def _make_analysis(
+    *,
+    receipt_id: int,
+    image_id: str,
+    section_index: int,
+    overall_reasoning: str,
+    version: str = "1.0.0",
+    timestamp_second: int | None = None,
+) -> ReceiptStructureAnalysis:
+    """Build a minimal analysis for persistence tests."""
+    analysis = ReceiptStructureAnalysis(
+        receipt_id=receipt_id,
+        image_id=image_id,
+        sections=[
+            ReceiptSection(
+                name=f"section-{section_index}",
+                line_ids=[section_index],
+                spatial_patterns=[],
+                content_patterns=[],
+                reasoning="Test reasoning",
+            )
+        ],
+        overall_reasoning=overall_reasoning,
+        version=version,
+    )
+    if timestamp_second is not None:
+        analysis.timestamp_added = datetime(
+            2023, 1, 1, 12, 0, timestamp_second
+        )
+        analysis.timestamp_updated = datetime(
+            2023, 1, 2, 12, 0, timestamp_second
+        )
+    return analysis
+
+
+def _make_related_analysis(
+    analysis: ReceiptStructureAnalysis,
+) -> ReceiptStructureAnalysis:
+    """Build a second analysis sharing the sample's image and metadata."""
+    return ReceiptStructureAnalysis(
+        receipt_id=456,
+        image_id=analysis.image_id,
+        sections=analysis.sections,
+        overall_reasoning="Second analysis",
+        version=analysis.version,
+        metadata=analysis.metadata,
+    )
+
+
+def _get_stored_item(
+    client: DynamoClient,
+    table_name: str,
+    analysis: ReceiptStructureAnalysis,
+) -> Mapping[str, Any]:
+    """Fetch the DynamoDB item for an analysis."""
+    return client._client.get_item(
+        TableName=table_name,
+        Key={
+            "PK": {"S": f"IMAGE#{analysis.image_id}"},
+            "SK": {
+                "S": (
+                    f"RECEIPT#{analysis.receipt_id:05d}"
+                    f"#ANALYSIS#STRUCTURE#{analysis.version}"
+                )
+            },
+        },
+    )
+
+
+def _expected_client_error(
+    operation: str, error_code: str, error_message: str
+) -> str:
+    """Return the complete domain error message for a client failure."""
+    if error_code == "ResourceNotFoundException":
+        return (
+            f"DynamoDB resource not found during {operation}: {error_message}"
+        )
+    if error_code == "ValidationException":
+        return f"Validation error: {error_message}"
+    if error_code == "ProvisionedThroughputExceededException":
+        return f"Throughput exceeded for {operation}: {error_message}"
+    if error_code == "InternalServerError":
+        return f"DynamoDB server error during {operation}: {error_message}"
+    return f"DynamoDB error during {operation}: {error_code} - {error_message}"
+
+
 @pytest.fixture
-def sample_receipt_structure_analysis():
+def sample_receipt_structure_analysis() -> ReceiptStructureAnalysis:
     """Create a sample ReceiptStructureAnalysis instance for testing."""
     spatial_pattern = SpatialPattern(
         pattern_type="alignment",
@@ -66,59 +156,29 @@ def sample_receipt_structure_analysis():
     )
 
 
-@pytest.mark.integration
 def test_addReceiptStructureAnalysis_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful addition of a ReceiptStructureAnalysis."""
-    # Arrange
     client = DynamoClient(dynamodb_table)
-    analysis = ReceiptStructureAnalysis(
+    analysis = _make_analysis(
         receipt_id=123,
         image_id=str(uuid.uuid4()),
-        sections=[
-            ReceiptSection(
-                name="section-1",
-                line_ids=[1],
-                spatial_patterns=[],
-                content_patterns=[],
-                reasoning="Test reasoning",
-            )
-        ],
+        section_index=1,
         overall_reasoning="Test analysis",
-        version="1.0.0",
     )
 
-    # Act
     client.add_receipt_structure_analysis(analysis)
 
-    # Assert - Verify the item was added by checking it
-    response = client._client.get_item(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{analysis.image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
-            },
-        },
-    )
+    response = _get_stored_item(client, dynamodb_table, analysis)
     assert "Item" in response, "Item should exist in DynamoDB"
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
+    "error_code,error_message,expected_exception",
     [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "UnknownError",
-            "Unknown error",
-            "Could not add receipt structure analysis to DynamoDB",
-        ),
+        ("ResourceNotFoundException", "Table not found", OperationError),
+        ("UnknownError", "Unknown error", DynamoDBError),
     ],
 )
 def test_addReceiptStructureAnalysis_client_errors(
@@ -127,7 +187,7 @@ def test_addReceiptStructureAnalysis_client_errors(
     mocker,
     error_code,
     error_message,
-    expected_error,
+    expected_exception,
 ):
     """Test client errors when adding a ReceiptStructureAnalysis."""
     # Arrange
@@ -141,8 +201,12 @@ def test_addReceiptStructureAnalysis_client_errors(
         side_effect=ClientError(error_response, "PutItem"),
     )
 
-    # Act & Assert
-    with pytest.raises(Exception, match=re.escape(expected_error)):
+    expected_error = _expected_client_error(
+        "add_entity", error_code, error_message
+    )
+    with pytest.raises(
+        expected_exception, match=f"^{re.escape(expected_error)}$"
+    ):
         client.add_receipt_structure_analysis(
             sample_receipt_structure_analysis
         )
@@ -151,301 +215,144 @@ def test_addReceiptStructureAnalysis_client_errors(
     mock_put_item.assert_called_once()
 
 
-@pytest.mark.integration
 def test_addReceiptStructureAnalyses_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful addition of multiple ReceiptStructureAnalyses."""
-    # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = str(uuid.uuid4())
-
-    # Create 3 analyses
-    analyses = []
-    for i in range(3):
-        analysis = ReceiptStructureAnalysis(
-            receipt_id=i + 1,
+    analyses = [
+        _make_analysis(
+            receipt_id=index + 1,
             image_id=image_id,
-            sections=[
-                ReceiptSection(
-                    name=f"section-{i}",
-                    line_ids=[i],
-                    spatial_patterns=[],
-                    content_patterns=[],
-                    reasoning="Test reasoning",
-                )
-            ],
-            overall_reasoning=f"Analysis {i}",
-            version="1.0.0",
+            section_index=index,
+            overall_reasoning=f"Analysis {index}",
         )
-        analyses.append(analysis)
+        for index in range(3)
+    ]
 
-    # Act
     client.add_receipt_structure_analyses(analyses)
 
-    # Assert - Verify some items were added by checking them
-    for idx in [0, 1, 2]:
-        analysis = analyses[idx]
-        response = client._client.get_item(
-            TableName=dynamodb_table,
-            Key={
-                "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
-                },
-            },
-        )
-        assert "Item" in response, f"Item {idx} should exist in DynamoDB"
+    for index, analysis in enumerate(analyses):
+        response = _get_stored_item(client, dynamodb_table, analysis)
+        assert "Item" in response, f"Item {index} should exist in DynamoDB"
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
+    (
+        "operation_name,error_code,error_message,expected_exception,"
+        "cancellation_reasons"
+    ),
     [
         (
+            "add_receipt_structure_analyses",
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters given were invalid",
-        ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not add receipt structure analyses to DynamoDB",
-        ),
-    ],
-)
-def test_addReceiptStructureAnalyses_client_errors(
-    dynamodb_table,
-    sample_receipt_structure_analysis,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test client errors when adding multiple ReceiptStructureAnalyses."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-
-    # Create a second analysis
-    second_analysis = ReceiptStructureAnalysis(
-        receipt_id=456,
-        image_id=sample_receipt_structure_analysis.image_id,
-        sections=sample_receipt_structure_analysis.sections,
-        overall_reasoning="Second analysis",
-        version=sample_receipt_structure_analysis.version,
-        metadata=sample_receipt_structure_analysis.metadata,
-    )
-
-    analyses = [sample_receipt_structure_analysis, second_analysis]
-
-    # Mock batch_write_item to raise an error
-    error_response = {"Error": {"Code": error_code, "Message": error_message}}
-    mock_batch_write = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(error_response, "BatchWriteItem"),
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match=re.escape(expected_error)):
-        client.add_receipt_structure_analyses(analyses)
-
-    # Verify batch_write_item was called
-    mock_batch_write.assert_called_once()
-
-
-@pytest.mark.integration
-def test_updateReceiptStructureAnalysis_success(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test successful update of a ReceiptStructureAnalysis."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    analysis = ReceiptStructureAnalysis(
-        receipt_id=123,
-        image_id=str(uuid.uuid4()),
-        sections=[
-            ReceiptSection(
-                name="section-1",
-                line_ids=[1],
-                spatial_patterns=[],
-                content_patterns=[],
-                reasoning="Test reasoning",
-            )
-        ],
-        overall_reasoning="Test analysis",
-        version="1.0.0",
-    )
-
-    # Add the analysis first
-    client.add_receipt_structure_analysis(analysis)
-
-    # Update the analysis
-    analysis.overall_reasoning = "Updated analysis"
-    client.update_receipt_structure_analysis(analysis)
-
-    # Assert - Verify the item was updated by checking it
-    response = client._client.get_item(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{analysis.image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
-            },
-        },
-    )
-    assert "Item" in response, "Item should exist in DynamoDB"
-    assert response["Item"]["overall_reasoning"]["S"] == "Updated analysis"
-
-
-@pytest.mark.integration
-def test_updateReceiptStructureAnalyses_success(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test successful update of multiple ReceiptStructureAnalyses."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    image_id = str(uuid.uuid4())
-
-    # Create and add 3 analyses
-    analyses = []
-    for i in range(3):
-        analysis = ReceiptStructureAnalysis(
-            receipt_id=i + 1,
-            image_id=image_id,
-            sections=[
-                ReceiptSection(
-                    name=f"section-{i}",
-                    line_ids=[i],
-                    spatial_patterns=[],
-                    content_patterns=[],
-                    reasoning="Test reasoning",
-                )
-            ],
-            overall_reasoning=f"Analysis {i}",
-            version="1.0.0",
-        )
-        analyses.append(analysis)
-        client.add_receipt_structure_analysis(analysis)
-
-    # Update the analyses
-    updated_analyses = []
-    for analysis in analyses:
-        analysis.overall_reasoning = f"Updated {analysis.overall_reasoning}"
-        updated_analyses.append(analysis)
-
-    # Act - Update the analyses
-    client.update_receipt_structure_analyses(updated_analyses)
-
-    # Assert - Verify some items were updated by checking them
-    for idx in [0, 1, 2]:
-        analysis = updated_analyses[idx]
-        response = client._client.get_item(
-            TableName=dynamodb_table,
-            Key={
-                "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
-                },
-            },
-        )
-        assert "Item" in response, f"Item {idx} should exist in DynamoDB"
-        assert (
-            response["Item"]["overall_reasoning"]["S"]
-            == f"Updated Analysis {idx}"
-        )
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
+            OperationError,
             None,
         ),
         (
+            "add_receipt_structure_analyses",
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
+            None,
+        ),
+        (
+            "add_receipt_structure_analyses",
+            "InternalServerError",
+            "Internal server error",
+            DynamoDBServerError,
+            None,
+        ),
+        (
+            "add_receipt_structure_analyses",
+            "ValidationException",
+            "One or more parameters were invalid",
+            EntityValidationError,
+            None,
+        ),
+        (
+            "add_receipt_structure_analyses",
+            "AccessDeniedException",
+            "Access denied",
+            DynamoDBError,
+            None,
+        ),
+        (
+            "add_receipt_structure_analyses",
+            "UnknownError",
+            "Unknown error occurred",
+            DynamoDBError,
+            None,
+        ),
+        (
+            "update_receipt_structure_analyses",
+            "ResourceNotFoundException",
+            "Table not found",
+            OperationError,
+            None,
+        ),
+        (
+            "update_receipt_structure_analyses",
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more entities do not exist or conditions failed",
+            DynamoDBError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
+            "update_receipt_structure_analyses",
             "InternalServerError",
             "Internal server error",
-            "Internal server error",
+            DynamoDBServerError,
             None,
         ),
         (
+            "update_receipt_structure_analyses",
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
             None,
         ),
         (
+            "update_receipt_structure_analyses",
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            EntityValidationError,
             None,
         ),
         (
+            "update_receipt_structure_analyses",
             "AccessDeniedException",
             "Access denied",
-            "Access denied",
+            DynamoDBError,
             None,
         ),
         (
+            "update_receipt_structure_analyses",
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt structure analyses in DynamoDB",
+            DynamoDBError,
             None,
         ),
     ],
 )
-def test_updateReceiptStructureAnalyses_client_errors(
+def test_receipt_structure_analyses_client_errors(
     dynamodb_table,
     sample_receipt_structure_analysis,
     mocker,
+    operation_name,
     error_code,
     error_message,
-    expected_error,
+    expected_exception,
     cancellation_reasons,
 ):
-    """Test client errors when updating multiple ReceiptStructureAnalyses."""
-    # Arrange
+    """Test client errors for batch write operations."""
     client = DynamoClient(dynamodb_table)
-
-    # Create second analysis
-    second_analysis = ReceiptStructureAnalysis(
-        receipt_id=456,
-        image_id=sample_receipt_structure_analysis.image_id,
-        sections=sample_receipt_structure_analysis.sections,
-        overall_reasoning="Second analysis",
-        version=sample_receipt_structure_analysis.version,
-        metadata=sample_receipt_structure_analysis.metadata,
-    )
-
-    analyses = [sample_receipt_structure_analysis, second_analysis]
-
-    # Set up the mock error
+    analyses = [
+        sample_receipt_structure_analysis,
+        _make_related_analysis(sample_receipt_structure_analysis),
+    ]
     error_response = {"Error": {"Code": error_code, "Message": error_message}}
     if cancellation_reasons:
         error_response["CancellationReasons"] = cancellation_reasons
@@ -456,71 +363,106 @@ def test_updateReceiptStructureAnalyses_client_errors(
         side_effect=ClientError(error_response, "BatchWriteItem"),
     )
 
-    # Act & Assert
-    with pytest.raises(Exception, match=re.escape(expected_error)):
-        client.update_receipt_structure_analyses(analyses)
+    expected_error = _expected_client_error(
+        operation_name, error_code, error_message
+    )
+    with pytest.raises(
+        expected_exception, match=f"^{re.escape(expected_error)}$"
+    ):
+        getattr(client, operation_name)(analyses)
 
-    # Verify batch_write_item was called
     mock_batch_write.assert_called_once()
 
 
-@pytest.mark.integration
+def test_updateReceiptStructureAnalysis_success(
+    dynamodb_table: Literal["MyMockedTable"],
+):
+    """Test successful update of a ReceiptStructureAnalysis."""
+    client = DynamoClient(dynamodb_table)
+    analysis = _make_analysis(
+        receipt_id=123,
+        image_id=str(uuid.uuid4()),
+        section_index=1,
+        overall_reasoning="Test analysis",
+    )
+
+    client.add_receipt_structure_analysis(analysis)
+    analysis.overall_reasoning = "Updated analysis"
+    client.update_receipt_structure_analysis(analysis)
+
+    response = _get_stored_item(client, dynamodb_table, analysis)
+    assert "Item" in response, "Item should exist in DynamoDB"
+    assert response["Item"]["overall_reasoning"]["S"] == "Updated analysis"
+
+
+def test_updateReceiptStructureAnalyses_success(
+    dynamodb_table: Literal["MyMockedTable"],
+):
+    """Test successful update of multiple ReceiptStructureAnalyses."""
+    client = DynamoClient(dynamodb_table)
+    image_id = str(uuid.uuid4())
+    analyses = [
+        _make_analysis(
+            receipt_id=index + 1,
+            image_id=image_id,
+            section_index=index,
+            overall_reasoning=f"Analysis {index}",
+        )
+        for index in range(3)
+    ]
+    for analysis in analyses:
+        client.add_receipt_structure_analysis(analysis)
+
+    for analysis in analyses:
+        analysis.overall_reasoning = f"Updated {analysis.overall_reasoning}"
+
+    client.update_receipt_structure_analyses(analyses)
+
+    for index, analysis in enumerate(analyses):
+        response = _get_stored_item(client, dynamodb_table, analysis)
+        assert "Item" in response, f"Item {index} should exist in DynamoDB"
+        assert (
+            response["Item"]["overall_reasoning"]["S"]
+            == f"Updated Analysis {index}"
+        )
+
+
 def test_listReceiptStructureAnalysesFromReceipt_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful listing of ReceiptStructureAnalyses for a receipt."""
-    # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = str(uuid.uuid4())
     receipt_id = 123
-
-    # Create and add 3 analyses for the same receipt and image
-    analyses = []
-    for i in range(3):
-        analysis = ReceiptStructureAnalysis(
+    analyses = [
+        _make_analysis(
             receipt_id=receipt_id,
             image_id=image_id,
-            sections=[
-                ReceiptSection(
-                    name=f"section-{i}",
-                    line_ids=[i],
-                    spatial_patterns=[],
-                    content_patterns=[],
-                    reasoning="Test reasoning",
-                )
-            ],
-            overall_reasoning=f"Analysis version {i}",
-            version=f"1.0.{i}",
-            timestamp_added=datetime(
-                2023, 1, 1, 12, 0, i
-            ),  # Different timestamps
-            timestamp_updated=datetime(
-                2023, 1, 2, 12, 0, i
-            ),  # Different timestamps
+            section_index=index,
+            overall_reasoning=f"Analysis version {index}",
+            version=f"1.0.{index}",
+            timestamp_second=index,
         )
-        analyses.append(analysis)
+        for index in range(3)
+    ]
 
-    # Clean up any existing analyses
     existing_analyses = client.list_receipt_structure_analyses_from_receipt(
         receipt_id=receipt_id, image_id=image_id
     )
-    if existing_analyses:
-        client.delete_receipt_structure_analyses(existing_analyses)
+    assert existing_analyses == []
 
-    # Add analyses using batch operation as originally intended
     client.add_receipt_structure_analyses(analyses)
-
-    # Act
     result = client.list_receipt_structure_analyses_from_receipt(
         receipt_id=receipt_id, image_id=image_id
     )
 
-    # Assert
     assert len(result) == 3, "Should return all 3 analyses"
-    versions = sorted([analysis.version for analysis in result])
+    versions = sorted(analysis.version for analysis in result)
     assert versions == ["1.0.0", "1.0.1", "1.0.2"], "Should have all versions"
-    for i, analysis in enumerate(sorted(result, key=lambda x: x.version)):
+    for index, analysis in enumerate(
+        sorted(result, key=lambda item: item.version)
+    ):
         assert analysis.receipt_id == receipt_id
         assert analysis.image_id == image_id
-        assert analysis.version == f"1.0.{i}"
-        assert analysis.overall_reasoning == f"Analysis version {i}"
+        assert analysis.version == f"1.0.{index}"
+        assert analysis.overall_reasoning == f"Analysis version {index}"

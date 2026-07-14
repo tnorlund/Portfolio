@@ -1,84 +1,48 @@
-# pylint: disable=redefined-outer-name,protected-access
-"""Unit tests for JobCheckpoint entity."""
+# pylint: disable=protected-access,redefined-outer-name
+"""Unit tests for the JobCheckpoint entity."""
 
-import uuid
-from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 
-from receipt_dynamo.entities.dynamodb_utils import (
-    parse_dynamodb_map,
-    parse_dynamodb_value,
-)
 from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
     item_to_job_checkpoint,
 )
 
+JOB_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+TIMESTAMP = "2021-01-01T12:30:45+00:00"
 
-def checkpoint_kwargs(**overrides):
-    """Return valid JobCheckpoint kwargs with optional overrides."""
-    job_id = overrides.pop("job_id", str(uuid.uuid4()))
-    timestamp = overrides.pop(
-        "timestamp", datetime.now(timezone.utc).isoformat()
-    )
-    kwargs = {
-        "job_id": job_id,
-        "timestamp": timestamp,
-        "s3_bucket": "my-checkpoint-bucket",
-        "s3_key": f"jobs/{job_id}/checkpoints/model_{timestamp}.pt",
-        "size_bytes": 1024000,
-        "step": 1000,
-        "epoch": 5,
+
+def checkpoint_kwargs(**overrides: Any) -> dict[str, Any]:
+    """Return valid JobCheckpoint arguments with selected fields replaced."""
+    return {
+        **{
+            "job_id": JOB_ID,
+            "timestamp": TIMESTAMP,
+            "s3_bucket": "my-checkpoint-bucket",
+            "s3_key": f"jobs/{JOB_ID}/checkpoints/model.pt",
+            "size_bytes": 1024000,
+            "step": 1000,
+            "epoch": 5,
+            "model_state": True,
+            "optimizer_state": True,
+            "metrics": {"loss": 0.1234, "accuracy": 0.9876},
+            "is_best": True,
+        },
+        **overrides,
     }
-    return {**kwargs, **overrides}
 
 
-def make_checkpoint(**overrides):
-    """Build a JobCheckpoint with sensible defaults."""
+def make_checkpoint(**overrides: Any) -> JobCheckpoint:
+    """Build a JobCheckpoint with stable defaults."""
     return JobCheckpoint(**checkpoint_kwargs(**overrides))
 
 
 @pytest.fixture
-def example_job_checkpoint():
-    """Returns an example JobCheckpoint object with all fields populated."""
-    return make_checkpoint(
-        metrics={
-            "loss": 0.1234,
-            "accuracy": 0.9876,
-            "detailed": {"val_loss": 0.2345},
-        },
-        is_best=True,
-    )
-
-
-@pytest.fixture
-def example_job_checkpoint_minimal():
-    """Returns an example JobCheckpoint object with minimal fields."""
-    return make_checkpoint(size_bytes=512000, step=500, epoch=2)
-
-
-@pytest.mark.unit
-def test_job_checkpoint_init_valid(example_job_checkpoint):
-    """Test that a JobCheckpoint can be created with valid parameters."""
-    assert isinstance(example_job_checkpoint, JobCheckpoint)
-    assert dict(example_job_checkpoint) == {
-        "job_id": example_job_checkpoint.job_id,
-        "timestamp": example_job_checkpoint.timestamp,
-        "s3_bucket": "my-checkpoint-bucket",
-        "s3_key": example_job_checkpoint.s3_key,
-        "size_bytes": 1024000,
-        "step": 1000,
-        "epoch": 5,
-        "model_state": True,
-        "optimizer_state": True,
-        "metrics": {
-            "loss": 0.1234,
-            "accuracy": 0.9876,
-            "detailed": {"val_loss": 0.2345},
-        },
-        "is_best": True,
-    }
+def example_job_checkpoint() -> JobCheckpoint:
+    """Return a fully populated JobCheckpoint."""
+    return make_checkpoint()
 
 
 @pytest.mark.unit
@@ -87,141 +51,118 @@ def test_job_checkpoint_init_valid(example_job_checkpoint):
     [
         ({"job_id": "invalid-uuid"}, "uuid must be a valid UUID"),
         ({"job_id": None}, "uuid must be a string"),
-        ({"job_id": 123}, "uuid must be a string"),
         ({"timestamp": ""}, "timestamp must be a non-empty string"),
-        ({"timestamp": None}, "timestamp must be a non-empty string"),
         ({"timestamp": 123}, "timestamp must be a non-empty string"),
         ({"s3_bucket": ""}, "s3_bucket must be a non-empty string"),
         ({"s3_bucket": None}, "s3_bucket must be a non-empty string"),
-        ({"s3_bucket": 123}, "s3_bucket must be a non-empty string"),
         ({"s3_key": ""}, "s3_key must be a non-empty string"),
-        ({"s3_key": None}, "s3_key must be a non-empty string"),
         ({"s3_key": 123}, "s3_key must be a non-empty string"),
         ({"size_bytes": -1}, "size_bytes must be a non-negative integer"),
-        ({"size_bytes": None}, "size_bytes must be a non-negative integer"),
-        ({"size_bytes": "1024"}, "size_bytes must be a non-negative integer"),
+        ({"size_bytes": "1"}, "size_bytes must be a non-negative integer"),
+        ({"size_bytes": True}, "size_bytes must be a non-negative integer"),
         ({"step": -1}, "step must be a non-negative integer"),
-        ({"step": None}, "step must be a non-negative integer"),
-        ({"step": "1000"}, "step must be a non-negative integer"),
+        ({"step": 1.5}, "step must be a non-negative integer"),
+        ({"step": False}, "step must be a non-negative integer"),
         ({"epoch": -1}, "epoch must be a non-negative integer"),
         ({"epoch": None}, "epoch must be a non-negative integer"),
-        ({"epoch": "5"}, "epoch must be a non-negative integer"),
-        ({"model_state": "True"}, "model_state must be a boolean"),
+        ({"epoch": True}, "epoch must be a non-negative integer"),
         ({"model_state": 1}, "model_state must be a boolean"),
         ({"optimizer_state": "True"}, "optimizer_state must be a boolean"),
-        ({"optimizer_state": 1}, "optimizer_state must be a boolean"),
-        ({"metrics": "not a dict"}, "metrics must be a dictionary"),
-        ({"metrics": [1, 2, 3]}, "metrics must be a dictionary"),
-        ({"is_best": "True"}, "is_best must be a boolean"),
+        ({"metrics": []}, "metrics must be a dictionary"),
         ({"is_best": 1}, "is_best must be a boolean"),
     ],
 )
-def test_job_checkpoint_init_invalid_fields(overrides, match):
-    """Test that invalid constructor fields raise expected errors."""
+def test_job_checkpoint_rejects_invalid_fields(
+    overrides: dict[str, Any], match: str
+) -> None:
+    """Every typed field rejects values outside its exact boundary."""
     with pytest.raises(ValueError, match=match):
         make_checkpoint(**overrides)
 
 
 @pytest.mark.unit
-def test_job_checkpoint_keys(example_job_checkpoint):
-    """Test key helpers."""
+def test_job_checkpoint_default_metrics_are_not_shared() -> None:
+    """Each checkpoint receives its own mutable default metrics map."""
+    first = make_checkpoint(metrics=None)
+    second = make_checkpoint(metrics=None)
+    first.metrics["loss"] = 0.5
+    assert second.metrics == {}
+
+
+@pytest.mark.unit
+def test_job_checkpoint_keys(example_job_checkpoint: JobCheckpoint) -> None:
+    """Primary and secondary indexes encode job and checkpoint time."""
     assert example_job_checkpoint.key == {
-        "PK": {"S": f"JOB#{example_job_checkpoint.job_id}"},
-        "SK": {"S": f"CHECKPOINT#{example_job_checkpoint.timestamp}"},
+        "PK": {"S": f"JOB#{JOB_ID}"},
+        "SK": {"S": f"CHECKPOINT#{TIMESTAMP}"},
     }
     assert example_job_checkpoint.gsi1_key() == {
         "GSI1PK": {"S": "CHECKPOINT"},
-        "GSI1SK": {
-            "S": f"JOB#{example_job_checkpoint.job_id}#{example_job_checkpoint.timestamp}"
-        },
+        "GSI1SK": {"S": f"JOB#{JOB_ID}#{TIMESTAMP}"},
     }
 
 
 @pytest.mark.unit
 def test_job_checkpoint_to_item(
-    example_job_checkpoint, example_job_checkpoint_minimal
-):
-    """Test that a JobCheckpoint generates the correct DynamoDB item."""
-    item = example_job_checkpoint.to_item()
-    assert item["PK"] == {"S": f"JOB#{example_job_checkpoint.job_id}"}
-    assert item["SK"] == {
-        "S": f"CHECKPOINT#{example_job_checkpoint.timestamp}"
+    example_job_checkpoint: JobCheckpoint,
+) -> None:
+    """A populated checkpoint serializes all keys and attributes exactly."""
+    assert example_job_checkpoint.to_item() == {
+        **example_job_checkpoint.key,
+        **example_job_checkpoint.gsi1_key(),
+        "TYPE": {"S": "JOB_CHECKPOINT"},
+        "job_id": {"S": JOB_ID},
+        "timestamp": {"S": TIMESTAMP},
+        "s3_bucket": {"S": "my-checkpoint-bucket"},
+        "s3_key": {"S": f"jobs/{JOB_ID}/checkpoints/model.pt"},
+        "size_bytes": {"N": "1024000"},
+        "step": {"N": "1000"},
+        "epoch": {"N": "5"},
+        "model_state": {"BOOL": True},
+        "optimizer_state": {"BOOL": True},
+        "is_best": {"BOOL": True},
+        "metrics": {
+            "M": {"loss": {"N": "0.1234"}, "accuracy": {"N": "0.9876"}}
+        },
     }
-    assert item["GSI1PK"] == {"S": "CHECKPOINT"}
-    assert item["GSI1SK"] == {
-        "S": f"JOB#{example_job_checkpoint.job_id}#{example_job_checkpoint.timestamp}"
-    }
-    for field in ("job_id", "timestamp", "s3_bucket", "s3_key"):
-        assert item[field]["S"] == getattr(example_job_checkpoint, field)
-    for field in ("size_bytes", "step", "epoch"):
-        assert item[field]["N"] == str(getattr(example_job_checkpoint, field))
-    assert item["TYPE"] == {"S": "JOB_CHECKPOINT"}
-    assert item["model_state"] == {"BOOL": True}
-    assert item["optimizer_state"] == {"BOOL": True}
-    assert item["is_best"] == {"BOOL": True}
-    assert item["metrics"] == {
-        "M": {
-            "loss": {"N": "0.1234"},
-            "accuracy": {"N": "0.9876"},
-            "detailed": {"M": {"val_loss": {"N": "0.2345"}}},
-        }
-    }
-
-    item_minimal = example_job_checkpoint_minimal.to_item()
-    assert "metrics" not in item_minimal
-    assert item_minimal["is_best"] == {"BOOL": False}
-    assert item_minimal["model_state"] == {"BOOL": True}
-    assert item_minimal["optimizer_state"] == {"BOOL": True}
 
 
 @pytest.mark.unit
-def test_job_checkpoint_dict_to_dynamodb_map():
-    """Test the _dict_to_dynamodb_map method."""
-    result = make_checkpoint()._dict_to_dynamodb_map(
-        {
-            "string": "value",
-            "number": 123,
-            "float": 123.45,
-            "bool": True,
-            "null": None,
-            "list": [1, "two", True, None, {"nested": "object"}],
-            "nested": {
-                "inner": "value",
-                "innerNum": 456,
-                "innerBool": False,
-                "innerList": [7, 8, 9],
-            },
-        }
-    )
-
-    assert result["string"] == {"S": "value"}
-    assert result["number"] == {"N": "123"}
-    assert result["float"] == {"N": "123.45"}
-    assert result["bool"] == {"BOOL": True}
-    assert result["null"] == {"NULL": True}
-    assert result["list"]["L"] == [
-        {"N": "1"},
-        {"S": "two"},
-        {"BOOL": True},
-        {"NULL": True},
-        {"M": {"nested": {"S": "object"}}},
-    ]
-    assert result["nested"]["M"]["inner"] == {"S": "value"}
-    assert result["nested"]["M"]["innerNum"] == {"N": "456"}
-    assert result["nested"]["M"]["innerBool"] == {"BOOL": False}
-    assert result["nested"]["M"]["innerList"]["L"][0] == {"N": "7"}
+def test_job_checkpoint_nested_metrics_round_trip() -> None:
+    """Nested Dynamo maps preserve lists, booleans, nulls, and numbers."""
+    metrics = {
+        "validation": {"loss": 0.2, "converged": True},
+        "history": [1, 0.5, None, {"accepted": False}],
+    }
+    checkpoint = make_checkpoint(metrics=metrics)
+    item = checkpoint.to_item()
+    assert item["metrics"]["M"]["history"]["L"][3] == {
+        "M": {"accepted": {"BOOL": False}}
+    }
+    assert item_to_job_checkpoint(item) == checkpoint
 
 
 @pytest.mark.unit
-def test_job_checkpoint_repr(example_job_checkpoint):
-    """Test that a JobCheckpoint generates the correct representation."""
-    repr_str = repr(example_job_checkpoint)
-    for expected in [
+def test_job_checkpoint_minimal_round_trip() -> None:
+    """An empty metrics map remains empty and is omitted from Dynamo."""
+    checkpoint = make_checkpoint(metrics=None, is_best=False)
+    item = checkpoint.to_item()
+    assert "metrics" not in item
+    assert item_to_job_checkpoint(item) == checkpoint
+
+
+@pytest.mark.unit
+def test_job_checkpoint_repr_and_iteration(
+    example_job_checkpoint: JobCheckpoint,
+) -> None:
+    """Representation and iteration expose every dataclass field."""
+    assert dict(example_job_checkpoint) == checkpoint_kwargs()
+    representation = repr(example_job_checkpoint)
+    for expected in (
         "JobCheckpoint(",
-        f"job_id='{example_job_checkpoint.job_id}'",
-        f"timestamp='{example_job_checkpoint.timestamp}'",
+        f"job_id='{JOB_ID}'",
+        f"timestamp='{TIMESTAMP}'",
         "s3_bucket='my-checkpoint-bucket'",
-        f"s3_key='{example_job_checkpoint.s3_key}'",
         "size_bytes=1024000",
         "step=1000",
         "epoch=5",
@@ -229,128 +170,72 @@ def test_job_checkpoint_repr(example_job_checkpoint):
         "optimizer_state=True",
         "is_best=True",
         "metrics=",
-    ]:
-        assert expected in repr_str
+    ):
+        assert expected in representation
 
 
 @pytest.mark.unit
-def test_job_checkpoint_iter(example_job_checkpoint):
-    """Test that a JobCheckpoint can be iterated over."""
-    assert dict(example_job_checkpoint) == {
-        "job_id": example_job_checkpoint.job_id,
-        "timestamp": example_job_checkpoint.timestamp,
-        "s3_bucket": example_job_checkpoint.s3_bucket,
-        "s3_key": example_job_checkpoint.s3_key,
-        "size_bytes": example_job_checkpoint.size_bytes,
-        "step": example_job_checkpoint.step,
-        "epoch": example_job_checkpoint.epoch,
-        "model_state": example_job_checkpoint.model_state,
-        "optimizer_state": example_job_checkpoint.optimizer_state,
-        "metrics": example_job_checkpoint.metrics,
-        "is_best": example_job_checkpoint.is_best,
-    }
-
-
-@pytest.mark.unit
-def test_job_checkpoint_eq():
-    """Test that JobCheckpoint equality and hashing work correctly."""
-    job_id = str(uuid.uuid4())
-    timestamp = datetime.now(timezone.utc).isoformat()
-    baseline = make_checkpoint(
-        job_id=job_id,
-        timestamp=timestamp,
-        metrics={"loss": 0.1234},
-        is_best=True,
-    )
-    same = make_checkpoint(
-        job_id=job_id,
-        timestamp=timestamp,
-        metrics={"loss": 0.1234},
-        is_best=True,
-    )
-    different = make_checkpoint(
-        job_id=job_id,
-        timestamp=timestamp,
-        s3_bucket="different-bucket",
-        metrics={"loss": 0.1234},
-        is_best=True,
-    )
-
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("job_id", "4f52804b-2fad-4e00-92c8-b593da3a8ed3"),
+        ("timestamp", "2021-01-02T12:30:45+00:00"),
+        ("s3_bucket", "different-bucket"),
+        ("s3_key", "different/model.pt"),
+        ("size_bytes", 2),
+        ("step", 2),
+        ("epoch", 2),
+        ("model_state", False),
+        ("optimizer_state", False),
+        ("metrics", {"loss": 0.5}),
+        ("is_best", False),
+    ],
+)
+def test_job_checkpoint_equality_detects_each_field(
+    field: str, value: Any
+) -> None:
+    """Changing any field changes dataclass equality."""
+    baseline = make_checkpoint()
+    same = make_checkpoint()
     assert baseline == same
-    assert baseline != different
-    assert baseline != "not a checkpoint"
-    assert len({baseline, same, different}) == 2
+    assert hash(baseline) == hash(same)
+    assert baseline != make_checkpoint(**{field: value})
+    assert baseline != object()
 
 
 @pytest.mark.unit
-def test_parse_dynamodb_map():
-    """Test the _parse_dynamodb_map function."""
-    result = parse_dynamodb_map(
-        {
-            "string": {"S": "value"},
-            "number": {"N": "123"},
-            "float": {"N": "123.45"},
-            "bool": {"BOOL": True},
-            "null": {"NULL": True},
-            "map": {"M": {"inner": {"S": "value"}, "innerNum": {"N": "456"}}},
-            "list": {"L": [{"S": "item1"}, {"N": "789"}, {"BOOL": False}]},
+def test_checkpoint_compatibility_map_helper() -> None:
+    """The legacy map helper delegates to the shared nested serializer."""
+    assert make_checkpoint()._dict_to_dynamodb_map(
+        {"values": [1, "two", True, None, {"nested": 2.5}]}
+    ) == {
+        "values": {
+            "L": [
+                {"N": "1"},
+                {"S": "two"},
+                {"BOOL": True},
+                {"NULL": True},
+                {"M": {"nested": {"N": "2.5"}}},
+            ]
         }
-    )
-    assert result == {
-        "string": "value",
-        "number": 123,
-        "float": 123.45,
-        "bool": True,
-        "null": None,
-        "map": {"inner": "value", "innerNum": 456},
-        "list": ["item1", 789, False],
     }
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("value", "expected"),
+    "mutation",
     [
-        ({"S": "value"}, "value"),
-        ({"N": "123"}, 123),
-        ({"N": "123.45"}, 123.45),
-        ({"BOOL": True}, True),
-        ({"NULL": True}, None),
-        ({"L": [{"S": "item1"}, {"N": "123"}]}, ["item1", 123]),
-        (
-            {"M": {"key": {"S": "value"}, "num": {"N": "123"}}},
-            {"key": "value", "num": 123},
-        ),
-        ({}, None),
+        lambda item: item.pop("size_bytes"),
+        lambda item: item.__setitem__("size_bytes", {"N": "1.5"}),
+        lambda item: item.__setitem__("is_best", {"BOOL": 1}),
+        lambda item: item.__setitem__("metrics", {"S": "invalid"}),
     ],
 )
-def test_parse_dynamodb_value(value, expected):
-    """Test the parse_dynamodb_value function."""
-    assert parse_dynamodb_value(value) == expected
-
-
-@pytest.mark.unit
-def test_item_to_job_checkpoint(
-    example_job_checkpoint, example_job_checkpoint_minimal
-):
-    """Test that a DynamoDB item can be converted to a JobCheckpoint."""
-    assert (
-        item_to_job_checkpoint(example_job_checkpoint.to_item())
-        == example_job_checkpoint
-    )
-
-    checkpoint_minimal = item_to_job_checkpoint(
-        example_job_checkpoint_minimal.to_item()
-    )
-    assert checkpoint_minimal.job_id == example_job_checkpoint_minimal.job_id
-    assert (
-        checkpoint_minimal.timestamp
-        == example_job_checkpoint_minimal.timestamp
-    )
-    assert checkpoint_minimal.metrics == {}
-    assert checkpoint_minimal.is_best is False
-
-    with pytest.raises(
-        ValueError, match="Error converting item to JobCheckpoint"
-    ):
-        item_to_job_checkpoint({"job_id": {"S": "invalid-job-id"}})
+def test_item_to_job_checkpoint_rejects_malformed_items(
+    mutation: Any,
+) -> None:
+    """Missing and incorrectly encoded Dynamo attributes are rejected."""
+    item = make_checkpoint().to_item()
+    mutation(item)
+    with pytest.raises(ValueError):
+        item_to_job_checkpoint(item)

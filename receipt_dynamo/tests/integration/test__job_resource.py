@@ -107,13 +107,7 @@ def test_addJobResource_success(
     resource = job_resource_dynamo.get_job_resource(
         sample_job_resource.job_id, sample_job_resource.resource_id
     )
-    assert resource.job_id == sample_job_resource.job_id
-    assert resource.resource_id == sample_job_resource.resource_id
-    assert resource.resource_type == sample_job_resource.resource_type
-    assert resource.status == sample_job_resource.status
-    assert resource.allocated_at == sample_job_resource.allocated_at
-    assert resource.released_at == sample_job_resource.released_at
-    assert resource.resource_config == sample_job_resource.resource_config
+    assert resource == sample_job_resource
 
 
 @pytest.mark.integration
@@ -209,14 +203,7 @@ def test_getJobResource_success(
         sample_job_resource.job_id, sample_job_resource.resource_id
     )
 
-    # Verify
-    assert resource.job_id == sample_job_resource.job_id
-    assert resource.resource_id == sample_job_resource.resource_id
-    assert resource.resource_type == sample_job_resource.resource_type
-    assert resource.status == sample_job_resource.status
-    assert resource.allocated_at == sample_job_resource.allocated_at
-    assert resource.released_at == sample_job_resource.released_at
-    assert resource.resource_config == sample_job_resource.resource_config
+    assert resource == sample_job_resource
 
 
 @pytest.mark.integration

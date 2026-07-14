@@ -141,14 +141,19 @@ def test_completion_batch_result_missing_required_keys():
 
 @pytest.mark.unit
 def test_completion_batch_result_invalid_date_format():
-    item = {
-        "PK": {"S": "BATCH#batch-id"},
-        "SK": {"S": "RESULT#RECEIPT#1001#LINE#4#WORD#7#LABEL#TOTAL"},
-        "original_label": {"S": "TOTAL"},
-        "gpt_suggested_label": {"S": "TOTAL"},
-        "status": {"S": "PENDING"},
-        "validated_at": {"S": "not-a-date"},
-    }
+    result = CompletionBatchResult(
+        batch_id="42bffa3b-1a9e-4d2c-bb6a-08f0b2b5c123",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1001,
+        line_id=4,
+        word_id=7,
+        original_label="TOTAL",
+        gpt_suggested_label="TOTAL",
+        status=BatchStatus.PENDING,
+        validated_at=datetime.now(),
+    )
+    item = result.to_item()
+    item["validated_at"] = {"S": "not-a-date"}
     with pytest.raises(
         ValueError, match="Error converting item to CompletionBatchResult"
     ):

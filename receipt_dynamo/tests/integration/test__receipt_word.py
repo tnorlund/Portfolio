@@ -8,14 +8,14 @@ for ReceiptWord operations.
 Based on successful patterns from test__receipt_line.py parameterization.
 """
 
-import uuid
-from typing import Any, Dict, List, Literal
-from unittest.mock import MagicMock, patch
+from math import radians
+from typing import Any, List, Literal
+from unittest.mock import patch
 
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import DynamoClient, ReceiptWord
+from receipt_dynamo import DynamoClient, ReceiptLetter, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -26,6 +26,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
     OperationError,
 )
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 # =============================================================================
 # FIXTURES AND TEST DATA
@@ -36,12 +37,60 @@ FIXED_IMAGE_ID = "550e8400-e29b-41d4-a716-446655440001"
 FIXED_IMAGE_ID_2 = "550e8400-e29b-41d4-a716-446655440002"
 
 
+def _make_receipt_word(
+    *,
+    image_id: str = FIXED_IMAGE_ID,
+    receipt_id: int = 1,
+    line_id: int = 10,
+    word_id: int = 1,
+    geometry: tuple[float, float, float, float] | None = None,
+    angle_degrees: float | None = None,
+    **overrides: Any,
+) -> ReceiptWord:
+    """Build a valid receipt word with concise test-specific overrides."""
+    values: dict[str, Any] = {
+        "receipt_id": receipt_id,
+        "image_id": image_id,
+        "line_id": line_id,
+        "word_id": word_id,
+        "text": f"Word {word_id}",
+        "bounding_box": {"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02},
+        "top_left": {"x": 0.1, "y": 0.2},
+        "top_right": {"x": 0.2, "y": 0.2},
+        "bottom_left": {"x": 0.1, "y": 0.22},
+        "bottom_right": {"x": 0.2, "y": 0.22},
+        "angle_degrees": 0.0,
+        "angle_radians": 0.0,
+        "confidence": 0.95,
+        "embedding_status": EmbeddingStatus.NONE,
+    }
+    if geometry is not None:
+        x, y, width, height = geometry
+        values.update(
+            {
+                "bounding_box": {
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                },
+                "top_left": {"x": x, "y": y},
+                "top_right": {"x": x + width, "y": y},
+                "bottom_left": {"x": x, "y": y + height},
+                "bottom_right": {"x": x + width, "y": y + height},
+            }
+        )
+    if angle_degrees is not None:
+        values["angle_degrees"] = angle_degrees
+        values["angle_radians"] = radians(angle_degrees)
+    values.update(overrides)
+    return ReceiptWord(**values)
+
+
 @pytest.fixture
-def sample_receipt_word():
+def sample_receipt_word() -> ReceiptWord:
     """Create a sample ReceiptWord for testing."""
-    return ReceiptWord(
-        receipt_id=1,
-        image_id=FIXED_IMAGE_ID,
+    return _make_receipt_word(
         line_id=10,
         word_id=5,
         text="Sample receipt word",
@@ -57,27 +106,13 @@ def sample_receipt_word():
 
 
 @pytest.fixture
-def sample_receipt_words():
+def sample_receipt_words() -> List[ReceiptWord]:
     """Create multiple sample ReceiptWords for batch testing."""
     return [
-        ReceiptWord(
-            receipt_id=1,
-            image_id=FIXED_IMAGE_ID,
+        _make_receipt_word(
             line_id=10,
             word_id=i,
             text=f"Word {i}",
-            bounding_box={
-                "x": 0.1 * i,
-                "y": 0.2,
-                "width": 0.1,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1 * i, "y": 0.2},
-            top_right={"x": 0.1 * i + 0.1, "y": 0.2},
-            bottom_left={"x": 0.1 * i, "y": 0.22},
-            bottom_right={"x": 0.1 * i + 0.1, "y": 0.22},
-            angle_degrees=0.0,
-            angle_radians=0.0,
             confidence=0.9 + 0.01 * i,
         )
         for i in range(1, 4)
@@ -317,20 +352,10 @@ def test_batch_receipt_word_validation_mixed_types(
 ):
     """Test validation for mixed types in batch operations."""
     mixed_list = [
-        ReceiptWord(
-            receipt_id=1,
-            image_id=FIXED_IMAGE_ID,
+        _make_receipt_word(
             line_id=10,
             word_id=1,
             text="Valid",
-            bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02},
-            top_left={"x": 0.1, "y": 0.2},
-            top_right={"x": 0.2, "y": 0.2},
-            bottom_left={"x": 0.1, "y": 0.22},
-            bottom_right={"x": 0.2, "y": 0.22},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.95,
         ),
         "not-a-word",
         123,
@@ -627,7 +652,7 @@ def test_list_receipt_words_by_embedding_status_validation(
 def test_add_receipt_word_conditional_check_failed(
     client: DynamoClient, sample_receipt_word: ReceiptWord
 ):
-    """Test that ConditionalCheckFailedException in add operations raises EntityAlreadyExistsError."""
+    """Test conditional add failures map to already-exists errors."""
     with patch.object(client._client, "put_item") as mock_put:
         mock_put.side_effect = ClientError(
             error_response={
@@ -647,7 +672,7 @@ def test_add_receipt_word_conditional_check_failed(
 def test_update_receipt_word_conditional_check_failed(
     client: DynamoClient, sample_receipt_word: ReceiptWord
 ):
-    """Test that ConditionalCheckFailedException in update operations raises EntityNotFoundError."""
+    """Test conditional update failures map to not-found errors."""
     with patch.object(client._client, "put_item") as mock_put:
         mock_put.side_effect = ClientError(
             error_response={
@@ -669,7 +694,7 @@ def test_update_receipt_word_conditional_check_failed(
 def test_delete_receipt_word_conditional_check_failed(
     client: DynamoClient, sample_receipt_word: ReceiptWord
 ):
-    """Test that ConditionalCheckFailedException in delete operations raises EntityNotFoundError."""
+    """Test conditional delete failures map to not-found errors."""
     with patch.object(client._client, "delete_item") as mock_delete:
         mock_delete.side_effect = ClientError(
             error_response={
@@ -714,7 +739,7 @@ def test_add_receipt_word_success(
 def test_add_receipt_word_duplicate_raises(
     client: DynamoClient, sample_receipt_word: ReceiptWord
 ):
-    """Test that adding duplicate receipt word raises EntityAlreadyExistsError."""
+    """Test that adding a duplicate word raises an already-exists error."""
     client.add_receipt_word(sample_receipt_word)
 
     with pytest.raises(EntityAlreadyExistsError):
@@ -730,9 +755,9 @@ def test_update_receipt_word_success(
     client.add_receipt_word(sample_receipt_word)
 
     # Update it
-    updated_word = ReceiptWord(
-        receipt_id=sample_receipt_word.receipt_id,
+    updated_word = _make_receipt_word(
         image_id=sample_receipt_word.image_id,
+        receipt_id=sample_receipt_word.receipt_id,
         line_id=sample_receipt_word.line_id,
         word_id=sample_receipt_word.word_id,
         text="Updated text",
@@ -780,7 +805,7 @@ def test_delete_receipt_word_success(
 
 @pytest.mark.integration
 def test_get_receipt_word_not_found(client: DynamoClient):
-    """Test that getting non-existent receipt word raises EntityNotFoundError."""
+    """Test that getting a missing word raises a not-found error."""
     with pytest.raises(
         EntityNotFoundError, match="(does not exist|not found)"
     ):
@@ -818,9 +843,9 @@ def test_update_receipt_words_success(
     # Update them
     updated_words = []
     for word in sample_receipt_words:
-        updated_word = ReceiptWord(
-            receipt_id=word.receipt_id,
+        updated_word = _make_receipt_word(
             image_id=word.image_id,
+            receipt_id=word.receipt_id,
             line_id=word.line_id,
             word_id=word.word_id,
             text=f"Updated {word.text}",
@@ -875,7 +900,7 @@ def test_get_receipt_words_by_indices_success(
     # Add words first
     client.add_receipt_words(sample_receipt_words)
 
-    # Create indices list - note the order is (image_id, receipt_id, line_id, word_id)
+    # Indices are ordered as image, receipt, line, then word ID.
     indices = [
         (word.image_id, word.receipt_id, word.line_id, word.word_id)
         for word in sample_receipt_words
@@ -904,7 +929,10 @@ def test_get_receipt_words_by_keys_success(
         key = {
             "PK": {"S": f"IMAGE#{word.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                "S": (
+                    f"RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
             },
         }
         keys.append(key)
@@ -961,37 +989,17 @@ def test_list_receipt_words_no_limit(
 def test_list_receipt_words_by_embedding_status(client: DynamoClient):
     """Test list_receipt_words_by_embedding_status functionality."""
     # Create words with different embedding statuses
-    word_none = ReceiptWord(
-        receipt_id=1,
-        image_id=FIXED_IMAGE_ID,
+    word_none = _make_receipt_word(
         line_id=10,
         word_id=1,
         text="None status",
-        bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02},
-        top_left={"x": 0.1, "y": 0.2},
-        top_right={"x": 0.2, "y": 0.2},
-        bottom_left={"x": 0.1, "y": 0.22},
-        bottom_right={"x": 0.2, "y": 0.22},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=0.95,
         embedding_status=EmbeddingStatus.NONE,
     )
 
-    word_pending = ReceiptWord(
-        receipt_id=1,
-        image_id=FIXED_IMAGE_ID,
+    word_pending = _make_receipt_word(
         line_id=10,
         word_id=2,
         text="Pending status",
-        bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02},
-        top_left={"x": 0.1, "y": 0.2},
-        top_right={"x": 0.2, "y": 0.2},
-        bottom_left={"x": 0.1, "y": 0.22},
-        bottom_right={"x": 0.2, "y": 0.22},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=0.95,
         embedding_status=EmbeddingStatus.PENDING,
     )
 
@@ -1017,44 +1025,19 @@ def test_list_receipt_words_from_line(client: DynamoClient):
     """Test list_receipt_words_from_line functionality."""
     # Create words on the same line
     words_same_line = [
-        ReceiptWord(
-            receipt_id=1,
-            image_id=FIXED_IMAGE_ID,
+        _make_receipt_word(
             line_id=10,
             word_id=i,
             text=f"Line word {i}",
-            bounding_box={
-                "x": 0.1 * i,
-                "y": 0.2,
-                "width": 0.1,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1 * i, "y": 0.2},
-            top_right={"x": 0.1 * i + 0.1, "y": 0.2},
-            bottom_left={"x": 0.1 * i, "y": 0.22},
-            bottom_right={"x": 0.1 * i + 0.1, "y": 0.22},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.95,
         )
         for i in range(1, 3)
     ]
 
     # Create word on different line
-    word_different_line = ReceiptWord(
-        receipt_id=1,
-        image_id=FIXED_IMAGE_ID,
+    word_different_line = _make_receipt_word(
         line_id=99,
         word_id=999,
         text="Different line",
-        bounding_box={"x": 0.5, "y": 0.5, "width": 0.1, "height": 0.02},
-        top_left={"x": 0.5, "y": 0.5},
-        top_right={"x": 0.6, "y": 0.5},
-        bottom_left={"x": 0.5, "y": 0.52},
-        bottom_right={"x": 0.6, "y": 0.52},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=0.95,
     )
 
     # Add all words
@@ -1078,44 +1061,21 @@ def test_list_receipt_words_from_receipt(client: DynamoClient):
     """Test list_receipt_words_from_receipt functionality."""
     # Create words for the same receipt
     words_same_receipt = [
-        ReceiptWord(
-            receipt_id=1,
-            image_id=FIXED_IMAGE_ID,
+        _make_receipt_word(
             line_id=i,
             word_id=1,
             text=f"Receipt word {i}",
-            bounding_box={
-                "x": 0.1,
-                "y": 0.2 * i,
-                "width": 0.1,
-                "height": 0.02,
-            },
-            top_left={"x": 0.1, "y": 0.2 * i},
-            top_right={"x": 0.2, "y": 0.2 * i},
-            bottom_left={"x": 0.1, "y": 0.2 * i + 0.02},
-            bottom_right={"x": 0.2, "y": 0.2 * i + 0.02},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.95,
         )
         for i in range(1, 3)
     ]
 
     # Create word for different receipt
-    word_different_receipt = ReceiptWord(
-        receipt_id=999,
+    word_different_receipt = _make_receipt_word(
         image_id=FIXED_IMAGE_ID_2,
+        receipt_id=999,
         line_id=1,
         word_id=1,
         text="Different receipt",
-        bounding_box={"x": 0.5, "y": 0.5, "width": 0.1, "height": 0.02},
-        top_left={"x": 0.5, "y": 0.5},
-        top_right={"x": 0.6, "y": 0.5},
-        bottom_left={"x": 0.5, "y": 0.52},
-        bottom_right={"x": 0.6, "y": 0.52},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=0.95,
     )
 
     # Add all words
@@ -1138,28 +1098,16 @@ def test_list_receipt_words_from_receipt(client: DynamoClient):
 def test_list_receipt_words_from_receipt_excludes_labels_and_letters(
     client: DynamoClient,
 ):
-    """Test that list_receipt_words_from_receipt excludes ReceiptWordLabel and ReceiptLetter entities."""
+    """Test that receipt queries exclude labels and letters."""
     # Add a receipt word
-    word = ReceiptWord(
-        receipt_id=1,
-        image_id=FIXED_IMAGE_ID,
+    word = _make_receipt_word(
         line_id=1,
         word_id=1,
         text="Test word",
-        bounding_box={"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.02},
-        top_left={"x": 0.1, "y": 0.1},
-        top_right={"x": 0.2, "y": 0.1},
-        bottom_left={"x": 0.1, "y": 0.12},
-        bottom_right={"x": 0.2, "y": 0.12},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=0.95,
     )
     client.add_receipt_word(word)
 
-    # Add a receipt word label that should NOT be returned
-    # (This simulates what would happen in a real scenario with mixed entity types)
-    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+    # Add a label to simulate a partition containing mixed entity types.
 
     label = ReceiptWordLabel(
         receipt_id=1,
@@ -1175,9 +1123,7 @@ def test_list_receipt_words_from_receipt_excludes_labels_and_letters(
     )
     client.add_receipt_word_label(label)
 
-    # Add a receipt letter that should NOT be returned
-    # (This simulates what would happen in a real scenario with mixed entity types)
-    from receipt_dynamo.entities.receipt_letter import ReceiptLetter
+    # Add a letter to the same mixed entity partition.
 
     letter = ReceiptLetter(
         receipt_id=1,
@@ -1200,7 +1146,7 @@ def test_list_receipt_words_from_receipt_excludes_labels_and_letters(
     # Query for receipt words only
     result = client.list_receipt_words_from_receipt(FIXED_IMAGE_ID, 1)
 
-    # Should only return the ReceiptWord, not the ReceiptWordLabel or ReceiptLetter
+    # Only the ReceiptWord should be returned.
     assert len(result) == 1
     assert result[0] == word
     assert all(isinstance(item, ReceiptWord) for item in result)
@@ -1215,28 +1161,17 @@ def test_list_receipt_words_from_receipt_handles_pagination(
     words = []
     for line_id in range(1, 21):  # 20 lines
         for word_id in range(1, 11):  # 10 words per line = 200 total words
-            word = ReceiptWord(
-                receipt_id=1,
-                image_id=FIXED_IMAGE_ID,
+            word = _make_receipt_word(
                 line_id=line_id,
                 word_id=word_id,
                 text=f"Word{line_id:02d}{word_id:02d}",
-                bounding_box={
-                    "x": 0.1 * word_id,
-                    "y": 0.05 * line_id,
-                    "width": 0.08,
-                    "height": 0.02,
-                },
-                top_left={"x": 0.1 * word_id, "y": 0.05 * line_id},
-                top_right={"x": 0.1 * word_id + 0.08, "y": 0.05 * line_id},
-                bottom_left={"x": 0.1 * word_id, "y": 0.05 * line_id + 0.02},
-                bottom_right={
-                    "x": 0.1 * word_id + 0.08,
-                    "y": 0.05 * line_id + 0.02,
-                },
-                angle_degrees=0.0,
-                angle_radians=0.0,
-                confidence=0.95,
+                geometry=(
+                    0.1 * word_id,
+                    0.05 * line_id,
+                    0.08,
+                    0.02,
+                ),
+                angle_degrees=(line_id * 10 + word_id) % 360,
             )
             words.append(word)
 
@@ -1259,3 +1194,10 @@ def test_list_receipt_words_from_receipt_handles_pagination(
     assert "Word0101" in word_texts  # First word (line 1, word 1)
     assert "Word2010" in word_texts  # Last word (line 20, word 10)
     assert len(word_texts) == 200  # All unique
+    words_by_id = {
+        (word.line_id, word.word_id): word for word in retrieved_words
+    }
+    for index in (0, 99, 199):
+        expected_word = words[index]
+        key = (expected_word.line_id, expected_word.word_id)
+        assert words_by_id[key] == expected_word

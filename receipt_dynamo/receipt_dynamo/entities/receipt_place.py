@@ -24,11 +24,13 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
+from math import isfinite
 from typing import Any
 
 from boto3.dynamodb.types import TypeDeserializer
 
 from receipt_dynamo.constants import ValidationMethod
+from receipt_dynamo.entities.dynamodb_utils import to_dynamodb_value
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
@@ -66,7 +68,9 @@ COMPUTED_FIELDS = {
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptPlace(SerializationMixin):
+class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
+    SerializationMixin
+):
     """
     Enhanced merchant place information for receipts.
 
@@ -184,11 +188,35 @@ class ReceiptPlace(SerializationMixin):
     )
     places_api_version: str = "v1"
 
-    def __post_init__(self) -> None:
+    def __post_init__(  # pylint: disable=too-many-branches
+        self,
+    ) -> None:
         """Validate and normalize initialization arguments."""
         # Validate required fields
         assert_valid_uuid(self.image_id)
         validate_positive_int("receipt_id", self.receipt_id)
+
+        for attr_name in (
+            "place_id",
+            "merchant_name",
+            "merchant_category",
+            "formatted_address",
+            "short_address",
+            "plus_code",
+            "phone_number",
+            "phone_intl",
+            "website",
+            "maps_url",
+            "business_status",
+            "validated_by",
+            "validation_status",
+            "reasoning",
+            "places_api_version",
+        ):
+            if not isinstance(getattr(self, attr_name), str):
+                raise ValueError(f"{attr_name} must be a string")
+        if not self.place_id.strip():
+            raise ValueError("place_id cannot be empty")
 
         # Normalize enum field
         if self.validated_by:
@@ -196,26 +224,47 @@ class ReceiptPlace(SerializationMixin):
                 self.validated_by, ValidationMethod
             )
 
-        # Ensure lists are unique (preserve order)
-        if self.merchant_types:
-            self.merchant_types = list(dict.fromkeys(self.merchant_types))
-        if self.matched_fields:
-            self.matched_fields = list(dict.fromkeys(self.matched_fields))
-        if self.hours_summary:
-            self.hours_summary = list(dict.fromkeys(self.hours_summary))
-        if self.photo_references:
-            self.photo_references = list(dict.fromkeys(self.photo_references))
+        # Ensure collection fields have stable, detached values.
+        for attr_name in (
+            "merchant_types",
+            "matched_fields",
+            "hours_summary",
+            "photo_references",
+        ):
+            values = getattr(self, attr_name)
+            if not isinstance(values, list) or any(
+                not isinstance(value, str) or not value.strip()
+                for value in values
+            ):
+                raise ValueError(f"{attr_name} must be a list of strings")
+            setattr(self, attr_name, list(dict.fromkeys(values)))
+
+        for attr_name in ("address_components", "hours_data"):
+            value = getattr(self, attr_name)
+            if not isinstance(value, dict):
+                raise ValueError(f"{attr_name} must be a dictionary")
+
+        if self.open_now is not None and not isinstance(self.open_now, bool):
+            raise ValueError("open_now must be a boolean or None")
+        if not isinstance(self.timestamp, datetime):
+            raise ValueError("timestamp must be a datetime")
 
         # Validate confidence score
-        if not 0.0 <= self.confidence <= 1.0:
+        if (
+            isinstance(self.confidence, bool)
+            or not isinstance(self.confidence, (int, float, Decimal))
+            or not isfinite(float(self.confidence))
+            or not 0.0 <= self.confidence <= 1.0
+        ):
             raise ValueError(
                 f"confidence must be between 0.0 and 1.0, "
                 f"got {self.confidence}"
             )
+        self.confidence = float(self.confidence)
 
         # Validate merchant_name produces non-empty GSI1 key after
         # normalization
-        if not self.merchant_name:
+        if not self.merchant_name.strip():
             raise ValueError("merchant_name cannot be empty")
         normalized_merchant = self.merchant_name.upper()
         normalized_merchant = re.sub(r"[^A-Z0-9]+", "_", normalized_merchant)
@@ -228,23 +277,25 @@ class ReceiptPlace(SerializationMixin):
             )
 
         # Validate coordinates if present
-        if self.latitude is not None:
-            if not -90.0 <= self.latitude <= 90.0:
-                raise ValueError(f"latitude out of range: {self.latitude}")
-        if self.longitude is not None:
-            if not -180.0 <= self.longitude <= 180.0:
-                raise ValueError(f"longitude out of range: {self.longitude}")
-
-        # Validate viewport coordinates if present
-        for attr in ["viewport_ne_lat", "viewport_sw_lat"]:
-            val = getattr(self, attr, None)
-            if val is not None and not -90.0 <= val <= 90.0:
+        for attr, minimum, maximum in (
+            ("latitude", -90.0, 90.0),
+            ("longitude", -180.0, 180.0),
+            ("viewport_ne_lat", -90.0, 90.0),
+            ("viewport_sw_lat", -90.0, 90.0),
+            ("viewport_ne_lng", -180.0, 180.0),
+            ("viewport_sw_lng", -180.0, 180.0),
+        ):
+            val = getattr(self, attr)
+            if val is None:
+                continue
+            if (
+                isinstance(val, bool)
+                or not isinstance(val, (int, float, Decimal))
+                or not isfinite(float(val))
+                or not minimum <= val <= maximum
+            ):
                 raise ValueError(f"{attr} out of range: {val}")
-
-        for attr in ["viewport_ne_lng", "viewport_sw_lng"]:
-            val = getattr(self, attr, None)
-            if val is not None and not -180.0 <= val <= 180.0:
-                raise ValueError(f"{attr} out of range: {val}")
+            setattr(self, attr, float(val))
 
     @property
     def key(self) -> dict[str, dict[str, str]]:
@@ -305,7 +356,9 @@ class ReceiptPlace(SerializationMixin):
             "GSI4SK": {"S": "1_PLACE"},
         }
 
-    def to_item(self) -> dict[str, Any]:
+    def to_item(  # pylint: disable=too-many-branches
+        self,
+    ) -> dict[str, Any]:
         """
         Serialize the ReceiptPlace object into DynamoDB item format.
 
@@ -316,7 +369,8 @@ class ReceiptPlace(SerializationMixin):
         Returns:
             Dict with DynamoDB formatted item ready for PutItem/UpdateItem
         """
-        item = {
+        self.__post_init__()
+        item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key,
             **self.gsi2_key,
@@ -355,39 +409,17 @@ class ReceiptPlace(SerializationMixin):
                 else:
                     item[attr] = {"NULL": True}
 
-        # List fields (string sets) - filter out empty strings
-        # (DynamoDB SS rejects empty strings)
-        merchant_types_filtered = [
-            s.strip()
-            for s in self.merchant_types
-            if isinstance(s, str) and s.strip()
-        ]
-        if merchant_types_filtered:
-            item["merchant_types"] = {"SS": merchant_types_filtered}
-
-        matched_fields_filtered = [
-            s.strip()
-            for s in self.matched_fields
-            if isinstance(s, str) and s.strip()
-        ]
-        if matched_fields_filtered:
-            item["matched_fields"] = {"SS": matched_fields_filtered}
-
-        hours_summary_filtered = [
-            s.strip()
-            for s in self.hours_summary
-            if isinstance(s, str) and s.strip()
-        ]
-        if hours_summary_filtered:
-            item["hours_summary"] = {"SS": hours_summary_filtered}
-
-        photo_references_filtered = [
-            s.strip()
-            for s in self.photo_references
-            if isinstance(s, str) and s.strip()
-        ]
-        if photo_references_filtered:
-            item["photo_references"] = {"SS": photo_references_filtered}
+        # Lists remain lists so round trips preserve semantically meaningful
+        # ordering (especially weekday hours and photo preference order).
+        for attr_name in (
+            "merchant_types",
+            "matched_fields",
+            "hours_summary",
+            "photo_references",
+        ):
+            value = getattr(self, attr_name)
+            if value:
+                item[attr_name] = to_dynamodb_value(value)
 
         # Numeric fields (coordinates)
         if self.latitude is not None:
@@ -407,13 +439,14 @@ class ReceiptPlace(SerializationMixin):
         if self.open_now is not None:
             item["open_now"] = {"BOOL": self.open_now}
 
-        # Complex fields (JSON/Maps)
+        # Complex fields use native DynamoDB maps/lists. from_item continues
+        # accepting legacy JSON strings for records written by older clients.
         if self.address_components:
-            item["address_components"] = {
-                "S": json.dumps(self.address_components)
-            }
+            item["address_components"] = to_dynamodb_value(
+                self.address_components
+            )
         if self.hours_data:
-            item["hours_data"] = {"S": json.dumps(self.hours_data)}
+            item["hours_data"] = to_dynamodb_value(self.hours_data)
 
         return item
 
@@ -430,7 +463,9 @@ class ReceiptPlace(SerializationMixin):
         )
 
     @classmethod
-    def from_item(cls, item: dict[str, Any]) -> "ReceiptPlace":
+    def from_item(  # pylint: disable=too-many-branches
+        cls, item: dict[str, Any]
+    ) -> "ReceiptPlace":
         """Converts a DynamoDB item to a ReceiptPlace object.
 
         Args:
@@ -442,18 +477,25 @@ class ReceiptPlace(SerializationMixin):
         Raises:
             ValueError: When the item format is invalid.
         """
+        cls.validate_required_keys(item, cls.REQUIRED_KEYS)
+        if item["TYPE"] != {"S": "RECEIPT_PLACE"}:
+            raise ValueError("TYPE must be RECEIPT_PLACE")
+
         # First, deserialize from DynamoDB JSON format to Python types
         deserializer = TypeDeserializer()
-        deserialized = {
-            k: deserializer.deserialize(v) for k, v in item.items()
-        }
+        try:
+            deserialized = {
+                k: deserializer.deserialize(v) for k, v in item.items()
+            }
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid ReceiptPlace DynamoDB item") from exc
 
         # Filter out computed fields
         filtered_item = {
             k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
         }
 
-        # Parse complex fields that were JSON-serialized
+        # Parse complex fields that legacy records JSON-serialized.
         if "address_components" in filtered_item and isinstance(
             filtered_item["address_components"], str
         ):
@@ -462,7 +504,7 @@ class ReceiptPlace(SerializationMixin):
                     filtered_item["address_components"]
                 )
             except (json.JSONDecodeError, TypeError):
-                filtered_item["address_components"] = {}
+                raise ValueError("Invalid address_components JSON") from None
 
         if "hours_data" in filtered_item and isinstance(
             filtered_item["hours_data"], str
@@ -472,7 +514,7 @@ class ReceiptPlace(SerializationMixin):
                     filtered_item["hours_data"]
                 )
             except (json.JSONDecodeError, TypeError):
-                filtered_item["hours_data"] = {}
+                raise ValueError("Invalid hours_data JSON") from None
 
         # Parse timestamp if it's a string
         if "timestamp" in filtered_item and isinstance(
@@ -530,7 +572,31 @@ class ReceiptPlace(SerializationMixin):
                     except (ValueError, TypeError):
                         filtered_item.pop(attr_name, None)
 
-        return cls(**filtered_item)
+        for attr_name in (
+            "merchant_types",
+            "matched_fields",
+            "hours_summary",
+            "photo_references",
+        ):
+            if isinstance(filtered_item.get(attr_name), set):
+                filtered_item[attr_name] = sorted(filtered_item[attr_name])
+
+        try:
+            result = cls(**filtered_item)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid ReceiptPlace item: {exc}") from exc
+
+        expected_keys = {
+            **result.key,
+            **result.gsi1_key,
+            **result.gsi2_key,
+            **result.gsi3_key,
+            **result.gsi4_key,
+        }
+        for key_name, expected_value in expected_keys.items():
+            if key_name in item and item[key_name] != expected_value:
+                raise ValueError(f"{key_name} does not match entity keys")
+        return result
 
 
 def item_to_receipt_place(item: dict[str, Any]) -> ReceiptPlace:

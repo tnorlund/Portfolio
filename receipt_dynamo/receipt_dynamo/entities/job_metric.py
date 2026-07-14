@@ -1,4 +1,7 @@
+"""DynamoDB entity for metrics recorded during a job."""
+
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -69,16 +72,28 @@ class JobMetric:
                 format_type_error("timestamp", self.timestamp, (datetime, str))
             )
 
-        if not isinstance(self.value, (float, int, dict)):
-            try:
-                # Try to convert to float if possible
-                self.value = float(self.value)
-            except (ValueError, TypeError) as e:
-                # If not convertible to float and not a dict, we raise an error
-                if not isinstance(self.value, dict):
-                    raise ValueError(
-                        "value must be a number (int/float) or a dictionary"
-                    ) from e
+        if isinstance(self.value, bool) or not isinstance(
+            self.value, (float, int, dict)
+        ):
+            raise ValueError(
+                "value must be a number (int/float) or a dictionary"
+            )
+        if isinstance(self.value, float) and not math.isfinite(self.value):
+            raise ValueError("value must be a finite number")
+
+        if self.unit is not None and not isinstance(self.unit, str):
+            raise ValueError("unit must be a string")
+
+        for field_name in ("step", "epoch"):
+            field_value = getattr(self, field_name)
+            if field_value is not None and (
+                isinstance(field_value, bool)
+                or not isinstance(field_value, int)
+                or field_value < 0
+            ):
+                raise ValueError(
+                    f"{field_name} must be a non-negative integer"
+                )
 
     @property
     def key(self) -> dict[str, Any]:
@@ -141,9 +156,9 @@ class JobMetric:
         elif isinstance(self.value, dict):
             item["value"] = {"M": dict_to_dynamodb_map(self.value)}
         else:
-            # This should not happen due to validation in __init__, but just in
-            # case
-            item["value"] = {"S": json.dumps(self.value)}
+            raise ValueError(
+                "value must be a number (int/float) or a dictionary"
+            )
 
         # Add unit if provided
         if self.unit is not None:
@@ -200,7 +215,7 @@ class JobMetric:
         """
         # Convert value to string if it's a dict since dicts aren't hashable
         value_for_hash = (
-            json.dumps(self.value)
+            json.dumps(self.value, sort_keys=True)
             if isinstance(self.value, dict)
             else self.value
         )
@@ -265,12 +280,6 @@ class JobMetric:
                     value = float(item["value"]["N"])
             elif "M" in item["value"]:
                 value = parse_dynamodb_map(item["value"]["M"])
-            elif "S" in item["value"]:
-                # Try to parse from JSON string
-                try:
-                    value = json.loads(item["value"]["S"])
-                except json.JSONDecodeError:
-                    value = item["value"]["S"]
             else:
                 raise ValueError(f"Unsupported value format: {item['value']}")
 

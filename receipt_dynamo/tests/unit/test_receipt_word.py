@@ -107,6 +107,14 @@ def test_receipt_word_optional_values():
     assert make_receipt_word(extracted_data=extracted_data).extracted_data == (
         extracted_data
     )
+    assert make_receipt_word(extracted_data=extracted_data).to_item()[
+        "extracted_data"
+    ] == {
+        "M": {
+            "type": {"S": "test_type"},
+            "value": {"S": "test_value"},
+        }
+    }
     assert make_receipt_word().is_noise is False
 
 
@@ -154,6 +162,13 @@ def test_receipt_word_key(receipt_word_fixture):
                 "GSI3SK": {"S": "WORD"},
             },
         ),
+        (
+            "gsi4_key",
+            {
+                "GSI4PK": {"S": f"IMAGE#{IMAGE_ID}#RECEIPT#00001"},
+                "GSI4SK": {"S": "3_WORD#00003#00004"},
+            },
+        ),
     ],
 )
 def test_receipt_word_gsi_keys(method_name, expected):
@@ -180,7 +195,7 @@ def test_receipt_word_gsi_keys(method_name, expected):
 
 @pytest.mark.unit
 def test_receipt_word_to_item():
-    """Test that to_item() returns a properly formatted DynamoDB item."""
+    """to_item returns exact keys, geometry, and receipt metadata."""
     word = make_receipt_word(
         text="TestWord",
         bounding_box={
@@ -198,15 +213,49 @@ def test_receipt_word_to_item():
         confidence=0.95,
     )
     item = word.to_item()
-    assert item["PK"]["S"] == f"IMAGE#{IMAGE_ID}"
-    assert item["SK"]["S"] == "RECEIPT#00001#LINE#00003#WORD#00004"
-    assert item["bounding_box"]["M"]["x"]["N"]
+    assert {
+        key: item[key]
+        for key in (
+            "PK",
+            "SK",
+            "TYPE",
+            "GSI1PK",
+            "GSI1SK",
+            "GSI2PK",
+            "GSI2SK",
+            "GSI3PK",
+            "GSI3SK",
+            "GSI4PK",
+            "GSI4SK",
+        )
+    } == {
+        **word.key,
+        "TYPE": {"S": "RECEIPT_WORD"},
+        **word.gsi1_key(),
+        **word.gsi2_key(),
+        **word.gsi3_key(),
+        **word.gsi4_key(),
+    }
+    assert item["text"] == {"S": "TestWord"}
+    assert item["bounding_box"] == {
+        "M": {
+            "height": {"N": "0.40000000000000000000"},
+            "width": {"N": "0.30000000000000000000"},
+            "x": {"N": "0.12345678901200000000"},
+            "y": {"N": "0.20000000000000000000"},
+        }
+    }
+    assert item["angle_degrees"] == {"N": "45.000000000000000000"}
+    assert item["angle_radians"] == {"N": "0.785398163400000000"}
+    assert item["confidence"] == {"N": "0.95"}
+    assert item["embedding_status"] == {"S": "NONE"}
+    assert item["is_noise"] == {"BOOL": False}
+    assert item["extracted_data"] == {"NULL": True}
 
 
 @pytest.mark.unit
 def test_repr(receipt_word_fixture):
     """Test that the __repr__ method returns a string."""
-    assert isinstance(repr(receipt_word_fixture), str)
     assert str(receipt_word_fixture) == repr(receipt_word_fixture)
     assert repr(receipt_word_fixture) == (
         "ReceiptWord("
@@ -236,6 +285,35 @@ def test_receipt_word_eq(receipt_word_fixture):
         receipt_word_fixture.to_item()
     )
     assert receipt_word_fixture != "Test"
+
+
+@pytest.mark.unit
+def test_receipt_word_hash(receipt_word_fixture):
+    """Equal receipt words hash equally and collapse in sets."""
+    duplicate = item_to_receipt_word(receipt_word_fixture.to_item())
+    different = make_receipt_word(word_id=5)
+
+    assert hash(receipt_word_fixture) == hash(duplicate)
+    assert len({receipt_word_fixture, duplicate}) == 1
+    assert len({receipt_word_fixture, duplicate, different}) == 2
+
+
+@pytest.mark.unit
+def test_receipt_word_diff():
+    """diff reports scalar and nested mapping changes without noise."""
+    baseline = make_receipt_word()
+    changed = make_receipt_word(
+        text="Changed",
+        bounding_box={"x": 0.9, "y": 0.2, "width": 0.3, "height": 0.4},
+        extracted_data={"type": "merchant"},
+    )
+
+    assert not baseline.diff(make_receipt_word())
+    assert baseline.diff(changed) == {
+        "bounding_box": {"x": {"self": 0.1, "other": 0.9}},
+        "extracted_data": {"self": None, "other": {"type": "merchant"}},
+        "text": {"self": "Test", "other": "Changed"},
+    }
 
 
 @pytest.mark.unit

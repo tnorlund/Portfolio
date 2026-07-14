@@ -5,6 +5,7 @@ This file contains refactored tests using pytest.mark.parametrize to ensure
 complete test coverage matching test__receipt.py standards.
 """
 
+from math import radians
 from typing import Any, Literal, Type
 from uuid import uuid4
 
@@ -12,7 +13,7 @@ import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
 
-from receipt_dynamo import DynamoClient, ReceiptLine
+from receipt_dynamo import DynamoClient, ReceiptLine, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -36,13 +37,60 @@ def unique_image_id() -> str:
     return str(uuid4())
 
 
+def _make_receipt_line(
+    image_id: str,
+    line_id: int = 1,
+    *,
+    receipt_id: int = 1,
+    geometry: tuple[float, float, float, float] | None = None,
+    angle_degrees: float | None = None,
+    **overrides: Any,
+) -> ReceiptLine:
+    """Build a valid receipt line with concise test-specific overrides."""
+    values: dict[str, Any] = {
+        "receipt_id": receipt_id,
+        "image_id": image_id,
+        "line_id": line_id,
+        "text": f"Line {line_id}",
+        "bounding_box": {"x": 0, "y": 0, "width": 1, "height": 0.1},
+        "top_left": {"x": 0, "y": 0},
+        "top_right": {"x": 1, "y": 0},
+        "bottom_left": {"x": 0, "y": 0.1},
+        "bottom_right": {"x": 1, "y": 0.1},
+        "angle_degrees": 0,
+        "angle_radians": 0,
+        "confidence": 0.95,
+        "embedding_status": EmbeddingStatus.NONE,
+    }
+    if geometry is not None:
+        x, y, width, height = geometry
+        values.update(
+            {
+                "bounding_box": {
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                },
+                "top_left": {"x": x, "y": y},
+                "top_right": {"x": x + width, "y": y},
+                "bottom_left": {"x": x, "y": y + height},
+                "bottom_right": {"x": x + width, "y": y + height},
+            }
+        )
+    if angle_degrees is not None:
+        values["angle_degrees"] = angle_degrees
+        values["angle_radians"] = radians(angle_degrees)
+    values.update(overrides)
+    return ReceiptLine(**values)
+
+
 # pylint: disable=redefined-outer-name
 @pytest.fixture
 def sample_receipt_line(unique_image_id: str) -> ReceiptLine:
     """Returns a valid ReceiptLine object with unique data."""
-    return ReceiptLine(
-        receipt_id=1,
-        image_id=unique_image_id,
+    return _make_receipt_line(
+        unique_image_id,
         line_id=10,
         text="Sample receipt line",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05},
@@ -775,18 +823,12 @@ def test_add_receipt_lines_success(
     client = DynamoClient(dynamodb_table)
 
     lines = [
-        ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0.0, "y": i * 0.1, "width": 1.0, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
+            geometry=(0, i * 0.01, 1, 0.01),
+            angle_degrees=i % 360,
             confidence=0.95 + i * 0.01,
         )
         for i in range(1, 4)
@@ -813,28 +855,18 @@ def test_add_receipt_lines_unprocessed_items_retry(
     client = DynamoClient(dynamodb_table)
 
     lines = []
-    first_line = ReceiptLine(
-        receipt_id=1,
-        image_id=unique_image_id,
-        line_id=1,
+    first_line = _make_receipt_line(
+        unique_image_id,
         text="First line",
-        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
-        top_left={"x": 0, "y": 0},
-        top_right={"x": 1, "y": 0},
-        bottom_left={"x": 0, "y": 0.1},
-        bottom_right={"x": 1, "y": 0.1},
-        angle_degrees=0,
-        angle_radians=0,
         confidence=0.98,
     )
     lines.append(first_line)
 
-    second_line = ReceiptLine(
-        **{
-            **first_line.__dict__,
-            "line_id": 2,
-            "text": "Second line",
-        }
+    second_line = _make_receipt_line(
+        unique_image_id,
+        2,
+        text="Second line",
+        confidence=0.98,
     )
     lines.append(second_line)
 
@@ -871,19 +903,10 @@ def test_update_receipt_lines_success(
 
     # First add lines
     lines = [
-        ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Original line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         for i in range(1, 4)
     ]
@@ -916,19 +939,10 @@ def test_delete_receipt_lines_success(
 
     # First add lines
     lines = [
-        ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line to delete {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         for i in range(1, 4)
     ]
@@ -962,19 +976,10 @@ def test_get_receipt_lines_by_indices_success(
     # Add test lines
     lines = []
     for i in range(1, 4):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         lines.append(line)
         client.add_receipt_line(line)
@@ -1000,19 +1005,10 @@ def test_get_receipt_lines_by_keys_success(
     # Add test lines
     lines = []
     for i in range(1, 4):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         lines.append(line)
         client.add_receipt_line(line)
@@ -1048,19 +1044,10 @@ def test_list_receipt_lines_with_pagination(
 
     # Add multiple lines
     for i in range(1, 6):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         client.add_receipt_line(line)
 
@@ -1092,19 +1079,10 @@ def test_list_receipt_lines_no_limit(
 
     # Add a few lines
     for i in range(1, 4):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         client.add_receipt_line(line)
 
@@ -1132,19 +1110,10 @@ def test_list_receipt_lines_by_embedding_status(
     ]
 
     for i, status in enumerate(statuses, 1):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
             embedding_status=status,
         )
         client.add_receipt_line(line)
@@ -1176,35 +1145,19 @@ def test_list_receipt_lines_from_receipt(
     # Add lines for different receipts
     # Lines for receipt 1
     for i in range(1, 3):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Receipt 1 Line {i}",
-            bounding_box={"x": 0, "y": i * 0.1, "width": 1, "height": 0.1},
-            top_left={"x": 0, "y": i * 0.1},
-            top_right={"x": 1, "y": i * 0.1},
-            bottom_left={"x": 0, "y": (i + 1) * 0.1},
-            bottom_right={"x": 1, "y": (i + 1) * 0.1},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         client.add_receipt_line(line)
 
     # Line for receipt 2
-    other_line = ReceiptLine(
+    other_line = _make_receipt_line(
+        unique_image_id,
+        10,
         receipt_id=2,
-        image_id=unique_image_id,
-        line_id=10,
         text="Receipt 2 Line",
-        bounding_box={"x": 0.2, "y": 0.2, "width": 0.1, "height": 0.1},
-        top_left={"x": 0.2, "y": 0.2},
-        top_right={"x": 0.3, "y": 0.2},
-        bottom_left={"x": 0.2, "y": 0.3},
-        bottom_right={"x": 0.3, "y": 0.3},
-        angle_degrees=10,
-        angle_radians=0.17453,
         confidence=0.99,
     )
     client.add_receipt_line(other_line)
@@ -1292,19 +1245,10 @@ def test_list_receipt_lines_from_receipt_large_dataset(
     # Add 50 lines to receipt 1
     lines = []
     for i in range(1, 51):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i}",
-            bounding_box={"x": 0, "y": i * 0.01, "width": 1, "height": 0.01},
-            top_left={"x": 0, "y": i * 0.01},
-            top_right={"x": 1, "y": i * 0.01},
-            bottom_left={"x": 0, "y": (i + 1) * 0.01},
-            bottom_right={"x": 1, "y": (i + 1) * 0.01},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
         )
         lines.append(line)
 
@@ -1323,6 +1267,9 @@ def test_list_receipt_lines_from_receipt_large_dataset(
     line_ids = {l.line_id for l in retrieved_lines}
     expected_ids = set(range(1, 51))
     assert line_ids == expected_ids
+    lines_by_id = {line.line_id: line for line in retrieved_lines}
+    for index in (1, 25, 50):
+        assert lines_by_id[index] == lines[index - 1]
 
 
 @pytest.mark.integration
@@ -1338,34 +1285,14 @@ def test_list_receipt_lines_from_receipt_multiple_images(
     other_image_id = str(uuid4())
 
     # Add lines to same receipt in two different images
-    line1 = ReceiptLine(
-        receipt_id=1,
-        image_id=unique_image_id,
-        line_id=1,
+    line1 = _make_receipt_line(
+        unique_image_id,
         text="Image 1 Line",
-        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
-        top_left={"x": 0, "y": 0},
-        top_right={"x": 1, "y": 0},
-        bottom_left={"x": 0, "y": 0.1},
-        bottom_right={"x": 1, "y": 0.1},
-        angle_degrees=0,
-        angle_radians=0,
-        confidence=0.95,
     )
 
-    line2 = ReceiptLine(
-        receipt_id=1,
-        image_id=other_image_id,
-        line_id=1,
+    line2 = _make_receipt_line(
+        other_image_id,
         text="Image 2 Line",
-        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
-        top_left={"x": 0, "y": 0},
-        top_right={"x": 1, "y": 0},
-        bottom_left={"x": 0, "y": 0.1},
-        bottom_right={"x": 1, "y": 0.1},
-        angle_degrees=0,
-        angle_radians=0,
-        confidence=0.95,
     )
 
     client.add_receipt_line(line1)
@@ -1388,29 +1315,17 @@ def test_list_receipt_lines_from_receipt_excludes_words_and_letters(
     dynamodb_table: Literal["MyMockedTable"],
     unique_image_id: str,
 ) -> None:
-    """Tests that method only returns ReceiptLine entities, not Words or Letters."""
+    """Tests that the query excludes words and letters."""
     client = DynamoClient(dynamodb_table)
 
     # Add a receipt line
-    line = ReceiptLine(
-        receipt_id=1,
-        image_id=unique_image_id,
-        line_id=1,
+    line = _make_receipt_line(
+        unique_image_id,
         text="Test Line",
-        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
-        top_left={"x": 0, "y": 0},
-        top_right={"x": 1, "y": 0},
-        bottom_left={"x": 0, "y": 0.1},
-        bottom_right={"x": 1, "y": 0.1},
-        angle_degrees=0,
-        angle_radians=0,
-        confidence=0.95,
     )
     client.add_receipt_line(line)
 
-    # Also add some receipt words that should NOT be returned
-    # (This simulates what would happen in a real scenario with mixed entity types)
-    from receipt_dynamo.entities.receipt_word import ReceiptWord
+    # Add a word to simulate a partition containing mixed entity types.
 
     word = ReceiptWord(
         receipt_id=1,
@@ -1452,19 +1367,12 @@ def test_list_receipt_lines_from_receipt_handles_pagination(
     # Add 150 receipt lines to ensure we exceed typical DynamoDB page size
     lines = []
     for i in range(1, 151):
-        line = ReceiptLine(
-            receipt_id=1,
-            image_id=unique_image_id,
-            line_id=i,
+        line = _make_receipt_line(
+            unique_image_id,
+            i,
             text=f"Line {i:03d}",
-            bounding_box={"x": 0, "y": i * 0.001, "width": 1, "height": 0.001},
-            top_left={"x": 0, "y": i * 0.001},
-            top_right={"x": 1, "y": i * 0.001},
-            bottom_left={"x": 0, "y": (i + 1) * 0.001},
-            bottom_right={"x": 1, "y": (i + 1) * 0.001},
-            angle_degrees=0,
-            angle_radians=0,
-            confidence=0.95,
+            geometry=(0, i * 0.001, 1, 0.001),
+            angle_degrees=i % 360,
         )
         lines.append(line)
 
@@ -1488,3 +1396,6 @@ def test_list_receipt_lines_from_receipt_handles_pagination(
     line_ids = sorted([l.line_id for l in retrieved_lines])
     expected_ids = list(range(1, 151))
     assert line_ids == expected_ids
+    lines_by_id = {line.line_id: line for line in retrieved_lines}
+    for index in (1, 75, 150):
+        assert lines_by_id[index] == lines[index - 1]

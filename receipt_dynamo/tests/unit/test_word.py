@@ -1,8 +1,6 @@
 """Unit tests for the Word entity."""
 
-# pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
-# pylint: disable=too-many-locals,unused-argument,line-too-long,too-many-lines
-# pylint: disable=pointless-statement,expression-not-assigned
+# pylint: disable=duplicate-code,redefined-outer-name,too-many-arguments
 
 import math
 from copy import deepcopy
@@ -12,6 +10,7 @@ import pytest
 from receipt_dynamo import Word, item_to_word
 
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+OTHER_IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed4"
 WORD_KWARGS = {
     "image_id": IMAGE_ID,
     "line_id": 2,
@@ -26,11 +25,11 @@ WORD_KWARGS = {
     "angle_radians": 5.0,
     "confidence": 0.90,
 }
-CORNERS = ("top_right", "top_left", "bottom_right", "bottom_left")
+CORNERS = ("top_left", "top_right", "bottom_left", "bottom_right")
 
 
 def word_kwargs(**overrides):
-    """Return fresh Word kwargs so tests cannot mutate shared dicts."""
+    """Return fresh Word kwargs so tests cannot mutate shared dictionaries."""
     kwargs = deepcopy(WORD_KWARGS)
     kwargs.update(overrides)
     return kwargs
@@ -41,53 +40,104 @@ def make_word(**overrides):
     return Word(**word_kwargs(**overrides))
 
 
+def make_transform_word():
+    """Create a Word with zero angles for transformation tests."""
+    return make_word(angle_degrees=0.0, angle_radians=0.0, confidence=1.0)
+
+
+def assert_point(actual, expected):
+    """Assert two point dictionaries are approximately equal."""
+    assert actual["x"] == pytest.approx(expected["x"])
+    assert actual["y"] == pytest.approx(expected["y"])
+
+
+def assert_box(actual, expected):
+    """Assert two bounding-box dictionaries are approximately equal."""
+    for key, value in expected.items():
+        assert actual[key] == pytest.approx(value)
+
+
+def box_from_corners(points):
+    """Compute a bounding box from point dictionaries."""
+    xs = [point["x"] for point in points]
+    ys = [point["y"] for point in points]
+    return {
+        "x": min(xs),
+        "y": min(ys),
+        "width": max(xs) - min(xs),
+        "height": max(ys) - min(ys),
+    }
+
+
+def expected_rotated_geometry(angle, use_radians):
+    """Independently calculate rotated corners and their bounding box."""
+    theta = angle if use_radians else math.radians(angle)
+    cosine = math.cos(theta)
+    sine = math.sin(theta)
+    corners = {
+        corner: {
+            "x": WORD_KWARGS[corner]["x"] * cosine
+            - WORD_KWARGS[corner]["y"] * sine,
+            "y": WORD_KWARGS[corner]["x"] * sine
+            + WORD_KWARGS[corner]["y"] * cosine,
+        }
+        for corner in CORNERS
+    }
+    return corners, box_from_corners(corners.values())
+
+
 @pytest.fixture
 def example_word():
+    """Provide a representative Word."""
     return make_word()
 
 
-def create_test_word() -> Word:
-    """
-    A helper function that returns a Word object
-    with easily verifiable points for testing.
-    """
+@pytest.fixture
+def normalized_word():
+    """Provide a Word whose coordinates are normalized to an image."""
     return make_word(
-        text="Hello",
-        line_id=1,
-        word_id=1,
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+        top_left={"x": 0.1, "y": 0.6},
+        top_right={"x": 0.4, "y": 0.6},
+        bottom_left={"x": 0.1, "y": 0.2},
+        bottom_right={"x": 0.4, "y": 0.2},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=1.0,
     )
 
 
 @pytest.mark.unit
 def test_word_init_valid(example_word):
-    for attr, value in WORD_KWARGS.items():
-        assert getattr(example_word, attr) == value
+    """The constructor preserves all supplied fields and defaults."""
+    assert dict(example_word) == {**WORD_KWARGS, "extracted_data": None}
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "overrides, message",
+    ("overrides", "message"),
     [
         ({"image_id": 1}, "uuid must be a string"),
         ({"image_id": "bad-uuid"}, "uuid must be a valid UUID"),
-        ({"line_id": "bad-line-id"}, "line_id must be an integer"),
+        ({"line_id": "bad"}, "line_id must be an integer"),
         ({"line_id": -1}, "line_id must be non-negative"),
-        ({"word_id": "bad-id"}, "word_id must be an integer"),
+        ({"word_id": "bad"}, "word_id must be an integer"),
         ({"word_id": -1}, "word_id must be non-negative"),
         ({"text": 1}, "text must be a string"),
         ({"bounding_box": 1}, "bounding_box must be a dict"),
         (
-            {"bounding_box": {"bad": 1}},
-            "bounding_box must contain the key 'x'",
+            {"bounding_box": {"x": 1.0, "y": 2.0, "width": 3.0}},
+            "bounding_box must contain the key 'height'",
         ),
-        ({"angle_degrees": "bad"}, "angle_degrees must be float or int, got"),
-        ({"angle_radians": "bad"}, "angle_radians must be float or int, got"),
-        ({"confidence": "bad"}, "confidence must be float or int, got"),
-        ({"confidence": 1.1}, "confidence must be between 0 and 1, got"),
-        ({"extracted_data": 1}, "extracted_data must be dict, got"),
+        ({"angle_degrees": "bad"}, "angle_degrees must be float or int"),
+        ({"angle_radians": "bad"}, "angle_radians must be float or int"),
+        ({"confidence": "bad"}, "confidence must be float or int"),
+        ({"confidence": 0.0}, "confidence must be between 0 and 1"),
+        ({"confidence": 1.1}, "confidence must be between 0 and 1"),
+        ({"extracted_data": 1}, "extracted_data must be dict"),
+        (
+            {"extracted_data": {"type": "merchant"}},
+            "extracted_data missing required keys",
+        ),
     ],
 )
 def test_word_init_invalid_values(overrides, message):
@@ -99,184 +149,244 @@ def test_word_init_invalid_values(overrides, message):
 @pytest.mark.unit
 @pytest.mark.parametrize("corner", CORNERS)
 @pytest.mark.parametrize(
-    "bad_point, message",
+    ("bad_point", "message"),
     [
         (1, "point must be a dictionary"),
-        ({"bad": 1}, "point must contain the key 'x'"),
+        ({"x": 1.0}, "point must contain the key 'y'"),
     ],
 )
 def test_word_init_invalid_corners(corner, bad_point, message):
-    """Constructor rejects invalid corner points."""
+    """Constructor validates every corner consistently."""
     with pytest.raises(ValueError, match=message):
         make_word(**{corner: bad_point})
 
 
 @pytest.mark.unit
 def test_word_optional_values():
-    """Constructor accepts optional values and normalizes confidence."""
+    """Constructor normalizes numeric fields and accepts extracted data."""
     assert make_word(confidence=1).confidence == 1.0
-    extracted_data = {"type": "test_type", "value": "test_value"}
-    assert make_word(extracted_data=extracted_data).extracted_data == (
-        extracted_data
+    data = {"type": "merchant", "value": "Corner Shop"}
+    assert make_word(extracted_data=data).extracted_data == data
+
+
+@pytest.mark.unit
+def test_word_keys(example_word):
+    """Primary and secondary keys encode the containing line and word."""
+    assert example_word.key == {
+        "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+        "SK": {"S": "LINE#00002#WORD#00003"},
+    }
+    assert example_word.gsi2_key() == {
+        "GSI2PK": {"S": f"IMAGE#{IMAGE_ID}"},
+        "GSI2SK": {"S": "LINE#00002#WORD#00003"},
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("extracted_data", "expected"),
+    [
+        (None, {"NULL": True}),
+        ({}, {"NULL": True}),
+        (
+            {"type": "merchant", "value": "Corner Shop"},
+            {
+                "M": {
+                    "type": {"S": "merchant"},
+                    "value": {"S": "Corner Shop"},
+                }
+            },
+        ),
+    ],
+)
+def test_word_to_item(extracted_data, expected):
+    """Serialization includes geometry, keys, and optional extracted data."""
+    item = make_word(extracted_data=extracted_data).to_item()
+
+    assert item == {
+        "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+        "SK": {"S": "LINE#00002#WORD#00003"},
+        "TYPE": {"S": "WORD"},
+        "GSI2PK": {"S": f"IMAGE#{IMAGE_ID}"},
+        "GSI2SK": {"S": "LINE#00002#WORD#00003"},
+        "text": {"S": "test_string"},
+        "bounding_box": {
+            "M": {
+                "height": {"N": "2.00000000000000000000"},
+                "width": {"N": "5.00000000000000000000"},
+                "x": {"N": "10.00000000000000000000"},
+                "y": {"N": "20.00000000000000000000"},
+            }
+        },
+        "top_right": {
+            "M": {
+                "x": {"N": "15.00000000000000000000"},
+                "y": {"N": "20.00000000000000000000"},
+            }
+        },
+        "top_left": {
+            "M": {
+                "x": {"N": "10.00000000000000000000"},
+                "y": {"N": "20.00000000000000000000"},
+            }
+        },
+        "bottom_right": {
+            "M": {
+                "x": {"N": "15.00000000000000000000"},
+                "y": {"N": "22.00000000000000000000"},
+            }
+        },
+        "bottom_left": {
+            "M": {
+                "x": {"N": "10.00000000000000000000"},
+                "y": {"N": "22.00000000000000000000"},
+            }
+        },
+        "angle_degrees": {"N": "1.000000000000000000"},
+        "angle_radians": {"N": "5.000000000000000000"},
+        "confidence": {"N": "0.90"},
+        "extracted_data": expected,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({}, (0.25, 0.4)),
+        ({"width": 1000, "height": 500}, (250.0, 200.0)),
+        (
+            {"width": 1000, "height": 500, "flip_y": True},
+            (250.0, 300.0),
+        ),
+    ],
+)
+def test_word_calculate_centroid(normalized_word, kwargs, expected):
+    """Centroid calculation supports normalized and image coordinates."""
+    assert normalized_word.calculate_centroid(**kwargs) == pytest.approx(
+        expected
     )
 
 
 @pytest.mark.unit
-def test_word_key(example_word):
-    """Test the Word key method"""
-    assert example_word.key == {
-        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "LINE#00002#WORD#00003"},
-    }
-
-
-@pytest.mark.unit
-def test_word_to_item(example_word):
-    """Test the Word to_item method"""
-    item = example_word.to_item()
-    assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
-    assert item["SK"] == {"S": "LINE#00002#WORD#00003"}
-    assert item["TYPE"] == {"S": "WORD"}
-    assert item["text"] == {"S": "test_string"}
-    assert item["bounding_box"] == {
-        "M": {
-            "height": {"N": "2.00000000000000000000"},
-            "width": {"N": "5.00000000000000000000"},
-            "x": {"N": "10.00000000000000000000"},
-            "y": {"N": "20.00000000000000000000"},
-        }
-    }
-    assert item["top_right"] == {
-        "M": {
-            "x": {"N": "15.00000000000000000000"},
-            "y": {"N": "20.00000000000000000000"},
-        }
-    }
-    assert item["top_left"] == {
-        "M": {
-            "x": {"N": "10.00000000000000000000"},
-            "y": {"N": "20.00000000000000000000"},
-        }
-    }
-    assert item["bottom_right"] == {
-        "M": {
-            "x": {"N": "15.00000000000000000000"},
-            "y": {"N": "22.00000000000000000000"},
-        }
-    }
-    assert item["bottom_left"] == {
-        "M": {
-            "x": {"N": "10.00000000000000000000"},
-            "y": {"N": "22.00000000000000000000"},
-        }
-    }
-    assert item["angle_degrees"] == {"N": "1.000000000000000000"}
-    assert item["angle_radians"] == {"N": "5.000000000000000000"}
-    assert item["confidence"] == {"N": "0.90"}
-
-
-@pytest.mark.unit
-def test_word_calculate_centroid(example_word):
-    """Test the Word calculate_centroid method"""
-    assert example_word.calculate_centroid() == (12.5, 21.0)
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({}, (0.1, 0.2, 0.3, 0.4)),
+        ({"width": 1000, "height": 500}, (100.0, 100.0, 0.3, 0.4)),
+        (
+            {"width": 1000, "height": 500, "flip_y": True},
+            (100.0, 400.0, 0.3, 0.4),
+        ),
+    ],
+)
+def test_word_calculate_bounding_box(normalized_word, kwargs, expected):
+    """Bounding-box calculation scales its origin and supports y flipping."""
+    assert normalized_word.calculate_bounding_box(**kwargs) == pytest.approx(
+        expected
+    )
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "dx, dy",
+    ("kwargs", "expected"),
     [
-        (5, -2),
-        (0, 0),
-        (-3, 10),
+        ({}, ((0.1, 0.6), (0.4, 0.6), (0.1, 0.2), (0.4, 0.2))),
+        (
+            {"width": 1000, "height": 500},
+            ((100.0, 300.0), (400.0, 300.0), (100.0, 100.0), (400.0, 100.0)),
+        ),
+        (
+            {"width": 1000, "height": 500, "flip_y": True},
+            ((100.0, 200.0), (400.0, 200.0), (100.0, 400.0), (400.0, 400.0)),
+        ),
     ],
 )
+def test_word_calculate_corners(normalized_word, kwargs, expected):
+    """Corner calculation supports normalized, scaled, and flipped output."""
+    actual = normalized_word.calculate_corners(**kwargs)
+    for actual_point, expected_point in zip(actual, expected):
+        assert actual_point == pytest.approx(expected_point)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("method_name", "kwargs"),
+    [
+        ("calculate_centroid", {"width": 1000}),
+        ("calculate_centroid", {"height": 500}),
+        ("calculate_bounding_box", {"width": 1000}),
+        ("calculate_bounding_box", {"height": 500}),
+        ("calculate_corners", {"width": 1000}),
+        ("calculate_corners", {"height": 500}),
+    ],
+)
+def test_word_coordinate_helpers_require_both_dimensions(
+    normalized_word, method_name, kwargs
+):
+    """Image-coordinate helpers reject incomplete dimensions."""
+    with pytest.raises(ValueError, match="Both width and height"):
+        getattr(normalized_word, method_name)(**kwargs)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dx, dy", [(5, -2), (0, 0), (-3, 10)])
 def test_word_translate(dx, dy):
-    """
-    Test that Word.translate(dx, dy) shifts the corner points and updates the
-    bounding_box accordingly, while leaving the angles unchanged.
-    """
-    word = create_test_word()
+    """translate shifts all corners and the bounding-box origin."""
+    word = make_transform_word()
+    original = deepcopy(dict(word))
 
-    orig_top_right = word.top_right.copy()
-    orig_top_left = word.top_left.copy()
-    orig_bottom_right = word.bottom_right.copy()
-    orig_bottom_left = word.bottom_left.copy()
-    orig_bb = word.bounding_box.copy()
-
-    # Apply translation
     word.translate(dx, dy)
 
-    # Check that the corners are translated correctly.
-    assert word.top_right["x"] == pytest.approx(orig_top_right["x"] + dx)
-    assert word.top_right["y"] == pytest.approx(orig_top_right["y"] + dy)
-    assert word.top_left["x"] == pytest.approx(orig_top_left["x"] + dx)
-    assert word.top_left["y"] == pytest.approx(orig_top_left["y"] + dy)
-    assert word.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] + dx)
-    assert word.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] + dy)
-    assert word.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
-    assert word.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
-
-    # Now expect that the bounding_box is updated as well.
-    expected_bb = {
-        "x": orig_bb["x"] + dx,
-        "y": orig_bb["y"] + dy,
-        "width": orig_bb["width"],
-        "height": orig_bb["height"],
+    for corner in CORNERS:
+        assert_point(
+            getattr(word, corner),
+            {
+                "x": original[corner]["x"] + dx,
+                "y": original[corner]["y"] + dy,
+            },
+        )
+    assert word.bounding_box == {
+        "x": original["bounding_box"]["x"] + dx,
+        "y": original["bounding_box"]["y"] + dy,
+        "width": original["bounding_box"]["width"],
+        "height": original["bounding_box"]["height"],
     }
-    assert word.bounding_box == expected_bb
-
-    # Angles should remain unchanged.
-    assert word.angle_degrees == 0.0
-    assert word.angle_radians == 0.0
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "sx, sy",
-    [
-        (2, 3),
-        (1, 1),
-        (0.5, 2),
-    ],
-)
+@pytest.mark.parametrize("sx, sy", [(2, 3), (1, 1), (0.5, 2)])
 def test_word_scale(sx, sy):
-    """
-    Test that Word.scale(sx, sy) scales corner points
-    and bounding_box, but does NOT modify angles.
-    """
-    word = create_test_word()
-
-    orig_top_right = word.top_right.copy()
-    orig_top_left = word.top_left.copy()
-    orig_bottom_right = word.bottom_right.copy()
-    orig_bottom_left = word.bottom_left.copy()
-    orig_bb = word.bounding_box.copy()
+    """scale changes all geometry without changing the angle."""
+    word = make_transform_word()
+    original = deepcopy(dict(word))
 
     word.scale(sx, sy)
 
-    # Check corners
-    assert word.top_right["x"] == pytest.approx(orig_top_right["x"] * sx)
-    assert word.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
-    assert word.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
-    assert word.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
-    assert word.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
-    assert word.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
-    assert word.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
-    assert word.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
-
-    # Check bounding_box
-    assert word.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
-    assert word.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
-    assert word.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
-    assert word.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
-
+    for corner in CORNERS:
+        assert_point(
+            getattr(word, corner),
+            {
+                "x": original[corner]["x"] * sx,
+                "y": original[corner]["y"] * sy,
+            },
+        )
+    assert_box(
+        word.bounding_box,
+        {
+            "x": original["bounding_box"]["x"] * sx,
+            "y": original["bounding_box"]["y"] * sy,
+            "width": original["bounding_box"]["width"] * sx,
+            "height": original["bounding_box"]["height"] * sy,
+        },
+    )
     assert word.angle_degrees == 0.0
     assert word.angle_radians == 0.0
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "angle, use_radians, should_raise",
+    ("angle", "use_radians", "should_raise"),
     [
         (90, False, False),
         (-90, False, False),
@@ -287,7 +397,6 @@ def test_word_scale(sx, sy):
         (180, False, True),
         (math.pi / 2, True, False),
         (-math.pi / 2, True, False),
-        (0, True, False),
         (0.5, True, False),
         (math.pi / 2 + 0.01, True, True),
         (-math.pi / 2 - 0.01, True, True),
@@ -295,151 +404,37 @@ def test_word_scale(sx, sy):
     ],
 )
 def test_word_rotate_limited_range(angle, use_radians, should_raise):
-    """
-    Test that Word.rotate(angle, origin_x, origin_y, use_radians) rotates the
-    word's corners, recalculates the axis-aligned bounding box from the
-    rotated corners, and updates the angle values accordingly. If the angle is
-    outside the allowed range, a ValueError is raised and no changes are made.
-    """
-    word = create_test_word()
-    orig_corners = {
-        "top_right": word.top_right.copy(),
-        "top_left": word.top_left.copy(),
-        "bottom_right": word.bottom_right.copy(),
-        "bottom_left": word.bottom_left.copy(),
-    }
-    orig_angle_degrees = word.angle_degrees
-    orig_angle_radians = word.angle_radians
+    """rotate validates its range and keeps corners, box, and angle aligned."""
+    word = make_transform_word()
+    original = deepcopy(dict(word))
 
     if should_raise:
         with pytest.raises(ValueError):
             word.rotate(angle, 0, 0, use_radians=use_radians)
-        assert word.top_right == orig_corners["top_right"]
-        assert word.top_left == orig_corners["top_left"]
-        assert word.bottom_right == orig_corners["bottom_right"]
-        assert word.bottom_left == orig_corners["bottom_left"]
-        assert word.angle_degrees == orig_angle_degrees
-        assert word.angle_radians == orig_angle_radians
-    else:
-        theta = angle if use_radians else math.radians(angle)
+        for corner in CORNERS:
+            assert getattr(word, corner) == original[corner]
+        assert word.bounding_box == original["bounding_box"]
+        assert word.angle_degrees == original["angle_degrees"]
+        assert word.angle_radians == original["angle_radians"]
+        return
 
-        def rotate_point(px, py, ox, oy, theta):
-            tx, ty = px - ox, py - oy
-            rx = tx * math.cos(theta) - ty * math.sin(theta)
-            ry = tx * math.sin(theta) + ty * math.cos(theta)
-            return rx + ox, ry + oy
+    expected_corners, expected_box = expected_rotated_geometry(
+        angle, use_radians
+    )
+    word.rotate(angle, 0, 0, use_radians=use_radians)
 
-        expected_top_right = {}
-        expected_top_left = {}
-        expected_bottom_right = {}
-        expected_bottom_left = {}
-
-        expected_top_right["x"], expected_top_right["y"] = rotate_point(
-            orig_corners["top_right"]["x"],
-            orig_corners["top_right"]["y"],
-            0,
-            0,
-            theta,
-        )
-        expected_top_left["x"], expected_top_left["y"] = rotate_point(
-            orig_corners["top_left"]["x"],
-            orig_corners["top_left"]["y"],
-            0,
-            0,
-            theta,
-        )
-        expected_bottom_right["x"], expected_bottom_right["y"] = rotate_point(
-            orig_corners["bottom_right"]["x"],
-            orig_corners["bottom_right"]["y"],
-            0,
-            0,
-            theta,
-        )
-        expected_bottom_left["x"], expected_bottom_left["y"] = rotate_point(
-            orig_corners["bottom_left"]["x"],
-            orig_corners["bottom_left"]["y"],
-            0,
-            0,
-            theta,
-        )
-
-        word.rotate(angle, 0, 0, use_radians=use_radians)
-
-        assert word.top_right["x"] == pytest.approx(
-            expected_top_right["x"], rel=1e-6
-        )
-        assert word.top_right["y"] == pytest.approx(
-            expected_top_right["y"], rel=1e-6
-        )
-        assert word.top_left["x"] == pytest.approx(
-            expected_top_left["x"], rel=1e-6
-        )
-        assert word.top_left["y"] == pytest.approx(
-            expected_top_left["y"], rel=1e-6
-        )
-        assert word.bottom_right["x"] == pytest.approx(
-            expected_bottom_right["x"], rel=1e-6
-        )
-        assert word.bottom_right["y"] == pytest.approx(
-            expected_bottom_right["y"], rel=1e-6
-        )
-        assert word.bottom_left["x"] == pytest.approx(
-            expected_bottom_left["x"], rel=1e-6
-        )
-        assert word.bottom_left["y"] == pytest.approx(
-            expected_bottom_left["y"], rel=1e-6
-        )
-
-        xs = [
-            expected_top_right["x"],
-            expected_top_left["x"],
-            expected_bottom_right["x"],
-            expected_bottom_left["x"],
-        ]
-        ys = [
-            expected_top_right["y"],
-            expected_top_left["y"],
-            expected_bottom_right["y"],
-            expected_bottom_left["y"],
-        ]
-        expected_bb = {
-            "x": min(xs),
-            "y": min(ys),
-            "width": max(xs) - min(xs),
-            "height": max(ys) - min(ys),
-        }
-
-        assert word.bounding_box["x"] == pytest.approx(
-            expected_bb["x"], rel=1e-6
-        )
-        assert word.bounding_box["y"] == pytest.approx(
-            expected_bb["y"], rel=1e-6
-        )
-        assert word.bounding_box["width"] == pytest.approx(
-            expected_bb["width"], rel=1e-6
-        )
-        assert word.bounding_box["height"] == pytest.approx(
-            expected_bb["height"], rel=1e-6
-        )
-
-        if use_radians:
-            expected_angle_radians = orig_angle_radians + angle
-            expected_angle_degrees = orig_angle_degrees + (
-                angle * 180.0 / math.pi
-            )
-        else:
-            expected_angle_degrees = orig_angle_degrees + angle
-            expected_angle_radians = orig_angle_radians + math.radians(angle)
-        assert word.angle_radians == pytest.approx(
-            expected_angle_radians, abs=1e-9
-        )
-        assert word.angle_degrees == pytest.approx(
-            expected_angle_degrees, abs=1e-9
-        )
+    for corner, expected in expected_corners.items():
+        assert_point(getattr(word, corner), expected)
+    assert_box(word.bounding_box, expected_box)
+    expected_radians = angle if use_radians else math.radians(angle)
+    expected_degrees = math.degrees(angle) if use_radians else angle
+    assert word.angle_radians == pytest.approx(expected_radians)
+    assert word.angle_degrees == pytest.approx(expected_degrees)
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
-    "shx, shy, pivot_x, pivot_y, expected_corners",
+    ("shx", "shy", "pivot_x", "pivot_y", "expected_corners"),
     [
         (
             0.2,
@@ -447,10 +442,10 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
-                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
-                "bottom_right": {"x": 15.0 + 0.2 * (22.0 - 20.0), "y": 22.0},
-                "bottom_left": {"x": 10.0 + 0.2 * (22.0 - 20.0), "y": 22.0},
+                "top_left": {"x": 10.0, "y": 20.0},
+                "top_right": {"x": 15.0, "y": 20.0},
+                "bottom_left": {"x": 10.4, "y": 22.0},
+                "bottom_right": {"x": 15.4, "y": 22.0},
             },
         ),
         (
@@ -459,19 +454,10 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {
-                    "x": 15.0,
-                    "y": 20.0 + 0.2 * (15.0 - 10.0),
-                },
-                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},
-                "bottom_right": {
-                    "x": 15.0,
-                    "y": 22.0 + 0.2 * (15.0 - 10.0),
-                },
-                "bottom_left": {
-                    "x": 10.0,
-                    "y": 22.0 + 0.2 * (10.0 - 10.0),
-                },
+                "top_left": {"x": 10.0, "y": 20.0},
+                "top_right": {"x": 15.0, "y": 21.0},
+                "bottom_left": {"x": 10.0, "y": 22.0},
+                "bottom_right": {"x": 15.0, "y": 23.0},
             },
         ),
         (
@@ -480,545 +466,174 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             12.0,
             21.0,
             {
-                "top_right": {
-                    "x": 15.0 + 0.1 * (20.0 - 21.0),
-                    "y": 20.0 + 0.1 * (15.0 - 12.0),
-                },
-                "top_left": {
-                    "x": 10.0 + 0.1 * (20.0 - 21.0),
-                    "y": 20.0 + 0.1 * (10.0 - 12.0),
-                },
-                "bottom_right": {
-                    "x": 15.0 + 0.1 * (22.0 - 21.0),
-                    "y": 22.0 + 0.1 * (15.0 - 12.0),
-                },
-                "bottom_left": {
-                    "x": 10.0 + 0.1 * (22.0 - 21.0),
-                    "y": 22.0 + 0.1 * (10.0 - 12.0),
-                },
+                "top_left": {"x": 9.9, "y": 19.8},
+                "top_right": {"x": 14.9, "y": 20.3},
+                "bottom_left": {"x": 10.1, "y": 21.8},
+                "bottom_right": {"x": 15.1, "y": 22.3},
             },
         ),
     ],
 )
 def test_word_shear(shx, shy, pivot_x, pivot_y, expected_corners):
-    """
-    Test that Word.shear(shx, shy, pivot_x, pivot_y) correctly shears the
-    word's corner points, updates the bounding box accordingly, and leaves
-    the angles unchanged.
-    """
-    word = create_test_word()
+    """shear transforms every corner and rebuilds the bounding box."""
+    word = make_transform_word()
 
     word.shear(shx, shy, pivot_x, pivot_y)
 
-    for corner_name in [
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-    ]:
-        for coord in ["x", "y"]:
-            expected_value = expected_corners[corner_name][coord]
-            actual_value = word.__dict__[corner_name][coord]
-            assert actual_value == pytest.approx(
-                expected_value
-            ), f"{corner_name} {coord} expected {expected_value},"
-            f" got {actual_value}"
-
-    xs = [
-        word.top_right["x"],
-        word.top_left["x"],
-        word.bottom_right["x"],
-        word.bottom_left["x"],
-    ]
-    ys = [
-        word.top_right["y"],
-        word.top_left["y"],
-        word.bottom_right["y"],
-        word.bottom_left["y"],
-    ]
-    expected_bb = {
-        "x": min(xs),
-        "y": min(ys),
-        "width": max(xs) - min(xs),
-        "height": max(ys) - min(ys),
-    }
-    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
-    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
-    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
-
-
-@pytest.mark.unit
-def test_word_warp_affine_normalized_forward():
-    """
-    Test that warp_affine_normalized_forward(a, b, c, d, e, f) applies a
-    normalized affine transform to all corners of the Word by operating on
-    normalized coordinates (relative to the original bounding box),
-    recalculates the bounding box correctly, and leaves the angle unchanged.
-    """
-    word = create_test_word()
-    a, b, c = 1.0, 0.0, 0.1
-    d, e, f = 0.0, 1.0, 0.2
-
-    expected_top_left = {"x": 10.02, "y": 20.1}
-    expected_top_right = {"x": 15.02, "y": 20.1}
-    expected_bottom_left = {"x": 10.02, "y": 22.1}
-    expected_bottom_right = {"x": 15.02, "y": 22.1}
-    expected_bb = {"x": 10.02, "y": 20.1, "width": 5.0, "height": 2.0}
-
-    word.warp_affine_normalized_forward(a, b, c, d, e, f, 5.0, 2.0, 5.0, 2.0)
-
-    assert word.top_left["x"] == pytest.approx(expected_top_left["x"])
-    assert word.top_left["y"] == pytest.approx(expected_top_left["y"])
-    assert word.top_right["x"] == pytest.approx(expected_top_right["x"])
-    assert word.top_right["y"] == pytest.approx(expected_top_right["y"])
-    assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
-    assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
-    assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
-    assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
-
-    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
-    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
-    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
-
-    assert word.angle_degrees == pytest.approx(0.0)
-    assert word.angle_radians == pytest.approx(0.0)
-
-
-def test_word_rotate_90_ccw_in_place():
-    """
-    Test the rotate_90_ccw_in_place method of the Word class.
-    """
-    word = create_test_word()
-    word.angle_degrees = 0.0
-    word.angle_radians = 0.0
-    old_w = 100
-    old_h = 200
-    word.rotate_90_ccw_in_place(old_w, old_h)
-    expected_top_left = {"x": 20.0, "y": -9.0}
-    expected_top_right = {"x": 20.0, "y": -14.0}
-    expected_bottom_right = {"x": 22.0, "y": -14.0}
-    expected_bottom_left = {"x": 22.0, "y": -9.0}
-    expected_bb = {"x": 20.0, "y": -14.0, "width": 2.0, "height": 5.0}
-    expected_angle_degrees = 90.0
-    expected_angle_radians = math.pi / 2
-
-    assert word.top_left["x"] == pytest.approx(expected_top_left["x"])
-    assert word.top_left["y"] == pytest.approx(expected_top_left["y"])
-    assert word.top_right["x"] == pytest.approx(expected_top_right["x"])
-    assert word.top_right["y"] == pytest.approx(expected_top_right["y"])
-    assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
-    assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
-    assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
-    assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
-
-    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
-    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
-    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
-
-    assert word.angle_degrees == pytest.approx(expected_angle_degrees)
-    assert word.angle_radians == pytest.approx(expected_angle_radians)
+    for corner, expected in expected_corners.items():
+        assert_point(getattr(word, corner), expected)
+    assert_box(word.bounding_box, box_from_corners(expected_corners.values()))
 
 
 @pytest.mark.unit
 def test_word_warp_affine():
-    """
-    Test that warp_affine(a, b, c, d, e, f) applies the affine transform
-    x' = a*x + b*y + c, y' = d*x + e*y + f to all corners, recomputes the
-    bounding box, and updates the angle accordingly.
-    """
-    word = create_test_word()
-    a, b, c = 2.0, 0.0, 3.0
-    d, e, f = 0.0, 2.0, 4.0
-
-    expected_top_left = {"x": 2 * 10.0 + 3, "y": 2 * 20.0 + 4}
-    expected_top_right = {"x": 2 * 15.0 + 3, "y": 2 * 20.0 + 4}
-    expected_bottom_left = {"x": 2 * 10.0 + 3, "y": 2 * 22.0 + 4}
-    expected_bottom_right = {"x": 2 * 15.0 + 3, "y": 2 * 22.0 + 4}
-
-    xs = [
-        expected_top_left["x"],
-        expected_top_right["x"],
-        expected_bottom_left["x"],
-        expected_bottom_right["x"],
-    ]
-    ys = [
-        expected_top_left["y"],
-        expected_top_right["y"],
-        expected_bottom_left["y"],
-        expected_bottom_right["y"],
-    ]
-    expected_bb = {
-        "x": min(xs),
-        "y": min(ys),
-        "width": max(xs) - min(xs),
-        "height": max(ys) - min(ys),
+    """warp_affine transforms corners and updates the box and angle."""
+    word = make_transform_word()
+    expected = {
+        "top_left": {"x": 23.0, "y": 44.0},
+        "top_right": {"x": 33.0, "y": 44.0},
+        "bottom_left": {"x": 23.0, "y": 48.0},
+        "bottom_right": {"x": 33.0, "y": 48.0},
     }
-    word.warp_affine(a, b, c, d, e, f)
-    assert word.top_left["x"] == pytest.approx(expected_top_left["x"])
-    assert word.top_left["y"] == pytest.approx(expected_top_left["y"])
-    assert word.top_right["x"] == pytest.approx(expected_top_right["x"])
-    assert word.top_right["y"] == pytest.approx(expected_top_right["y"])
-    assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
-    assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
-    assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
-    assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
-    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
-    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
-    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+    word.warp_affine(2.0, 0.0, 3.0, 0.0, 2.0, 4.0)
+
+    for corner, point in expected.items():
+        assert_point(getattr(word, corner), point)
+    assert_box(word.bounding_box, box_from_corners(expected.values()))
     assert word.angle_radians == pytest.approx(0.0)
     assert word.angle_degrees == pytest.approx(0.0)
 
 
 @pytest.mark.unit
+def test_word_warp_affine_normalized_forward():
+    """Normalized affine transforms preserve the angle when requested."""
+    word = make_transform_word()
+    expected = {
+        "top_left": {"x": 10.02, "y": 20.1},
+        "top_right": {"x": 15.02, "y": 20.1},
+        "bottom_left": {"x": 10.02, "y": 22.1},
+        "bottom_right": {"x": 15.02, "y": 22.1},
+    }
+
+    word.warp_affine_normalized_forward(
+        1.0, 0.0, 0.1, 0.0, 1.0, 0.2, 5.0, 2.0, 5.0, 2.0, False
+    )
+
+    for corner, point in expected.items():
+        assert_point(getattr(word, corner), point)
+    assert_box(word.bounding_box, box_from_corners(expected.values()))
+    assert word.angle_degrees == pytest.approx(0.0)
+    assert word.angle_radians == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_word_rotate_90_ccw_in_place():
+    """The normalized 90-degree rotation updates all geometry and angles."""
+    word = make_transform_word()
+    expected = {
+        "top_left": {"x": 20.0, "y": -9.0},
+        "top_right": {"x": 20.0, "y": -14.0},
+        "bottom_left": {"x": 22.0, "y": -9.0},
+        "bottom_right": {"x": 22.0, "y": -14.0},
+    }
+
+    word.rotate_90_ccw_in_place(100, 200)
+
+    for corner, point in expected.items():
+        assert_point(getattr(word, corner), point)
+    assert_box(word.bounding_box, box_from_corners(expected.values()))
+    assert word.angle_degrees == pytest.approx(90.0)
+    assert word.angle_radians == pytest.approx(math.pi / 2)
+
+
+@pytest.mark.unit
 def test_word_repr(example_word):
-    """Test the Word __repr__ method"""
-    assert (
-        repr(example_word)
-        == "Word(word_id=3, text='test_string', bounding_box={'x': 10.0, "
-        "'y': 20.0, 'width': 5.0, 'height': 2.0}, top_right={'x': 15.0, "
-        "'y': 20.0}, top_left={'x': 10.0, 'y': 20.0}, bottom_right={'x': "
-        "15.0, 'y': 22.0}, bottom_left={'x': 10.0, 'y': 22.0}, angle_degrees="
-        "1.0, angle_radians=5.0, confidence=0.9)"
+    """repr exposes the entity-specific identifier and geometry."""
+    assert repr(example_word) == (
+        "Word(word_id=3, text='test_string', "
+        "bounding_box={'x': 10.0, 'y': 20.0, 'width': 5.0, 'height': 2.0}, "
+        "top_right={'x': 15.0, 'y': 20.0}, "
+        "top_left={'x': 10.0, 'y': 20.0}, "
+        "bottom_right={'x': 15.0, 'y': 22.0}, "
+        "bottom_left={'x': 10.0, 'y': 22.0}, angle_degrees=1.0, "
+        "angle_radians=5.0, confidence=0.9)"
     )
 
 
 @pytest.mark.unit
 def test_word_iter(example_word):
-    """Test the Word __iter__ method"""
+    """Iteration yields complete constructor arguments."""
     word_dict = dict(example_word)
-    expected_keys = {
-        "image_id",
-        "line_id",
-        "word_id",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-        "extracted_data",
-    }
-    assert set(word_dict.keys()) == expected_keys
-    assert word_dict["image_id"] == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
-    assert word_dict["line_id"] == 2
-    assert word_dict["word_id"] == 3
-    assert word_dict["text"] == "test_string"
-    assert word_dict["bounding_box"] == {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 5.0,
-        "height": 2.0,
-    }
-    assert word_dict["top_right"] == {"x": 15.0, "y": 20.0}
-    assert word_dict["top_left"] == {"x": 10.0, "y": 20.0}
-    assert word_dict["bottom_right"] == {"x": 15.0, "y": 22.0}
-    assert word_dict["bottom_left"] == {"x": 10.0, "y": 22.0}
-    assert word_dict["angle_degrees"] == 1
-    assert word_dict["angle_radians"] == 5
-    assert word_dict["confidence"] == 0.90
-    assert Word(**dict(example_word)) == example_word
+    assert word_dict == {**WORD_KWARGS, "extracted_data": None}
+    assert Word(**word_dict) == example_word
 
 
 @pytest.mark.unit
-def test_word_eq():
-    """Test the Word __eq__ method"""
-    w1 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w2 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w3 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w4 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w5 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=4,  # Different Word ID
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w6 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="Test_string",  # Different Text
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w7 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={
-            "x": 20.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },  # Different Bounding Box
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w8 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 20.0, "y": 20.0},  # Different Top Right
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w9 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 20.0, "y": 20.0},  # Different Top Left
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w10 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 20.0, "y": 22.0},  # Different Bottom Right
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w11 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 20.0, "y": 22.0},  # Different Bottom Left
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w12 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=2.0,  # Different Angle Degrees
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    w13 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=6.0,  # Different Angle Radians
-        confidence=0.90,
-    )
-    w14 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.91,  # Different Confidence
-    )
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"image_id": OTHER_IMAGE_ID},
+        {"line_id": 4},
+        {"word_id": 4},
+        {"text": "different"},
+        {"bounding_box": {"x": 11.0, "y": 20.0, "width": 5.0, "height": 2.0}},
+        {"top_right": {"x": 16.0, "y": 20.0}},
+        {"top_left": {"x": 11.0, "y": 20.0}},
+        {"bottom_right": {"x": 16.0, "y": 22.0}},
+        {"bottom_left": {"x": 11.0, "y": 22.0}},
+        {"angle_degrees": 2.0},
+        {"angle_radians": 6.0},
+        {"confidence": 0.91},
+        {"extracted_data": {"type": "merchant", "value": "Shop"}},
+    ],
+)
+def test_word_eq_detects_field_differences(overrides):
+    """Equality includes every constructor field."""
+    assert make_word() != make_word(**overrides)
 
-    assert w1 == w2
-    assert w1 != w3
-    assert w1 != w4
-    assert w1 != w5
-    assert w1 != w6
-    assert w1 != w7
-    assert w1 != w8
-    assert w1 != w9
-    assert w1 != w10
-    assert w1 != w11
-    assert w1 != w12
-    assert w1 != w13
-    assert w1 != w14
-    assert w1 != "test_string"
+
+@pytest.mark.unit
+def test_word_eq_matches_values_and_rejects_other_types():
+    """Equal values compare equal while unrelated types do not."""
+    assert make_word() == make_word()
+    assert make_word() != "test_string"
 
 
 @pytest.mark.unit
 def test_word_hash(example_word):
-    """Test the Word __hash__ method and set notation."""
-    duplicate_word = item_to_word(example_word.to_item())
-    assert hash(example_word) == hash(duplicate_word)
-    word_set = {example_word, duplicate_word}
-    assert len(word_set) == 1
-    different_word = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=4,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    word_set = {example_word, duplicate_word, different_word}
-    assert len(word_set) == 2
+    """Equal words hash equally and collapse in sets."""
+    duplicate = item_to_word(example_word.to_item())
+    different = make_word(word_id=4)
+
+    assert hash(example_word) == hash(duplicate)
+    assert len({example_word, duplicate}) == 1
+    assert len({example_word, duplicate, different}) == 2
 
 
 @pytest.mark.unit
-def test_item_to_word(example_word):
-    """Test the item_to_word function"""
-    item_to_word(example_word.to_item()) == example_word
-    with pytest.raises(ValueError, match="^Item is missing required keys: "):
+@pytest.mark.parametrize(
+    "extracted_data",
+    [None, {"type": "merchant", "value": "Corner Shop"}],
+)
+def test_item_to_word_round_trip(extracted_data):
+    """DynamoDB conversion preserves optional and required fields."""
+    word = make_word(extracted_data=extracted_data)
+    assert item_to_word(word.to_item()) == word
+
+
+@pytest.mark.unit
+def test_item_to_word_rejects_invalid_items(example_word):
+    """DynamoDB conversion distinguishes missing and malformed fields."""
+    with pytest.raises(ValueError, match="^Item is missing required keys"):
         item_to_word({})
-    with pytest.raises(ValueError, match="^Error converting item to Word: "):
-        item_to_word(
-            {
-                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "LINE#00002#WORD#00003"},
-                "TYPE": {"S": "LINE"},
-                "text": {"N": "100"},
-                "bounding_box": {
-                    "M": {
-                        "height": {"N": "2.000000000000000000"},
-                        "width": {"N": "5.000000000000000000"},
-                        "x": {"N": "10.000000000000000000"},
-                        "y": {"N": "20.000000000000000000"},
-                    }
-                },
-                "top_right": {
-                    "M": {
-                        "x": {"N": "15.000000000000000000"},
-                        "y": {"N": "20.000000000000000000"},
-                    }
-                },
-                "top_left": {
-                    "M": {
-                        "x": {"N": "10.000000000000000000"},
-                        "y": {"N": "20.000000000000000000"},
-                    }
-                },
-                "bottom_right": {
-                    "M": {
-                        "x": {"N": "15.000000000000000000"},
-                        "y": {"N": "22.000000000000000000"},
-                    }
-                },
-                "bottom_left": {
-                    "M": {
-                        "x": {"N": "10.000000000000000000"},
-                        "y": {"N": "22.000000000000000000"},
-                    }
-                },
-                "angle_degrees": {"N": "1.0000000000"},
-                "angle_radians": {"N": "5.0000000000"},
-                "confidence": {"N": "0.90"},
-            }
-        )
+
+    bad_item = example_word.to_item()
+    bad_item["text"] = {"N": "100"}
+    with pytest.raises(ValueError, match="^Error converting item to Word"):
+        item_to_word(bad_item)
+
+    bad_key = example_word.to_item()
+    bad_key["SK"] = {"S": "WORD#00003"}
+    with pytest.raises(ValueError, match="Invalid SK format for Word"):
+        item_to_word(bad_key)

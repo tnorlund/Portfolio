@@ -122,6 +122,7 @@ def test_to_item_and_back(example_receipt_metadata):
         ("receipt_id", 0, "receipt_id must be positive"),
         ("place_id", 123, "place id must be a string"),
         ("merchant_name", 456, "merchant name must be a string"),
+        ("merchant_name", "", "merchant name cannot be empty"),
         ("merchant_category", 789, "merchant category must be a string"),
         ("address", None, "address must be a string"),
         ("phone_number", 12345, "phone number must be a string"),
@@ -339,6 +340,20 @@ def test_get_high_quality_matched_fields():
     ]
 
     for name, should_pass, description in name_test_cases:
+        if not name.strip():
+            with pytest.raises(
+                ValueError, match="merchant name cannot be empty"
+            ):
+                ReceiptMetadata(
+                    image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                    receipt_id=1,
+                    place_id="test",
+                    merchant_name=name,
+                    matched_fields=["name"],
+                    validated_by="TEXT_SEARCH",
+                    timestamp=datetime.now(),
+                )
+            continue
         m = ReceiptMetadata(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -448,3 +463,44 @@ def test_address_edge_cases():
             assert (
                 "address" not in high_quality
             ), f"{description}: Address '{address}' should fail"
+
+
+@pytest.mark.unit
+def test_receipt_metadata_hash_matches_equality(example_receipt_metadata):
+    """List-backed fields no longer make otherwise valid entities unhashable."""
+    restored = item_to_receipt_metadata(example_receipt_metadata.to_item())
+
+    assert restored == example_receipt_metadata
+    assert hash(restored) == hash(example_receipt_metadata)
+
+
+@pytest.mark.unit
+def test_receipt_metadata_rejects_bool_receipt_id(example_receipt_metadata):
+    kwargs = dict(example_receipt_metadata)
+    kwargs["receipt_id"] = True
+
+    with pytest.raises(ValueError, match="receipt_id must be an integer"):
+        ReceiptMetadata(**kwargs)
+
+
+@pytest.mark.unit
+def test_receipt_metadata_revalidates_mutated_state(example_receipt_metadata):
+    example_receipt_metadata.matched_fields.append("")
+
+    with pytest.raises(ValueError, match="list of strings"):
+        example_receipt_metadata.to_item()
+
+
+@pytest.mark.unit
+def test_receipt_metadata_from_item_rejects_type_and_gsi_mismatches(
+    example_receipt_metadata,
+):
+    item = example_receipt_metadata.to_item()
+    item["TYPE"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="TYPE must be RECEIPT_METADATA"):
+        item_to_receipt_metadata(item)
+
+    item = example_receipt_metadata.to_item()
+    item["GSI2PK"] = {"S": "PLACE#wrong"}
+    with pytest.raises(ValueError, match="GSI2PK does not match"):
+        item_to_receipt_metadata(item)

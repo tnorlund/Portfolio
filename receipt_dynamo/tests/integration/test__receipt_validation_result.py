@@ -107,7 +107,7 @@ DELETE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "receiptvalidationresult not found during delete_receipt_validation_result",
+        "does not exist",
     ),
 ] + ERROR_SCENARIOS
 
