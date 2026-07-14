@@ -1,12 +1,13 @@
 """Additional edge case tests for parsers module."""
 
 from datetime import datetime
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Never
 
 import pytest
 
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo_stream.parsing import parsers as parsers_module
 from receipt_dynamo_stream.parsing.parsers import (
     detect_entity_type,
     parse_entity,
@@ -175,7 +176,7 @@ def test_parse_entity_invalid_entity_type() -> None:
 
 
 def test_parse_entity_value_error_with_metrics() -> None:
-    """Test that unexpected parsing errors are caught and metrics recorded."""
+    """Test that malformed entity data records a parsing error."""
     metrics = MockMetrics()
     pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
     sk = "RECEIPT#00001#PLACE"
@@ -187,16 +188,26 @@ def test_parse_entity_value_error_with_metrics() -> None:
 
     assert result is None
     metric_names = [m[0] for m in metrics.counts]
-    assert "EntityParsingUnexpectedError" in metric_names
+    assert metric_names == ["EntityParsingError"]
 
 
-def test_parse_entity_type_error_with_metrics() -> None:
-    """Test that unexpected errors are caught and metrics recorded."""
+def test_parse_entity_type_error_with_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that converter type errors record a parsing error."""
     metrics = MockMetrics()
 
-    # This should trigger TypeError/KeyError handling
+    def raise_type_error(_item: dict[str, dict[str, object]]) -> Never:
+        raise TypeError("malformed attribute shape")
+
+    monkeypatch.setitem(
+        parsers_module._ENTITY_PARSERS,  # pylint: disable=protected-access
+        "RECEIPT_PLACE",
+        raise_type_error,
+    )
+
     result = parse_entity(
-        {"bad": "data"},  # type: ignore
+        {"bad": {"S": "data"}},
         "RECEIPT_PLACE",
         "new",
         ("PK", "SK"),
@@ -204,9 +215,36 @@ def test_parse_entity_type_error_with_metrics() -> None:
     )
 
     assert result is None
-    # Should record error metric
     metric_names = [m[0] for m in metrics.counts]
-    assert "EntityParsingUnexpectedError" in metric_names
+    assert metric_names == ["EntityParsingError"]
+
+
+def test_parse_entity_unexpected_error_with_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that converter implementation errors remain distinguishable."""
+    metrics = MockMetrics()
+
+    def raise_attribute_error(_item: dict[str, dict[str, object]]) -> Never:
+        raise AttributeError("converter bug")
+
+    monkeypatch.setitem(
+        parsers_module._ENTITY_PARSERS,  # pylint: disable=protected-access
+        "RECEIPT_PLACE",
+        raise_attribute_error,
+    )
+
+    result = parse_entity(
+        {"bad": {"S": "data"}},
+        "RECEIPT_PLACE",
+        "new",
+        ("PK", "SK"),
+        metrics,
+    )
+
+    assert result is None
+    metric_names = [m[0] for m in metrics.counts]
+    assert metric_names == ["EntityParsingUnexpectedError"]
 
 
 # Test parse_stream_record edge cases

@@ -50,6 +50,20 @@ def example_receipt_place():
     )
 
 
+@pytest.fixture
+def pending_receipt_place():
+    """ReceiptPlace for the unmatched, needs-review workflow."""
+    return ReceiptPlace(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="",
+        merchant_name="Merchant Pending Review",
+        validation_status=MerchantValidationStatus.UNSURE.value,
+        reasoning="No searchable place data",
+        timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+
+
 # ===== Basic Construction Tests =====
 
 
@@ -381,6 +395,84 @@ def test_gsi2_key_place_id(example_receipt_place):
     assert gsi2["GSI2PK"]["S"] == f"PLACE#{rp.place_id}"
     assert "IMAGE#" in gsi2["GSI2SK"]["S"]
     assert "RECEIPT#" in gsi2["GSI2SK"]["S"]
+
+
+@pytest.mark.unit
+def test_empty_place_id_round_trip_uses_sparse_gsi2(pending_receipt_place):
+    """Unmatched places remain serializable without polluting GSI2."""
+    item = pending_receipt_place.to_item()
+
+    assert pending_receipt_place.gsi2_key == {}
+    assert item["place_id"] == {"S": ""}
+    assert "GSI2PK" not in item
+    assert "GSI2SK" not in item
+    assert ReceiptPlace.from_item(item) == pending_receipt_place
+
+
+@pytest.mark.unit
+def test_empty_place_id_accepts_exact_legacy_gsi2_keys(
+    pending_receipt_place,
+):
+    """Legacy PLACE# records can still be read and rewritten sparsely."""
+    legacy_item = pending_receipt_place.to_item()
+    legacy_item.update(
+        {
+            "GSI2PK": {"S": "PLACE#"},
+            "GSI2SK": {
+                "S": (
+                    "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+                    "RECEIPT#00001#PLACE"
+                )
+            },
+        }
+    )
+
+    restored = ReceiptPlace.from_item(legacy_item)
+
+    assert restored == pending_receipt_place
+    assert "GSI2PK" not in restored.to_item()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key_name", "value"),
+    [
+        ("GSI2PK", {"S": "PLACE#wrong"}),
+        ("GSI2SK", {"S": "IMAGE#wrong#RECEIPT#00001#PLACE"}),
+    ],
+)
+def test_empty_place_id_rejects_incorrect_legacy_gsi2_keys(
+    pending_receipt_place, key_name, value
+):
+    """Only the historically emitted empty-place index shape is accepted."""
+    legacy_item = pending_receipt_place.to_item()
+    legacy_item.update(
+        {
+            "GSI2PK": {"S": "PLACE#"},
+            "GSI2SK": {
+                "S": (
+                    "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+                    "RECEIPT#00001#PLACE"
+                )
+            },
+            key_name: value,
+        }
+    )
+
+    with pytest.raises(ValueError, match=f"{key_name} does not match"):
+        ReceiptPlace.from_item(legacy_item)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("place_id", [None, 123, "   "])
+def test_receipt_place_revalidates_mutated_place_id(
+    example_receipt_place, place_id
+):
+    """Serialization catches invalid place IDs introduced by mutation."""
+    example_receipt_place.place_id = place_id
+
+    with pytest.raises(ValueError, match="place_id"):
+        example_receipt_place.to_item()
 
 
 @pytest.mark.unit

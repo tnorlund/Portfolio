@@ -215,8 +215,11 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
         ):
             if not isinstance(getattr(self, attr_name), str):
                 raise ValueError(f"{attr_name} must be a string")
-        if not self.place_id.strip():
-            raise ValueError("place_id cannot be empty")
+        # An empty place ID is a meaningful state for unmatched records that
+        # still need human review. Whitespace-only IDs are never meaningful
+        # and would create a misleading GSI2 partition key.
+        if self.place_id and not self.place_id.strip():
+            raise ValueError("place_id cannot contain only whitespace")
 
         # Normalize enum field
         if self.validated_by:
@@ -321,7 +324,9 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
 
     @property
     def gsi2_key(self) -> dict[str, dict[str, str]]:
-        """Get GSI2 key (query by place_id)."""
+        """Get the sparse GSI2 key used to query by Google place ID."""
+        if not self.place_id:
+            return {}
         sk = f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
         return {
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
@@ -596,6 +601,23 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
         for key_name, expected_value in expected_keys.items():
             if key_name in item and item[key_name] != expected_value:
                 raise ValueError(f"{key_name} does not match entity keys")
+
+        # Older unmatched records wrote PLACE# to GSI2. Continue accepting
+        # that exact legacy shape while new writes omit GSI2 entirely so the
+        # index remains sparse.
+        if not result.place_id and ("GSI2PK" in item or "GSI2SK" in item):
+            legacy_gsi2 = {
+                "GSI2PK": {"S": "PLACE#"},
+                "GSI2SK": {
+                    "S": (
+                        f"IMAGE#{result.image_id}#"
+                        f"RECEIPT#{result.receipt_id:05d}#PLACE"
+                    )
+                },
+            }
+            for key_name, expected_value in legacy_gsi2.items():
+                if item.get(key_name) != expected_value:
+                    raise ValueError(f"{key_name} does not match entity keys")
         return result
 
 
