@@ -192,14 +192,45 @@ def main():
     logger.info("Fetching OCRJob records from prod...")
     prod_jobs = fetch_all_ocr_jobs(prod_client)
     logger.info("  Found %d total OCRJob records in prod", len(prod_jobs))
-
-    # Index prod jobs by (image_id, job_id) for quick lookup
-    prod_job_keys = {(j.image_id, j.job_id) for j in prod_jobs}
+    # NOTE: existence is checked per-job with a strongly-consistent GetItem
+    # (see _prod_ocrjob_exists), not via this GSI-backed list, which can lag.
 
     # -------------------------------------------------------------------------
+    # Only sync OCR jobs for images that actually exist in prod, so we never
+    # recreate orphan OCRJob rows for images the reconcile step removed or never
+    # promoted. Use a STRONGLY CONSISTENT GetItem on the base table (not
+    # list_images, which is backed by the GSITYPE GSI and can lag behind the
+    # Image rows reconcile just wrote in the same promotion run).
+    _ddb = boto3.client("dynamodb", region_name="us-east-1")
+    _exists_cache: dict[str, bool] = {}
+
+    def _prod_image_exists(image_id: str) -> bool:
+        if image_id not in _exists_cache:
+            resp = _ddb.get_item(
+                TableName=prod_table,
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
+                ConsistentRead=True,
+                ProjectionExpression="PK",
+            )
+            _exists_cache[image_id] = "Item" in resp
+        return _exists_cache[image_id]
+
+    def _prod_ocrjob_exists(image_id: str, job_id: str) -> bool:
+        # Strongly consistent — the GSITYPE-backed OCRJob list can lag deletes
+        # reconcile just made, which would wrongly skip re-syncing a job.
+        resp = _ddb.get_item(
+            TableName=prod_table,
+            Key={"PK": {"S": f"IMAGE#{image_id}"},
+                 "SK": {"S": f"OCR_JOB#{job_id}"}},
+            ConsistentRead=True,
+            ProjectionExpression="PK",
+        )
+        return "Item" in resp
+
     # 2. Filter dev jobs to sync
     # -------------------------------------------------------------------------
     jobs_to_sync: list[OCRJob] = []
+    orphan_skipped = 0
     for job in dev_jobs:
         # Filter by job type
         if not args.all_job_types and job.job_type != OCRJobType.REGIONAL_REOCR.value:
@@ -209,8 +240,14 @@ def main():
         if args.image_ids and job.image_id not in args.image_ids:
             continue
 
-        # Skip if already in prod
-        if (job.image_id, job.job_id) in prod_job_keys:
+        # Skip jobs whose image is not in prod (would be an orphan)
+        if not _prod_image_exists(job.image_id):
+            orphan_skipped += 1
+            continue
+
+        # Skip if already in prod (strongly consistent so a just-replaced
+        # image's deleted OCR jobs are correctly seen as absent and re-synced).
+        if _prod_ocrjob_exists(job.image_id, job.job_id):
             logger.debug(
                 "  Skipping %s/%s - already in prod", job.image_id[:8], job.job_id[:8]
             )
@@ -219,7 +256,8 @@ def main():
         jobs_to_sync.append(job)
 
     logger.info(
-        "Jobs to sync: %d (filtered from %d dev jobs)", len(jobs_to_sync), len(dev_jobs)
+        "Jobs to sync: %d (filtered from %d dev jobs; %d skipped as orphans "
+        "with no prod image)", len(jobs_to_sync), len(dev_jobs), orphan_skipped
     )
 
     if not jobs_to_sync:

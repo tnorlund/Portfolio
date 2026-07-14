@@ -1,4 +1,3 @@
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -11,6 +10,8 @@ class LabelCountCache:
     REQUIRED_KEYS = {
         "PK",
         "SK",
+        "TYPE",
+        "label",
         "valid_count",
         "invalid_count",
         "pending_count",
@@ -31,37 +32,40 @@ class LabelCountCache:
     def __post_init__(self) -> None:
         if not isinstance(self.label, str) or not self.label:
             raise ValueError("label must be a non-empty string")
-        if not isinstance(self.valid_count, int) or self.valid_count < 0:
-            raise ValueError("valid_count must be a non-negative integer")
-        if not isinstance(self.invalid_count, int) or self.invalid_count < 0:
-            raise ValueError("invalid_count must be a non-negative integer")
-        if not isinstance(self.pending_count, int) or self.pending_count < 0:
-            raise ValueError("pending_count must be a non-negative integer")
-        if (
-            not isinstance(self.needs_review_count, int)
-            or self.needs_review_count < 0
+        for field_name in (
+            "valid_count",
+            "invalid_count",
+            "pending_count",
+            "needs_review_count",
+            "none_count",
         ):
-            raise ValueError(
-                "needs_review_count must be a non-negative integer"
-            )
-        if not isinstance(self.none_count, int) or self.none_count < 0:
-            raise ValueError("none_count must be a non-negative integer")
+            value = getattr(self, field_name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"{field_name} must be a non-negative integer"
+                )
         try:
             datetime.fromisoformat(self.last_updated)
         except (TypeError, ValueError) as exc:
             raise ValueError("last_updated must be ISO formatted") from exc
         if self.time_to_live is not None:
-            if not isinstance(self.time_to_live, int) or self.time_to_live < 0:
+            if (
+                isinstance(self.time_to_live, bool)
+                or not isinstance(self.time_to_live, int)
+                or self.time_to_live < 0
+            ):
                 raise ValueError("time_to_live must be non-negative integer")
-            now = int(time.time())
-            if self.time_to_live < now:
-                raise ValueError("time_to_live must be in the future")
 
     @property
     def key(self) -> dict[str, dict[str, str]]:
         return {"PK": {"S": "LABEL_CACHE"}, "SK": {"S": f"LABEL#{self.label}"}}
 
     def to_item(self) -> dict[str, dict[str, Any]]:
+        self.__post_init__()
         item = {
             **self.key,
             "TYPE": {"S": "LABEL_COUNT_CACHE"},
@@ -119,7 +123,16 @@ class LabelCountCache:
             raise ValueError("Item is missing required keys")
 
         try:
+            if item["PK"].get("S") != "LABEL_CACHE":
+                raise ValueError("Invalid LabelCountCache PK")
+            if item["TYPE"].get("S") != "LABEL_COUNT_CACHE":
+                raise ValueError("Invalid LabelCountCache TYPE")
             label = item["SK"]["S"].split("#", 1)[1]
+            if (
+                item["SK"]["S"] != f"LABEL#{label}"
+                or item["label"].get("S") != label
+            ):
+                raise ValueError("Invalid LabelCountCache label keys")
             valid_count = int(item["valid_count"]["N"])
             invalid_count = int(item["invalid_count"]["N"])
             pending_count = int(item["pending_count"]["N"])
@@ -132,12 +145,6 @@ class LabelCountCache:
                 ttl = int(item["TimeToLive"]["N"])
             elif "time_to_live" in item:
                 ttl = int(item["time_to_live"]["N"])
-
-            # When loading from DynamoDB, expired TTLs should be allowed
-            # DynamoDB doesn't immediately delete expired items
-            # Set expired TTLs to None to avoid validation errors
-            if ttl is not None and ttl < int(time.time()):
-                ttl = None
 
             return cls(
                 label=label,

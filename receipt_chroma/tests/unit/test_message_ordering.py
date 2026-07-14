@@ -1,7 +1,5 @@
 """Unit tests for message ordering and deduplication logic."""
 
-import pytest
-
 from receipt_chroma.compaction.message_ordering import (
     _get_entity_key,
     sort_and_deduplicate_messages,
@@ -107,6 +105,42 @@ class TestGetEntityKey:
         )
         key = _get_entity_key(msg)
         assert key == ("img-5", "5", "8", "9")
+
+    def test_receipt_section_key(self):
+        """RECEIPT_SECTION keys are namespaced by entity type so a
+        section REMOVE never dedupes other entities for the receipt."""
+        msg = StreamMessage(
+            entity_type="RECEIPT_SECTION",
+            entity_data={
+                "image_id": "img-5",
+                "receipt_id": 5,
+                "section_type": "HEADER",
+            },
+            changes={},
+            event_name="REMOVE",
+            collections=(ChromaDBCollection.LINES,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:00Z",
+                record_id="msg-5b",
+                aws_region="us-east-1",
+            ),
+        )
+        key = _get_entity_key(msg)
+        assert key == ("RECEIPT_SECTION", "img-5", "5", "HEADER")
+
+        place_msg = StreamMessage(
+            entity_type="RECEIPT_PLACE",
+            entity_data={"image_id": "img-5", "receipt_id": 5},
+            changes={},
+            event_name="MODIFY",
+            collections=(ChromaDBCollection.LINES,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:00Z",
+                record_id="msg-5c",
+                aws_region="us-east-1",
+            ),
+        )
+        assert key != _get_entity_key(place_msg)
 
     def test_unknown_entity_type_key(self):
         """Test entity key extraction for unknown entity type."""

@@ -8,6 +8,7 @@ from receipt_chroma.embedding.openai.batch_status import (
     handle_batch_status,
     map_openai_to_dynamo_status,
     mark_items_for_retry,
+    mark_words_embedded,
     process_error_file,
     process_partial_results,
     should_retry_batch,
@@ -32,6 +33,7 @@ from receipt_chroma.embedding.openai.submit import (
 __all__ = [
     "handle_batch_status",
     "mark_items_for_retry",
+    "mark_words_embedded",
     "map_openai_to_dynamo_status",
     "process_error_file",
     "process_partial_results",

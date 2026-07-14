@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def _load_clients() -> tuple[Any, Any]:
     """Load read-only Chroma + Dynamo clients for the configured env."""
-    from receipt_chroma.data.chroma_client import ChromaClient
+    from receipt_chroma import ChromaClient
     from receipt_dynamo.data._pulumi import load_env, load_secrets
     from receipt_dynamo.data.dynamo_client import DynamoClient
 

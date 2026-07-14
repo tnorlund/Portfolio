@@ -39,7 +39,7 @@ def example_label_hygiene_result():
         ("gpt_agreed", "yes", "gpt_agreed must be a boolean"),
         ("source_batch_id", False, "source_batch_id must be a string or None"),
         ("example_ids", 123, "example_ids must be a list"),
-        ("image_id", 123, "image_id must be a string"),
+        ("image_id", 123, "uuid must be a string"),
         ("receipt_id", "101", "receipt_id must be an integer"),
         ("timestamp", "not-a-datetime", "timestamp must be a datetime object"),
     ],
@@ -54,7 +54,7 @@ def test_label_hygiene_result_constructor_type_validation(field, value, error):
         source_batch_id="batch-xyz",
         example_ids=["a"],
         timestamp=datetime.now(),
-        image_id="img",
+        image_id="b98df7e6-43f5-43ad-9ee3-e39070c7d9df",
         receipt_id=101,
     )
     kwargs[field] = value

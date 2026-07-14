@@ -2,8 +2,10 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import fs from "fs";
 import path from "path";
 import SynthesisPipeline, { advanceAutoplay } from ".";
+import { knockOutReceiptPaper } from "./Acts";
 import { ACT_COUNT, ACTS } from "./pipelineData";
 import { LABEL_COLORS } from "../labelStyles";
+import { LabelLegend } from "../labelBoxOverlay";
 
 jest.mock("react-intersection-observer", () => ({
   useInView: () => ({ ref: jest.fn(), inView: true }),
@@ -71,6 +73,48 @@ const flushAssets = async () => {
     await Promise.resolve();
   });
 };
+
+test("receipt-paper knockout converts luminance to transparent ink alpha", () => {
+  const pixels = new Uint8ClampedArray([
+    255, 255, 255, 255, // white paper -> transparent
+    0, 0, 0, 255, // black ink -> opaque
+    127, 127, 127, 255, // gray antialiasing -> partial alpha
+    230, 230, 230, 255, // near-paper scan shading -> transparent
+    0, 0, 0, 0, // transparent source remains transparent
+  ]);
+
+  knockOutReceiptPaper(pixels);
+
+  expect(Array.from(pixels)).toEqual([
+    0, 0, 0, 0,
+    0, 0, 0, 255,
+    0, 0, 0, 124,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+  ]);
+});
+
+test("font metrics cover every glyph and match the committed PNG dimensions", () => {
+  const metrics = JSON.parse(
+    fs.readFileSync(path.join(PIPELINE_DIR, "sprouts/font_metrics.json"), "utf-8"),
+  ) as {
+    capHeight: number;
+    glyphs: Record<string, { width: number; height: number; offset: number }>;
+  };
+
+  expect(metrics.capHeight).toBe(40);
+  expect(Object.keys(metrics.glyphs)).toHaveLength(94);
+  for (let codepoint = 33; codepoint <= 126; codepoint += 1) {
+    const metric = metrics.glyphs[String(codepoint)];
+    const png = fs.readFileSync(
+      path.join(PIPELINE_DIR, `sprouts/font_grid/${codepoint}.png`),
+    );
+    expect(metric).toBeDefined();
+    expect(metric.width).toBe(png.readUInt32BE(16));
+    expect(metric.height).toBe(png.readUInt32BE(20));
+    expect(Number.isFinite(metric.offset)).toBe(true);
+  }
+});
 
 describe("advanceAutoplay (pure timeline math)", () => {
   test("advancing within a dwell increments progress, same act", () => {
@@ -341,6 +385,40 @@ describe("SynthesisPipeline (reduced motion)", () => {
       .firstElementChild as HTMLElement;
     const style = glyph.getAttribute("style") || "";
     expect(style).toMatch(/mask-image:\s*url\([^)]*font_grid[^)]*\.png/);
+    expect(style).toMatch(/mask-size:\s*100% 100%/);
+  });
+
+  test("atlas fallback keeps glyph masks proportional while metrics load", () => {
+    global.fetch = jest.fn(
+      () => new Promise<Response>(() => {}),
+    ) as jest.Mock;
+
+    render(<SynthesisPipeline />);
+
+    const glyph = screen
+      .getAllByTestId("font-cell")[0]
+      .firstElementChild as HTMLElement;
+    const style = glyph.getAttribute("style") || "";
+    expect(style).toMatch(/mask-size:\s*contain/);
+  });
+
+  test("atlas glyphs preserve receipt-relative cap height and baseline", async () => {
+    render(<SynthesisPipeline />);
+    await flushAssets();
+
+    const cellFor = (codepoint: number) =>
+      screen
+        .getAllByTestId("font-cell")
+        .find((cell) => cell.getAttribute("data-codepoint") === String(codepoint));
+    const uppercase = cellFor(65)?.firstElementChild as HTMLElement;
+    const lowercase = cellFor(97)?.firstElementChild as HTMLElement;
+
+    expect(uppercase).toBeInTheDocument();
+    expect(lowercase).toBeInTheDocument();
+    expect(Number.parseFloat(uppercase.style.height)).toBeCloseTo(70, 3);
+    expect(Number.parseFloat(lowercase.style.height)).toBeCloseTo(49, 3);
+    expect(Number.parseFloat(uppercase.style.bottom)).toBeCloseTo(23.25, 3);
+    expect(Number.parseFloat(lowercase.style.bottom)).toBeCloseTo(23.25, 3);
   });
 
   test("pen-path act draws SVG paths + anchor dots from the real skeleton", async () => {
@@ -382,6 +460,28 @@ describe("SynthesisPipeline (reduced motion)", () => {
     );
     // The caption was dropped — the boxes + legend carry the act.
     expect(screen.queryByTestId("labels-counter")).not.toBeInTheDocument();
+    const legend = screen.getByLabelText("Label families");
+    expect(legend).toHaveTextContent("Date / Time");
+    expect(legend).toHaveTextContent("Charges");
+    expect(legend).toHaveTextContent("Hours / Pay");
+  });
+
+  test("the legend groups merchant aliases and preserves unknown families", () => {
+    render(
+      <LabelLegend
+        families={[
+          "MERCHANT_NAME",
+          "BUSINESS_NAME",
+          "LOYALTY_ID",
+          "CUSTOM_FIELD",
+        ]}
+      />,
+    );
+
+    const legend = screen.getByLabelText("Label families");
+    expect(legend).toHaveTextContent("Merchant");
+    expect(legend).toHaveTextContent("Custom field");
+    expect(legend.children).toHaveLength(2);
   });
 
   test("assemble label boxes use the LayoutLM LABEL_COLORS + stroke styling", async () => {

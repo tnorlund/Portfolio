@@ -8,7 +8,6 @@ on the same visual row are grouped into a single embedding.
 """
 
 import logging
-from collections import Counter
 from typing import Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
@@ -22,7 +21,10 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
     enrich_row_metadata_with_labels,
 )
-from receipt_chroma.embedding.records import sections_to_line_map
+from receipt_chroma.section_labels import (
+    row_section_from_map,
+    sections_to_line_map,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,16 +206,9 @@ def save_line_embeddings_as_delta(
         section_by_line = get_section_map(
             image_id, receipt_id, receipt_details
         )
-        row_section = None
-        if section_by_line:
-            votes = Counter(
-                section_by_line[line.line_id]
-                for line in target_row
-                if line.line_id in section_by_line
-            )
-            top = votes.most_common(2)
-            if top and (len(top) == 1 or top[0][1] > top[1][1]):
-                row_section = top[0][0]
+        row_section = row_section_from_map(
+            (line.line_id for line in target_row), section_by_line
+        )
 
         # Build row metadata for ChromaDB
         row_metadata = create_row_metadata(

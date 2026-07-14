@@ -10,6 +10,7 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
     validate_iso_timestamp,
+    validate_non_negative_int,
     validate_positive_dimensions,
 )
 
@@ -74,14 +75,14 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             self.timestamp_added, "timestamp_added", default_now=False
         )
 
-        if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
+        if not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
 
-        if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
+        if not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
 
         # Use CDNFieldsMixin to validate sha256 and all CDN fields
-        if self.sha256 and not isinstance(self.sha256, str):
+        if self.sha256 is not None and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
         self.validate_cdn_fields()
 
@@ -98,12 +99,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             raise ValueError("image_type must be a ImageType or a string")
 
         if self.receipt_count is not None:
-            if not isinstance(self.receipt_count, int):
-                raise ValueError("receipt_count must be an integer")
-            if self.receipt_count < 0:
-                raise ValueError(
-                    "receipt_count must be a non-negative integer"
-                )
+            validate_non_negative_int("receipt_count", self.receipt_count)
 
     @property
     def key(self) -> dict[str, Any]:
@@ -162,6 +158,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             dict: A dictionary representing the Image object as a DynamoDB
                 item.
         """
+        self.__post_init__()
         return {
             **self.key,
             **self.gsi1_key,

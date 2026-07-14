@@ -12,10 +12,12 @@
    figures' legends read identically (dot + label per family). */
 
 .legend {
+  width: 180px;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 1rem;
   flex-shrink: 0;
+  padding: 1rem 0;
 }
 
 .legendItem {
@@ -42,10 +44,12 @@
    without clipping at the stage edge. */
 @media (max-width: 700px) {
   .legend {
+    width: 100%;
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: center;
     gap: 0.3rem 0.7rem;
+    padding: 0;
   }
   .legendItem {
     gap: 0.4rem;

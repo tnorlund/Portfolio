@@ -1,3 +1,6 @@
+"""DynamoDB entity for timestamped job status updates."""
+
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -69,9 +72,14 @@ class JobStatus:
 
         if self.progress is not None:
             if (
-                not isinstance(self.progress, (int, float))
+                isinstance(self.progress, bool)
+                or not isinstance(self.progress, (int, float))
                 or self.progress < 0
                 or self.progress > 100
+                or (
+                    isinstance(self.progress, float)
+                    and not math.isfinite(self.progress)
+                )
             ):
                 raise ValueError("progress must be a number between 0 and 100")
             self.progress = float(self.progress)
@@ -130,13 +138,13 @@ class JobStatus:
         if self.progress is not None:
             item["progress"] = {"N": str(self.progress)}
 
-        if self.message:
+        if self.message is not None:
             item["message"] = {"S": self.message}
 
-        if self.updated_by:
+        if self.updated_by is not None:
             item["updated_by"] = {"S": self.updated_by}
 
-        if self.instance_id:
+        if self.instance_id is not None:
             item["instance_id"] = {"S": self.instance_id}
 
         return item

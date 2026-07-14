@@ -11,7 +11,6 @@ function that encapsulates the complete embedding workflow:
 6. Return EmbeddingResult with local ChromaClients ready for queries
 """
 
-import json
 import logging
 import os
 import shutil
@@ -20,15 +19,13 @@ import time
 import uuid
 from concurrent.futures import as_completed
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import boto3
 from openai import OpenAI
 
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.formatting.line_format import (
-    format_line_context_embedding_input,
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
 )
@@ -37,10 +34,8 @@ from receipt_chroma.embedding.formatting.word_format import (
 )
 from receipt_chroma.embedding.openai import embed_texts
 from receipt_chroma.embedding.records import (
-    LineEmbeddingRecord,
     RowEmbeddingRecord,
     WordEmbeddingRecord,
-    build_line_payload,
     build_row_payload,
     build_word_payload,
 )
@@ -228,32 +223,6 @@ def _download_words_snapshot(
     return _traced_download(chromadb_bucket, s3_client)
 
 
-def _embed_lines(
-    openai_client: OpenAI,
-    receipt_lines: list[ReceiptLine],
-    model: str,
-) -> list[list[float]]:
-    """Generate embeddings for lines via OpenAI (traced)."""
-    traceable = _get_traceable()
-
-    @traceable(
-        name="openai_embed_lines",
-        project_name="receipt-label-validation",
-        metadata={"line_count": len(receipt_lines), "model": model},
-    )
-    def _traced_embed(
-        client: OpenAI, lines: list[ReceiptLine], embedding_model: str
-    ) -> list[list[float]]:
-        formatted_texts = [
-            format_line_context_embedding_input(ln, lines) for ln in lines
-        ]
-        return embed_texts(
-            client=client, texts=formatted_texts, model=embedding_model
-        )
-
-    return _traced_embed(openai_client, receipt_lines, model)
-
-
 def _embed_rows(
     openai_client: OpenAI,
     receipt_lines: list[ReceiptLine],
@@ -322,7 +291,7 @@ def _embed_words(
     return _traced_embed(openai_client, receipt_words, model)
 
 
-def _download_and_embed_parallel(
+def download_and_embed_parallel(
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
     chromadb_bucket: str,
@@ -542,30 +511,39 @@ class EmbeddingResult:
         if self._closed:
             return
 
-        try:
-            self.lines_client.close()
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error closing lines_client: %s", e)
+        close_errors: list[tuple[str, Exception]] = []
+        closed_clients: set[str] = set()
 
-        try:
-            self.words_client.close()
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error closing words_client: %s", e)
+        for name, client in (
+            ("lines", self.lines_client),
+            ("words", self.words_client),
+        ):
+            try:
+                client.close()
+                closed_clients.add(name)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                close_errors.append((name, exc))
+                logger.error("Error closing %s_client: %s", name, exc)
 
-        # Clean up temp directories
-        try:
-            if self._lines_dir and os.path.exists(self._lines_dir):
-                shutil.rmtree(self._lines_dir, ignore_errors=True)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error cleaning up lines_dir: %s", e)
-
-        try:
-            if self._words_dir and os.path.exists(self._words_dir):
-                shutil.rmtree(self._words_dir, ignore_errors=True)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Error cleaning up words_dir: %s", e)
+        for name, directory in (
+            ("lines", self._lines_dir),
+            ("words", self._words_dir),
+        ):
+            if (
+                name in closed_clients
+                and directory
+                and os.path.exists(directory)
+            ):
+                shutil.rmtree(directory, ignore_errors=True)
 
         self._closed = True
+        if close_errors:
+            failed_clients = ", ".join(name for name, _ in close_errors)
+            raise RuntimeError(
+                "Failed to close EmbeddingResult clients "
+                f"({failed_clients}); their temporary directories were preserved"
+            ) from close_errors[0][1]
+
         logger.debug("EmbeddingResult closed")
 
     def __enter__(self) -> "EmbeddingResult":
@@ -579,7 +557,14 @@ class EmbeddingResult:
         exc_tb: Any,
     ) -> None:
         """Context manager exit - ensures cleanup."""
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            if exc_type is None:
+                raise
+            logger.exception(
+                "Failed to close EmbeddingResult while handling %s", exc_val
+            )
 
 
 @dataclass
@@ -724,8 +709,8 @@ def _upsert_local_chroma_traced(
             metadata_only=True,
         )
 
-        lines_client.upsert_vectors(collection_name="lines", **line_payload)
-        words_client.upsert_vectors(collection_name="words", **word_payload)
+        lines_client.upsert(collection_name="lines", **line_payload)
+        words_client.upsert(collection_name="words", **word_payload)
 
         return lines_client, words_client
 
@@ -764,7 +749,7 @@ def _upload_deltas_traced(
     return _traced_upload()
 
 
-def _create_compaction_run_traced(
+def create_compaction_run(
     run_id: str,
     image_id: str,
     receipt_id: int,
@@ -806,61 +791,7 @@ def _create_compaction_run_traced(
 # ============================================================================
 
 
-def _build_lines_payload_traced(
-    receipt_lines: list[ReceiptLine],
-    receipt_words: list[ReceiptWord],
-    row_embeddings: list[list[float]],
-    row_line_ids_list: list[list[int]],
-    merchant_name: str | None,
-) -> tuple[dict[str, Any], dict[int, list[float]]]:
-    """Build just lines payload with tracing.
-
-    Uses row-based embeddings where all lines in a visual row share
-    the same embedding vector.
-    """
-    traceable = _get_traceable()
-
-    @traceable(
-        name="build_lines_payload",
-        project_name=_get_project_name(),
-        tags=["embedding", "payload", "lines"],
-        metadata={
-            "num_lines": len(receipt_lines),
-            "num_rows": len(row_embeddings),
-        },
-    )
-    def _traced_build() -> tuple[dict[str, Any], dict[int, list[float]]]:
-        # Group lines into visual rows
-        visual_rows = group_lines_into_visual_rows(receipt_lines)
-
-        # Create RowEmbeddingRecord objects
-        row_records = [
-            RowEmbeddingRecord(row_lines=tuple(row), embedding=emb)
-            for row, emb in zip(visual_rows, row_embeddings, strict=True)
-        ]
-
-        # Build payload using row-based function
-        line_payload = build_row_payload(
-            row_records,
-            receipt_words,
-            all_labels=[],
-            merchant_name=merchant_name,
-        )
-
-        # Build cache: all lines in a row share the same embedding
-        line_embedding_cache: dict[int, list[float]] = {}
-        for row_line_ids, emb in zip(
-            row_line_ids_list, row_embeddings, strict=True
-        ):
-            for line_id in row_line_ids:
-                line_embedding_cache[line_id] = emb
-
-        return line_payload, line_embedding_cache
-
-    return _traced_build()
-
-
-def _build_words_payload_traced(
+def build_words_payload(
     receipt_words: list[ReceiptWord],
     word_embeddings_list: list[list[float]],
     word_labels: list[ReceiptWordLabel] | None,
@@ -897,57 +828,7 @@ def _build_words_payload_traced(
     return _traced_build()
 
 
-def _upsert_lines_local_traced(
-    local_lines_dir: str,
-    line_payload: dict[str, Any],
-) -> ChromaClient:
-    """Create local lines ChromaClient and upsert vectors with tracing."""
-    traceable = _get_traceable()
-
-    @traceable(
-        name="chroma_upsert_lines_local",
-        project_name=_get_project_name(),
-        tags=["chroma", "upsert", "lines"],
-        metadata={"num_lines": len(line_payload["ids"])},
-    )
-    def _traced_upsert() -> ChromaClient:
-        lines_client = ChromaClient(
-            persist_directory=local_lines_dir,
-            mode="write",
-            metadata_only=True,
-        )
-        lines_client.upsert_vectors(collection_name="lines", **line_payload)
-        return lines_client
-
-    return _traced_upsert()
-
-
-def _upsert_words_local_traced(
-    local_words_dir: str,
-    word_payload: dict[str, Any],
-) -> ChromaClient:
-    """Create local words ChromaClient and upsert vectors with tracing."""
-    traceable = _get_traceable()
-
-    @traceable(
-        name="chroma_upsert_words_local",
-        project_name=_get_project_name(),
-        tags=["chroma", "upsert", "words"],
-        metadata={"num_words": len(word_payload["ids"])},
-    )
-    def _traced_upsert() -> ChromaClient:
-        words_client = ChromaClient(
-            persist_directory=local_words_dir,
-            mode="write",
-            metadata_only=True,
-        )
-        words_client.upsert_vectors(collection_name="words", **word_payload)
-        return words_client
-
-    return _traced_upsert()
-
-
-def _upload_lines_delta_traced(
+def upload_lines_delta(
     line_payload: dict[str, Any],
     run_id: str,
     *,
@@ -964,42 +845,18 @@ def _upload_lines_delta_traced(
         metadata={"run_id": run_id, "bucket": chromadb_bucket},
     )
     def _traced_upload() -> str:
-        delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
-        try:
-            delta_line_client = ChromaClient(
-                persist_directory=delta_lines_dir,
-                mode="delta",
-                metadata_only=True,
-            )
-            delta_line_client.upsert_vectors(
-                collection_name="lines", **line_payload
-            )
-            delta_line_client.close()
-
-            lines_prefix = f"lines/delta/{run_id}"
-            lines_upload = upload_delta_tarball(
-                local_delta_dir=delta_lines_dir,
-                bucket=chromadb_bucket,
-                delta_prefix=lines_prefix,
-                metadata={"delta_key": lines_prefix, "run_id": run_id},
-                s3_client=s3_client,
-            )
-            if lines_upload.get("status") != "uploaded":
-                raise RuntimeError(
-                    f"Failed to upload lines delta: {lines_upload}"
-                )
-            logger.info(
-                "Uploaded lines delta to S3: %s",
-                lines_upload.get("object_key"),
-            )
-            return lines_prefix
-        finally:
-            shutil.rmtree(delta_lines_dir, ignore_errors=True)
+        return _upload_delta(
+            payload=line_payload,
+            collection_name="lines",
+            run_id=run_id,
+            chromadb_bucket=chromadb_bucket,
+            s3_client=s3_client,
+        )
 
     return _traced_upload()
 
 
-def _upload_words_delta_traced(
+def upload_words_delta(
     word_payload: dict[str, Any],
     run_id: str,
     *,
@@ -1016,39 +873,60 @@ def _upload_words_delta_traced(
         metadata={"run_id": run_id, "bucket": chromadb_bucket},
     )
     def _traced_upload() -> str:
-        delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
-        try:
-            delta_word_client = ChromaClient(
-                persist_directory=delta_words_dir,
-                mode="delta",
-                metadata_only=True,
-            )
-            delta_word_client.upsert_vectors(
-                collection_name="words", **word_payload
-            )
-            delta_word_client.close()
-
-            words_prefix = f"words/delta/{run_id}"
-            words_upload = upload_delta_tarball(
-                local_delta_dir=delta_words_dir,
-                bucket=chromadb_bucket,
-                delta_prefix=words_prefix,
-                metadata={"delta_key": words_prefix, "run_id": run_id},
-                s3_client=s3_client,
-            )
-            if words_upload.get("status") != "uploaded":
-                raise RuntimeError(
-                    f"Failed to upload words delta: {words_upload}"
-                )
-            logger.info(
-                "Uploaded words delta to S3: %s",
-                words_upload.get("object_key"),
-            )
-            return words_prefix
-        finally:
-            shutil.rmtree(delta_words_dir, ignore_errors=True)
+        return _upload_delta(
+            payload=word_payload,
+            collection_name="words",
+            run_id=run_id,
+            chromadb_bucket=chromadb_bucket,
+            s3_client=s3_client,
+        )
 
     return _traced_upload()
+
+
+def _upload_delta(
+    payload: dict[str, Any],
+    collection_name: Literal["lines", "words"],
+    run_id: str,
+    *,
+    chromadb_bucket: str,
+    s3_client: "S3Client",
+) -> str:
+    """Create one local delta collection and upload its tarball to S3."""
+    delta_dir = tempfile.mkdtemp(prefix=f"{collection_name}_delta_")
+    client: ChromaClient | None = None
+    try:
+        client = ChromaClient(
+            persist_directory=delta_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+        client.upsert(collection_name=collection_name, **payload)
+        client.close()
+        client = None
+
+        prefix = f"{collection_name}/delta/{run_id}"
+        upload = upload_delta_tarball(
+            local_delta_dir=delta_dir,
+            bucket=chromadb_bucket,
+            delta_prefix=prefix,
+            metadata={"delta_key": prefix, "run_id": run_id},
+            s3_client=s3_client,
+        )
+        if upload.get("status") != "uploaded":
+            raise RuntimeError(
+                f"Failed to upload {collection_name} delta: {upload}"
+            )
+        logger.info(
+            "Uploaded %s delta to S3: %s",
+            collection_name,
+            upload.get("object_key"),
+        )
+        return prefix
+    finally:
+        if client is not None:
+            client.close()
+        shutil.rmtree(delta_dir, ignore_errors=True)
 
 
 def _upload_deltas(
@@ -1064,72 +942,21 @@ def _upload_deltas(
     Returns:
         Tuple of (lines_prefix, words_prefix) for the uploaded deltas.
     """
-    delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
-    delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
-
-    try:
-        # Create delta-only clients and upsert
-        delta_line_client = ChromaClient(
-            persist_directory=delta_lines_dir,
-            mode="delta",
-            metadata_only=True,
-        )
-        delta_word_client = ChromaClient(
-            persist_directory=delta_words_dir,
-            mode="delta",
-            metadata_only=True,
-        )
-
-        delta_line_client.upsert_vectors(
-            collection_name="lines", **line_payload
-        )
-        delta_word_client.upsert_vectors(
-            collection_name="words", **word_payload
-        )
-
-        # Close before upload (critical for file locking)
-        delta_line_client.close()
-        delta_word_client.close()
-
-        # Upload deltas to S3
-        lines_prefix = f"lines/delta/{run_id}"
-        words_prefix = f"words/delta/{run_id}"
-
-        lines_upload = upload_delta_tarball(
-            local_delta_dir=delta_lines_dir,
-            bucket=chromadb_bucket,
-            delta_prefix=lines_prefix,
-            metadata={"delta_key": lines_prefix, "run_id": run_id},
-            s3_client=s3_client,
-        )
-        if lines_upload.get("status") != "uploaded":
-            raise RuntimeError(f"Failed to upload lines delta: {lines_upload}")
-
-        words_upload = upload_delta_tarball(
-            local_delta_dir=delta_words_dir,
-            bucket=chromadb_bucket,
-            delta_prefix=words_prefix,
-            metadata={"delta_key": words_prefix, "run_id": run_id},
-            s3_client=s3_client,
-        )
-        if words_upload.get("status") != "uploaded":
-            raise RuntimeError(f"Failed to upload words delta: {words_upload}")
-
-        logger.info(
-            "Uploaded deltas to S3: lines=%s, words=%s",
-            lines_upload.get("object_key"),
-            words_upload.get("object_key"),
-        )
-
-        # NOTE: SQS notifications removed - DynamoDB stream handles compaction
-        # triggering when CompactionRun record is created. This avoids duplicate
-        # messages and potential race conditions.
-
-        return lines_prefix, words_prefix
-
-    finally:
-        shutil.rmtree(delta_lines_dir, ignore_errors=True)
-        shutil.rmtree(delta_words_dir, ignore_errors=True)
+    lines_prefix = _upload_delta(
+        line_payload,
+        "lines",
+        run_id,
+        chromadb_bucket=chromadb_bucket,
+        s3_client=s3_client,
+    )
+    words_prefix = _upload_delta(
+        word_payload,
+        "words",
+        run_id,
+        chromadb_bucket=chromadb_bucket,
+        s3_client=s3_client,
+    )
+    return lines_prefix, words_prefix
 
 
 def create_embeddings_and_compaction_run(
@@ -1190,7 +1017,7 @@ def create_embeddings_and_compaction_run(
         row_embeddings,
         row_line_ids_list,
         word_embeddings_list,
-    ) = _download_and_embed_parallel(
+    ) = download_and_embed_parallel(
         receipt_lines=receipt_lines,
         receipt_words=receipt_words,
         chromadb_bucket=config.chromadb_bucket,
@@ -1247,7 +1074,7 @@ def create_embeddings_and_compaction_run(
         )
 
         # Step 5: Create and persist CompactionRun (TRACED)
-        compaction_run = _create_compaction_run_traced(
+        compaction_run = create_compaction_run(
             run_id=run_id,
             image_id=config.image_id,
             receipt_id=config.receipt_id,

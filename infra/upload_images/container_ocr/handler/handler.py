@@ -4,7 +4,7 @@ validation.
 
 Combines:
 1. OCR parsing and storage (from process_ocr_results.py)
-2. Merchant validation and embedding (from embed_from_ndjson)
+2. Merchant validation and embedding
 
 Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
 Updated: 2026-01-15 - Added chroma_label_validation trace for visibility into Phase 2 parallelism
@@ -174,7 +174,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     )
 
     _log(
-        "Completed processing %s records (success: %s, errors: %s, " "embeddings: %s)",
+        "Completed processing %s records (success: %s, errors: %s, "
+        "embeddings: %s)",
         len(results),
         success_count,
         error_count,
@@ -238,7 +239,6 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     """
     import boto3
     from receipt_dynamo import DynamoClient
-
     from receipt_upload.label_validation.llm_runner import apply_async_payload
 
     body = json.loads(record["body"])
@@ -349,7 +349,9 @@ def _process_single_record(
     is_swift_single_pass = ocr_result.get("swift_single_pass", False)
 
     # For Swift single-pass with multiple receipts, process all of them
-    receipt_ids = ocr_result.get("receipt_ids", [receipt_id] if receipt_id else [])
+    receipt_ids = ocr_result.get(
+        "receipt_ids", [receipt_id] if receipt_id else []
+    )
     per_receipt_data = ocr_result.get("per_receipt_data", {})
 
     # Only create embeddings if we have valid receipt_id(s)
@@ -377,7 +379,6 @@ def _process_single_record(
             embedding_processor = MerchantResolvingEmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
                 chromadb_bucket=os.environ["CHROMADB_BUCKET"],
-                chroma_http_endpoint=os.environ.get("CHROMA_HTTP_ENDPOINT"),
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
             )
@@ -389,8 +390,12 @@ def _process_single_record(
             for rid in receipt_ids:
                 # Get per-receipt lines/words if available, otherwise use combined
                 receipt_data = per_receipt_data.get(rid, {})
-                lines = receipt_data.get("lines") or ocr_result.get("receipt_lines")
-                words = receipt_data.get("words") or ocr_result.get("receipt_words")
+                lines = receipt_data.get("lines") or ocr_result.get(
+                    "receipt_lines"
+                )
+                words = receipt_data.get("words") or ocr_result.get(
+                    "receipt_words"
+                )
 
                 _log(
                     "Processing embeddings for receipt %s: lines=%s, words=%s",
@@ -407,7 +412,9 @@ def _process_single_record(
                         words=words,
                     )
 
-                    merchant_found = embedding_result.get("merchant_found", False)
+                    merchant_found = embedding_result.get(
+                        "merchant_found", False
+                    )
                     if merchant_found:
                         total_merchants_found += 1
 
@@ -424,7 +431,9 @@ def _process_single_record(
                             "receipt_id": rid,
                             "success": True,
                             "merchant_found": merchant_found,
-                            "merchant_name": embedding_result.get("merchant_name"),
+                            "merchant_name": embedding_result.get(
+                                "merchant_name"
+                            ),
                             "merchant_place_id": embedding_result.get(
                                 "merchant_place_id"
                             ),
@@ -448,7 +457,9 @@ def _process_single_record(
             embedding_duration = time.time() - embedding_start
 
             # Use first receipt's result for backward compatibility
-            first_result = all_embedding_results[0] if all_embedding_results else {}
+            first_result = (
+                all_embedding_results[0] if all_embedding_results else {}
+            )
 
             _log(
                 "SUCCESS: Processed %s receipts for %s image: "

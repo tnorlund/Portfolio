@@ -26,18 +26,16 @@ Reference: ChromaDB issue #5868, ChromaClient class docstring.
 CHROMADB GLOBAL STATE RESET:
 ============================
 
-ChromaDB's _system.stop() (called by PersistentClient.close()) corrupts global
-Rust bindings state. The reset_chromadb_state fixture reimports chromadb modules
-after each test to clear this corruption, allowing subsequent tests to create
-new clients successfully.
+Persistent clients share a process-wide ChromaDB system cache. Cleanup resets
+that supported cache between clients so later tests can reopen the same path.
 """
 
 import gc
-import sys
 import tempfile
 
 import boto3
 import pytest
+from chromadb.api.shared_system_client import SharedSystemClient
 from moto import mock_aws
 
 from receipt_chroma import ChromaClient
@@ -46,36 +44,14 @@ from receipt_dynamo.constants import ChromaDBCollection
 
 
 def reset_chromadb_modules():
-    """Reset ChromaDB global state by reimporting modules.
+    """Reset ChromaDB's shared-system cache between persistent clients.
 
-    ChromaDB's _system.stop() (called when closing PersistentClient) corrupts
-    global Rust bindings state. This helper reimports chromadb modules to clear
-    the corrupted state.
-
-    Use this BETWEEN PersistentClient instances in the same test when you need
-    to test data persistence across client sessions.
-
-    IMPORTANT: This resets BOTH chromadb and receipt_chroma modules to ensure
-    the receipt_chroma.data.chroma_client module gets a fresh chromadb reference.
-    After calling this, you MUST re-import ChromaClient.
-
-    See GitHub issue #5868 for context on ChromaDB cleanup challenges.
+    Earlier test isolation deleted imported modules from ``sys.modules``. That
+    left already-collected tests holding stale classes and made results depend
+    on suite order. ChromaDB's cache reset preserves module identity while
+    allowing a fresh client to open the database.
     """
-    # Remove chromadb modules AND receipt_chroma modules from sys.modules
-    # Both need to be reset so receipt_chroma.data.chroma_client gets a fresh
-    # chromadb reference
-    modules_to_reset = [
-        mod
-        for mod in list(sys.modules.keys())
-        if mod == "chromadb"
-        or mod.startswith("chromadb.")
-        or mod == "receipt_chroma"
-        or mod.startswith("receipt_chroma.")
-    ]
-    for mod in modules_to_reset:
-        del sys.modules[mod]
-
-    # Force garbage collection to fully release resources
+    SharedSystemClient.clear_system_cache()
     gc.collect()
 
 

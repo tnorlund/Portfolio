@@ -1,3 +1,5 @@
+"""DynamoDB entity for resources allocated to a job."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generator
@@ -119,7 +121,11 @@ class JobResource:
         self.status = self.status.lower()
 
         if self.gpu_count is not None:
-            if not isinstance(self.gpu_count, int) or self.gpu_count < 0:
+            if (
+                isinstance(self.gpu_count, bool)
+                or not isinstance(self.gpu_count, int)
+                or self.gpu_count < 0
+            ):
                 raise ValueError("gpu_count must be a non-negative integer")
 
         if self.resource_config is not None and not isinstance(

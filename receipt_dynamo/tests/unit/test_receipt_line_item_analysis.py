@@ -206,7 +206,7 @@ def test_receipt_line_item_analysis_init_invalid_timestamp():
     """Test ReceiptLineItemAnalysis constructor with invalid timestamp."""
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be a datetime object or ISO format string",
     ):
         ReceiptLineItemAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -724,3 +724,149 @@ def test_convert_dict_to_dynamo():
     assert dynamo_dict["list"]["L"][0]["S"] == "a"
     assert dynamo_dict["nested_dict"]["M"]["key1"]["S"] == "value1"
     assert dynamo_dict["nested_dict"]["M"]["key2"]["N"] == "123"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [("receipt_id", True), ("total_found", False)],
+)
+def test_receipt_line_item_analysis_rejects_bool_identifiers(
+    example_receipt_line_item_analysis, field_name, value
+):
+    kwargs = dict(example_receipt_line_item_analysis)
+    kwargs[field_name] = value
+
+    with pytest.raises(ValueError, match=field_name):
+        ReceiptLineItemAnalysis(**kwargs)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "value",
+    [Decimal("NaN"), Decimal("Infinity"), "-Infinity"],
+)
+def test_receipt_line_item_analysis_rejects_non_finite_money(value):
+    with pytest.raises(ValueError, match="subtotal must be finite"):
+        ReceiptLineItemAnalysis(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            timestamp_added="2024-01-01T00:00:00",
+            items=[],
+            reasoning="reason",
+            version="1.0",
+            subtotal=value,
+        )
+
+
+@pytest.mark.unit
+def test_receipt_line_item_analysis_nested_metadata_round_trip(
+    example_receipt_line_item_analysis,
+):
+    example_receipt_line_item_analysis.metadata = {
+        "enabled": True,
+        "values": [None, [1, False], {"score": Decimal("0.75")}],
+    }
+    example_receipt_line_item_analysis.word_labels = {
+        (1, None): {"label": "description", "manual": False}
+    }
+
+    item = example_receipt_line_item_analysis.to_item()
+    restored = item_to_receipt_line_item_analysis(item)
+
+    assert item["metadata"]["M"]["enabled"] == {"BOOL": True}
+    assert item["metadata"]["M"]["values"]["L"][0] == {"NULL": True}
+    assert restored.metadata == {
+        "enabled": True,
+        "values": [None, [1, False], {"score": 0.75}],
+    }
+    assert restored.word_labels == {
+        (1, None): {"label": "description", "manual": False}
+    }
+
+
+@pytest.mark.unit
+def test_receipt_line_item_analysis_allows_zero_based_line_and_word_ids():
+    analysis = ReceiptLineItemAnalysis(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        timestamp_added="2024-01-01T00:00:00",
+        items=[{"description": "item", "line_ids": [0]}],
+        reasoning="reason",
+        version="1.0",
+        word_labels={(0, 0): {"label": "description"}},
+    )
+
+    assert item_to_receipt_line_item_analysis(analysis.to_item()) == analysis
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [True, -1])
+def test_receipt_line_item_analysis_rejects_invalid_nested_ids(value):
+    common = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "receipt_id": 1,
+        "timestamp_added": "2024-01-01T00:00:00",
+        "reasoning": "reason",
+        "version": "1.0",
+    }
+    with pytest.raises(ValueError, match="line_id"):
+        ReceiptLineItemAnalysis(
+            **common,
+            items=[{"line_ids": [value]}],
+        )
+    with pytest.raises(ValueError, match="word_id"):
+        ReceiptLineItemAnalysis(
+            **common,
+            items=[],
+            word_labels={(0, value): {"label": "description"}},
+        )
+
+
+@pytest.mark.unit
+def test_receipt_line_item_analysis_full_round_trip_and_hash(
+    example_receipt_line_item_analysis,
+):
+    restored = item_to_receipt_line_item_analysis(
+        example_receipt_line_item_analysis.to_item()
+    )
+
+    assert restored == example_receipt_line_item_analysis
+    assert hash(restored) == hash(example_receipt_line_item_analysis)
+
+
+@pytest.mark.unit
+def test_receipt_line_item_analysis_mutable_defaults_are_independent():
+    common = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "receipt_id": 1,
+        "timestamp_added": "2024-01-01T00:00:00",
+        "items": [],
+        "reasoning": "reason",
+        "version": "1.0",
+    }
+    first = ReceiptLineItemAnalysis(**common)
+    second = ReceiptLineItemAnalysis(**common)
+
+    first.discrepancies.append("changed")
+    first.metadata["processing_metrics"]["calls"] = 1
+    first.word_labels[(1, 1)] = {"label": "item"}
+
+    assert second.discrepancies == []
+    assert second.metadata["processing_metrics"] == {}
+    assert second.word_labels == {}
+
+
+@pytest.mark.unit
+def test_receipt_line_item_analysis_from_item_rejects_type_and_key_mismatches(
+    example_receipt_line_item_analysis,
+):
+    item = example_receipt_line_item_analysis.to_item()
+    item["TYPE"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="TYPE must be"):
+        item_to_receipt_line_item_analysis(item)
+
+    item = example_receipt_line_item_analysis.to_item()
+    item["GSI1PK"] = {"S": "OTHER"}
+    with pytest.raises(ValueError, match="GSI1PK does not match"):
+        item_to_receipt_line_item_analysis(item)

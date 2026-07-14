@@ -609,7 +609,8 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     body_boxes = [
         l["box_h"]
         for l in out_lines
-        if l["section"] in ("item", "other", "footer", "survey") and l["box_h"] > 0
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["box_h"] > 0
     ]
     body_box_h = median(body_boxes) if body_boxes else None
     for l in out_lines:

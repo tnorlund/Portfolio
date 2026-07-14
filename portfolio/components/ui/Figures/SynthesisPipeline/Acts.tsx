@@ -22,6 +22,7 @@ import {
   charPrintSrc,
   COMPOSE_GROUP_ORDER,
   FONT_CODEPOINTS,
+  FontGlyphMetric,
   fontGlyphSrc,
   finalSrc,
   logoSrc,
@@ -63,6 +64,94 @@ const AssetPending: React.FC<{ children: React.ReactNode }> = ({
     {children}
   </div>
 );
+
+/**
+ * Turn opaque dark-ink-on-white receipt pixels into black ink with real alpha.
+ * The grayscale intensity is preserved as opacity, so antialiasing and the
+ * consensus cloud survive while the receipt-paper pixels disappear entirely.
+ */
+export const knockOutReceiptPaper = (pixels: Uint8ClampedArray): void => {
+  const paperLuminance = 220;
+  const solidInkLuminance = 70;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const luminance = Math.round(
+      pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722,
+    );
+    const normalizedInk = Math.min(
+      1,
+      Math.max(
+        0,
+        (paperLuminance - luminance) /
+          (paperLuminance - solidInkLuminance),
+      ),
+    );
+    const inkAlpha = normalizedInk ** 1.5;
+    pixels[i + 3] = Math.round(pixels[i + 3] * inkAlpha);
+    pixels[i] = 0;
+    pixels[i + 1] = 0;
+    pixels[i + 2] = 0;
+  }
+};
+
+interface ReceiptInkLayerProps {
+  src: string;
+  className: string;
+  style?: React.CSSProperties;
+  ariaLabel?: string;
+  testId?: string;
+}
+
+const ReceiptInkLayer: React.FC<ReceiptInkLayerProps> = ({
+  src,
+  className,
+  style,
+  ariaLabel,
+  testId,
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    let cancelled = false;
+    const source = new Image();
+    source.decoding = "async";
+    source.onload = () => {
+      if (cancelled) {
+        return;
+      }
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        return;
+      }
+      canvas.width = source.naturalWidth;
+      canvas.height = source.naturalHeight;
+      ctx.drawImage(source, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      knockOutReceiptPaper(imageData.data);
+      ctx.putImageData(imageData, 0, 0);
+    };
+    source.src = src;
+    return () => {
+      cancelled = true;
+      source.onload = null;
+    };
+  }, [src]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className={className}
+      style={style}
+      role={ariaLabel ? "img" : undefined}
+      aria-label={ariaLabel}
+      aria-hidden={ariaLabel ? undefined : true}
+      data-testid={testId}
+    />
+  );
+};
 
 /* ==================================================================== */
 /* Act 1 — Raw material                                                  */
@@ -269,23 +358,19 @@ const CharacterAct: React.FC<ActProps> = ({
     <div className={styles.charStageWrap} data-testid="act-character">
       <div className={styles.charGlyphBox} style={{ aspectRatio: geom.aspect }}>
         {/* Consensus cloud (the shared frame everything maps into). */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <ReceiptInkLayer
           src={charCloudSrc(merchant)}
-          alt="Consensus letterform averaged from many prints"
+          ariaLabel="Consensus letterform averaged from many prints"
           className={styles.charCloudFill}
           style={{ opacity: cloudOpacity }}
-          data-testid="char-cloud"
+          testId="char-cloud"
         />
         {/* Real prints piling up, fading as the cloud resolves. */}
         {printsOpacity > 0.01
           ? printLayers.map((i, depth) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <ReceiptInkLayer
                 key={i}
                 src={charPrintSrc(merchant, i)}
-                alt=""
-                aria-hidden="true"
                 className={styles.charPrintLayer}
                 style={{
                   opacity: printsOpacity * (1 - depth * 0.28),
@@ -389,6 +474,25 @@ const CharacterAct: React.FC<ActProps> = ({
 
 const FONT_GRID_COLS = 12; // matches grid-template-columns on desktop
 const HERO_FLIGHT_SCALE = 5.2; // how big the hero rides in from stage center
+const FONT_GRID_CAP_PERCENT = 70;
+const FONT_GRID_BASELINE_PERCENT = 78.5;
+
+const normalizedGlyphStyle = (
+  metric: FontGlyphMetric | undefined,
+  capHeight: number | undefined,
+): React.CSSProperties | undefined => {
+  if (!metric || !capHeight || capHeight <= 0) {
+    return undefined;
+  }
+  const scale = FONT_GRID_CAP_PERCENT / capHeight;
+  return {
+    width: `${metric.width * scale}%`,
+    height: `${metric.height * scale}%`,
+    top: "auto",
+    bottom: `${100 - FONT_GRID_BASELINE_PERCENT - metric.offset * scale}%`,
+    transform: "translateX(-50%)",
+  };
+};
 
 /** Smoothstep ease for the flight. */
 const smooth = (t: number): number => t * t * (3 - 2 * t);
@@ -438,12 +542,19 @@ const WholeFontAct: React.FC<ActProps> = ({
             }
           : undefined;
         const maskUrl = `url(${fontGlyphSrc(merchant, cp)})`;
+        const glyphMetric = assets.fontMetrics?.glyphs[String(cp)];
+        const metricStyle = normalizedGlyphStyle(
+          glyphMetric,
+          assets.fontMetrics?.capHeight,
+        );
+        const maskSize = metricStyle ? "100% 100%" : "contain";
         return (
           <div
             key={cp}
             className={`${styles.fontCell}${isHero ? ` ${styles.fontCellHero}` : ""}`}
             data-shown={shown}
             data-hero={isHero || undefined}
+            data-codepoint={cp}
             data-testid="font-cell"
             style={heroStyle}
           >
@@ -452,7 +563,13 @@ const WholeFontAct: React.FC<ActProps> = ({
                 themes. */}
             <div
               className={styles.fontGlyph}
-              style={{ WebkitMaskImage: maskUrl, maskImage: maskUrl }}
+              style={{
+                WebkitMaskImage: maskUrl,
+                maskImage: maskUrl,
+                WebkitMaskSize: maskSize,
+                maskSize,
+                ...metricStyle,
+              }}
               aria-hidden="true"
             />
           </div>

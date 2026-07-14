@@ -8,4 +8,4 @@
 
 > **ReceiptHealthPreflightClassification** = `"needs_ai_review"` \| `"safe_exact_plan"` \| `"known_limitation"` \| `"reocr_needed"` \| `"evaluator_rule_gap"`
 
-Defined in: [types/api.ts:1100](https://github.com/tnorlund/Portfolio/blob/3d2b605a9594278d15569a60de90f18d13fb6a4c/portfolio/types/api.ts#L1100)
+Defined in: [types/api.ts:1100](https://github.com/tnorlund/Portfolio/blob/781b07c5af0acf72ef3dcbb7739a25854301ce3f/portfolio/types/api.ts#L1100)

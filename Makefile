@@ -1,7 +1,10 @@
 # Makefile for Portfolio project
 
 .PHONY: help format lint test test-fast test-integration test-e2e pre-push install-hooks clean
-.PHONY: export-sample-data
+.PHONY: export-sample-data analytics-cache analytics-cache-validate
+.PHONY: analytics-cache-invalidate analytics-cache-serve analytics-cache-stop
+
+ENV ?= dev
 
 help:
 	@echo "Available commands:"
@@ -17,6 +20,9 @@ help:
 	@echo ""
 	@echo "Local Development Commands:"
 	@echo "  make export-sample-data - Export sample receipt data for local testing"
+	@echo "  make analytics-cache ENV=dev - Cache DynamoDB, ChromaDB, and raw images"
+	@echo "  make analytics-cache-validate ENV=dev - Validate the analytics cache"
+	@echo "  make analytics-cache-serve ENV=dev - Start cached DynamoDB Local"
 
 format:
 	@echo "Installing latest formatters to match CI..."
@@ -90,3 +96,18 @@ export-sample-data:
 	@echo "Creating sample dataset of 20 receipts..."
 	python scripts/export_receipt_data.py sample --size 20 --output-dir ./receipt_data
 	@echo "✅ Sample data exported to ./receipt_data"
+
+analytics-cache:
+	python scripts/local_analytics_cache.py sync --env $(ENV)
+
+analytics-cache-validate:
+	python scripts/local_analytics_cache.py validate --env $(ENV)
+
+analytics-cache-invalidate:
+	python scripts/local_analytics_cache.py invalidate --env $(ENV)
+
+analytics-cache-serve:
+	python scripts/local_analytics_cache.py serve --env $(ENV)
+
+analytics-cache-stop:
+	python scripts/local_analytics_cache.py stop --env $(ENV)

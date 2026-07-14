@@ -85,11 +85,14 @@ class CollectionUpdateResult:
     delta_merge_count: int
     delta_merge_results: List[Dict[str, Any]]
     receipt_deletions: List[ReceiptDeletionResult] = None  # type: ignore
+    section_updates: List[MetadataUpdateResult] = None  # type: ignore
 
     def __post_init__(self):
         """Initialize default values for mutable fields."""
         if self.receipt_deletions is None:
             object.__setattr__(self, "receipt_deletions", [])
+        if self.section_updates is None:
+            object.__setattr__(self, "section_updates", [])
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
@@ -101,6 +104,9 @@ class CollectionUpdateResult:
             "delta_merge_results": self.delta_merge_results,
             "receipt_deletions": [
                 r.to_dict() for r in (self.receipt_deletions or [])
+            ],
+            "section_updates": [
+                r.to_dict() for r in (self.section_updates or [])
             ],
         }
 
@@ -128,11 +134,21 @@ class CollectionUpdateResult:
         )
 
     @property
+    def total_sections_updated(self) -> int:
+        """Total rows restamped by section recompute (excluding errors)."""
+        return sum(
+            r.updated_count
+            for r in (self.section_updates or [])
+            if r.error is None
+        )
+
+    @property
     def has_errors(self) -> bool:
         """Whether any updates had errors."""
         all_results = (
             list(self.metadata_updates)
             + list(self.label_updates)
             + list(self.receipt_deletions or [])
+            + list(self.section_updates or [])
         )
         return any(r.error is not None for r in all_results)

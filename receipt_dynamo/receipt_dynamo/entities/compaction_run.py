@@ -17,6 +17,7 @@ from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_non_negative_int,
     validate_positive_int,
 )
 
@@ -135,16 +136,16 @@ class CompactionRun(DynamoDBEntity):
                     f"{attr} must be datetime, ISO-8601 string, or None"
                 )
 
-        if (
-            not isinstance(self.lines_merged_vectors, int)
-            or self.lines_merged_vectors < 0
-        ):
-            raise ValueError("lines_merged_vectors must be a non-negative int")
-        if (
-            not isinstance(self.words_merged_vectors, int)
-            or self.words_merged_vectors < 0
-        ):
-            raise ValueError("words_merged_vectors must be a non-negative int")
+        for attr in ("lines_error", "words_error"):
+            if not isinstance(getattr(self, attr), str):
+                raise ValueError(f"{attr} must be a string")
+
+        validate_non_negative_int(
+            "lines_merged_vectors", self.lines_merged_vectors
+        )
+        validate_non_negative_int(
+            "words_merged_vectors", self.words_merged_vectors
+        )
 
     # ───────────────────── DynamoDB keys ─────────────────────
     @property
@@ -262,7 +263,8 @@ class CompactionRun(DynamoDBEntity):
             def _get_s(name: str, default: str = "") -> str:
                 v = item.get(name)
                 if v and "S" in v:
-                    return v["S"]
+                    value = v["S"]
+                    return value if isinstance(value, str) else default
                 return default
 
             def _get_n(name: str, default: int = 0) -> int:

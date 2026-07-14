@@ -64,17 +64,31 @@ MIN_LETTERS = 4
 # (WF's "Tender:" has ONE cap sample, an OCR smear read as 1.34x body --
 # hand-checked as plain body height).
 MIN_CAP_SAMPLES = 3
-# Sizing also requires CONSISTENT cap samples: relative p10-p90 spread <=
-# this. Deciles, not quartiles: contamination is often bimodal-minority (a
-# green marker stroke through 165b9d15's "ORG ATAULFO" row inflated part of
-# the row to 44-85px and rendered a body item line at 1.6x; 5592edb9's
-# masked-PAN line merged boxed-amount digits, 27px x4 vs 44px x16, which an
-# IQR misses because both quartiles land on the majority mode). Genuine
-# enlarged rows measure <= 0.02 (SELF-CHECKOUT all 63px, VOID all 79px,
-# Items Sold 63-64px) while the hand-checked false positives sit at
+# Sizing requires CONSISTENT cap samples, guarded two ways (a row must clear
+# BOTH -- they catch different contamination modes hand-checked in the
+# pilots).
+#
+# Decile spread <= this. Deciles, not quartiles: contamination is often
+# bimodal-minority (a green marker stroke through 165b9d15's "ORG ATAULFO"
+# row inflated part of the row to 44-85px and rendered a body item line at
+# 1.6x; 5592edb9's masked-PAN line merged boxed-amount digits, 27px x4 vs
+# 44px x16, which an IQR misses because both quartiles land on the majority
+# mode). Genuine enlarged rows measure <= 0.02 (SELF-CHECKOUT all 63px, VOID
+# all 79px, Items Sold 63-64px) while the hand-checked false positives sit at
 # 0.39-0.52; a single OCR-clipped letter on a well-sampled row still passes
 # (the deciles skip one outlier per end from n=10 up).
 CAP_SPREAD_MAX = 0.12
+# p75/p25 dispersion cap. A single printed row has ONE cap height, so its cap
+# samples must agree: when p75/p25 of the samples reaches this ratio, the
+# letter set mixes physical rows (OCR leakage from a neighboring line) and
+# the median sizes a row that does not exist. In-N-Out 9afeb902#2's small
+# footer "Questions/Comments: ... Call" measured cap 65px = 1.51x body
+# because leaked 83-84px digits sat beside its true 46-47px caps --
+# hand-checked as plain small print. Sizing is suppressed on such rows;
+# face/underline keep their own guards. (Clean enlarged headers measure
+# tight: WF's "Thousand Oaks CA" disperses < 1.1; body-row OCR noise reaches
+# ~1.3.)
+CAP_DISPERSION_MAX = 1.4
 
 
 def normalize_face_key(text: str) -> str:
@@ -88,9 +102,10 @@ def normalize_face_key(text: str) -> str:
 
 
 def _cap_heights(line: Mapping[str, Any]) -> list[float]:
-    """Positive cap-letter heights only: a missing/zero height is not a
-    sample (coerced zeros would both satisfy MIN_CAP_SAMPLES and zero the
-    spread median, letting an unreliable cap_px enlarge the row)."""
+    """Sorted positive cap-letter heights only: a missing/zero height is not
+    a sample (coerced zeros would both satisfy MIN_CAP_SAMPLES and zero the
+    spread median, letting an unreliable cap_px enlarge the row). Returned
+    sorted so percentile indexing (see :func:`_caps_consistent`) is valid."""
     out = []
     for c in line.get("letters") or ():
         ch = str(c.get("ch", ""))[:1]
@@ -102,7 +117,26 @@ def _cap_heights(line: Mapping[str, Any]) -> list[float]:
             continue
         if h > 0:
             out.append(h)
-    return out
+    return sorted(out)
+
+
+def _caps_consistent(line: Mapping[str, Any]) -> bool:
+    """True when the row's cap samples describe ONE letter size.
+
+    Enough samples (>= MIN_CAP_SAMPLES) and unimodal heights
+    (p75/p25 < CAP_DISPERSION_MAX) -- see the constants' rationale. This
+    guards the OCR-leakage mode where a neighbor line's tall digits sit
+    beside a row's true caps (In-N-Out footer); the decile spread guard
+    (:func:`_cap_spread`) covers the bimodal-minority mode. A row must clear
+    both to be sized.
+    """
+    heights = _cap_heights(line)
+    n = len(heights)
+    if n < MIN_CAP_SAMPLES:
+        return False
+    p25 = heights[n // 4]
+    p75 = heights[(3 * n) // 4]
+    return p75 / max(p25, 1e-6) < CAP_DISPERSION_MAX
 
 
 def _next_band_bleeds(line: Mapping[str, Any], nxt: Mapping[str, Any]) -> bool:
@@ -196,10 +230,13 @@ def measured_style_for_line(
         and stroke_rel / max(cap_rel, 1e-6) >= BOLD_STROKE_TO_CAP
     )
     scale = 1.0
+    # Size only when the row is clearly enlarged AND its cap samples pass
+    # BOTH consistency guards: p75/p25 dispersion (OCR leakage from a
+    # neighbor line) and decile spread (bimodal-minority contamination).
     caps = _cap_heights(line)
     if (
         cap_rel >= LARGE_CAP
-        and len(caps) >= MIN_CAP_SAMPLES
+        and _caps_consistent(line)
         and _cap_spread(caps) <= CAP_SPREAD_MAX
     ):
         scale = round(min(cap_rel, SCALE_MAX), 2)
