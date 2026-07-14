@@ -327,11 +327,15 @@ class WebAnalytics(ComponentResource):
             ),
             opts=child,
         )
-        # Daily schedule (logs are low-latency; one daily pass + the
-        # yesterday/today default keeps partitions fresh and idempotent).
+        # Hourly schedule: the no-payload run rebuilds the last 4 UTC days
+        # (today included) idempotently, so web_events -- and every analytics_*
+        # tool that reads it -- stays at most ~1h behind instead of ~24h. Each
+        # run scans only a few days of this low-traffic site's gzip logs, so the
+        # added Athena cost is negligible. Off-minute (:17) to dodge the
+        # top-of-hour scheduler crowd.
         schedule = aws.cloudwatch.EventRule(
             f"{name}-transform-schedule",
-            schedule_expression="cron(30 9 * * ? *)",  # 09:30 UTC ~ 02:30 PT
+            schedule_expression="cron(17 * * * ? *)",  # hourly at :17 UTC
             opts=child,
         )
         aws.cloudwatch.EventTarget(
