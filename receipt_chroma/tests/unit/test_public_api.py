@@ -3,7 +3,12 @@
 import ast
 from pathlib import Path
 
-from receipt_chroma import ChromaClient, LockManager
+from receipt_chroma import (
+    ChromaClient,
+    LockManager,
+    Propagation,
+    propagate_knn,
+)
 from receipt_chroma.compaction import (
     CloudConfig,
     CollectionUpdateResult,
@@ -60,12 +65,25 @@ from receipt_chroma.s3 import upload_snapshot_with_hash
 from receipt_chroma.s3.helpers import (
     upload_snapshot_with_hash as internal_upload_snapshot_with_hash,
 )
+from receipt_chroma.section_propagation import (
+    Propagation as InternalPropagation,
+)
+from receipt_chroma.section_propagation import (
+    propagate_knn as internal_propagate_knn,
+)
 
 
 def test_public_client_exports_match_implementations() -> None:
     """The package root remains the supported client import location."""
     assert ChromaClient is InternalChromaClient
     assert LockManager is InternalLockManager
+
+
+def test_public_section_propagation_exports_match_implementations() -> None:
+    """Runtime and glyph-studio share one pure propagation implementation."""
+
+    assert Propagation is InternalPropagation
+    assert propagate_knn is internal_propagate_knn
 
 
 def test_compaction_facade_exports_match_implementations() -> None:

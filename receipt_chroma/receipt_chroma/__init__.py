@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING, Any
 
+from receipt_chroma.section_propagation import Propagation, propagate_knn
+
 __version__ = "0.2.0"
 
 if TYPE_CHECKING:
@@ -12,6 +14,8 @@ __all__ = [
     "__version__",
     "ChromaClient",
     "LockManager",
+    "Propagation",
+    "propagate_knn",
 ]
 
 

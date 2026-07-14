@@ -4,7 +4,6 @@ from dataclasses import replace
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import SectionType
 
 # Fix circular import by importing directly from the entity module
@@ -52,6 +51,30 @@ def test_receipt_section_zero_based_line_id_round_trip():
     restored = item_to_receipt_section(section.to_item())
 
     assert restored == section
+
+
+@pytest.mark.unit
+def test_receipt_section_verification_provenance_round_trip():
+    """D2 verifier metadata remains additive and serializable."""
+
+    section = ReceiptSection(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        section_type=SectionType.ITEMS,
+        line_ids=[1],
+        row_ids=[1],
+        created_at=datetime(2023, 1, 1, 12, 0, 0),
+        validation_status="PENDING",
+        model_source="upload-determinism-v1",
+        verification_source="glyphstudio-knn-v1",
+        verification_status="DISAGREED",
+        verification_section_type="SUMMARY",
+        verification_confidence=0.75,
+        disagreement_row_ids=[1],
+        verified_at=datetime(2023, 1, 1, 12, 1, 0),
+    )
+
+    assert item_to_receipt_section(section.to_item()) == section
 
 
 @pytest.mark.unit
