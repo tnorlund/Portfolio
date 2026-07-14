@@ -3791,6 +3791,10 @@ async def analytics_recent_impl(hours=6, humans_only=True, limit=50) -> dict:
         limit = max(1, min(int(limit), 200))
         flt = "AND NOT is_bot AND NOT is_warp" if humans_only else ""
         pt = "(ts_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles'"
+        # Widen the dt floor to cover the whole look-back plus a 1-day UTC edge
+        # buffer, so a 48h window early in the UTC day doesn't drop the
+        # two-days-ago partition before the ts_utc filter can see it.
+        day_span = hours // 24 + 2
         sql = f"""
 SELECT
   date_format({pt}, '%Y-%m-%d %H:%i:%s') AS pt_time,
@@ -3800,7 +3804,7 @@ SELECT
   referrer AS ref,
   sid
 FROM {ANALYTICS_DB}.web_events
-WHERE dt >= date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+WHERE dt >= date_format(date_add('day', -{day_span}, current_date), '%Y-%m-%d')
   AND ts_utc >= date_add('hour', -{hours}, CAST((now() AT TIME ZONE 'UTC') AS timestamp))
   AND is_beacon AND event = 'page_view'
   {flt}
