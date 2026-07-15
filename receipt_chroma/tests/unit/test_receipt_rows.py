@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pytest
+
 from receipt_chroma.embedding.formatting import (
     build_receipt_rows,
     detect_price_column,
@@ -39,7 +40,15 @@ class FakeWord:
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("$12.99", True), ("1,234.50", True), ("(2.00)", True), ("12/99", False)],
+    [
+        ("$12.99", True),
+        ("1234.56", True),
+        ("$10000.00", True),
+        ("1,234.50", True),
+        ("(2.00)", True),
+        ("12,34.56", False),
+        ("12/99", False),
+    ],
 )
 def test_is_amount_text_requires_cents(text: str, expected: bool) -> None:
     assert is_amount_text(text) is expected
@@ -58,6 +67,28 @@ def test_detect_price_column_uses_dominant_right_edge() -> None:
     assert column is not None
     assert column.x == pytest.approx(0.95)
     assert column.tolerance == pytest.approx(0.03)
+
+
+def test_build_receipt_rows_pairs_ungrouped_four_digit_amount() -> None:
+    lines = [
+        FakeLine(
+            1,
+            "GRAND TOTAL $1234.56",
+            {"x": 0.05, "y": 0.20, "width": 0.90, "height": 0.04},
+        )
+    ]
+    words = [
+        FakeWord(1, 1, "GRAND", {"x": 0.05, "width": 0.15}),
+        FakeWord(1, 2, "TOTAL", {"x": 0.22, "width": 0.15}),
+        FakeWord(1, 3, "$1234.56", {"x": 0.75, "width": 0.20}),
+    ]
+
+    rows = build_receipt_rows(lines, words)
+
+    assert rows[0].label_text == "GRAND TOTAL"
+    assert rows[0].amount_text == "$1234.56"
+    assert rows[0].amount_line_id == 1
+    assert rows[0].amount_word_id == 3
 
 
 def test_build_receipt_rows_pairs_split_label_and_amount() -> None:
@@ -99,6 +130,14 @@ def test_build_receipt_rows_pairs_split_label_and_amount() -> None:
     assert item_row.amount_line_id == 11
     assert item_row.amount_word_id == 1
     assert item_row.created_at == timestamp
+
+    total_row = rows[1]
+    assert total_row.row_id == 12
+    assert total_row.line_ids == [12]
+    assert total_row.label_text == "TOTAL"
+    assert total_row.amount_text == "$4.99"
+    assert total_row.amount_line_id == 12
+    assert total_row.amount_word_id == 2
 
 
 def test_build_receipt_rows_rejects_mixed_receipts() -> None:

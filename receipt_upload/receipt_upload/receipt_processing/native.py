@@ -144,7 +144,13 @@ def process_native(
     dynamo_client.add_receipt(receipt)
     dynamo_client.add_receipt_lines(receipt_lines)
     dynamo_client.add_receipt_words(receipt_words)
-    persist_receipt_rows(dynamo_client, receipt_lines, receipt_words)
+    persist_receipt_rows(
+        dynamo_client,
+        ocr_job.image_id,
+        1,
+        receipt_lines,
+        receipt_words,
+    )
     dynamo_client.add_receipt_letters(receipt_letters)
 
     # Update the OCR routing decision
