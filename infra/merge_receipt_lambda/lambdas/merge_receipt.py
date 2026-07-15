@@ -102,8 +102,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             create_combined_receipt_records,
             create_receipt_letters_from_combined,
             create_warped_receipt_image,
+            clone_receipt_place_for_receipt,
             get_best_receipt_place,
             migrate_receipt_word_labels,
+            upsert_receipt_place,
         )
         from receipt_upload.utils import (
             calculate_sha256_from_bytes,
@@ -281,14 +283,22 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Migrated %d labels", len(new_labels))
 
         # ============================================================
-        # Step 8: Select best place
+        # Step 8: Select best place (clone onto new receipt_id)
         # ============================================================
         logger.info("Selecting best receipt place...")
-        best_place = get_best_receipt_place(client, image_id, receipt_ids)
-        if best_place:
-            # Update place to point to new receipt
-            best_place.receipt_id = new_receipt_id
-            logger.info("Best place: %s", best_place.merchant_name)
+        source_place = get_best_receipt_place(client, image_id, receipt_ids)
+        receipt_place = None
+        if source_place:
+            # Clone so we never mutate the source entity or share mutable
+            # containers; full field copy preserves geo/hours/confidence.
+            receipt_place = clone_receipt_place_for_receipt(
+                source_place,
+                new_receipt_id=new_receipt_id,
+                reasoning_prefix=(
+                    f"Merged from receipts {receipt_ids}. Original: "
+                ),
+            )
+            logger.info("Best place: %s", receipt_place.merchant_name)
         else:
             logger.info("No place data found")
 
@@ -304,7 +314,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "labels_merged": len(new_labels),
             "lines_created": len(receipt_lines),
             "warped_dimensions": f"{warped_width}x{warped_height}",
-            "place": best_place.merchant_name if best_place else None,
+            "place": receipt_place.merchant_name if receipt_place else None,
         }
 
         if dry_run:
@@ -365,9 +375,15 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             client.add_receipt_word_labels(new_labels)
             logger.info("  Added %d labels", len(new_labels))
 
-        if best_place:
-            client.add_receipt_place(best_place)
-            logger.info("  Added place: %s", best_place.merchant_name)
+        if receipt_place:
+            # Idempotent: retries after partial write must not abort before
+            # embeddings (step 11) and source deletion (step 13).
+            place_action = upsert_receipt_place(client, receipt_place)
+            logger.info(
+                "  %s place: %s",
+                "Added" if place_action == "added" else "Updated",
+                receipt_place.merchant_name,
+            )
 
         # ============================================================
         # Step 11: Create embeddings and compaction run
@@ -378,7 +394,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             receipt_id=new_receipt_id,
             chromadb_bucket=chromadb_bucket,
             dynamo_client=client,
-            receipt_place=best_place,
+            receipt_place=receipt_place,
             receipt_word_labels=new_labels if new_labels else None,
         )
 

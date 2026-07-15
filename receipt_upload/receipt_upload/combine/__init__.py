@@ -11,8 +11,10 @@ from receipt_upload.combine.geometry_utils import (
     transform_point_to_warped_space,
 )
 from receipt_upload.combine.metadata_utils import (
+    clone_receipt_place_for_receipt,
     get_best_receipt_place,
     migrate_receipt_word_labels,
+    upsert_receipt_place,
 )
 from receipt_upload.combine.records_builder import (
     combine_receipt_letters_to_image_coords,
@@ -25,8 +27,10 @@ __all__ = [
     "calculate_min_area_rect",
     "create_warped_receipt_image",
     "transform_point_to_warped_space",
+    "clone_receipt_place_for_receipt",
     "get_best_receipt_place",
     "migrate_receipt_word_labels",
+    "upsert_receipt_place",
     "combine_receipt_letters_to_image_coords",
     "combine_receipt_words_to_image_coords",
     "create_combined_receipt_records",
