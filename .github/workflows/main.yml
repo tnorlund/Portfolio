@@ -56,7 +56,7 @@ jobs:
           docker buildx build --platform linux/arm64 --load \
             -f infra/upload_images/container_ocr/Dockerfile \
             -t "$IMAGE" .
-          docker run --rm --platform linux/arm64 "$IMAGE" python -c '
+          docker run --rm --platform linux/arm64 --entrypoint python "$IMAGE" -c '
           import glyphstudio
           from handler.ocr_processor import OCRProcessor
           from receipt_chroma import match_typeface, validate_typeface_registry

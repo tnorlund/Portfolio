@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image as PIL_Image
-
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
