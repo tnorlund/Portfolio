@@ -2,9 +2,10 @@
 
 from datetime import datetime, timezone
 
+import pytest
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
-
 from receipt_upload.section_assignment import MODEL_SOURCE
 from receipt_upload.section_verifier import verify_receipt_sections
 
@@ -42,7 +43,16 @@ class FakeDynamo:
         self.upload = [section]
 
 
-def test_disagreement_is_recorded_without_overriding_sync_assignment() -> None:
+@pytest.mark.parametrize(
+    ("current_status", "expected_status"),
+    [
+        (ValidationStatus.PENDING.value, ValidationStatus.PENDING.value),
+        (ValidationStatus.VALID.value, ValidationStatus.VALID.value),
+    ],
+)
+def test_disagreement_is_recorded_without_overriding_sync_assignment(
+    current_status: str, expected_status: str
+) -> None:
     now = datetime(2026, 7, 14, tzinfo=timezone.utc)
     row = ReceiptRow(
         image_id=_UPLOAD,
@@ -63,7 +73,7 @@ def test_disagreement_is_recorded_without_overriding_sync_assignment() -> None:
         line_ids=[1],
         row_ids=[1],
         created_at=now,
-        validation_status="PENDING",
+        validation_status=current_status,
         model_source=MODEL_SOURCE,
     )
     valid_neighbor = ReceiptSection(
@@ -83,7 +93,9 @@ def test_disagreement_is_recorded_without_overriding_sync_assignment() -> None:
     assert verified[0].section_type == "TOTAL_LINE"
     updated = dynamo.updated[0]
     assert updated.section_type == "ITEMS"
-    assert updated.validation_status == ValidationStatus.PENDING.value
+    assert updated.validation_status == expected_status
     assert updated.verification_status == "DISAGREED"
     assert updated.verification_section_type == "TOTAL_LINE"
+    assert updated.verification_confidence == pytest.approx(1.0)
     assert updated.disagreement_row_ids == [1]
+    assert updated.verified_at is not None

@@ -1,5 +1,9 @@
 """Asynchronous KNN verification for deterministic section assignments."""
 
+# Protocol surfaces are deliberately narrow; verification keeps all neighbor
+# filtering evidence local for one auditable pass.
+# pylint: disable=too-few-public-methods,too-many-locals
+
 from __future__ import annotations
 
 import json
@@ -11,11 +15,11 @@ from statistics import fmean
 from typing import Any, Protocol
 
 import numpy as np
-from receipt_upload.section_assignment import MODEL_SOURCE
 
 from receipt_chroma import propagate_knn
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+from receipt_upload.section_assignment import MODEL_SOURCE
 
 VERIFICATION_SOURCE = "glyphstudio-knn-v1"
 KNN_NEIGHBORS = 15
@@ -26,15 +30,21 @@ class VerificationStore(Protocol):
 
     def get_receipt_sections_from_receipt(
         self, image_id: str, receipt_id: int
-    ) -> list[ReceiptSection]: ...
+    ) -> list[ReceiptSection]:
+        """Return all sections for one receipt."""
+        raise NotImplementedError
 
-    def update_receipt_section(self, section: ReceiptSection) -> None: ...
+    def update_receipt_section(self, section: ReceiptSection) -> None:
+        """Persist verification provenance on one section."""
+        raise NotImplementedError
 
 
 class LinesQuery(Protocol):
     """Chroma query surface used by the verifier."""
 
-    def query(self, **kwargs: Any) -> dict[str, Any]: ...
+    def query(self, **kwargs: Any) -> dict[str, Any]:
+        """Query line embeddings and metadata."""
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -202,6 +212,7 @@ def _record_verification(
             validation_status=(
                 ValidationStatus.PENDING.value
                 if disagreements
+                and section.validation_status == ValidationStatus.PENDING.value
                 else section.validation_status
             ),
             verification_source=VERIFICATION_SOURCE,

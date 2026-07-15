@@ -25,12 +25,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 for _package in ("receipt_dynamo", "receipt_chroma", "receipt_upload"):
     sys.path.insert(0, str(_REPO_ROOT / _package))
 
-from receipt_upload.section_assignment import (
-    extract_row_features,
-    learn_prior,
-    normalize_merchant_key,
-)
-
 from receipt_chroma.embedding.formatting import build_receipt_rows
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
@@ -38,6 +32,14 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     OperationError,
 )
+from receipt_upload.section_assignment import (
+    extract_row_features,
+    learn_prior,
+    normalize_merchant_key,
+)
+
+DEV_TABLE = "ReceiptsTable-dc5be22"
+PROD_TABLE = "ReceiptsTable-d7ff76a"
 
 
 def _arguments() -> argparse.Namespace:
@@ -51,7 +53,12 @@ def _arguments() -> argparse.Namespace:
         "--output",
         type=Path,
         default=_REPO_ROOT
-        / "receipt_upload/receipt_upload/assets/section_order_priors_v1.json",
+        / "receipt_upload/receipt_upload/assets/section_order_priors_v2.json",
+    )
+    parser.add_argument(
+        "--exclude-manifest",
+        type=Path,
+        help=("JSON array of image_id/receipt_id keys held out from training"),
     )
     return parser.parse_args()
 
@@ -82,11 +89,12 @@ def _section_snapshot(sections: list[Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _row_label(row: Any, line_sections: dict[int, str]) -> str | None:
+def _row_label(row: Any, line_sections: dict[int, set[str]]) -> str | None:
     votes = Counter(
-        line_sections[line_id]
+        section
         for line_id in row.line_ids
         if line_id in line_sections
+        for section in line_sections[line_id]
     )
     if not votes:
         return None
@@ -94,8 +102,20 @@ def _row_label(row: Any, line_sections: dict[int, str]) -> str | None:
     leaders = sorted(
         label for label, count in votes.items() if count == maximum
     )
-    primary = line_sections.get(row.row_id)
-    return primary if primary in leaders else leaders[0]
+    return leaders[0] if len(leaders) == 1 else None
+
+
+def _exclusions(path: Path | None) -> tuple[set[tuple[str, int]], str | None]:
+    if path is None:
+        return set(), None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    keys = {
+        (str(item["image_id"]), int(item["receipt_id"])) for item in payload
+    }
+    canonical = json.dumps(
+        sorted(keys), separators=(",", ":"), sort_keys=True
+    ).encode()
+    return keys, hashlib.sha256(canonical).hexdigest()
 
 
 def _merchant_name(client: Any, image_id: str, receipt_id: int) -> str:
@@ -122,15 +142,37 @@ def _merchant_name(client: Any, image_id: str, receipt_id: int) -> str:
         )
 
 
-def build_model(client: Any, sections: list[Any]) -> dict[str, Any]:
+def build_model(
+    client: Any,
+    sections: list[Any],
+    *,
+    excluded_receipts: set[tuple[str, int]] | None = None,
+    exclusion_manifest_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Learn a model after proving every requested holdout is excluded."""
+
+    # Corpus construction is intentionally linear and auditable.
+    # pylint: disable=too-many-locals,too-many-branches
+    excluded_receipts = excluded_receipts or set()
     valid = [
         section
         for section in sections
         if section.validation_status == ValidationStatus.VALID.value
     ]
+    valid_receipt_keys = {
+        (section.image_id, section.receipt_id) for section in valid
+    }
+    missing_exclusions = excluded_receipts - valid_receipt_keys
+    if missing_exclusions:
+        raise ValueError(
+            f"Exclusion manifest has {len(missing_exclusions)} keys without "
+            "QA-VALID section evidence"
+        )
     by_receipt: dict[tuple[str, int], list[Any]] = defaultdict(list)
     for section in valid:
-        by_receipt[(section.image_id, section.receipt_id)].append(section)
+        key = (section.image_id, section.receipt_id)
+        if key not in excluded_receipts:
+            by_receipt[key].append(section)
 
     labeled: list[list[Any]] = []
     by_merchant: dict[str, list[list[Any]]] = defaultdict(list)
@@ -145,16 +187,19 @@ def build_model(client: Any, sections: list[Any]) -> dict[str, Any]:
             continue
         rows = build_receipt_rows(lines, words)
         features = extract_row_features(rows, lines)
-        line_sections = {
-            line_id: str(section.section_type)
-            for section in receipt_sections
-            for line_id in section.line_ids
-        }
-        receipt_labels = [
-            (feature, label)
-            for feature in features
-            if (label := _row_label(feature.row, line_sections)) is not None
-        ]
+        line_sections: dict[int, set[str]] = defaultdict(set)
+        for section in receipt_sections:
+            for line_id in section.line_ids:
+                line_sections[line_id].add(str(section.section_type))
+        receipt_labels = []
+        for feature in features:
+            label = _row_label(feature.row, line_sections)
+            if label is not None:
+                receipt_labels.append((feature, label))
+            elif any(
+                line_id in line_sections for line_id in feature.row.line_ids
+            ):
+                skipped["ambiguous_row_labels"] += 1
         if not receipt_labels:
             skipped["no_labeled_rows"] += 1
             continue
@@ -178,15 +223,21 @@ def build_model(client: Any, sections: list[Any]) -> dict[str, Any]:
     }
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "model_source": "upload-determinism-v1",
         "source_environment": "dev",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": {
             "section_count": len(sections),
             "valid_section_count": len(valid),
+            "source_receipt_count": len(valid_receipt_keys),
             "receipt_count": len(by_receipt),
             "trained_receipt_count": len(labeled),
+            "excluded_receipt_count": len(excluded_receipts),
+            "excluded_training_receipt_count": len(
+                excluded_receipts & valid_receipt_keys
+            ),
+            "exclusion_manifest_sha256": exclusion_manifest_sha256,
             "section_snapshot_sha256": _section_snapshot(sections),
             "skipped": dict(sorted(skipped.items())),
             "merchant_prior_min_receipts": int(merchant_receipt_median) + 1,
@@ -203,19 +254,34 @@ def build_model(client: Any, sections: list[Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Validate the dev-only configuration and write the learned artifact."""
+
     args = _arguments()
     table_name = os.environ.get("DYNAMODB_TABLE_NAME")
     if args.environment != "dev":
         raise SystemExit(
             "Refusing to read anything except the dev environment"
         )
-    if not table_name:
-        raise SystemExit("DYNAMODB_TABLE_NAME is required")
+    if table_name != DEV_TABLE or table_name == PROD_TABLE:
+        raise SystemExit(
+            f"Refusing table {table_name!r}; expected exact dev table "
+            f"{DEV_TABLE!r}"
+        )
     client = DynamoClient(table_name)
-    sections, cursor = client.list_receipt_sections()
-    if cursor is not None:
-        raise RuntimeError("Unexpected unconsumed section pagination cursor")
-    model = build_model(client, sections)
+    sections = []
+    cursor = None
+    while True:
+        page, cursor = client.list_receipt_sections(last_evaluated_key=cursor)
+        sections.extend(page)
+        if cursor is None:
+            break
+    excluded, exclusion_hash = _exclusions(args.exclude_manifest)
+    model = build_model(
+        client,
+        sections,
+        excluded_receipts=excluded,
+        exclusion_manifest_sha256=exclusion_hash,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(model, indent=2, sort_keys=True) + "\n", encoding="utf-8"

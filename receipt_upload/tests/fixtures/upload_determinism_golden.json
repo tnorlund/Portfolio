@@ -1,22 +1,27 @@
 [
   {
     "merchant": "Sprouts Farmers Market",
-    "rows": ["SPROUTS FARMERS MARKET", "123 MAIN ST", "ORGANIC APPLES 4.99", "SUBTOTAL 4.99", "TOTAL 5.40", "VISA 5.40", "THANK YOU"]
+    "rows": ["SPROUTS FARMERS MARKET", "123 MAIN ST", "ORGANIC APPLES 4.99", "SUBTOTAL 4.99", "TOTAL 5.40", "VISA 5.40", "THANK YOU"],
+    "expected": ["STOREFRONT", null, "ITEMS", "SUMMARY", null, null, null]
   },
   {
     "merchant": "Costco Wholesale",
-    "rows": ["COSTCO WHOLESALE", "MEMBER# 123456789012", "KS OLIVE OIL 19.99", "SUBTOTAL 19.99", "TOTAL 21.64", "VISA 21.64", "THANK YOU"]
+    "rows": ["COSTCO WHOLESALE", "MEMBER# 123456789012", "KS OLIVE OIL 19.99", "SUBTOTAL 19.99", "TOTAL 21.64", "VISA 21.64", "THANK YOU"],
+    "expected": ["STOREFRONT", null, "ITEMS", "SUMMARY", null, null, "FOOTER"]
   },
   {
     "merchant": "Vons",
-    "rows": ["VONS", "CLUB MEMBER", "MILK 4.49", "MEMBER SAVINGS 1.00", "SUBTOTAL 4.49", "TOTAL 4.86", "CREDIT 4.86"]
+    "rows": ["VONS", "CLUB MEMBER", "MILK 4.49", "MEMBER SAVINGS 1.00", "SUBTOTAL 4.49", "TOTAL 4.86", "CREDIT 4.86"],
+    "expected": [null, null, "ITEMS", null, "SUMMARY", null, null]
   },
   {
     "merchant": "Smith's",
-    "rows": ["SMITH'S", "FRESH VALUE", "BREAD 3.29", "FUEL POINTS EARNED 3", "SUBTOTAL 3.29", "TOTAL 3.56", "VISA 3.56"]
+    "rows": ["SMITH'S", "FRESH VALUE", "BREAD 3.29", "FUEL POINTS EARNED 3", "SUBTOTAL 3.29", "TOTAL 3.56", "VISA 3.56"],
+    "expected": ["STOREFRONT", "STOREFRONT", "ITEMS", "FOOTER", "SUMMARY", "TOTAL_LINE", "PAYMENT"]
   },
   {
     "merchant": "Italia Deli Bakery",
-    "rows": ["ITALIA DELI & BAKERY", "5657 KANAN RD", "SANDWICH 12.95", "SUBTOTAL 12.95", "TAX 1.01", "TOTAL 13.96", "THANK YOU"]
+    "rows": ["ITALIA DELI & BAKERY", "5657 KANAN RD", "SANDWICH 12.95", "SUBTOTAL 12.95", "TAX 1.01", "TOTAL 13.96", "THANK YOU"],
+    "expected": [null, null, "ITEMS", "SUMMARY", "SUMMARY", "TOTAL_LINE", "FOOTER"]
   }
 ]
