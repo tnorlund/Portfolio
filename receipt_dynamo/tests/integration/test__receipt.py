@@ -5,7 +5,7 @@ This file contains refactored tests using pytest.mark.parametrize to reduce
 code duplication.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Type
 from uuid import uuid4
 
@@ -18,6 +18,7 @@ from receipt_dynamo import (
     Image,
     Receipt,
     ReceiptLetter,
+    ReceiptTypefaceFingerprint,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -195,7 +196,7 @@ ERROR_SCENARIOS = [
 SINGLE_OPERATION_CASES = [
     ("add_receipt", "put_item", "PutItem"),
     ("update_receipt", "put_item", "PutItem"),
-    ("delete_receipt", "delete_item", "DeleteItem"),
+    ("delete_receipt", "transact_write_items", "TransactWriteItems"),
     ("get_receipt", "get_item", "GetItem"),
 ]
 
@@ -882,6 +883,86 @@ def test_delete_receipts_success(
     client.delete_receipts([r1, r2])
     receipts, _ = client.list_receipts()
     assert not receipts, "All receipts should be deleted."
+
+
+def _typeface_fingerprint(receipt: Receipt) -> ReceiptTypefaceFingerprint:
+    return ReceiptTypefaceFingerprint(
+        image_id=receipt.image_id,
+        receipt_id=receipt.receipt_id,
+        merchant_candidates=[],
+        typeface_candidates=[],
+        typeface=None,
+        confidence=0.0,
+        confidence_basis="source-relative-genuine-score-empirical-midrank",
+        calibration_id="typeface-registry-v2-test",
+        letter_count=0,
+        matched_letter_count=0,
+        distinct_character_count=0,
+        atlas_scores={},
+        abstention_reason="NO_USABLE_CROPS",
+        model_source="upload-determinism-v2",
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.integration
+def test_delete_receipt_removes_only_its_additive_fingerprint(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt: Receipt,
+    sample_receipt_letter: ReceiptLetter,
+    sample_receipt_word_labels: list[ReceiptWordLabel],
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    sibling = Receipt(
+        **{
+            **sample_receipt.__dict__,
+            "receipt_id": sample_receipt.receipt_id + 1,
+        }
+    )
+    client.add_receipts([sample_receipt, sibling])
+    fingerprint = _typeface_fingerprint(sample_receipt)
+    sibling_fingerprint = _typeface_fingerprint(sibling)
+    client.put_receipt_typeface_fingerprint(fingerprint)
+    client.put_receipt_typeface_fingerprint(sibling_fingerprint)
+    client.add_receipt_letter(sample_receipt_letter)
+    client.add_receipt_word_labels(sample_receipt_word_labels)
+
+    client.delete_receipt(sample_receipt)
+
+    with pytest.raises(EntityNotFoundError):
+        client.get_receipt_typeface_fingerprint(
+            sample_receipt.image_id, sample_receipt.receipt_id
+        )
+    assert (
+        client.get_receipt_typeface_fingerprint(
+            sibling.image_id, sibling.receipt_id
+        )
+        == sibling_fingerprint
+    )
+    assert client.list_receipt_letters_from_word(
+        sample_receipt_letter.image_id,
+        sample_receipt_letter.receipt_id,
+        sample_receipt_letter.line_id,
+        sample_receipt_letter.word_id,
+    ) == [sample_receipt_letter]
+    labels, _ = client.list_receipt_word_labels_for_receipt(
+        sample_receipt.image_id, sample_receipt.receipt_id
+    )
+    assert labels == sample_receipt_word_labels
+
+
+@pytest.mark.integration
+def test_late_fingerprint_write_fails_after_receipt_delete(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt: Receipt,
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    client.add_receipt(sample_receipt)
+    fingerprint = _typeface_fingerprint(sample_receipt)
+    client.delete_receipt(sample_receipt)
+
+    with pytest.raises(EntityNotFoundError):
+        client.put_receipt_typeface_fingerprint(fingerprint)
 
 
 # -------------------------------------------------------------------

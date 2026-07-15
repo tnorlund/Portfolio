@@ -1,8 +1,51 @@
 from copy import deepcopy
+from unittest.mock import MagicMock
 
 import pytest
 
 from receipt_dynamo import ReceiptLetter, item_to_receipt_letter
+from receipt_dynamo.data._receipt_letter import _ReceiptLetter
+
+
+def test_list_receipt_letters_from_receipt_uses_strong_paginated_query(
+    example_receipt_letter: ReceiptLetter,
+) -> None:
+    accessor = _ReceiptLetter()
+    accessor.table_name = "receipts"
+    accessor._client = MagicMock()
+    cursor = {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "RECEIPT#00001#LINE#00001"},
+    }
+    accessor._client.query.side_effect = [
+        {
+            "Items": [example_receipt_letter.to_item()],
+            "LastEvaluatedKey": cursor,
+        },
+        {"Items": []},
+    ]
+    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+
+    letters = accessor.list_receipt_letters_from_receipt(image_id, 1)
+
+    assert letters == [example_receipt_letter]
+    assert accessor._client.query.call_count == 2
+    query = accessor._client.query.call_args_list[0].kwargs
+    assert query["TableName"] == "receipts"
+    assert query["KeyConditionExpression"] == (
+        "#pk = :pk AND begins_with(#sk, :receipt_prefix)"
+    )
+    assert query["FilterExpression"] == "#type = :type"
+    assert query["ConsistentRead"] is True
+    assert query["ExpressionAttributeValues"] == {
+        ":pk": {"S": f"IMAGE#{image_id}"},
+        ":receipt_prefix": {"S": "RECEIPT#00001#LINE#"},
+        ":type": {"S": "RECEIPT_LETTER"},
+    }
+    assert (
+        accessor._client.query.call_args_list[1].kwargs["ExclusiveStartKey"]
+        == cursor
+    )
 
 
 @pytest.fixture

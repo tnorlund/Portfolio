@@ -32,6 +32,17 @@ from ._receipt_details_processor import process_receipt_details_query
 
 
 class _Receipt(FlattenedStandardMixin):
+    @staticmethod
+    def _typeface_fingerprint_key(
+        receipt: Receipt,
+    ) -> dict[str, dict[str, str]]:
+        return {
+            "PK": {"S": f"IMAGE#{receipt.image_id}"},
+            "SK": {
+                "S": (f"RECEIPT#{receipt.receipt_id:05d}#TYPEFACE_FINGERPRINT")
+            },
+        }
+
     @handle_dynamodb_errors("add_receipt")
     def add_receipt(self, receipt: Receipt):
         """Adds a receipt to the database
@@ -117,8 +128,22 @@ class _Receipt(FlattenedStandardMixin):
             ValueError: When the receipt does not exist
         """
         self._validate_entity(receipt, Receipt, "receipt")
-        self._delete_entity(
-            receipt, condition_expression="attribute_exists(PK)"
+        self._client.transact_write_items(
+            TransactItems=[
+                TransactWriteItemTypeDef(
+                    Delete=DeleteTypeDef(
+                        TableName=self.table_name,
+                        Key=receipt.key,
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                ),
+                TransactWriteItemTypeDef(
+                    Delete=DeleteTypeDef(
+                        TableName=self.table_name,
+                        Key=self._typeface_fingerprint_key(receipt),
+                    )
+                ),
+            ]
         )
 
     @handle_dynamodb_errors("delete_receipts")
@@ -128,9 +153,9 @@ class _Receipt(FlattenedStandardMixin):
         Each delete operation is conditional upon the receipt existing
         (using the ConditionExpression "attribute_exists(PK)").
 
-        Since DynamoDB's ``transact_write_items`` supports a maximum of 25
-        operations per transaction, the receipts list is split into chunks of
-        25 or fewer. Each chunk is processed in a separate transaction.
+        Each receipt is paired with its exact additive typeface-fingerprint
+        key. Since DynamoDB supports at most 25 operations per transaction,
+        receipts are split into chunks of 12 pairs.
 
         Args:
             receipts (list[Receipt]): The receipts to delete from the database.
@@ -139,19 +164,27 @@ class _Receipt(FlattenedStandardMixin):
             ValueError: When a receipt does not exist or another error occurs.
         """
         self._validate_entity_list(receipts, Receipt, "receipts")
-        # Create transactional delete items
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Delete=DeleteTypeDef(
-                    TableName=self.table_name,
-                    Key=receipt.key,
-                    ConditionExpression="attribute_exists(PK)",
+        for index in range(0, len(receipts), 12):
+            transact_items = []
+            for receipt in receipts[index : index + 12]:
+                transact_items.extend(
+                    [
+                        TransactWriteItemTypeDef(
+                            Delete=DeleteTypeDef(
+                                TableName=self.table_name,
+                                Key=receipt.key,
+                                ConditionExpression="attribute_exists(PK)",
+                            )
+                        ),
+                        TransactWriteItemTypeDef(
+                            Delete=DeleteTypeDef(
+                                TableName=self.table_name,
+                                Key=self._typeface_fingerprint_key(receipt),
+                            )
+                        ),
+                    ]
                 )
-            )
-            for receipt in receipts
-        ]
-        # type: ignore[arg-type]
-        self._transact_write_with_chunking(transact_items)
+            self._client.transact_write_items(TransactItems=transact_items)
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:

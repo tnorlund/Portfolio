@@ -353,12 +353,17 @@ class FlattenedStandardMixin:
         sort_key: str,
         entity_class: Type[T],  # pylint: disable=unused-argument
         converter_func: Callable[[dict[str, Any]], T],
+        *,
+        consistent_read: bool = False,
     ) -> T | None:
         """Get a single entity from DynamoDB."""
-        response = self._client.get_item(
+        get_params: dict[str, Any] = dict(
             TableName=self.table_name,
             Key=build_get_item_key(primary_key, sort_key),
         )
+        if consistent_read:
+            get_params["ConsistentRead"] = True
+        response = self._client.get_item(**get_params)
 
         if "Item" not in response:
             return None
@@ -553,6 +558,7 @@ class FlattenedStandardMixin:
         last_evaluated_key: dict[str, Any] | None = None,
         filter_expression: str | None = None,
         scan_index_forward: bool | None = None,
+        consistent_read: bool = False,
     ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities with pagination support."""
         entities = []
@@ -570,6 +576,7 @@ class FlattenedStandardMixin:
                 exclusive_start_key=current_last_key,
                 limit=None,  # Will be set separately below
                 scan_index_forward=scan_index_forward,
+                consistent_read=consistent_read,
             )
 
             # Set query limit

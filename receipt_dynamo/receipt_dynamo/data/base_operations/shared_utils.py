@@ -137,6 +137,7 @@ def build_query_params(
     exclusive_start_key: dict[str, Any] | None = None,
     limit: int | None = None,
     scan_index_forward: bool | None = None,
+    consistent_read: bool = False,
 ) -> dict[str, Any]:
     """
     Build query parameters for DynamoDB queries.
@@ -152,6 +153,7 @@ def build_query_params(
         limit: Optional query limit
         scan_index_forward: Optional sort order flag (True=ascending,
             False=descending)
+        consistent_read: Request a strongly consistent main-table query
 
     Returns:
         Dictionary of query parameters
@@ -174,6 +176,8 @@ def build_query_params(
         query_params["Limit"] = limit
     if scan_index_forward is not None:
         query_params["ScanIndexForward"] = scan_index_forward
+    if consistent_read:
+        query_params["ConsistentRead"] = True
 
     return query_params
 

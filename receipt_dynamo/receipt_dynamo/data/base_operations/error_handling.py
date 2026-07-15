@@ -216,6 +216,19 @@ class ErrorHandler:
                 f"Conditional check failed: {error_message}"
             )
 
+        if error_code == "TransactionCanceledException":
+            cancellation_reasons = error.response.get(
+                "CancellationReasons", []
+            )
+            if any(
+                reason.get("Code") == "ConditionalCheckFailed"
+                for reason in cancellation_reasons
+            ) and any(
+                op in operation for op in ["put_", "update_", "delete_"]
+            ):
+                self._raise_not_found_error(operation, context_kwargs)
+                return
+
         if error_code == "ValidationException":
             raise EntityValidationError(f"Validation error: {error_message}")
 

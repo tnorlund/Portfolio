@@ -52,6 +52,8 @@ class _ReceiptLetter(FlattenedStandardMixin):
         Returns ReceiptLetters and the last evaluated key.
     list_receipt_letters_from_word(...) -> list[ReceiptLetter]:
         Returns all ReceiptLetters for a given word.
+    list_receipt_letters_from_receipt(...) -> list[ReceiptLetter]:
+        Returns all ReceiptLetters for a given receipt.
     """
 
     @handle_dynamodb_errors("add_receipt_letter")
@@ -476,3 +478,36 @@ class _ReceiptLetter(FlattenedStandardMixin):
             ),
             converter_func=item_to_receipt_letter,
         )
+
+    @handle_dynamodb_errors("list_receipt_letters_from_receipt")
+    def list_receipt_letters_from_receipt(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptLetter]:
+        """Return every ReceiptLetter under one receipt on the main table.
+
+        ReceiptLetter does not project GSI3 keys, so this must query the
+        receipt's sort-key prefix and filter the shared hierarchy by TYPE.
+        """
+
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :receipt_prefix)"
+            ),
+            expression_attribute_names={
+                "#pk": "PK",
+                "#sk": "SK",
+                "#type": "TYPE",
+            },
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":receipt_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                ":type": {"S": "RECEIPT_LETTER"},
+            },
+            converter_func=item_to_receipt_letter,
+            filter_expression="#type = :type",
+            consistent_read=True,
+        )
+        return results
