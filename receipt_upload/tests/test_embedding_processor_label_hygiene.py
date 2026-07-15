@@ -6,6 +6,7 @@ from receipt_dynamo.entities import ReceiptWordLabel
 
 from receipt_upload.merchant_resolution.embedding_processor import (
     _prepare_pending_core_labels,
+    _reconcile_and_refresh_words_delta,
 )
 
 
@@ -37,15 +38,16 @@ def test_prepare_pending_core_labels_maps_safe_aliases():
         label_proposed_by="test_guard",
     )
 
-    assert original not in word_labels
-    dynamo.delete_receipt_word_label.assert_called_once_with(original)
+    assert original in word_labels
+    assert original.validation_status == ValidationStatus.INVALID.value
+    dynamo.update_receipt_word_label.assert_called_once_with(original)
     dynamo.add_receipt_word_label.assert_called_once()
     assert len(pending) == 1
     assert pending[0].label == "PAYMENT_METHOD"
     assert pending[0].validation_status == ValidationStatus.PENDING.value
 
 
-def test_prepare_pending_core_labels_deletes_ambiguous_labels():
+def test_prepare_pending_core_labels_retains_ambiguous_labels_for_review():
     dynamo = MagicMock()
     original = _label("AMOUNT")
 
@@ -56,7 +58,8 @@ def test_prepare_pending_core_labels_deletes_ambiguous_labels():
     )
 
     assert pending == []
-    dynamo.delete_receipt_word_label.assert_called_once_with(original)
+    assert original.validation_status == ValidationStatus.NEEDS_REVIEW.value
+    dynamo.update_receipt_word_label.assert_called_once_with(original)
     dynamo.add_receipt_word_label.assert_not_called()
 
 
@@ -74,8 +77,9 @@ def test_prepare_pending_core_labels_classifies_amount_with_context():
     )
 
     assert pending == []
-    assert original not in word_labels
-    dynamo.delete_receipt_word_label.assert_called_once_with(original)
+    assert original in word_labels
+    assert original.validation_status == ValidationStatus.INVALID.value
+    dynamo.update_receipt_word_label.assert_called_once_with(original)
     dynamo.add_receipt_word_label.assert_called_once()
     added = dynamo.add_receipt_word_label.call_args.args[0]
     assert added.label == "SUBTOTAL"
@@ -100,3 +104,52 @@ def test_prepare_pending_core_labels_keeps_ambiguous_amount_for_llm_with_context
     assert word_labels == [original]
     dynamo.delete_receipt_word_label.assert_not_called()
     dynamo.add_receipt_word_label.assert_not_called()
+
+
+def test_reconciliation_refreshes_words_delta_before_compaction(monkeypatch):
+    dynamo = MagicMock()
+    refreshed = [_label("GRAND_TOTAL")]
+    dynamo.list_receipt_word_labels_for_receipt.return_value = (refreshed, None)
+    artifact = SimpleNamespace(
+        validation_status="NEEDS_REVIEW",
+        corrections=[{"conflict": True}, {"conflict": False}],
+    )
+    reconcile = MagicMock(return_value=artifact)
+    build = MagicMock(return_value=({"ids": ["word"]}, None))
+    upload = MagicMock(return_value="deltas/run/words")
+    monkeypatch.setattr(
+        "receipt_upload.merchant_resolution.embedding_processor."
+        "reconcile_receipt_labels",
+        reconcile,
+    )
+    monkeypatch.setattr(
+        "receipt_upload.merchant_resolution.embedding_processor."
+        "build_words_payload",
+        build,
+    )
+    monkeypatch.setattr(
+        "receipt_upload.merchant_resolution.embedding_processor."
+        "upload_words_delta",
+        upload,
+    )
+
+    prefix, stats = _reconcile_and_refresh_words_delta(
+        dynamo=dynamo,
+        image_id=refreshed[0].image_id,
+        receipt_id=1,
+        merchant_name="Vons",
+        words=[],
+        word_embeddings_list=[],
+        run_id="run",
+        chromadb_bucket="bucket",
+        s3_client=object(),
+    )
+
+    assert prefix == "deltas/run/words"
+    assert stats == {
+        "d3_validation_status": "NEEDS_REVIEW",
+        "d3_corrections": 2,
+        "d3_conflicts": 1,
+    }
+    assert build.call_args.kwargs["word_labels"] == refreshed
+    upload.assert_called_once()

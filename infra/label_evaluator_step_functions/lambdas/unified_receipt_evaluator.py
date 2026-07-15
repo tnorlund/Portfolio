@@ -419,6 +419,11 @@ async def unified_receipt_evaluator(
     chroma_client = None  # Must be set before try so finally can always access it
 
     try:
+        d3_summary: dict[str, Any] = {
+            "validation_status": "NOT_RUN",
+            "corrections": 0,
+            "conflicts": 0,
+        }
         # Import utilities
         from utils.serialization import (
             deserialize_label,
@@ -653,6 +658,56 @@ async def unified_receipt_evaluator(
                     batch_bucket,
                     lookup_key,
                 )
+
+        # D3 runs before either evaluator sees labels. It only annotates original
+        # proposals, adds provenance-bearing corrections, and persists a receipt-
+        # level artifact. Any conflict is counted as an issue for review.
+        if dynamo_table:
+            try:
+                from receipt_dynamo import DynamoClient
+                from receipt_upload.label_reconciliation import (
+                    reconcile_receipt_labels,
+                )
+
+                reconciliation_dynamo = DynamoClient(table_name=dynamo_table)
+                artifact = reconcile_receipt_labels(
+                    reconciliation_dynamo,
+                    image_id,
+                    receipt_id,
+                    merchant_name,
+                )
+                labels, _ = (
+                    reconciliation_dynamo.list_receipt_word_labels_for_receipt(
+                        image_id, receipt_id
+                    )
+                )
+                conflict_count = sum(
+                    bool(correction.get("conflict"))
+                    for correction in artifact.corrections
+                )
+                d3_summary = {
+                    "validation_status": artifact.validation_status,
+                    "corrections": len(artifact.corrections),
+                    "conflicts": conflict_count,
+                    "model_source": artifact.model_source,
+                }
+                logger.info(
+                    "D3 reconciliation complete: corrections=%d conflicts=%d",
+                    len(artifact.corrections),
+                    conflict_count,
+                )
+            except Exception as reconciliation_error:
+                logger.exception(
+                    "D3 reconciliation failed for %s#%s",
+                    image_id,
+                    receipt_id,
+                )
+                d3_summary = {
+                    "validation_status": "ERROR",
+                    "corrections": 0,
+                    "conflicts": 1,
+                    "error": str(reconciliation_error),
+                }
 
         # 2. Create the ROOT receipt trace (one per receipt)
         # This is the parent trace that all child operations will link to
@@ -1230,6 +1285,7 @@ async def unified_receipt_evaluator(
         for decision_bucket in ("metadata", "financial"):
             total_issues += decision_counts[decision_bucket].get("INVALID", 0)
             total_issues += decision_counts[decision_bucket].get("NEEDS_REVIEW", 0)
+        total_issues += int(d3_summary.get("conflicts", 0))
 
         # 11. Upload results to S3
         with child_trace("upload_results", trace_ctx):
@@ -1257,6 +1313,7 @@ async def unified_receipt_evaluator(
                 "review_all_decisions": llm_review_result or [],
                 "review_duration_seconds": review_duration,
                 "regional_reocr": regional_reocr,
+                "label_reconciliation": d3_summary,
                 "applied_stats": {
                     "phase1": applied_stats_phase1,
                 },
@@ -1345,6 +1402,7 @@ async def unified_receipt_evaluator(
             "geometric_issues_found": geometric_issues_found,
             "review_decisions": review_counts,
             "regional_reocr": regional_reocr,
+            "label_reconciliation": d3_summary,
             "results_s3_key": results_s3_key,
         }
 

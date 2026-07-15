@@ -15,6 +15,7 @@ import types
 from types import SimpleNamespace
 
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import ReceiptWordLabel
 
 _PATH = os.path.join(
@@ -101,6 +102,7 @@ class _FakeDynamo:
         self.deleted = []
         self.compaction_runs = []
         self._labels_for_receipt = labels_for_receipt or []
+        self.reconciliations = []
 
     def update_receipt_word_label(self, label):
         self.updated.append(label)
@@ -113,6 +115,21 @@ class _FakeDynamo:
 
     def list_receipt_word_labels_for_receipt(self, image_id, receipt_id):
         return list(self._labels_for_receipt), None
+
+    def list_receipt_words_from_receipt(self, image_id, receipt_id):
+        return []
+
+    def get_receipt_rows_from_receipt(self, image_id, receipt_id):
+        return []
+
+    def get_receipt_sections_from_receipt(self, image_id, receipt_id):
+        return []
+
+    def get_receipt_label_reconciliation(self, image_id, receipt_id):
+        raise EntityNotFoundError("not found")
+
+    def put_receipt_label_reconciliation(self, reconciliation):
+        self.reconciliations.append(reconciliation)
 
 
 def _install_stubs(results, raises=None):
@@ -219,6 +236,7 @@ def test_apply_async_payload_valid_invalid_and_correction():
     assert statuses[(5, 2)] == ValidationStatus.VALID.value
     assert statuses[(6, 1)] == ValidationStatus.INVALID.value
     assert statuses[(7, 1)] == ValidationStatus.INVALID.value
+    assert dynamo.reconciliations
 
 
 def _payload(needed):
@@ -252,6 +270,24 @@ def test_apply_async_payload_raises_on_llm_failure_and_keeps_labels():
     assert raised, "apply_async_payload must re-raise on LLM failure"
     # Labels left intact for retry — nothing deleted.
     assert dynamo.deleted == []
+
+
+def test_non_core_llm_result_is_annotated_not_deleted():
+    needed = [_label(5, 2, "AMOUNT")]
+    needed[0].label_proposed_by = "layoutlm"
+    dynamo = _FakeDynamo()
+    saved = _install_stubs([_result(5, 2, "VALID", "AMOUNT")])
+    try:
+        m.apply_async_payload(_payload(needed), dynamo)
+    finally:
+        _restore(saved)
+
+    assert dynamo.deleted == []
+    assert (
+        dynamo.updated[0].validation_status
+        == ValidationStatus.NEEDS_REVIEW.value
+    )
+    assert dynamo.updated[0].label_proposed_by == "layoutlm"
 
 
 def test_apply_async_payload_idempotent_on_duplicate_correction():

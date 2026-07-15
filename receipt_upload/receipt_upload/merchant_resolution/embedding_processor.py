@@ -63,6 +63,7 @@ from receipt_upload.label_validation.llm_runner import (
     build_async_payload,
     run_llm_validation_sync,
 )
+from receipt_upload.label_reconciliation import reconcile_receipt_labels
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
@@ -73,6 +74,51 @@ from receipt_upload.merchant_resolution.resolver import (
 from receipt_upload.typeface_fingerprint import crosscheck_places
 
 logger = logging.getLogger(__name__)
+
+
+def _reconcile_and_refresh_words_delta(
+    *,
+    dynamo: Any,
+    image_id: str,
+    receipt_id: int,
+    merchant_name: Optional[str],
+    words: List[ReceiptWord],
+    word_embeddings_list: List[List[float]],
+    run_id: str,
+    chromadb_bucket: str,
+    s3_client: Any,
+) -> Tuple[str, Dict[str, Any]]:
+    """Run D3 and rebuild the pending words delta with additive corrections."""
+
+    artifact = reconcile_receipt_labels(
+        dynamo,
+        image_id,
+        receipt_id,
+        merchant_name,
+    )
+    refreshed_labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+        image_id, receipt_id
+    )
+    word_payload, _ = build_words_payload(
+        receipt_words=words,
+        word_embeddings_list=word_embeddings_list,
+        word_labels=refreshed_labels,
+        merchant_name=merchant_name,
+    )
+    prefix = upload_words_delta(
+        word_payload=word_payload,
+        run_id=run_id,
+        chromadb_bucket=chromadb_bucket,
+        s3_client=s3_client,
+    )
+    conflicts = sum(
+        bool(correction.get("conflict")) for correction in artifact.corrections
+    )
+    return prefix, {
+        "d3_validation_status": artifact.validation_status,
+        "d3_corrections": len(artifact.corrections),
+        "d3_conflicts": conflicts,
+    }
 
 
 def _llm_validation_async_enabled() -> bool:
@@ -190,7 +236,7 @@ def _prepare_pending_core_labels(
     label_proposed_by: str,
     words: Optional[List[ReceiptWord]] = None,
 ) -> List[ReceiptWordLabel]:
-    """Normalize pending labels before validation starts."""
+    """Normalize pending labels without destroying proposer output."""
     existing_keys = {
         (label.line_id, label.word_id, label.label) for label in word_labels
     }
@@ -214,18 +260,25 @@ def _prepare_pending_core_labels(
                 (label.line_id, label.word_id)
             )
             if amount_decision is None:
-                # Keep AMOUNT only as transient LLM input. Later write paths
-                # delete it unless the LLM replaces it with a CORE_LABEL.
                 if allow_amount_llm_fallback:
                     pending_core_labels.append(label)
                     continue
-                dynamo.delete_receipt_word_label(label)
-                word_labels.remove(label)
+                label.validation_status = ValidationStatus.NEEDS_REVIEW.value
+                label.reasoning = (
+                    f"{label.reasoning} | " if label.reasoning else ""
+                ) + (
+                    "Non-core AMOUNT could not be deterministically classified; "
+                    "retained for audit and routed to review."
+                )
+                dynamo.update_receipt_word_label(label)
                 continue
 
             original_label = label.label
-            dynamo.delete_receipt_word_label(label)
-            word_labels.remove(label)
+            label.validation_status = ValidationStatus.INVALID.value
+            label.reasoning = (
+                f"{label.reasoning} | " if label.reasoning else ""
+            ) + f"Deterministically classified as {amount_decision.label}."
+            dynamo.update_receipt_word_label(label)
 
             mapped_key = (label.line_id, label.word_id, amount_decision.label)
             if mapped_key in existing_keys:
@@ -250,11 +303,21 @@ def _prepare_pending_core_labels(
 
         mapped_label = normalize_label_alias(label.label)
         original_label = label.label
-        dynamo.delete_receipt_word_label(label)
-        word_labels.remove(label)
 
         if mapped_label is None:
+            label.validation_status = ValidationStatus.NEEDS_REVIEW.value
+            label.reasoning = (
+                (f"{label.reasoning} | " if label.reasoning else "")
+                + "Unknown non-core label retained for audit and routed to review."
+            )
+            dynamo.update_receipt_word_label(label)
             continue
+
+        label.validation_status = ValidationStatus.INVALID.value
+        label.reasoning = (
+            f"{label.reasoning} | " if label.reasoning else ""
+        ) + f"Normalized additively to core label {mapped_label}."
+        dynamo.update_receipt_word_label(label)
 
         mapped_key = (label.line_id, label.word_id, mapped_label)
         if mapped_key in existing_keys:
@@ -1428,6 +1491,39 @@ class MerchantResolvingEmbeddingProcessor:
                     words_prefix = None
 
             _log("Phase 2 complete: parallel pipelines finished")
+
+            # The sync path has all LayoutLM/Chroma/LLM proposals and the resolved
+            # merchant at this point. Reconcile before compaction, then replace the
+            # words delta so Chroma receives the same additive label history as
+            # DynamoDB. Deferred LLM payloads run this pass in their consumer.
+            if words_prefix and not async_llm_payload:
+                try:
+                    words_prefix, d3_stats = (
+                        _reconcile_and_refresh_words_delta(
+                            dynamo=self.dynamo,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            merchant_name=merchant_result.merchant_name,
+                            words=words,
+                            word_embeddings_list=word_embeddings_list,
+                            run_id=run_id,
+                            chromadb_bucket=self.chromadb_bucket,
+                            s3_client=self.s3_client,
+                        )
+                    )
+                    validation_stats.update(d3_stats)
+                    _log(
+                        "D3 complete: deterministic label reconciliation "
+                        f"({d3_stats['d3_corrections']} corrections, "
+                        f"{d3_stats['d3_conflicts']} conflicts)"
+                    )
+                except Exception as e:
+                    validation_stats["d3_error"] = str(e)
+                    logger.exception(
+                        "D3 reconciliation failed for %s#%s",
+                        image_id,
+                        receipt_id,
+                    )
 
             # =================================================================
             # PHASE 3: Create compaction run (after both deltas uploaded)

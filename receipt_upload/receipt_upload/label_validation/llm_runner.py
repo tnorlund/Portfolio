@@ -36,47 +36,40 @@ from receipt_dynamo.entities import ReceiptWordLabel
 # the JSON serialization without standing up those deps.
 
 
-# --------------------------------------------------------------------------- #
-# Local label-list helpers (shared with the embedding processor).
-# --------------------------------------------------------------------------- #
-def _remove_label_from_list(
-    word_labels: List[ReceiptWordLabel],
-    target: ReceiptWordLabel,
-) -> None:
-    """Remove a label entity from the mutable local label payload list."""
-    for index, label in enumerate(word_labels):
-        if (
-            label.image_id == target.image_id
-            and label.receipt_id == target.receipt_id
-            and label.line_id == target.line_id
-            and label.word_id == target.word_id
-            and label.label == target.label
-        ):
-            word_labels.pop(index)
-            return
-
-
-def _delete_non_core_label(
+def _annotate_non_core_label(
     dynamo: Any,
-    word_labels: List[ReceiptWordLabel],
     label: ReceiptWordLabel,
+    *,
+    status: str,
+    reasoning: str,
 ) -> None:
-    """Delete a transient non-core label from Dynamo and local payload state.
-
-    Idempotent on SQS redelivery: a redelivered batch may try to delete a label
-    a prior attempt already removed; treat "already gone" as done rather than
-    raising (which would re-fail the whole record).
-    """
+    """Annotate a non-core proposal while retaining its original identity."""
     from receipt_agent.constants import CORE_LABELS
-    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
     if label.label in CORE_LABELS:
         return
-    try:
-        dynamo.delete_receipt_word_label(label)
-    except EntityNotFoundError:
-        pass
-    _remove_label_from_list(word_labels, label)
+    label.validation_status = status
+    note = f"LLM label validation: {reasoning}"
+    if label.reasoning and note in label.reasoning:
+        dynamo.update_receipt_word_label(label)
+        return
+    label.reasoning = (
+        f"{label.reasoning} | {note}" if label.reasoning else note
+    )
+    dynamo.update_receipt_word_label(label)
+
+
+def _append_llm_reason(label: ReceiptWordLabel, reasoning: str | None) -> None:
+    """Append LLM evidence without replacing the proposer's explanation."""
+
+    if not reasoning:
+        return
+    note = f"LLM label validation: {reasoning}"
+    if label.reasoning and note in label.reasoning:
+        return
+    label.reasoning = (
+        f"{label.reasoning} | {note}" if label.reasoning else note
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -213,34 +206,38 @@ def apply_llm_results(
             ):
                 if llm_result.decision == "VALID":
                     if label.label not in CORE_LABELS:
-                        _delete_non_core_label(
+                        _annotate_non_core_label(
                             dynamo=dynamo,
-                            word_labels=word_labels,
                             label=label,
+                            status=ValidationStatus.NEEDS_REVIEW.value,
+                            reasoning=(
+                                "validated a non-core proposal without a safe "
+                                "core-label mapping; routed to review."
+                            ),
                         )
                         llm_validated += 1
                         continue
                     label.validation_status = ValidationStatus.VALID.value
-                    label.label_proposed_by = "llm_valid"
-                    if llm_result.reasoning:
-                        label.reasoning = llm_result.reasoning
+                    _append_llm_reason(label, llm_result.reasoning)
                     dynamo.update_receipt_word_label(label)
                     llm_validated += 1
                 elif llm_result.decision == "NEEDS_REVIEW":
                     if label.label not in CORE_LABELS:
-                        _delete_non_core_label(
+                        _annotate_non_core_label(
                             dynamo=dynamo,
-                            word_labels=word_labels,
                             label=label,
+                            status=ValidationStatus.NEEDS_REVIEW.value,
+                            reasoning=(
+                                llm_result.reasoning
+                                or "non-core proposal needs human review."
+                            ),
                         )
                         llm_validated += 1
                         continue
                     label.validation_status = (
                         ValidationStatus.NEEDS_REVIEW.value
                     )
-                    label.label_proposed_by = "llm_needs_review"
-                    if llm_result.reasoning:
-                        label.reasoning = llm_result.reasoning
+                    _append_llm_reason(label, llm_result.reasoning)
                     dynamo.update_receipt_word_label(label)
                     llm_validated += 1
                 elif llm_result.label != label.label:
@@ -251,17 +248,21 @@ def apply_llm_results(
                             label.validation_status = (
                                 ValidationStatus.INVALID.value
                             )
-                            label.label_proposed_by = "llm_invalid"
-                            label.reasoning = (
+                            _append_llm_reason(
+                                label,
                                 f"Corrected to {llm_result.label}. "
-                                f"{llm_result.reasoning or ''}"
+                                f"{llm_result.reasoning or ''}",
                             )
                             dynamo.update_receipt_word_label(label)
                         else:
-                            _delete_non_core_label(
+                            _annotate_non_core_label(
                                 dynamo=dynamo,
-                                word_labels=word_labels,
                                 label=label,
+                                status=ValidationStatus.INVALID.value,
+                                reasoning=(
+                                    f"corrected to core label {llm_result.label}. "
+                                    f"{llm_result.reasoning or ''}"
+                                ),
                             )
 
                         new_label = ReceiptWordLabel(
@@ -286,36 +287,42 @@ def apply_llm_results(
                         llm_validated += 1
                     else:
                         if label.label not in CORE_LABELS:
-                            _delete_non_core_label(
+                            _annotate_non_core_label(
                                 dynamo=dynamo,
-                                word_labels=word_labels,
                                 label=label,
+                                status=ValidationStatus.NEEDS_REVIEW.value,
+                                reasoning=(
+                                    f"suggested non-core label {llm_result.label}; "
+                                    "routed to review."
+                                ),
                             )
                             llm_validated += 1
                             continue
                         label.validation_status = (
                             ValidationStatus.NEEDS_REVIEW.value
                         )
-                        label.label_proposed_by = "llm_invalid_label"
-                        label.reasoning = (
+                        _append_llm_reason(
+                            label,
                             f"LLM suggested '{llm_result.label}' but it's not "
-                            f"a valid CORE_LABEL. {llm_result.reasoning or ''}"
+                            f"a valid CORE_LABEL. {llm_result.reasoning or ''}",
                         )
                         dynamo.update_receipt_word_label(label)
                         llm_validated += 1
                 else:
                     if label.label not in CORE_LABELS:
-                        _delete_non_core_label(
+                        _annotate_non_core_label(
                             dynamo=dynamo,
-                            word_labels=word_labels,
                             label=label,
+                            status=ValidationStatus.INVALID.value,
+                            reasoning=(
+                                llm_result.reasoning
+                                or "non-core proposal was rejected."
+                            ),
                         )
                         llm_validated += 1
                         continue
                     label.validation_status = ValidationStatus.INVALID.value
-                    label.label_proposed_by = "llm_invalid"
-                    if llm_result.reasoning:
-                        label.reasoning = llm_result.reasoning
+                    _append_llm_reason(label, llm_result.reasoning)
                     dynamo.update_receipt_word_label(label)
                     llm_validated += 1
     except Exception as e:
@@ -327,11 +334,13 @@ def apply_llm_results(
             # and propagate so SQS redrives (and eventually DLQs) the message.
             raise
         for label in needed_labels:
-            _delete_non_core_label(
-                dynamo=dynamo,
-                word_labels=word_labels,
-                label=label,
-            )
+            if label.label not in CORE_LABELS:
+                _annotate_non_core_label(
+                    dynamo=dynamo,
+                    label=label,
+                    status=ValidationStatus.NEEDS_REVIEW.value,
+                    reasoning="validation failed; retained for audit.",
+                )
 
     return llm_validated
 
@@ -445,10 +454,10 @@ def apply_async_payload(
     needed_labels = [
         _label_from_jsonable(d) for d in payload.get("needed_labels", [])
     ]
-    # A local working list so _delete_non_core_label has something to mutate;
-    # the authoritative writes go straight to DynamoDB inside apply_llm_results.
+    # A local working list receives corrected labels; authoritative writes go
+    # straight to DynamoDB inside apply_llm_results.
     word_labels = list(needed_labels)
-    return apply_llm_results(
+    validated = apply_llm_results(
         needed_labels=needed_labels,
         llm_words_context=payload.get("llm_words_context", []),
         pending_labels_data=payload.get("pending_labels_data", []),
@@ -460,3 +469,12 @@ def apply_async_payload(
         merchant_name=payload.get("merchant_name"),
         raise_on_failure=raise_on_failure,
     )
+    from receipt_upload.label_reconciliation import reconcile_receipt_labels
+
+    reconcile_receipt_labels(
+        dynamo,
+        payload["image_id"],
+        payload["receipt_id"],
+        payload.get("merchant_name"),
+    )
+    return validated

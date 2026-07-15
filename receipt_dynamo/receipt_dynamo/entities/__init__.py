@@ -115,6 +115,10 @@ from receipt_dynamo.entities.receipt_label_analysis import (  # noqa: F401
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
 )
+from receipt_dynamo.entities.receipt_label_reconciliation import (
+    ReceiptLabelReconciliation,
+    item_to_receipt_label_reconciliation,
+)
 from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
     ReceiptLetter,
     item_to_receipt_letter,
@@ -277,6 +281,7 @@ __all__ = [
     "ReceiptDetails",
     "ReceiptField",
     "ReceiptLabelAnalysis",
+    "ReceiptLabelReconciliation",
     "ReceiptLetter",
     "ReceiptLine",
     "ReceiptLineItemAnalysis",
@@ -328,6 +333,7 @@ __all__ = [
     "item_to_receipt_summary_record",
     "item_to_receipt_field",
     "item_to_receipt_label_analysis",
+    "item_to_receipt_label_reconciliation",
     "item_to_receipt_letter",
     "item_to_receipt_line",
     "item_to_receipt_line_item_analysis",

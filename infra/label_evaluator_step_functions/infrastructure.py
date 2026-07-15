@@ -466,6 +466,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
+                "receipt_upload",
                 "infra/label_evaluator_step_functions/lambdas",
             ],
             lambda_function_name=f"{name}-unified-evaluator",
