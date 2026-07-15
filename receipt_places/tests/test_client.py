@@ -318,6 +318,40 @@ class TestGetPlaceDetails:
         assert result.name == "Test Business"
         assert result.formatted_phone_number == "(555) 123-4567"
 
+    @responses.activate
+    def test_get_place_details_allows_missing_optional_fields(
+        self,
+        places_client: PlacesClient,
+    ) -> None:
+        """Businesses need not publish phone, website, hours, or ratings."""
+        required = {
+            "place_id",
+            "name",
+            "formatted_address",
+            "geometry",
+            "types",
+        }
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/place/details/json",
+            json={
+                "status": "OK",
+                "result": {
+                    key: value
+                    for key, value in SAMPLE_DETAILS_RESPONSE["result"].items()
+                    if key in required
+                },
+            },
+            status=200,
+        )
+
+        result = places_client.get_place_details("ChIJtest123")
+
+        assert result is not None
+        assert result.place_id == "ChIJtest123"
+        assert result.formatted_phone_number is None
+        assert result.website is None
+
     def test_get_place_details_empty(
         self,
         places_client: PlacesClient,

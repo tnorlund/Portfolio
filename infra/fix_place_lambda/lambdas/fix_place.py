@@ -132,17 +132,13 @@ async def _run_place_finder(
     places_client = create_places_client()
     tiered_stats: dict[str, Any] = {}
 
-    resolution_mode = os.environ.get(
-        "FIX_PLACE_RESOLUTION_MODE", "agent"
-    ).lower()
+    resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
     if resolution_mode == "tiered":
         from receipt_agent.subagents.place_finder.tiered import (
             resolve_tiered_place,
         )
 
-        tiered_result, tiered_stats = await resolve_tiered_place(
-            details, places_client
-        )
+        tiered_result, tiered_stats = await resolve_tiered_place(details, places_client)
         if tiered_result is not None:
             return tiered_result, details, tiered_stats
     elif resolution_mode != "agent":
@@ -234,20 +230,18 @@ def handler(  # pylint: disable=unused-argument
 
         _propagate_env_vars()
 
-        # The agent occasionally returns found=true with merchant_name but
-        # empty/None place_id. place_id is the canonical key — without it
-        # we can't write a usable ReceiptPlace. Retry up to MAX_ATTEMPTS,
-        # augmenting the reason on each retry so the agent knows to find
-        # the Google Places place_id explicitly.
-        MAX_ATTEMPTS = 3
+        # The legacy agent occasionally returns found=true with merchant_name
+        # but no place_id, so retain its historical retry behavior. Tiered
+        # mode already contains a bounded agent and a single structured picker;
+        # rerunning the whole cascade would multiply both limits and cost.
+        resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
+        max_attempts = 1 if resolution_mode == "tiered" else 3
         agent_result = None
         details = None
         attempted_reason = reason
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            agent_result, details, attempt_llm_stats = (
-                _loop.run_until_complete(
-                    _run_place_finder(image_id, receipt_id, attempted_reason)
-                )
+        for attempt in range(1, max_attempts + 1):
+            agent_result, details, attempt_llm_stats = _loop.run_until_complete(
+                _run_place_finder(image_id, receipt_id, attempted_reason)
             )
             for key in invocation_llm_stats:
                 invocation_llm_stats[key] += attempt_llm_stats.get(key, 0)
@@ -264,7 +258,7 @@ def handler(  # pylint: disable=unused-argument
                 "place_finder attempt %d/%d incomplete: found=%s merchant=%s "
                 "place_id=%s",
                 attempt,
-                MAX_ATTEMPTS,
+                max_attempts,
                 bool(agent_result and agent_result.get("found")),
                 bool(agent_result and agent_result.get("merchant_name")),
                 bool(agent_result and agent_result.get("place_id")),
@@ -287,7 +281,7 @@ def handler(  # pylint: disable=unused-argument
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
-                "attempts": MAX_ATTEMPTS,
+                "attempts": max_attempts,
                 "reasoning": (
                     agent_result.get("reasoning", "") if agent_result else ""
                 ),
@@ -297,9 +291,7 @@ def handler(  # pylint: disable=unused-argument
         if not agent_result.get("merchant_name"):
             return {
                 "success": False,
-                "error": (
-                    "Agent found a place but merchant_name " "is missing"
-                ),
+                "error": ("Agent found a place but merchant_name " "is missing"),
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
@@ -315,12 +307,12 @@ def handler(  # pylint: disable=unused-argument
                 "error": (
                     f"Agent found a place named "
                     f"'{agent_result.get('merchant_name')}' but no "
-                    f"Google Places place_id after {MAX_ATTEMPTS} attempts"
+                    f"Google Places place_id after {max_attempts} attempts"
                 ),
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
-                "attempts": MAX_ATTEMPTS,
+                "attempts": max_attempts,
                 "reasoning": agent_result.get("reasoning", ""),
                 "fields_found": agent_result.get("fields_found", []),
             }
@@ -362,8 +354,7 @@ def handler(  # pylint: disable=unused-argument
 
     finally:
         logger.info(
-            "fix_place_resolution image_id=%s receipt_id=%s tier=%s "
-            "success=%s",
+            "fix_place_resolution image_id=%s receipt_id=%s tier=%s " "success=%s",
             image_id,
             receipt_id,
             resolution_tier,
@@ -417,9 +408,7 @@ def _update_receipt_place(
         current_place.confidence = confidence
         current_place.reasoning = reasoning
         current_place.validated_by = "INFERENCE"
-        current_place.validation_status = (
-            "MATCHED" if confidence >= 0.8 else "UNSURE"
-        )
+        current_place.validation_status = "MATCHED" if confidence >= 0.8 else "UNSURE"
         current_place.timestamp = now
 
         dynamo_client.update_receipt_place(current_place)

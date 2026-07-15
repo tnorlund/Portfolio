@@ -8,6 +8,7 @@ from receipt_agent.subagents.place_finder.tiered import (
     PlaceCandidate,
     ReceiptClues,
     Tier2Selection,
+    _addresses_match,
     _select_with_llm,
     resolve_tiered_place,
     select_deterministic_candidate,
@@ -61,10 +62,7 @@ def _address_details():
     return SimpleNamespace(
         place=None,
         words=words,
-        labels=[
-            _label(word.line_id, word.word_id, "ADDRESS_LINE")
-            for word in words
-        ],
+        labels=[_label(word.line_id, word.word_id, "ADDRESS_LINE") for word in words],
         lines=[
             SimpleNamespace(line_id=2, text="123 Main St"),
             SimpleNamespace(line_id=3, text="Las Vegas, NV 89101"),
@@ -122,7 +120,7 @@ def test_tier1_phone_match_resolves_without_llm():
     result, stats = asyncio.run(resolve_tiered_place(_details(), places))
 
     assert result["resolution_tier"] == "tier1"
-    assert result["confidence"] == 1.0
+    assert result["confidence"] == 0.95
     assert result["search_methods_used"] == ["phone"]
     assert stats["llm_calls"] == 0
     assert [method for method, _ in places.calls] == ["phone"]
@@ -131,12 +129,10 @@ def test_tier1_phone_match_resolves_without_llm():
 def test_tier1_address_match_resolves_without_llm():
     places = _FakePlaces(address=_place())
 
-    result, stats = asyncio.run(
-        resolve_tiered_place(_address_details(), places)
-    )
+    result, stats = asyncio.run(resolve_tiered_place(_address_details(), places))
 
     assert result["resolution_tier"] == "tier1"
-    assert result["confidence"] == 1.0
+    assert result["confidence"] == 0.90
     assert result["search_methods_used"] == ["address"]
     assert stats["llm_calls"] == 0
     assert [method for method, _ in places.calls] == ["address"]
@@ -149,6 +145,78 @@ def test_tier1_rejects_conflicting_high_confidence_candidates():
     ]
 
     assert select_deterministic_candidate(candidates, 0.90) is None
+
+
+def test_tier1_rejects_unrelated_phone_text_fallback(monkeypatch):
+    """A phone search result must return the same phone it was searched by."""
+    monkeypatch.setenv("FIX_PLACE_TIER2_ENABLED", "false")
+    unrelated = _place(
+        place_id="wrong",
+        name="Professional Roofing Services",
+        address="4180 W Patrick Ln, Las Vegas, NV 89118, USA",
+        phone="(702) 500-0670",
+    )
+    places = _FakePlaces(phone=unrelated)
+
+    result, stats = asyncio.run(resolve_tiered_place(_details(), places))
+
+    assert result is None
+    assert stats["llm_calls"] == 0
+
+
+def test_text_search_uses_merchant_and_address_and_rejects_wrong_phone_result():
+    details = SimpleNamespace(
+        place=None,
+        words=[
+            _word(1, 1, "CRAFTKITCHEN"),
+            _word(2, 1, "10940"),
+            _word(2, 2, "S"),
+            _word(2, 3, "EASTERN"),
+            _word(2, 4, "AVE"),
+            _word(2, 5, "#107"),
+            _word(3, 1, "HENDERSON,"),
+            _word(3, 2, "NV"),
+            _word(3, 3, "89052"),
+            _word(4, 1, "702"),
+            _word(4, 2, "728"),
+            _word(4, 3, "5838"),
+        ],
+        labels=[
+            _label(1, 1, "MERCHANT_NAME"),
+            *[_label(2, word_id, "ADDRESS_LINE") for word_id in range(1, 6)],
+            *[_label(3, word_id, "ADDRESS_LINE") for word_id in range(1, 4)],
+            *[_label(4, word_id, "PHONE_NUMBER") for word_id in range(1, 4)],
+        ],
+        lines=[SimpleNamespace(line_id=1, text="CRAFTKITCHEN")],
+    )
+    unrelated = _place(
+        place_id="wrong",
+        name="Professional Roofing Services",
+        address="4180 W Patrick Ln, Las Vegas, NV 89118, USA",
+        phone="(702) 500-0670",
+    )
+    correct = _place(
+        place_id="craft",
+        name="CRAFTkitchen",
+        address="10940 S Eastern Ave Suite 107, Henderson, NV 89052, USA",
+        phone="(702) 728-5838",
+    )
+    places = _FakePlaces(phone=unrelated, text=correct)
+
+    result, stats = asyncio.run(resolve_tiered_place(details, places))
+
+    assert result["place_id"] == "craft"
+    assert result["resolution_tier"] == "tier1"
+    assert stats["llm_calls"] == 0
+    text_call = next(query for method, query in places.calls if method == "text")
+    assert text_call == ("CRAFTKITCHEN 10940 S EASTERN AVE #107, HENDERSON, NV 89052")
+
+
+def test_address_matching_ignores_equivalent_unit_notation():
+    assert _addresses_match(
+        "10940 S EASTERN AVE #107, HENDERSON, NV 89052",
+        "10940 S Eastern Avenue Suite 107, Henderson, NV 89052, USA",
+    )
 
 
 def test_tier2_makes_one_structured_picker_call():
