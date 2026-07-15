@@ -804,6 +804,26 @@ def test_receipt_place_from_item_accepts_legitimate_stale_projections(
 
 
 @pytest.mark.unit
+def test_receipt_place_from_item_accepts_generated_gsi3sk_with_hash_status():
+    """validation_status is free-form and may contain '#', so a GSI3SK the
+    generator actually emits must round-trip even though '#' is the segment
+    separator. The exact-match short-circuit (not the looser pattern) covers
+    this canonical case."""
+    place = ReceiptPlace(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="place",
+        merchant_name="Merchant",
+        validation_status="needs#review",
+        confidence=0.5,
+    )
+    item = place.to_item()
+    assert "#review#IMAGE#" in item["GSI3SK"]["S"]
+
+    assert ReceiptPlace.from_item(item) == place
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("key", "bad_value"),
     [

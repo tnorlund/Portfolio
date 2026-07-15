@@ -662,9 +662,16 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
             validator = business_key_validators.get(key_name)
             if validator is not None:
                 stored = item.get(key_name)
-                if stored is not None and (
-                    not isinstance(stored, dict)
-                    or not validator(stored.get("S") or "")
+                # Absent (sparse/tolerated) or the canonical current value: the
+                # exact-match short-circuit means a legitimately generated key
+                # is never rejected by the looser well-formed patterns below.
+                if stored is None or stored == expected_value:
+                    continue
+                # Stored value differs from the regenerated projection, i.e. it
+                # is stale: accept only if it is a shape the generator could
+                # have emitted for some earlier valid state, else it is corrupt.
+                if not isinstance(stored, dict) or not validator(
+                    stored.get("S") or ""
                 ):
                     raise ValueError(
                         f"{key_name} does not match entity keys"
