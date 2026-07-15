@@ -35,6 +35,9 @@ keywords = ["chroma", "chromadb", "receipts", "vector", "embeddings", "database"
 "Bug Tracker" = "https://github.com/tnorlund/Portfolio/issues"
 
 [project.optional-dependencies]
+typeface = [
+    "glyphstudio==0.1.0",
+]
 test = [
     "pytest>=8.3.0,<10.0.0",
     "pytest-mock>=3.14.0,<4.0.0",

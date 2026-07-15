@@ -44,6 +44,7 @@ from receipt_chroma.embedding import (
 )
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 from receipt_upload.label_validation import (
@@ -70,7 +71,7 @@ from receipt_upload.merchant_resolution.resolver import (
 from receipt_upload.merchant_resolution.resolver import (
     redact_pii as _redact_pii,
 )
-from receipt_upload.typeface_fingerprint import crosscheck_places
+from receipt_upload.typeface_crosscheck import crosscheck_places
 
 logger = logging.getLogger(__name__)
 
@@ -1534,21 +1535,31 @@ class MerchantResolvingEmbeddingProcessor:
         merchant_result: MerchantResult,
     ) -> None:
         """Record Places agreement without changing either proposal."""
-        try:
-            fingerprint = self.dynamo.get_receipt_typeface_fingerprint(
-                image_id, receipt_id
-            )
-        except Exception:  # fingerprint is additive for older receipts
-            return
-        places_name = None
-        try:
-            place = self.dynamo.get_receipt_place(image_id, receipt_id)
-            places_name = place.merchant_name
-        except Exception:
-            if merchant_result.place_id:
-                places_name = merchant_result.merchant_name
-        crosscheck_places(fingerprint, places_name)
-        self.dynamo.put_receipt_typeface_fingerprint(fingerprint)
+        for attempt in range(2):
+            try:
+                fingerprint = self.dynamo.get_receipt_typeface_fingerprint(
+                    image_id, receipt_id
+                )
+            except EntityNotFoundError:
+                return
+            places_name = None
+            try:
+                place = self.dynamo.get_receipt_place(image_id, receipt_id)
+                places_name = place.merchant_name
+            except EntityNotFoundError:
+                if merchant_result.place_id:
+                    places_name = merchant_result.merchant_name
+            expected_places_name = fingerprint.places_merchant_name
+            crosscheck_places(fingerprint, places_name)
+            try:
+                self.dynamo.update_receipt_typeface_places(
+                    fingerprint,
+                    expected_places_merchant_name=expected_places_name,
+                )
+                return
+            except EntityNotFoundError:
+                if attempt:
+                    raise
 
     def _enrich_receipt_place(
         self,

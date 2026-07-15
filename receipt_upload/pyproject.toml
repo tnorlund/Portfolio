@@ -43,6 +43,9 @@ dependencies = [
 keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
 
 [project.optional-dependencies]
+typeface = [
+    "glyphstudio==0.1.0",
+]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -93,7 +96,7 @@ packages = ["receipt_upload"]
 include = ["receipt_upload/py.typed"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"receipt_upload/assets/typeface_registry_v1.json" = "receipt_upload/assets/typeface_registry_v1.json"
+"receipt_upload/assets/typeface_registry_v2.json" = "receipt_upload/assets/typeface_registry_v2.json"
 
 [tool.black]
 line-length = 79

@@ -6,19 +6,28 @@ __version__ = "0.2.0"
 
 if TYPE_CHECKING:
     from receipt_chroma.data.chroma_client import ChromaClient
-    from receipt_chroma.merchant_fingerprint import TypefaceFingerprint
+    from receipt_chroma.glyph_matching import (
+        clean_letter_mask,
+        normalize_glyph,
+        shifted_iou,
+        shifted_iou_stack,
+    )
     from receipt_chroma.lock_manager import LockManager
+    from receipt_chroma.merchant_fingerprint import (
+        TypefaceFingerprint,
+        TypefaceSourceScore,
+        compute_atlas_registry_sha256,
+        compute_typeface_registry_sha256,
+        load_registry_atlases,
+        match_typeface,
+        score_typeface_sources,
+        validate_typeface_registry,
+    )
 
 __all__ = [
     "__version__",
     "ChromaClient",
     "LockManager",
-    "TypefaceFingerprint",
-    "clean_letter_mask",
-    "match_typeface",
-    "normalize_glyph",
-    "shifted_iou",
-    "shifted_iou_stack",
 ]
 
 
@@ -41,7 +50,16 @@ def __getattr__(name: str) -> Any:
         from receipt_chroma import glyph_matching
 
         return getattr(glyph_matching, name)
-    if name in {"TypefaceFingerprint", "match_typeface"}:
+    if name in {
+        "TypefaceFingerprint",
+        "TypefaceSourceScore",
+        "compute_atlas_registry_sha256",
+        "compute_typeface_registry_sha256",
+        "load_registry_atlases",
+        "match_typeface",
+        "score_typeface_sources",
+        "validate_typeface_registry",
+    }:
         from receipt_chroma import merchant_fingerprint
 
         return getattr(merchant_fingerprint, name)

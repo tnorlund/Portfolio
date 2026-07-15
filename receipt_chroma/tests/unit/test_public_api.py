@@ -3,6 +3,7 @@
 import ast
 from pathlib import Path
 
+import receipt_chroma
 from receipt_chroma import (
     ChromaClient,
     LockManager,
@@ -88,6 +89,26 @@ def test_public_typeface_exports_match_implementations() -> None:
     assert clean_letter_mask is internal_clean_letter_mask
     assert match_typeface is internal_match_typeface
     assert shifted_iou is internal_shifted_iou
+
+
+def test_optional_typeface_exports_are_explicit_only() -> None:
+    """Base-install import-star must not load the glyphstudio extra."""
+
+    optional_exports = {
+        "TypefaceFingerprint",
+        "TypefaceSourceScore",
+        "clean_letter_mask",
+        "compute_atlas_registry_sha256",
+        "compute_typeface_registry_sha256",
+        "load_registry_atlases",
+        "match_typeface",
+        "normalize_glyph",
+        "shifted_iou",
+        "shifted_iou_stack",
+        "score_typeface_sources",
+        "validate_typeface_registry",
+    }
+    assert optional_exports.isdisjoint(receipt_chroma.__all__)
 
 
 def test_compaction_facade_exports_match_implementations() -> None:

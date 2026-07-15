@@ -3,20 +3,28 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from importlib import resources
 from typing import Protocol, Sequence
 
 import numpy as np
 from PIL import Image
-from receipt_chroma import clean_letter_mask, match_typeface
+from receipt_chroma import (
+    TypefaceFingerprint,
+    clean_letter_mask,
+    match_typeface,
+    validate_typeface_registry,
+)
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import (
     ReceiptLetter,
     ReceiptTypefaceFingerprint,
 )
 
-MODEL_SOURCE = "upload-determinism-v1"
+from receipt_upload.typeface_crosscheck import crosscheck_places
+
+MODEL_SOURCE = "upload-determinism-v2"
 
 
 class FingerprintDynamoClient(Protocol):
@@ -34,14 +42,26 @@ class FingerprintDynamoClient(Protocol):
         """Load one receipt fingerprint."""
         raise NotImplementedError
 
+    def update_receipt_typeface_places(
+        self,
+        fingerprint: ReceiptTypefaceFingerprint,
+        *,
+        expected_places_merchant_name: str | None = None,
+    ) -> None:
+        """Conditionally update only the Places crosscheck fields."""
+        raise NotImplementedError
 
+
+@lru_cache(maxsize=1)
 def load_typeface_registry() -> dict:
     """Load the generated JSON registry from the installed upload package."""
 
     asset = resources.files("receipt_upload").joinpath(
-        "assets/typeface_registry_v1.json"
+        "assets/typeface_registry_v2.json"
     )
-    return json.loads(asset.read_text(encoding="utf-8"))
+    registry = json.loads(asset.read_text(encoding="utf-8"))
+    validate_typeface_registry(registry)
+    return registry
 
 
 def _otsu_ink(image: Image.Image) -> np.ndarray:
@@ -99,6 +119,22 @@ def _letter_crop(
     return cleaned if cleaned.any() else None
 
 
+def extract_letter_crops(
+    image: Image.Image | None,
+    letters: Sequence[ReceiptLetter],
+) -> list[tuple[str, np.ndarray]]:
+    """Run the exact production crop extractor without persistence."""
+
+    if image is None:
+        return []
+    crops = []
+    for letter in letters:
+        crop = _letter_crop(image, letter)
+        if crop is not None:
+            crops.append((letter.text, crop))
+    return crops
+
+
 def fingerprint_receipt(
     image: Image.Image | None,
     letters: Sequence[ReceiptLetter],
@@ -116,24 +152,65 @@ def fingerprint_receipt(
         for letter in letters
     ):
         raise ValueError("letters must belong to one receipt")
-    crops = []
-    if image is not None:
-        for letter in letters:
-            crop = _letter_crop(image, letter)
-            if crop is not None:
-                crops.append((letter.text, crop))
+    crops = extract_letter_crops(image, letters)
     result = match_typeface(crops, registry or load_typeface_registry())
+    return _fingerprint_entity(image_id, receipt_id, result)
+
+
+def _fingerprint_entity(
+    image_id: str,
+    receipt_id: int,
+    result: TypefaceFingerprint,
+) -> ReceiptTypefaceFingerprint:
+    """Convert a pure matcher result into the persisted receipt artifact."""
+
     return ReceiptTypefaceFingerprint(
         image_id=image_id,
         receipt_id=receipt_id,
         merchant_candidates=list(result.merchant_candidates),
+        typeface_candidates=list(result.typeface_candidates),
         typeface=result.typeface,
         confidence=result.confidence,
+        confidence_basis=result.confidence_basis,
+        calibration_id=result.calibration_id,
         letter_count=result.letter_count,
+        matched_letter_count=result.matched_letter_count,
+        distinct_character_count=result.distinct_character_count,
         atlas_scores=result.atlas_scores,
+        abstention_reason=result.abstention_reason,
         model_source=MODEL_SOURCE,
         created_at=datetime.now(timezone.utc),
     )
+
+
+def _persist_fingerprint(
+    dynamo: FingerprintDynamoClient,
+    fingerprint: ReceiptTypefaceFingerprint,
+) -> ReceiptTypefaceFingerprint:
+    """Atomically replace evidence and reconcile retained Places provenance."""
+
+    dynamo.put_receipt_typeface_fingerprint(fingerprint)
+    for attempt in range(2):
+        try:
+            persisted = dynamo.get_receipt_typeface_fingerprint(
+                fingerprint.image_id, fingerprint.receipt_id
+            )
+        except EntityNotFoundError:
+            return fingerprint
+        places_name = persisted.places_merchant_name
+        if places_name is None:
+            return persisted
+        crosscheck_places(persisted, places_name)
+        try:
+            dynamo.update_receipt_typeface_places(
+                persisted,
+                expected_places_merchant_name=places_name,
+            )
+            return persisted
+        except EntityNotFoundError:
+            if attempt:
+                raise
+    raise AssertionError("unreachable")
 
 
 def persist_receipt_fingerprint(
@@ -146,49 +223,29 @@ def persist_receipt_fingerprint(
     if not letters:
         return None
     fingerprint = fingerprint_receipt(image, letters)
-    dynamo.put_receipt_typeface_fingerprint(fingerprint)
-    return fingerprint
+    return _persist_fingerprint(dynamo, fingerprint)
 
 
-def _merchant_key(value: str) -> str:
-    normalized = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
-    ignored = {"company", "co", "corporation", "corp", "inc", "llc"}
-    return " ".join(
-        token for token in normalized.split() if token not in ignored
-    )
-
-
-def crosscheck_places(
-    fingerprint: ReceiptTypefaceFingerprint,
-    places_merchant_name: str | None,
+def persist_empty_receipt_fingerprint(
+    dynamo: FingerprintDynamoClient,
+    image_id: str,
+    receipt_id: int,
+    *,
+    registry: dict | None = None,
 ) -> ReceiptTypefaceFingerprint:
-    """Annotate, but never replace, glyph and Places proposals."""
+    """Replace stale evidence when a receipt no longer has any letters."""
 
-    fingerprint.places_merchant_name = places_merchant_name
-    if not places_merchant_name or not fingerprint.merchant_candidates:
-        fingerprint.places_agreement = "UNAVAILABLE"
-        return fingerprint
-    place = _merchant_key(places_merchant_name)
-    candidates = [
-        _merchant_key(name) for name in fingerprint.merchant_candidates
-    ]
-    fingerprint.places_agreement = (
-        "MATCH"
-        if any(
-            place == candidate
-            or place.startswith(candidate + " ")
-            or candidate.startswith(place + " ")
-            for candidate in candidates
-        )
-        else "DISAGREEMENT"
-    )
-    return fingerprint
+    result = match_typeface([], registry or load_typeface_registry())
+    fingerprint = _fingerprint_entity(image_id, receipt_id, result)
+    return _persist_fingerprint(dynamo, fingerprint)
 
 
 __all__ = [
     "MODEL_SOURCE",
     "crosscheck_places",
+    "extract_letter_crops",
     "fingerprint_receipt",
     "load_typeface_registry",
+    "persist_empty_receipt_fingerprint",
     "persist_receipt_fingerprint",
 ]

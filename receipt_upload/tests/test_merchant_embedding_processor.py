@@ -10,9 +10,11 @@ All external services (ChromaDB, DynamoDB, S3, OpenAI) are mocked.
 """
 
 import tempfile
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 from receipt_upload.merchant_resolution import (
@@ -627,3 +629,93 @@ class TestEnrichReceiptPlacePersistsConfidence:
         place = self._create_place(mock_dynamo_client, confidence=0.9)
         assert place.confidence == 0.9
         assert place.validation_status == "MATCHED"
+
+
+class TestTypefacePlacesCrosscheck:
+    def test_uses_narrow_conditional_update(self):
+        processor = MerchantResolvingEmbeddingProcessor.__new__(
+            MerchantResolvingEmbeddingProcessor
+        )
+        processor.dynamo = MagicMock()
+        fingerprint = SimpleNamespace(
+            merchant_candidates=["Costco Wholesale"],
+            places_merchant_name=None,
+            places_agreement="UNAVAILABLE",
+        )
+        processor.dynamo.get_receipt_typeface_fingerprint.return_value = (
+            fingerprint
+        )
+        processor.dynamo.get_receipt_place.side_effect = EntityNotFoundError
+
+        processor._crosscheck_typeface_fingerprint(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            1,
+            SimpleNamespace(
+                place_id="place-id", merchant_name="Costco Wholesale"
+            ),
+        )
+
+        assert fingerprint.places_agreement == "MATCH"
+        processor.dynamo.update_receipt_typeface_places.assert_called_once_with(
+            fingerprint,
+            expected_places_merchant_name=None,
+        )
+        processor.dynamo.put_receipt_typeface_fingerprint.assert_not_called()
+
+    def test_retries_once_after_concurrent_evidence_refresh(self):
+        processor = MerchantResolvingEmbeddingProcessor.__new__(
+            MerchantResolvingEmbeddingProcessor
+        )
+        processor.dynamo = MagicMock()
+        first = SimpleNamespace(
+            merchant_candidates=["Costco Wholesale"],
+            places_merchant_name=None,
+            places_agreement="UNAVAILABLE",
+        )
+        refreshed = SimpleNamespace(
+            merchant_candidates=["Costco Wholesale"],
+            places_merchant_name=None,
+            places_agreement="UNAVAILABLE",
+        )
+        processor.dynamo.get_receipt_typeface_fingerprint.side_effect = [
+            first,
+            refreshed,
+        ]
+        processor.dynamo.get_receipt_place.side_effect = EntityNotFoundError
+        processor.dynamo.update_receipt_typeface_places.side_effect = [
+            EntityNotFoundError,
+            None,
+        ]
+
+        processor._crosscheck_typeface_fingerprint(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            1,
+            SimpleNamespace(
+                place_id="place-id", merchant_name="Costco Wholesale"
+            ),
+        )
+
+        assert (
+            processor.dynamo.update_receipt_typeface_places.call_args_list
+            == [
+                call(first, expected_places_merchant_name=None),
+                call(refreshed, expected_places_merchant_name=None),
+            ]
+        )
+        assert refreshed.places_agreement == "MATCH"
+
+    def test_only_absence_is_suppressed(self):
+        processor = MerchantResolvingEmbeddingProcessor.__new__(
+            MerchantResolvingEmbeddingProcessor
+        )
+        processor.dynamo = MagicMock()
+        processor.dynamo.get_receipt_typeface_fingerprint.side_effect = (
+            RuntimeError("Dynamo unavailable")
+        )
+
+        with pytest.raises(RuntimeError, match="Dynamo unavailable"):
+            processor._crosscheck_typeface_fingerprint(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                1,
+                SimpleNamespace(place_id=None, merchant_name=None),
+            )
