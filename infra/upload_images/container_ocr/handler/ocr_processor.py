@@ -45,7 +45,10 @@ from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
 from receipt_upload.receipt_processing.scan import process_scan
 from receipt_upload.route_images import classify_image_layout
-from receipt_upload.typeface_fingerprint import persist_receipt_fingerprint
+from receipt_upload.typeface_fingerprint import (
+    persist_empty_receipt_fingerprint,
+    persist_receipt_fingerprint,
+)
 from receipt_upload.utils import (
     download_file_from_s3,
     download_image_from_s3,
@@ -1159,6 +1162,50 @@ class OCRProcessor:
             self.dynamo.put_receipt_letters(letters_to_add_for_new)
         if words_to_delete:
             self.dynamo.delete_receipt_words(words_to_delete)
+        if letters_to_delete or letters_to_add or letters_to_add_for_new:
+            all_letters = self.dynamo.list_receipt_letters_from_receipt(
+                ocr_job.image_id, ocr_job.receipt_id
+            )
+            if all_letters:
+                receipt_image = None
+                for bucket, key in (
+                    (receipt.cdn_s3_bucket, receipt.cdn_s3_key),
+                    (receipt.raw_s3_bucket, receipt.raw_s3_key),
+                ):
+                    if not bucket or not key:
+                        continue
+                    try:
+                        receipt_path = download_image_from_s3(
+                            bucket,
+                            key,
+                            ocr_job.image_id,
+                            unique_suffix=(
+                                f"regional-reocr-{ocr_job.receipt_id}"
+                            ),
+                        )
+                        receipt_image = PIL_Image.open(receipt_path).copy()
+                        break
+                    except (ClientError, OSError, ValueError):
+                        logger.warning(
+                            "Receipt crop unavailable for regional re-OCR "
+                            "fingerprint",
+                            exc_info=True,
+                        )
+                persist_receipt_fingerprint(
+                    self.dynamo, receipt_image, all_letters
+                )
+            else:
+                persist_empty_receipt_fingerprint(
+                    self.dynamo,
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                )
+                logger.info(
+                    "Recorded an empty fingerprint after regional re-OCR for "
+                    "%s#%s",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                )
 
         # Rebuild ReceiptLine.text for lines with overlaid, added, or
         # deleted words so downstream consumers (Chroma embeddings,

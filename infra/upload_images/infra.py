@@ -571,6 +571,10 @@ class UploadImages(ComponentResource):
                 "receipt_places",
                 "receipt_upload",
             ],  # Include all packages required by the Dockerfile
+            extra_context_paths=[
+                "receipt_upload/receipt_upload/assets",
+                "tools/glyph-studio/py",
+            ],
             # lambda_function_name=f"{name}-{stack}-process-ocr-results",  # Let Pulumi manage Lambda config
             lambda_config=process_ocr_lambda_config,
             platform="linux/arm64",

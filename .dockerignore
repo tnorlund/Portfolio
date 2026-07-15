@@ -1,5 +1,5 @@
 # Docker build context optimization for Pulumi base images
-# Only include the two package directories needed for Docker builds
+# Only include package directories used by the repository Docker builds
 
 # Ignore everything by default
 *
@@ -7,11 +7,28 @@
 # Only include the packages we need
 !receipt_dynamo/
 !receipt_label/
+!receipt_chroma/
+!receipt_agent/
+!receipt_places/
+!receipt_upload/
+
+# Canonical glyphstudio runtime used by upload-time typeface matching
+!tools/
+!tools/glyph-studio/
+!tools/glyph-studio/py/
 
 # Include the embedding handler code for the embedding Docker image
 !infra/embedding_step_functions/unified_embedding/
 !infra/validate_merchant_step_functions/container/
 !infra/upload_images/container/
+!infra/upload_images/container_ocr/
 
 # Include ChromaDB compaction Lambda files
 !infra/chromadb_compaction/lambdas/
+
+# Local analysis and test artifacts are never runtime inputs.
+**/.mypy_cache/
+**/.pytest_cache/
+**/__pycache__/
+**/tests/
+**/*.pyc

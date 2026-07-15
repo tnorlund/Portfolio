@@ -27,6 +27,7 @@ if _container_ocr_dir not in sys.path:
 
 import pytest
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import (
     ReceiptLetter,
     ReceiptLine,
@@ -184,6 +185,8 @@ def _make_processor():
         width=1000,
         height=2000,
     )
+    proc.dynamo.list_receipt_letters_from_receipt.return_value = []
+    proc.dynamo.get_receipt_typeface_fingerprint.side_effect = EntityNotFoundError
     return proc
 
 
@@ -848,9 +851,11 @@ class TestLetterReplacement:
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
              patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], new_letters_from_ocr)):
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], new_letters_from_ocr)), \
+             patch("handler.ocr_processor.persist_empty_receipt_fingerprint") as persist_empty:
             proc._process_regional_reocr_job(ocr_job, routing)
 
+        proc.persist_empty_fingerprint_mock = persist_empty
         return proc
 
     def test_old_letters_deleted(self):
@@ -861,6 +866,9 @@ class TestLetterReplacement:
         deleted = proc.dynamo.remove_receipt_letters.call_args[0][0]
         assert len(deleted) == 1
         assert deleted[0].text == "A"
+        proc.persist_empty_fingerprint_mock.assert_called_once_with(
+            proc.dynamo, _IMG_ID, 1
+        )
 
     def test_new_letters_use_existing_word_ids(self):
         proc = _make_processor()
@@ -874,6 +882,28 @@ class TestLetterReplacement:
         for letter in added:
             assert letter.line_id == 1
             assert letter.word_id == 1
+
+    def test_recomputes_fingerprint_from_full_post_overlay_letters(self):
+        proc = _make_processor()
+        refreshed = _make_letter(text="C", letter_id=1)
+        proc.dynamo.list_receipt_letters_from_receipt.return_value = [refreshed]
+        receipt = proc.dynamo.get_receipt.return_value
+        receipt.cdn_s3_bucket = "cdn"
+        receipt.cdn_s3_key = "receipt.jpg"
+        receipt.raw_s3_bucket = "raw"
+        receipt.raw_s3_key = "receipt.png"
+
+        with patch(
+            "handler.ocr_processor.download_image_from_s3",
+            side_effect=OSError("fixture has no image"),
+        ), patch("handler.ocr_processor.persist_receipt_fingerprint") as persist:
+            self._run_with_letters(
+                proc,
+                old_letters=[_make_letter(text="A", letter_id=1)],
+                new_letters_from_ocr=[refreshed],
+            )
+
+        persist.assert_called_once_with(proc.dynamo, None, [refreshed])
 
     def test_sequential_letter_ids_starting_at_1(self):
         proc = _make_processor()
