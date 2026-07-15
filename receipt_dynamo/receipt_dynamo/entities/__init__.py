@@ -141,6 +141,10 @@ from receipt_dynamo.entities.receipt_row import (
     ReceiptRow,
     item_to_receipt_row,
 )
+from receipt_dynamo.entities.receipt_resolved_details import (
+    ReceiptResolvedDetails,
+    item_to_receipt_resolved_details,
+)
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     item_to_receipt_section,
@@ -288,6 +292,7 @@ __all__ = [
     "ReceiptMetadata",
     "ReceiptPlace",
     "ReceiptRow",
+    "ReceiptResolvedDetails",
     "ReceiptSection",
     "ReceiptStructureAnalysis",
     "ReceiptValidationCategory",
@@ -340,6 +345,7 @@ __all__ = [
     "item_to_receipt_metadata",
     "item_to_receipt_place",
     "item_to_receipt_row",
+    "item_to_receipt_resolved_details",
     "item_to_receipt_section",
     "item_to_receipt_typeface_fingerprint",
     "validate_section_row_coverage",

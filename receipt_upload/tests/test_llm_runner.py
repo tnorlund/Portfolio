@@ -103,6 +103,7 @@ class _FakeDynamo:
         self.compaction_runs = []
         self._labels_for_receipt = labels_for_receipt or []
         self.reconciliations = []
+        self.resolved_details = []
 
     def update_receipt_word_label(self, label):
         self.updated.append(label)
@@ -130,6 +131,12 @@ class _FakeDynamo:
 
     def put_receipt_label_reconciliation(self, reconciliation):
         self.reconciliations.append(reconciliation)
+
+    def get_receipt_typeface_fingerprint(self, image_id, receipt_id):
+        raise EntityNotFoundError("not found")
+
+    def put_receipt_resolved_details(self, details):
+        self.resolved_details.append(details)
 
 
 def _install_stubs(results, raises=None):
@@ -237,6 +244,7 @@ def test_apply_async_payload_valid_invalid_and_correction():
     assert statuses[(6, 1)] == ValidationStatus.INVALID.value
     assert statuses[(7, 1)] == ValidationStatus.INVALID.value
     assert dynamo.reconciliations
+    assert dynamo.resolved_details
 
 
 def _payload(needed):

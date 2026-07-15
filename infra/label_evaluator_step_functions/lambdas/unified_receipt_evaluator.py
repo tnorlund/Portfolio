@@ -1261,6 +1261,50 @@ async def unified_receipt_evaluator(
         review_duration = 0.0
         geometric_issues_found = 0
 
+        # Reconcile once more after the evaluator's final label mutations, then
+        # persist the API-ready D4 artifact from that stable label snapshot.
+        resolved_details = None
+        if dynamo_table:
+            try:
+                from receipt_dynamo import DynamoClient
+                from receipt_upload.label_reconciliation import (
+                    reconcile_receipt_labels,
+                )
+                from receipt_upload.structured_details import (
+                    resolve_receipt_details,
+                )
+
+                final_dynamo = DynamoClient(table_name=dynamo_table)
+                final_reconciliation = reconcile_receipt_labels(
+                    final_dynamo,
+                    image_id,
+                    receipt_id,
+                    merchant_name,
+                )
+                final_conflicts = sum(
+                    bool(correction.get("conflict"))
+                    for correction in final_reconciliation.corrections
+                )
+                d3_summary = {
+                    "validation_status": final_reconciliation.validation_status,
+                    "corrections": len(final_reconciliation.corrections),
+                    "conflicts": final_conflicts,
+                    "model_source": final_reconciliation.model_source,
+                }
+                resolved_details = resolve_receipt_details(
+                    final_dynamo,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    reconciliation=final_reconciliation,
+                    merchant_name=merchant_name,
+                ).to_document()
+            except Exception:
+                logger.exception(
+                    "D4 structured output failed for %s#%s",
+                    image_id,
+                    receipt_id,
+                )
+
 
         # 10. Aggregate results
         decision_counts = {
@@ -1314,6 +1358,7 @@ async def unified_receipt_evaluator(
                 "review_duration_seconds": review_duration,
                 "regional_reocr": regional_reocr,
                 "label_reconciliation": d3_summary,
+                "resolved_details": resolved_details,
                 "applied_stats": {
                     "phase1": applied_stats_phase1,
                 },
@@ -1403,6 +1448,7 @@ async def unified_receipt_evaluator(
             "review_decisions": review_counts,
             "regional_reocr": regional_reocr,
             "label_reconciliation": d3_summary,
+            "resolved_details": resolved_details,
             "results_s3_key": results_s3_key,
         }
 

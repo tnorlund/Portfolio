@@ -246,10 +246,37 @@ export interface ReceiptWordLabel {
   label_consolidated_from?: string;
 }
 
+export interface ResolvedReceiptField<T = unknown> {
+  value: T | null;
+  provenance: 'layoutlm' | 'section-rule' | 'arithmetic' | 'template' | 'fingerprint';
+  confidence: number;
+  confidence_basis?: string;
+  validation_status?: 'VALID' | 'NEEDS_REVIEW';
+  amount_cents?: number | null;
+  source_words?: Array<{ line_id: number; word_id: number; label: string }>;
+  candidates?: Array<ResolvedReceiptField<T>>;
+}
+
+export interface ReceiptResolvedDetails {
+  image_id: string;
+  receipt_id: number;
+  schema_version: number;
+  merchant: Record<string, unknown> | null;
+  transaction: Record<string, unknown>;
+  items: Array<Record<string, unknown>>;
+  totals: Record<string, unknown>;
+  tender: Record<string, unknown>;
+  conflicts: Array<Record<string, unknown>>;
+  validation_status: "VALID" | "PENDING" | "NEEDS_REVIEW";
+  model_source: string;
+  created_at: string;
+}
+
 export interface RandomReceiptDetailsResponse {
   receipt: Receipt;
   words: ReceiptWord[];
   labels: ReceiptWordLabel[];
+  resolved_details?: ReceiptResolvedDetails | null;
 }
 
 export interface AddressSimilarityResponse {

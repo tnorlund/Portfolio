@@ -471,10 +471,19 @@ def apply_async_payload(
     )
     from receipt_upload.label_reconciliation import reconcile_receipt_labels
 
-    reconcile_receipt_labels(
+    reconciliation = reconcile_receipt_labels(
         dynamo,
         payload["image_id"],
         payload["receipt_id"],
         payload.get("merchant_name"),
+    )
+    from receipt_upload.structured_details import resolve_receipt_details
+
+    resolve_receipt_details(
+        dynamo,
+        image_id=payload["image_id"],
+        receipt_id=payload["receipt_id"],
+        reconciliation=reconciliation,
+        merchant_name=payload.get("merchant_name"),
     )
     return validated

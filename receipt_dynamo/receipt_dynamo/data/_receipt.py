@@ -23,6 +23,9 @@ from receipt_dynamo.entities.receipt_line import (
 from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
+from receipt_dynamo.entities.receipt_resolved_details import (
+    item_to_receipt_resolved_details,
+)
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
@@ -223,18 +226,21 @@ class _Receipt(FlattenedStandardMixin):
         # Note: RECEIPT_LETTER is not included because GSI4 excludes letters
         def convert_item(item):
             item_type = item.get("TYPE", {}).get("S")
-            if item_type == "RECEIPT":
-                return ("receipt", item_to_receipt(item))
-            if item_type == "RECEIPT_LINE":
-                return ("line", item_to_receipt_line(item))
-            if item_type == "RECEIPT_WORD":
-                return ("word", item_to_receipt_word(item))
-            if item_type == "RECEIPT_WORD_LABEL":
-                return ("label", item_to_receipt_word_label(item))
-            if item_type == "RECEIPT_PLACE":
-                return ("place", item_to_receipt_place(item))
-            if item_type == "RECEIPT_BARCODE":
-                return ("barcode", item_to_receipt_barcode(item))
+            converters = {
+                "RECEIPT": ("receipt", item_to_receipt),
+                "RECEIPT_LINE": ("line", item_to_receipt_line),
+                "RECEIPT_WORD": ("word", item_to_receipt_word),
+                "RECEIPT_WORD_LABEL": ("label", item_to_receipt_word_label),
+                "RECEIPT_PLACE": ("place", item_to_receipt_place),
+                "RECEIPT_BARCODE": ("barcode", item_to_receipt_barcode),
+                "RECEIPT_RESOLVED_DETAILS": (
+                    "resolved_details",
+                    item_to_receipt_resolved_details,
+                ),
+            }
+            if item_type in converters:
+                kind, converter = converters[item_type]
+                return kind, converter(item)
             return None
 
         # Query GSI4 for all receipt-related items (excluding letters)
@@ -253,6 +259,7 @@ class _Receipt(FlattenedStandardMixin):
 
         receipt = None
         place = None
+        resolved_details = None
         lines, words, labels, barcodes = [], [], [], []
 
         # Process converted items
@@ -272,6 +279,8 @@ class _Receipt(FlattenedStandardMixin):
                 place = entity
             elif item_type == "barcode":
                 barcodes.append(entity)
+            elif item_type == "resolved_details":
+                resolved_details = entity
 
         if receipt is None:
             raise EntityNotFoundError(
@@ -287,6 +296,7 @@ class _Receipt(FlattenedStandardMixin):
             labels=labels,
             place=place,
             barcodes=barcodes,
+            resolved_details=resolved_details,
             # letters excluded by GSI4 design - uses default empty list
         )
 

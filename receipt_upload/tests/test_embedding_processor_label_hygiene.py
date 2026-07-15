@@ -109,18 +109,32 @@ def test_prepare_pending_core_labels_keeps_ambiguous_amount_for_llm_with_context
 def test_reconciliation_refreshes_words_delta_before_compaction(monkeypatch):
     dynamo = MagicMock()
     refreshed = [_label("GRAND_TOTAL")]
-    dynamo.list_receipt_word_labels_for_receipt.return_value = (refreshed, None)
+    dynamo.list_receipt_word_labels_for_receipt.return_value = (
+        refreshed,
+        None,
+    )
     artifact = SimpleNamespace(
         validation_status="NEEDS_REVIEW",
         corrections=[{"conflict": True}, {"conflict": False}],
     )
     reconcile = MagicMock(return_value=artifact)
+    resolved = SimpleNamespace(
+        validation_status="VALID",
+        field_count=6,
+        conflicts=[],
+    )
+    resolve = MagicMock(return_value=resolved)
     build = MagicMock(return_value=({"ids": ["word"]}, None))
     upload = MagicMock(return_value="deltas/run/words")
     monkeypatch.setattr(
         "receipt_upload.merchant_resolution.embedding_processor."
         "reconcile_receipt_labels",
         reconcile,
+    )
+    monkeypatch.setattr(
+        "receipt_upload.merchant_resolution.embedding_processor."
+        "resolve_receipt_details",
+        resolve,
     )
     monkeypatch.setattr(
         "receipt_upload.merchant_resolution.embedding_processor."
@@ -150,6 +164,9 @@ def test_reconciliation_refreshes_words_delta_before_compaction(monkeypatch):
         "d3_validation_status": "NEEDS_REVIEW",
         "d3_corrections": 2,
         "d3_conflicts": 1,
+        "d4_validation_status": "VALID",
+        "d4_fields": 6,
+        "d4_conflicts": 0,
     }
     assert build.call_args.kwargs["word_labels"] == refreshed
     upload.assert_called_once()

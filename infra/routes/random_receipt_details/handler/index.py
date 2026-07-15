@@ -84,6 +84,11 @@ def handle_get_request():
                     "receipt": dict(receipt_details.receipt),
                     "words": [dict(w) for w in receipt_details.words],
                     "labels": [dict(l) for l in receipt_details.labels],
+                    "resolved_details": (
+                        receipt_details.resolved_details.to_document()
+                        if receipt_details.resolved_details
+                        else None
+                    ),
                 },
                 default=str,  # Handle datetime serialization
             ),

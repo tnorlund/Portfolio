@@ -68,6 +68,7 @@ from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
 )
+from receipt_upload.structured_details import resolve_receipt_details
 from receipt_upload.merchant_resolution.resolver import (
     redact_pii as _redact_pii,
 )
@@ -96,6 +97,13 @@ def _reconcile_and_refresh_words_delta(
         receipt_id,
         merchant_name,
     )
+    resolved = resolve_receipt_details(
+        dynamo,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        reconciliation=artifact,
+        merchant_name=merchant_name,
+    )
     refreshed_labels, _ = dynamo.list_receipt_word_labels_for_receipt(
         image_id, receipt_id
     )
@@ -118,6 +126,9 @@ def _reconcile_and_refresh_words_delta(
         "d3_validation_status": artifact.validation_status,
         "d3_corrections": len(artifact.corrections),
         "d3_conflicts": conflicts,
+        "d4_validation_status": resolved.validation_status,
+        "d4_fields": resolved.field_count,
+        "d4_conflicts": len(resolved.conflicts),
     }
 
 

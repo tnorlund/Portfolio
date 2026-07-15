@@ -848,6 +848,7 @@ def test_receipt_details_defaults_and_iteration_are_stable() -> None:
 
     assert not second.letters
     assert not second.barcodes
+    assert second.resolved_details is None
     assert list(first) == [
         receipt,
         [],

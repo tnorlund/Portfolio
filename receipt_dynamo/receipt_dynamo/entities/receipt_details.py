@@ -12,6 +12,9 @@ from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 if TYPE_CHECKING:
     from receipt_dynamo.entities.receipt_place import ReceiptPlace
+    from receipt_dynamo.entities.receipt_resolved_details import (
+        ReceiptResolvedDetails,
+    )
 
 
 @dataclass
@@ -30,6 +33,7 @@ class ReceiptDetails:
     letters: list[ReceiptLetter] = field(default_factory=list)
     place: "ReceiptPlace" | None = None
     barcodes: list[ReceiptBarcode] = field(default_factory=list)
+    resolved_details: "ReceiptResolvedDetails" | None = None
 
     def __iter__(self) -> Generator[
         Receipt
