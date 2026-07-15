@@ -594,15 +594,19 @@ def test_delete_receipt_conditional_check_failed(
     # pylint: disable=protected-access
     mock_delete = mocker.patch.object(
         client._client,
-        "delete_item",
+        "transact_write_items",
         side_effect=ClientError(
             {
                 "Error": {
-                    "Code": "ConditionalCheckFailedException",
+                    "Code": "TransactionCanceledException",
                     "Message": "Item does not exist",
-                }
+                },
+                "CancellationReasons": [
+                    {"Code": "ConditionalCheckFailed"},
+                    {"Code": "None"},
+                ],
             },
-            "DeleteItem",
+            "TransactWriteItems",
         ),
     )
 
