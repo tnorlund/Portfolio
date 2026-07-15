@@ -2,14 +2,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import (
     Receipt,
     ReceiptPlace,
     ReceiptWord,
     ReceiptWordLabel,
 )
-
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 
 from receipt_upload.combine import (
     calculate_min_area_rect,

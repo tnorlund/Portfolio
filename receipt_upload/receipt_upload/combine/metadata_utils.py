@@ -108,7 +108,8 @@ def clone_receipt_place_for_receipt(
     kwargs = {f.name: getattr(source, f.name) for f in fields(source)}
     kwargs["receipt_id"] = new_receipt_id
     for name in _MUTABLE_PLACE_FIELDS:
-        kwargs[name] = deepcopy(kwargs[name])
+        if name in kwargs:
+            kwargs[name] = deepcopy(kwargs[name])
     if refresh_timestamp:
         kwargs["timestamp"] = datetime.now(timezone.utc)
     if reasoning_prefix:

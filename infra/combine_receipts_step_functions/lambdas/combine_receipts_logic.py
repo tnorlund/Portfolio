@@ -13,6 +13,7 @@ from receipt_dynamo import DynamoClient
 # Import image processing (optional)
 try:
     from PIL import Image as PIL_Image
+
     from receipt_upload.utils import (
         calculate_sha256_from_bytes,
         upload_all_cdn_formats,
@@ -29,6 +30,8 @@ except ImportError as e:
 # Import helper modules
 # Use local embedding_utils instead of package version to ensure we use upload_bundled_delta_to_s3
 from embedding_utils import create_embeddings_and_compaction_run
+from s3_io import save_records_json_to_s3
+
 from receipt_upload.combine import (
     calculate_min_area_rect,
     clone_receipt_place_for_receipt,
@@ -41,7 +44,6 @@ from receipt_upload.combine import (
     migrate_receipt_word_labels,
     upsert_receipt_place,
 )
-from s3_io import save_records_json_to_s3
 
 logger = logging.getLogger()
 

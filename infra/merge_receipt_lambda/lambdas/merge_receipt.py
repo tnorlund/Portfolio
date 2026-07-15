@@ -70,14 +70,24 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         dry_run = event.get("dry_run", False)
 
         if not image_id:
-            return {"status": "error", "error": "Missing required field: image_id"}
-        if not receipt_ids or not isinstance(receipt_ids, list) or len(receipt_ids) != 2:
+            return {
+                "status": "error",
+                "error": "Missing required field: image_id",
+            }
+        if (
+            not receipt_ids
+            or not isinstance(receipt_ids, list)
+            or len(receipt_ids) != 2
+        ):
             return {
                 "status": "error",
                 "error": "receipt_ids must be a list of exactly 2 receipt IDs",
             }
         if not all(isinstance(rid, int) for rid in receipt_ids):
-            return {"status": "error", "error": "receipt_ids must contain integers"}
+            return {
+                "status": "error",
+                "error": "receipt_ids must contain integers",
+            }
         if receipt_ids[0] == receipt_ids[1]:
             return {"status": "error", "error": "receipt_ids must be distinct"}
 
@@ -95,14 +105,15 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             create_embeddings_and_compaction_run,
         )
         from receipt_dynamo import DynamoClient
+
         from receipt_upload.combine import (
             calculate_min_area_rect,
+            clone_receipt_place_for_receipt,
             combine_receipt_letters_to_image_coords,
             combine_receipt_words_to_image_coords,
             create_combined_receipt_records,
             create_receipt_letters_from_combined,
             create_warped_receipt_image,
-            clone_receipt_place_for_receipt,
             get_best_receipt_place,
             migrate_receipt_word_labels,
             upsert_receipt_place,
@@ -187,9 +198,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         src_corners = rect_info["src_corners"]
         warped_width = rect_info["warped_width"]
         warped_height = rect_info["warped_height"]
-        logger.info(
-            "Warped dimensions: %dx%d", warped_width, warped_height
-        )
+        logger.info("Warped dimensions: %dx%d", warped_width, warped_height)
 
         # ============================================================
         # Step 4: Download original image and create warped image
@@ -215,7 +224,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "image_id": image_id,
                 "receipt_ids": receipt_ids,
             }
-        logger.info("Created warped image: %dx%d", warped_image.width, warped_image.height)
+        logger.info(
+            "Created warped image: %dx%d",
+            warped_image.width,
+            warped_image.height,
+        )
 
         # ============================================================
         # Step 5: Create DynamoDB entities in warped space
@@ -252,8 +265,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # ============================================================
         logger.info("Transforming letters to image coordinates...")
         combined_letters = combine_receipt_letters_to_image_coords(
-            client, image_id, receipt_ids, image_width, image_height,
-            word_id_map, line_id_map,
+            client,
+            image_id,
+            receipt_ids,
+            image_width,
+            image_height,
+            word_id_map,
+            line_id_map,
         )
         logger.info("Combined %d letters", len(combined_letters))
 
@@ -277,7 +295,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # ============================================================
         logger.info("Migrating receipt word labels...")
         new_labels = migrate_receipt_word_labels(
-            client, image_id, receipt_ids, word_id_map, line_id_map,
+            client,
+            image_id,
+            receipt_ids,
+            word_id_map,
+            line_id_map,
             new_receipt_id,
         )
         logger.info("Migrated %d labels", len(new_labels))
@@ -326,13 +348,17 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Step 9: Upload warped image to S3 and set CDN metadata
         # ============================================================
         raw_s3_key = f"raw/{image_id}_RECEIPT_{new_receipt_id:05d}.png"
-        logger.info("Uploading raw image to s3://%s/%s", raw_bucket, raw_s3_key)
+        logger.info(
+            "Uploading raw image to s3://%s/%s", raw_bucket, raw_s3_key
+        )
         upload_png_to_s3(warped_image, raw_bucket, raw_s3_key)
         receipt.raw_s3_key = raw_s3_key
 
         # Upload CDN variants and persist keys on the Receipt entity
         cdn_base_key = f"assets/{image_id}_RECEIPT_{new_receipt_id:05d}"
-        logger.info("Uploading CDN formats to s3://%s/%s.*", site_bucket, cdn_base_key)
+        logger.info(
+            "Uploading CDN formats to s3://%s/%s.*", site_bucket, cdn_base_key
+        )
         cdn_keys = upload_all_cdn_formats(
             warped_image, site_bucket, cdn_base_key, generate_thumbnails=True
         )
@@ -399,7 +425,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         # Filter out noise words for embedding (non-noise words only)
-        non_noise_words = [w for w in receipt_words if not getattr(w, "is_noise", False)]
+        non_noise_words = [
+            w for w in receipt_words if not getattr(w, "is_noise", False)
+        ]
         if not non_noise_words:
             non_noise_words = receipt_words  # Fallback: use all words
 
@@ -424,7 +452,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 compaction_run_id,
                 exc_info=True,
             )
-        logger.info("Compaction will complete asynchronously: %s", compaction_run_id)
+        logger.info(
+            "Compaction will complete asynchronously: %s", compaction_run_id
+        )
 
         # ============================================================
         # Step 13: Delete original receipts (highest ID first)
@@ -449,9 +479,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         remaining_receipts = client.get_receipts_from_image(image_id)
         image_entity.receipt_count = len(remaining_receipts)
         client.update_image(image_entity)
-        logger.info(
-            "Updated image receipt_count=%d", len(remaining_receipts)
-        )
+        logger.info("Updated image receipt_count=%d", len(remaining_receipts))
 
         result["status"] = "success"
         result["compaction_run_id"] = compaction_run_id
