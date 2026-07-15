@@ -108,7 +108,7 @@ async def _run_place_finder(
     image_id: str,
     receipt_id: int,
     reason: str,
-) -> tuple[dict[str, Any], Any]:
+) -> tuple[dict[str, Any], Any, dict[str, Any]]:
     """Run the LangGraph place finder agent for a single receipt."""
     # pylint: disable=import-outside-toplevel
     from receipt_agent.clients.factory import (
@@ -160,7 +160,9 @@ async def _run_place_finder(
         reason=reason,
     )
 
-    return result, details
+    cost_callback = state_holder.get("cost_callback")
+    llm_stats = cost_callback.get_stats() if cost_callback else {}
+    return result, details, llm_stats
 
 
 def handler(  # pylint: disable=unused-argument
@@ -176,10 +178,17 @@ def handler(  # pylint: disable=unused-argument
     4. Submit place data with confidence scoring
     5. Update ReceiptPlace with corrected data
     """
+    image_id = event.get("image_id")
+    receipt_id = event.get("receipt_id")
+    invocation_llm_stats = {
+        "total_cost": 0.0,
+        "llm_calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
     try:
         # Validate input
-        image_id = event.get("image_id")
-        receipt_id = event.get("receipt_id")
         reason = event.get("reason", "User reported incorrect merchant")
 
         if not image_id or receipt_id is None:
@@ -207,9 +216,13 @@ def handler(  # pylint: disable=unused-argument
         details = None
         attempted_reason = reason
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            agent_result, details = _loop.run_until_complete(
-                _run_place_finder(image_id, receipt_id, attempted_reason)
+            agent_result, details, attempt_llm_stats = (
+                _loop.run_until_complete(
+                    _run_place_finder(image_id, receipt_id, attempted_reason)
+                )
             )
+            for key in invocation_llm_stats:
+                invocation_llm_stats[key] += attempt_llm_stats.get(key, 0)
             if (
                 agent_result
                 and agent_result.get("found")
@@ -317,6 +330,18 @@ def handler(  # pylint: disable=unused-argument
         }
 
     finally:
+        logger.info(
+            "fix_place_llm_usage image_id=%s receipt_id=%s cost_usd=%.8f "
+            "llm_calls=%d prompt_tokens=%d completion_tokens=%d "
+            "total_tokens=%d",
+            image_id,
+            receipt_id,
+            invocation_llm_stats["total_cost"],
+            invocation_llm_stats["llm_calls"],
+            invocation_llm_stats["prompt_tokens"],
+            invocation_llm_stats["completion_tokens"],
+            invocation_llm_stats["total_tokens"],
+        )
         flush_langsmith_traces()
 
 

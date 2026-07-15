@@ -24,7 +24,10 @@ from receipt_agent.subagents.place_finder.state import (
     ReceiptPlaceFinderState,
 )
 from receipt_agent.utils.agent_common import create_agent_node_with_retry
-from receipt_agent.utils.llm_factory import create_llm_from_settings
+from receipt_agent.utils.llm_factory import (
+    CostTrackingCallback,
+    create_llm_from_settings,
+)
 
 
 # Helper function for building line IDs (matches agentic.py)
@@ -355,9 +358,17 @@ def create_receipt_place_finder_graph(
     submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
+    # This graph invokes a raw bound model instead of LLMInvoker, so attach the
+    # shared OpenRouter usage callback explicitly in the runner below.
+    state_holder["cost_callback"] = CostTrackingCallback()
+
     # Create LLM with tools bound (reasoning disabled to avoid
     # hidden cost/latency on every tool-calling step)
-    llm = create_llm_from_settings(temperature=0.0, reasoning=False)
+    llm = create_llm_from_settings(
+        temperature=0.0,
+        reasoning=False,
+        stream_usage=True,
+    )
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility
@@ -505,6 +516,9 @@ async def run_receipt_place_finder(
         word_embeddings=word_embeddings,
     )
     state_holder["place_result"] = None
+    cost_callback = state_holder.get("cost_callback")
+    if cost_callback is not None:
+        cost_callback.reset()
 
     # Build the human message, including the reason if provided
     human_content = (
@@ -552,6 +566,9 @@ async def run_receipt_place_finder(
                 "receipt_id": receipt_id,
                 "workflow": "receipt_place_finder",
             }
+
+        if cost_callback is not None:
+            config["callbacks"] = [cost_callback.handler]
 
         await graph.ainvoke(initial_state, config=config)
 
