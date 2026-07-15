@@ -21,19 +21,21 @@ def sections_to_line_map(sections: Sequence[Any]) -> Dict[int, str]:
 
     Each section holds its ``line_ids``; sections partition a receipt's
     lines, but if a line appears in more than one (e.g. overlapping seed
-    generations) the higher-confidence section wins.
+    generations) human-VALID evidence wins before confidence is considered.
     """
     out: Dict[int, str] = {}
-    best: Dict[int, float] = {}
+    best: Dict[int, tuple[int, float]] = {}
     for s in sections or []:
         # skip QA-rejected rows — an INVALID section must not stamp a line
-        if str(getattr(s, "validation_status", "") or "").upper() == "INVALID":
+        status = str(getattr(s, "validation_status", "") or "").upper()
+        if status == "INVALID":
             continue
         conf = getattr(s, "confidence", None) or 0.0
+        rank = ({"VALID": 2, "PENDING": 1}.get(status, 0), float(conf))
         for line_id in getattr(s, "line_ids", []) or []:
-            if line_id not in out or conf > best.get(line_id, -1.0):
+            if line_id not in out or rank > best.get(line_id, (-1, -1.0)):
                 out[line_id] = s.section_type
-                best[line_id] = conf
+                best[line_id] = rank
     return out
 
 

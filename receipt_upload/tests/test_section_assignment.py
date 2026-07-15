@@ -6,9 +6,10 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from receipt_dynamo.constants import SectionType, ValidationStatus
-from receipt_dynamo.entities import ReceiptRow
+from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
     RowFeatures,
@@ -159,6 +160,47 @@ def test_persistence_is_additive_and_pending() -> None:
         for item in created
     )
     assert set(section_by_line) == {1, 2, 3}
+
+
+def test_persistence_line_map_prefers_human_valid_section() -> None:
+    rows, lines = _rows(["APPLE 1.00"])
+    now = datetime(2026, 7, 14, tzinfo=timezone.utc)
+    store = MemorySections()
+    store.sections = [
+        ReceiptSection(
+            image_id=_IMAGE_ID,
+            receipt_id=1,
+            section_type=SectionType.ITEMS.value,
+            line_ids=[1],
+            row_ids=[1],
+            confidence=0.2,
+            validation_status=ValidationStatus.VALID.value,
+            model_source="human-qa",
+            created_at=now,
+        ),
+        ReceiptSection(
+            image_id=_IMAGE_ID,
+            receipt_id=1,
+            section_type=SectionType.PAYMENT.value,
+            line_ids=[1],
+            row_ids=[1],
+            confidence=0.99,
+            validation_status=ValidationStatus.PENDING.value,
+            model_source=MODEL_SOURCE,
+            created_at=now,
+        ),
+    ]
+
+    with patch(
+        "receipt_upload.section_assignment.assign_row_sections",
+        return_value=[],
+    ):
+        created, section_by_line = assign_and_persist_sections(
+            store, rows, lines, None, load_prior_model()
+        )
+
+    assert created == []
+    assert section_by_line == {1: SectionType.ITEMS.value}
 
 
 def test_golden_merchants_have_deterministic_learned_priors() -> None:

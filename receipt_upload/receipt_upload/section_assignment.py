@@ -18,6 +18,7 @@ from itertools import groupby
 from statistics import fmean, pstdev
 from typing import Any, Protocol
 
+from receipt_chroma.section_labels import sections_to_line_map
 from receipt_dynamo.amounts import looks_like_receipt_amount
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
@@ -614,9 +615,7 @@ def assign_and_persist_sections(
         rows[0].image_id, rows[0].receipt_id
     )
     by_line = {
-        line_id: str(section.section_type)
-        for section in current
-        if section.validation_status != ValidationStatus.INVALID.value
-        for line_id in section.line_ids
+        line_id: str(section_type)
+        for line_id, section_type in sections_to_line_map(current).items()
     }
     return created, by_line
