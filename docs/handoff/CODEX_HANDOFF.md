@@ -1,7 +1,10 @@
 # Codex Handoff — Upload Determinism, Round 2
 
 **Branch:** `handoff/codex-determinism-round2`
-**Origin conversation (Claude Code session):** https://claude.ai/code/session_01SRtFcxkcw1t3nZsVHstZGL
+**Origin conversation (full Claude Code transcript, local disk):**
+`/Users/tnorlund/.claude/projects/-Users-tnorlund-vegas-26/8e37906b-7da3-4cc8-b685-505d5d59c685.jsonl`
+(JSONL, ~26 MB — the complete session that produced this packet, including every
+agent eval, the review round, and the tail repair. Grep it for specifics.)
 **Date:** 2026-07-15
 
 This branch is a self-contained work packet. It carries no code changes — only
@@ -82,6 +85,9 @@ forward. "REWORK" means the approach itself doesn't hold up against real data.
   hold in #1149 — keep it that way.
 - **No `.npz` committed.** JSON sources only. The anti-copy publish gate is
   mandatory (see the #1151 P2 about not weakening it).
+- **The full origin transcript is on local disk** (path at top of this file) if
+  you need the reasoning behind any decision here — it is the authoritative source,
+  not a claude.ai link.
 - **Derive thresholds from measurement, not from the acceptance metric.** Both
   rework PRs failed this. A threshold fit so all training examples pass by
   construction (min-of-winners) bounds nothing; derive from the separation
