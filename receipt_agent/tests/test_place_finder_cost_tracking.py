@@ -1,6 +1,7 @@
 """Cost visibility tests for the live fix-place graph runner."""
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from receipt_agent.subagents.place_finder.graph import (
@@ -33,9 +34,20 @@ def test_fix_place_runner_attaches_cost_callback_to_graph():
             state_holder=state_holder,
             image_id="image-1",
             receipt_id=1,
+            receipt_words=[SimpleNamespace(line_id=2, word_id=3, text="Test")],
+            receipt_labels=[
+                SimpleNamespace(
+                    line_id=2,
+                    word_id=3,
+                    label="MERCHANT_NAME",
+                    validation_status="VALID",
+                )
+            ],
         )
     )
 
     assert result["found"] is True
     config = graph.ainvoke.call_args.kwargs["config"]
     assert callback.handler in config["callbacks"]
+    assert config["recursion_limit"] == 12
+    assert state_holder["context"].words[0]["label"] == "MERCHANT_NAME"

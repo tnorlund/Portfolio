@@ -36,6 +36,17 @@ from receipt_agent.utils.llm_factory import CostTrackingCallback, create_llm
 logger = logging.getLogger(__name__)
 
 
+def _agent_recursion_limit() -> int:
+    """Return the hard-capped place-agent recursion limit."""
+    try:
+        configured = int(
+            os.environ.get("FIX_PLACE_AGENT_RECURSION_LIMIT", "12")
+        )
+    except ValueError:
+        configured = 12
+    return max(4, min(configured, 12))
+
+
 # ==============================================================================
 # System Prompt
 # ==============================================================================
@@ -352,6 +363,14 @@ def create_place_id_finder_graph(
         # If no messages or no tool calls, go back to agent
         return "agent"
 
+    def after_tools(_state: PlaceIdFinderState) -> str:
+        """Stop immediately after submit_place_id succeeds."""
+        return (
+            "end"
+            if state_holder.get("place_id_result") is not None
+            else "agent"
+        )
+
     # Build the graph
     workflow = StateGraph(PlaceIdFinderState)
 
@@ -373,8 +392,11 @@ def create_place_id_finder_graph(
         },
     )
 
-    # After tools, go back to agent
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges(
+        "tools",
+        after_tools,
+        {"agent": "agent", "end": END},
+    )
 
     # Compile
     compiled = workflow.compile()
@@ -449,7 +471,7 @@ async def run_place_id_finder(
     try:
         # Configure LangSmith tracing if available
         config: dict[str, Any] = {
-            "recursion_limit": 100,  # Increased to prevent early termination
+            "recursion_limit": _agent_recursion_limit(),
             "configurable": {
                 "thread_id": f"{image_id}#{receipt_id}",  # Unique thread ID for this receipt
             },
@@ -467,7 +489,7 @@ async def run_place_id_finder(
                 "LANGCHAIN_PROJECT", "receipt-label-validation"
             )
             config["run_name"] = "place_id_finder_agent"
-            config["tags"] = ["place_id_finder", "tier2"]
+            config["tags"] = ["place_id_finder", "tier3"]
 
         # Pass callbacks for parent trace context and always include the shared
         # cost handler. Graph-level callbacks propagate to every LLM turn.

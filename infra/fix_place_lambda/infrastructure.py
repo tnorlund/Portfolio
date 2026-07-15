@@ -181,6 +181,26 @@ class FixPlaceLambda(ComponentResource):
                 # OpenRouter (for LLM calls)
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_MODEL": "x-ai/grok-4.3",
+                # Dev opts into tiered resolution; other stacks retain the
+                # legacy agent path until the quality gate is promoted.
+                "FIX_PLACE_RESOLUTION_MODE": (
+                    config.get("fix_place_resolution_mode")
+                    or ("tiered" if stack == "dev" else "agent")
+                ),
+                "FIX_PLACE_TIER2_MODEL": (
+                    config.get("fix_place_tier2_model")
+                    or "openai/gpt-oss-120b"
+                ),
+                "FIX_PLACE_AGENT_MODEL": (
+                    config.get("fix_place_agent_model")
+                    or (
+                        "x-ai/grok-4.1-fast"
+                        if stack == "dev"
+                        else "x-ai/grok-4.3"
+                    )
+                ),
+                "FIX_PLACE_AGENT_RECURSION_LIMIT": "12",
+                "FIX_PLACE_AGENT_MAX_ROUNDS": "3",
                 # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 # Chroma Cloud
