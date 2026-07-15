@@ -15,10 +15,10 @@ from statistics import fmean
 from typing import Any, Protocol
 
 import numpy as np
-
 from receipt_chroma import propagate_knn
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+
 from receipt_upload.section_assignment import MODEL_SOURCE
 
 VERIFICATION_SOURCE = "glyphstudio-knn-v1"

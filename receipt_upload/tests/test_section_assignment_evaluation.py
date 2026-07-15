@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from receipt_dynamo.constants import ValidationStatus
 from scripts.build_section_order_priors import build_model
 from scripts.evaluate_section_assignment import _score_predictions

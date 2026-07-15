@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from receipt_dynamo.constants import SectionType, ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
     RowFeatures,

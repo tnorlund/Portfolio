@@ -3,9 +3,9 @@
 from datetime import datetime, timezone
 
 import pytest
-
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+
 from receipt_upload.section_assignment import MODEL_SOURCE
 from receipt_upload.section_verifier import verify_receipt_sections
 
