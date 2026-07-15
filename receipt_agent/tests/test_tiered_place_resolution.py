@@ -200,9 +200,9 @@ def test_text_search_uses_merchant_and_rejects_wrong_phone_result():
     )
     correct = _place(
         place_id="craft",
-        name="CRAFTkitchen",
+        name="CRAFT Kitchen",
         address="10940 S Eastern Ave Suite 107, Henderson, NV 89052, USA",
-        phone="(702) 728-5838",
+        phone=None,
     )
     address_only = _place(
         place_id="address",
@@ -217,6 +217,8 @@ def test_text_search_uses_merchant_and_rejects_wrong_phone_result():
 
     assert result["place_id"] == "craft"
     assert result["resolution_tier"] == "tier1"
+    assert result["phone_number"] == "702 728 5838"
+    assert result["sources"]["phone_number"] == "receipt_labels"
     assert stats["llm_calls"] == 0
     text_call = next(query for method, query in places.calls if method == "text")
     assert text_call == "CRAFTKITCHEN"

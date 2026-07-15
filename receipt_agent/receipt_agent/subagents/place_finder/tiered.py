@@ -240,8 +240,8 @@ def _normalized_text(value: str | None) -> str:
 
 
 def _names_match(left: str | None, right: str | None) -> bool:
-    first = _normalized_text(left)
-    second = _normalized_text(right)
+    first = "".join(_normalized_text(left).split())
+    second = "".join(_normalized_text(right).split())
     return bool(first and second) and (first in second or second in first)
 
 
@@ -476,20 +476,24 @@ def _result(
     tier: str,
     confidence: float,
     reasoning: str,
+    clues: ReceiptClues | None = None,
 ) -> dict[str, Any]:
     values = {
         "place_id": candidate.place_id,
         "merchant_name": candidate.merchant_name,
         "address": candidate.address,
-        "phone_number": candidate.phone,
+        "phone_number": candidate.phone or (clues.phone if clues else None),
     }
     fields_found = [key for key, value in values.items() if value]
+    sources = dict.fromkeys(fields_found, "google_places")
+    if "phone_number" in fields_found and not candidate.phone:
+        sources["phone_number"] = "receipt_labels"
     return {
         **values,
         "confidence": confidence,
         "field_confidence": dict.fromkeys(fields_found, confidence),
         "reasoning": reasoning,
-        "sources": dict.fromkeys(fields_found, "google_places"),
+        "sources": sources,
         "search_methods_used": sorted(candidate.search_methods),
         "fields_found": fields_found,
         "found": True,
@@ -561,6 +565,7 @@ async def _select_with_llm(
                 f"Single structured picker selected a known Places candidate: "
                 f"{selection.reasoning}"
             ),
+            clues=clues,
         ),
         callback.get_stats(),
     )
@@ -585,6 +590,7 @@ async def resolve_tiered_place(
                     "Existing place_id matches receipt-labeled phone/address "
                     "and current Google Places details."
                 ),
+                clues=clues,
             ),
             empty_llm_stats(),
         )
@@ -606,6 +612,7 @@ async def resolve_tiered_place(
                     "Deterministic Places cascade produced one "
                     "high-confidence candidate."
                 ),
+                clues=clues,
             ),
             empty_llm_stats(),
         )
