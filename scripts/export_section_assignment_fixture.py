@@ -201,6 +201,11 @@ def main() -> int:
                     "items_matched": items_matched,
                     "items_scored": len(item_rows),
                 },
+                "required_item_matches": {
+                    str(row_id): "ITEMS"
+                    for row_id in sorted(item_rows)
+                    if predicted[row_id] == "ITEMS"
+                },
                 "rows": feature_rows,
             }
         )

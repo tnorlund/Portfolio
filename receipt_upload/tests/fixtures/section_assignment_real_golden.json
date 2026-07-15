@@ -9,6 +9,12 @@
       "scored": 25
     },
     "receipt_id": 1,
+    "required_item_matches": {
+      "9": "ITEMS",
+      "12": "ITEMS",
+      "14": "ITEMS",
+      "17": "ITEMS"
+    },
     "rows": [
       {
         "alpha_ratio": 1.0,
@@ -1033,6 +1039,11 @@
       "scored": 23
     },
     "receipt_id": 1,
+    "required_item_matches": {
+      "9": "ITEMS",
+      "16": "ITEMS",
+      "24": "ITEMS"
+    },
     "rows": [
       {
         "alpha_ratio": 1.0,

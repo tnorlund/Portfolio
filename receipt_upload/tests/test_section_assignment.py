@@ -273,6 +273,9 @@ def test_real_collapse_cases_pin_qa_expected_rows() -> None:
             for assignment in first
         }
         assert predicted == pinned, fixture["case"]
+        for row_id, required_label in fixture["required_item_matches"].items():
+            assert expected[int(row_id)] == required_label, fixture["case"]
+            assert predicted[int(row_id)] == required_label, fixture["case"]
 
         matched = sum(
             predicted[row_id] == section_type
