@@ -1,0 +1,271 @@
+{
+  "merchant": "costco",
+  "date": "2026-07-14",
+  "tool": "costco_gold.py",
+  "render": ".out/gold_rebase/final_baseline.webp",
+  "real": "portfolio/public/synthetic-receipts/pipeline/costco/real.webp",
+  "canvas": [
+    760,
+    2999
+  ],
+  "glyphscore_root": "/private/tmp/font_gold_rebaseline",
+  "aligned": true,
+  "align_residual_px": 24.3,
+  "n_anchors": 45,
+  "L0": {
+    "ink_ratio": {
+      "value": 1.687361993242028,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "fill_render": {
+      "value": 0.234375,
+      "target": 0.2607421875,
+      "tol": 0.01,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.2607421875,
+      "spec_target": 0.271
+    },
+    "fill_real_ref": 0.2607421875,
+    "cap_h_ratio": {
+      "value": 1.210060994526671,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "pitch_ratio": {
+      "value": 0.9822474097427529,
+      "target": 1.0,
+      "tol": 0.02,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_px": {
+      "render": 37.11768320622293,
+      "real": 30.67422499701507
+    },
+    "pitch_px": {
+      "render": 43.878171916288046,
+      "real": 44.6712014519637
+    },
+    "interline_fill": {
+      "render": 0.845925925925926,
+      "real": 0.6866666666666666
+    },
+    "pass": false
+  },
+  "L1": {
+    "gs_vs_crops": {
+      "value": 37.66878063106416,
+      "target": 50.0,
+      "tol": 5.0,
+      "dir": "min",
+      "pass": false
+    },
+    "gs_vs_chart": 79.32416616235099,
+    "iou_re": 0.6119748209018941,
+    "iou_rc": 0.7102297013274171,
+    "iou_ce": 0.6246223619119747,
+    "iou_rc_hygiene": {
+      "value": 0.7186486008216354,
+      "target": 0.536,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "iou_re_hygiene": 0.6177092226346849,
+    "self_agreement_ref": 0.87,
+    "worst_after_hygiene": [
+      {
+        "char": "L",
+        "rc": 0.079,
+        "ce": 0.678,
+        "n": 380
+      },
+      {
+        "char": "m",
+        "rc": 0.366,
+        "ce": 0.585,
+        "n": 185
+      },
+      {
+        "char": "H",
+        "rc": 0.368,
+        "ce": 0.752,
+        "n": 211
+      },
+      {
+        "char": "d",
+        "rc": 0.386,
+        "ce": 0.685,
+        "n": 125
+      },
+      {
+        "char": "n",
+        "rc": 0.389,
+        "ce": 0.41,
+        "n": 276
+      },
+      {
+        "char": "X",
+        "rc": 0.401,
+        "ce": 0.576,
+        "n": 559
+      },
+      {
+        "char": "U",
+        "rc": 0.465,
+        "ce": 0.61,
+        "n": 193
+      },
+      {
+        "char": "G",
+        "rc": 0.479,
+        "ce": 0.637,
+        "n": 150
+      }
+    ],
+    "segmentation": "209/209",
+    "pass": false
+  },
+  "L2": {
+    "chamfer_dots": 0.5741204058678869,
+    "boundary_iou": 0.4177011970011899,
+    "advance_ratio": {
+      "value": 1.0487333005219535,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "max",
+      "pass": true
+    },
+    "advance_px": {
+      "render": 20.985139692795777,
+      "real": 20.009986983679735
+    },
+    "price_std_px": {
+      "value": 5.128073990997288,
+      "target": 8.0,
+      "tol": 0.0,
+      "dir": "max",
+      "pass": true
+    },
+    "barcode_caption_ratio": {
+      "value": 0.9761950341209473,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_ratio": {
+      "value": 1.210060994526671,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "interline_fill": {
+      "render": 0.845925925925926,
+      "real": 0.6866666666666666
+    },
+    "pass": false
+  },
+  "L3": {
+    "ink_darkness": {
+      "value": 14.0,
+      "target": 63.0,
+      "tol": 6.0,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 63.0,
+      "spec_target": 69.0
+    },
+    "stroke_cov": {
+      "value": 0.08942383723705695,
+      "target": 0.1338306461501223,
+      "tol": 0.06,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.1338306461501223,
+      "spec_target": 0.35
+    },
+    "edge_transition_frac": {
+      "value": 0.2348548281861679,
+      "target": 0.3540884074429982,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.3540884074429982,
+      "spec_target": 0.16
+    },
+    "paper_clip_frac": {
+      "value": 0.004359649122807017,
+      "target": 0.4523040935672515,
+      "tol": 0.1,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.4523040935672515,
+      "spec_target": 0.55
+    },
+    "ink_tone_emd": {
+      "value": 19.700085891812858,
+      "target": 0.0,
+      "tol": 3.0,
+      "dir": "max",
+      "pass": false
+    },
+    "kanungo_p": {
+      "value": 0.009900990099009901,
+      "target": 0.05,
+      "tol": 0.0,
+      "dir": "p_min",
+      "pass": false
+    },
+    "kanungo_distance": 0.1766224940536867,
+    "pass": false
+  },
+  "L4": {
+    "ms_ssim": {
+      "value": 0.35662275117187475,
+      "target": 0.75,
+      "tol": 0.0,
+      "dir": "min",
+      "pass": false
+    },
+    "ms_ssim_raw": 0.26726749976839687,
+    "glcm_contrast": {
+      "real": 5.581989947787049,
+      "render": 6.055569218757625
+    },
+    "forgery_auc": "NOT_IMPLEMENTED",
+    "tstr_gap": "NOT_IMPLEMENTED",
+    "ocr_jaccard": {
+      "value": 0.0,
+      "target": 1.0,
+      "tol": 0.1,
+      "dir": "min",
+      "pass": false
+    },
+    "ocr_recall": {
+      "real": 0.9760765550239234,
+      "render": 0.7942583732057417
+    },
+    "ocr_cer": {
+      "real": 0.08135860979462875,
+      "render": 0.08372827804107424
+    },
+    "ocr_error_classes": {
+      "shared": 0,
+      "render_only": 20,
+      "real_only": 4
+    },
+    "spacing_jitter_render": 0.5733208964154691,
+    "pass": false
+  },
+  "overall_rung_cleared": "L0-fail",
+  "elapsed_sec": 17.3,
+  "_baseline_note": "POST-MIGRATION re-record (2026-07-14) of the Costco gold DEFAULT (no-intervention) baseline, the new official starting line. Gold receipt 57cb7f2c-7dcc-4974-9ef8-a460232f3b1d#1 @ RECEIPT_PAPER_STRENGTH default. Render re-produced by render_costco_gold.py (PR #1113) with a FORCED-FRESH Dynamo payload pull (221 words, 0 barcodes) so no pre-migration geometry is reused; scored by costco_gold.py against the REBUILT refpack ~/glyphscore_refpacks/costco/costco.refpack.npz (93 receipts vs the old 80) and GlyphScore code now merged on main (glyphscore-root = the repo worktree). vs 2026-07-11 default: all L0/L2/L3/L4 moves are 100% GEOMETRY (re-OCR) -- refpack delta is exactly 0 outside L1. L1 gs_vs_crops 37.0->37.7 net = +6.1 geometry then -5.5 from the harder rebuilt refpack. L4 ocr_jaccard 0.65->0.00 is a metric-semantics artifact, NOT a regression: OCR recall jumped (real 0.74->0.98, render 0.63->0.79) and CER halved, emptying the shared error set (shared 32->0) that the error-set Jaccard divides by. Still L0-fail (render too inky/tall vs real: ink_ratio 1.69, cap_h 1.21)."
+}

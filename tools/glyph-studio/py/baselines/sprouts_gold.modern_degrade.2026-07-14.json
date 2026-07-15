@@ -1,0 +1,280 @@
+{
+  "merchant": "sprouts",
+  "date": "2026-07-14",
+  "tool": "merchant_gold.py",
+  "render": ".out/gold_rebase/sprouts_modern_degrade.webp",
+  "real": "portfolio/public/synthetic-receipts/pipeline/sprouts/real.webp",
+  "canvas": [
+    760,
+    2471
+  ],
+  "glyphscore_root": "/private/tmp/font_gold_rebaseline",
+  "chart": "SKIPPED",
+  "aligned": true,
+  "align_residual_px": 3.9,
+  "n_anchors": 40,
+  "L0": {
+    "ink_ratio": {
+      "value": 0.9878994378340155,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": true
+    },
+    "fill_render": {
+      "value": 0.236328125,
+      "target": 0.21875,
+      "tol": 0.01,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.21875,
+      "spec_target": 0.271
+    },
+    "fill_real_ref": 0.21875,
+    "cap_h_ratio": {
+      "value": 0.9200021462542134,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "pitch_ratio": {
+      "value": 0.9944880968262175,
+      "target": 1.0,
+      "tol": 0.02,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_px": {
+      "render": 13.208076053479886,
+      "real": 14.356570913727252
+    },
+    "pitch_px": {
+      "render": 35.72249891050577,
+      "real": 35.92048916875887
+    },
+    "interline_fill": {
+      "render": 0.3697411003236246,
+      "real": 0.39967637540453077
+    },
+    "pass": false
+  },
+  "L1": {
+    "gs_vs_crops": {
+      "value": 37.60437917757819,
+      "target": 50.0,
+      "tol": 5.0,
+      "dir": "min",
+      "pass": false
+    },
+    "gs_vs_chart": "SKIPPED",
+    "iou_re": 0.524386370231044,
+    "iou_rc": "SKIPPED",
+    "iou_ce": "SKIPPED",
+    "iou_rc_hygiene": "SKIPPED",
+    "iou_re_hygiene": {
+      "value": 0.5255887039530902,
+      "target": 0.611,
+      "tol": 0.03,
+      "dir": "min",
+      "pass": false
+    },
+    "self_agreement_ref": 0.611,
+    "worst_after_hygiene": [
+      {
+        "char": ")",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.106,
+        "n": 116
+      },
+      {
+        "char": "Q",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.131,
+        "n": 85
+      },
+      {
+        "char": ",",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.321,
+        "n": 547
+      },
+      {
+        "char": "0",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.334,
+        "n": 5917
+      },
+      {
+        "char": "R",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.367,
+        "n": 1636
+      },
+      {
+        "char": "K",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.369,
+        "n": 449
+      },
+      {
+        "char": "u",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.369,
+        "n": 1583
+      },
+      {
+        "char": "p",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.37,
+        "n": 1114
+      }
+    ],
+    "segmentation": "182/184",
+    "pass": false
+  },
+  "L2": {
+    "chamfer_dots": 0.7699119869696932,
+    "boundary_iou": 0.3248149297206806,
+    "advance_ratio": {
+      "value": 0.785244185374104,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "max",
+      "pass": true
+    },
+    "advance_px": {
+      "render": 14.369102471628464,
+      "real": 18.298897004608538
+    },
+    "price_std_px": {
+      "value": 20.999047597450698,
+      "target": 8.0,
+      "tol": 0.0,
+      "dir": "max",
+      "pass": false
+    },
+    "barcode_caption_ratio": {
+      "value": 1.2308818581087702,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "cap_h_ratio": {
+      "value": 0.9200021462542134,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "interline_fill": {
+      "render": 0.3697411003236246,
+      "real": 0.39967637540453077
+    },
+    "pass": false
+  },
+  "L3": {
+    "ink_darkness": {
+      "value": 66.0,
+      "target": 40.0,
+      "tol": 6.0,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 40.0,
+      "spec_target": 69.0
+    },
+    "stroke_cov": {
+      "value": 0.11250568851221872,
+      "target": 0.14813988498848846,
+      "tol": 0.06,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.14813988498848846,
+      "spec_target": 0.35
+    },
+    "edge_transition_frac": {
+      "value": 0.34122329578217514,
+      "target": 0.28589807733542993,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.28589807733542993,
+      "spec_target": 0.16
+    },
+    "paper_clip_frac": {
+      "value": 0.647209802418668,
+      "target": 0.6801268949071708,
+      "tol": 0.1,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.6801268949071708,
+      "spec_target": 0.55
+    },
+    "ink_tone_emd": {
+      "value": 3.181294561589802,
+      "target": 0.0,
+      "tol": 3.0,
+      "dir": "max",
+      "pass": false
+    },
+    "kanungo_p": {
+      "value": 0.009900990099009901,
+      "target": 0.05,
+      "tol": 0.0,
+      "dir": "p_min",
+      "pass": false
+    },
+    "kanungo_distance": 0.06978179082016556,
+    "pass": false
+  },
+  "L4": {
+    "ms_ssim": {
+      "value": 0.5480309127321861,
+      "target": 0.75,
+      "tol": 0.0,
+      "dir": "min",
+      "pass": false
+    },
+    "ms_ssim_raw": 0.38692495736883215,
+    "glcm_contrast": {
+      "real": 4.382789481987455,
+      "render": 3.0814082146923005
+    },
+    "forgery_auc": "NOT_IMPLEMENTED",
+    "tstr_gap": "NOT_IMPLEMENTED",
+    "ocr_jaccard": {
+      "value": 0.14285714285714285,
+      "target": 1.0,
+      "tol": 0.1,
+      "dir": "min",
+      "pass": false
+    },
+    "ocr_recall": {
+      "real": 0.875,
+      "render": 0.7445652173913043
+    },
+    "ocr_cer": {
+      "real": 0.07272727272727272,
+      "render": 0.1024793388429752
+    },
+    "ocr_error_classes": {
+      "shared": 8,
+      "render_only": 37,
+      "real_only": 11
+    },
+    "spacing_jitter_render": 0.46681382425218815,
+    "pass": false
+  },
+  "overall_rung_cleared": "L0-fail",
+  "elapsed_sec": 11.1,
+  "_baseline_note": "NEW teaser variant (2026-07-14): Sprouts MODERN + BORROWED Costco degrade (degrade_params/costco.degrade.json, fitted on Costco -- there is NO Sprouts-specific degrade fit yet). Shows what the physical print+scan chain buys Sprouts before a merchant-specific fit: L0 ink_ratio 1.70->0.988 moves INTO band (P), L3 paper_clip_frac 0.008->0.647 (P), tone EMD 14.5->3.18, stroke_cov 0.089->0.113 (P). But the Costco-tuned params MIS-CALIBRATE for Sprouts: ink_darkness overshoots to 66 (Sprouts real is 40, so now FAILS), and the degrade's anamorphic gain squeezes cap_h_ratio 1.38->0.92 (over-corrected). Net still L0-fail, but it isolates the win a Sprouts-specific degrade+vscale fit would deliver. NOT a committed intervention -- a teaser only."
+}

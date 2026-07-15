@@ -1,0 +1,271 @@
+{
+  "merchant": "costco",
+  "date": "2026-07-14",
+  "tool": "costco_gold.py",
+  "render": ".out/gold_rebase/final_i1i2.webp",
+  "real": "portfolio/public/synthetic-receipts/pipeline/costco/real.webp",
+  "canvas": [
+    760,
+    2999
+  ],
+  "glyphscore_root": "/private/tmp/font_gold_rebaseline",
+  "aligned": true,
+  "align_residual_px": 16.7,
+  "n_anchors": 57,
+  "L0": {
+    "ink_ratio": {
+      "value": 0.9634626163656642,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": true
+    },
+    "fill_render": {
+      "value": 0.2607421875,
+      "target": 0.2607421875,
+      "tol": 0.01,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.2607421875,
+      "spec_target": 0.271
+    },
+    "fill_real_ref": 0.2607421875,
+    "cap_h_ratio": {
+      "value": 1.0520827522133793,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "pitch_ratio": {
+      "value": 0.982155801915209,
+      "target": 1.0,
+      "tol": 0.02,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_px": {
+      "render": 32.27182305687205,
+      "real": 30.67422499701507
+    },
+    "pitch_px": {
+      "render": 43.87407968456925,
+      "real": 44.6712014519637
+    },
+    "interline_fill": {
+      "render": 0.7355555555555555,
+      "real": 0.6866666666666666
+    },
+    "pass": false
+  },
+  "L1": {
+    "gs_vs_crops": {
+      "value": 33.773073591732185,
+      "target": 50.0,
+      "tol": 5.0,
+      "dir": "min",
+      "pass": false
+    },
+    "gs_vs_chart": 71.2083739253786,
+    "iou_re": 0.5864932281638582,
+    "iou_rc": 0.627123687041474,
+    "iou_ce": 0.6246223619119747,
+    "iou_rc_hygiene": {
+      "value": 0.6357623467893917,
+      "target": 0.536,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "iou_re_hygiene": 0.5935086246833664,
+    "self_agreement_ref": 0.87,
+    "worst_after_hygiene": [
+      {
+        "char": "m",
+        "rc": 0.345,
+        "ce": 0.585,
+        "n": 185
+      },
+      {
+        "char": "U",
+        "rc": 0.361,
+        "ce": 0.61,
+        "n": 193
+      },
+      {
+        "char": "P",
+        "rc": 0.403,
+        "ce": 0.75,
+        "n": 406
+      },
+      {
+        "char": "b",
+        "rc": 0.413,
+        "ce": 0.721,
+        "n": 120
+      },
+      {
+        "char": "e",
+        "rc": 0.431,
+        "ce": 0.505,
+        "n": 775
+      },
+      {
+        "char": "n",
+        "rc": 0.446,
+        "ce": 0.41,
+        "n": 276
+      },
+      {
+        "char": "L",
+        "rc": 0.45,
+        "ce": 0.678,
+        "n": 380
+      },
+      {
+        "char": "G",
+        "rc": 0.473,
+        "ce": 0.637,
+        "n": 150
+      }
+    ],
+    "segmentation": "209/209",
+    "pass": false
+  },
+  "L2": {
+    "chamfer_dots": 0.566778789244123,
+    "boundary_iou": 0.3858489716018387,
+    "advance_ratio": {
+      "value": 1.0424753579590982,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "max",
+      "pass": true
+    },
+    "advance_px": {
+      "render": 20.859918343568427,
+      "real": 20.009986983679735
+    },
+    "price_std_px": {
+      "value": 5.577359480570551,
+      "target": 8.0,
+      "tol": 0.0,
+      "dir": "max",
+      "pass": true
+    },
+    "barcode_caption_ratio": {
+      "value": 0.9761950341209473,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_ratio": {
+      "value": 1.0520827522133793,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "interline_fill": {
+      "render": 0.7355555555555555,
+      "real": 0.6866666666666666
+    },
+    "pass": false
+  },
+  "L3": {
+    "ink_darkness": {
+      "value": 66.0,
+      "target": 63.0,
+      "tol": 6.0,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 63.0,
+      "spec_target": 69.0
+    },
+    "stroke_cov": {
+      "value": 0.11381658430641307,
+      "target": 0.1338306461501223,
+      "tol": 0.06,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.1338306461501223,
+      "spec_target": 0.35
+    },
+    "edge_transition_frac": {
+      "value": 0.36695502684682646,
+      "target": 0.3540884074429982,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.3540884074429982,
+      "spec_target": 0.16
+    },
+    "paper_clip_frac": {
+      "value": 0.5558430799220273,
+      "target": 0.4523040935672515,
+      "tol": 0.1,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.4523040935672515,
+      "spec_target": 0.55
+    },
+    "ink_tone_emd": {
+      "value": 3.5521207967836244,
+      "target": 0.0,
+      "tol": 3.0,
+      "dir": "max",
+      "pass": false
+    },
+    "kanungo_p": {
+      "value": 0.0297029702970297,
+      "target": 0.05,
+      "tol": 0.0,
+      "dir": "p_min",
+      "pass": false
+    },
+    "kanungo_distance": 0.06875976894325514,
+    "pass": false
+  },
+  "L4": {
+    "ms_ssim": {
+      "value": 0.440473505136115,
+      "target": 0.75,
+      "tol": 0.0,
+      "dir": "min",
+      "pass": false
+    },
+    "ms_ssim_raw": 0.258044779392385,
+    "glcm_contrast": {
+      "real": 5.581989947787049,
+      "render": 5.469315375982043
+    },
+    "forgery_auc": "NOT_IMPLEMENTED",
+    "tstr_gap": "NOT_IMPLEMENTED",
+    "ocr_jaccard": {
+      "value": 0.034482758620689655,
+      "target": 1.0,
+      "tol": 0.1,
+      "dir": "min",
+      "pass": false
+    },
+    "ocr_recall": {
+      "real": 0.9760765550239234,
+      "render": 0.8133971291866029
+    },
+    "ocr_cer": {
+      "real": 0.08135860979462875,
+      "render": 0.0631911532385466
+    },
+    "ocr_error_classes": {
+      "shared": 1,
+      "render_only": 25,
+      "real_only": 3
+    },
+    "spacing_jitter_render": 0.6502123300588064,
+    "pass": false
+  },
+  "overall_rung_cleared": "L0-fail",
+  "elapsed_sec": 14.9,
+  "_baseline_note": "POST-MIGRATION re-record (2026-07-14) of the Costco gold I1+I2 baseline (I2 bitmap_glyph_vscale=0.857 + I1 fitted degrade degrade_params/costco.degrade.json, both frozen from PR #1113). Same forced-fresh render + rebuilt refpack as the default record. vs 2026-07-11 i1i2: L3 texture stays GREEN on fresh data -- ink_darkness 66 (real 63), stroke_cov 0.114 (real 0.134), edge 0.367 (real 0.354) all pass -- so the fitted degrade transfers to the re-OCR'd geometry. L0.ink_ratio 0.893->0.964 moved INTO band (P). REGRESSION: L0/L2 cap_h_ratio 1.015->1.052 fell out of band because re-OCR made body glyphs taller (uncorrected cap_h_ratio 1.167->1.210), so the frozen vscale 0.857 now under-corrects; a small re-fit (~0.827) would re-green it. L1 gs_vs_crops 36.7->33.8 = +geometry then -6.2 harder refpack. ocr_jaccard artifact as in default. Overall L0-fail (cap-height)."
+}

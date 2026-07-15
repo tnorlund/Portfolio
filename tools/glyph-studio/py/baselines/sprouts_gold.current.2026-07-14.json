@@ -1,0 +1,280 @@
+{
+  "merchant": "sprouts",
+  "date": "2026-07-14",
+  "tool": "merchant_gold.py",
+  "render": ".out/gold_rebase/sprouts_current.webp",
+  "real": "portfolio/public/synthetic-receipts/pipeline/sprouts/real.webp",
+  "canvas": [
+    760,
+    2471
+  ],
+  "glyphscore_root": "/private/tmp/font_gold_rebaseline",
+  "chart": "SKIPPED",
+  "aligned": true,
+  "align_residual_px": 3.6,
+  "n_anchors": 38,
+  "L0": {
+    "ink_ratio": {
+      "value": 1.7038946759502143,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "fill_render": {
+      "value": 0.23876953125,
+      "target": 0.21875,
+      "tol": 0.01,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.21875,
+      "spec_target": 0.271
+    },
+    "fill_real_ref": 0.21875,
+    "cap_h_ratio": {
+      "value": 1.3766505466014676,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "pitch_ratio": {
+      "value": 1.0015690280134388,
+      "target": 1.0,
+      "tol": 0.02,
+      "dir": "band",
+      "pass": true
+    },
+    "cap_h_px": {
+      "render": 19.76398119570535,
+      "real": 14.356570913727252
+    },
+    "pitch_px": {
+      "render": 35.97684942252108,
+      "real": 35.92048916875887
+    },
+    "interline_fill": {
+      "render": 0.5493527508090615,
+      "real": 0.39967637540453077
+    },
+    "pass": false
+  },
+  "L1": {
+    "gs_vs_crops": {
+      "value": 39.91179682357057,
+      "target": 50.0,
+      "tol": 5.0,
+      "dir": "min",
+      "pass": false
+    },
+    "gs_vs_chart": "SKIPPED",
+    "iou_re": 0.5429334536971463,
+    "iou_rc": "SKIPPED",
+    "iou_ce": "SKIPPED",
+    "iou_rc_hygiene": "SKIPPED",
+    "iou_re_hygiene": {
+      "value": 0.5435846829210169,
+      "target": 0.611,
+      "tol": 0.03,
+      "dir": "min",
+      "pass": false
+    },
+    "self_agreement_ref": 0.611,
+    "worst_after_hygiene": [
+      {
+        "char": ")",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.096,
+        "n": 116
+      },
+      {
+        "char": "Q",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.181,
+        "n": 85
+      },
+      {
+        "char": "U",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.276,
+        "n": 706
+      },
+      {
+        "char": "K",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.304,
+        "n": 449
+      },
+      {
+        "char": ",",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.309,
+        "n": 547
+      },
+      {
+        "char": "O",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.357,
+        "n": 1079
+      },
+      {
+        "char": "u",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.374,
+        "n": 1583
+      },
+      {
+        "char": "0",
+        "rc": "SKIPPED",
+        "ce": "SKIPPED",
+        "re": 0.398,
+        "n": 5917
+      }
+    ],
+    "segmentation": "183/184",
+    "pass": false
+  },
+  "L2": {
+    "chamfer_dots": 0.7243079069880526,
+    "boundary_iou": 0.3526950888696458,
+    "advance_ratio": {
+      "value": 0.7599891243211747,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "max",
+      "pass": true
+    },
+    "advance_px": {
+      "render": 13.90696271057581,
+      "real": 18.298897004608538
+    },
+    "price_std_px": {
+      "value": 20.999047597450698,
+      "target": 8.0,
+      "tol": 0.0,
+      "dir": "max",
+      "pass": false
+    },
+    "barcode_caption_ratio": {
+      "value": 1.2308818581087702,
+      "target": 1.0,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false
+    },
+    "cap_h_ratio": {
+      "value": 1.3766505466014676,
+      "target": 1.0,
+      "tol": 0.03,
+      "dir": "band",
+      "pass": false
+    },
+    "interline_fill": {
+      "render": 0.5493527508090615,
+      "real": 0.39967637540453077
+    },
+    "pass": false
+  },
+  "L3": {
+    "ink_darkness": {
+      "value": 40.0,
+      "target": 40.0,
+      "tol": 6.0,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 40.0,
+      "spec_target": 69.0
+    },
+    "stroke_cov": {
+      "value": 0.08820594836718484,
+      "target": 0.14813988498848846,
+      "tol": 0.06,
+      "dir": "band",
+      "pass": true,
+      "real_measured": 0.14813988498848846,
+      "spec_target": 0.35
+    },
+    "edge_transition_frac": {
+      "value": 0.3363486049425739,
+      "target": 0.28589807733542993,
+      "tol": 0.05,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.28589807733542993,
+      "spec_target": 0.16
+    },
+    "paper_clip_frac": {
+      "value": 0.007634985522057571,
+      "target": 0.6801268949071708,
+      "tol": 0.1,
+      "dir": "band",
+      "pass": false,
+      "real_measured": 0.6801268949071708,
+      "spec_target": 0.55
+    },
+    "ink_tone_emd": {
+      "value": 14.47526881666773,
+      "target": 0.0,
+      "tol": 3.0,
+      "dir": "max",
+      "pass": false
+    },
+    "kanungo_p": {
+      "value": 0.009900990099009901,
+      "target": 0.05,
+      "tol": 0.0,
+      "dir": "p_min",
+      "pass": false
+    },
+    "kanungo_distance": 0.08740406320541767,
+    "pass": false
+  },
+  "L4": {
+    "ms_ssim": {
+      "value": 0.5361362550134858,
+      "target": 0.75,
+      "tol": 0.0,
+      "dir": "min",
+      "pass": false
+    },
+    "ms_ssim_raw": 0.37457971021155556,
+    "glcm_contrast": {
+      "real": 4.382789481987455,
+      "render": 2.18069786083716
+    },
+    "forgery_auc": "NOT_IMPLEMENTED",
+    "tstr_gap": "NOT_IMPLEMENTED",
+    "ocr_jaccard": {
+      "value": 0.12,
+      "target": 1.0,
+      "tol": 0.1,
+      "dir": "min",
+      "pass": false
+    },
+    "ocr_recall": {
+      "real": 0.875,
+      "render": 0.7880434782608695
+    },
+    "ocr_cer": {
+      "real": 0.07272727272727272,
+      "render": 0.10578512396694215
+    },
+    "ocr_error_classes": {
+      "shared": 6,
+      "render_only": 31,
+      "real_only": 13
+    },
+    "spacing_jitter_render": 0.28024691581771427,
+    "pass": false
+  },
+  "overall_rung_cleared": "L0-fail",
+  "elapsed_sec": 11.1,
+  "_baseline_note": "POST-MIGRATION re-record (2026-07-14) of the Sprouts gold CURRENT baseline (variant a): production render, default merchant typography, NO heavy atlas. Gold receipt 00ded398-af6f-4a49-86f7-c79ccb554e48 RECEIPT #1 (the SPROUTS receipt; receipt #2 in the same image is Vons -- the committed pipeline/sprouts/final.labels.json is mis-tagged #2 but this record renders #1 explicitly via render_merchant_gold.py --receipt-id 1). Forced-fresh Dynamo pull (185 words); scored by merchant_gold.py against rebuilt refpack ~/glyphscore_refpacks/sprouts/sprouts.refpack.npz, no specimen chart (chart-anchored L1 rc/ce SKIPPED; L1 gates gs_vs_crops + render->real IoU). Bulk metrics are within noise of the modern variant -- the heavy composite atlas only touches display/bold lines that hygiene excludes -- so current and modern share the same L0-fail profile (ink_ratio 1.70, cap_h 1.38: render too heavy/tall vs the small-print real)."
+}
