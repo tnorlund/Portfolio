@@ -151,6 +151,15 @@ def _combined_address(lines: dict[int, list[str]]) -> str | None:
         text = _clean(" ".join(words))
         if text and text not in parts:
             parts.append(text)
+    # Header cities are sometimes mislabeled as ADDRESS_LINE before the
+    # actual street.  Start at the first line containing a street number so
+    # that the deterministic address query remains usable.
+    street_start = next(
+        (index for index, part in enumerate(parts) if re.search(r"\d", part)),
+        None,
+    )
+    if street_start is not None:
+        parts = parts[street_start:]
     return _clean(", ".join(parts))
 
 
@@ -409,17 +418,10 @@ def collect_candidates(
 ) -> list[PlaceCandidate]:
     """Run the deterministic phone/address/text Places cascade."""
     candidates = {candidate.place_id: candidate for candidate in (initial or [])}
-    text_query = (
-        _clean(
-            " ".join(value for value in (clues.merchant_name, clues.address) if value)
-        )
-        if clues.merchant_name
-        else None
-    )
     searches = (
         ("phone", clues.phone, places_client.search_by_phone),
         ("address", clues.address, places_client.search_by_address),
-        ("text", text_query, places_client.search_by_text),
+        ("text", clues.merchant_name, places_client.search_by_text),
     )
     for method, query, search in searches:
         if not query:
@@ -500,7 +502,7 @@ async def _select_with_llm(
         model=model,
         temperature=0.0,
         timeout=60,
-        reasoning=False,
+        reasoning=True,
         stream_usage=True,
     ).with_structured_output(Tier2Selection)
     payload = {

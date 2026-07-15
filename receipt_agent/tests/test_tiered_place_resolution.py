@@ -10,6 +10,7 @@ from receipt_agent.subagents.place_finder.tiered import (
     Tier2Selection,
     _addresses_match,
     _select_with_llm,
+    extract_receipt_clues,
     resolve_tiered_place,
     select_deterministic_candidate,
 )
@@ -164,7 +165,7 @@ def test_tier1_rejects_unrelated_phone_text_fallback(monkeypatch):
     assert stats["llm_calls"] == 0
 
 
-def test_text_search_uses_merchant_and_address_and_rejects_wrong_phone_result():
+def test_text_search_uses_merchant_and_rejects_wrong_phone_result():
     details = SimpleNamespace(
         place=None,
         words=[
@@ -209,7 +210,30 @@ def test_text_search_uses_merchant_and_address_and_rejects_wrong_phone_result():
     assert result["resolution_tier"] == "tier1"
     assert stats["llm_calls"] == 0
     text_call = next(query for method, query in places.calls if method == "text")
-    assert text_call == ("CRAFTKITCHEN 10940 S EASTERN AVE #107, HENDERSON, NV 89052")
+    assert text_call == "CRAFTKITCHEN"
+
+
+def test_address_clues_drop_stray_header_labels_before_street_number():
+    details = SimpleNamespace(
+        place=None,
+        words=[
+            _word(1, 1, "Henderson"),
+            _word(2, 1, "4300"),
+            _word(2, 2, "E Sunset Rd. Suite A3"),
+            _word(3, 1, "Henderson, NV 89014"),
+        ],
+        labels=[
+            _label(1, 1, "ADDRESS_LINE"),
+            _label(2, 1, "ADDRESS_LINE"),
+            _label(2, 2, "ADDRESS_LINE"),
+            _label(3, 1, "ADDRESS_LINE"),
+        ],
+        lines=[],
+    )
+
+    assert extract_receipt_clues(details).address == (
+        "4300 E Sunset Rd. Suite A3, Henderson, NV 89014"
+    )
 
 
 def test_address_matching_ignores_equivalent_unit_notation():
@@ -258,3 +282,4 @@ def test_tier2_makes_one_structured_picker_call():
     assert result["place_id"] == "ChIJ-test"
     structured_llm.ainvoke.assert_awaited_once()
     assert create_llm.call_args.kwargs["model"] == "openai/gpt-oss-120b"
+    assert create_llm.call_args.kwargs["reasoning"] is True
