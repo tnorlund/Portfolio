@@ -34,6 +34,7 @@ def _place(
     name="Test Market",
     address="123 Main St, Las Vegas, NV 89101, USA",
     phone="(702) 555-0100",
+    types=None,
 ):
     return SimpleNamespace(
         place_id=place_id,
@@ -41,6 +42,7 @@ def _place(
         formatted_address=address,
         formatted_phone_number=phone,
         international_phone_number=None,
+        types=types or ["establishment", "point_of_interest"],
     )
 
 
@@ -202,7 +204,14 @@ def test_text_search_uses_merchant_and_rejects_wrong_phone_result():
         address="10940 S Eastern Ave Suite 107, Henderson, NV 89052, USA",
         phone="(702) 728-5838",
     )
-    places = _FakePlaces(phone=unrelated, text=correct)
+    address_only = _place(
+        place_id="address",
+        name="10940 S Eastern Ave Suite 107",
+        address="10940 S Eastern Ave Suite 107, Henderson, NV 89052, USA",
+        phone=None,
+        types=["street_address", "subpremise"],
+    )
+    places = _FakePlaces(phone=unrelated, address=address_only, text=correct)
 
     result, stats = asyncio.run(resolve_tiered_place(details, places))
 

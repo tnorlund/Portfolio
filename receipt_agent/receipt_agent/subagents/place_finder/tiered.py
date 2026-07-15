@@ -353,6 +353,13 @@ def _place_is_usable(place: Any, clues: ReceiptClues) -> bool:
     name = _clean(_value(place, "name"))
     if not place_id or not name or is_address_like(name):
         return False
+    place_types = {
+        str(place_type).lower() for place_type in (_value(place, "types") or [])
+    }
+    address_types = {"premise", "street_address", "subpremise"}
+    business_types = {"establishment", "point_of_interest"}
+    if place_types & address_types and not place_types & business_types:
+        return False
     result_state = _extract_state(_clean(_value(place, "formatted_address")))
     return not (
         clues.expected_state and result_state and result_state != clues.expected_state
