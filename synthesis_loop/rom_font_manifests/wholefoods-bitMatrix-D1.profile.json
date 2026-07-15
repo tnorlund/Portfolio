@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "merchant": "Whole Foods Market",
+  "atlas": "ROM:bitMatrix-D1",
+  "status": "VALIDATED",
+  "validation_source": "synthesis_loop/rom_font_manifests/validation_results.json",
+  "validation_source_sha256": "a2f5bd713cbd2ea2aa2cca8af2ba2f65990b2a8603a566812f4bad9ee25c649c",
+  "evidence": {
+    "n_receipts": 6,
+    "n_letters": 3675,
+    "median_cap_px": 17.0,
+    "winner_median_shifted_iou": 0.54,
+    "runner_up": "ROM:pixCrog",
+    "runner_up_median_shifted_iou": 0.5227,
+    "winner_margin": 0.0173,
+    "receipt_ids": [
+      "51245ed8-9930-4e86-ad81-ff25079afe90#1",
+      "9f838ec2-483a-41d0-90bf-95076a6c0572#1",
+      "a1b7d98e-20f8-41cf-8d30-7c3c69e722c2#1",
+      "b77f9d00-8799-4e63-90fa-294def514a96#1",
+      "de60c6a8-3776-4440-9389-7b17df7e417e#1",
+      "e296ec27-4200-4880-a2c4-06ecb1b12290#3"
+    ]
+  },
+  "note": "References the shared D1 ROM atlas; glyph bytes are not duplicated."
+}

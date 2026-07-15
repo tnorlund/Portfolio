@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from statistics import median
@@ -90,6 +89,7 @@ def match_typeface(
     ]
     atlases = load_registry_atlases(registry)
     atlas_scores: dict[str, float] = {}
+    atlas_mean_scores: dict[str, float] = {}
     atlas_counts: dict[str, int] = {}
     for name, atlas in atlases.items():
         scores = [
@@ -99,6 +99,7 @@ def match_typeface(
         ]
         if scores:
             atlas_scores[name] = float(median(scores))
+            atlas_mean_scores[name] = float(np.mean(scores))
             atlas_counts[name] = len(scores)
 
     evidence_floor = int(calibration["minimum_letter_crops"])
@@ -112,15 +113,20 @@ def match_typeface(
             (), None, 0.0, len(normalized), atlas_scores
         )
 
-    typeface_scores: dict[str, float] = defaultdict(float)
+    typeface_scores: dict[str, tuple[float, float]] = {}
     for name, score in eligible.items():
         typeface = str(registry["atlases"][name]["typeface"])
-        typeface_scores[typeface] = max(typeface_scores[typeface], score)
+        candidate = (score, atlas_mean_scores[name])
+        typeface_scores[typeface] = max(
+            typeface_scores.get(typeface, (-1.0, -1.0)), candidate
+        )
     ranked = sorted(
-        typeface_scores.items(), key=lambda item: (-item[1], item[0])
+        typeface_scores.items(),
+        key=lambda item: (-item[1][0], -item[1][1], item[0]),
     )
-    best_typeface, best_score = ranked[0]
-    runner_score = ranked[1][1] if len(ranked) > 1 else 0.0
+    best_typeface, best_scores = ranked[0]
+    best_score = best_scores[0]
+    runner_score = ranked[1][1][0] if len(ranked) > 1 else 0.0
     margin = best_score - runner_score
     if best_score < float(calibration["minimum_winner_iou"]):
         return TypefaceFingerprint(
@@ -130,8 +136,8 @@ def match_typeface(
     ambiguity_band = float(calibration["typeface_ambiguity_band"])
     plausible_typefaces = {
         typeface
-        for typeface, score in ranked
-        if best_score - score <= ambiguity_band
+        for typeface, scores in ranked
+        if best_score - scores[0] <= ambiguity_band
     }
     merchants = sorted(
         {

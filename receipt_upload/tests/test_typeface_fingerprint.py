@@ -95,6 +95,21 @@ def test_places_disagreement_is_annotated_without_overriding() -> None:
     assert (fingerprint.typeface, fingerprint.merchant_candidates) == original
 
 
+def test_target_grocery_places_name_matches_target_candidate() -> None:
+    pixels = np.full((100, 100), 255, dtype=np.uint8)
+    pixels[20:80, 43:48] = 0
+    registry = _registry()
+    registry["atlases"]["ROM:test"]["merchant_candidates"] = ["Target"]
+    fingerprint = fingerprint_receipt(
+        Image.fromarray(pixels), [_letter()], registry=registry
+    )
+
+    crosscheck_places(fingerprint, "Target Grocery")
+
+    assert fingerprint.places_agreement == "MATCH"
+    assert fingerprint.merchant_candidates == ["Target"]
+
+
 def test_generated_registry_records_calibration_and_anti_copy_gate() -> None:
     registry_path = (
         Path(__file__).parents[1]
@@ -111,5 +126,25 @@ def test_generated_registry_records_calibration_and_anti_copy_gate() -> None:
         in registry["calibration"]["minimum_letter_crops_derivation"]
         or registry["calibration"]["minimum_letter_crops_derivation"]
     )
-    assert len(registry["atlases"]) == 15
+    assert len(registry["atlases"]) == 17
+    assert "ROM:bitMatrix-A1" in registry["atlases"]
+    assert "ROM:bitMatrix-B1" in registry["atlases"]
+    assert registry["merchant_aliases"]["target grocery"] == "Target"
+    whole_foods_profiles = registry["atlases"]["ROM:bitMatrix-D1"][
+        "validation_profiles"
+    ]
+    assert {
+        "merchant": "Whole Foods Market",
+        "n_receipts": 6,
+        "n_letters": 3675,
+        "median_shifted_iou": 0.54,
+    } in whole_foods_profiles
+    overlaps = registry["gates"]["anti_copy"][
+        "source_verified_rom_overlaps"
+    ]
+    assert any(
+        {row["left"], row["right"]}
+        == {"ROM:bitMatrix-B1", "ROM:bitMatrix-B2"}
+        for row in overlaps
+    )
     assert not list(registry_path.parent.glob("*.npz"))

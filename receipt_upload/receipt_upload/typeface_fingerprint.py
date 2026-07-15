@@ -153,9 +153,11 @@ def persist_receipt_fingerprint(
 def _merchant_key(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
     ignored = {"company", "co", "corporation", "corp", "inc", "llc"}
-    return " ".join(
+    key = " ".join(
         token for token in normalized.split() if token not in ignored
     )
+    aliases = {"target grocery": "target"}
+    return aliases.get(key, key)
 
 
 def crosscheck_places(
