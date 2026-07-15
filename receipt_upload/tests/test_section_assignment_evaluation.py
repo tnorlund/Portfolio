@@ -38,3 +38,75 @@ def test_builder_rejects_exclusion_without_valid_section_evidence() -> None:
             [section],
             excluded_receipts={("00000000-0000-4000-8000-000000000002", 1)},
         )
+
+
+class _Feature:
+    row = SimpleNamespace(line_ids=[1])
+    tokens = ("apple", "__amount__")
+
+    @staticmethod
+    def numeric() -> dict[str, float]:
+        return {
+            "position": 0.5,
+            "x_span": 0.75,
+            "alpha_ratio": 0.8,
+            "amount_density": 1.0,
+        }
+
+    @staticmethod
+    def binary() -> dict[str, float]:
+        return {"has_amount": 1.0, "has_quantity": 0.0}
+
+
+class _Client:
+    def __init__(self, merchant_name: str = "Example Store") -> None:
+        self.merchant_name = merchant_name
+
+    @staticmethod
+    def list_receipt_lines_from_receipt(
+        _image_id: str, _receipt_id: int
+    ) -> list[SimpleNamespace]:
+        return [SimpleNamespace(line_id=1)]
+
+    @staticmethod
+    def list_receipt_words_from_receipt(
+        _image_id: str, _receipt_id: int
+    ) -> list[SimpleNamespace]:
+        return []
+
+    def get_receipt_place(
+        self, _image_id: str, _receipt_id: int
+    ) -> SimpleNamespace:
+        return SimpleNamespace(merchant_name=self.merchant_name)
+
+
+def test_builder_is_deterministic_and_hashes_complete_training_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = SimpleNamespace(
+        image_id="00000000-0000-4000-8000-000000000001",
+        receipt_id=1,
+        section_type="ITEMS",
+        line_ids=[1],
+        validation_status=ValidationStatus.VALID.value,
+    )
+    monkeypatch.setattr(
+        "scripts.build_section_order_priors.build_receipt_rows",
+        lambda _lines, _words: [SimpleNamespace(line_ids=[1])],
+    )
+    monkeypatch.setattr(
+        "scripts.build_section_order_priors.extract_row_features",
+        lambda _rows, _lines: [_Feature()],
+    )
+
+    first = build_model(_Client(), [section])
+    second = build_model(_Client(), [section])
+    changed_merchant = build_model(_Client("Different Store"), [section])
+
+    assert first == second
+    assert "generated_at" not in first
+    assert first["source"]["training_corpus_sha256"]
+    assert (
+        first["source"]["training_corpus_sha256"]
+        != changed_merchant["source"]["training_corpus_sha256"]
+    )

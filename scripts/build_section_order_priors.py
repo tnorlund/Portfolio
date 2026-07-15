@@ -16,7 +16,6 @@ import json
 import os
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -83,6 +82,17 @@ def _section_snapshot(sections: list[Any]) -> str:
                 item["section_type"],
             ),
         ),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _training_corpus_snapshot(receipts: list[dict[str, Any]]) -> str:
+    """Hash the complete canonical input consumed by ``learn_prior``."""
+
+    payload = json.dumps(
+        receipts,
         separators=(",", ":"),
         sort_keys=True,
     ).encode()
@@ -176,6 +186,7 @@ def build_model(
 
     labeled: list[list[Any]] = []
     by_merchant: dict[str, list[list[Any]]] = defaultdict(list)
+    training_corpus: list[dict[str, Any]] = []
     skipped: Counter[str] = Counter()
     receipt_keys = sorted(by_receipt)
     for index, (image_id, receipt_id) in enumerate(receipt_keys, start=1):
@@ -205,6 +216,22 @@ def build_model(
             continue
         labeled.append(receipt_labels)
         merchant = _merchant_name(client, image_id, receipt_id)
+        training_corpus.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant": merchant,
+                "rows": [
+                    {
+                        "label": label,
+                        "numeric": feature.numeric(),
+                        "binary": feature.binary(),
+                        "tokens": list(feature.tokens),
+                    }
+                    for feature, label in receipt_labels
+                ],
+            }
+        )
         if merchant:
             by_merchant[merchant].append(receipt_labels)
         if index % 100 == 0 or index == len(receipt_keys):
@@ -226,7 +253,6 @@ def build_model(
         "schema_version": 2,
         "model_source": "upload-determinism-v1",
         "source_environment": "dev",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": {
             "section_count": len(sections),
             "valid_section_count": len(valid),
@@ -239,6 +265,9 @@ def build_model(
             ),
             "exclusion_manifest_sha256": exclusion_manifest_sha256,
             "section_snapshot_sha256": _section_snapshot(sections),
+            "training_corpus_sha256": _training_corpus_snapshot(
+                training_corpus
+            ),
             "skipped": dict(sorted(skipped.items())),
             "merchant_prior_min_receipts": int(merchant_receipt_median) + 1,
             "merchant_prior_cutoff_derivation": (

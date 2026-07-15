@@ -7,11 +7,11 @@ dev receipts used to diagnose schema v1:
 
 | Metric | Schema v1 | Schema v2 holdout | Required |
 |---|---:|---:|---:|
-| Overall row agreement | 252/429 (0.587) | 364/429 (0.848) | >= 0.80 |
+| Overall row agreement | 252/429 (0.587) | 365/429 (0.851) | >= 0.80 |
 | ITEMS row recall | 5/58 (0.086) | 47/58 (0.810) | >= 0.70 |
 
 Schema v2 also reached 0.88 SUMMARY recall, 0.87 PAYMENT recall, 0.96 ADDRESS
-recall, and 0.84 FOOTER recall. The cohort contained 429 rows with
+recall, and 0.85 FOOTER recall. The cohort contained 429 rows with
 non-conflicting QA-VALID section evidence; all 429 were scored and none were
 unassigned.
 
@@ -23,9 +23,18 @@ committed artifact records only their canonical manifest hash, not the keys:
 `16fbda1597fe69060a65154b8ddc9205c4a4cd739085409dc31286431263c741`
 
 The model was trained from 820 other dev receipts. No inference weight or
-threshold was selected from the 22-receipt result, and the model was frozen
-after its first complete holdout run. The acceptance numbers above are gates,
-not inputs to the decoder.
+threshold was selected from the 22-receipt result. The acceptance numbers
+above are gates, not inputs to the decoder. A fresh read-only rebuild also
+passed independently, including with only the global prior enabled.
+
+The committed artifact hashes the complete canonical training input consumed
+by the learner: ordered row labels, numeric and binary features, tokens, and
+normalized merchant keys. Its training-corpus hash is:
+
+`4fdcfc97078cec2d996263e4bc7f238e4e37d1f41a1145cb652918884ee16cd4`
+
+The builder omits wall-clock metadata, so identical source inputs serialize to
+identical artifact bytes.
 
 ## Measured rework
 
@@ -68,7 +77,7 @@ python3.12 scripts/build_section_order_priors.py \
   --exclude-manifest /private/tmp/d2_targets.json
 
 DYNAMODB_TABLE_NAME=ReceiptsTable-dc5be22 \
-PYTHONPATH=receipt_upload:receipt_dynamo \
+PYTHONPATH=receipt_upload:receipt_dynamo:receipt_chroma \
 python3.12 scripts/evaluate_section_assignment.py \
   --targets /private/tmp/d2_targets.json
 ```
