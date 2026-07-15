@@ -53,17 +53,29 @@ MIN_NAME_LENGTH = 2
 # update (merchant remap, place remap, confidence bump) while still rejecting
 # genuinely malformed values. See ReceiptPlace.from_item for the rationale.
 #
+# Each "well-formed" shape mirrors what gsi*_key could legitimately emit for a
+# valid entity, so a stale projection is accepted only if some earlier valid
+# state could have produced it; anything else is treated as corruption.
+#
 # GSI1PK: "MERCHANT#" + the slug merchant_name normalization emits (uppercase
 # alphanumeric groups joined by single underscores, no leading/trailing "_").
+# The entity guarantees this slug is non-empty.
 _MERCHANT_GSI1PK_RE = re.compile(r"MERCHANT#[A-Z0-9]+(?:_[A-Z0-9]+)*")
-# GSI2PK: "PLACE#" + a non-empty Google place id (base64url-ish charset).
-_PLACE_GSI2PK_RE = re.compile(r"PLACE#[A-Za-z0-9_-]+")
-# GSI3SK: CONFIDENCE#<number>#STATUS#<status>#IMAGE#<image_id>. Confidence and
-# status are mutable; the trailing image id is identity and is anchored to the
-# row in _is_wellformed_validation_sk.
+# GSI3SK: CONFIDENCE#<0.0000-1.0000>#STATUS#<status>#IMAGE#<image_id>.
+# gsi3_key formats confidence as a 4-decimal value the entity constrains to
+# [0.0, 1.0]; validation_status is a free-form string (empty is a valid
+# "needs review" state), so the status segment stays permissive. The trailing
+# image id is identity and is anchored to the row in _is_wellformed_validation_sk.
 _VALIDATION_GSI3SK_RE = re.compile(
-    r"CONFIDENCE#\d+(?:\.\d+)?#STATUS#[^#]*#IMAGE#(?P<image_id>[^#]+)"
+    r"CONFIDENCE#(?:0\.\d{4}|1\.0000)#STATUS#[^#]*#IMAGE#(?P<image_id>[^#]+)"
 )
+
+
+def _is_wellformed_place_partition(value: str) -> bool:
+    """GSI2PK is "PLACE#" + place_id. The entity accepts any non-whitespace-only
+    place_id (Google place ids are opaque), so mirror that rather than a charset."""
+    prefix = "PLACE#"
+    return value.startswith(prefix) and bool(value[len(prefix) :].strip())
 
 
 def _is_wellformed_validation_sk(value: str, image_id: str) -> bool:
@@ -641,7 +653,7 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
             "GSI1PK": lambda value: bool(
                 _MERCHANT_GSI1PK_RE.fullmatch(value)
             ),
-            "GSI2PK": lambda value: bool(_PLACE_GSI2PK_RE.fullmatch(value)),
+            "GSI2PK": _is_wellformed_place_partition,
             "GSI3SK": lambda value: _is_wellformed_validation_sk(
                 value, result.image_id
             ),

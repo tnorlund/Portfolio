@@ -778,6 +778,33 @@ def test_receipt_place_from_item_tolerates_stale_business_gsi_projections(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
+    ("key", "good_value"),
+    [
+        # Google place ids are opaque; a stale id with a non-base64url char is
+        # still legitimate.
+        ("GSI2PK", "PLACE#abc.def"),
+        # Empty validation_status is a real "needs review" state, so an empty
+        # STATUS segment must be accepted.
+        (
+            "GSI3SK",
+            "CONFIDENCE#0.0000#STATUS##IMAGE#"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        ),
+    ],
+)
+def test_receipt_place_from_item_accepts_legitimate_stale_projections(
+    example_receipt_place, key, good_value
+):
+    """Values the key generator could legitimately emit for some valid entity
+    state are accepted even when stale."""
+    item = example_receipt_place.to_item()
+    item[key] = {"S": good_value}
+
+    assert ReceiptPlace.from_item(item) == example_receipt_place
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
     ("key", "bad_value"),
     [
         ("GSI1PK", "WRONG"),
@@ -786,9 +813,19 @@ def test_receipt_place_from_item_tolerates_stale_business_gsi_projections(
         ("GSI2PK", "WRONG"),
         ("GSI2PK", "PLACE#"),
         ("GSI3PK", "NOT_PLACE_VALIDATION"),
+        # Identity anchor (trailing image id) does not match the row.
         (
             "GSI3SK",
             "CONFIDENCE#0.8000#STATUS#MATCHED#IMAGE#00000000-0000-0000-0000-000000000000",
+        ),
+        # Confidence the entity could never emit (out of [0,1] / non-canonical).
+        (
+            "GSI3SK",
+            "CONFIDENCE#999#STATUS#MATCHED#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        ),
+        (
+            "GSI3SK",
+            "CONFIDENCE#1.5000#STATUS#MATCHED#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         ),
         ("GSI3SK", "garbage"),
     ],
