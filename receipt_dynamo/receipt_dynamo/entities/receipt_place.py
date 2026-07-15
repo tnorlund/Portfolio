@@ -63,11 +63,12 @@ MIN_NAME_LENGTH = 2
 _MERCHANT_GSI1PK_RE = re.compile(r"MERCHANT#[A-Z0-9]+(?:_[A-Z0-9]+)*")
 # GSI3SK: CONFIDENCE#<0.0000-1.0000>#STATUS#<status>#IMAGE#<image_id>.
 # gsi3_key formats confidence as a 4-decimal value the entity constrains to
-# [0.0, 1.0]; validation_status is a free-form string (empty is a valid
-# "needs review" state), so the status segment stays permissive. The trailing
-# image id is identity and is anchored to the row in _is_wellformed_validation_sk.
-_VALIDATION_GSI3SK_RE = re.compile(
-    r"CONFIDENCE#(?:0\.\d{4}|1\.0000)#STATUS#[^#]*#IMAGE#(?P<image_id>[^#]+)"
+# [0.0, 1.0]. validation_status is a free-form string that may be empty or
+# even contain '#', so the status segment is not pattern-matched; instead the
+# CONFIDENCE# prefix and the identity #IMAGE#<image_id> suffix are anchored in
+# _is_wellformed_validation_sk and everything between is treated as the status.
+_GSI3SK_CONFIDENCE_PREFIX_RE = re.compile(
+    r"CONFIDENCE#(?:0\.\d{4}|1\.0000)#STATUS#"
 )
 
 
@@ -79,10 +80,14 @@ def _is_wellformed_place_partition(value: str) -> bool:
 
 
 def _is_wellformed_validation_sk(value: str, image_id: str) -> bool:
-    """A GSI3SK is well-formed if it matches the confidence/status/image shape
-    and its identity anchor (the trailing IMAGE#<id>) matches this row."""
-    match = _VALIDATION_GSI3SK_RE.fullmatch(value)
-    return bool(match) and match.group("image_id") == image_id
+    """A GSI3SK is well-formed if its identity anchor (the trailing
+    #IMAGE#<id>) matches this row and the head is CONFIDENCE#<0-1>#STATUS#
+    followed by a free-form status (which may be empty or contain '#')."""
+    suffix = f"#IMAGE#{image_id}"
+    if not value.endswith(suffix):
+        return False
+    head = value[: -len(suffix)]
+    return _GSI3SK_CONFIDENCE_PREFIX_RE.match(head) is not None
 
 # Fields that are computed (GSI keys) and should not be passed to
 # constructor. Includes GSI4 and geohash for backward compatibility

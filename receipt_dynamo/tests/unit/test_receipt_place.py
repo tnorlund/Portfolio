@@ -790,6 +790,14 @@ def test_receipt_place_from_item_tolerates_stale_business_gsi_projections(
             "CONFIDENCE#0.0000#STATUS##IMAGE#"
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         ),
+        # A stale confidence (0.8000 vs the field's 0.85) with a free-form
+        # status containing '#'. Still well-formed: valid confidence, correct
+        # identity anchor, arbitrary status between.
+        (
+            "GSI3SK",
+            "CONFIDENCE#0.8000#STATUS#manual#review#IMAGE#"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        ),
     ],
 )
 def test_receipt_place_from_item_accepts_legitimate_stale_projections(
