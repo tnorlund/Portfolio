@@ -107,18 +107,18 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
     case "layoutlm":
       return (
         <div className={`${styles.legendSkeleton} ${styles.legendLayoutLM}`}>
-          {/* Desktop: 8 vertical rows matching ENTITY_TYPES */}
+          {/* Match the nine taxonomy families rendered by EntityLegend. */}
           <div className={styles.legendLayoutLMDesktop}>
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            {Array.from({ length: 9 }, (_, index) => index).map((i) => (
               <div key={i} className={styles.legendRowSkeleton}>
                 <div className={styles.legendDotSkeleton} />
                 <div className={styles.legendLabelSkeleton} />
               </div>
             ))}
           </div>
-          {/* Mobile: 6 items in 3-col grid matching MOBILE_LEGEND_GROUPS */}
+          {/* Mobile uses the same nine families in a 3-column grid. */}
           <div className={styles.legendLayoutLMMobile}>
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+            {Array.from({ length: 9 }, (_, index) => index).map((i) => (
               <div key={i} className={styles.legendRowSkeleton}>
                 <div className={styles.legendDotSkeleton} />
                 <div className={styles.legendLabelSkeleton} />

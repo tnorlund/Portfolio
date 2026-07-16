@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../services/api";
@@ -8,6 +9,7 @@ import {
   getBestImageUrl,
 } from "../../../utils/imageFormat";
 import styles from "./WordSimilarity.module.css";
+import WordSimilarityLoadingShell from "./WordSimilarityLoadingShell";
 
 // Simple seeded random number generator for consistent randomness
 function seededRandom(seed: number): () => number {
@@ -35,48 +37,6 @@ interface CardPosition {
   y: number;
   rotation: number;
 }
-
-interface SafeZone {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-}
-
-const WordSimilaritySkeleton: React.FC = () => (
-  <div
-    className={styles.loadingShell}
-    data-testid="word-similarity"
-    aria-busy="true"
-    aria-label="Loading word similarity results"
-  >
-    <div className={styles.receiptStage} aria-hidden="true">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className={styles.receiptSkeleton} />
-      ))}
-    </div>
-
-    <div className={styles.tableSkeleton} aria-hidden="true">
-      <div className={styles.tableHeaderSkeleton} />
-      {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className={styles.tableRowSkeleton}>
-          <span />
-          <span />
-          <span />
-        </div>
-      ))}
-    </div>
-
-    <div className={styles.timingSkeleton} aria-hidden="true">
-      <div className={styles.timingRingSkeleton} />
-      <div className={styles.timingLinesSkeleton}>
-        <span />
-        <span />
-        <span />
-      </div>
-    </div>
-  </div>
-);
 
 // Constraint-based position solver that guarantees cards stay within bounds
 function solveCardPosition(
@@ -141,9 +101,6 @@ function solveCardPosition(
  * and a summary table below with merchant/product/price data.
  */
 const WordSimilarity: React.FC = () => {
-  const [data, setData] = useState<MilkSimilarityResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [formatSupport, setFormatSupport] = useState<{
     supportsAVIF: boolean;
     supportsWebP: boolean;
@@ -172,14 +129,17 @@ const WordSimilarity: React.FC = () => {
     triggerOnce: true,
     rootMargin: "200px",
   });
-  // Animation state - similar to ReceiptStack
-  const { ref: stackRef, inView } = useInView({
-    threshold: 0.1,
-    triggerOnce: true,
-  });
-  const [startAnimation, setStartAnimation] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
-  const fadeDelay = 25; // ms delay between each card animation
+
+  const {
+    data = null,
+    error: queryError,
+    isPending,
+  } = useQuery<MilkSimilarityResponse>({
+    queryKey: ["word-similarity"],
+    queryFn: ({ signal }) => api.fetchWordSimilarity(signal),
+    enabled: nearViewport,
+  });
 
   const measureContainer = useCallback(() => {
     if (containerRef.current) {
@@ -249,33 +209,6 @@ const WordSimilarity: React.FC = () => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  useEffect(() => {
-    if (!nearViewport) return;
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await api.fetchWordSimilarity();
-        setData(response);
-      } catch (err) {
-        console.error("Failed to fetch word similarity:", err);
-        setError(err instanceof Error ? err.message : "Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [nearViewport]);
-
-  // Start animation when in view and data is loaded
-  useEffect(() => {
-    if (inView && data?.receipts && data.receipts.length > 0 && !startAnimation) {
-      setStartAnimation(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView, data?.receipts?.length]);
-
   const handleImageLoad = useCallback((receiptKey: string) => (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
@@ -291,15 +224,15 @@ const WordSimilarity: React.FC = () => {
     }
   }, []);
 
-  if (!nearViewport || loading) {
+  if (!nearViewport || isPending) {
     return (
       <div ref={lazyRef}>
-        <WordSimilaritySkeleton />
+        <WordSimilarityLoadingShell />
       </div>
     );
   }
 
-  if (error || !data) {
+  if (queryError || !data) {
     return (
       <div
         style={{
@@ -308,7 +241,9 @@ const WordSimilarity: React.FC = () => {
           color: "#999",
         }}
       >
-        {error || "No word similarity data available"}
+        {queryError instanceof Error
+          ? queryError.message
+          : "No word similarity data available"}
       </div>
     );
   }
@@ -364,7 +299,10 @@ const WordSimilarity: React.FC = () => {
   };
 
   // Render a single cropped receipt
-  const renderCroppedReceipt = (receiptData: MilkReceiptData) => {
+  const renderCroppedReceipt = (
+    receiptData: MilkReceiptData,
+    imageLoaded: boolean,
+  ) => {
     const cropRegion = calculateCropRegion(receiptData.bbox, receiptData.receipt);
     if (!cropRegion) {
       return null;
@@ -427,6 +365,8 @@ const WordSimilarity: React.FC = () => {
               width: `${imageWidthPercent}%`,
               height: "auto",
               transform: `translate(-${shiftLeftPercent}%, -${shiftTopPercent}%)`,
+              opacity: imageLoaded ? 1 : 0,
+              transition: "opacity 0.25s ease-out",
             }}
             onLoad={handleImageLoad(receiptKey)}
             onError={(e) => {
@@ -459,9 +399,8 @@ const WordSimilarity: React.FC = () => {
       {/* Receipt images stack */}
       <div
         ref={(el) => {
-          // Combine refs: lazyRef for lazy loading, stackRef for animation, containerRef for measurements
+          // Combine the lazy-loading and measurement refs.
           lazyRef(el);
-          stackRef(el);
           (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         style={{
@@ -493,10 +432,6 @@ const WordSimilarity: React.FC = () => {
             cardDims = { width: cardWidth, height: cardWidth / estimatedAspectRatio };
           }
 
-          const receiptComponent = renderCroppedReceipt(receiptData);
-
-          if (!receiptComponent) return null;
-
           // Generate seed for consistent randomness
           const imageIdHash = receiptData.receipt.image_id
             ? receiptData.receipt.image_id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
@@ -515,9 +450,12 @@ const WordSimilarity: React.FC = () => {
 
           const zIndex = displayReceipts.length - index;
 
-          // Check if this image has loaded for animation
+          // Keep the positioned card visible as a placeholder until the image
+          // itself can cross-fade in after decode.
           const imageLoaded = loadedImages.has(receiptKey);
-          const shouldAnimate = startAnimation && imageLoaded;
+          const receiptComponent = renderCroppedReceipt(receiptData, imageLoaded);
+
+          if (!receiptComponent) return null;
 
           // Position card centered at (x, y) with rotation
           // Animation: start off-screen (translateY -50px) and fade in with staggered delay
@@ -538,11 +476,9 @@ const WordSimilarity: React.FC = () => {
                 left: `${x}px`,
                 width: `${cardWidth}px`,
                 zIndex,
-                transform: `translate(-50%, ${shouldAnimate ? '-50%' : 'calc(-50% - 50px)'}) rotate(${rotation}deg)`,
+                transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                 transformOrigin: "center center",
-                opacity: shouldAnimate ? 1 : 0,
-                transition: `transform 0.6s ease-out ${startAnimation ? index * fadeDelay : 0}ms, opacity 0.6s ease-out ${startAnimation ? index * fadeDelay : 0}ms`,
-                willChange: "transform, opacity",
+                opacity: 1,
               }}
             >
               {receiptComponent}
@@ -553,10 +489,7 @@ const WordSimilarity: React.FC = () => {
 
       {/* Summary table */}
       <div
-        style={{
-          width: "100%",
-          overflowX: "auto",
-        }}
+        className={styles.summaryTableFrame}
       >
         <table
           style={{
