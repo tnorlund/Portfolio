@@ -1228,7 +1228,7 @@ WARNING: This WRITES to DynamoDB.""",
 Use this to add a section that a reviewer identified but no model seeded, e.g.
 marking lines 20-24 as PAYMENT. section_type must be one of the canonical
 SectionType values (STOREFRONT, ADDRESS, ITEMS, SECTION_HEADER, SUMMARY,
-TOTAL_LINE, PAYMENT, SURVEY, FOOTER, BARCODE).
+TOTAL_LINE, PAYMENT, SURVEY, FOOTER, BARCODE, TRANSACTION_INFO).
 
 By default validation_status is VALID (human-reviewed) and model_source is
 "mcp-claude-review".

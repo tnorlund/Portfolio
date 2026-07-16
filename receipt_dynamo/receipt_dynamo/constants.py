@@ -86,7 +86,8 @@ class SectionType(str, Enum):
     sections) is the lower block. The three LEGACY values are from a
     superseded 2025-05 classifier experiment and are deprecated — kept only so
     any stray legacy rows still parse. ``FOOTER`` is retained and reused as the
-    canonical footer.
+    canonical footer. ``TRANSACTION_INFO`` was added later from the D2
+    blind validation (2026-07); it is canonical but non-stylescan.
     """
 
     # --- legacy (deprecated: superseded 2025-05 experiment) ---
@@ -105,6 +106,12 @@ class SectionType(str, Enum):
     SURVEY = "SURVEY"  # post-purchase survey / sweepstakes
     FOOTER = "FOOTER"  # thank-you / policy / rewards / register metadata
     BARCODE = "BARCODE"  # numeric barcode captions
+    # --- D2-measured addition (2026-07 blind validation) ---
+    # Operator / register / date-time / order-id / invoice metadata lines
+    # that fit none of the ten stylescan sections. Present so rows can be
+    # created and validated; the semi-Markov decoder will not emit it
+    # until the section-order priors are rebuilt to include it.
+    TRANSACTION_INFO = "TRANSACTION_INFO"
 
 
 class MerchantValidationStatus(str, Enum):
