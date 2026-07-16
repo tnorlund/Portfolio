@@ -103,8 +103,7 @@ class FixPlaceLambda(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -181,6 +180,20 @@ class FixPlaceLambda(ComponentResource):
                 # OpenRouter (for LLM calls)
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_MODEL": "x-ai/grok-4.3",
+                # Dev opts into tiered resolution; other stacks retain the
+                # legacy agent path until the quality gate is promoted.
+                "FIX_PLACE_RESOLUTION_MODE": (
+                    config.get("fix_place_resolution_mode")
+                    or ("tiered" if stack == "dev" else "agent")
+                ),
+                "FIX_PLACE_TIER2_MODEL": (
+                    config.get("fix_place_tier2_model") or "openai/gpt-oss-120b"
+                ),
+                "FIX_PLACE_AGENT_MODEL": (
+                    config.get("fix_place_agent_model") or "x-ai/grok-4.3"
+                ),
+                "FIX_PLACE_AGENT_RECURSION_LIMIT": "12",
+                "FIX_PLACE_AGENT_MAX_ROUNDS": "3",
                 # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 # Chroma Cloud
@@ -191,9 +204,7 @@ class FixPlaceLambda(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": ("https://api.smith.langchain.com"),
-                "LANGCHAIN_PROJECT": (
-                    config.get("langchain_project") or "fix-place"
-                ),
+                "LANGCHAIN_PROJECT": (config.get("langchain_project") or "fix-place"),
             },
         }
 
