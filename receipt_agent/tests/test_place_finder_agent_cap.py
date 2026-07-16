@@ -170,6 +170,46 @@ def test_legacy_agent_is_not_forced_to_submit_after_three_rounds(monkeypatch):
     assert state_holder["place_result"]["place_id"] == "ChIJ-test"
 
 
+def test_legacy_agent_ends_after_twenty_stalled_messages(monkeypatch):
+    monkeypatch.setenv("FIX_PLACE_RESOLUTION_MODE", "agent")
+    normal_llm = MagicMock()
+    normal_llm.invoke.side_effect = lambda _messages: AIMessage(
+        content="Still searching"
+    )
+    forced_llm = MagicMock()
+    base_llm = MagicMock()
+    base_llm.bind_tools.side_effect = [normal_llm, forced_llm]
+
+    with (
+        patch(
+            "receipt_agent.subagents.place_finder.graph.create_agentic_tools",
+            return_value=([], {}),
+        ),
+        patch(
+            "receipt_agent.subagents.place_finder.graph.create_llm",
+            return_value=base_llm,
+        ),
+    ):
+        graph, state_holder = create_receipt_place_finder_graph(
+            dynamo_client=None,
+            chroma_client=None,
+            embed_fn=lambda _texts: [],
+            settings=_settings(),
+        )
+        graph.invoke(
+            ReceiptPlaceFinderState(
+                image_id="image-1",
+                receipt_id=1,
+                messages=[HumanMessage(content="Find the place")],
+            ),
+            config={"recursion_limit": 100},
+        )
+
+    assert normal_llm.invoke.call_count == 20
+    forced_llm.invoke.assert_not_called()
+    assert state_holder.get("place_result") is None
+
+
 def test_compaction_keeps_tool_calls_paired_with_all_results():
     old_call_ids = [f"old-{index}" for index in range(3)]
     recent_call_ids = [f"recent-{index}" for index in range(3)]

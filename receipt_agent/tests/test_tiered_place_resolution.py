@@ -76,6 +76,29 @@ def _address_details():
     )
 
 
+def _place_clue_details(
+    *,
+    merchant="Right Cafe",
+    address="123 Main St, Las Vegas, NV 89101",
+    phone="(702) 555-0100",
+    current_place=None,
+):
+    values = [
+        (1, merchant, "MERCHANT_NAME"),
+        (2, address, "ADDRESS_LINE"),
+        (3, phone, "PHONE_NUMBER"),
+    ]
+    return SimpleNamespace(
+        place=current_place,
+        words=[_word(line_id, 1, text) for line_id, text, _ in values],
+        labels=[_label(line_id, 1, label) for line_id, _, label in values],
+        lines=[
+            SimpleNamespace(line_id=line_id, text=text)
+            for line_id, text, _ in values
+        ],
+    )
+
+
 class _FakePlaces:
     def __init__(self, *, details=None, phone=None, address=None, text=None):
         self.details = details
@@ -146,6 +169,15 @@ def test_tier1_address_match_resolves_without_llm():
     assert [method for method, _ in places.calls] == ["address"]
 
 
+def test_tier1_address_match_returns_empty_phone_string():
+    places = _FakePlaces(address=_place(phone=None))
+
+    result, _ = asyncio.run(resolve_tiered_place(_address_details(), places))
+
+    assert result["resolution_tier"] == "tier1"
+    assert result["phone_number"] == ""
+
+
 def test_tier1_rejects_conflicting_high_confidence_candidates():
     candidates = [
         PlaceCandidate("p1", "One", None, None, 0.99, {"phone"}),
@@ -170,6 +202,83 @@ def test_tier1_rejects_unrelated_phone_text_fallback(monkeypatch):
 
     assert result is None
     assert stats["llm_calls"] == 0
+
+
+def test_tier1_rejects_phone_match_with_conflicting_receipt_clues(
+    monkeypatch,
+):
+    monkeypatch.setenv("FIX_PLACE_TIER2_ENABLED", "false")
+    conflicting = _place(
+        place_id="wrong",
+        name="Wrong Market",
+        address="999 Main St, Las Vegas, NV 89101, USA",
+        phone="(702) 555-0100",
+    )
+    places = _FakePlaces(phone=conflicting)
+
+    result, stats = asyncio.run(
+        resolve_tiered_place(_place_clue_details(), places)
+    )
+
+    assert result is None
+    assert stats["llm_calls"] == 0
+
+
+def test_tier1_rejects_address_match_with_conflicting_receipt_clues(
+    monkeypatch,
+):
+    monkeypatch.setenv("FIX_PLACE_TIER2_ENABLED", "false")
+    conflicting = _place(
+        place_id="wrong",
+        name="Wrong Market",
+        address="123 Main St, Las Vegas, NV 89101, USA",
+        phone="(702) 555-0199",
+    )
+    places = _FakePlaces(address=conflicting)
+
+    result, stats = asyncio.run(
+        resolve_tiered_place(_place_clue_details(), places)
+    )
+
+    assert result is None
+    assert stats["llm_calls"] == 0
+
+
+def test_tier0_rejects_existing_place_with_conflicting_merchant():
+    current = SimpleNamespace(
+        place_id="wrong",
+        merchant_name="Wrong Market",
+        formatted_address="123 Main St, Las Vegas, NV 89101, USA",
+        phone_number="(702) 555-0100",
+    )
+    wrong = _place(
+        place_id="wrong",
+        name="Wrong Market",
+        address="123 Main St, Las Vegas, NV 89101, USA",
+        phone="(702) 555-0100",
+    )
+    right = _place(
+        place_id="right",
+        name="Right Cafe",
+        address="123 Main St, Las Vegas, NV 89101, USA",
+        phone="(702) 555-0100",
+    )
+    places = _FakePlaces(
+        details=wrong,
+        phone=wrong,
+        address=wrong,
+        text=right,
+    )
+
+    result, _ = asyncio.run(
+        resolve_tiered_place(
+            _place_clue_details(current_place=current),
+            places,
+        )
+    )
+
+    assert result["place_id"] == "right"
+    assert result["resolution_tier"] == "tier1"
 
 
 def test_text_search_uses_merchant_and_rejects_wrong_phone_result():

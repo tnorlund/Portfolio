@@ -511,6 +511,18 @@ def create_receipt_place_finder_graph(
             last_message = state.messages[-1]
             if isinstance(last_message, AIMessage) and last_message.tool_calls:
                 return "tools"
+            if not constrained_tier3:
+                if len(state.messages) > 20:
+                    logger.error(
+                        "Legacy place agent exceeded 20 messages without "
+                        "submitting; ending the stalled run"
+                    )
+                    return "end"
+                if len(state.messages) > 10:
+                    logger.warning(
+                        "Legacy place agent has made many steps without "
+                        "submitting"
+                    )
             return "agent"
 
         return "agent"

@@ -45,6 +45,7 @@ class PlaceCandidate:
     phone: str | None
     score: float
     search_methods: set[str] = field(default_factory=set)
+    deterministic_eligible: bool = True
 
     def as_prompt_dict(self) -> dict[str, Any]:
         """Return only the compact fields needed by the Tier 2 picker."""
@@ -55,6 +56,7 @@ class PlaceCandidate:
             "phone": self.phone,
             "deterministic_score": round(self.score, 3),
             "search_methods": sorted(self.search_methods),
+            "deterministic_eligible": self.deterministic_eligible,
         }
 
 
@@ -301,6 +303,53 @@ def _place_phone(place: Any) -> str | None:
     )
 
 
+def _deterministic_evidence_is_sufficient(
+    clues: ReceiptClues, place: Any, search_method: str
+) -> bool:
+    """Require secondary corroboration and reject active clue conflicts."""
+    primary_fields = {
+        "phone": "phone",
+        "address": "address",
+        "text": "merchant_name",
+    }
+    primary_field = primary_fields.get(search_method)
+    if primary_field is None:
+        return False
+
+    evidence = {
+        "merchant_name": (
+            clues.merchant_name,
+            _clean(_value(place, "name")),
+            _names_match,
+        ),
+        "address": (
+            clues.address,
+            _clean(_value(place, "formatted_address")),
+            _addresses_match,
+        ),
+        "phone": (clues.phone, _place_phone(place), _phones_match),
+    }
+    statuses = {}
+    for field_name, (clue, candidate_value, matcher) in evidence.items():
+        if not clue:
+            continue
+        if not candidate_value:
+            statuses[field_name] = "missing"
+        elif matcher(clue, candidate_value):
+            statuses[field_name] = "match"
+        else:
+            statuses[field_name] = "conflict"
+
+    if "conflict" in statuses.values():
+        return False
+    secondary_statuses = [
+        status
+        for field_name, status in statuses.items()
+        if field_name != primary_field
+    ]
+    return not secondary_statuses or "match" in secondary_statuses
+
+
 def _candidate_score(
     clues: ReceiptClues, place: Any, search_method: str
 ) -> float:
@@ -399,6 +448,9 @@ def _to_candidate(
         phone=_place_phone(place),
         score=_candidate_score(clues, place, search_method),
         search_methods={search_method},
+        deterministic_eligible=_deterministic_evidence_is_sufficient(
+            clues, place, search_method
+        ),
     )
 
 
@@ -411,6 +463,9 @@ def _merge_candidate(
         return
     existing.score = max(existing.score, candidate.score)
     existing.search_methods.update(candidate.search_methods)
+    existing.deterministic_eligible = (
+        existing.deterministic_eligible or candidate.deterministic_eligible
+    )
     existing.address = existing.address or candidate.address
     existing.phone = existing.phone or candidate.phone
 
@@ -435,6 +490,13 @@ def _existing_candidate(
 def _tier0_is_consistent(
     candidate: PlaceCandidate, clues: ReceiptClues
 ) -> bool:
+    if (
+        clues.merchant_name
+        and clues.sources.get("merchant_name") == "receipt_labels"
+        and not _names_match(clues.merchant_name, candidate.merchant_name)
+    ):
+        return False
+
     checks = []
     if clues.phone and clues.sources.get("phone") == "receipt_labels":
         checks.append(_phones_match(clues.phone, candidate.phone))
@@ -491,6 +553,7 @@ def select_deterministic_candidate(
         candidate
         for candidate in candidates
         if candidate.score >= minimum_confidence
+        and candidate.deterministic_eligible
     ]
     if not qualifying:
         return None
@@ -511,7 +574,9 @@ def _result(
         "place_id": candidate.place_id,
         "merchant_name": candidate.merchant_name,
         "address": candidate.address,
-        "phone_number": candidate.phone or (clues.phone if clues else None),
+        "phone_number": (
+            candidate.phone or (clues.phone if clues else None) or ""
+        ),
     }
     fields_found = [key for key, value in values.items() if value]
     sources = dict.fromkeys(fields_found, "google_places")
