@@ -13,7 +13,6 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from receipt_agent.utils.address_validation import is_address_like
 from receipt_agent.utils.llm_factory import CostTrackingCallback, create_llm
 
 logger = logging.getLogger(__name__)
@@ -151,18 +150,26 @@ def _combined_address(lines: dict[int, list[str]]) -> str | None:
     parts = []
     for _, words in sorted(lines.items()):
         text = _clean(" ".join(words))
-        if text and text not in parts:
+        if text:
             parts.append(text)
     # Header cities are sometimes mislabeled as ADDRESS_LINE before the
-    # actual street.  Start at the first line containing a street number so
-    # that the deterministic address query remains usable.
+    # actual street.  Start at a leading house-number pattern rather than any
+    # digit so a ZIP-bearing city/state line cannot become the street clue.
     street_start = next(
-        (index for index, part in enumerate(parts) if re.search(r"\d", part)),
+        (
+            index
+            for index, part in enumerate(parts)
+            if re.match(
+                r"^\s*\d+[A-Za-z]?(?:[-/]\d+[A-Za-z]?)?\s+[A-Za-z]",
+                part,
+            )
+        ),
         None,
     )
     if street_start is not None:
         parts = parts[street_start:]
-    return _clean(", ".join(parts))
+    deduplicated = list(dict.fromkeys(parts))
+    return _clean(", ".join(deduplicated))
 
 
 def _receipt_snippet(details: Any, limit: int = 1200) -> str:
@@ -420,7 +427,7 @@ def _primary_evidence_matches(
 def _place_is_usable(place: Any, clues: ReceiptClues) -> bool:
     place_id = _clean(_value(place, "place_id"))
     name = _clean(_value(place, "name"))
-    if not place_id or not name or is_address_like(name):
+    if not place_id or not name:
         return False
     place_types = {
         str(place_type).lower()

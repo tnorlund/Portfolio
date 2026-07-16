@@ -402,8 +402,9 @@ def _update_receipt_place(
             current_place.merchant_name = agent_result["merchant_name"]
         if agent_result.get("address"):
             current_place.formatted_address = agent_result["address"]
-        if agent_result.get("phone_number"):
-            current_place.phone_number = agent_result["phone_number"]
+        phone_number = agent_result.get("phone_number")
+        if phone_number is not None:
+            current_place.phone_number = phone_number
 
         current_place.confidence = confidence
         current_place.reasoning = reasoning

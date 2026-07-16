@@ -363,6 +363,44 @@ def test_address_clues_drop_stray_header_labels_before_street_number():
     )
 
 
+def test_address_clues_do_not_treat_zip_as_street_number():
+    details = SimpleNamespace(
+        place=None,
+        words=[
+            _word(1, 1, "Henderson, NV 89014"),
+            _word(2, 1, "4300"),
+            _word(2, 2, "E Sunset Rd. Suite A3"),
+            _word(3, 1, "Henderson, NV 89014"),
+        ],
+        labels=[
+            _label(1, 1, "ADDRESS_LINE"),
+            _label(2, 1, "ADDRESS_LINE"),
+            _label(2, 2, "ADDRESS_LINE"),
+            _label(3, 1, "ADDRESS_LINE"),
+        ],
+        lines=[],
+    )
+
+    assert extract_receipt_clues(details).address == (
+        "4300 E Sunset Rd. Suite A3, Henderson, NV 89014"
+    )
+
+
+def test_tier1_accepts_establishment_with_address_like_business_name():
+    business = _place(
+        name="54th Street Grill & Bar",
+        types=["restaurant", "establishment", "point_of_interest"],
+    )
+    places = _FakePlaces(phone=business)
+
+    result, stats = asyncio.run(resolve_tiered_place(_details(), places))
+
+    assert result["place_id"] == "ChIJ-test"
+    assert result["merchant_name"] == "54th Street Grill & Bar"
+    assert result["resolution_tier"] == "tier1"
+    assert stats["llm_calls"] == 0
+
+
 def test_address_matching_ignores_equivalent_unit_notation():
     assert _addresses_match(
         "10940 S EASTERN AVE #107, HENDERSON, NV 89052",
