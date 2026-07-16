@@ -352,6 +352,23 @@ def test_calculate_min_area_rect_returns_portrait_warp():
 
 
 @pytest.mark.unit
+def test_calculate_min_area_rect_padding_expands_dimensions():
+    words = [
+        {
+            "top_left": {"x": 10.0, "y": 90.0},
+            "top_right": {"x": 30.0, "y": 90.0},
+            "bottom_left": {"x": 10.0, "y": 20.0},
+            "bottom_right": {"x": 30.0, "y": 20.0},
+        }
+    ]
+    unpadded = calculate_min_area_rect(words, 100, 100)
+    padded = calculate_min_area_rect(words, 100, 100, padding_px=5)
+
+    assert padded["warped_width"] == unpadded["warped_width"] + 10
+    assert padded["warped_height"] == unpadded["warped_height"] + 10
+
+
+@pytest.mark.unit
 def test_create_combined_receipt_records_keeps_noise_and_mappings():
     combined_words = [
         {
@@ -429,6 +446,8 @@ def test_create_combined_receipt_records_keeps_noise_and_mappings():
     assert [w.is_noise for w in records["receipt_words"]] == [False, True]
     assert records["line_id_map"] == {(1, 2): 1}
     assert records["word_id_map"] == {(7, 1, 2): 1, (8, 1, 2): 2}
+    assert records["receipt"].top_left == {"x": 0.1, "y": 0.9}
+    assert records["receipt"].bottom_right == {"x": 0.35, "y": 0.8}
 
 
 @pytest.mark.unit

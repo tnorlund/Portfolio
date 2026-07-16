@@ -82,6 +82,7 @@ def combine_receipt_words_to_image_coords(
     receipt_ids: List[int],
     image_width: int,
     image_height: int,
+    deduplicate: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Combine words from multiple receipts and transform to image coordinates.
@@ -186,6 +187,9 @@ def combine_receipt_words_to_image_coords(
             )
 
     all_words.sort(key=lambda w: (-w["centroid_y"], w["centroid_x"]))
+
+    if not deduplicate:
+        return all_words
 
     # Deduplicate words with identical coordinates (OCR duplicates)
     # This handles cases where the same word was detected on multiple lines
@@ -402,57 +406,9 @@ def create_combined_receipt_records(
     receipt_width = warped_width
     receipt_height = warped_height
 
-    # Transform receipt corners from original image space to warped space
-    # Convert OCR space bounds to PIL space for transformation
-    top_left_ocr = bounds["top_left"]
-    top_right_ocr = bounds["top_right"]
-    bottom_left_ocr = bounds["bottom_left"]
-    bottom_right_ocr = bounds["bottom_right"]
-
-    # Convert to PIL space (y=0 at top)
-    top_left_pil = (top_left_ocr["x"], image_height - top_left_ocr["y"])
-    top_right_pil = (top_right_ocr["x"], image_height - top_right_ocr["y"])
-    bottom_left_pil = (
-        bottom_left_ocr["x"],
-        image_height - bottom_left_ocr["y"],
-    )
-    bottom_right_pil = (
-        bottom_right_ocr["x"],
-        image_height - bottom_right_ocr["y"],
-    )
-
-    # Transform to warped space
-    top_left_warped = transform_point_to_warped_space(
-        top_left_pil[0],
-        top_left_pil[1],
-        src_corners,
-        warped_width,
-        warped_height,
-    )
-    top_right_warped = transform_point_to_warped_space(
-        top_right_pil[0],
-        top_right_pil[1],
-        src_corners,
-        warped_width,
-        warped_height,
-    )
-    bottom_left_warped = transform_point_to_warped_space(
-        bottom_left_pil[0],
-        bottom_left_pil[1],
-        src_corners,
-        warped_width,
-        warped_height,
-    )
-    bottom_right_warped = transform_point_to_warped_space(
-        bottom_right_pil[0],
-        bottom_right_pil[1],
-        src_corners,
-        warped_width,
-        warped_height,
-    )
-
-    # Create Receipt entity with corners in warped space, normalized (0-1)
-    # Receipt coordinates use OCR space (y=0 at bottom), so convert back
+    # Receipt corners locate the crop on the original image. Keep the
+    # min-area rectangle in original-image OCR coordinates; normalizing it to
+    # the warped crop would make any later receipt->image transform incorrect.
     receipt = Receipt(
         image_id=image_id,
         receipt_id=new_receipt_id,
@@ -464,48 +420,20 @@ def create_combined_receipt_records(
         # Receipt corners in normalized warped space (0-1),
         # OCR coordinate system (y=0 at bottom)
         top_left={
-            "x": (
-                top_left_warped[0] / warped_width if warped_width > 0 else 0.0
-            ),
-            "y": (
-                (warped_height - top_left_warped[1]) / warped_height
-                if warped_height > 0
-                else 0.0
-            ),  # Convert to OCR space
+            "x": bounds["top_left"]["x"] / image_width,
+            "y": bounds["top_left"]["y"] / image_height,
         },
         top_right={
-            "x": (
-                top_right_warped[0] / warped_width if warped_width > 0 else 1.0
-            ),
-            "y": (
-                (warped_height - top_right_warped[1]) / warped_height
-                if warped_height > 0
-                else 0.0
-            ),
+            "x": bounds["top_right"]["x"] / image_width,
+            "y": bounds["top_right"]["y"] / image_height,
         },
         bottom_left={
-            "x": (
-                bottom_left_warped[0] / warped_width
-                if warped_width > 0
-                else 0.0
-            ),
-            "y": (
-                (warped_height - bottom_left_warped[1]) / warped_height
-                if warped_height > 0
-                else 1.0
-            ),
+            "x": bounds["bottom_left"]["x"] / image_width,
+            "y": bounds["bottom_left"]["y"] / image_height,
         },
         bottom_right={
-            "x": (
-                bottom_right_warped[0] / warped_width
-                if warped_width > 0
-                else 1.0
-            ),
-            "y": (
-                (warped_height - bottom_right_warped[1]) / warped_height
-                if warped_height > 0
-                else 1.0
-            ),
+            "x": bounds["bottom_right"]["x"] / image_width,
+            "y": bounds["bottom_right"]["y"] / image_height,
         },
         sha256=None,  # Will be calculated and set when image is uploaded
         cdn_s3_bucket=site_bucket,

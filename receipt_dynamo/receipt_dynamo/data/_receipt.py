@@ -1,7 +1,9 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
+from collections import Counter
 from typing import Any
 
 from receipt_dynamo.data.base_operations import (
+    DeleteRequestTypeDef,
     DeleteTypeDef,
     FlattenedStandardMixin,
     PutRequestTypeDef,
@@ -152,6 +154,230 @@ class _Receipt(FlattenedStandardMixin):
         ]
         # type: ignore[arg-type]
         self._transact_write_with_chunking(transact_items)
+
+    @handle_dynamodb_errors("reserve_receipt_ids")
+    def reserve_receipt_ids(
+        self,
+        image_id: str,
+        receipt_ids: list[int],
+        operation_id: str,
+    ) -> None:
+        """Atomically reserve receipt IDs without exposing partial receipts.
+
+        Reservation rows deliberately omit every GSI key. Normal receipt
+        listing therefore ignores them, while the shared receipt primary key
+        prevents another writer from claiming the same numeric ID.
+        """
+        self._validate_image_id(image_id)
+        if not receipt_ids or len(receipt_ids) > 23:
+            raise EntityValidationError(
+                "receipt_ids must contain between 1 and 23 IDs"
+            )
+        if len(set(receipt_ids)) != len(receipt_ids):
+            raise EntityValidationError("receipt_ids must be distinct")
+        if not operation_id:
+            raise EntityValidationError("operation_id is required")
+
+        transact_items = []
+        for receipt_id in receipt_ids:
+            self._validate_receipt_id(receipt_id)
+            transact_items.append(
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": {
+                            "PK": {"S": f"IMAGE#{image_id}"},
+                            "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
+                            "TYPE": {"S": "RESEGMENT_RESERVATION"},
+                            "operation_id": {"S": operation_id},
+                        },
+                        "ConditionExpression": (
+                            "attribute_not_exists(PK) OR "
+                            "(#type = :reservation AND operation_id = :operation_id)"
+                        ),
+                        "ExpressionAttributeNames": {"#type": "TYPE"},
+                        "ExpressionAttributeValues": {
+                            ":reservation": {"S": "RESEGMENT_RESERVATION"},
+                            ":operation_id": {"S": operation_id},
+                        },
+                    }
+                }
+            )
+        self._client.transact_write_items(TransactItems=transact_items)
+
+    @handle_dynamodb_errors("commit_receipt_resegmentation")
+    def commit_receipt_resegmentation(
+        self,
+        source_receipt: Receipt,
+        output_receipts: list[Receipt],
+        operation_id: str,
+    ) -> None:
+        """Atomically activate reserved outputs and remove the source parent."""
+        self._validate_entity(source_receipt, Receipt, "source_receipt")
+        self._validate_entity_list(output_receipts, Receipt, "output_receipts")
+        if len(output_receipts) > 23:
+            raise EntityValidationError(
+                "A re-segmentation can create at most 23 receipts"
+            )
+        if not operation_id:
+            raise EntityValidationError("operation_id is required")
+
+        transact_items = []
+        for receipt in output_receipts:
+            transact_items.append(
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": receipt.to_item(),
+                        "ConditionExpression": (
+                            "#type = :reservation AND "
+                            "operation_id = :operation_id"
+                        ),
+                        "ExpressionAttributeNames": {"#type": "TYPE"},
+                        "ExpressionAttributeValues": {
+                            ":reservation": {"S": "RESEGMENT_RESERVATION"},
+                            ":operation_id": {"S": operation_id},
+                        },
+                    }
+                }
+            )
+        transact_items.append(
+            {
+                "Delete": {
+                    "TableName": self.table_name,
+                    "Key": source_receipt.key,
+                    "ConditionExpression": "timestamp_added = :timestamp",
+                    "ExpressionAttributeValues": {
+                        ":timestamp": {"S": source_receipt.timestamp_added}
+                    },
+                }
+            }
+        )
+        self._client.transact_write_items(TransactItems=transact_items)
+
+    @handle_dynamodb_errors("delete_receipt_items")
+    def delete_receipt_items(
+        self,
+        image_id: str,
+        receipt_id: int,
+        *,
+        include_parent: bool = True,
+    ) -> int:
+        """Delete every row beneath a receipt primary-key prefix.
+
+        This intentionally deletes concrete child rows so DynamoDB stream
+        consumers receive word and line removal events for vector cleanup.
+        The operation is idempotent and paginates the full partition prefix.
+        """
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        parent_sk = f"RECEIPT#{receipt_id:05d}"
+        items: list[dict[str, Any]] = []
+        exclusive_start_key = None
+
+        while True:
+            params: dict[str, Any] = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": (
+                    "PK = :pk AND begins_with(SK, :receipt_prefix)"
+                ),
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":receipt_prefix": {"S": parent_sk},
+                },
+                "ProjectionExpression": "PK, SK",
+            }
+            if exclusive_start_key:
+                params["ExclusiveStartKey"] = exclusive_start_key
+            response = self._client.query(**params)
+            items.extend(response.get("Items", []))
+            exclusive_start_key = response.get("LastEvaluatedKey")
+            if not exclusive_start_key:
+                break
+
+        requests = []
+        for item in items:
+            if not include_parent and item["SK"]["S"] == parent_sk:
+                continue
+            requests.append(
+                WriteRequestTypeDef(
+                    DeleteRequest=DeleteRequestTypeDef(
+                        Key={"PK": item["PK"], "SK": item["SK"]}
+                    )
+                )
+            )
+        if requests:
+            self._batch_write_with_retry(requests)
+        return len(requests)
+
+    @handle_dynamodb_errors("get_receipt_item_type_counts")
+    def get_receipt_item_type_counts(
+        self, image_id: str, receipt_id: int
+    ) -> dict[str, int]:
+        """Count all entity types stored below a receipt key prefix."""
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        counts: Counter[str] = Counter()
+        exclusive_start_key = None
+        while True:
+            params: dict[str, Any] = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": (
+                    "PK = :pk AND begins_with(SK, :receipt_prefix)"
+                ),
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":receipt_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
+                },
+                "ProjectionExpression": "#type",
+                "ExpressionAttributeNames": {"#type": "TYPE"},
+            }
+            if exclusive_start_key:
+                params["ExclusiveStartKey"] = exclusive_start_key
+            response = self._client.query(**params)
+            for item in response.get("Items", []):
+                counts[item.get("TYPE", {}).get("S", "UNKNOWN")] += 1
+            exclusive_start_key = response.get("LastEvaluatedKey")
+            if not exclusive_start_key:
+                break
+        return dict(sorted(counts.items()))
+
+    @handle_dynamodb_errors("release_receipt_id_reservations")
+    def release_receipt_id_reservations(
+        self,
+        image_id: str,
+        receipt_ids: list[int],
+        operation_id: str,
+    ) -> None:
+        """Remove staged children and reservations owned by an operation."""
+        for receipt_id in receipt_ids:
+            self.delete_receipt_items(
+                image_id, receipt_id, include_parent=False
+            )
+
+        transact_items = [
+            {
+                "Delete": {
+                    "TableName": self.table_name,
+                    "Key": {
+                        "PK": {"S": f"IMAGE#{image_id}"},
+                        "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
+                    },
+                    "ConditionExpression": (
+                        "#type = :reservation AND "
+                        "operation_id = :operation_id"
+                    ),
+                    "ExpressionAttributeNames": {"#type": "TYPE"},
+                    "ExpressionAttributeValues": {
+                        ":reservation": {"S": "RESEGMENT_RESERVATION"},
+                        ":operation_id": {"S": operation_id},
+                    },
+                }
+            }
+            for receipt_id in receipt_ids
+        ]
+        if transact_items:
+            self._client.transact_write_items(TransactItems=transact_items)
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:
