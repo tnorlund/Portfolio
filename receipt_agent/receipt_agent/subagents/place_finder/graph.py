@@ -9,7 +9,12 @@ import logging
 import os
 from typing import Any, Callable, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -51,14 +56,70 @@ def _bounded_env_int(
     return max(minimum, min(value, maximum))
 
 
+def _tiered_mode_enabled() -> bool:
+    """Return whether fix-place is using the constrained tiered rollout."""
+    return (
+        os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
+        == "tiered"
+    )
+
+
+def _receipt_place_recursion_limit() -> int:
+    """Constrain Tier 3 while preserving the legacy agent-mode budget."""
+    if not _tiered_mode_enabled():
+        return 100
+    return _bounded_env_int(
+        "FIX_PLACE_AGENT_RECURSION_LIMIT", 12, 12, minimum=4
+    )
+
+
 def _compact_agent_messages(messages: list[Any]) -> list[Any]:
-    """Keep the initial request plus recent tool context for the next turn."""
+    """Keep the initial request plus complete recent tool-call groups."""
     if len(messages) <= 8:
         return list(messages)
+
     prefix = list(messages[:2])
-    return prefix + [
-        message for message in messages[-6:] if message not in prefix
+    groups: list[list[Any]] = []
+    for message in messages[2:]:
+        if isinstance(message, ToolMessage):
+            if not groups or not isinstance(groups[-1][0], AIMessage):
+                continue
+            expected_ids = {
+                tool_call.get("id") for tool_call in groups[-1][0].tool_calls
+            }
+            if message.tool_call_id in expected_ids:
+                groups[-1].append(message)
+            continue
+        groups.append([message])
+
+    complete_groups = []
+    for group in groups:
+        first = group[0]
+        if isinstance(first, AIMessage) and first.tool_calls:
+            expected_ids = {
+                tool_call.get("id") for tool_call in first.tool_calls
+            }
+            result_ids = {
+                message.tool_call_id
+                for message in group[1:]
+                if isinstance(message, ToolMessage)
+            }
+            if not expected_ids.issubset(result_ids):
+                continue
+        complete_groups.append(group)
+
+    selected_groups: list[list[Any]] = []
+    selected_count = 0
+    for group in reversed(complete_groups):
+        if selected_groups and selected_count + len(group) > 6:
+            break
+        selected_groups.append(group)
+        selected_count += len(group)
+
+    compacted = [
+        message for group in reversed(selected_groups) for message in group
     ]
+    return prefix + compacted
 
 
 # ======================================================================
@@ -409,17 +470,25 @@ def create_receipt_place_finder_graph(
         ),
         agent_name="place_finder_final_submit",
     )
-    max_rounds = _bounded_env_int("FIX_PLACE_AGENT_MAX_ROUNDS", 3, 3)
+    constrained_tier3 = _tiered_mode_enabled()
+    max_rounds = (
+        _bounded_env_int("FIX_PLACE_AGENT_MAX_ROUNDS", 3, 3)
+        if constrained_tier3
+        else None
+    )
 
     def agent_node(state: ReceiptPlaceFinderState) -> dict:
-        """Use compact history and force the final structured submission."""
+        """Apply rollout limits only to the tiered fix-place path."""
+        if not constrained_tier3:
+            return normal_agent_node(state)
+
         compact_state = state.model_copy(
             update={"messages": _compact_agent_messages(state.messages)}
         )
         completed_rounds = sum(
             isinstance(message, AIMessage) for message in state.messages
         )
-        if completed_rounds >= max_rounds:
+        if max_rounds is not None and completed_rounds >= max_rounds:
             logger.warning(
                 "Place finder reached %d rounds; forcing submit_place",
                 completed_rounds,
@@ -612,9 +681,7 @@ async def run_receipt_place_finder(
     # Run the workflow
     try:
         config = {
-            "recursion_limit": _bounded_env_int(
-                "FIX_PLACE_AGENT_RECURSION_LIMIT", 12, 12, minimum=4
-            ),
+            "recursion_limit": _receipt_place_recursion_limit(),
             "configurable": {
                 "thread_id": f"{image_id}#{receipt_id}",
             },

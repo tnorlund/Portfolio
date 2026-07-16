@@ -175,7 +175,7 @@ def _receipt_snippet(details: Any, limit: int = 1200) -> str:
 
 
 def extract_receipt_clues(details: Any) -> ReceiptClues:
-    """Extract labeled OCR clues, with current place fields as fallbacks."""
+    """Extract labeled OCR clues without trusting the flagged current place."""
     grouped = _group_labeled_words(details)
     merchant = _best_merchant(grouped.get("MERCHANT_NAME", {}))
     address = _combined_address(grouped.get("ADDRESS_LINE", {}))
@@ -190,27 +190,11 @@ def extract_receipt_clues(details: Any) -> ReceiptClues:
         if value
     }
 
-    current = _value(details, "place")
-    fallbacks = {
-        "merchant_name": _clean(_value(current, "merchant_name")),
-        "address": _clean(_value(current, "formatted_address")),
-        "phone": _clean(_value(current, "phone_number")),
-    }
-    values = {
-        "merchant_name": merchant,
-        "address": address,
-        "phone": phone,
-    }
-    for key, value in fallbacks.items():
-        if not values[key] and value:
-            values[key] = value
-            sources[key] = "current_place"
-
     expected_state = _extract_state(address)
     return ReceiptClues(
-        merchant_name=values["merchant_name"],
-        address=values["address"],
-        phone=values["phone"],
+        merchant_name=merchant,
+        address=address,
+        phone=phone,
         expected_state=expected_state,
         snippet=_receipt_snippet(details),
         sources=sources,
@@ -218,7 +202,9 @@ def extract_receipt_clues(details: Any) -> ReceiptClues:
 
 
 def _phone_digits(value: str | None) -> str:
-    return "".join(character for character in (value or "") if character.isdigit())
+    return "".join(
+        character for character in (value or "") if character.isdigit()
+    )
 
 
 def _phones_match(left: str | None, right: str | None) -> bool:
@@ -266,12 +252,34 @@ def _street(value: str | None) -> str:
         "lane": "ln",
         "highway": "hwy",
     }
-    return " ".join(replacements.get(token, token) for token in normalized.split())
+    return " ".join(
+        replacements.get(token, token) for token in normalized.split()
+    )
 
 
 def _addresses_match(left: str | None, right: str | None) -> bool:
     first = _street(left)
     second = _street(right)
+    if not first or not second:
+        return False
+
+    first_tokens = first.split()
+    second_tokens = second.split()
+    number_pattern = re.compile(r"\d+[a-z]?")
+    first_number = (
+        first_tokens[0] if number_pattern.fullmatch(first_tokens[0]) else None
+    )
+    second_number = (
+        second_tokens[0]
+        if number_pattern.fullmatch(second_tokens[0])
+        else None
+    )
+    if first_number or second_number:
+        if first_number != second_number:
+            return False
+        first = " ".join(first_tokens[1:])
+        second = " ".join(second_tokens[1:])
+
     return bool(first and second) and (first in second or second in first)
 
 
@@ -293,9 +301,13 @@ def _place_phone(place: Any) -> str | None:
     )
 
 
-def _candidate_score(clues: ReceiptClues, place: Any, search_method: str) -> float:
+def _candidate_score(
+    clues: ReceiptClues, place: Any, search_method: str
+) -> float:
     name_match = _names_match(clues.merchant_name, _value(place, "name"))
-    address_match = _addresses_match(clues.address, _value(place, "formatted_address"))
+    address_match = _addresses_match(
+        clues.address, _value(place, "formatted_address")
+    )
     phone_match = _phones_match(clues.phone, _place_phone(place))
 
     # A search method is not evidence by itself.  In particular, the Places
@@ -306,20 +318,28 @@ def _candidate_score(clues: ReceiptClues, place: Any, search_method: str) -> flo
         if not phone_match:
             return 0.0
         return min(
-            1.0, 0.95 + (0.03 if address_match else 0.0) + (0.02 if name_match else 0.0)
+            1.0,
+            0.95
+            + (0.03 if address_match else 0.0)
+            + (0.02 if name_match else 0.0),
         )
     if search_method == "address":
         if not address_match:
             return 0.0
         return min(
-            1.0, 0.90 + (0.05 if name_match else 0.0) + (0.05 if phone_match else 0.0)
+            1.0,
+            0.90
+            + (0.05 if name_match else 0.0)
+            + (0.05 if phone_match else 0.0),
         )
     if search_method == "text":
         if not name_match:
             return 0.0
         return min(
             1.0,
-            0.75 + (0.15 if address_match else 0.0) + (0.10 if phone_match else 0.0),
+            0.75
+            + (0.15 if address_match else 0.0)
+            + (0.10 if phone_match else 0.0),
         )
 
     # Existing place IDs only reach Tier 0 when their labeled evidence is
@@ -354,7 +374,8 @@ def _place_is_usable(place: Any, clues: ReceiptClues) -> bool:
     if not place_id or not name or is_address_like(name):
         return False
     place_types = {
-        str(place_type).lower() for place_type in (_value(place, "types") or [])
+        str(place_type).lower()
+        for place_type in (_value(place, "types") or [])
     }
     address_types = {"premise", "street_address", "subpremise"}
     business_types = {"establishment", "point_of_interest"}
@@ -362,7 +383,9 @@ def _place_is_usable(place: Any, clues: ReceiptClues) -> bool:
         return False
     result_state = _extract_state(_clean(_value(place, "formatted_address")))
     return not (
-        clues.expected_state and result_state and result_state != clues.expected_state
+        clues.expected_state
+        and result_state
+        and result_state != clues.expected_state
     )
 
 
@@ -409,7 +432,9 @@ def _existing_candidate(
     return _to_candidate(place, clues, "existing_place_id")
 
 
-def _tier0_is_consistent(candidate: PlaceCandidate, clues: ReceiptClues) -> bool:
+def _tier0_is_consistent(
+    candidate: PlaceCandidate, clues: ReceiptClues
+) -> bool:
     checks = []
     if clues.phone and clues.sources.get("phone") == "receipt_labels":
         checks.append(_phones_match(clues.phone, candidate.phone))
@@ -424,7 +449,9 @@ def collect_candidates(
     initial: list[PlaceCandidate] | None = None,
 ) -> list[PlaceCandidate]:
     """Run the deterministic phone/address/text Places cascade."""
-    candidates = {candidate.place_id: candidate for candidate in (initial or [])}
+    candidates = {
+        candidate.place_id: candidate for candidate in (initial or [])
+    }
     searches = (
         ("phone", clues.phone, places_client.search_by_phone),
         ("address", clues.address, places_client.search_by_address),
@@ -461,7 +488,9 @@ def select_deterministic_candidate(
 ) -> PlaceCandidate | None:
     """Select one high-confidence candidate, rejecting high-score conflicts."""
     qualifying = [
-        candidate for candidate in candidates if candidate.score >= minimum_confidence
+        candidate
+        for candidate in candidates
+        if candidate.score >= minimum_confidence
     ]
     if not qualifying:
         return None
@@ -508,7 +537,9 @@ async def _select_with_llm(
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     callback = CostTrackingCallback()
     model = os.environ.get("FIX_PLACE_TIER2_MODEL", _TIER2_MODEL)
-    minimum_confidence = float(os.environ.get("FIX_PLACE_TIER2_MIN_CONFIDENCE", "0.85"))
+    minimum_confidence = float(
+        os.environ.get("FIX_PLACE_TIER2_MIN_CONFIDENCE", "0.85")
+    )
     llm = create_llm(
         model=model,
         temperature=0.0,
@@ -523,7 +554,9 @@ async def _select_with_llm(
             "phone": clues.phone,
         },
         "receipt_text": clues.snippet,
-        "candidates": [candidate.as_prompt_dict() for candidate in candidates[:5]],
+        "candidates": [
+            candidate.as_prompt_dict() for candidate in candidates[:5]
+        ],
     }
     messages = [
         SystemMessage(
@@ -579,6 +612,11 @@ async def resolve_tiered_place(
         logger.warning("Places client unavailable; escalating to Tier 3")
         return None, empty_llm_stats()
     clues = extract_receipt_clues(details)
+    if not any((clues.merchant_name, clues.address, clues.phone)):
+        logger.info(
+            "No usable receipt-labeled place evidence; escalating to Tier 3"
+        )
+        return None, empty_llm_stats()
     existing = _existing_candidate(details, places_client, clues)
     if existing and _tier0_is_consistent(existing, clues):
         return (
@@ -600,7 +638,9 @@ async def resolve_tiered_place(
         clues,
         initial=[existing] if existing else None,
     )
-    tier1_minimum = float(os.environ.get("FIX_PLACE_TIER1_MIN_CONFIDENCE", "0.90"))
+    tier1_minimum = float(
+        os.environ.get("FIX_PLACE_TIER1_MIN_CONFIDENCE", "0.90")
+    )
     deterministic = select_deterministic_candidate(candidates, tier1_minimum)
     if deterministic:
         return (
@@ -618,7 +658,8 @@ async def resolve_tiered_place(
         )
 
     tier2_enabled = (
-        os.environ.get("FIX_PLACE_TIER2_ENABLED", "true").lower() not in _FALSE_VALUES
+        os.environ.get("FIX_PLACE_TIER2_ENABLED", "true").lower()
+        not in _FALSE_VALUES
     )
     if candidates and tier2_enabled:
         return await _select_with_llm(clues, candidates)

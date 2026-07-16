@@ -65,7 +65,10 @@ def _address_details():
     return SimpleNamespace(
         place=None,
         words=words,
-        labels=[_label(word.line_id, word.word_id, "ADDRESS_LINE") for word in words],
+        labels=[
+            _label(word.line_id, word.word_id, "ADDRESS_LINE")
+            for word in words
+        ],
         lines=[
             SimpleNamespace(line_id=2, text="123 Main St"),
             SimpleNamespace(line_id=3, text="Las Vegas, NV 89101"),
@@ -132,7 +135,9 @@ def test_tier1_phone_match_resolves_without_llm():
 def test_tier1_address_match_resolves_without_llm():
     places = _FakePlaces(address=_place())
 
-    result, stats = asyncio.run(resolve_tiered_place(_address_details(), places))
+    result, stats = asyncio.run(
+        resolve_tiered_place(_address_details(), places)
+    )
 
     assert result["resolution_tier"] == "tier1"
     assert result["confidence"] == 0.90
@@ -220,7 +225,9 @@ def test_text_search_uses_merchant_and_rejects_wrong_phone_result():
     assert result["phone_number"] == "702 728 5838"
     assert result["sources"]["phone_number"] == "receipt_labels"
     assert stats["llm_calls"] == 0
-    text_call = next(query for method, query in places.calls if method == "text")
+    text_call = next(
+        query for method, query in places.calls if method == "text"
+    )
     assert text_call == "CRAFTKITCHEN"
 
 
@@ -252,6 +259,35 @@ def test_address_matching_ignores_equivalent_unit_notation():
         "10940 S EASTERN AVE #107, HENDERSON, NV 89052",
         "10940 S Eastern Avenue Suite 107, Henderson, NV 89052, USA",
     )
+
+
+def test_address_matching_requires_exact_street_number():
+    assert not _addresses_match(
+        "1 Main St, Las Vegas, NV 89101",
+        "11 Main St, Las Vegas, NV 89101",
+    )
+
+
+def test_tiered_resolution_escalates_without_receipt_place_evidence():
+    current = SimpleNamespace(
+        place_id="ChIJ-wrong",
+        merchant_name="Wrong Market",
+        formatted_address="11 Main St, Las Vegas, NV 89101, USA",
+        phone_number="(702) 555-0111",
+    )
+    details = SimpleNamespace(
+        place=current,
+        words=[_word(1, 1, "Wrong Market")],
+        labels=[_label(1, 1, "MERCHANT_NAME", status="INVALID")],
+        lines=[SimpleNamespace(line_id=1, text="Wrong Market")],
+    )
+    places = _FakePlaces(details=_place(place_id="ChIJ-wrong"))
+
+    result, stats = asyncio.run(resolve_tiered_place(details, places))
+
+    assert result is None
+    assert stats["llm_calls"] == 0
+    assert places.calls == []
 
 
 def test_tier2_makes_one_structured_picker_call():

@@ -37,14 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 def _agent_recursion_limit() -> int:
-    """Return the hard-capped place-agent recursion limit."""
-    try:
-        configured = int(
-            os.environ.get("FIX_PLACE_AGENT_RECURSION_LIMIT", "12")
-        )
-    except ValueError:
-        configured = 12
-    return max(4, min(configured, 12))
+    """Preserve the upload place-ID finder's established execution budget."""
+    return 100
 
 
 # ==============================================================================

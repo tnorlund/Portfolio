@@ -10,8 +10,9 @@ from receipt_agent.subagents.place_finder.graph import (
 from receipt_agent.utils.llm_factory import CostTrackingCallback
 
 
-def test_fix_place_runner_attaches_cost_callback_to_graph():
+def test_fix_place_runner_attaches_cost_callback_to_graph(monkeypatch):
     """The graph-level handler must propagate to every tool-calling turn."""
+    monkeypatch.setenv("FIX_PLACE_RESOLUTION_MODE", "tiered")
     graph = AsyncMock()
     callback = CostTrackingCallback()
     state_holder = {"cost_callback": callback}
