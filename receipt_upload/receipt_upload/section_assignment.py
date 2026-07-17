@@ -3,6 +3,7 @@
 # The model builder and segment decoder intentionally keep their measured
 # factors together so training and inference remain directly auditable.
 # pylint: disable=too-many-instance-attributes,too-many-locals,too-many-branches
+# pylint: disable=too-many-statements
 
 from __future__ import annotations
 
@@ -32,11 +33,7 @@ _QUANTITY_RE = re.compile(
 )
 _EPSILON = 1e-9
 _AMOUNT_CONTEXT_RADIUS = 2
-_LOCAL_OVERRIDE_MARGIN = 1.25
 _PAYMENT_CARD_TOKENS = frozenset({"amex", "mastercard", "visa"})
-_PAYMENT_ACTION_TOKENS = frozenset(
-    {"card", "cash", "cashback", "credit", "debit", "purchase"}
-)
 
 
 class SectionWriter(Protocol):
@@ -427,8 +424,8 @@ def _duration_score(
     return _gaussian_score(math.log(duration), distribution)
 
 
-def _semantic_anchor(features: RowFeatures) -> str | None:
-    """Return a section for a small set of unambiguous receipt phrases."""
+def _semantic_constraint(features: RowFeatures) -> str | None:
+    """Return a merchant-independent section compatibility constraint."""
 
     tokens = set(features.tokens)
     if "subtotal" in tokens:
@@ -437,12 +434,6 @@ def _semantic_anchor(features: RowFeatures) -> str | None:
         return "FOOTER"
     if features.has_amount and tokens & _PAYMENT_CARD_TOKENS:
         return "PAYMENT"
-    if (
-        features.tokens == ("fresh", "value")
-        and features.position <= 0.25
-        and not features.has_amount
-    ):
-        return "STOREFRONT"
     return None
 
 
@@ -473,6 +464,15 @@ def assign_feature_sections(
     sections = _ordered_sections(prior, global_prior)
     if not sections:
         return []
+    section_indexes = {
+        section: index for index, section in enumerate(sections)
+    }
+    constraints = []
+    for row in features:
+        constrained = _semantic_constraint(row)
+        constraints.append(
+            constrained if constrained in section_indexes else None
+        )
     emission_biases = {
         str(section): float(value)
         for section, value in model.get("emission_biases", {}).items()
@@ -493,9 +493,19 @@ def assign_feature_sections(
         for row in features
     ]
     prefixes = [[0.0] for _ in sections]
-    for state in range(len(sections)):
-        for row_scores in emissions:
+    # A segment is feasible only when it agrees with every semantic
+    # compatibility constraint it spans. The DP therefore remains the sole
+    # authority for neighboring states, transitions, and run durations.
+    constraint_mismatches = [[0] for _ in sections]
+    for state, section in enumerate(sections):
+        for row_scores, constrained in zip(
+            emissions, constraints, strict=True
+        ):
             prefixes[state].append(prefixes[state][-1] + row_scores[state])
+            constraint_mismatches[state].append(
+                constraint_mismatches[state][-1]
+                + int(constrained is not None and constrained != section)
+            )
 
     # Each cell stores the best score plus (segment start, previous state).
     paths: list[list[tuple[float, tuple[int, int | None]]]] = []
@@ -504,6 +514,11 @@ def assign_feature_sections(
         for state, section in enumerate(sections):
             candidates: list[tuple[float, tuple[int, int | None]]] = []
             for start in range(end + 1):
+                if (
+                    constraint_mismatches[state][end + 1]
+                    - constraint_mismatches[state][start]
+                ):
+                    continue
                 duration = end - start + 1
                 segment_score = (
                     prefixes[state][end + 1] - prefixes[state][start]
@@ -523,39 +538,48 @@ def assign_feature_sections(
                 for previous_state, source in enumerate(sections):
                     if previous_state == state:
                         continue
+                    previous_score = paths[start - 1][previous_state][0]
+                    if not math.isfinite(previous_score):
+                        continue
                     transition = _transition(
                         prior, global_prior, source, section
                     )
                     candidates.append(
                         (
-                            paths[start - 1][previous_state][0]
+                            previous_score
                             + math.log(max(transition, _EPSILON))
                             + segment_score,
                             (start, previous_state),
                         )
                     )
-            current.append(
-                max(
-                    candidates,
-                    key=lambda candidate: (
-                        candidate[0],
-                        -candidate[1][0],
-                        -(candidate[1][1] or 0),
-                    ),
+            if candidates:
+                current.append(
+                    max(
+                        candidates,
+                        key=lambda candidate: (
+                            candidate[0],
+                            -candidate[1][0],
+                            -(candidate[1][1] or 0),
+                        ),
+                    )
                 )
-            )
+            else:
+                current.append((-math.inf, (0, None)))
         paths.append(current)
 
-    state = max(
-        range(len(sections)),
-        key=lambda index: paths[-1][index][0]
+    terminal_scores = [
+        paths[-1][index][0]
         + math.log(
             max(
                 _transition(prior, global_prior, sections[index], "<END>"),
                 _EPSILON,
             )
-        ),
-    )
+        )
+        for index in range(len(sections))
+    ]
+    state = max(range(len(sections)), key=terminal_scores.__getitem__)
+    if not math.isfinite(terminal_scores[state]):
+        raise ValueError("no section path satisfies the semantic constraints")
     states = [0] * len(features)
     end = len(features) - 1
     while end >= 0:
@@ -566,25 +590,6 @@ def assign_feature_sections(
             break
         end = start - 1
         state = prior_state
-    section_indexes = {section: index for index, section in enumerate(sections)}
-    for index, row in enumerate(features):
-        anchored = _semantic_anchor(row)
-        if anchored in section_indexes:
-            states[index] = section_indexes[anchored]
-            continue
-        local_state = max(
-            range(len(sections)), key=lambda candidate: emissions[index][candidate]
-        )
-        if (
-            sections[local_state] == "ITEMS"
-            and sections[states[index]] == "PAYMENT"
-            and row.has_amount
-            and row.position <= 0.35
-            and not set(row.tokens) & _PAYMENT_ACTION_TOKENS
-            and emissions[index][local_state] - emissions[index][states[index]]
-            >= _LOCAL_OVERRIDE_MARGIN
-        ):
-            states[index] = local_state
     return [
         RowAssignment(
             row=row.row,
