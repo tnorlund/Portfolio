@@ -72,7 +72,12 @@ live.
 Downloaded to the Mac:
 - the original image (`OCRJob.s3_bucket/s3_key`, raw bucket);
 - the LayoutLM CoreML bundle (`LAYOUTLM_MODEL_S3_BUCKET/KEY`, cached locally
-  via `AWS/ModelDownloader.swift`; content-hash based cache).
+  via `AWS/ModelDownloader.swift`). The cache is **presence-based**
+  (`isModelCached` only checks that the required files exist at the fixed
+  cache path): republishing a different bundle under the same S3 key does
+  NOT invalidate a worker's cache — the worker keeps running the stale
+  model until its cache directory is cleared. Deploy new models under new
+  keys, or clear `layoutLMLocalCachePath` on the workers.
 
 Returned to AWS by the Swift worker:
 - warped receipt crops → `raw-bucket/receipts/{image_id}/{file}` (S3);
@@ -231,8 +236,12 @@ unchanged; every addition is read-only observability.
 
 ### Still proposed (not implemented)
 
-1. **LayoutLM model version.** The worker knows the bundle S3 key and the
-   ModelDownloader computes a content hash for caching. Emit
+1. **LayoutLM model version.** The worker knows the bundle S3 key, but no
+   content hash exists anywhere today (the ModelDownloader cache is
+   presence-based; see "Artifacts crossing the boundary"). Prerequisite:
+   compute a bundle hash at download time (SHA-256 of the fetched archive,
+   or record the S3 ETag/version-id) — which also enables fixing the
+   stale-cache problem. Then emit
    `{"layoutlm_model": {"s3_key": ..., "bundle_hash": ...}}` in the OCR
    JSON top level and stamp labels with
    `label_proposed_by="auto-inference:<short-hash>"`. Safe today: nothing

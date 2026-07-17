@@ -393,9 +393,9 @@ def test_lines_worker_tags_reconstructed_rows_without_changing_behavior(
 
 def test_model_source_literal_is_pinned():
     """The deterministic pipeline's identity is the exact string
-    "upload-determinism-v1". The verifier, the stats filter, and the priors
-    trainer all exact-match it, so changing the constant (or suffixing values)
-    silently breaks them. Pin the literal itself."""
+    "upload-determinism-v1". The verifier and the verification-stats filter
+    exact-match it, so changing the constant (or suffixing values) silently
+    breaks them. Pin the literal itself."""
     assert MODEL_SOURCE == "upload-determinism-v1"
 
 
