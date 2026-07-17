@@ -78,15 +78,23 @@ Returned to AWS by the Swift worker:
 - warped receipt crops → `raw-bucket/receipts/{image_id}/{file}` (S3);
 - one OCR JSON per image → `raw-bucket/ocr_results/{image}-{job}.json` (S3);
 - `ReceiptWordLabel` items (PENDING, `label_proposed_by="auto-inference"`)
-  written directly to DynamoDB;
+  written directly to DynamoDB. **This write is best-effort**: a failure of
+  `addReceiptWordLabels` is logged (`failed_upload_labels`) and the worker
+  still sends the results message, completes the job, and deletes the SQS
+  message — so a transient DynamoDB failure permanently drops that
+  receipt's model labels (the words pipeline then runs with whatever
+  labels exist, possibly none). A durable retry/reconciliation path is
+  listed under follow-ups;
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:
   `{image_id, job_id, s3_key, s3_bucket, receipt_count}`.
 
 ## The OCR JSON schema (Swift → Python)
 
-Swift encodes with `JSONEncoder.keyEncodingStrategy = .convertToSnakeCase`
-(`VisionOCREngine.swift`). Top level:
+Swift encodes with the shared `makeOCRResultEncoder()` factory
+(`VisionOCREngine.swift`: `.convertToSnakeCase` + pretty-printing), used by
+both production write sites and the contract tests so encoder settings
+cannot silently diverge. Top level:
 
 ```jsonc
 {
@@ -190,7 +198,7 @@ later reads the labels back from DynamoDB.
 
 | Contract point | Test |
 |---|---|
-| Swift output schema (snake_case keys, prediction/word alignment, SQS message shape, PENDING labels) | `receipt_ocr_swift/Tests/ReceiptOCRCoreTests/OCRResultContractTests.swift` |
+| Swift output schema (snake_case keys, production `ImageResult` envelope via the shared encoder, prediction/word alignment, SQS message shape, PENDING labels) | `receipt_ocr_swift/Tests/ReceiptOCRCoreTests/OCRResultContractTests.swift` |
 | Python parse of the same fixture (detection rule, id gaps, barcodes, label vocabulary parity, rows persisted before embeddings, handler ordering) | `infra/upload_images/container_ocr/handler/tests/test_swift_payload_contract.py` |
 | Lines-pipeline ordering + section metadata reaching the row payload; additive PENDING persistence; annotate-only verification | `receipt_upload/tests/test_section_pipeline_contract.py` |
 
@@ -260,9 +268,12 @@ match `ReceiptSection.model_source` exactly:
   (verification-stats block) — filters on `model_source == MODEL_SOURCE`
   when counting AGREED/DISAGREED/ABSTAINED (was a hardcoded literal;
   now uses the constant, still an exact match).
-- `scripts/build_section_order_priors.py:254` — stamps/selects the
-  training corpus for the priors by this literal; a suffix would silently
-  shrink future training data.
+- `scripts/build_section_order_priors.py:254` — stamps the literal into
+  the trained artifact's output metadata. Note the training corpus itself
+  is selected by `validation_status == VALID` regardless of
+  `model_source`; the literal here is provenance stamping only, so a
+  future provenance field changes what gets *recorded*, not what gets
+  *trained on*.
 - `scripts/remap_sections.py` — *appends* `+remap-v1` to `model_source`
   on remapped sections. This is a deliberate pre-existing exception: it
   intentionally takes remapped sections OUT of the exact-match population
@@ -357,6 +368,11 @@ Chroma writes, and infrastructure are unchanged by the current task.
 - The words pipeline writes word labels to Chroma metadata concurrently
   with the lines pipeline; word-level labels and row-level sections are
   only mutually consistent after compaction.
+- The Swift worker's ReceiptWordLabel write is best-effort (see above): a
+  transient DynamoDB failure loses that receipt's LayoutLM labels with only
+  a `failed_upload_labels` warning. Follow-up: fail the job before sending
+  the results message (so SQS retries), or add a reconciliation sweep that
+  re-derives labels from the persisted OCR JSON's `layoutlm_predictions`.
 - Latent scoping bug in `_run_lines_pipeline_worker`: the tracing block's
   late `import logging` statements make `logging` a local of the outer
   worker, so nested `_do_lines_work` code referencing bare `logging` raises

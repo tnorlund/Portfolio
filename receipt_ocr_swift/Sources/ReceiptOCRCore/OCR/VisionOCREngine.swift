@@ -176,8 +176,10 @@ public struct Barcode: Codable {
     }
 }
 
-/// Enhanced OCR result including classification, clustering, and geometry metadata
-private struct ImageResult: Codable {
+/// Enhanced OCR result including classification, clustering, and geometry metadata.
+/// Internal (not private) so contract tests can encode the REAL result envelope
+/// with the REAL encoder configuration (`makeOCRResultEncoder`).
+struct ImageResult: Codable {
     let imagePath: String
     let lines: [Line]
     let classification: ClassificationResult?
@@ -220,6 +222,16 @@ private struct ImageResult: Codable {
         try container.encodeIfPresent(receipts, forKey: .receipts)
         try container.encodeIfPresent(barcodes, forKey: .barcodes)
     }
+}
+
+/// The one true encoder for OCR result JSON. Both write sites and the contract
+/// tests must use this so a settings change (key strategy, formatting) cannot
+/// silently diverge from what the Python parser expects.
+func makeOCRResultEncoder() -> JSONEncoder {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted]
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    return encoder
 }
 
 private struct WordMapping {
@@ -719,9 +731,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                 receipts: receiptOutputs,
                 barcodes: imageBarcodes.isEmpty ? nil : imageBarcodes
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted]
-            encoder.keyEncodingStrategy = .convertToSnakeCase
+            let encoder = makeOCRResultEncoder()
             let jsonData = try encoder.encode(result)
             let outName = imageURL.deletingPathExtension().lastPathComponent + ".json"
             let outURL = outputDirectory.appendingPathComponent(outName)
@@ -970,9 +980,7 @@ public struct VisionOCREngine: OCREngineProtocol {
             receipts: receiptOutputs,
             barcodes: imageBarcodes.isEmpty ? nil : imageBarcodes
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let encoder = makeOCRResultEncoder()
         let jsonData = try encoder.encode(result)
         let outName = imageURL.deletingPathExtension().lastPathComponent + ".json"
         let outURL = outputDirectory.appendingPathComponent(outName)

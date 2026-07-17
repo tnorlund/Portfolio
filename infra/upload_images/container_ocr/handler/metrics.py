@@ -147,6 +147,7 @@ class EmbeddedMetricsFormatter:
         metrics_dict: Dict[str, Any],
         dimensions: Optional[Dict[str, str]] = None,
         properties: Optional[Dict[str, Any]] = None,
+        units: Optional[Dict[str, str]] = None,
     ) -> str:
         """Create an EMF-formatted log entry.
 
@@ -154,6 +155,8 @@ class EmbeddedMetricsFormatter:
             metrics_dict: Dictionary of metric names and values
             dimensions: Metric dimensions
             properties: Additional log properties
+            units: Optional per-metric CloudWatch unit overrides
+                (defaults to "Count" for metrics not listed)
 
         Returns:
             JSON string in EMF format
@@ -161,6 +164,7 @@ class EmbeddedMetricsFormatter:
         if not self.enabled:
             return ""
 
+        units = units or {}
         emf_log: Dict[str, Any] = {
             "_aws": {
                 "Timestamp": int(
@@ -173,7 +177,7 @@ class EmbeddedMetricsFormatter:
                             [list(dimensions.keys())] if dimensions else [[]]
                         ),
                         "Metrics": [
-                            {"Name": name, "Unit": "Count"}
+                            {"Name": name, "Unit": units.get(name, "Count")}
                             for name in metrics_dict.keys()
                         ],
                     }
@@ -202,6 +206,7 @@ class EmbeddedMetricsFormatter:
         metrics_dict: Dict[str, Any],
         dimensions: Optional[Dict[str, str]] = None,
         properties: Optional[Dict[str, Any]] = None,
+        units: Optional[Dict[str, str]] = None,
     ) -> None:
         """Log metrics using EMF format to stdout (CloudWatch will parse automatically).
 
@@ -209,11 +214,14 @@ class EmbeddedMetricsFormatter:
             metrics_dict: Dictionary of metric names and values
             dimensions: Metric dimensions
             properties: Additional log properties
+            units: Optional per-metric CloudWatch unit overrides
         """
         if not self.enabled:
             return
 
-        emf_log = self.create_metric_log(metrics_dict, dimensions, properties)
+        emf_log = self.create_metric_log(
+            metrics_dict, dimensions, properties, units=units
+        )
         print(
             emf_log, flush=True
         )  # CloudWatch automatically parses EMF from stdout

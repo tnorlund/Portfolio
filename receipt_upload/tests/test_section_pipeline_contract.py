@@ -120,14 +120,19 @@ class _FakeChromaClient:
 class _FakeDynamo:
     """Just the surface the lines worker touches."""
 
-    def __init__(self, rows: list[ReceiptRow]) -> None:
+    def __init__(
+        self,
+        rows: list[ReceiptRow],
+        sections: list[ReceiptSection] | None = None,
+    ) -> None:
         self.rows = rows
+        self.sections = list(sections or [])
 
     def get_receipt_rows_from_receipt(self, _image_id, _receipt_id):
         return list(self.rows)
 
     def get_receipt_sections_from_receipt(self, _image_id, _receipt_id):
-        return []
+        return list(self.sections)
 
 
 def test_lines_worker_orders_merchant_sections_verification_payload(
@@ -151,10 +156,36 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
 
     lines, words = _receipt_fixture()
     persisted_rows = build_receipt_rows(lines, words, created_at=_CREATED_AT)
-    fake_dynamo = _FakeDynamo(persisted_rows)
+
+    def _verified_section(section_type, model_source, verification_status):
+        return ReceiptSection(
+            image_id=_IMAGE_ID,
+            receipt_id=1,
+            section_type=section_type,
+            line_ids=[1],
+            row_ids=[1],
+            confidence=0.9,
+            validation_status=ValidationStatus.PENDING.value,
+            model_source=model_source,
+            created_at=_CREATED_AT,
+            verification_status=verification_status,
+        )
+
+    # Seed exact, suffixed, human, and unverified sources so the stats filter
+    # is proven to count ONLY the exact "upload-determinism-v1" literal.
+    seeded_sections = [
+        _verified_section("STOREFRONT", "upload-determinism-v1", "AGREED"),
+        _verified_section(
+            "ITEMS", "upload-determinism-v1+remap-v1", "DISAGREED"
+        ),
+        _verified_section("TOTAL_LINE", "human-qa", "DISAGREED"),
+        _verified_section("FOOTER", "upload-determinism-v1", None),
+    ]
+    fake_dynamo = _FakeDynamo(persisted_rows, sections=seeded_sections)
     fake_client = _FakeChromaClient()
     calls: list[str] = []
     section_by_line = {1: "STOREFRONT", 2: "ITEMS", 3: "TOTAL_LINE"}
+    captured_payload: dict = {}
 
     class _FakeResolver:
         def __init__(self, **_kwargs) -> None:
@@ -180,23 +211,22 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
         assert len(rows) == len(row_embeddings)
         return []
 
-    def _fake_build_row_payload(
-        records, all_words, all_labels=None, merchant_name=None,
-        section_by_line=None,
-    ):
+    real_build_row_payload = records_module.build_row_payload
+
+    def _spy_build_row_payload(*args, **kwargs):
         calls.append("build_row_payload")
         # The deterministic line->section map from assignment must reach the
-        # Chroma row metadata builder.
-        assert section_by_line == {1: "STOREFRONT", 2: "ITEMS", 3: "TOTAL_LINE"}
-        return {
-            "ids": ["row-1"],
-            "embeddings": [[0.0]],
-            "documents": ["doc"],
-            "metadatas": [{}],
+        # REAL Chroma row metadata builder (no fake payload here).
+        assert kwargs.get("section_by_line") == {
+            1: "STOREFRONT",
+            2: "ITEMS",
+            3: "TOTAL_LINE",
         }
+        return real_build_row_payload(*args, **kwargs)
 
-    def _fake_upload_lines_delta(**_kwargs) -> str:
+    def _fake_upload_lines_delta(**kwargs) -> str:
         calls.append("upload_lines_delta")
+        captured_payload.update(kwargs["line_payload"])
         return "lines/delta/prefix"
 
     monkeypatch.setattr(ep, "_make_read_client", lambda *_a: fake_client)
@@ -212,7 +242,7 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
         verifier_module, "verify_receipt_sections", _fake_verify
     )
     monkeypatch.setattr(
-        records_module, "build_row_payload", _fake_build_row_payload
+        records_module, "build_row_payload", _spy_build_row_payload
     )
     monkeypatch.setattr(boto3, "client", lambda *_a, **_k: object())
 
@@ -247,6 +277,21 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
     assert fake_client.upserts == ["lines"]
     assert fake_client.closed is True
 
+    # The REAL row payload handed to the delta upload carries the section
+    # metadata from assignment, keyed per visual row.
+    assert captured_payload["ids"], "upload received an empty payload"
+    section_by_row = {
+        int(chroma_id.rsplit("#", 1)[1]): metadata.get("section_label")
+        for chroma_id, metadata in zip(
+            captured_payload["ids"], captured_payload["metadatas"]
+        )
+    }
+    assert section_by_row == {
+        1: "STOREFRONT",
+        2: "ITEMS",
+        3: "TOTAL_LINE",
+    }
+
     # Metrics-only observability keys surface in the worker result: row
     # provenance (persisted D1 rows here), section-proposal stats, and the
     # verification outcome counters.
@@ -255,7 +300,9 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
     assert result["section_proposed_count"] == 0  # fake assign created none
     assert result["section_mean_confidence"] is None
     assert result["verified_row_count"] == 0
-    assert result["verification_agreed_count"] == 0
+    # Seeded sources: exact-AGREED counts; suffixed(+remap-v1) and human
+    # DISAGREED sections and the unverified exact section do NOT.
+    assert result["verification_agreed_count"] == 1
     assert result["verification_disagreement_count"] == 0
     assert result["verification_abstained_count"] == 0
 
@@ -342,6 +389,44 @@ def test_lines_worker_tags_reconstructed_rows_without_changing_behavior(
     assert result["row_count"] == len(expected_rows)
     # Reconstruction preserves row identities exactly.
     assert assigned_row_ids == [row.row_id for row in expected_rows]
+
+
+def test_model_source_literal_is_pinned():
+    """The deterministic pipeline's identity is the exact string
+    "upload-determinism-v1". The verifier, the stats filter, and the priors
+    trainer all exact-match it, so changing the constant (or suffixing values)
+    silently breaks them. Pin the literal itself."""
+    assert MODEL_SOURCE == "upload-determinism-v1"
+
+
+def test_visual_row_identity_is_leftmost_line():
+    """A multi-line visual row's row_id must be the LEFTMOST line's id: the
+    lines worker joins persisted rows to RowEmbeddingRecords via
+    rows_by_id[record.primary_line.line_id], and primary_line is leftmost.
+    The right-hand line is listed first to prove ordering is by geometry,
+    not input order."""
+    left = ReceiptLine(
+        image_id=_IMAGE_ID,
+        receipt_id=1,
+        line_id=9,
+        text="ORGANIC BANANAS",
+        confidence=0.95,
+        **_geometry(0.05, 0.60, 0.40, 0.03),
+    )
+    right = ReceiptLine(
+        image_id=_IMAGE_ID,
+        receipt_id=1,
+        line_id=7,
+        text="3.99",
+        confidence=0.95,
+        **_geometry(0.70, 0.60, 0.20, 0.03),
+    )
+
+    rows = build_receipt_rows([right, left], [], created_at=_CREATED_AT)
+
+    assert len(rows) == 1
+    assert rows[0].line_ids == [9, 7]  # sorted left-to-right
+    assert rows[0].row_id == 9  # leftmost line, NOT first-listed (7)
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +536,9 @@ def test_concurrent_add_of_same_type_is_swallowed():
 
 
 class _VerifierStore:
-    def __init__(self, by_receipt: dict[tuple[str, int], list[ReceiptSection]]):
+    def __init__(
+        self, by_receipt: dict[tuple[str, int], list[ReceiptSection]]
+    ):
         self.by_receipt = {
             key: list(sections) for key, sections in by_receipt.items()
         }
@@ -597,9 +684,7 @@ def test_verifier_annotates_without_changing_type_or_membership():
         # Disagreement leaves the proposal PENDING (it never promotes or
         # replaces); agreement also stays PENDING — promotion is a human/QA
         # decision downstream.
-        assert (
-            annotated.validation_status == ValidationStatus.PENDING.value
-        )
+        assert annotated.validation_status == ValidationStatus.PENDING.value
 
 
 def test_verifier_never_demotes_human_valid_sections():

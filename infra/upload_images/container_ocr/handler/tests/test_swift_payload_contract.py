@@ -110,9 +110,7 @@ def test_receipt_lines_words_letters_parse(parser, swift_payload):
     assert lines[0].text == "SPROUTS FARMERS MARKET"
 
     # Line 3 has an empty-text word at position 2 — skipped, id consumed.
-    line3_word_ids = sorted(
-        w.word_id for w in words if w.line_id == 3
-    )
+    line3_word_ids = sorted(w.word_id for w in words if w.line_id == 3)
     assert line3_word_ids == [1, 3]
 
     # Geometry and confidence survive the mapping.
@@ -441,12 +439,15 @@ class _MetricsRecorder:
     def __init__(self):
         self.calls = []
 
-    def log_metrics(self, metrics, dimensions=None, properties=None):
+    def log_metrics(
+        self, metrics, dimensions=None, properties=None, units=None
+    ):
         self.calls.append(
             {
                 "metrics": metrics,
                 "dimensions": dimensions,
                 "properties": properties,
+                "units": units,
             }
         )
 
@@ -486,6 +487,10 @@ def test_section_observability_emits_all_counters(monkeypatch):
     assert properties["image_id"] == IMAGE_ID
     assert properties["receipt_id"] == 1
     assert properties["row_source"] == "persisted"
+    # The 0-1 confidence ratio must not be registered as a Count.
+    assert recorder.calls[0]["units"] == {
+        "UploadLambdaSectionMeanConfidence": "None"
+    }
 
 
 def test_section_observability_flags_reconstructed_rows(monkeypatch):

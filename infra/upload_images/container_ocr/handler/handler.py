@@ -266,6 +266,8 @@ def _emit_section_observability(
                     "verification_error"
                 ),
             },
+            # Mean confidence is a 0-1 ratio, not a count.
+            units={"UploadLambdaSectionMeanConfidence": "None"},
         )
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception(
@@ -302,6 +304,7 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     """
     import boto3
     from receipt_dynamo import DynamoClient
+
     from receipt_upload.label_validation.llm_runner import apply_async_payload
 
     body = json.loads(record["body"])

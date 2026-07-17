@@ -168,6 +168,141 @@ final class OCRResultContractTests: XCTestCase {
         XCTAssertEqual(json["image_height"] as? Int, 4032)
     }
 
+    // MARK: - Production envelope: the REAL ImageResult + REAL encoder must
+    // still produce every key the fixture (and the Python parser) relies on.
+
+    private func makeSampleLine() -> Line {
+        let letter = Letter(
+            text: "S",
+            boundingBox: NormalizedRect(x: 0.08, y: 0.9, width: 0.02, height: 0.03),
+            topLeft: CodablePoint(x: 0.08, y: 0.93),
+            topRight: CodablePoint(x: 0.10, y: 0.93),
+            bottomLeft: CodablePoint(x: 0.08, y: 0.9),
+            bottomRight: CodablePoint(x: 0.10, y: 0.9),
+            angleDegrees: 0, angleRadians: 0, confidence: 0.98
+        )
+        let word = Word(
+            text: "3.99",
+            boundingBox: NormalizedRect(x: 0.7, y: 0.9, width: 0.1, height: 0.03),
+            topLeft: CodablePoint(x: 0.7, y: 0.93),
+            topRight: CodablePoint(x: 0.8, y: 0.93),
+            bottomLeft: CodablePoint(x: 0.7, y: 0.9),
+            bottomRight: CodablePoint(x: 0.8, y: 0.9),
+            angleDegrees: 0, angleRadians: 0, confidence: 0.97,
+            letters: [letter],
+            extractedData: ExtractedData(type: "currency", value: "3.99")
+        )
+        return Line(
+            text: "TOTAL 3.99",
+            boundingBox: NormalizedRect(x: 0.1, y: 0.9, width: 0.7, height: 0.03),
+            topLeft: CodablePoint(x: 0.1, y: 0.93),
+            topRight: CodablePoint(x: 0.8, y: 0.93),
+            bottomLeft: CodablePoint(x: 0.1, y: 0.9),
+            bottomRight: CodablePoint(x: 0.8, y: 0.9),
+            angleDegrees: 0, angleRadians: 0, confidence: 0.96,
+            words: [word]
+        )
+    }
+
+    func test_production_image_result_covers_fixture_key_contract() throws {
+        let line = makeSampleLine()
+        let receipt = ReceiptOutput(
+            clusterId: 1,
+            bounds: ReceiptBounds(
+                topLeft: CodablePoint(x: 0.2, y: 0.8),
+                topRight: CodablePoint(x: 0.8, y: 0.8),
+                bottomRight: CodablePoint(x: 0.8, y: 0.2),
+                bottomLeft: CodablePoint(x: 0.2, y: 0.2)
+            ),
+            warpedWidth: 1000,
+            warpedHeight: 2400,
+            s3Key: "IMG_X_receipt_1.png",
+            lineIndices: [0],
+            lines: [line],
+            layoutlmPredictions: [LinePrediction(
+                tokens: ["TOTAL", "3.99"],
+                labels: ["O", "B-GRAND_TOTAL"],
+                confidences: [0.5, 0.9],
+                allProbabilities: nil
+            )],
+            barcodes: [Barcode(
+                payload: "0123456789012",
+                symbology: "EAN13",
+                boundingBox: NormalizedRect(x: 0.3, y: 0.1, width: 0.4, height: 0.08),
+                topLeft: CodablePoint(x: 0.3, y: 0.18),
+                topRight: CodablePoint(x: 0.7, y: 0.18),
+                bottomLeft: CodablePoint(x: 0.3, y: 0.1),
+                bottomRight: CodablePoint(x: 0.7, y: 0.1),
+                confidence: 0.9
+            )]
+        )
+        let classification = ClassificationResult(
+            imageType: .photo,
+            margins: ImageMargins(left: 0.18, right: 0.2, top: 0.12, bottom: 0.15),
+            scanDistance: 0.61,
+            photoDistance: 0.04,
+            imageWidth: 3024,
+            imageHeight: 4032
+        )
+        // The REAL production envelope type and the REAL shared encoder —
+        // exactly what VisionOCREngine writes to ocr_results/*.json.
+        let result = ImageResult(
+            imagePath: "/tmp/contract.png",
+            lines: [line],
+            classification: classification,
+            clustering: nil,
+            receipts: [receipt],
+            barcodes: []
+        )
+        let data = try makeOCRResultEncoder().encode(result)
+        let encoded = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let fixture = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: Self.fixtureURL))
+                as? [String: Any]
+        )
+
+        // Top level: every fixture key must still be emitted; the local
+        // image path must never leak into the payload.
+        let missingTop = Set(fixture.keys).subtracting(encoded.keys)
+        XCTAssertEqual(missingTop, [], "fixture top-level keys missing: \(missingTop)")
+        XCTAssertNil(encoded["image_path"])
+        XCTAssertNil(encoded["imagePath"])
+
+        // Receipt level.
+        let encodedReceipt = try XCTUnwrap(
+            (encoded["receipts"] as? [[String: Any]])?.first
+        )
+        let fixtureReceipt = try XCTUnwrap(
+            (fixture["receipts"] as? [[String: Any]])?.first
+        )
+        let missingReceipt = Set(fixtureReceipt.keys).subtracting(encodedReceipt.keys)
+        XCTAssertEqual(missingReceipt, [], "fixture receipt keys missing: \(missingReceipt)")
+
+        // Classification level.
+        let encodedClass = try XCTUnwrap(encoded["classification"] as? [String: Any])
+        let fixtureClass = try XCTUnwrap(fixture["classification"] as? [String: Any])
+        XCTAssertEqual(Set(fixtureClass.keys).subtracting(encodedClass.keys), [])
+
+        // Line level (first line of the receipt) + word level.
+        let encodedLine = try XCTUnwrap(
+            (encodedReceipt["lines"] as? [[String: Any]])?.first
+        )
+        let fixtureLine = try XCTUnwrap(
+            (fixtureReceipt["lines"] as? [[String: Any]])?.first
+        )
+        XCTAssertEqual(Set(fixtureLine.keys).subtracting(encodedLine.keys), [])
+        let encodedWord = try XCTUnwrap(
+            (encodedLine["words"] as? [[String: Any]])?.first
+        )
+        for key in ["text", "bounding_box", "top_left", "top_right",
+                    "bottom_left", "bottom_right", "angle_degrees",
+                    "angle_radians", "confidence", "letters", "extracted_data"] {
+            XCTAssertNotNil(encodedWord[key], "word key missing: \(key)")
+        }
+    }
+
     // MARK: - Worker: the shared fixture drives the full upload/handoff path.
 
     private final class SQSMock: SQSClientProtocol {
