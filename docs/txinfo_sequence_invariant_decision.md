@@ -139,3 +139,195 @@ Pre-register once:
 
 If the one evaluation fails, report the failure. Do not tune and retest on the
 same cohort.
+
+## Independent benchmark synthesis
+
+Claude completed the independent audit in
+`/Users/tnorlund/Portfolio_artifacts/txinfo-recall-2026-07-17/independent_benchmark_claude/`.
+The audit gives an explicit **PASS on all five frozen gates**, but expressly
+does not recommend promotion. The performance result applies only to frozen
+commit `4190a878966784f0ccd2301669912e41d948dddc` and its post-decoder
+overrides; it does not measure the experimental correction.
+
+### Independent provenance verification
+
+The supplied identities were checked directly after the report became final:
+
+| Item | Verified value |
+|---|---|
+| Frozen candidate HEAD | `4190a878966784f0ccd2301669912e41d948dddc` |
+| Frozen priors SHA-256 | `a10752fd037d9d1951b5195f06253e50b7116a3c39c7001b128802023ef613c4` |
+| Holdout manifest file SHA-256 | `21049bb1a91e1fd6fd569a9776ae090cf9984acf4d6d592fe4d8558ee7125020` |
+| Holdout manifest canonical SHA-256 | `7f907afe08b146a76d932206ca9540ecc5de6273f451415fac0bec62eceea02c` |
+| Training exclusions file SHA-256 | `7cae46850db02cfd928063fecde278750af5aa0c682082f46282732d6cb39b17` |
+| Training exclusions canonical SHA-256 | `4c06cd83a56f51c0142803c488628a930013bb65b16c0ebf099e813741ab7854` |
+| Excluded receipts recorded in priors | 132 |
+| Independent evaluation SHA-256 | `342b77c75d4d0c08ebd3055c437a4fab04c86f62737c97220fa9e8d288f32f9a` |
+
+The priors embed the verified canonical exclusion hash and record 132 excluded
+receipts. Claude's detached audit worktree and the original frozen worktree
+both remained at `4190a8789` with empty porcelain status. `EVALUATION.json` and
+`evaluator_stdout.json` are byte-identical copies of the same output. The audit
+contains one evaluator artifact, an empty evaluator error stream, and Claude's
+explicit statement that the evaluator exited successfully on its only run.
+The report-recorded command, with its declared paths expanded, was:
+
+```bash
+cd /private/tmp/claude-501/-Users-tnorlund-vegas-26/68339a82-9f05-4b21-8a50-b62889043cba/scratchpad/txinfo_v4_audit
+PYTHONDONTWRITEBYTECODE=1 /Users/tnorlund/Portfolio/.venv/bin/python \
+  scripts/evaluate_section_assignment.py \
+  --targets /Users/tnorlund/Portfolio_artifacts/txinfo-recall-2026-07-17/independent_benchmark_claude/inputs/HOLDOUT_MANIFEST.json \
+  --table ReceiptsTable-dc5be22 \
+  --output /Users/tnorlund/Portfolio_artifacts/txinfo-recall-2026-07-17/independent_benchmark_claude/EVALUATION.json
+```
+
+This confirms exactly one **Claude audit** evaluation and no candidate change.
+It does not mean the cohort received only one prediction pass over its
+lifetime. Before freeze, development used the same 20 receipts for a seven
+trial `txinfo_bias` calibration sweep and a developer final evaluation. The
+selected bias was `0.0`, so the artifact remained numerically unchanged, but
+the decision to freeze it was made after seeing the cohort. The independent
+run therefore confirms identity and determinism, not fresh generalization.
+
+### Frozen v4 benchmark performance
+
+| Gate | Preregistered threshold | Frozen v4 result | Outcome |
+|---|---:|---:|---|
+| Overall QA row agreement | >= 0.80 | 349/406 = **0.8596** | PASS |
+| ITEMS recall | >= 0.70 | 81/88 = **0.9205** | PASS |
+| TRANSACTION_INFO recall | >= 0.70 | 18/22 = **0.8182** | PASS |
+| TRANSACTION_INFO precision | >= 0.70 | 18/23 = **0.7826** | PASS |
+| Determinism and frozen goldens | green | 10/10 pass | PASS |
+
+The supplemental Wilson 95% intervals were `[0.822, 0.890]` for overall
+agreement, `[0.845, 0.961]` for ITEMS recall, `[0.615, 0.927]` for TXINFO
+recall, and `[0.581, 0.903]` for TXINFO precision. Both TXINFO lower bounds are
+below the 0.70 gates. The point estimates pass; the small TXINFO denominators
+do not resolve whether population precision or recall clears 0.70.
+
+For context, the available baseline-versus-v4 reruns are listed below. They
+are **retrospective development evidence, not independent confirmation**:
+
+| Spent cohort | Baseline agreement | v4 agreement | v4 TXINFO recall / precision |
+|---|---:|---:|---:|
+| Original blind 20 (240 VALID rows) | 0.8625 | 0.8000 | n/a |
+| Pinned goldens 2 (48 rows) | 0.7917 | 0.8125 | n/a |
+| Fresh holdout 1 (593 rows) | 0.8516 | 0.8499 | 0.821 / 0.744 |
+| Fresh holdout 2 (609 rows) | 0.8571 | not stored | not stored |
+| Fresh holdout 3 (553 rows) | 0.8246 | not stored | not stored |
+| `precision_calibration_v1` (406 rows) | 0.8744 | 0.8596 | 0.818 / 0.783 |
+
+The evidence suggests that v4 adds TXINFO coverage while sometimes reducing
+overall agreement and ITEMS recall. Missing v4 reruns must remain missing; no
+new evaluation on these spent cohorts should be created to fill the table.
+
+### Architectural validity and correction status
+
+Frozen v4 is **not architecturally valid as one authoritative semi-Markov
+decode**. Claude independently observed three anchor flips on the calibration
+cohort: section runs increased from 255 to 260, single-row islands increased
+from 119 to 123, and receipts with split section types increased from 18 to
+19. One anchor created an isolated PAYMENT row inside ITEMS and another split
+a SURVEY type into disjoint runs. These post-decoder transitions and durations
+were not scored by the DP. The pure decoder also permits repeated section
+types, so authoritative decoding does not by itself guarantee one contiguous
+run per type; it guarantees that every returned transition and duration came
+from one scored path.
+
+Experimental correction `2cb6f4ee26b1a17002f89c7791171546d0042fa9`
+is a direct child of the frozen commit. It removes post-decoder state mutation,
+keeps the DP path authoritative, removes the merchant phrase hack and tuned
+local override, and expresses the remaining generic semantic rules as scored
+feasibility constraints before decoding. Seventeen focused, existing, and
+golden tests passed, including synthetic demonstrations of the frozen
+violations. No protected receipt was used to construct or tune those tests.
+
+The correction has **no untouched performance evaluation**. Its tests prove
+the implementation-level invariant and deterministic fallback behavior; they
+do not prove QA accuracy, merchant-disjoint generalization, semantic-rule
+validity across production, confidence calibration, or acceptable long-run
+fragmentation.
+
+## Final decision
+
+1. **Do not promote frozen v4 (`4190a8789`).** Although all point-estimate
+   gates pass, the candidate returns post-decoder-mutated labels that violate
+   its claimed path semantics, and its gate cohort was viewed during a
+   seven-trial calibration sweep before freeze. The independent audit is a
+   strong reproducibility check, not an untouched promotion test.
+2. **Use the correction (`2cb6f4ee2`) as the sole shadow candidate.** It is
+   suitable for review and for a read-only, non-production shadow path. Do not
+   merge it into a production-affecting branch or deploy it until the untouched
+   evaluation below passes. If the target branch auto-deploys, leave the PR
+   unmerged while shadow evidence is collected.
+3. **Do not adapt either candidate further.** The correction must retain its
+   current code and `a10752fd...` priors. A failed future evaluation is a
+   reported failure, not permission to tune and recycle the cohort.
+
+The smallest safe next step is a preregistered shadow evaluation on receipts
+ingested after `2cb6f4ee2` was frozen. Produce predictions read-only before QA
+labels exist, collect a fixed window, then score exactly once after labels are
+locked. Prefer enough receipts to obtain at least 60 TXINFO truth rows so the
+TXINFO gates have useful resolution. If future shadowing is unavailable, use
+one truly untouched merchant-disjoint cohort whose merchants have zero
+training receipts and whose receipts have never influenced labels, fixtures,
+rules, or model choices.
+
+### Branch and PR integration order
+
+1. Preserve `4190a8789` as an immutable benchmark reference; do not open a
+   promotion PR for it.
+2. Review `codex/txinfo-sequence-invariants` at `2cb6f4ee2` plus this separate
+   documentation commit. Do not rebase, regenerate priors, or refresh fixtures
+   as part of review.
+3. Open the correction PR as draft. Its allowed disposition is review plus
+   shadow-only integration; production merge remains blocked.
+4. Freeze the exact reviewed correction commit and unchanged priors hash in a
+   shadow preregistration. Run it read-only on future receipts; do not write
+   labels or external data from model predictions.
+5. After the one locked evaluation, either report failure and stop or open a
+   separate production-promotion PR containing the result and explicit
+   approval. Never fold metric-driven fixes into that promotion PR.
+
+### Draft PR description
+
+**Title:** Keep semantic section constraints inside the semi-Markov decoder
+
+**Summary**
+
+- Makes the dynamic-programming path authoritative by removing post-decode
+  label mutation.
+- Moves three merchant-independent semantic compatibility rules into segment
+  feasibility before decoding.
+- Removes the merchant-specific `FRESH VALUE` rule and the tuned `1.25` local
+  ITEMS override.
+- Adds synthetic regression tests for isolated rows, unscored transitions,
+  and misleading overridden confidence.
+- Leaves frozen priors, thresholds, fixtures, holdouts, AWS, DynamoDB, and
+  Chroma unchanged.
+
+**Evidence**
+
+- Based directly on frozen commit `4190a8789`.
+- Correction commit: `2cb6f4ee2`.
+- 17 focused, existing, and golden tests pass; deterministic output and
+  no-LayoutLM/no-merchant fallback are preserved.
+- Claude's independent benchmark of frozen v4 passed all five point-estimate
+  gates, but the benchmark does not cover this correction and the cohort was
+  used during pre-freeze calibration.
+
+**Risk and rollout**
+
+- This PR restores the path invariant but changes assignments wherever frozen
+  post-decoder rules fired.
+- No untouched accuracy claim is made for the correction.
+- Review/shadow only. Production merge and deployment remain blocked pending
+  one preregistered evaluation on future shadow receipts or a truly untouched
+  merchant-disjoint cohort.
+
+**Out of scope**
+
+- No new model version, priors rebuild, threshold sweep, fixture refresh,
+  holdout creation, protected evaluation, or external-data write.
+- LayoutLM row probabilities and Chroma disagreement verification remain
+  possible later projects; neither is a forced label source in this change.
