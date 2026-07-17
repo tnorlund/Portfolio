@@ -3407,7 +3407,7 @@ async def plan_receipt_resegmentation_impl(arguments: dict) -> dict:
         env = os.environ.get("PORTFOLIO_ENV", "dev")
         return await _invoke_lambda(
             f"resegment-receipt-{env}-resegment-receipt",
-            {"mode": "plan", **arguments},
+            {**arguments, "mode": "plan"},
         )
     except Exception as e:
         logger.exception("Error planning receipt re-segmentation")
@@ -3437,7 +3437,7 @@ async def revise_receipt_resegmentation_plan_impl(arguments: dict) -> dict:
         env = os.environ.get("PORTFOLIO_ENV", "dev")
         return await _invoke_lambda(
             f"resegment-receipt-{env}-resegment-receipt",
-            {"mode": "revise", **arguments},
+            {**arguments, "mode": "revise"},
         )
     except Exception as e:
         logger.exception("Error revising receipt re-segmentation plan")

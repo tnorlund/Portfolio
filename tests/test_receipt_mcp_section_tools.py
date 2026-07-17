@@ -227,6 +227,38 @@ def test_both_servers_expose_identical_resegment_tool_shape():
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_resegment_proxies_force_lambda_mode(label, monkeypatch):
+    """A caller-supplied `mode` key must never override the proxy's mode.
+
+    Otherwise the read-only-looking plan/revise tools could be smuggled
+    into invoking the destructive apply operation.
+    """
+    module = _load_module(label, SERVER_FILES[label])
+    calls = []
+
+    async def fake_invoke(function_name, payload):
+        calls.append((function_name, payload))
+        return {"ok": True}
+
+    monkeypatch.setattr(module, "_invoke_lambda", fake_invoke)
+
+    asyncio.run(
+        module.plan_receipt_resegmentation_impl(
+            {"image_id": "img", "mode": "apply", "plan_hash": "h"}
+        )
+    )
+    asyncio.run(
+        module.revise_receipt_resegmentation_plan_impl(
+            {"plan_id": "p", "mode": "apply"}
+        )
+    )
+
+    assert [payload["mode"] for _, payload in calls] == ["plan", "revise"]
+    for function_name, _ in calls:
+        assert function_name.endswith("-resegment-receipt")
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
 def test_resegment_plan_attaches_contact_sheet_as_image_content(label, monkeypatch):
     module = _load_module(label, SERVER_FILES[label])
     monkeypatch.setattr(module, "get_clients", lambda: (object(), object(), object()))

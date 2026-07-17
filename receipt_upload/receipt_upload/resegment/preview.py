@@ -166,19 +166,16 @@ def _line_hulls(
     ]
 
 
-def _candidate_mask(
-    *,
-    size: tuple[int, int],
+def _cluster_line_hulls(
     line_hulls: Sequence[tuple[int, Sequence[tuple[float, float]]]],
-    padding_px: int,
-) -> tuple[Image.Image, list[list[int]]]:
-    mask = Image.new("L", size, 0)
-    draw = ImageDraw.Draw(mask)
+    size: tuple[int, int],
+) -> list[list[tuple[int, list[tuple[float, float]]]]]:
+    """Group line hulls into vertically contiguous components."""
     valid_hulls = [
         (line_id, list(hull)) for line_id, hull in line_hulls if len(hull) >= 3
     ]
     if not valid_hulls:
-        return mask, []
+        return []
 
     heights = [
         max(point[1] for point in hull) - min(point[1] for point in hull)
@@ -197,6 +194,20 @@ def _candidate_mask(
             components.append([item])
         else:
             components[-1].append(item)
+    return components
+
+
+def _candidate_mask(
+    *,
+    size: tuple[int, int],
+    line_hulls: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+    padding_px: int,
+) -> tuple[Image.Image, list[list[int]]]:
+    mask = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(mask)
+    components = _cluster_line_hulls(line_hulls, size)
+    if not components:
+        return mask, []
 
     for component in components:
         for _, hull in component:
@@ -403,8 +414,15 @@ def build_preview_bundle(
                 segment["geometry"]["src_corners"], fill=255
             )
             candidates[key] = mask
+            # The rectangle always covers every assigned line, so
+            # disconnection must be detected from the line geometry
+            # itself, not from the mask.
             component_lines[key] = [
-                sorted({ref[0] for ref in segment_refs[key]})
+                sorted(line_id for line_id, _ in component)
+                for component in _cluster_line_hulls(
+                    _line_hulls(segment_refs[key], words_by_ref, image.height),
+                    image.size,
+                )
             ]
         else:
             candidates[key], component_lines[key] = _candidate_mask(

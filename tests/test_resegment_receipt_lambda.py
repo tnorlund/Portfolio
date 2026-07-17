@@ -583,3 +583,192 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
         )
+
+
+def _seed_two_line_receipt(table_name, raw_bucket, image_bucket):
+    """Create the table, buckets, image, and a two-line source receipt."""
+    _create_table(table_name)
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    for bucket in (raw_bucket, "resegment-site", image_bucket, "resegment-chroma"):
+        s3_client.create_bucket(Bucket=bucket)
+
+    image_id = str(uuid4())
+    timestamp = datetime.now(timezone.utc)
+    buffer = io.BytesIO()
+    PILImage.new("RGB", (200, 300), "white").save(buffer, format="PNG")
+    s3_client.put_object(
+        Bucket=image_bucket, Key="original.png", Body=buffer.getvalue()
+    )
+
+    client = DynamoClient(table_name)
+    client.add_image(
+        Image(
+            image_id=image_id,
+            width=200,
+            height=300,
+            timestamp_added=timestamp,
+            raw_s3_bucket=image_bucket,
+            raw_s3_key="original.png",
+            receipt_count=1,
+        )
+    )
+    client.add_receipt(
+        Receipt(
+            image_id=image_id,
+            receipt_id=1,
+            width=200,
+            height=300,
+            timestamp_added=timestamp,
+            raw_s3_bucket=image_bucket,
+            raw_s3_key="original.png",
+            top_left={"x": 0.0, "y": 1.0},
+            top_right={"x": 1.0, "y": 1.0},
+            bottom_left={"x": 0.0, "y": 0.0},
+            bottom_right={"x": 1.0, "y": 0.0},
+        )
+    )
+    line_geometry = [
+        _geometry(0.1, 0.35, 0.8, 0.7),
+        _geometry(0.6, 0.9, 0.4, 0.3),
+    ]
+    client.add_receipt_lines(
+        [
+            ReceiptLine(
+                image_id=image_id,
+                receipt_id=1,
+                line_id=index,
+                text=text,
+                **geometry,
+            )
+            for index, (text, geometry) in enumerate(
+                zip(("LEFT", "RIGHT"), line_geometry), start=1
+            )
+        ]
+    )
+    client.add_receipt_words(
+        [
+            ReceiptWord(
+                image_id=image_id,
+                receipt_id=1,
+                line_id=index,
+                word_id=1,
+                text=text,
+                **geometry,
+            )
+            for index, (text, geometry) in enumerate(
+                zip(("LEFT", "RIGHT"), line_geometry), start=1
+            )
+        ]
+    )
+    return client, s3_client, image_id
+
+
+@mock_aws
+def test_apply_retries_after_transient_commit_failure(monkeypatch):
+    """A failed commit transaction must not brick the plan: the status is
+    reverted to PLANNED, the reservations are released idempotently, and a
+    retry applies cleanly."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentRetry", raw_bucket, "resegment-images"
+    )
+
+    plan = create_plan(
+        {
+            "image_id": image_id,
+            "source_receipt_id": 1,
+            "segments": [
+                {"segment_key": "left", "include_line_ids": [1]},
+                {"segment_key": "right", "include_line_ids": [2]},
+            ],
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    real_commit = client.commit_receipt_resegmentation
+    calls = {"count": 0}
+
+    def flaky_commit(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("simulated transient commit failure")
+        return real_commit(*args, **kwargs)
+
+    monkeypatch.setattr(client, "commit_receipt_resegmentation", flaky_commit)
+
+    apply_event = {
+        "plan_id": plan["plan_id"],
+        "plan_hash": plan["plan_hash"],
+        "create_embeddings": False,
+    }
+    apply_kwargs = {
+        "dynamo_client": client,
+        "s3_client": s3_client,
+        "raw_bucket": raw_bucket,
+        "site_bucket": "resegment-site",
+        "chromadb_bucket": "resegment-chroma",
+    }
+
+    with pytest.raises(RuntimeError, match="simulated transient commit failure"):
+        apply_plan(apply_event, **apply_kwargs)
+
+    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    assert stored["status"] == "PLANNED"
+    # The rollback released the reservations and staged children.
+    for output_id in (2, 3):
+        assert client.get_receipt_item_type_counts(image_id, output_id) == {}
+
+    result = apply_plan(apply_event, **apply_kwargs)
+    assert result["status"] == "APPLIED"
+    assert result["output_receipt_ids"] == [2, 3]
+
+
+@mock_aws
+def test_apply_recovers_from_crash_during_committing(monkeypatch):
+    """A crash after the COMMITTING marker is persisted but before the commit
+    transaction leaves reservation rows behind; the resume path must treat
+    them as not-yet-visible outputs and re-run the plan."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentCrash", raw_bucket, "resegment-images"
+    )
+
+    plan = create_plan(
+        {
+            "image_id": image_id,
+            "source_receipt_id": 1,
+            "segments": [
+                {"segment_key": "left", "include_line_ids": [1]},
+                {"segment_key": "right", "include_line_ids": [2]},
+            ],
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    # Simulate the crash: reservations exist and the stored plan says
+    # COMMITTING, but the commit transaction never ran.
+    client.reserve_receipt_ids(image_id, [2, 3], plan["plan_id"])
+    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored["status"] = "COMMITTING"
+    resegment_receipt._save_plan(s3_client, raw_bucket, stored)
+
+    result = apply_plan(
+        {
+            "plan_id": plan["plan_id"],
+            "plan_hash": plan["plan_hash"],
+            "create_embeddings": False,
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        site_bucket="resegment-site",
+        chromadb_bucket="resegment-chroma",
+    )
+
+    assert result["status"] == "APPLIED"
+    assert result["output_receipt_ids"] == [2, 3]
+    assert client.get_receipt_item_type_counts(image_id, 1) == {}

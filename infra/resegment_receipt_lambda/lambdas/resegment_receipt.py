@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Mapping
@@ -34,16 +35,34 @@ SUPPORTED_SOURCE_TYPES = {
 }
 
 
+_PLAN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+
+def _validate_plan_id(plan_id: str) -> str:
+    """Reject plan IDs that could escape the plan S3 key namespace."""
+    if not _PLAN_ID_PATTERN.fullmatch(plan_id):
+        raise ValueError(
+            "plan_id must be 1-64 URL-safe characters and start with a "
+            "letter or number"
+        )
+    return plan_id
+
+
 def _plan_key(plan_id: str) -> str:
-    return f"{PLAN_PREFIX}/{plan_id}.json"
+    return f"{PLAN_PREFIX}/{_validate_plan_id(plan_id)}.json"
 
 
 def _revision_key(plan_id: str, revision: int) -> str:
-    return f"{PLAN_PREFIX}/{plan_id}/revisions/{revision:04d}.json"
+    return (
+        f"{PLAN_PREFIX}/{_validate_plan_id(plan_id)}/revisions/" f"{revision:04d}.json"
+    )
 
 
 def _artifact_prefix(plan_id: str, revision: int) -> str:
-    return f"{PLAN_PREFIX}/{plan_id}/revisions/{revision:04d}/preview"
+    return (
+        f"{PLAN_PREFIX}/{_validate_plan_id(plan_id)}/revisions/"
+        f"{revision:04d}/preview"
+    )
 
 
 def _png_bytes(image: PILImage.Image) -> bytes:
@@ -900,7 +919,10 @@ def apply_plan(
     chromadb_bucket: str,
 ) -> dict[str, Any]:
     """Apply a persisted plan with staging, guarded commit, and cleanup."""
-    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityNotFoundError,
+        OperationError,
+    )
     from receipt_upload.combine import combine_receipt_words_to_image_coords
     from receipt_upload.resegment import (
         build_source_fingerprint,
@@ -948,6 +970,11 @@ def apply_plan(
                 dynamo_client.get_receipt(plan["image_id"], output_id)
                 visible_output_ids.add(output_id)
             except EntityNotFoundError:
+                pass
+            except OperationError:
+                # A row that exists but cannot parse as a Receipt is a
+                # leftover RESEGMENT_RESERVATION, so the output is not
+                # visible yet.
                 pass
         if not source_exists and visible_output_ids == set(output_ids):
             result = _finish_cleanup(
@@ -1076,6 +1103,17 @@ def apply_plan(
         return {"status": "APPLIED", **result}
     except Exception:
         if not committed:
+            if plan["status"] == "COMMITTING":
+                # The COMMITTING marker was persisted before the commit
+                # transaction; revert it so a retry re-runs the full
+                # plan validation instead of the resume path.
+                plan["status"] = "PLANNED"
+                try:
+                    _save_plan(s3_client, raw_bucket, plan)
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception(
+                        "Failed to revert plan %s to PLANNED", plan["plan_id"]
+                    )
             try:
                 dynamo_client.release_receipt_id_reservations(
                     plan["image_id"], output_ids, plan["plan_id"]

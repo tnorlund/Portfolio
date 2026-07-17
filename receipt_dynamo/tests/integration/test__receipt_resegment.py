@@ -95,6 +95,29 @@ def test_release_removes_staged_children_and_reservation(dynamodb_table):
 
 
 @pytest.mark.integration
+def test_release_is_idempotent_but_never_deletes_receipts(dynamodb_table):
+    image_id = str(uuid4())
+    operation_id = str(uuid4())
+    client = DynamoClient(dynamodb_table)
+
+    # Releasing reservations that never existed (or were already released)
+    # must succeed so a crashed apply can always be retried.
+    client.release_receipt_id_reservations(image_id, [2, 3], operation_id)
+    client.reserve_receipt_ids(image_id, [2], operation_id)
+    client.release_receipt_id_reservations(image_id, [2], operation_id)
+    client.release_receipt_id_reservations(image_id, [2], operation_id)
+
+    # A committed receipt occupying the same key must never be deleted.
+    client.add_receipt(_receipt(image_id, 2))
+    with pytest.raises(DynamoDBError):
+        client.release_receipt_id_reservations(image_id, [2], operation_id)
+    assert [
+        receipt.receipt_id
+        for receipt in client.get_receipts_from_image(image_id)
+    ] == [2]
+
+
+@pytest.mark.integration
 def test_bulk_receipt_letter_snapshot_filters_one_receipt(dynamodb_table):
     image_id = str(uuid4())
     client = DynamoClient(dynamodb_table)

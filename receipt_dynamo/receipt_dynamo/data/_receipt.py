@@ -364,8 +364,9 @@ class _Receipt(FlattenedStandardMixin):
                         "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
                     },
                     "ConditionExpression": (
-                        "#type = :reservation AND "
-                        "operation_id = :operation_id"
+                        "attribute_not_exists(PK) OR "
+                        "(#type = :reservation AND "
+                        "operation_id = :operation_id)"
                     ),
                     "ExpressionAttributeNames": {"#type": "TYPE"},
                     "ExpressionAttributeValues": {

@@ -165,3 +165,65 @@ def test_photo_rectangular_preview_blocks_disconnected_regions():
         if finding["code"] == "DISCONNECTED_VISIBLE_REGIONS"
     )
     assert finding["severity"] == "BLOCKER"
+
+
+def test_rectangular_preview_with_geometry_blocks_disconnected_regions():
+    """Production plans always carry geometry; the rectangle covers every
+    assigned line, so disconnection must still be detected from the line
+    clusters themselves."""
+    words = [_word(1, 1, 30, 70), _word(2, 1, 35, 530)]
+    words_by_ref = {(word["line_id"], word["word_id"]): word for word in words}
+
+    bundle = build_preview_bundle(
+        Image.new("RGB", (400, 600), "white"),
+        image_type="PHOTO",
+        strategy="RECTANGULAR",
+        lines=[_line(1), _line(2)],
+        words_by_ref=words_by_ref,
+        segments=[
+            {
+                **_segment("underlay", [(1, 1), (2, 1)], 0),
+                "geometry": {
+                    "src_corners": [[0, 40], [400, 40], [400, 560], [0, 560]]
+                },
+            }
+        ],
+        discard_refs=set(),
+        padding_px=0,
+    )
+
+    finding = next(
+        finding
+        for finding in bundle["findings"]
+        if finding["code"] == "DISCONNECTED_VISIBLE_REGIONS"
+    )
+    assert finding["severity"] == "BLOCKER"
+    assert bundle["metrics"]["underlay"]["visible_region_count"] == 2
+
+
+def test_rectangular_preview_with_geometry_allows_contiguous_lines():
+    words = [_word(1, 1, 30, 70), _word(2, 1, 35, 95)]
+    words_by_ref = {(word["line_id"], word["word_id"]): word for word in words}
+
+    bundle = build_preview_bundle(
+        Image.new("RGB", (400, 600), "white"),
+        image_type="PHOTO",
+        strategy="RECTANGULAR",
+        lines=[_line(1), _line(2)],
+        words_by_ref=words_by_ref,
+        segments=[
+            {
+                **_segment("receipt", [(1, 1), (2, 1)], 0),
+                "geometry": {
+                    "src_corners": [[0, 40], [400, 40], [400, 130], [0, 130]]
+                },
+            }
+        ],
+        discard_refs=set(),
+        padding_px=0,
+    )
+
+    assert not any(
+        finding["code"] == "DISCONNECTED_VISIBLE_REGIONS"
+        for finding in bundle["findings"]
+    )
