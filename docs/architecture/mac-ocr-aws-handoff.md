@@ -23,9 +23,9 @@ evaluation).
                                       │ 6. Vision OCR (warped crops)    │
                                       │ 7. LayoutLM (CoreML) per line   │
                                       │ 8. upload warped crops → S3     │
-                                      │ 9. upload OCR JSON → S3         │
-                                      │10. PENDING ReceiptWordLabels    │
+                                      │ 9. PENDING ReceiptWordLabels    │
                                       │    → DynamoDB (direct write)    │
+                                      │10. upload OCR JSON → S3         │
                                       │11. OCRRoutingDecision → Dynamo  │
  ┌────────────────────────┐  SQS      │12. send ocr-results message     │
  │ process-OCR-results    │◄──────────┴──────────────────────────────────┘
