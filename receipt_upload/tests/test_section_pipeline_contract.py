@@ -247,6 +247,102 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
     assert fake_client.upserts == ["lines"]
     assert fake_client.closed is True
 
+    # Metrics-only observability keys surface in the worker result: row
+    # provenance (persisted D1 rows here), section-proposal stats, and the
+    # verification outcome counters.
+    assert result["row_source"] == "persisted"
+    assert result["row_count"] == len(persisted_rows)
+    assert result["section_proposed_count"] == 0  # fake assign created none
+    assert result["section_mean_confidence"] is None
+    assert result["verified_row_count"] == 0
+    assert result["verification_agreed_count"] == 0
+    assert result["verification_disagreement_count"] == 0
+    assert result["verification_abstained_count"] == 0
+
+
+def test_lines_worker_tags_reconstructed_rows_without_changing_behavior(
+    monkeypatch,
+):
+    """When ingest left no persisted rows (legacy/dev replays), the worker
+    reconstructs them in-process. That fallback must be tagged as
+    row_source="reconstructed" for metrics, while section assignment still
+    runs on rows with identical identities (row_id = primary line id)."""
+    import boto3
+    import receipt_chroma.embedding.records as records_module
+    import receipt_dynamo as receipt_dynamo_module
+
+    import receipt_upload.merchant_resolution.embedding_processor as ep
+    import receipt_upload.merchant_resolution.resolver as resolver_module
+    import receipt_upload.section_assignment as assignment_module
+    import receipt_upload.section_verifier as verifier_module
+    from receipt_upload.merchant_resolution.resolver import MerchantResult
+
+    monkeypatch.delenv("CHROMA_CLOUD_ENABLED", raising=False)
+
+    lines, words = _receipt_fixture()
+    expected_rows = build_receipt_rows(lines, words, created_at=_CREATED_AT)
+    fake_dynamo = _FakeDynamo([])  # ingest persisted nothing
+    fake_client = _FakeChromaClient()
+    assigned_row_ids: list[int] = []
+
+    class _FakeResolver:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def resolve(self, **_kwargs) -> MerchantResult:
+            return MerchantResult(merchant_name=None)
+
+    def _fake_assign(_dynamo, rows, _lines, _merchant, model=None):
+        assigned_row_ids.extend(row.row_id for row in rows)
+        return [], {}
+
+    monkeypatch.setattr(ep, "_make_read_client", lambda *_a: fake_client)
+    monkeypatch.setattr(
+        ep, "upload_lines_delta", lambda **_k: "lines/delta/prefix"
+    )
+    monkeypatch.setattr(
+        receipt_dynamo_module, "DynamoClient", lambda _table: fake_dynamo
+    )
+    monkeypatch.setattr(resolver_module, "MerchantResolver", _FakeResolver)
+    monkeypatch.setattr(
+        assignment_module, "assign_and_persist_sections", _fake_assign
+    )
+    monkeypatch.setattr(
+        verifier_module, "verify_receipt_sections", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        records_module,
+        "build_row_payload",
+        lambda *_a, **_k: {
+            "ids": [],
+            "embeddings": [],
+            "documents": [],
+            "metadatas": [],
+        },
+    )
+    monkeypatch.setattr(boto3, "client", lambda *_a, **_k: object())
+
+    result = ep._run_lines_pipeline_worker(
+        local_lines_dir="/nonexistent",
+        lines_data=[asdict(line) for line in lines],
+        words_data=[asdict(word) for word in words],
+        word_labels_data=[],
+        row_embeddings=[[0.1, 0.2] for _ in expected_rows],
+        row_line_ids_list=[row.line_ids for row in expected_rows],
+        image_id=_IMAGE_ID,
+        receipt_id=1,
+        run_id="run-1",
+        chromadb_bucket="chroma-bucket",
+        table_name="table",
+        google_places_api_key=None,
+    )
+
+    assert result["success"] is True
+    assert result["row_source"] == "reconstructed"
+    assert result["row_count"] == len(expected_rows)
+    # Reconstruction preserves row identities exactly.
+    assert assigned_row_ids == [row.row_id for row in expected_rows]
+
 
 # ---------------------------------------------------------------------------
 # Additive PENDING persistence

@@ -430,3 +430,91 @@ def test_handler_runs_embedding_after_ocr_persistence(monkeypatch):
         ["line-sentinel"],
         ["word-sentinel"],
     )
+
+
+# ---------------------------------------------------------------------------
+# 7. Metrics-only section observability (row provenance + verification)
+# ---------------------------------------------------------------------------
+
+
+class _MetricsRecorder:
+    def __init__(self):
+        self.calls = []
+
+    def log_metrics(self, metrics, dimensions=None, properties=None):
+        self.calls.append(
+            {
+                "metrics": metrics,
+                "dimensions": dimensions,
+                "properties": properties,
+            }
+        )
+
+
+def test_section_observability_emits_all_counters(monkeypatch):
+    from handler import handler as handler_module
+
+    recorder = _MetricsRecorder()
+    monkeypatch.setattr(handler_module, "emf_metrics", recorder)
+
+    handler_module._emit_section_observability(
+        IMAGE_ID,
+        1,
+        {
+            "row_count": 12,
+            "row_source": "persisted",
+            "section_proposed_count": 4,
+            "section_mean_confidence": 0.87,
+            "verification_agreed_count": 3,
+            "verification_disagreement_count": 1,
+            "verification_abstained_count": 0,
+        },
+    )
+
+    assert len(recorder.calls) == 1
+    metrics = recorder.calls[0]["metrics"]
+    assert metrics == {
+        "UploadLambdaReceiptRows": 12.0,
+        "UploadLambdaReceiptRowsReconstructed": 0.0,
+        "UploadLambdaSectionsProposed": 4.0,
+        "UploadLambdaSectionMeanConfidence": 0.87,
+        "UploadLambdaSectionAgreed": 3.0,
+        "UploadLambdaSectionDisagreed": 1.0,
+        "UploadLambdaSectionAbstained": 0.0,
+    }
+    properties = recorder.calls[0]["properties"]
+    assert properties["image_id"] == IMAGE_ID
+    assert properties["receipt_id"] == 1
+    assert properties["row_source"] == "persisted"
+
+
+def test_section_observability_flags_reconstructed_rows(monkeypatch):
+    from handler import handler as handler_module
+
+    recorder = _MetricsRecorder()
+    monkeypatch.setattr(handler_module, "emf_metrics", recorder)
+
+    handler_module._emit_section_observability(
+        IMAGE_ID,
+        2,
+        {"row_count": 5, "row_source": "reconstructed"},
+    )
+
+    metrics = recorder.calls[0]["metrics"]
+    assert metrics["UploadLambdaReceiptRowsReconstructed"] == 1.0
+    assert metrics["UploadLambdaReceiptRows"] == 5.0
+    # Absent stats (e.g. no sections proposed key) are omitted, not zeroed.
+    assert "UploadLambdaSectionsProposed" not in metrics
+
+
+def test_section_observability_is_silent_without_stats(monkeypatch):
+    from handler import handler as handler_module
+
+    recorder = _MetricsRecorder()
+    monkeypatch.setattr(handler_module, "emf_metrics", recorder)
+
+    # Embedding results that carry no observability keys (e.g. failure paths)
+    # must not emit an empty metric line and must never raise.
+    handler_module._emit_section_observability(IMAGE_ID, 3, {"success": False})
+
+    assert recorder.calls == []

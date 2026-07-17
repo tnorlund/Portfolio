@@ -199,41 +199,83 @@ Both sides consume the same fixture:
 Change the payload shape on either side and a local test fails before the
 Lambda does.
 
-## Operational provenance: gaps and proposal (not implemented)
+## Operational provenance
 
-Today the pipeline records *outcomes* but almost no *provenance*: given a
-receipt in DynamoDB you cannot answer "which LayoutLM bundle labeled it,
-which priors segmented it, and did verification agree?" without CloudWatch
-archaeology. Proposed additions (design only; nothing here is deployed):
+### Implemented: metrics-only observability (this branch)
 
-1. **LayoutLM model version.** The worker already knows the bundle S3 key
-   and the ModelDownloader computes a content hash for caching. Emit
+The lines pipeline now returns, and the handler emits via EMF (one log line
+per receipt, `_emit_section_observability` in `handler.py`), with
+`image_id`/`receipt_id`/`row_source` as properties:
+
+| Metric | Meaning |
+|---|---|
+| `UploadLambdaReceiptRows` | visual-row count used for section assignment |
+| `UploadLambdaReceiptRowsReconstructed` | 1 when ingest persisted no rows and the lines worker reconstructed them in-process (legacy/dev replays); alarm on sustained >0 for fresh uploads |
+| `UploadLambdaSectionsProposed` | deterministic sections created (additive PENDING only) |
+| `UploadLambdaSectionMeanConfidence` | mean confidence of those proposals |
+| `UploadLambdaSectionAgreed` / `Disagreed` / `Abstained` | Chroma KNN verification outcomes for `upload-determinism-v1` sections |
+
+The lines worker also logs a structured
+`[ROW_PROVENANCE] image_id=... receipt_id=... row_source=persisted|reconstructed row_count=N`
+line, so persisted vs reconstructed rows are distinguishable in logs as well
+as metrics. Row identities, section behavior, and persistence semantics are
+unchanged; every addition is read-only observability.
+
+### Still proposed (not implemented)
+
+1. **LayoutLM model version.** The worker knows the bundle S3 key and the
+   ModelDownloader computes a content hash for caching. Emit
    `{"layoutlm_model": {"s3_key": ..., "bundle_hash": ...}}` in the OCR
-   JSON top level, and stamp labels with
-   `label_proposed_by="auto-inference:<short-hash>"` (stays within the
-   existing string field; no schema change).
-2. **Section-priors artifact version.** `load_prior_model()` should compute
-   the SHA-256 of `section_order_priors_v2.json` once per process and
-   expose it; `assign_and_persist_sections` stamps it into a new optional
-   `ReceiptSection.model_version` attribute (or, zero-schema-change: suffix
-   `model_source` as `upload-determinism-v1@<short-hash>`).
-3. **Visual-row count.** Return `row_count` from `persist_receipt_rows` and
-   surface it in the OCR result dict + an EMF metric
-   (`UploadLambdaReceiptRows`), so a rows-regression (e.g. empty rows
-   forcing the legacy reconstruction fallback) is alarmable.
-4. **Section count and mean confidence.** `assign_and_persist_sections`
-   already computes per-section confidence; add
-   `{"section_count", "section_mean_confidence"}` to the lines-pipeline
-   result (next to `verified_row_count`) and emit both via `emf_metrics`.
-5. **Chroma verification status/counts.** `verification_stats` currently
-   logs `verified_row_count` and `verification_disagreement_count` and then
-   drops them. Persist per-receipt counts (AGREED/DISAGREED/ABSTAINED) as
-   EMF metrics with an `image_id/receipt_id` property payload, and consider
-   a compact `provenance` map attribute on `OCRRoutingDecision` (it is
-   already updated at completion) holding items 1 to 5 for point lookups.
+   JSON top level and stamp labels with
+   `label_proposed_by="auto-inference:<short-hash>"`. Safe today: nothing
+   exact-matches `"auto-inference"` (verified; the only proposer
+   exact-match is `_GEOMETRY_PROPOSER == "geometry_line_items"` in the
+   words pipeline), but see the compatibility list below before landing.
+2. **Section-priors artifact version.** Compute the SHA-256 of
+   `section_order_priors_v2.json` once per process in `load_prior_model()`
+   and stamp it into a **separate additive field** (e.g.
+   `ReceiptSection.model_version` or `section_priors_sha256`).
+   **Do NOT suffix or otherwise change `model_source`**: the verifier and
+   the embedding statistics compare it *exactly* against
+   `"upload-determinism-v1"`, so a suffixed value would silently exclude
+   those sections from verification and stats (see below).
+3. **Durable per-receipt provenance record.** Consider a compact
+   `provenance` map attribute on `OCRRoutingDecision` (already updated at
+   completion) holding the model hashes plus the metric values above for
+   point lookups without CloudWatch queries.
 
-Suggested landing order: 3 and 5 (pure metrics, no schema), then 1, then 2
-(needs either a new entity attribute or the suffix convention), then 4.
+### `model_source` compatibility: exact-comparison sites
+
+Any future provenance-field change (or any change to the
+`"upload-determinism-v1"` literal) must audit these sites, all of which
+match `ReceiptSection.model_source` exactly:
+
+- `receipt_upload/section_assignment.py:27` — `MODEL_SOURCE` constant
+  (the writer).
+- `receipt_upload/section_verifier.py:185` —
+  `section.model_source != MODEL_SOURCE` skips everything else, so a
+  suffixed source would make the verifier ignore its own pipeline's
+  sections.
+- `receipt_upload/merchant_resolution/embedding_processor.py`
+  (verification-stats block) — filters on `model_source == MODEL_SOURCE`
+  when counting AGREED/DISAGREED/ABSTAINED (was a hardcoded literal;
+  now uses the constant, still an exact match).
+- `scripts/build_section_order_priors.py:254` — stamps/selects the
+  training corpus for the priors by this literal; a suffix would silently
+  shrink future training data.
+- `scripts/remap_sections.py` — *appends* `+remap-v1` to `model_source`
+  on remapped sections. This is a deliberate pre-existing exception: it
+  intentionally takes remapped sections OUT of the exact-match population
+  (the verifier and stats no longer treat them as live deterministic
+  proposals). Any new provenance scheme must not copy this pattern for
+  live sections.
+- `tools/glyph-studio/py/face_map_v2_cli.py` (Counter grouping) and
+  `tools/glyph-studio/py/write_section_seeds.py` (None check) — tolerant,
+  but grouping output changes if values change.
+- `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py` — MCP
+  tools read/write `model_source` as an opaque string (defaults
+  `"mcp-claude-review"`); pass-through, no exact match on the
+  deterministic literal.
 
 ## Future design: two-pass, top-K merchant resolution (design only)
 
@@ -302,13 +344,23 @@ Chroma writes, and infrastructure are unchanged by the current task.
 
 - `swift test` requires a full Xcode install (XCTest is not in Command Line
   Tools); on a CLT-only machine the Swift contract tests compile-check but
-  cannot execute.
+  cannot execute. Run them on the mini:
+  `cd receipt_ocr_swift && swift test --filter OCRResultContractTests`.
+  Status 2026-07-17: the mini was unreachable (WARP and LAN both down) when
+  this branch was authored, so the Swift-side execution is still pending;
+  the Python side of the same fixture passes locally.
+- Run the Python suites per package
+  (`receipt_upload/tests`, `infra/upload_images/container_ocr/handler/tests`)
+  in separate pytest invocations: collecting both roots together imports
+  `infra/upload_images/__init__.py`, which pulls Pulumi infrastructure and
+  fails outside a Pulumi context (pre-existing).
 - The words pipeline writes word labels to Chroma metadata concurrently
   with the lines pipeline; word-level labels and row-level sections are
   only mutually consistent after compaction.
-- `verification_stats` are computed but not persisted (see provenance
-  proposal above).
-- Legacy replays with no persisted rows silently fall back to
-  `build_receipt_rows` reconstruction inside the lines worker; the fallback
-  is untagged, so reconstructed and persisted rows are indistinguishable
-  downstream (provenance item 3 would expose this).
+- Latent scoping bug in `_run_lines_pipeline_worker`: the tracing block's
+  late `import logging` statements make `logging` a local of the outer
+  worker, so nested `_do_lines_work` code referencing bare `logging` raises
+  `NameError` on the no-tracing-headers path (several pre-existing call
+  sites: write-time validation warning, verification exception handler).
+  New code uses the module-level `logger`; the pre-existing sites should be
+  migrated the same way in a follow-up.

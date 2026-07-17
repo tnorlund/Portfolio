@@ -212,6 +212,69 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     }
 
 
+def _emit_section_observability(
+    image_id: str, receipt_id: int, embedding_result: Dict[str, Any]
+) -> None:
+    """Emit per-receipt row/section/verification metrics via EMF.
+
+    Metrics-only: pulls the observability keys the lines pipeline returns
+    (row provenance, deterministic section proposals, Chroma verification
+    outcomes) into one alarmable EMF log line. Never raises and never
+    changes pipeline behavior.
+    """
+    try:
+        metric_map = {
+            "UploadLambdaReceiptRows": embedding_result.get("row_count"),
+            "UploadLambdaSectionsProposed": embedding_result.get(
+                "section_proposed_count"
+            ),
+            "UploadLambdaSectionMeanConfidence": embedding_result.get(
+                "section_mean_confidence"
+            ),
+            "UploadLambdaSectionAgreed": embedding_result.get(
+                "verification_agreed_count"
+            ),
+            "UploadLambdaSectionDisagreed": embedding_result.get(
+                "verification_disagreement_count"
+            ),
+            "UploadLambdaSectionAbstained": embedding_result.get(
+                "verification_abstained_count"
+            ),
+        }
+        row_source = embedding_result.get("row_source")
+        if row_source is not None:
+            # 1 when ingest did not persist rows and the lines pipeline fell
+            # back to in-process reconstruction (legacy/dev replays). Alarm on
+            # sustained >0 for fresh uploads.
+            metric_map["UploadLambdaReceiptRowsReconstructed"] = (
+                1 if row_source == "reconstructed" else 0
+            )
+        metrics = {
+            name: float(value)
+            for name, value in metric_map.items()
+            if value is not None
+        }
+        if not metrics:
+            return
+        emf_metrics.log_metrics(
+            metrics,
+            properties={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "row_source": row_source,
+                "verification_error": embedding_result.get(
+                    "verification_error"
+                ),
+            },
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Failed to emit section observability metrics for %s#%s",
+            image_id,
+            receipt_id,
+        )
+
+
 def _is_llm_validation_record(record: Dict[str, Any]) -> bool:
     """True for deferred-LLM-validation messages (vs. OCR jobs).
 
@@ -410,6 +473,10 @@ def _process_single_record(
                         receipt_id=rid,
                         lines=lines,
                         words=words,
+                    )
+
+                    _emit_section_observability(
+                        image_id, rid, embedding_result
                     )
 
                     merchant_found = embedding_result.get(

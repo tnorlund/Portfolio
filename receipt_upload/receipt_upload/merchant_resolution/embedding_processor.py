@@ -400,7 +400,10 @@ def _run_lines_pipeline_worker(
         MerchantResolver,
         merchant_name_matches_receipt,
     )
-    from receipt_upload.section_assignment import assign_and_persist_sections
+    from receipt_upload.section_assignment import (
+        MODEL_SOURCE,
+        assign_and_persist_sections,
+    )
     from receipt_upload.section_verifier import verify_receipt_sections
 
     def _do_lines_work() -> Dict[str, Any]:
@@ -507,9 +510,24 @@ def _run_lines_pipeline_worker(
             persisted_rows = dynamo.get_receipt_rows_from_receipt(
                 image_id, receipt_id
             )
+            row_source = "persisted"
             if not persisted_rows:
                 persisted_rows = build_receipt_rows(lines, words)
-            _, section_by_line = assign_and_persist_sections(
+                row_source = "reconstructed"
+            # Structured provenance: reconstructed rows mean D1 ingest did not
+            # persist rows for this receipt (legacy/dev replay) — observable,
+            # never behavior-changing. Uses the module-level logger: `logging`
+            # is shadowed as a local of the enclosing worker by the tracing
+            # block's late imports and may be unbound on the no-tracing path.
+            logger.info(
+                "[ROW_PROVENANCE] image_id=%s receipt_id=%s row_source=%s "
+                "row_count=%d",
+                image_id,
+                receipt_id,
+                row_source,
+                len(persisted_rows),
+            )
+            created_sections, section_by_line = assign_and_persist_sections(
                 dynamo,
                 persisted_rows,
                 lines,
@@ -529,14 +547,30 @@ def _run_lines_pipeline_worker(
                     embedding_rows,
                     row_embeddings,
                 )
+                from collections import Counter as _Counter
+
+                # NOTE: exact model_source match. The deterministic pipeline's
+                # sections are identified by MODEL_SOURCE verbatim (also in
+                # section_verifier._record_verification); provenance must ship
+                # in a separate additive field, never a model_source suffix.
+                status_counts = _Counter(
+                    section.verification_status
+                    for section in dynamo.get_receipt_sections_from_receipt(
+                        image_id, receipt_id
+                    )
+                    if section.model_source == MODEL_SOURCE
+                    and section.verification_status
+                )
                 verification_stats = {
                     "verified_row_count": len(verified),
-                    "verification_disagreement_count": sum(
-                        section.verification_status == "DISAGREED"
-                        for section in dynamo.get_receipt_sections_from_receipt(
-                            image_id, receipt_id
-                        )
-                        if section.model_source == "upload-determinism-v1"
+                    "verification_agreed_count": status_counts.get(
+                        "AGREED", 0
+                    ),
+                    "verification_disagreement_count": status_counts.get(
+                        "DISAGREED", 0
+                    ),
+                    "verification_abstained_count": status_counts.get(
+                        "ABSTAINED", 0
                     ),
                 }
             # Verification is independent evidence; an unavailable neighbor
@@ -579,6 +613,17 @@ def _run_lines_pipeline_worker(
             return {
                 "success": True,
                 "lines_prefix": prefix,
+                # Metrics-only observability (no behavior change): visual-row
+                # provenance and deterministic section-proposal stats.
+                "row_count": len(persisted_rows),
+                "row_source": row_source,
+                "section_proposed_count": len(created_sections),
+                "section_mean_confidence": (
+                    sum(s.confidence or 0.0 for s in created_sections)
+                    / len(created_sections)
+                    if created_sections
+                    else None
+                ),
                 "merchant_name": validated_merchant_name,
                 "place_id": merchant_result.place_id,
                 "resolution_tier": merchant_result.resolution_tier,
@@ -1244,6 +1289,7 @@ class MerchantResolvingEmbeddingProcessor:
         # Track resources for cleanup
         merchant_result = MerchantResult()
         validation_stats: Dict[str, Any] = {}
+        lines_stats: Dict[str, Any] = {}
         lines_prefix: Optional[str] = None
         words_prefix: Optional[str] = None
 
@@ -1342,6 +1388,26 @@ class MerchantResolvingEmbeddingProcessor:
                 try:
                     lines_result = lines_future.result()
                     lines_prefix = lines_result.get("lines_prefix")
+
+                    # Observability-only stats from the lines pipeline: row
+                    # provenance, section proposals, verification outcomes.
+                    lines_stats = {
+                        key: lines_result[key]
+                        for key in (
+                            "row_count",
+                            "row_source",
+                            "section_proposed_count",
+                            "section_mean_confidence",
+                            "verified_row_count",
+                            "verification_agreed_count",
+                            "verification_disagreement_count",
+                            "verification_abstained_count",
+                            "verification_error",
+                        )
+                        if key in lines_result
+                    }
+                    if lines_stats:
+                        _log(f"Lines pipeline stats: {lines_stats}")
 
                     # Surface the lines-pipeline subprocess's merchant-resolution
                     # logs (captured in the worker) — these don't reach CloudWatch
@@ -1574,6 +1640,7 @@ class MerchantResolvingEmbeddingProcessor:
             "merchant_resolution_tier": merchant_result.resolution_tier,
             "merchant_confidence": merchant_result.confidence,
             **validation_stats,
+            **lines_stats,
         }
 
     def _enrich_receipt_place(
