@@ -460,6 +460,18 @@ def normalize_line_resegmentation_plan(
             "Every line must have one default destination; unassigned lines: "
             f"{unassigned_lines}"
         )
+    wordless_assigned = sorted(
+        line_id
+        for line_id in default_owner_by_line
+        if not refs_by_line.get(line_id)
+    )
+    if wordless_assigned:
+        raise ResegmentPlanError(
+            "Lines without words cannot be assigned to a segment because "
+            "apply rebuilds outputs from words and would silently drop "
+            "them; discard these lines explicitly: "
+            f"{wordless_assigned}"
+        )
 
     owners: dict[WordRef, str | None] = {}
     for ref in known_refs:

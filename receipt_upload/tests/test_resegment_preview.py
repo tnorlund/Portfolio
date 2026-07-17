@@ -227,3 +227,54 @@ def test_rectangular_preview_with_geometry_allows_contiguous_lines():
         finding["code"] == "DISCONNECTED_VISIBLE_REGIONS"
         for finding in bundle["findings"]
     )
+
+
+def test_rectangular_preview_ignores_explicit_visible_regions():
+    """Apply writes the min-area crop for RECTANGULAR plans, so a tight
+    explicit region must not mask preview findings (here: a foreign word
+    inside the rectangle) that the applied crop would contain."""
+    words = [_word(1, 1, 30, 100), _word(2, 1, 80, 120)]
+    words_by_ref = {(word["line_id"], word["word_id"]): word for word in words}
+
+    bundle = build_preview_bundle(
+        Image.new("RGB", (400, 600), "white"),
+        image_type="SCAN",
+        strategy="RECTANGULAR",
+        lines=[_line(1), _line(2)],
+        words_by_ref=words_by_ref,
+        segments=[
+            {
+                **_segment("first", [(1, 1)], 0),
+                "geometry": {
+                    "src_corners": [[0, 50], [200, 50], [200, 200], [0, 200]]
+                },
+                # A tight region around only the assigned word; honoring it
+                # would hide the foreign-word capture below.
+                "visible_regions": [
+                    {
+                        "points": [
+                            {"x": 0.05, "y": 0.80},
+                            {"x": 0.30, "y": 0.80},
+                            {"x": 0.30, "y": 0.87},
+                            {"x": 0.05, "y": 0.87},
+                        ]
+                    }
+                ],
+            },
+            {
+                **_segment("second", [(2, 1)], 0),
+                "geometry": {
+                    "src_corners": [[0, 50], [200, 50], [200, 200], [0, 200]]
+                },
+            },
+        ],
+        discard_refs=set(),
+        padding_px=0,
+    )
+
+    blockers = {
+        (finding["code"], finding.get("segment_key"))
+        for finding in bundle["findings"]
+        if finding["severity"] == "BLOCKER"
+    }
+    assert ("FOREIGN_WORD_CAPTURED", "first") in blockers

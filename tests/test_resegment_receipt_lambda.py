@@ -660,6 +660,22 @@ def _seed_two_line_receipt(table_name, raw_bucket, image_bucket):
             )
         ]
     )
+    client.add_receipt_word_labels(
+        [
+            ReceiptWordLabel(
+                image_id=image_id,
+                receipt_id=1,
+                line_id=index,
+                word_id=1,
+                label="MERCHANT_NAME" if index == 1 else "GRAND_TOTAL",
+                reasoning="test label",
+                timestamp_added=timestamp,
+                validation_status="VALID",
+                label_proposed_by="test",
+            )
+            for index in (1, 2)
+        ]
+    )
     return client, s3_client, image_id
 
 
@@ -772,3 +788,98 @@ def test_apply_recovers_from_crash_during_committing(monkeypatch):
     assert result["status"] == "APPLIED"
     assert result["output_receipt_ids"] == [2, 3]
     assert client.get_receipt_item_type_counts(image_id, 1) == {}
+
+
+@mock_aws
+def test_apply_survives_commit_exception_after_transaction_landed(monkeypatch):
+    """A lost commit response (DynamoDB committed, then the call raised)
+    must not trigger a rollback that would destroy the committed outputs."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentLanded", raw_bucket, "resegment-images"
+    )
+
+    plan = create_plan(
+        {
+            "image_id": image_id,
+            "source_receipt_id": 1,
+            "segments": [
+                {"segment_key": "left", "include_line_ids": [1]},
+                {"segment_key": "right", "include_line_ids": [2]},
+            ],
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    real_commit = client.commit_receipt_resegmentation
+
+    def commit_then_raise(*args, **kwargs):
+        real_commit(*args, **kwargs)
+        raise RuntimeError("simulated lost commit response")
+
+    monkeypatch.setattr(client, "commit_receipt_resegmentation", commit_then_raise)
+
+    result = apply_plan(
+        {
+            "plan_id": plan["plan_id"],
+            "plan_hash": plan["plan_hash"],
+            "create_embeddings": False,
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        site_bucket="resegment-site",
+        chromadb_bucket="resegment-chroma",
+    )
+
+    assert result["status"] == "APPLIED"
+    assert result["output_receipt_ids"] == [2, 3]
+    for receipt_id in (2, 3):
+        details = client.get_receipt_details(image_id, receipt_id)
+        assert len(details.words) == 1
+        assert len(details.labels) == 1
+
+
+@mock_aws
+def test_create_plan_rejects_visible_regions_on_rectangular_strategy():
+    """Apply ignores visible_regions for RECTANGULAR plans, so accepting
+    them would preview an artifact apply never produces."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentRegions", raw_bucket, "resegment-images"
+    )
+
+    with pytest.raises(ValueError, match="visible_regions require"):
+        create_plan(
+            {
+                "schema_version": 2,
+                "image_id": image_id,
+                "source_receipt_id": 1,
+                "segments": [
+                    {
+                        "segment_key": "only",
+                        "visible_regions": [
+                            {
+                                "points": [
+                                    {"x": 0.1, "y": 0.1},
+                                    {"x": 0.9, "y": 0.1},
+                                    {"x": 0.9, "y": 0.9},
+                                ]
+                            }
+                        ],
+                    }
+                ],
+                "assignments": {
+                    "lines": [
+                        {"line_id": 1, "segment_key": "only"},
+                        {"line_id": 2, "segment_key": "only"},
+                    ]
+                },
+                "visualization": {"strategy": "RECTANGULAR"},
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+        )

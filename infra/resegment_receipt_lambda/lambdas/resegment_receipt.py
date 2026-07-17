@@ -407,6 +407,14 @@ def create_plan(
         and not visualization.get("confirm_stacked_scan", False)
     ):
         raise ValueError("SCAN layered segmentation requires confirm_stacked_scan=true")
+    if effective_strategy == "RECTANGULAR" and any(
+        segment.get("visible_regions") for segment in plan_segments
+    ):
+        raise ValueError(
+            "visible_regions require the LAYERED_MULTI_REGION strategy; a "
+            "RECTANGULAR apply writes the min-area crop and would ignore "
+            "them, so the preview would not match the applied output"
+        )
 
     plan = {
         "version": schema_version,
@@ -909,6 +917,35 @@ def _finish_cleanup(
     }
 
 
+def _commit_landed(
+    dynamo_client: Any, plan: dict[str, Any], output_ids: list[int]
+) -> bool:
+    """Return True when the commit transaction actually took effect.
+
+    The commit atomically deletes the source parent and activates every
+    output, so it landed exactly when the source is gone and each output
+    parses as a real Receipt (a reservation row raises OperationError).
+    """
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityNotFoundError,
+        OperationError,
+    )
+
+    try:
+        dynamo_client.get_receipt(plan["image_id"], int(plan["source_receipt_id"]))
+        return False
+    except EntityNotFoundError:
+        pass
+    except OperationError:
+        return False
+    for output_id in output_ids:
+        try:
+            dynamo_client.get_receipt(plan["image_id"], output_id)
+        except (EntityNotFoundError, OperationError):
+            return False
+    return True
+
+
 def apply_plan(
     event: dict[str, Any],
     *,
@@ -1074,11 +1111,24 @@ def apply_plan(
 
         plan["status"] = "COMMITTING"
         _save_plan(s3_client, raw_bucket, plan)
-        dynamo_client.commit_receipt_resegmentation(
-            details.receipt,
-            [output["receipt"] for output in outputs],
-            plan["plan_id"],
-        )
+        try:
+            dynamo_client.commit_receipt_resegmentation(
+                details.receipt,
+                [output["receipt"] for output in outputs],
+                plan["plan_id"],
+            )
+        except Exception:
+            # A commit exception is not proof the transaction failed: the
+            # response can be lost after DynamoDB committed, and a
+            # concurrent apply of the same plan may have won the race.
+            # Rolling back in either case would destroy committed data.
+            if not _commit_landed(dynamo_client, plan, output_ids):
+                raise
+            logger.warning(
+                "Commit for plan %s raised but the transaction landed; "
+                "continuing to cleanup",
+                plan["plan_id"],
+            )
         committed = True
         try:
             result = _finish_cleanup(

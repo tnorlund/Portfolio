@@ -349,12 +349,13 @@ class _Receipt(FlattenedStandardMixin):
         receipt_ids: list[int],
         operation_id: str,
     ) -> None:
-        """Remove staged children and reservations owned by an operation."""
-        for receipt_id in receipt_ids:
-            self.delete_receipt_items(
-                image_id, receipt_id, include_parent=False
-            )
+        """Remove staged children and reservations owned by an operation.
 
+        The guarded reservation delete runs FIRST: if any parent row is a
+        committed receipt (the commit transaction actually landed, or a
+        concurrent apply won), the whole release fails before any child
+        rows are touched, so a rollback can never destroy committed data.
+        """
         transact_items = [
             {
                 "Delete": {
@@ -379,6 +380,10 @@ class _Receipt(FlattenedStandardMixin):
         ]
         if transact_items:
             self._client.transact_write_items(TransactItems=transact_items)
+        for receipt_id in receipt_ids:
+            self.delete_receipt_items(
+                image_id, receipt_id, include_parent=False
+            )
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:

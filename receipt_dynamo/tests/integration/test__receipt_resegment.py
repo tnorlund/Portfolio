@@ -107,14 +107,34 @@ def test_release_is_idempotent_but_never_deletes_receipts(dynamodb_table):
     client.release_receipt_id_reservations(image_id, [2], operation_id)
     client.release_receipt_id_reservations(image_id, [2], operation_id)
 
-    # A committed receipt occupying the same key must never be deleted.
+    # A committed receipt occupying the same key must never be deleted,
+    # and the guarded parent delete must fail BEFORE any child rows are
+    # touched (a rollback racing a landed commit must not destroy data).
     client.add_receipt(_receipt(image_id, 2))
+    client.add_receipt_word(
+        ReceiptWord(
+            image_id=image_id,
+            receipt_id=2,
+            line_id=1,
+            word_id=1,
+            text="committed",
+            bounding_box={"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1},
+            top_left={"x": 0.1, "y": 0.2},
+            top_right={"x": 0.2, "y": 0.2},
+            bottom_left={"x": 0.1, "y": 0.1},
+            bottom_right={"x": 0.2, "y": 0.1},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=1.0,
+        )
+    )
     with pytest.raises(DynamoDBError):
         client.release_receipt_id_reservations(image_id, [2], operation_id)
     assert [
         receipt.receipt_id
         for receipt in client.get_receipts_from_image(image_id)
     ] == [2]
+    assert len(client.get_receipt_details(image_id, 2).words) == 1
 
 
 @pytest.mark.integration

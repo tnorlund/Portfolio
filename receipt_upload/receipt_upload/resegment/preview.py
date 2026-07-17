@@ -389,7 +389,10 @@ def build_preview_bundle(
     for segment in segments:
         key = str(segment["segment_key"])
         visible_regions = segment.get("visible_regions", ())
-        if visible_regions:
+        # Explicit regions only shape the mask for layered plans; a
+        # RECTANGULAR apply writes the min-area crop, so honoring them
+        # here would preview an artifact apply never produces.
+        if strategy == "LAYERED_MULTI_REGION" and visible_regions:
             mask = Image.new("L", image.size, 0)
             draw = ImageDraw.Draw(mask)
             for region in visible_regions:

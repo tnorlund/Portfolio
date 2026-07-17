@@ -527,3 +527,38 @@ def test_line_first_plan_rejects_missing_lines_and_noncontiguous_overrides():
                 ],
             },
         )
+
+
+def test_line_first_plan_rejects_wordless_line_assigned_to_segment():
+    """Apply rebuilds outputs from words, so a wordless line assigned to a
+    segment would be silently destroyed; it must be discarded explicitly."""
+    lines = [{"line_id": 1}, {"line_id": 2}]
+    words = [_word(1, 1)]
+    segments = [{"segment_key": "a"}]
+
+    with pytest.raises(ResegmentPlanError, match="Lines without words"):
+        normalize_line_resegmentation_plan(
+            lines=lines,
+            words=words,
+            labels=[],
+            segments=segments,
+            assignments={
+                "lines": [
+                    {"line_id": 1, "segment_key": "a"},
+                    {"line_id": 2, "segment_key": "a"},
+                ],
+            },
+        )
+
+    plan = normalize_line_resegmentation_plan(
+        lines=lines,
+        words=words,
+        labels=[],
+        segments=segments,
+        assignments={
+            "lines": [{"line_id": 1, "segment_key": "a"}],
+            "discard_lines": [2],
+            "discard_reason": "empty OCR line",
+        },
+    )
+    assert plan["totals"]["source_words"] == 1
