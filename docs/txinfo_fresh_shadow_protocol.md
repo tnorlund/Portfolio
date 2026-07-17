@@ -13,26 +13,36 @@ checkout, the shared priors, receipt labels, or external data:
 The harness accepts exactly two external input files. It does not copy either
 file into git.
 
-`UPLOAD_MANIFEST.json` is supplied by Claude A:
+The frozen preregistration is verified against SHA-256
+`6957a10e004a9217425d266dd6e6f4e47d112f89b7f820df7665f49bf41d415d`
+before either candidate can run.
+
+`UPLOAD_MANIFEST.json` is supplied by Claude A. The harness accepts Claude
+A's direct receipt list or the intake protocol's image list with nested
+receipts; in either representation, cohort membership comes only from this
+file:
 
 ```json
 {
-  "producer": "claude_a",
-  "cohort": "fresh_upload_v1",
+  "role": "claude_a_intake_audit",
+  "protocol": "fresh_upload_v1",
+  "t0_utc": "2026-07-17T21:07:13Z",
   "receipts": [
     {
       "image_id": "private source identifier",
       "receipt_id": 1,
       "merchant": null,
-      "uploaded_at": "2026-07-17T14:00:00-07:00"
+      "uploaded_at": "2026-07-17T14:10:00-07:00"
     }
   ]
 }
 ```
 
-Every `uploaded_at` must be later than corrected commit `099d1197a`. Receipt
-identity may appear only in these private inputs and the process-local job;
-reports use a twelve-character salted case digest.
+The fixed intake baseline and every available receipt timestamp must be later
+than corrected commit `099d1197a`. Receipt identity may appear only in these
+private inputs and the process-local job; reports use a twelve-character salted
+case digest. Images that failed before producing a receipt remain documented
+in the intake manifest but do not create an evaluable receipt key.
 
 `TRUTH_LOCKED.json` is supplied by Claude B only after labels are final:
 
@@ -47,17 +57,24 @@ reports use a twelve-character salted case digest.
       "image_id": "same private source identifier",
       "receipt_id": 1,
       "rows": [
-        {"row_id": 1, "section_type": "ITEMS"}
+        {"row_id": 1, "section_type": "ITEMS"},
+        {
+          "row_id": 2,
+          "section_type": "AMBIGUOUS",
+          "note": "image and OCR evidence do not resolve this row"
+        }
       ]
     }
   ]
 }
 ```
 
-The truth receipt set must equal the upload receipt set. Duplicate receipts,
-duplicate truth rows, a changed manifest hash, an unlocked file, an unexpected
-producer, or a pre-freeze upload aborts before any decoder import or DynamoDB
-read.
+The truth receipt set plus any explicitly reasoned, pre-run receipt exclusions
+must equal the upload receipt set. `OTHER` is a scored truth class that neither
+candidate can emit. `AMBIGUOUS` rows require a note, are excluded from every
+metric, and are counted prominently. Duplicate receipts, duplicate truth rows,
+a changed manifest hash, an unlocked file, an unexpected producer, or a
+pre-freeze upload aborts before any decoder import or DynamoDB read.
 
 ## Isolation and read-only behavior
 
@@ -91,18 +108,19 @@ The comparison reports:
 - pseudonymized per-receipt accuracy, changed-row, and fragmentation deltas.
 
 Frozen v4 is never promotion-eligible because its post-decoder mutation breaks
-the authoritative-path invariant. The corrected candidate is only eligible
-for a separate promotion review—not automatically merged or deployed—when all
-of these precommitted checks pass:
+the authoritative-path invariant. The locked preregistration defines only four
+numerical gates for each candidate:
 
 1. overall agreement is at least 0.80;
 2. ITEMS recall, TXINFO recall, and TXINFO precision are each at least 0.70;
-3. TXINFO recall and precision Wilson lower bounds are each at least 0.70;
-4. the cohort contains at least 60 TXINFO truth rows;
-5. no scored row is unassigned;
-6. both candidate input-snapshot hashes are identical; and
-7. corrected strict islands and receipts with split section types do not exceed
-   frozen v4.
+3. TXINFO recall is at least 0.70; and
+4. TXINFO precision is at least 0.70.
 
-A failed or statistically unresolved check keeps the correction draft. There
-is no tuning, rule change, rerun, merge, or deployment after viewing results.
+Wilson intervals, unassigned rows, and sequence-coherence measures are reported
+but are not gates. Both candidate input-snapshot hashes must match or the
+comparison is invalid. When fewer than 60 true TXINFO rows are available, the
+TXINFO results are smoke evidence only and the correction remains draft even
+if the four point gates pass. With at least 60 true TXINFO rows and all four
+gates passing, the correction is eligible only for a separate promotion
+review; it is not automatically merged or deployed. There is no tuning, rule
+change, rerun, merge, or deployment after viewing results.

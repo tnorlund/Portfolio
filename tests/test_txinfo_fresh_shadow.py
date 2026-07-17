@@ -63,7 +63,7 @@ def test_upload_manifest_requires_claude_a_and_post_freeze_receipts() -> None:
 
     assert len(receipts) == 1
     manifest["producer"] = "someone_else"
-    with pytest.raises(ValueError, match="exactly claude_a"):
+    with pytest.raises(ValueError, match="authored by claude_a"):
         shadow._validate_upload_manifest(  # pylint: disable=protected-access
             manifest, corrected_committed_at=_COMMITTED_AT
         )
@@ -86,13 +86,16 @@ def test_truth_lock_must_be_claude_b_and_bind_exact_manifest() -> None:
     )
     truth = _truth_lock(upload_sha256)
 
-    normalized = shadow._validate_truth_lock(  # pylint: disable=protected-access
-        truth,
-        upload_sha256=upload_sha256,
-        upload_receipts=receipts,
+    normalized, exclusions = (
+        shadow._validate_truth_lock(  # pylint: disable=protected-access
+            truth,
+            upload_sha256=upload_sha256,
+            upload_receipts=receipts,
+        )
     )
 
     assert normalized[(_IMAGE_ID, 1)][1]["section_type"] == "TRANSACTION_INFO"
+    assert exclusions == {}
     truth["upload_manifest_sha256"] = "b" * 64
     with pytest.raises(ValueError, match="exact upload manifest bytes"):
         shadow._validate_truth_lock(  # pylint: disable=protected-access
@@ -152,6 +155,66 @@ def test_candidate_environment_drops_python_checkout_controls(
     assert "VIRTUAL_ENV" not in environment
     assert environment["AWS_PROFILE"] == "dev-readonly"
     assert environment["PYTHONNOUSERSITE"] == "1"
+
+
+def test_nested_claude_a_intake_manifest_is_supported() -> None:
+    manifest = {
+        "role": "claude_a_intake_audit",
+        "protocol": "fresh_upload_v1",
+        "t0_utc": "2026-07-17T21:07:13Z",
+        "images": [
+            {
+                "image_id": _IMAGE_ID,
+                "created_at": "2026-07-17T21:10:00Z",
+                "receipt_ids": [1],
+            },
+            {
+                "image_id": "failed-image",
+                "created_at": "2026-07-17T21:11:00Z",
+                "receipt_ids": [],
+                "status": "FAILED",
+            },
+        ],
+    }
+
+    receipts = shadow._validate_upload_manifest(  # pylint: disable=protected-access
+        manifest, corrected_committed_at=_COMMITTED_AT
+    )
+
+    assert [(item["image_id"], item["receipt_id"]) for item in receipts] == [
+        (_IMAGE_ID, 1)
+    ]
+
+
+def test_ambiguous_truth_requires_note_and_other_remains_scored() -> None:
+    upload_sha256 = "a" * 64
+    receipts = shadow._validate_upload_manifest(  # pylint: disable=protected-access
+        _upload_manifest(), corrected_committed_at=_COMMITTED_AT
+    )
+    truth = _truth_lock(upload_sha256)
+    truth["receipts"][0]["rows"].extend(
+        [
+            {
+                "row_id": 3,
+                "section_type": "AMBIGUOUS",
+                "note": "not resolvable from image and OCR",
+            },
+            {"row_id": 4, "section_type": "OTHER"},
+        ]
+    )
+
+    normalized, _ = shadow._validate_truth_lock(  # pylint: disable=protected-access
+        truth,
+        upload_sha256=upload_sha256,
+        upload_receipts=receipts,
+    )
+
+    assert [row["section_type"] for row in normalized[(_IMAGE_ID, 1)]] == [
+        "ITEMS",
+        "TRANSACTION_INFO",
+        "AMBIGUOUS",
+        "OTHER",
+    ]
 
 
 def test_fragmentation_counts_split_types_and_strict_islands() -> None:
@@ -260,21 +323,19 @@ def test_comparison_preregisters_strict_promotion_evidence() -> None:
     assert comparison["preregistered_promotion_checks"] == {
         "input_snapshots_identical": True,
         "all_point_gates_pass": True,
-        "zero_unassigned_rows": True,
-        "at_least_60_txinfo_truth_rows": True,
-        "txinfo_confidence_intervals_clear_gates": True,
-        "coherence_indicators_not_worse": True,
+        "promotion_grade_txinfo_sample": True,
         "point_gates": {
             "overall_agreement": True,
             "items_recall": True,
             "txinfo_recall": True,
             "txinfo_precision": True,
         },
-        "txinfo_ci_gates": {
-            "txinfo_recall": True,
-            "txinfo_precision": True,
-        },
-        "coherence_checks": {
+    }
+    assert comparison["supplemental_report_only"] == {
+        "confidence_intervals_are_gates": False,
+        "unassigned_rows_are_a_gate": False,
+        "sequence_coherence_is_a_gate": False,
+        "coherence_comparison": {
             "strict_islands": True,
             "receipts_with_split_types": True,
         },
@@ -298,3 +359,32 @@ def test_manifest_hash_is_file_bytes_not_reformatted_json(tmp_path: Path) -> Non
     assert (
         shadow._sha256_file(compact) == compact_hash
     )  # pylint: disable=protected-access
+
+
+def test_locked_preregistration_hash_and_candidate_ids_are_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preregistration = {
+        "candidates": {
+            "frozen_v4_baseline": {
+                "git_commit": shadow.FROZEN_V4_COMMIT,
+                "priors_sha256": shadow.PRIORS_SHA256,
+            },
+            "sequence_invariant_correction": {
+                "git_commit": shadow.CORRECTED_COMMIT,
+                "priors_sha256": shadow.PRIORS_SHA256,
+            },
+        }
+    }
+    preregistration_path = tmp_path / shadow.PREREGISTRATION
+    _write_json(preregistration_path, preregistration)
+    actual_hash = hashlib.sha256(preregistration_path.read_bytes()).hexdigest()
+    (tmp_path / shadow.PREREGISTRATION_HASH).write_text(
+        f"{actual_hash}  {preregistration_path}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(shadow, "PREREGISTRATION_SHA256", actual_hash)
+
+    assert (
+        shadow._validate_preregistration(tmp_path)  # pylint: disable=protected-access
+        == actual_hash
+    )

@@ -187,6 +187,7 @@ def _score(
     predicted_totals: Counter[str] = Counter()
     matched_totals: Counter[str] = Counter()
     confusion: Counter[tuple[str, str]] = Counter()
+    txinfo_false_positives: Counter[tuple[str, str]] = Counter()
     matched = 0
     for row in receipt_rows:
         truth = str(row["truth"])
@@ -195,6 +196,8 @@ def _score(
         confusion[(truth, predicted)] += 1
         if predicted != _UNASSIGNED:
             predicted_totals[predicted] += 1
+        if predicted == "TRANSACTION_INFO" and truth != "TRANSACTION_INFO":
+            txinfo_false_positives[(truth, str(row.get("merchant") or "UNKNOWN"))] += 1
         if predicted == truth:
             matched += 1
             matched_totals[truth] += 1
@@ -234,6 +237,10 @@ def _score(
                 for truth in labels
             ],
         },
+        "txinfo_false_positives_by_truth_and_merchant": [
+            {"truth": truth, "merchant": merchant, "count": count}
+            for (truth, merchant), count in sorted(txinfo_false_positives.items())
+        ],
     }
 
 
@@ -307,7 +314,6 @@ def _evaluate(
     all_scored_rows: list[dict[str, Any]] = []
     snapshot_records = []
     case_salt = str(job["upload_manifest_sha256"])
-    vocabulary = set(str(value) for value in model["global"]["sections"])
     for receipt in job["receipts"]:
         image_id = str(receipt["image_id"])
         receipt_id = int(receipt["receipt_id"])
@@ -322,14 +328,12 @@ def _evaluate(
             int(item["row_id"]): str(item["section_type"])
             for item in receipt["truth_rows"]
         }
-        unknown_truth = sorted(set(truth.values()) - vocabulary)
-        if unknown_truth:
-            raise ValueError(f"truth contains unknown section types: {unknown_truth}")
         scored_rows = [
             {
                 "row_id": row_id,
                 "truth": section_type,
                 "predicted": predicted.get(row_id),
+                "merchant": merchant,
             }
             for row_id, section_type in sorted(truth.items())
         ]

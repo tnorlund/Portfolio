@@ -44,6 +44,11 @@ DEFAULT_ARTIFACT_DIR = Path(
 
 UPLOAD_MANIFEST = "UPLOAD_MANIFEST.json"
 TRUTH_LOCKED = "TRUTH_LOCKED.json"
+PREREGISTRATION = "PREREGISTRATION.json"
+PREREGISTRATION_HASH = "PREREGISTRATION.sha256"
+PREREGISTRATION_SHA256 = (
+    "6957a10e004a9217425d266dd6e6f4e47d112f89b7f820df7665f49bf41d415d"
+)
 RUN_STATE = "RUN_STATE.json"
 FROZEN_RESULT = "FROZEN_V4_RESULT.json"
 CORRECTED_RESULT = "CORRECTED_RESULT.json"
@@ -70,6 +75,21 @@ _POINT_THRESHOLDS = {
     "txinfo_precision": 0.70,
 }
 _MINIMUM_TXINFO_TRUTH_ROWS = 60
+_TRUTH_LABELS = {
+    "ADDRESS",
+    "AMBIGUOUS",
+    "BARCODE",
+    "FOOTER",
+    "ITEMS",
+    "OTHER",
+    "PAYMENT",
+    "SECTION_HEADER",
+    "STOREFRONT",
+    "SUMMARY",
+    "SURVEY",
+    "TOTAL_LINE",
+    "TRANSACTION_INFO",
+}
 
 
 def _arguments() -> argparse.Namespace:
@@ -170,36 +190,110 @@ def _receipt_key(item: Mapping[str, Any]) -> tuple[str, int]:
     return image_id, receipt_id
 
 
+def _validate_preregistration(artifact_dir: Path) -> str:
+    preregistration_path = artifact_dir / PREREGISTRATION
+    declared_hash_path = artifact_dir / PREREGISTRATION_HASH
+    if not preregistration_path.is_file() or not declared_hash_path.is_file():
+        raise FileNotFoundError("locked preregistration and hash are required")
+    actual_hash = _sha256_file(preregistration_path)
+    declared_parts = declared_hash_path.read_text(encoding="utf-8").split()
+    if not declared_parts or declared_parts[0] != actual_hash:
+        raise ValueError("PREREGISTRATION.sha256 does not match exact JSON bytes")
+    if actual_hash != PREREGISTRATION_SHA256:
+        raise ValueError(
+            f"unexpected preregistration hash: {actual_hash} != {PREREGISTRATION_SHA256}"
+        )
+    preregistration = _read_json(preregistration_path)
+    candidates = preregistration.get("candidates", {})
+    frozen = candidates.get("frozen_v4_baseline", {})
+    corrected = candidates.get("sequence_invariant_correction", {})
+    if frozen.get("git_commit") != FROZEN_V4_COMMIT:
+        raise ValueError("preregistration frozen-v4 commit mismatch")
+    if corrected.get("git_commit") != CORRECTED_COMMIT:
+        raise ValueError("preregistration corrected commit mismatch")
+    if frozen.get("priors_sha256") != PRIORS_SHA256:
+        raise ValueError("preregistration frozen-v4 priors mismatch")
+    if corrected.get("priors_sha256") != PRIORS_SHA256:
+        raise ValueError("preregistration corrected priors mismatch")
+    return actual_hash
+
+
+def _manifest_receipts(value: Mapping[str, Any]) -> list[dict[str, Any]]:
+    direct = value.get("receipts")
+    if isinstance(direct, list):
+        return [
+            dict(item) if isinstance(item, dict) else {"receipt_id": item}
+            for item in direct
+        ]
+    images = value.get("images")
+    if not isinstance(images, list):
+        raise ValueError("upload manifest requires receipts or images")
+    receipts: list[dict[str, Any]] = []
+    for image_index, image in enumerate(images):
+        if not isinstance(image, dict):
+            raise ValueError(f"upload image {image_index} must be an object")
+        image_id = image.get("image_id")
+        entries = image.get("receipts", image.get("receipt_ids", []))
+        if not isinstance(entries, list):
+            raise ValueError(f"upload image {image_index} receipts must be a list")
+        for entry in entries:
+            receipt = dict(entry) if isinstance(entry, dict) else {"receipt_id": entry}
+            receipt.setdefault("image_id", image_id)
+            receipt.setdefault(
+                "uploaded_at",
+                image.get("uploaded_at", image.get("created_at")),
+            )
+            receipt.setdefault(
+                "merchant",
+                image.get("merchant", image.get("merchant_name")),
+            )
+            receipts.append(receipt)
+    return receipts
+
+
 def _validate_upload_manifest(
     value: Any, *, corrected_committed_at: str
 ) -> list[dict[str, Any]]:
     if not isinstance(value, dict):
         raise ValueError("UPLOAD_MANIFEST.json must be a JSON object")
-    if value.get("producer") != "claude_a":
-        raise ValueError("UPLOAD_MANIFEST.json producer must be exactly claude_a")
-    if value.get("cohort") != "fresh_upload_v1":
+    if (
+        value.get("producer") != "claude_a"
+        and value.get("role") != "claude_a_intake_audit"
+    ):
+        raise ValueError("UPLOAD_MANIFEST.json must be authored by claude_a")
+    cohort = value.get("cohort", value.get("protocol"))
+    if cohort != "fresh_upload_v1":
         raise ValueError("upload manifest cohort must be fresh_upload_v1")
-    receipts = value.get("receipts")
-    if not isinstance(receipts, list) or not receipts:
+    receipts = _manifest_receipts(value)
+    if not receipts:
         raise ValueError("upload manifest receipts must be a non-empty list")
     freeze_time = _parse_time(corrected_committed_at, "corrected commit time")
-    normalized = []
+    baseline_value = value.get("t0_utc", value.get("baseline_at"))
+    baseline_time = (
+        _parse_time(baseline_value, "t0_utc") if baseline_value is not None else None
+    )
+    if baseline_time is not None and baseline_time <= freeze_time:
+        raise ValueError("upload intake baseline must follow the corrected commit")
+    normalized: list[dict[str, Any]] = []
     keys: set[tuple[str, int]] = set()
     for index, item in enumerate(receipts):
-        if not isinstance(item, dict):
-            raise ValueError(f"upload receipt {index} must be an object")
         key = _receipt_key(item)
         if key in keys:
             raise ValueError(f"duplicate upload receipt at index {index}")
         keys.add(key)
-        uploaded_at = _parse_time(
-            item.get("uploaded_at"), f"receipts[{index}].uploaded_at"
+        uploaded_value = item.get("uploaded_at", item.get("created_at"))
+        uploaded_at = (
+            _parse_time(uploaded_value, f"receipts[{index}].uploaded_at")
+            if uploaded_value is not None
+            else baseline_time
         )
+        if uploaded_at is None:
+            raise ValueError(f"receipt {index} needs uploaded_at or a manifest t0_utc")
         if uploaded_at <= freeze_time:
             raise ValueError(
                 f"receipt {index} is not fresh: uploaded_at must follow {corrected_committed_at}"
             )
-        merchant = item.get("merchant")
+        merchant = item.get("merchant", item.get("merchant_name"))
         if merchant is not None and not isinstance(merchant, str):
             raise ValueError(f"receipts[{index}].merchant must be a string or null")
         normalized.append(
@@ -218,11 +312,15 @@ def _validate_truth_lock(
     *,
     upload_sha256: str,
     upload_receipts: Sequence[Mapping[str, Any]],
-) -> dict[tuple[str, int], list[dict[str, Any]]]:
+) -> tuple[
+    dict[tuple[str, int], list[dict[str, Any]]],
+    dict[tuple[str, int], str],
+]:
     if not isinstance(value, dict):
         raise ValueError("TRUTH_LOCKED.json must be a JSON object")
-    if value.get("producer") != "claude_b":
-        raise ValueError("TRUTH_LOCKED.json producer must be exactly claude_b")
+    author = str(value.get("producer", value.get("author", "")))
+    if "claude_b" not in author:
+        raise ValueError("TRUTH_LOCKED.json must be authored by claude_b")
     if value.get("locked") is not True:
         raise ValueError("TRUTH_LOCKED.json must contain locked=true")
     if value.get("upload_manifest_sha256") != upload_sha256:
@@ -233,14 +331,28 @@ def _validate_truth_lock(
         raise ValueError("truth lock receipts must be a list")
     expected_keys = {_receipt_key(item) for item in upload_receipts}
     truth_by_receipt: dict[tuple[str, int], list[dict[str, Any]]] = {}
-    total_rows = 0
+    exclusions: dict[tuple[str, int], str] = {}
+    exclusion_items = value.get("exclusions", [])
+    if not isinstance(exclusion_items, list):
+        raise ValueError("truth lock exclusions must be a list")
+    for index, exclusion in enumerate(exclusion_items):
+        if not isinstance(exclusion, dict):
+            raise ValueError(f"truth exclusion {index} must be an object")
+        key = _receipt_key(exclusion)
+        reason = exclusion.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("every truth exclusion requires a written reason")
+        if key in exclusions:
+            raise ValueError(f"duplicate truth exclusion at index {index}")
+        exclusions[key] = reason.strip()
+    total_scored_rows = 0
     for index, item in enumerate(receipts):
         if not isinstance(item, dict):
             raise ValueError(f"truth receipt {index} must be an object")
         key = _receipt_key(item)
         if key in truth_by_receipt:
             raise ValueError(f"duplicate truth receipt at index {index}")
-        rows = item.get("rows")
+        rows = item.get("rows", item.get("truth_rows"))
         if not isinstance(rows, list):
             raise ValueError(f"truth receipt {index} rows must be a list")
         normalized_rows = []
@@ -251,26 +363,47 @@ def _validate_truth_lock(
                     f"truth receipt {index} row {row_index} must be an object"
                 )
             row_id = row.get("row_id")
-            section_type = row.get("section_type")
+            section_type = row.get("section_type", row.get("label"))
             if isinstance(row_id, bool) or not isinstance(row_id, int):
                 raise ValueError("truth row_id must be an integer")
             if row_id in row_ids:
                 raise ValueError(f"duplicate truth row_id {row_id} in receipt {index}")
-            if not isinstance(section_type, str) or not section_type:
-                raise ValueError("truth section_type must be a non-empty string")
+            if section_type not in _TRUTH_LABELS:
+                raise ValueError(
+                    f"truth section_type is not preregistered: {section_type!r}"
+                )
+            if section_type == "AMBIGUOUS":
+                note = row.get("note")
+                if not isinstance(note, str) or not note.strip():
+                    raise ValueError("AMBIGUOUS truth rows require a note")
             row_ids.add(row_id)
-            normalized_rows.append({"row_id": row_id, "section_type": section_type})
-        total_rows += len(normalized_rows)
+            normalized_rows.append(
+                {
+                    "row_id": row_id,
+                    "section_type": section_type,
+                    **(
+                        {"note": str(row["note"]).strip()}
+                        if section_type == "AMBIGUOUS"
+                        else {}
+                    ),
+                }
+            )
+        total_scored_rows += sum(
+            row["section_type"] != "AMBIGUOUS" for row in normalized_rows
+        )
         truth_by_receipt[key] = normalized_rows
-    if set(truth_by_receipt) != expected_keys:
-        missing = len(expected_keys - set(truth_by_receipt))
-        extra = len(set(truth_by_receipt) - expected_keys)
+    if set(truth_by_receipt) & set(exclusions):
+        raise ValueError("a receipt cannot have truth rows and be excluded")
+    covered_keys = set(truth_by_receipt) | set(exclusions)
+    if covered_keys != expected_keys:
+        missing = len(expected_keys - covered_keys)
+        extra = len(covered_keys - expected_keys)
         raise ValueError(
             f"truth lock cohort differs from upload manifest: missing={missing}, extra={extra}"
         )
-    if total_rows == 0:
+    if total_scored_rows == 0:
         raise ValueError("truth lock contains no scored rows")
-    return truth_by_receipt
+    return truth_by_receipt, exclusions
 
 
 def _validate_inputs(
@@ -282,6 +415,7 @@ def _validate_inputs(
         raise FileNotFoundError(f"waiting for Claude A: {upload_path}")
     if not truth_path.is_file():
         raise FileNotFoundError(f"waiting for Claude B: {truth_path}")
+    preregistration_sha256 = _validate_preregistration(artifact_dir)
     upload_sha256 = _sha256_file(upload_path)
     truth_sha256 = _sha256_file(truth_path)
     corrected_metadata = _commit_metadata(repo_root, CORRECTED_COMMIT)
@@ -289,7 +423,7 @@ def _validate_inputs(
         _read_json(upload_path),
         corrected_committed_at=corrected_metadata["committed_at"],
     )
-    truth_by_receipt = _validate_truth_lock(
+    truth_by_receipt, exclusions = _validate_truth_lock(
         _read_json(truth_path),
         upload_sha256=upload_sha256,
         upload_receipts=upload_receipts,
@@ -297,19 +431,38 @@ def _validate_inputs(
     job_receipts: list[dict[str, Any]] = []
     for receipt in upload_receipts:
         key = _receipt_key(receipt)
+        if key in exclusions:
+            continue
+        locked_rows = truth_by_receipt[key]
         job_receipts.append(
             {
                 "image_id": key[0],
                 "receipt_id": key[1],
                 "merchant": receipt.get("merchant"),
-                "truth_rows": truth_by_receipt[key],
+                "truth_rows": [
+                    row for row in locked_rows if row["section_type"] != "AMBIGUOUS"
+                ],
             }
         )
+    labeled_row_count = sum(len(rows) for rows in truth_by_receipt.values())
+    ambiguous_row_count = sum(
+        row["section_type"] == "AMBIGUOUS"
+        for rows in truth_by_receipt.values()
+        for row in rows
+    )
     return (
         {
+            "preregistration_sha256": preregistration_sha256,
             "upload_manifest_sha256": upload_sha256,
             "truth_locked_sha256": truth_sha256,
-            "receipt_count": len(job_receipts),
+            "receipt_count": len(upload_receipts),
+            "evaluated_receipt_count": len(job_receipts),
+            "excluded_receipt_count": len(exclusions),
+            "labeled_row_count": labeled_row_count,
+            "ambiguous_row_count": ambiguous_row_count,
+            "ambiguous_row_proportion": (
+                ambiguous_row_count / labeled_row_count if labeled_row_count else 0.0
+            ),
             "truth_row_count": sum(len(item["truth_rows"]) for item in job_receipts),
         },
         job_receipts,
@@ -445,19 +598,9 @@ def _metric_estimate(result: Mapping[str, Any], name: str) -> float | None:
     return float(value) if value is not None else None
 
 
-def _metric_ci_low(result: Mapping[str, Any], name: str) -> float | None:
-    interval = result["evaluation"]["metrics"][name]["ci95"]
-    return float(interval[0]) if interval is not None else None
-
-
 def _metric_passes(result: Mapping[str, Any], name: str, threshold: float) -> bool:
     estimate = _metric_estimate(result, name)
     return estimate is not None and estimate >= threshold
-
-
-def _metric_ci_passes(result: Mapping[str, Any], name: str, threshold: float) -> bool:
-    lower = _metric_ci_low(result, name)
-    return lower is not None and lower >= threshold
 
 
 def _metric_delta(
@@ -530,13 +673,9 @@ def _compare_results(
         for name, threshold in _POINT_THRESHOLDS.items()
     }
     txinfo_truth_rows = int(corrected_metrics["txinfo_recall"]["total"])
-    txinfo_ci_resolved = {
-        name: _metric_ci_passes(corrected, name, _POINT_THRESHOLDS[name])
-        for name in ("txinfo_recall", "txinfo_precision")
-    }
     frozen_fragment = frozen_eval["fragmentation"]
     corrected_fragment = corrected_eval["fragmentation"]
-    coherence_not_worse = {
+    coherence_comparison = {
         "strict_islands": int(corrected_fragment["strict_island_count"])
         <= int(frozen_fragment["strict_island_count"]),
         "receipts_with_split_types": int(
@@ -547,13 +686,19 @@ def _compare_results(
     promotion_checks = {
         "input_snapshots_identical": snapshots_match,
         "all_point_gates_pass": all(point_gates.values()),
-        "zero_unassigned_rows": int(corrected_metrics["unassigned"]) == 0,
-        "at_least_60_txinfo_truth_rows": txinfo_truth_rows
+        "promotion_grade_txinfo_sample": txinfo_truth_rows
         >= _MINIMUM_TXINFO_TRUTH_ROWS,
-        "txinfo_confidence_intervals_clear_gates": all(txinfo_ci_resolved.values()),
-        "coherence_indicators_not_worse": all(coherence_not_worse.values()),
     }
-    corrected_eligible = all(promotion_checks.values())
+    if not snapshots_match:
+        corrected_recommendation = "INVALID_COMPARISON_INPUT_SNAPSHOTS_DIFFER"
+    elif txinfo_truth_rows < _MINIMUM_TXINFO_TRUTH_ROWS:
+        corrected_recommendation = "KEEP_DRAFT_SMOKE_EVIDENCE_ONLY"
+    elif not all(point_gates.values()):
+        corrected_recommendation = "KEEP_DRAFT_PREREGISTERED_GATE_FAILURE"
+    else:
+        corrected_recommendation = (
+            "ELIGIBLE_FOR_SEPARATE_PROMOTION_REVIEW_NOT_AUTHORIZED"
+        )
     return {
         "schema_version": 1,
         "candidate_commits": {
@@ -588,16 +733,16 @@ def _compare_results(
         "preregistered_promotion_checks": {
             **promotion_checks,
             "point_gates": point_gates,
-            "txinfo_ci_gates": txinfo_ci_resolved,
-            "coherence_checks": coherence_not_worse,
+        },
+        "supplemental_report_only": {
+            "confidence_intervals_are_gates": False,
+            "unassigned_rows_are_a_gate": False,
+            "sequence_coherence_is_a_gate": False,
+            "coherence_comparison": coherence_comparison,
         },
         "recommendation": {
             "frozen_v4": "DO_NOT_PROMOTE_ARCHITECTURAL_INVARIANT_VIOLATION",
-            "corrected": (
-                "ELIGIBLE_FOR_SEPARATE_PROMOTION_REVIEW_NOT_AUTHORIZED"
-                if corrected_eligible
-                else "KEEP_DRAFT_SHADOW_EVIDENCE_INSUFFICIENT_OR_FAILED"
-            ),
+            "corrected": corrected_recommendation,
             "merge_or_deploy_performed": False,
         },
     }
@@ -644,9 +789,15 @@ def _recommendation_markdown(
         "",
         "## Locked inputs",
         "",
+        f"- Preregistration SHA-256: `{input_hashes['preregistration_sha256']}`",
         f"- Upload manifest SHA-256: `{input_hashes['upload_manifest_sha256']}`",
         f"- Truth lock SHA-256: `{input_hashes['truth_locked_sha256']}`",
-        f"- Receipts: {input_hashes['receipt_count']}",
+        f"- Manifest receipts: {input_hashes['receipt_count']}",
+        f"- Evaluated receipts: {input_hashes['evaluated_receipt_count']}",
+        f"- Pre-run excluded receipts: {input_hashes['excluded_receipt_count']}",
+        f"- Locked labeled rows: {input_hashes['labeled_row_count']}",
+        f"- AMBIGUOUS rows excluded from scoring: {input_hashes['ambiguous_row_count']} "
+        f"({float(input_hashes['ambiguous_row_proportion']):.2%})",
         f"- Scored truth rows: {input_hashes['truth_row_count']}",
         "",
         "## Performance (estimate [Wilson 95% CI])",
@@ -672,6 +823,9 @@ def _recommendation_markdown(
             f"| Unassigned rows | {metrics['frozen_v4']['unassigned']} "
             f"| {metrics['corrected']['unassigned']} | "
             f"{int(metrics['corrected']['unassigned']) - int(metrics['frozen_v4']['unassigned']):+d} |",
+            "",
+            "Wilson confidence intervals are supplemental and are not gates. "
+            "TXINFO results with fewer than 60 true rows are smoke evidence only.",
             "",
             "## Sequence fragmentation and coherence",
             "",
@@ -733,6 +887,25 @@ def _recommendation_markdown(
                 )
         else:
             lines.append(f"- {'PASS' if passed else 'FAIL'}: `{name}`")
+    lines.extend(["", "## TXINFO false positives by truth and merchant", ""])
+    for candidate_name, title in (
+        ("frozen_v4", "Frozen v4"),
+        ("corrected", "Corrected candidate"),
+    ):
+        lines.extend(
+            [f"### {title}", "", "| Truth | Merchant | Count |", "|---|---|---:|"]
+        )
+        false_positives = metrics[candidate_name][
+            "txinfo_false_positives_by_truth_and_merchant"
+        ]
+        if false_positives:
+            for item in false_positives:
+                lines.append(
+                    f"| {item['truth']} | {item['merchant']} | {item['count']} |"
+                )
+        else:
+            lines.append("| — | — | 0 |")
+        lines.append("")
     lines.extend(["", "## Full confusion matrices", ""])
     lines.extend(
         _confusion_markdown(
@@ -833,6 +1006,7 @@ def _run_once(
             "schema_version": 1,
             "generated_at": _now(),
             "inputs": {
+                PREREGISTRATION: input_hashes["preregistration_sha256"],
                 UPLOAD_MANIFEST: input_hashes["upload_manifest_sha256"],
                 TRUTH_LOCKED: input_hashes["truth_locked_sha256"],
             },
@@ -874,9 +1048,17 @@ def _preflight(artifact_dir: Path, repo_root: Path) -> dict[str, Any]:
     output_presence = {
         name: (artifact_dir / name).exists() for name in sorted(_OUTPUT_NAMES)
     }
+    preregistration_sha256 = None
+    if (artifact_dir / PREREGISTRATION).is_file() and (
+        artifact_dir / PREREGISTRATION_HASH
+    ).is_file():
+        preregistration_sha256 = _validate_preregistration(artifact_dir)
     return {
         "schema_version": 1,
         "artifact_dir_exists": artifact_dir.is_dir(),
+        "preregistration_present": (artifact_dir / PREREGISTRATION).is_file(),
+        "preregistration_hash_present": (artifact_dir / PREREGISTRATION_HASH).is_file(),
+        "preregistration_sha256": preregistration_sha256,
         "upload_manifest_present": (artifact_dir / UPLOAD_MANIFEST).is_file(),
         "truth_locked_present": (artifact_dir / TRUTH_LOCKED).is_file(),
         "outputs": output_presence,
