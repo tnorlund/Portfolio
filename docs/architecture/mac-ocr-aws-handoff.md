@@ -72,12 +72,14 @@ live.
 Downloaded to the Mac:
 - the original image (`OCRJob.s3_bucket/s3_key`, raw bucket);
 - the LayoutLM CoreML bundle (`LAYOUTLM_MODEL_S3_BUCKET/KEY`, cached locally
-  via `AWS/ModelDownloader.swift`). The cache is **presence-based**
-  (`isModelCached` only checks that the required files exist at the fixed
-  cache path): republishing a different bundle under the same S3 key does
-  NOT invalidate a worker's cache — the worker keeps running the stale
-  model until its cache directory is cleared. Deploy new models under new
-  keys, or clear `layoutLMLocalCachePath` on the workers.
+  via `AWS/ModelDownloader.swift`). The cache is **presence-based and
+  ignores the S3 bucket/key entirely**: `ensureModelDownloaded` returns the
+  fixed `layoutLMLocalCachePath` (default `.models/layoutlm`) whenever the
+  required files exist there, before even looking at bucket or key. Neither
+  republishing under the same key NOR pointing config at a new key
+  invalidates a worker's cache. To roll a model you must delete the cache
+  directory on each worker, or configure a fresh (e.g. key- or
+  version-derived) `layoutLMLocalCachePath`.
 
 Returned to AWS by the Swift worker:
 - warped receipt crops → `raw-bucket/receipts/{image_id}/{file}` (S3);
