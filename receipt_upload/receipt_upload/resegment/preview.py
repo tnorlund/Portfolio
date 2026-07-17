@@ -528,9 +528,15 @@ def build_preview_bundle(
             findings.append(
                 {
                     "code": "DISCONNECTED_VISIBLE_REGIONS",
-                    "severity": "WARNING",
+                    "severity": (
+                        "BLOCKER" if strategy == "RECTANGULAR" else "WARNING"
+                    ),
                     "segment_key": key,
-                    "message": f"The segment has {len(component_lines[key])} visible components.",
+                    "message": (
+                        f"The segment has {len(component_lines[key])} visible "
+                        "components. A single rectangular output would include "
+                        "the pixels between them."
+                    ),
                 }
             )
         metrics[key] = {

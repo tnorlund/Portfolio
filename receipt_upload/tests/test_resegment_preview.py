@@ -142,3 +142,26 @@ def test_scan_rectangular_preview_blocks_foreign_word_capture():
     }
     assert ("FOREIGN_WORD_CAPTURED", "first") in blockers
     assert ("FOREIGN_WORD_CAPTURED", "second") in blockers
+
+
+def test_photo_rectangular_preview_blocks_disconnected_regions():
+    words = [_word(1, 1, 30, 70), _word(2, 1, 35, 530)]
+    words_by_ref = {(word["line_id"], word["word_id"]): word for word in words}
+
+    bundle = build_preview_bundle(
+        Image.new("RGB", (400, 600), "white"),
+        image_type="PHOTO",
+        strategy="RECTANGULAR",
+        lines=[_line(1), _line(2)],
+        words_by_ref=words_by_ref,
+        segments=[_segment("underlay", [(1, 1), (2, 1)], 0)],
+        discard_refs=set(),
+        padding_px=0,
+    )
+
+    finding = next(
+        finding
+        for finding in bundle["findings"]
+        if finding["code"] == "DISCONNECTED_VISIBLE_REGIONS"
+    )
+    assert finding["severity"] == "BLOCKER"
