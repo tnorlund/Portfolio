@@ -5,6 +5,8 @@ This command is read-only. The DynamoDB table must be supplied through
 ``DYNAMODB_TABLE_NAME`` and the environment must explicitly be ``dev``.
 """
 
+# ruff: noqa: E402
+
 # Monorepo sibling paths must be installed before importing runtime packages.
 # pylint: disable=wrong-import-position
 

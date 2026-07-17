@@ -3,17 +3,18 @@
     "case": "cb581977",
     "merchant": "Chick-fil-A",
     "qa": {
-      "items_matched": 4,
+      "items_matched": 5,
       "items_scored": 7,
-      "matched": 16,
+      "matched": 17,
       "scored": 25
     },
     "receipt_id": 1,
     "required_item_matches": {
-      "9": "ITEMS",
+      "10": "ITEMS",
       "12": "ITEMS",
       "14": "ITEMS",
-      "17": "ITEMS"
+      "17": "ITEMS",
+      "9": "ITEMS"
     },
     "rows": [
       {
@@ -26,16 +27,17 @@
         "predicted": "STOREFRONT",
         "row_id": 1,
         "token_evidence": {
-          "ADDRESS": -2.0962904613192177,
-          "BARCODE": -0.44515237360798565,
-          "FOOTER": 0.532288235086039,
-          "ITEMS": -0.5178077236491703,
-          "PAYMENT": 0.8248601428226077,
+          "ADDRESS": -2.153089945804127,
+          "BARCODE": -3.8192396619373787,
+          "FOOTER": 0.8230724629700967,
+          "ITEMS": -0.5566753394035451,
+          "PAYMENT": 1.2228961225148445,
           "SECTION_HEADER": 0,
-          "STOREFRONT": 1.1229192216919177,
-          "SUMMARY": -6.445613925818209,
-          "SURVEY": 0.5941815729956343,
-          "TOTAL_LINE": -5.693653196138185
+          "STOREFRONT": 0.8543060430209692,
+          "SUMMARY": -6.340607664525882,
+          "SURVEY": 0.5870635433785236,
+          "TOTAL_LINE": -5.62963859560071,
+          "TRANSACTION_INFO": 0.12239829399378266
         },
         "tokens": [],
         "x_span": 0.4791666564941407
@@ -50,16 +52,17 @@
         "predicted": "ADDRESS",
         "row_id": 2,
         "token_evidence": {
-          "ADDRESS": 11.04022627534048,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": 2.2509172792671843,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -3.387649464010821,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.802915832668121,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 4.633212676161876,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": 1.717635601781157,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.9495380008794265,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "__number__"
@@ -76,16 +79,17 @@
         "predicted": "ADDRESS",
         "row_id": 3,
         "token_evidence": {
-          "ADDRESS": 9.125334120708803,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -1.0034178304729395,
-          "ITEMS": 0.05956109566297374,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -0.6292905207065762,
-          "SUMMARY": -3.27757002144922,
-          "SURVEY": -2.8926165410356672,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 8.622022682063553,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -1.7743668565618247,
+          "ITEMS": 0.09048596921119478,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -0.36610528185326663,
+          "SUMMARY": -3.132579954644541,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": -1.1078299972874184
         },
         "tokens": [
           "__number__"
@@ -102,16 +106,17 @@
         "predicted": "ADDRESS",
         "row_id": 4,
         "token_evidence": {
-          "ADDRESS": 7.708987638631657,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -2.181259139092169,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -3.4512849811580035,
-          "SUMMARY": -1.6382791458654387,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": -4.382986344821786
+          "ADDRESS": 7.427823429762998,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -2.568247172339823,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -3.0607899652828485,
+          "SUMMARY": -1.801855444679461,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -4.335358033867895,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "__number__"
@@ -130,14 +135,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": -0.3884172976238638,
+          "FOOTER": -0.3485692991226337,
           "ITEMS": 0,
-          "PAYMENT": 4.018461831358751,
+          "PAYMENT": 3.61654701532522,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 1.4421743090142538
         },
         "tokens": [],
         "x_span": 0.2338509216308593
@@ -152,16 +158,17 @@
         "predicted": "ADDRESS",
         "row_id": 6,
         "token_evidence": {
-          "ADDRESS": 1.3765211180586423,
-          "BARCODE": -1.3999505584360783,
-          "FOOTER": -1.9036881245789243,
-          "ITEMS": -2.0150289245396866,
-          "PAYMENT": 0.3957970662890631,
-          "SECTION_HEADER": -29.028985091189394,
-          "STOREFRONT": -5.4012964803026255,
-          "SUMMARY": -10.83226581658877,
-          "SURVEY": -7.552563521999291,
-          "TOTAL_LINE": -12.905268318098422
+          "ADDRESS": 0.9795537030964494,
+          "BARCODE": -4.011778683507428,
+          "FOOTER": -5.9932755981459565,
+          "ITEMS": -2.232804973795891,
+          "PAYMENT": -2.13393355071762,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -2.972944782976675,
+          "SUMMARY": -11.226171242728915,
+          "SURVEY": -7.869735026421307,
+          "TOTAL_LINE": -13.574577905491424,
+          "TRANSACTION_INFO": 3.332950313554072
         },
         "tokens": [
           "__number__",
@@ -182,16 +189,17 @@
         "predicted": "ADDRESS",
         "row_id": 7,
         "token_evidence": {
-          "ADDRESS": 1.7287211671192981,
+          "ADDRESS": 1.4317748878753385,
           "BARCODE": 0,
-          "FOOTER": 3.1252580674649817,
+          "FOOTER": 3.924618555517097,
           "ITEMS": 0,
           "PAYMENT": 0,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
-          "SUMMARY": 1.5279404714837925,
+          "SUMMARY": 1.905862303343758,
           "SURVEY": 0,
-          "TOTAL_LINE": 0.6183125713277811
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.2291666564941407
@@ -203,19 +211,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.18421052631578946,
-        "predicted": "BARCODE",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 8,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": 1.8030689415369823,
-          "FOOTER": 0.06202267047474974,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.31667771005296963,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.806133453823059,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": -3.696004354838349
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -1.5750907997114498,
+          "FOOTER": -0.6791509245677263,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 0.13107742927624666,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.538132137488369,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -2.679144056636064,
+          "TRANSACTION_INFO": 3.058850057918323
         },
         "tokens": [
           "__number__"
@@ -232,16 +241,17 @@
         "predicted": "ITEMS",
         "row_id": 9,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 0.9342010285533502,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 0.9003326800605871,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "__amount__"
@@ -255,19 +265,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.23684210526315788,
-        "predicted": "ADDRESS",
+        "predicted": "ITEMS",
         "row_id": 10,
         "token_evidence": {
-          "ADDRESS": 2.5610998602196835,
-          "BARCODE": -0.25932303627677733,
-          "FOOTER": -2.006835660945879,
-          "ITEMS": -0.8060115698158747,
-          "PAYMENT": 0.5534270285736067,
-          "SECTION_HEADER": -11.611594036475758,
-          "STOREFRONT": -2.2255643998224572,
-          "SUMMARY": -4.3329063266355075,
-          "SURVEY": -1.7199586706264545,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": 2.401952456614603,
+          "BARCODE": -1.604711473402971,
+          "FOOTER": -3.5487337131236494,
+          "ITEMS": 0.41892318144228247,
+          "PAYMENT": 0.00593259446661909,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -2.177468453152934,
+          "SUMMARY": -4.490468497091566,
+          "SURVEY": -2.9600985127709403,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": 1.0808417556746606
         },
         "tokens": [
           "__number__",
@@ -282,19 +293,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.2631578947368421,
-        "predicted": "ADDRESS",
+        "predicted": "SECTION_HEADER",
         "row_id": 11,
         "token_evidence": {
-          "ADDRESS": 2.044575165938415,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -1.0034178304729395,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 1.9168636722449708,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -1.7743668565618247,
+          "ITEMS": 0.8654841762014607,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "__number__"
@@ -311,16 +323,17 @@
         "predicted": "ITEMS",
         "row_id": 12,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -1.0034178304729395,
-          "ITEMS": 4.020374265260552,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -1.7743668565618247,
+          "ITEMS": 3.915283671025727,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "__number__"
@@ -340,13 +353,14 @@
           "ADDRESS": 0,
           "BARCODE": 0,
           "FOOTER": 0,
-          "ITEMS": 3.9438069699066025,
+          "ITEMS": 3.71999077961251,
           "PAYMENT": 0,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.17535807800292968
@@ -361,16 +375,17 @@
         "predicted": "ITEMS",
         "row_id": 14,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 0.9342010285533502,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 0.9003326800605871,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "__amount__"
@@ -387,16 +402,17 @@
         "predicted": "ITEMS",
         "row_id": 16,
         "token_evidence": {
-          "ADDRESS": -6.255596595072781,
-          "BARCODE": -7.616481470262632,
-          "FOOTER": 1.408629770420061,
-          "ITEMS": -0.6483741679943558,
-          "PAYMENT": 1.2090825605799882,
-          "SECTION_HEADER": -1.3067978614701934,
-          "STOREFRONT": -7.166561306439237,
-          "SUMMARY": -11.771109357747344,
-          "SURVEY": 4.0944706835344915,
-          "TOTAL_LINE": -9.913877778046302
+          "ADDRESS": -4.306179891608254,
+          "BARCODE": -8.82589615009781,
+          "FOOTER": 2.0042821100080133,
+          "ITEMS": -0.8864853096868446,
+          "PAYMENT": 2.5423162566429127,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": -5.262909709392573,
+          "SUMMARY": -11.81989985758525,
+          "SURVEY": 1.5569650769344152,
+          "TOTAL_LINE": -9.752970200708752,
+          "TRANSACTION_INFO": -7.921192382046946
         },
         "tokens": [],
         "x_span": 0.8719796752929687
@@ -414,13 +430,14 @@
           "ADDRESS": 0,
           "BARCODE": 0,
           "FOOTER": 0,
-          "ITEMS": 8.812154571159502,
+          "ITEMS": 9.70174465769881,
           "PAYMENT": 0,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.3708333129882812
@@ -435,16 +452,17 @@
         "predicted": "FOOTER",
         "row_id": 18,
         "token_evidence": {
-          "ADDRESS": -2.2602628794449764,
-          "BARCODE": -2.0231858308910997,
-          "FOOTER": 6.780889706250529,
+          "ADDRESS": -2.1483713661021318,
+          "BARCODE": 0,
+          "FOOTER": 7.280743649066753,
           "ITEMS": 0,
-          "PAYMENT": -2.175936608424366,
+          "PAYMENT": -1.99032066218221,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -1.7170167016887383,
-          "SUMMARY": -1.9853593537621226,
-          "SURVEY": -1.675992456324626,
-          "TOTAL_LINE": 0
+          "STOREFRONT": 0,
+          "SUMMARY": -1.8659403213090684,
+          "SURVEY": -1.7035836459178508,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.36034790039062503
@@ -459,16 +477,17 @@
         "predicted": "FOOTER",
         "row_id": 19,
         "token_evidence": {
-          "ADDRESS": -2.0962904613192177,
-          "BARCODE": -5.626935923900071,
-          "FOOTER": 10.381456795010026,
-          "ITEMS": -2.955767426522746,
-          "PAYMENT": -6.92159649169734,
-          "SECTION_HEADER": -1.3067978614701934,
-          "STOREFRONT": -9.033520059991531,
-          "SUMMARY": -5.325495431929135,
-          "SURVEY": 6.289133070039499,
-          "TOTAL_LINE": -4.220224581908118
+          "ADDRESS": -2.153089945804127,
+          "BARCODE": -5.800105539421944,
+          "FOOTER": 10.957016970298417,
+          "ITEMS": -2.9790712782759425,
+          "PAYMENT": -5.669113271416654,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": -5.357827994590806,
+          "SUMMARY": -5.4792921930593685,
+          "SURVEY": 4.0248118530858825,
+          "TOTAL_LINE": -4.123331605108043,
+          "TRANSACTION_INFO": -4.296442313802816
         },
         "tokens": [
           "thank",
@@ -486,16 +505,17 @@
         "predicted": "FOOTER",
         "row_id": 20,
         "token_evidence": {
-          "ADDRESS": -3.0530715051474697,
-          "BARCODE": -2.259509342978302,
-          "FOOTER": 4.76044525362839,
-          "ITEMS": -3.0097595345485066,
-          "PAYMENT": -2.682322023588549,
-          "SECTION_HEADER": -8.252029162896438,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -6.08159762044845,
-          "SURVEY": 3.35918648148409,
-          "TOTAL_LINE": -4.848814602657041
+          "ADDRESS": -2.9650195548243268,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": 3.974352984463515,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": -2.3679013782741682,
+          "SECTION_HEADER": -2.361244957842101,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -5.963875069561221,
+          "SURVEY": 3.742355052882086,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": -1.6797245237339984
         },
         "tokens": [
           "__number__",
@@ -513,16 +533,17 @@
         "predicted": "FOOTER",
         "row_id": 21,
         "token_evidence": {
-          "ADDRESS": -1.6222113738025623,
+          "ADDRESS": -1.8186525609456954,
           "BARCODE": 0,
-          "FOOTER": 3.36427377037581,
+          "FOOTER": 3.6123517841362274,
           "ITEMS": 0,
-          "PAYMENT": -3.2664253755709964,
+          "PAYMENT": -3.2987348852269562,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -3.81084937006095,
-          "SUMMARY": -3.3245492456945396,
-          "SURVEY": 1.7760138685994349,
-          "TOTAL_LINE": 0
+          "STOREFRONT": -3.5293011210426384,
+          "SUMMARY": -3.175542061640704,
+          "SURVEY": 1.8955607205252378,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -5.243537113476622
         },
         "tokens": [],
         "x_span": 0.43200421142578127
@@ -534,19 +555,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.5263157894736842,
-        "predicted": "PAYMENT",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 22,
         "token_evidence": {
-          "ADDRESS": 2.5826234714063423,
-          "BARCODE": -0.6483075906919433,
-          "FOOTER": -5.017089152364697,
-          "ITEMS": -2.0150289245396866,
-          "PAYMENT": 4.440196951994908,
-          "SECTION_HEADER": -29.028985091189394,
-          "STOREFRONT": -5.563910999556143,
-          "SUMMARY": -10.83226581658877,
-          "SURVEY": -7.187059611663963,
-          "TOTAL_LINE": -12.905268318098422
+          "ADDRESS": 2.425443921848162,
+          "BARCODE": -4.011778683507428,
+          "FOOTER": -8.871834282809123,
+          "ITEMS": -2.232804973795891,
+          "PAYMENT": 0.014831486166547725,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -5.443671132882335,
+          "SUMMARY": -11.226171242728915,
+          "SURVEY": -7.400246281927351,
+          "TOTAL_LINE": -13.574577905491424,
+          "TRANSACTION_INFO": 5.530573059320797
         },
         "tokens": [
           "__number__",
@@ -567,16 +589,17 @@
         "predicted": "FOOTER",
         "row_id": 23,
         "token_evidence": {
-          "ADDRESS": -8.665486103222253,
-          "BARCODE": -4.3696442860035996,
-          "FOOTER": 16.738883368294335,
-          "ITEMS": -6.823318147676199,
-          "PAYMENT": -7.014123100237849,
-          "SECTION_HEADER": -2.446232144658558,
-          "STOREFRONT": -4.5522848255819195,
-          "SUMMARY": -3.9151444571306966,
-          "SURVEY": 9.899127686749242,
-          "TOTAL_LINE": -2.2677609390373563
+          "ADDRESS": -8.600563667577187,
+          "BARCODE": -1.9808658774845647,
+          "FOOTER": 17.22032810004944,
+          "ITEMS": -4.4031752800626105,
+          "PAYMENT": -6.160708006541318,
+          "SECTION_HEADER": -2.361244957842101,
+          "STOREFRONT": -2.760520286670605,
+          "SUMMARY": -3.7186408210154376,
+          "SURVEY": 10.345366839843681,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -2.281299824724658
         },
         "tokens": [
           "survey"
@@ -593,16 +616,17 @@
         "predicted": "FOOTER",
         "row_id": 24,
         "token_evidence": {
-          "ADDRESS": -5.285557525911334,
-          "BARCODE": -0.8365193612988957,
-          "FOOTER": 10.083450765464827,
-          "ITEMS": -3.8261398871961916,
-          "PAYMENT": -7.2744253641311785,
-          "SECTION_HEADER": -2.446232144658558,
-          "STOREFRONT": -3.458281703210507,
-          "SUMMARY": -8.74047793533618,
-          "SURVEY": 3.396968949640079,
-          "TOTAL_LINE": -4.8229806737597265
+          "ADDRESS": -7.312719294024082,
+          "BARCODE": 0,
+          "FOOTER": 10.921262270368258,
+          "ITEMS": -0.9525806057026456,
+          "PAYMENT": -5.325610932234835,
+          "SECTION_HEADER": -2.361244957842101,
+          "STOREFRONT": -3.797943285244185,
+          "SUMMARY": -8.04939998664019,
+          "SURVEY": 6.113557330425931,
+          "TOTAL_LINE": -3.4005950681180934,
+          "TRANSACTION_INFO": 0.19372014959153372
         },
         "tokens": [],
         "x_span": 0.7416666259765625
@@ -620,13 +644,14 @@
           "ADDRESS": 0,
           "BARCODE": 0,
           "FOOTER": 0,
-          "ITEMS": 5.848757678248448,
+          "ITEMS": 6.012865203584875,
           "PAYMENT": 0,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.4041666564941405
@@ -641,16 +666,17 @@
         "predicted": "SUMMARY",
         "row_id": 26,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 6.634108260444249,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": -1.688508399140169
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 6.399192665815,
+          "SURVEY": 0,
+          "TOTAL_LINE": -1.4275889783742053,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "subtotal",
@@ -668,16 +694,17 @@
         "predicted": "SUMMARY",
         "row_id": 27,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -5.942072997649788,
-          "ITEMS": -0.3306458138511541,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 5.431383116916468,
-          "SURVEY": -8.734607870768578,
-          "TOTAL_LINE": -1.0711992949717293
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -5.666470301687026,
+          "ITEMS": -0.18975410838093065,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 5.437055545815427,
+          "SURVEY": -2.7384801201998528,
+          "TOTAL_LINE": -1.5173742822465592,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "tax",
@@ -695,16 +722,17 @@
         "predicted": "TOTAL_LINE",
         "row_id": 28,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -5.704910525156247,
-          "ITEMS": -0.5694795809084514,
-          "PAYMENT": -1.8684283345015378,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -8.22884284228666,
-          "SUMMARY": 2.110911215646642,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 3.4332924465502046
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -5.550209367647092,
+          "ITEMS": -0.5720835716424961,
+          "PAYMENT": -1.5438562803773976,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -8.129533104566395,
+          "SUMMARY": 2.012071885504398,
+          "SURVEY": 0,
+          "TOTAL_LINE": 3.5701429108861436,
+          "TRANSACTION_INFO": -8.167839276560866
         },
         "tokens": [
           "total",
@@ -722,16 +750,17 @@
         "predicted": "PAYMENT",
         "row_id": 29,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": 3.5011520520679897,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 0.9342010285533502,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": -0.9917182273017233
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": 3.785579005228663,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 0.9003326800605871,
+          "SURVEY": 0,
+          "TOTAL_LINE": -0.7389769529796504,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "visa",
@@ -749,16 +778,17 @@
         "predicted": "PAYMENT",
         "row_id": 30,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": 0.5097404779959644,
-          "FOOTER": -2.705160633198123,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 3.869988696077306,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -4.682908945489407,
-          "SUMMARY": -5.192962941344341,
-          "SURVEY": -2.210246985969552,
-          "TOTAL_LINE": -6.710812775453154
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -1.5750907997114498,
+          "FOOTER": -3.4903026815418174,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 3.158239204663542,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -4.6057432568489105,
+          "SUMMARY": -5.088421546539221,
+          "SURVEY": -2.268177243546588,
+          "TOTAL_LINE": -5.963965862409716,
+          "TRANSACTION_INFO": -1.2719381054265992
         },
         "tokens": [
           "card",
@@ -778,14 +808,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": -1.8204576805319581,
+          "FOOTER": -3.7282380638222,
           "ITEMS": 0,
-          "PAYMENT": 10.76234030185412,
+          "PAYMENT": 11.208963945909558,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -3.570126745578178,
-          "SUMMARY": -5.99178284409587,
-          "SURVEY": -0.7728350636367596,
-          "TOTAL_LINE": -4.630899429864997
+          "STOREFRONT": -3.517009030272444,
+          "SUMMARY": -5.752607250860297,
+          "SURVEY": -0.7881279871611175,
+          "TOTAL_LINE": -4.754226689433812,
+          "TRANSACTION_INFO": -2.987053927143922
         },
         "tokens": [
           "card",
@@ -803,16 +834,17 @@
         "predicted": "PAYMENT",
         "row_id": 32,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -1.0034178304729395,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 5.36149114213998,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -1.7743668565618247,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 5.038282710244734,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "approval",
@@ -830,16 +862,17 @@
         "predicted": "PAYMENT",
         "row_id": 33,
         "token_evidence": {
-          "ADDRESS": -1.5797657670379492,
-          "BARCODE": -3.5168009808747733,
-          "FOOTER": -1.6744808989835454,
-          "ITEMS": -0.9208135085571076,
-          "PAYMENT": 6.236679813065912,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -4.320858363057919,
-          "SUMMARY": -5.231253004855286,
-          "SURVEY": -0.9799704856208666,
-          "TOTAL_LINE": -6.8012782455278025
+          "ADDRESS": -1.6680011614344947,
+          "BARCODE": -4.621595398638864,
+          "FOOTER": -2.252394222921345,
+          "ITEMS": -1.0032363341627233,
+          "PAYMENT": 6.164419426517889,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -4.561751687567378,
+          "SUMMARY": -5.329142937514021,
+          "SURVEY": -1.0227465984059088,
+          "TOTAL_LINE": -6.838247186206328,
+          "TRANSACTION_INFO": -1.8779674258512509
         },
         "tokens": [
           "aid",
@@ -854,19 +887,20 @@
         "has_amount": 1.0,
         "has_quantity": 0.0,
         "position": 0.8421052631578947,
-        "predicted": "TOTAL_LINE",
+        "predicted": "PAYMENT",
         "row_id": 34,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": 0.26088503721847056,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 1.3374444341537424,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 2.197127851114782
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": 0.552257217531249,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 1.39928133508172,
+          "SURVEY": 0,
+          "TOTAL_LINE": 2.292062134406486,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "amount",
@@ -881,19 +915,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.868421052631579,
-        "predicted": "PAYMENT",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 35,
         "token_evidence": {
-          "ADDRESS": 1.033049388562537,
-          "BARCODE": -0.5674841005901117,
-          "FOOTER": -0.13619413062558827,
-          "ITEMS": -0.8060115698158747,
-          "PAYMENT": 0.049010326530446235,
-          "SECTION_HEADER": -11.611594036475758,
-          "STOREFRONT": -2.2255643998224572,
-          "SUMMARY": -5.934045680903202,
-          "SURVEY": -2.874823844665585,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": 0.9701775687392646,
+          "BARCODE": -1.604711473402971,
+          "FOOTER": -1.6151457419423352,
+          "ITEMS": -0.8931219895183564,
+          "PAYMENT": -0.26486398105244957,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -2.177468453152934,
+          "SUMMARY": -4.490468497091566,
+          "SURVEY": -2.9600985127709403,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": 5.86026033547898
         },
         "tokens": [
           "__number__",
@@ -908,19 +943,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.8947368421052632,
-        "predicted": "FOOTER",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 36,
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 3.6280515195337077,
+          "FOOTER": 0,
           "ITEMS": 0,
-          "PAYMENT": -2.1956440474857395,
+          "PAYMENT": 0,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 5.1057359551439
         },
         "tokens": [],
         "x_span": 0.3833333129882812
@@ -937,14 +973,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 6.574474617865762,
-          "ITEMS": -0.8707349504084698,
-          "PAYMENT": -4.7489402391724544,
-          "SECTION_HEADER": -1.3067978614701934,
-          "STOREFRONT": -4.366111071722487,
-          "SUMMARY": -2.2606955903916033,
-          "SURVEY": -4.887225849324926,
-          "TOTAL_LINE": 0
+          "FOOTER": 6.701834658196651,
+          "ITEMS": -0.9933929910158135,
+          "PAYMENT": -3.9442809381146597,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": 0,
+          "SUMMARY": -2.3953835040911295,
+          "SURVEY": -4.769896956403793,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -1.8780540101142345
         },
         "tokens": [
           "thank"
@@ -961,16 +998,17 @@
         "predicted": "FOOTER",
         "row_id": 48,
         "token_evidence": {
-          "ADDRESS": -2.0962904613192177,
-          "BARCODE": -3.3871394627363847,
-          "FOOTER": 1.2014320304590078,
-          "ITEMS": -0.5178077236491703,
-          "PAYMENT": 0.8751886709259327,
+          "ADDRESS": -2.153089945804127,
+          "BARCODE": -3.8192396619373787,
+          "FOOTER": 1.4136696631126329,
+          "ITEMS": -0.5566753394035451,
+          "PAYMENT": 1.0234025973975478,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -3.208076163146691,
-          "SUMMARY": -3.064799841537532,
-          "SURVEY": 0.3512580064891391,
-          "TOTAL_LINE": -4.220224581908118
+          "STOREFRONT": -3.473017460990911,
+          "SUMMARY": -3.0839086889682386,
+          "SURVEY": 0.9365328239330339,
+          "TOTAL_LINE": -4.123331605108043,
+          "TRANSACTION_INFO": -2.418388303688581
         },
         "tokens": [],
         "x_span": 0.3416666564941406
@@ -985,16 +1023,17 @@
         "predicted": "FOOTER",
         "row_id": 49,
         "token_evidence": {
-          "ADDRESS": -3.569596199428738,
-          "BARCODE": -2.1298478248399135,
-          "FOOTER": 15.30235615814458,
-          "ITEMS": -5.044713452514145,
-          "PAYMENT": -9.110172752935075,
-          "SECTION_HEADER": -3.7530300061287516,
-          "STOREFRONT": -3.8633047371231157,
-          "SUMMARY": -5.550899677882171,
-          "SURVEY": 11.514403842965917,
-          "TOTAL_LINE": 0
+          "ADDRESS": -3.4501083391939593,
+          "BARCODE": 0,
+          "FOOTER": 14.97448827529056,
+          "ITEMS": -2.4223959388723975,
+          "PAYMENT": -8.040633967354115,
+          "SECTION_HEADER": -3.434175962924515,
+          "STOREFRONT": -1.8848105335998948,
+          "SUMMARY": -5.558163314117983,
+          "SURVEY": 12.827659300112579,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -4.098199411685563
         },
         "tokens": [
           "feedback",
@@ -1012,37 +1051,39 @@
         "predicted": "FOOTER",
         "row_id": 50,
         "token_evidence": {
-          "ADDRESS": 0,
+          "ADDRESS": -2.29865356915147,
           "BARCODE": 0,
-          "FOOTER": 3.963851441732107,
+          "FOOTER": 4.037067480191926,
           "ITEMS": 0,
-          "PAYMENT": 0.5778961148796755,
+          "PAYMENT": 1.8190086864296537,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -1.4497481309537212,
-          "SUMMARY": -5.262675233950813,
-          "SURVEY": 0.5471460345436636,
-          "TOTAL_LINE": -5.046422312967184
+          "STOREFRONT": -1.1497500431457244,
+          "SUMMARY": -4.822310949415222,
+          "SURVEY": 3.1678537453705804,
+          "TOTAL_LINE": -3.012613980985334,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.6934227905273438
       }
     ],
-    "source_feature_sha256": "53b3d85f908d737d7123b665a672b0875015f00caf46fd2f5137744985a3cdca"
+    "source_feature_sha256": "9f1988aac20385fdd48658db4c792ca611c91e6f87afa08bebb9c37464210757"
   },
   {
     "case": "ff574b98",
     "merchant": "Smith's",
     "qa": {
-      "items_matched": 3,
+      "items_matched": 4,
       "items_scored": 4,
       "matched": 22,
       "scored": 23
     },
     "receipt_id": 1,
     "required_item_matches": {
-      "9": "ITEMS",
       "16": "ITEMS",
-      "24": "ITEMS"
+      "19": "ITEMS",
+      "24": "ITEMS",
+      "9": "ITEMS"
     },
     "rows": [
       {
@@ -1055,16 +1096,17 @@
         "predicted": "STOREFRONT",
         "row_id": 1,
         "token_evidence": {
-          "ADDRESS": 0.9947519920390979,
-          "BARCODE": -2.4546661781404993,
-          "FOOTER": 0.5070079107751866,
-          "ITEMS": -0.34175780131794475,
-          "PAYMENT": -5.67045690863001,
-          "SECTION_HEADER": -1.8483951439029376,
-          "STOREFRONT": 8.14589672546678,
+          "ADDRESS": 0.9805413613115928,
+          "BARCODE": 0,
+          "FOOTER": 0.36069240045541084,
+          "ITEMS": -0.831636193652689,
+          "PAYMENT": -5.4800010536858155,
+          "SECTION_HEADER": -1.6790668086527294,
+          "STOREFRONT": 4.439169134985364,
           "SUMMARY": 0,
-          "SURVEY": 0.542479987784148,
-          "TOTAL_LINE": -2.593415762482909
+          "SURVEY": 1.0810281692323374,
+          "TOTAL_LINE": -2.4205617528817234,
+          "TRANSACTION_INFO": -1.6713410001961204
         },
         "tokens": [],
         "x_span": 0.98153741842722
@@ -1079,16 +1121,17 @@
         "predicted": "ADDRESS",
         "row_id": 5,
         "token_evidence": {
-          "ADDRESS": 5.437222430775884,
-          "BARCODE": -2.584327696278888,
-          "FOOTER": -2.0671458323247482,
-          "ITEMS": -0.017399945473155265,
-          "PAYMENT": -2.345898470892389,
-          "SECTION_HEADER": -7.654192162140816,
-          "STOREFRONT": -0.6466590641454864,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.2749368237064636,
-          "TOTAL_LINE": -5.174469426102593
+          "ADDRESS": 5.413083342011318,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -3.0460329420276135,
+          "ITEMS": 0.15080575944471675,
+          "PAYMENT": -2.7287998257529633,
+          "SECTION_HEADER": -1.6790668086527294,
+          "STOREFRONT": -0.6930538068776051,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.399071407597592,
+          "TOTAL_LINE": -5.135477333980008,
+          "TRANSACTION_INFO": -1.1309201223587901
         },
         "tokens": [
           "__number__"
@@ -1102,19 +1145,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.04,
-        "predicted": "ADDRESS",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 7,
         "token_evidence": {
-          "ADDRESS": 1.5495740828438054,
-          "BARCODE": -0.388984554415166,
-          "FOOTER": -3.0102534914188186,
-          "ITEMS": -1.209017354723812,
-          "PAYMENT": 0.8301405428604101,
-          "SECTION_HEADER": -17.417391054713637,
-          "STOREFRONT": -3.338346599733686,
-          "SUMMARY": -6.499359489953261,
-          "SURVEY": -4.312235766998378,
-          "TOTAL_LINE": -7.743160990859053
+          "ADDRESS": 1.455266353108897,
+          "BARCODE": -2.4070672101044566,
+          "FOOTER": -5.323100569685474,
+          "ITEMS": -1.3396829842775346,
+          "PAYMENT": 0.008898891699928635,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -3.266202679729401,
+          "SUMMARY": -6.735702745637349,
+          "SURVEY": -4.44014776915641,
+          "TOTAL_LINE": -8.144746743294853,
+          "TRANSACTION_INFO": 1.6212626335119908
         },
         "tokens": [
           "__number__",
@@ -1133,16 +1177,17 @@
         "predicted": "ITEMS",
         "row_id": 9,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 6.602812072972989,
-          "PAYMENT": -0.20323158858191226,
-          "SECTION_HEADER": -4.919865425665055,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": -1.8295259138774251,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 2.8045341216008266,
+          "PAYMENT": 0.06488306409256239,
+          "SECTION_HEADER": -5.695358700006501,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": -1.7046645231125046,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -6.1766060001045044
         },
         "tokens": [
           "__amount__"
@@ -1159,16 +1204,17 @@
         "predicted": "ITEMS",
         "row_id": 10,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -1.2361870283561553,
-          "ITEMS": 5.632856104768197,
-          "PAYMENT": -3.279124906002703,
-          "SECTION_HEADER": -4.308063884559062,
-          "STOREFRONT": -6.90336722120181,
-          "SUMMARY": -1.326494561838253,
-          "SURVEY": -8.113573689031828,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -1.1099138248492344,
+          "ITEMS": 1.906451310389337,
+          "PAYMENT": -2.6611607020576598,
+          "SECTION_HEADER": -4.5575256981851116,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": -1.4950508240305425,
+          "SURVEY": -2.3790312493783947,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -6.487856818928981
         },
         "tokens": [
           "__amount__"
@@ -1185,16 +1231,17 @@
         "predicted": "ITEMS",
         "row_id": 16,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 10.121735848914327,
-          "PAYMENT": -0.20323158858191226,
-          "SECTION_HEADER": -4.919865425665055,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": -1.8295259138774251,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 9.98315091669144,
+          "PAYMENT": 0.06488306409256239,
+          "SECTION_HEADER": -5.695358700006501,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": -1.7046645231125046,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -6.1766060001045044
         },
         "tokens": [
           "__amount__"
@@ -1208,19 +1255,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.12,
-        "predicted": "PAYMENT",
+        "predicted": "ITEMS",
         "row_id": 19,
         "token_evidence": {
-          "ADDRESS": -0.4116428951096083,
-          "BARCODE": -0.5684149125112139,
-          "FOOTER": -2.006835660945879,
-          "ITEMS": 1.1291942177006056,
-          "PAYMENT": 8.28583056427895,
-          "SECTION_HEADER": -13.530193439051944,
-          "STOREFRONT": -2.2255643998224572,
-          "SUMMARY": -9.390919803893922,
-          "SURVEY": -2.874823844665585,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": -0.6117983224420667,
+          "BARCODE": -2.700938061561427,
+          "FOOTER": -3.5487337131236494,
+          "ITEMS": 1.1814029003209998,
+          "PAYMENT": 0.1959265186154826,
+          "SECTION_HEADER": -2.210764006903805,
+          "STOREFRONT": -2.177468453152934,
+          "SUMMARY": -9.260764623687344,
+          "SURVEY": -2.9600985127709403,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": 3.2795983473601606
         },
         "tokens": [
           "__number__",
@@ -1238,16 +1286,17 @@
         "predicted": "ITEMS",
         "row_id": 21,
         "token_evidence": {
-          "ADDRESS": 1.033049388562537,
-          "BARCODE": -0.25932303627677733,
-          "FOOTER": 0.7390295387207138,
-          "ITEMS": 3.5170851902843565,
-          "PAYMENT": -1.9538252246117018,
-          "SECTION_HEADER": -12.918391897945952,
-          "STOREFRONT": -4.6295363118232205,
-          "SUMMARY": -6.593601917027111,
-          "SURVEY": -5.188814700762425,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": 0.9701775687392646,
+          "BARCODE": -1.604711473402971,
+          "FOOTER": -0.7227274462746625,
+          "ITEMS": -0.33557790129118326,
+          "PAYMENT": -2.0777796502478156,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": -2.177468453152934,
+          "SUMMARY": -6.885852001182696,
+          "SURVEY": -5.339129762149335,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": -0.7972122544395739
         },
         "tokens": [
           "__number__",
@@ -1265,16 +1314,17 @@
         "predicted": "ITEMS",
         "row_id": 24,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 2.7390478107399225,
-          "PAYMENT": -0.20323158858191226,
-          "SECTION_HEADER": -4.919865425665055,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": -1.8295259138774251,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 2.8045341216008266,
+          "PAYMENT": 0.06488306409256239,
+          "SECTION_HEADER": -5.695358700006501,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": -1.7046645231125046,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -6.1766060001045044
         },
         "tokens": [
           "__amount__"
@@ -1291,16 +1341,17 @@
         "predicted": "ITEMS",
         "row_id": 26,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -1.0034178304729395,
-          "ITEMS": 3.8951544809293424,
-          "PAYMENT": 2.7171567554238774,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": 0.6201886442316193,
-          "SUMMARY": -3.009306034854541,
-          "SURVEY": -3.443568406423867,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -1.7743668565618247,
+          "ITEMS": 3.050286233539123,
+          "PAYMENT": 2.409013386995638,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": 0.521390297315627,
+          "SUMMARY": -2.868428379602954,
+          "SURVEY": -1.7796389640840287,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.17704239549119305
         },
         "tokens": [
           "__number__"
@@ -1317,16 +1368,17 @@
         "predicted": "SUMMARY",
         "row_id": 28,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -5.942072997649788,
-          "ITEMS": -0.3306458138511541,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 5.431383116916468,
-          "SURVEY": -8.734607870768578,
-          "TOTAL_LINE": -1.0711992949717293
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -5.666470301687026,
+          "ITEMS": -0.18975410838093065,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 5.437055545815427,
+          "SURVEY": -2.7384801201998528,
+          "TOTAL_LINE": -1.5173742822465592,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "tax",
@@ -1344,16 +1396,17 @@
         "predicted": "TOTAL_LINE",
         "row_id": 30,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": -3.2604207167360664,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": -0.12407334820373572,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 5.592682745377854
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": -2.805741930868767,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": -0.17695850794278467,
+          "SURVEY": 0,
+          "TOTAL_LINE": 5.635540721154909,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "balance",
@@ -1371,16 +1424,17 @@
         "predicted": "PAYMENT",
         "row_id": 33,
         "token_evidence": {
-          "ADDRESS": 0,
+          "ADDRESS": -2.29865356915147,
           "BARCODE": 0,
-          "FOOTER": -1.608552227842127,
-          "ITEMS": -2.3258057093701323,
-          "PAYMENT": 7.096486170023283,
+          "FOOTER": -1.5371713397640123,
+          "ITEMS": -2.2512710601779524,
+          "PAYMENT": 7.919749005295117,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
-          "SUMMARY": -2.08456600384557,
-          "SURVEY": -2.8536753633762926,
-          "TOTAL_LINE": -2.9487743610302086
+          "SUMMARY": -2.2372724230477736,
+          "SURVEY": -2.8754932077570814,
+          "TOTAL_LINE": -1.0818399168478718,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [
           "debit",
@@ -1398,16 +1452,17 @@
         "predicted": "PAYMENT",
         "row_id": 34,
         "token_evidence": {
-          "ADDRESS": 1.033049388562537,
-          "BARCODE": -0.7830718499481053,
-          "FOOTER": -2.006835660945879,
-          "ITEMS": -0.8060115698158747,
-          "PAYMENT": 2.965699392743984,
-          "SECTION_HEADER": -11.611594036475758,
-          "STOREFRONT": -2.2255643998224572,
-          "SUMMARY": -5.095716490498758,
-          "SURVEY": -2.874823844665585,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": 0.9701775687392646,
+          "BARCODE": -1.604711473402971,
+          "FOOTER": -3.5487337131236494,
+          "ITEMS": -0.8931219895183564,
+          "PAYMENT": 1.933677252168517,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -2.177468453152934,
+          "SUMMARY": -4.490468497091566,
+          "SURVEY": -2.9600985127709403,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": 1.5114151530104345
         },
         "tokens": [
           "__number__",
@@ -1425,16 +1480,17 @@
         "predicted": "PAYMENT",
         "row_id": 37,
         "token_evidence": {
-          "ADDRESS": -8.756681603081766,
-          "BARCODE": -10.5625289624817,
-          "FOOTER": -9.717919580310726,
-          "ITEMS": 2.2165129044279945,
-          "PAYMENT": 9.92546658019062,
-          "SECTION_HEADER": -11.808329064415616,
-          "STOREFRONT": -10.111572818313322,
-          "SUMMARY": -2.382617110056623,
-          "SURVEY": -16.163918713555308,
-          "TOTAL_LINE": -1.4712874438403878
+          "ADDRESS": -9.238087968445052,
+          "BARCODE": -10.603438267393543,
+          "FOOTER": -10.303065558171975,
+          "ITEMS": 2.2512534495651497,
+          "PAYMENT": -0.08716853434227834,
+          "SECTION_HEADER": -6.969189386205394,
+          "STOREFRONT": -10.199993043201625,
+          "SUMMARY": -2.6818413114723825,
+          "SURVEY": -4.518941708690344,
+          "TOTAL_LINE": -1.7107777252446148,
+          "TRANSACTION_INFO": -4.533972771499245
         },
         "tokens": [
           "purchase",
@@ -1455,16 +1511,17 @@
         "predicted": "PAYMENT",
         "row_id": 39,
         "token_evidence": {
-          "ADDRESS": -1.5797657670379492,
-          "BARCODE": -3.5168009808747733,
-          "FOOTER": -1.6744808989835454,
-          "ITEMS": -0.9208135085571076,
-          "PAYMENT": 6.236679813065912,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -4.320858363057919,
-          "SUMMARY": -5.231253004855286,
-          "SURVEY": -0.9799704856208666,
-          "TOTAL_LINE": -6.8012782455278025
+          "ADDRESS": -1.6680011614344947,
+          "BARCODE": -4.621595398638864,
+          "FOOTER": -2.252394222921345,
+          "ITEMS": -1.0032363341627233,
+          "PAYMENT": 6.164419426517889,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -4.561751687567378,
+          "SUMMARY": -5.329142937514021,
+          "SURVEY": -1.0227465984059088,
+          "TOTAL_LINE": -6.838247186206328,
+          "TRANSACTION_INFO": -1.8779674258512509
         },
         "tokens": [
           "aid",
@@ -1482,16 +1539,17 @@
         "predicted": "PAYMENT",
         "row_id": 40,
         "token_evidence": {
-          "ADDRESS": 0.2751291139283367,
-          "BARCODE": -3.542825507618277,
-          "FOOTER": -2.8103200182951134,
-          "ITEMS": -1.4246152976858912,
-          "PAYMENT": 5.467179757652449,
-          "SECTION_HEADER": -23.223188072951515,
-          "STOREFRONT": -8.031344713200472,
-          "SUMMARY": -12.04662673755169,
-          "SURVEY": -7.3111371529924805,
-          "TOTAL_LINE": -11.797643268708804
+          "ADDRESS": 2.1556483713362224,
+          "BARCODE": -4.3968397730289945,
+          "FOOTER": -5.7963675969176816,
+          "ITEMS": -1.9522799800205446,
+          "PAYMENT": 5.121789207722113,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -6.009157165699196,
+          "SUMMARY": -12.237635969740776,
+          "SURVEY": -7.155361577729346,
+          "TOTAL_LINE": -12.365969314885806,
+          "TRANSACTION_INFO": -0.1414778152502496
         },
         "tokens": [
           "__number__",
@@ -1513,14 +1571,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 1.2498566065337426,
+          "FOOTER": 1.3814429976051201,
           "ITEMS": 0,
-          "PAYMENT": 7.594639632425985,
+          "PAYMENT": 8.253335293605254,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -2.213856083479989,
-          "SUMMARY": -4.168143865318246,
-          "SURVEY": -2.4146675224422385,
-          "TOTAL_LINE": -3.4225566258679407
+          "STOREFRONT": -2.1740651100261683,
+          "SUMMARY": -1.2356524003669742,
+          "SURVEY": -3.060202238891625,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -1.8598164225644531
         },
         "tokens": [],
         "x_span": 0.30994668579101564
@@ -1535,16 +1594,17 @@
         "predicted": "PAYMENT",
         "row_id": 42,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": -1.0160463647021665,
-          "PAYMENT": 2.6049684434929286,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 0.9342010285533502,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.199704760594289
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": -0.9023638380157886,
+          "PAYMENT": 2.978083251460969,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 0.9003326800605871,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.2126205927266498,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "debit",
@@ -1562,16 +1622,17 @@
         "predicted": "PAYMENT",
         "row_id": 43,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": -0.5733183572156157,
-          "PAYMENT": 2.97018186220953,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": -0.8515096022423125,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": -0.6431832756962219,
+          "PAYMENT": 3.425562370628028,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": -0.7738456906754392,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "change",
@@ -1589,16 +1650,17 @@
         "predicted": "PAYMENT",
         "row_id": 44,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": 0.5097404779959644,
-          "FOOTER": 2.370154495015679,
-          "ITEMS": -2.2822447104843544,
-          "PAYMENT": 0.5537726560032947,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -4.842229732996843,
-          "SUMMARY": 0.5360712110594896,
-          "SURVEY": -3.4480217964347464,
-          "TOTAL_LINE": -4.393584796403806
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -1.5750907997114498,
+          "FOOTER": 2.5809027170362473,
+          "ITEMS": -2.367551788563838,
+          "PAYMENT": 0.07963341112564382,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -4.662637922830282,
+          "SUMMARY": 0.3291790483164658,
+          "SURVEY": -3.6671894979537596,
+          "TOTAL_LINE": -0.8542677389109778,
+          "TRANSACTION_INFO": -1.842920646028795
         },
         "tokens": [
           "total",
@@ -1614,19 +1676,20 @@
         "has_amount": 1.0,
         "has_quantity": 0.0,
         "position": 0.42,
-        "predicted": "ITEMS",
+        "predicted": "TOTAL_LINE",
         "row_id": 45,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.6751924188288414,
-          "ITEMS": 1.6840336180931974,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -4.009910512239986,
-          "STOREFRONT": -3.7762412549431756,
-          "SUMMARY": 2.180873817763026,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.4388162261606534,
+          "ITEMS": 1.858755856875229,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -4.309064338886611,
+          "STOREFRONT": -3.7031905861180023,
+          "SUMMARY": 1.8788544153436062,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "__amount__"
@@ -1643,16 +1706,17 @@
         "predicted": "TOTAL_LINE",
         "row_id": 46,
         "token_evidence": {
-          "ADDRESS": -4.1200784544002484,
-          "BARCODE": -5.346095240310045,
-          "FOOTER": -6.4014685464352805,
-          "ITEMS": -0.5982110923911572,
-          "PAYMENT": -1.5917148202147344,
-          "SECTION_HEADER": -9.815707530477866,
-          "STOREFRONT": -8.618470987940018,
-          "SUMMARY": 1.191130841538564,
-          "SURVEY": -7.236994755267781,
-          "TOTAL_LINE": 0.8522387829305202
+          "ADDRESS": -4.376499592037709,
+          "BARCODE": -5.702897002047514,
+          "FOOTER": -6.827472358671349,
+          "ITEMS": -0.5087959316886093,
+          "PAYMENT": -1.540889983144088,
+          "SECTION_HEADER": -4.309064338886611,
+          "STOREFRONT": -8.365828508948285,
+          "SUMMARY": 0.7453593722416341,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": 0.855227329787859,
+          "TRANSACTION_INFO": -7.627418398723535
         },
         "tokens": [
           "total",
@@ -1668,19 +1732,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.46,
-        "predicted": "PAYMENT",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 52,
         "token_evidence": {
-          "ADDRESS": 3.442619895183716,
-          "BARCODE": -1.918596630989633,
-          "FOOTER": -9.171694556210806,
-          "ITEMS": -3.627052064171436,
-          "PAYMENT": 1.5026511234362765,
-          "SECTION_HEADER": -52.25217316414091,
-          "STOREFRONT": -7.577558015847948,
-          "SUMMARY": -19.498078469859784,
-          "SURVEY": -12.936707300995133,
-          "TOTAL_LINE": -23.22948297257716
+          "ADDRESS": 2.919908840574979,
+          "BARCODE": -7.22120163031337,
+          "FOOTER": -16.582745482736236,
+          "ITEMS": -4.019048952832604,
+          "PAYMENT": -2.1220683617843816,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -7.327881689282544,
+          "SUMMARY": -20.20710823691205,
+          "SURVEY": -13.320443307469231,
+          "TOTAL_LINE": -24.434240229884562,
+          "TRANSACTION_INFO": 5.494633824903393
         },
         "tokens": [
           "__number__",
@@ -1705,16 +1770,17 @@
         "predicted": "PAYMENT",
         "row_id": 53,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": -1.0034178304729395,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.805797018237879,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": -1.7743668565618247,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "__number__"
@@ -1731,16 +1797,17 @@
         "predicted": "PAYMENT",
         "row_id": 55,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -5.4956500993608,
-          "ITEMS": 1.6840336180931974,
-          "PAYMENT": 2.0438277439960695,
-          "SECTION_HEADER": -4.009910512239986,
-          "STOREFRONT": -7.346368000521354,
-          "SUMMARY": -1.2459766062059923,
-          "SURVEY": -6.572417896571748,
-          "TOTAL_LINE": -2.200061031298778
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -5.3053333442035004,
+          "ITEMS": 1.858755856875229,
+          "PAYMENT": 2.44971331804407,
+          "SECTION_HEADER": -4.309064338886611,
+          "STOREFRONT": -7.220199616390446,
+          "SUMMARY": -1.4320289941668598,
+          "SURVEY": -0.7881279871611175,
+          "TOTAL_LINE": -2.482850826168701,
+          "TRANSACTION_INFO": -7.596856735958669
         },
         "tokens": [
           "card",
@@ -1767,7 +1834,8 @@
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.7961356201171874
@@ -1779,7 +1847,7 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.54,
-        "predicted": "PAYMENT",
+        "predicted": "BARCODE",
         "row_id": 57,
         "token_evidence": {
           "ADDRESS": 0,
@@ -1791,7 +1859,8 @@
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.21641790771484376
@@ -1806,16 +1875,17 @@
         "predicted": "BARCODE",
         "row_id": 58,
         "token_evidence": {
-          "ADDRESS": 1.033049388562537,
-          "BARCODE": -0.25932303627677733,
-          "FOOTER": -2.006835660945879,
-          "ITEMS": -0.8060115698158747,
-          "PAYMENT": 0.5534270285736067,
-          "SECTION_HEADER": -11.611594036475758,
-          "STOREFRONT": -2.2255643998224572,
-          "SUMMARY": -4.3329063266355075,
-          "SURVEY": -2.874823844665585,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": 0.9701775687392646,
+          "BARCODE": -1.604711473402971,
+          "FOOTER": -3.5487337131236494,
+          "ITEMS": -0.8931219895183564,
+          "PAYMENT": 0.00593259446661909,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -2.177468453152934,
+          "SUMMARY": -4.490468497091566,
+          "SURVEY": -2.9600985127709403,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": 1.0808417556746606
         },
         "tokens": [
           "__number__",
@@ -1833,16 +1903,17 @@
         "predicted": "FOOTER",
         "row_id": 59,
         "token_evidence": {
-          "ADDRESS": -4.263906278379353,
-          "BARCODE": 0.015247687061359372,
-          "FOOTER": 5.818803800950202,
-          "ITEMS": -1.760443584108331,
-          "PAYMENT": -0.8422839849195318,
-          "SECTION_HEADER": 0.11124519796427812,
-          "STOREFRONT": -1.4206409571405798,
-          "SUMMARY": -1.0294388271171986,
-          "SURVEY": 0.4244369282107048,
-          "TOTAL_LINE": -1.3451742787063878
+          "ADDRESS": -4.139185049870267,
+          "BARCODE": 0,
+          "FOOTER": 5.83383446259699,
+          "ITEMS": -1.7251652978773668,
+          "PAYMENT": -2.1866720316133357,
+          "SECTION_HEADER": 0.4877167431822542,
+          "STOREFRONT": -1.6391726355862648,
+          "SUMMARY": -0.8693272005960795,
+          "SURVEY": 0.6727224551305513,
+          "TOTAL_LINE": -1.9300596020876473,
+          "TRANSACTION_INFO": 1.5491464285664218
         },
         "tokens": [],
         "x_span": 0.5074626770019531
@@ -1859,14 +1930,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 3.337870495938782,
-          "ITEMS": -1.3197692515111408,
-          "PAYMENT": -3.0478449234508176,
+          "FOOTER": 3.793388449176937,
+          "ITEMS": -1.429002947856584,
+          "PAYMENT": -2.7482349306995424,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -1.4593328251223525,
-          "SUMMARY": -0.5551707990850065,
-          "SURVEY": 1.1992207411406977,
-          "TOTAL_LINE": 0
+          "STOREFRONT": -1.8848105335998948,
+          "SUMMARY": -0.3277299181633353,
+          "SURVEY": 1.2996400281430178,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.5298507080078125
@@ -1881,16 +1953,17 @@
         "predicted": "FOOTER",
         "row_id": 61,
         "token_evidence": {
-          "ADDRESS": -2.547944951896757,
-          "BARCODE": -2.0231858308910997,
-          "FOOTER": 12.876962290119717,
-          "ITEMS": -3.6755069514829204,
-          "PAYMENT": -6.740101458291221,
+          "ADDRESS": -2.5752276641916145,
+          "BARCODE": 0,
+          "FOOTER": 9.475436931484806,
+          "ITEMS": -3.6305905878878892,
+          "PAYMENT": -6.209163364709778,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -4.8729088699631085,
-          "SUMMARY": 1.0289493053648053,
-          "SURVEY": 0.878301226764636,
-          "TOTAL_LINE": 0
+          "STOREFRONT": -3.2650706769351974,
+          "SUMMARY": 0.8354208916423449,
+          "SURVEY": 1.0056010814183258,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.6993370361328126
@@ -1905,16 +1978,17 @@
         "predicted": "FOOTER",
         "row_id": 62,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": 4.152288301738652,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.694551820273601,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": 0.3960723317033741,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": 2.1413261129903427,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0.4877167431822542,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": 0.3739105497495283,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 1.4519669357894138
         },
         "tokens": [
           "__number__"
@@ -1931,16 +2005,17 @@
         "predicted": "FOOTER",
         "row_id": 63,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": 1.1249189432414783,
-          "ITEMS": -2.2822447104843544,
-          "PAYMENT": -0.81984216739734,
-          "SECTION_HEADER": -5.694551820273601,
-          "STOREFRONT": -4.842229732996843,
-          "SUMMARY": -0.9897429762244618,
-          "SURVEY": -1.4374119223327926,
-          "TOTAL_LINE": 0.1326786972982723
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": 0.24828035055462117,
+          "ITEMS": -2.367551788563838,
+          "PAYMENT": -0.9634415258008631,
+          "SECTION_HEADER": 0.4877167431822542,
+          "STOREFRONT": -4.662637922830282,
+          "SUMMARY": -1.1334950431019721,
+          "SURVEY": -1.4800492563854701,
+          "TOTAL_LINE": 0.08902787464512851,
+          "TRANSACTION_INFO": -3.0176155899087878
         },
         "tokens": [
           "total",
@@ -1959,15 +2034,16 @@
         "row_id": 64,
         "token_evidence": {
           "ADDRESS": 0,
-          "BARCODE": -0.523748813671328,
+          "BARCODE": 0,
           "FOOTER": 0,
           "ITEMS": 0,
-          "PAYMENT": 2.412272364170377,
+          "PAYMENT": 1.927744657701898,
           "SECTION_HEADER": 0,
           "STOREFRONT": 0,
-          "SUMMARY": -0.762810163863251,
+          "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0.43057339733577393
         },
         "tokens": [],
         "x_span": 0.8097014889147404
@@ -1991,7 +2067,8 @@
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.8115220947265626
@@ -2008,14 +2085,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 6.574474617865762,
-          "ITEMS": -0.8707349504084698,
-          "PAYMENT": -4.7489402391724544,
-          "SECTION_HEADER": -1.3067978614701934,
-          "STOREFRONT": -4.366111071722487,
-          "SUMMARY": -2.2606955903916033,
-          "SURVEY": -4.887225849324926,
-          "TOTAL_LINE": 0
+          "FOOTER": 6.701834658196651,
+          "ITEMS": -0.9933929910158135,
+          "PAYMENT": -3.9442809381146597,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": 0,
+          "SUMMARY": -2.3953835040911295,
+          "SURVEY": -4.769896956403793,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -1.8780540101142345
         },
         "tokens": [
           "thank"
@@ -2033,15 +2111,16 @@
         "row_id": 68,
         "token_evidence": {
           "ADDRESS": 0,
-          "BARCODE": -2.2346633133522102,
-          "FOOTER": 6.218368016295552,
+          "BARCODE": -0.6857236860203351,
+          "FOOTER": 6.275879562363742,
           "ITEMS": 0,
-          "PAYMENT": 0.8513919269960541,
+          "PAYMENT": 1.8966886390099242,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -3.570126745578178,
-          "SUMMARY": -3.208831334820543,
-          "SURVEY": -1.3490221231052821,
-          "TOTAL_LINE": -2.919621116931026
+          "STOREFRONT": -3.517009030272444,
+          "SUMMARY": -2.811934754489333,
+          "SURVEY": -1.363154542774189,
+          "TOTAL_LINE": -3.2490502813114315,
+          "TRANSACTION_INFO": -4.941622649442444
         },
         "tokens": [
           "card"
@@ -2060,14 +2139,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 11.458396529295227,
+          "FOOTER": 7.322209826964881,
           "ITEMS": 0,
-          "PAYMENT": -0.050328528103325,
-          "SECTION_HEADER": 0.11124519796427812,
-          "STOREFRONT": -1.7170167016887383,
-          "SUMMARY": -3.3808140842806766,
-          "SURVEY": 0.19299302165472998,
-          "TOTAL_LINE": -1.473428614230067
+          "PAYMENT": 0.19949352511729668,
+          "SECTION_HEADER": 0.4877167431822542,
+          "STOREFRONT": -1.6542202593933277,
+          "SUMMARY": -3.2566989755576436,
+          "SURVEY": 0.3897869656358255,
+          "TOTAL_LINE": -1.506306990492667,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.42749105834960943
@@ -2084,14 +2164,15 @@
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 14.999188559937805,
-          "ITEMS": -0.8707349504084698,
-          "PAYMENT": -2.5072522531853085,
-          "SECTION_HEADER": -1.3067978614701934,
-          "STOREFRONT": -2.403971912000763,
-          "SUMMARY": -2.2606955903916033,
-          "SURVEY": -2.5599362286947835,
-          "TOTAL_LINE": 0
+          "FOOTER": 14.800598886937657,
+          "ITEMS": -0.9933929910158135,
+          "PAYMENT": -2.0065675562635255,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": 0,
+          "SUMMARY": -2.3953835040911295,
+          "SURVEY": -2.082122640218877,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -1.8780540101142345
         },
         "tokens": [],
         "x_span": 0.554580078125
@@ -2103,19 +2184,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.8,
-        "predicted": "FOOTER",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 71,
         "token_evidence": {
-          "ADDRESS": -0.6439020341060546,
-          "BARCODE": -0.5186460725535547,
-          "FOOTER": 2.231179075502528,
-          "ITEMS": -1.6120231396317495,
-          "PAYMENT": 1.1068540571472134,
-          "SECTION_HEADER": -23.223188072951515,
-          "STOREFRONT": -4.4511287996449145,
-          "SUMMARY": -8.665812653271015,
-          "SURVEY": -5.002713715895397,
-          "TOTAL_LINE": -10.324214654478737
+          "ADDRESS": -0.6445259584137277,
+          "BARCODE": -3.209422946805942,
+          "FOOTER": -0.5516233747999131,
+          "ITEMS": -1.7862439790367128,
+          "PAYMENT": 0.01186518893323818,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -4.354936906305868,
+          "SUMMARY": -8.980936994183132,
+          "SURVEY": -5.2655167533010685,
+          "TOTAL_LINE": -10.859662324393138,
+          "TRANSACTION_INFO": 2.161683511349321
         },
         "tokens": [
           "__number__",
@@ -2144,7 +2226,8 @@
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.7985074462890625
@@ -2159,16 +2242,17 @@
         "predicted": "FOOTER",
         "row_id": 73,
         "token_evidence": {
-          "ADDRESS": 0.5165246942812685,
-          "BARCODE": -0.12966151813838867,
-          "FOOTER": 9.251627395225643,
-          "ITEMS": -0.40300578490793737,
-          "PAYMENT": 0.27671351428680335,
-          "SECTION_HEADER": -5.694551820273601,
-          "STOREFRONT": -1.1127821999112286,
-          "SUMMARY": -2.1664531633177537,
-          "SURVEY": -1.381159036961771,
-          "TOTAL_LINE": -2.5810536636196844
+          "ADDRESS": 0.4850887843696323,
+          "BARCODE": -0.8023557367014855,
+          "FOOTER": 4.2467431410734395,
+          "ITEMS": -0.4465609947591782,
+          "PAYMENT": 0.002966297233309545,
+          "SECTION_HEADER": 0.4877167431822542,
+          "STOREFRONT": -1.088734226576467,
+          "SUMMARY": -2.245234248545783,
+          "SURVEY": -1.220023176148607,
+          "TOTAL_LINE": -2.7149155810982846,
+          "TRANSACTION_INFO": 0.5404208778373303
         },
         "tokens": [
           "__number__"
@@ -2185,16 +2269,17 @@
         "predicted": "SURVEY",
         "row_id": 74,
         "token_evidence": {
-          "ADDRESS": 0,
+          "ADDRESS": -2.29865356915147,
           "BARCODE": 0,
-          "FOOTER": 0.3917016724839053,
+          "FOOTER": 0.501130176054815,
           "ITEMS": 0,
-          "PAYMENT": 2.062086370764889,
+          "PAYMENT": 2.5613389620990628,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -2.213856083479989,
-          "SUMMARY": -2.769344934734999,
-          "SURVEY": 7.304614959419657,
-          "TOTAL_LINE": -2.0995650845070504
+          "STOREFRONT": -2.1740651100261683,
+          "SUMMARY": 0,
+          "SURVEY": 7.141662300205592,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -1.8598164225644531
         },
         "tokens": [
           "feedback"
@@ -2211,16 +2296,17 @@
         "predicted": "SURVEY",
         "row_id": 75,
         "token_evidence": {
-          "ADDRESS": -0.3296669653627049,
+          "ADDRESS": -0.383280143956239,
           "BARCODE": 0,
-          "FOOTER": 2.014104412334541,
+          "FOOTER": 2.2400929574971222,
           "ITEMS": 0,
-          "PAYMENT": 1.1977342649131293,
+          "PAYMENT": 1.6878715230353487,
           "SECTION_HEADER": 0,
-          "STOREFRONT": -4.320116624143417,
-          "SUMMARY": -3.3808140842806766,
-          "SURVEY": 8.07498603368255,
-          "TOTAL_LINE": -3.5011679641658624
+          "STOREFRONT": -4.051572671500265,
+          "SUMMARY": -3.2566989755576436,
+          "SURVEY": 8.69467296844995,
+          "TOTAL_LINE": -3.499424728547451,
+          "TRANSACTION_INFO": -1.8780540101142353
         },
         "tokens": [
           "feedback"
@@ -2234,19 +2320,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.9,
-        "predicted": "PAYMENT",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 76,
         "token_evidence": {
-          "ADDRESS": 1.5495740828438054,
-          "BARCODE": -1.066884047913752,
-          "FOOTER": -2.780257167144194,
-          "ITEMS": -1.209017354723812,
-          "PAYMENT": 2.004038675987519,
-          "SECTION_HEADER": -17.417391054713637,
-          "STOREFRONT": -3.9751001514225117,
-          "SUMMARY": -7.41632033364377,
-          "SURVEY": -4.312235766998378,
-          "TOTAL_LINE": -7.743160990859053
+          "ADDRESS": 1.455266353108897,
+          "BARCODE": -2.4070672101044566,
+          "FOOTER": -5.323100569685474,
+          "ITEMS": -1.3396829842775346,
+          "PAYMENT": -0.27063136378789365,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -3.266202679729401,
+          "SUMMARY": -7.509719766429104,
+          "SURVEY": -4.44014776915641,
+          "TOTAL_LINE": -8.144746743294853,
+          "TRANSACTION_INFO": 3.7790569789382484
         },
         "tokens": [
           "__number__",
@@ -2262,19 +2349,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.92,
-        "predicted": "PAYMENT",
+        "predicted": "TRANSACTION_INFO",
         "row_id": 77,
         "token_evidence": {
-          "ADDRESS": -0.17305296478516308,
-          "BARCODE": -1.0109660040209123,
-          "FOOTER": -2.1477697429002296,
-          "ITEMS": -0.8060115698158747,
-          "PAYMENT": 1.929138723429599,
-          "SECTION_HEADER": -11.611594036475758,
-          "STOREFRONT": 0.2119173835306527,
-          "SUMMARY": -4.3329063266355075,
-          "SURVEY": -2.874823844665585,
-          "TOTAL_LINE": -5.162107327239369
+          "ADDRESS": -0.47571265001244756,
+          "BARCODE": -1.604711473402971,
+          "FOOTER": -4.162177486803464,
+          "ITEMS": -0.8931219895183564,
+          "PAYMENT": -0.732882077797735,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": 0.29325789675272596,
+          "SUMMARY": -4.490468497091566,
+          "SURVEY": -2.9600985127709403,
+          "TOTAL_LINE": -5.429831162196569,
+          "TRANSACTION_INFO": 2.6430363652903446
         },
         "tokens": [
           "__number__",
@@ -2292,16 +2380,17 @@
         "predicted": "PAYMENT",
         "row_id": 78,
         "token_evidence": {
-          "ADDRESS": 3.0991481656876108,
-          "BARCODE": -1.6500246167698753,
-          "FOOTER": -5.703600987176432,
-          "ITEMS": -2.418034709447624,
-          "PAYMENT": 8.88014558034345,
-          "SECTION_HEADER": -34.83478210942727,
-          "STOREFRONT": -6.676693199467372,
-          "SUMMARY": -12.998718979906522,
-          "SURVEY": -8.629546894133057,
-          "TOTAL_LINE": -15.486321981718106
+          "ADDRESS": 2.910532706217794,
+          "BARCODE": -5.912034648925399,
+          "FOOTER": -9.990505644081535,
+          "ITEMS": -2.6793659685550693,
+          "PAYMENT": 5.373002654808799,
+          "SECTION_HEADER": 0,
+          "STOREFRONT": -6.532405359458802,
+          "SUMMARY": -13.471405491274698,
+          "SURVEY": -9.044083704852317,
+          "TOTAL_LINE": -16.289493486589706,
+          "TRANSACTION_INFO": 1.445612450102789
         },
         "tokens": [
           "__number__",
@@ -2332,7 +2421,8 @@
           "STOREFRONT": 0,
           "SUMMARY": 0,
           "SURVEY": 0,
-          "TOTAL_LINE": 0
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": 0
         },
         "tokens": [],
         "x_span": 0.8395522267898397
@@ -2344,19 +2434,20 @@
         "has_amount": 0.0,
         "has_quantity": 0.0,
         "position": 0.98,
-        "predicted": "FOOTER",
+        "predicted": "SURVEY",
         "row_id": 81,
         "token_evidence": {
           "ADDRESS": 0,
           "BARCODE": 0,
-          "FOOTER": 4.050376261030268,
-          "ITEMS": 1.8944170231564872,
-          "PAYMENT": -2.5072522531853085,
-          "SECTION_HEADER": -1.3067978614701934,
-          "STOREFRONT": -2.403971912000763,
-          "SUMMARY": -2.2606955903916033,
-          "SURVEY": -0.4805066020606725,
-          "TOTAL_LINE": 0
+          "FOOTER": 3.104762753335838,
+          "ITEMS": -0.9933929910158135,
+          "PAYMENT": -2.0837122447144347,
+          "SECTION_HEADER": -1.0729310050824141,
+          "STOREFRONT": 0,
+          "SUMMARY": -2.3953835040911295,
+          "SURVEY": -0.5250714432433963,
+          "TOTAL_LINE": 0,
+          "TRANSACTION_INFO": -0.9665079521621509
         },
         "tokens": [],
         "x_span": 0.35913418579101575
@@ -2371,16 +2462,17 @@
         "predicted": "PAYMENT",
         "row_id": 82,
         "token_evidence": {
-          "ADDRESS": -4.636603148681517,
-          "BARCODE": -5.216433722171656,
-          "FOOTER": -3.982052228022748,
-          "ITEMS": 1.3097593446679658,
-          "PAYMENT": -0.7718726528173945,
-          "SECTION_HEADER": -3.001266023088869,
-          "STOREFRONT": -4.499395309201047,
-          "SUMMARY": 0.9342010285533502,
-          "SURVEY": -5.7995828329349886,
-          "TOTAL_LINE": 0.7195600856322479
+          "ADDRESS": -4.861588376407342,
+          "BARCODE": -4.900541265346028,
+          "FOOTER": -3.9359200916982213,
+          "ITEMS": 1.3489072221621639,
+          "PAYMENT": -0.577448457343225,
+          "SECTION_HEADER": -3.484594693102697,
+          "STOREFRONT": -4.555629408312579,
+          "SUMMARY": 0.9003326800605871,
+          "SURVEY": 0,
+          "TOTAL_LINE": 0.7661994551427305,
+          "TRANSACTION_INFO": -4.609802808814747
         },
         "tokens": [
           "__amount__"
@@ -2388,6 +2480,6 @@
         "x_span": 0.23564680480957034
       }
     ],
-    "source_feature_sha256": "46f1efc5237ef1550c7f3b6014a7de1cbece56eefc4aff41ccdb0e33f156cc27"
+    "source_feature_sha256": "5f50400ea3669743a75ec1ac164859bb94492ecd142d85b78521b5d2f02f75e5"
   }
 ]

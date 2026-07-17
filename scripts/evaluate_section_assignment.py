@@ -6,6 +6,8 @@ The target manifest is a local JSON array containing ``image_id``,
 repository, and reports expose only eight-character case prefixes.
 """
 
+# ruff: noqa: E402
+
 # Sibling package paths must be installed before runtime imports.
 # pylint: disable=wrong-import-position
 
@@ -41,6 +43,11 @@ def _arguments() -> argparse.Namespace:
         "--table", default=os.environ.get("DYNAMODB_TABLE_NAME")
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--model",
+        type=Path,
+        help="Explicit priors JSON; defaults to the packaged model",
+    )
     return parser.parse_args()
 
 
@@ -68,21 +75,31 @@ def _score_predictions(
 
     per_type_total: Counter[str] = Counter(truth.values())
     per_type_matched: Counter[str] = Counter()
+    per_type_predicted: Counter[str] = Counter()
+    confusion: Counter[tuple[str, str]] = Counter()
     matched = 0
     unassigned = 0
     for row_id, section_type in truth.items():
         predicted_type = predicted.get(row_id)
         if predicted_type is None:
             unassigned += 1
+            confusion[(section_type, "__UNASSIGNED__")] += 1
         elif predicted_type == section_type:
             matched += 1
             per_type_matched[section_type] += 1
+            per_type_predicted[predicted_type] += 1
+            confusion[(section_type, predicted_type)] += 1
+        else:
+            per_type_predicted[predicted_type] += 1
+            confusion[(section_type, predicted_type)] += 1
     return {
         "matched": matched,
         "scored": len(truth),
         "unassigned": unassigned,
         "per_type_total": per_type_total,
         "per_type_matched": per_type_matched,
+        "per_type_predicted": per_type_predicted,
+        "confusion": confusion,
     }
 
 
@@ -101,6 +118,8 @@ def evaluate(
     unassigned = 0
     per_type_total: Counter[str] = Counter()
     per_type_matched: Counter[str] = Counter()
+    per_type_predicted: Counter[str] = Counter()
+    confusion: Counter[tuple[str, str]] = Counter()
     cases = []
     for target in targets:
         image_id = str(target["image_id"])
@@ -126,6 +145,8 @@ def evaluate(
         unassigned += score["unassigned"]
         per_type_total.update(score["per_type_total"])
         per_type_matched.update(score["per_type_matched"])
+        per_type_predicted.update(score["per_type_predicted"])
+        confusion.update(score["confusion"])
         cases.append(
             {
                 "case": image_id[:8],
@@ -144,11 +165,19 @@ def evaluate(
             "matched": per_type_matched[section_type],
             "scored": section_total,
             "recall": per_type_matched[section_type] / section_total,
+            "predicted_on_scored_rows": per_type_predicted[section_type],
+            "precision": (
+                per_type_matched[section_type] / per_type_predicted[section_type]
+                if per_type_predicted[section_type]
+                else 0.0
+            ),
         }
         for section_type, section_total in sorted(per_type_total.items())
     }
     agreement = matched / total if total else 0.0
     items_recall = per_type.get("ITEMS", {}).get("recall", 0.0)
+    txinfo_recall = per_type.get("TRANSACTION_INFO", {}).get("recall", 0.0)
+    txinfo_precision = per_type.get("TRANSACTION_INFO", {}).get("precision", 0.0)
     return {
         "table": DEV_TABLE,
         "model_schema_version": model.get("schema_version"),
@@ -158,9 +187,15 @@ def evaluate(
         "unassigned": unassigned,
         "agreement": agreement,
         "per_type": per_type,
+        "confusion": [
+            {"truth": truth_type, "predicted": predicted_type, "count": count}
+            for (truth_type, predicted_type), count in sorted(confusion.items())
+        ],
         "acceptance": {
             "items_recall_at_least_0_70": items_recall >= 0.70,
             "overall_agreement_at_least_0_80": agreement >= 0.80,
+            "txinfo_precision_at_least_0_70": txinfo_precision >= 0.70,
+            "txinfo_recall_at_least_0_70": txinfo_recall >= 0.70,
         },
         "cases": cases,
     }
@@ -176,7 +211,12 @@ def main() -> int:
             f"{DEV_TABLE!r}"
         )
     targets = json.loads(args.targets.read_text(encoding="utf-8"))
-    report = evaluate(DynamoClient(args.table), targets, load_prior_model())
+    model = (
+        json.loads(args.model.read_text(encoding="utf-8"))
+        if args.model is not None
+        else load_prior_model()
+    )
+    report = evaluate(DynamoClient(args.table), targets, model)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.write_text(rendered, encoding="utf-8")

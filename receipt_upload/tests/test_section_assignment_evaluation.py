@@ -22,6 +22,11 @@ def test_missing_predictions_are_scored_as_unassigned_mismatches() -> None:
         "TOTAL_LINE": 1,
     }
     assert score["per_type_matched"] == {"ITEMS": 1}
+    assert score["per_type_predicted"] == {"ITEMS": 1}
+    assert score["confusion"] == {
+        ("ITEMS", "ITEMS"): 1,
+        ("TOTAL_LINE", "__UNASSIGNED__"): 1,
+    }
 
 
 def test_builder_rejects_exclusion_without_valid_section_evidence() -> None:
@@ -73,6 +78,12 @@ class _Client:
     ) -> list[SimpleNamespace]:
         return []
 
+    @staticmethod
+    def get_receipt_rows_from_receipt(
+        _image_id: str, _receipt_id: int
+    ) -> list[SimpleNamespace]:
+        return [SimpleNamespace(line_ids=[1])]
+
     def get_receipt_place(
         self, _image_id: str, _receipt_id: int
     ) -> SimpleNamespace:
@@ -90,12 +101,12 @@ def test_builder_is_deterministic_and_hashes_complete_training_input(
         validation_status=ValidationStatus.VALID.value,
     )
     monkeypatch.setattr(
-        "scripts.build_section_order_priors.build_receipt_rows",
-        lambda _lines, _words: [SimpleNamespace(line_ids=[1])],
-    )
-    monkeypatch.setattr(
         "scripts.build_section_order_priors.extract_row_features",
         lambda _rows, _lines: [_Feature()],
+    )
+    monkeypatch.setattr(
+        "scripts.build_section_order_priors.build_receipt_rows",
+        lambda _lines, _words: [SimpleNamespace(line_ids=[1])],
     )
 
     first = build_model(_Client(), [section])

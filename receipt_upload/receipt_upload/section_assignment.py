@@ -32,6 +32,11 @@ _QUANTITY_RE = re.compile(
 )
 _EPSILON = 1e-9
 _AMOUNT_CONTEXT_RADIUS = 2
+_LOCAL_OVERRIDE_MARGIN = 1.25
+_PAYMENT_CARD_TOKENS = frozenset({"amex", "mastercard", "visa"})
+_PAYMENT_ACTION_TOKENS = frozenset(
+    {"card", "cash", "cashback", "credit", "debit", "purchase"}
+)
 
 
 class SectionWriter(Protocol):
@@ -422,6 +427,25 @@ def _duration_score(
     return _gaussian_score(math.log(duration), distribution)
 
 
+def _semantic_anchor(features: RowFeatures) -> str | None:
+    """Return a section for a small set of unambiguous receipt phrases."""
+
+    tokens = set(features.tokens)
+    if "subtotal" in tokens:
+        return "SUMMARY"
+    if {"fuel", "points", "earned"}.issubset(tokens):
+        return "FOOTER"
+    if features.has_amount and tokens & _PAYMENT_CARD_TOKENS:
+        return "PAYMENT"
+    if (
+        features.tokens == ("fresh", "value")
+        and features.position <= 0.25
+        and not features.has_amount
+    ):
+        return "STOREFRONT"
+    return None
+
+
 def assign_row_sections(
     rows: Sequence[ReceiptRow],
     lines: Sequence[Any],
@@ -449,6 +473,10 @@ def assign_feature_sections(
     sections = _ordered_sections(prior, global_prior)
     if not sections:
         return []
+    emission_biases = {
+        str(section): float(value)
+        for section, value in model.get("emission_biases", {}).items()
+    }
     emissions = [
         [
             _emission(
@@ -459,6 +487,7 @@ def assign_feature_sections(
                 ),
                 global_prior["section_models"][section],
             )
+            + emission_biases.get(section, 0.0)
             for section in sections
         ]
         for row in features
@@ -537,6 +566,25 @@ def assign_feature_sections(
             break
         end = start - 1
         state = prior_state
+    section_indexes = {section: index for index, section in enumerate(sections)}
+    for index, row in enumerate(features):
+        anchored = _semantic_anchor(row)
+        if anchored in section_indexes:
+            states[index] = section_indexes[anchored]
+            continue
+        local_state = max(
+            range(len(sections)), key=lambda candidate: emissions[index][candidate]
+        )
+        if (
+            sections[local_state] == "ITEMS"
+            and sections[states[index]] == "PAYMENT"
+            and row.has_amount
+            and row.position <= 0.35
+            and not set(row.tokens) & _PAYMENT_ACTION_TOKENS
+            and emissions[index][local_state] - emissions[index][states[index]]
+            >= _LOCAL_OVERRIDE_MARGIN
+        ):
+            states[index] = local_state
     return [
         RowAssignment(
             row=row.row,
