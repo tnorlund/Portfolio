@@ -1,0 +1,896 @@
+{
+  "lines": [
+    {
+      "text": "SPROUTS FARMERS MARKET",
+      "bounding_box": {
+        "x": 0.22,
+        "y": 0.72,
+        "width": 0.5,
+        "height": 0.02
+      },
+      "top_left": {
+        "x": 0.22,
+        "y": 0.74
+      },
+      "top_right": {
+        "x": 0.72,
+        "y": 0.74
+      },
+      "bottom_left": {
+        "x": 0.22,
+        "y": 0.72
+      },
+      "bottom_right": {
+        "x": 0.72,
+        "y": 0.72
+      },
+      "angle_degrees": 0.0,
+      "angle_radians": 0.0,
+      "confidence": 0.96,
+      "words": [
+        {
+          "text": "SPROUTS",
+          "bounding_box": {
+            "x": 0.22,
+            "y": 0.72,
+            "width": 0.196,
+            "height": 0.02
+          },
+          "top_left": {
+            "x": 0.22,
+            "y": 0.74
+          },
+          "top_right": {
+            "x": 0.416,
+            "y": 0.74
+          },
+          "bottom_left": {
+            "x": 0.22,
+            "y": 0.72
+          },
+          "bottom_right": {
+            "x": 0.416,
+            "y": 0.72
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.97,
+          "letters": []
+        },
+        {
+          "text": "FARMERS",
+          "bounding_box": {
+            "x": 0.436,
+            "y": 0.72,
+            "width": 0.196,
+            "height": 0.02
+          },
+          "top_left": {
+            "x": 0.436,
+            "y": 0.74
+          },
+          "top_right": {
+            "x": 0.632,
+            "y": 0.74
+          },
+          "bottom_left": {
+            "x": 0.436,
+            "y": 0.72
+          },
+          "bottom_right": {
+            "x": 0.632,
+            "y": 0.72
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.97,
+          "letters": []
+        },
+        {
+          "text": "MARKET",
+          "bounding_box": {
+            "x": 0.652,
+            "y": 0.72,
+            "width": 0.168,
+            "height": 0.02
+          },
+          "top_left": {
+            "x": 0.652,
+            "y": 0.74
+          },
+          "top_right": {
+            "x": 0.82,
+            "y": 0.74
+          },
+          "bottom_left": {
+            "x": 0.652,
+            "y": 0.72
+          },
+          "bottom_right": {
+            "x": 0.82,
+            "y": 0.72
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.97,
+          "letters": []
+        }
+      ]
+    },
+    {
+      "text": "TOTAL 3.99",
+      "bounding_box": {
+        "x": 0.22,
+        "y": 0.4,
+        "width": 0.5,
+        "height": 0.02
+      },
+      "top_left": {
+        "x": 0.22,
+        "y": 0.42
+      },
+      "top_right": {
+        "x": 0.72,
+        "y": 0.42
+      },
+      "bottom_left": {
+        "x": 0.22,
+        "y": 0.4
+      },
+      "bottom_right": {
+        "x": 0.72,
+        "y": 0.4
+      },
+      "angle_degrees": 0.0,
+      "angle_radians": 0.0,
+      "confidence": 0.96,
+      "words": [
+        {
+          "text": "TOTAL",
+          "bounding_box": {
+            "x": 0.22,
+            "y": 0.4,
+            "width": 0.14,
+            "height": 0.02
+          },
+          "top_left": {
+            "x": 0.22,
+            "y": 0.42
+          },
+          "top_right": {
+            "x": 0.36,
+            "y": 0.42
+          },
+          "bottom_left": {
+            "x": 0.22,
+            "y": 0.4
+          },
+          "bottom_right": {
+            "x": 0.36,
+            "y": 0.4
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.97,
+          "letters": []
+        },
+        {
+          "text": "3.99",
+          "bounding_box": {
+            "x": 0.38,
+            "y": 0.4,
+            "width": 0.112,
+            "height": 0.02
+          },
+          "top_left": {
+            "x": 0.38,
+            "y": 0.42
+          },
+          "top_right": {
+            "x": 0.492,
+            "y": 0.42
+          },
+          "bottom_left": {
+            "x": 0.38,
+            "y": 0.4
+          },
+          "bottom_right": {
+            "x": 0.492,
+            "y": 0.4
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.97,
+          "letters": []
+        }
+      ]
+    }
+  ],
+  "classification": {
+    "image_type": "PHOTO",
+    "margins": {
+      "left": 0.18,
+      "right": 0.2,
+      "top": 0.12,
+      "bottom": 0.15
+    },
+    "scan_distance": 0.61,
+    "photo_distance": 0.04,
+    "image_width": 3024,
+    "image_height": 4032
+  },
+  "receipts": [
+    {
+      "cluster_id": 1,
+      "bounds": {
+        "top_left": {
+          "x": 0.2,
+          "y": 0.78
+        },
+        "top_right": {
+          "x": 0.76,
+          "y": 0.77
+        },
+        "bottom_right": {
+          "x": 0.75,
+          "y": 0.3
+        },
+        "bottom_left": {
+          "x": 0.19,
+          "y": 0.31
+        }
+      },
+      "warped_width": 1000,
+      "warped_height": 2400,
+      "s3_key": "IMG_CONTRACT-job-1_receipt_1.png",
+      "line_indices": [
+        0,
+        1
+      ],
+      "lines": [
+        {
+          "text": "SPROUTS FARMERS MARKET",
+          "bounding_box": {
+            "x": 0.08,
+            "y": 0.9,
+            "width": 0.62,
+            "height": 0.03
+          },
+          "top_left": {
+            "x": 0.08,
+            "y": 0.93
+          },
+          "top_right": {
+            "x": 0.7,
+            "y": 0.93
+          },
+          "bottom_left": {
+            "x": 0.08,
+            "y": 0.9
+          },
+          "bottom_right": {
+            "x": 0.7,
+            "y": 0.9
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.96,
+          "words": [
+            {
+              "text": "SPROUTS",
+              "bounding_box": {
+                "x": 0.08,
+                "y": 0.9,
+                "width": 0.196,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.08,
+                "y": 0.93
+              },
+              "top_right": {
+                "x": 0.276,
+                "y": 0.93
+              },
+              "bottom_left": {
+                "x": 0.08,
+                "y": 0.9
+              },
+              "bottom_right": {
+                "x": 0.276,
+                "y": 0.9
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": [
+                {
+                  "text": "S",
+                  "bounding_box": {
+                    "x": 0.08,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.08,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.106,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.08,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.106,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                },
+                {
+                  "text": "P",
+                  "bounding_box": {
+                    "x": 0.108,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.108,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.134,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.108,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.134,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                },
+                {
+                  "text": "R",
+                  "bounding_box": {
+                    "x": 0.136,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.136,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.162,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.136,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.162,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                },
+                {
+                  "text": "O",
+                  "bounding_box": {
+                    "x": 0.164,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.164,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.19,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.164,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.19,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                },
+                {
+                  "text": "U",
+                  "bounding_box": {
+                    "x": 0.192,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.192,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.218,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.192,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.218,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                },
+                {
+                  "text": "T",
+                  "bounding_box": {
+                    "x": 0.22000000000000003,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.22,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.246,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.22,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.246,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                },
+                {
+                  "text": "S",
+                  "bounding_box": {
+                    "x": 0.248,
+                    "y": 0.9,
+                    "width": 0.026,
+                    "height": 0.03
+                  },
+                  "top_left": {
+                    "x": 0.248,
+                    "y": 0.93
+                  },
+                  "top_right": {
+                    "x": 0.274,
+                    "y": 0.93
+                  },
+                  "bottom_left": {
+                    "x": 0.248,
+                    "y": 0.9
+                  },
+                  "bottom_right": {
+                    "x": 0.274,
+                    "y": 0.9
+                  },
+                  "angle_degrees": 0.0,
+                  "angle_radians": 0.0,
+                  "confidence": 0.98
+                }
+              ]
+            },
+            {
+              "text": "FARMERS",
+              "bounding_box": {
+                "x": 0.296,
+                "y": 0.9,
+                "width": 0.196,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.296,
+                "y": 0.93
+              },
+              "top_right": {
+                "x": 0.492,
+                "y": 0.93
+              },
+              "bottom_left": {
+                "x": 0.296,
+                "y": 0.9
+              },
+              "bottom_right": {
+                "x": 0.492,
+                "y": 0.9
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": []
+            },
+            {
+              "text": "MARKET",
+              "bounding_box": {
+                "x": 0.512,
+                "y": 0.9,
+                "width": 0.168,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.512,
+                "y": 0.93
+              },
+              "top_right": {
+                "x": 0.68,
+                "y": 0.93
+              },
+              "bottom_left": {
+                "x": 0.512,
+                "y": 0.9
+              },
+              "bottom_right": {
+                "x": 0.68,
+                "y": 0.9
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": []
+            }
+          ]
+        },
+        {
+          "text": "",
+          "bounding_box": {
+            "x": 0.08,
+            "y": 0.75,
+            "width": 0.3,
+            "height": 0.03
+          },
+          "top_left": {
+            "x": 0.08,
+            "y": 0.78
+          },
+          "top_right": {
+            "x": 0.38,
+            "y": 0.78
+          },
+          "bottom_left": {
+            "x": 0.08,
+            "y": 0.75
+          },
+          "bottom_right": {
+            "x": 0.38,
+            "y": 0.75
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.96,
+          "words": []
+        },
+        {
+          "text": "ORGANIC BANANAS 3.99",
+          "bounding_box": {
+            "x": 0.08,
+            "y": 0.6,
+            "width": 0.8,
+            "height": 0.03
+          },
+          "top_left": {
+            "x": 0.08,
+            "y": 0.63
+          },
+          "top_right": {
+            "x": 0.88,
+            "y": 0.63
+          },
+          "bottom_left": {
+            "x": 0.08,
+            "y": 0.6
+          },
+          "bottom_right": {
+            "x": 0.88,
+            "y": 0.6
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.96,
+          "words": [
+            {
+              "text": "ORGANIC",
+              "bounding_box": {
+                "x": 0.08,
+                "y": 0.6,
+                "width": 0.18,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.08,
+                "y": 0.63
+              },
+              "top_right": {
+                "x": 0.26,
+                "y": 0.63
+              },
+              "bottom_left": {
+                "x": 0.08,
+                "y": 0.6
+              },
+              "bottom_right": {
+                "x": 0.26,
+                "y": 0.6
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": []
+            },
+            {
+              "text": "",
+              "bounding_box": {
+                "x": 0.3,
+                "y": 0.6,
+                "width": 0.04,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.3,
+                "y": 0.63
+              },
+              "top_right": {
+                "x": 0.34,
+                "y": 0.63
+              },
+              "bottom_left": {
+                "x": 0.3,
+                "y": 0.6
+              },
+              "bottom_right": {
+                "x": 0.34,
+                "y": 0.6
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": []
+            },
+            {
+              "text": "3.99",
+              "bounding_box": {
+                "x": 0.78,
+                "y": 0.6,
+                "width": 0.1,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.78,
+                "y": 0.63
+              },
+              "top_right": {
+                "x": 0.88,
+                "y": 0.63
+              },
+              "bottom_left": {
+                "x": 0.78,
+                "y": 0.6
+              },
+              "bottom_right": {
+                "x": 0.88,
+                "y": 0.6
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": [],
+              "extracted_data": {
+                "type": "currency",
+                "value": "3.99"
+              }
+            }
+          ]
+        },
+        {
+          "text": "TOTAL 3.99",
+          "bounding_box": {
+            "x": 0.08,
+            "y": 0.45,
+            "width": 0.8,
+            "height": 0.03
+          },
+          "top_left": {
+            "x": 0.08,
+            "y": 0.48
+          },
+          "top_right": {
+            "x": 0.88,
+            "y": 0.48
+          },
+          "bottom_left": {
+            "x": 0.08,
+            "y": 0.45
+          },
+          "bottom_right": {
+            "x": 0.88,
+            "y": 0.45
+          },
+          "angle_degrees": 0.0,
+          "angle_radians": 0.0,
+          "confidence": 0.96,
+          "words": [
+            {
+              "text": "TOTAL",
+              "bounding_box": {
+                "x": 0.08,
+                "y": 0.45,
+                "width": 0.14,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.08,
+                "y": 0.48
+              },
+              "top_right": {
+                "x": 0.22,
+                "y": 0.48
+              },
+              "bottom_left": {
+                "x": 0.08,
+                "y": 0.45
+              },
+              "bottom_right": {
+                "x": 0.22,
+                "y": 0.45
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": []
+            },
+            {
+              "text": "3.99",
+              "bounding_box": {
+                "x": 0.78,
+                "y": 0.45,
+                "width": 0.1,
+                "height": 0.03
+              },
+              "top_left": {
+                "x": 0.78,
+                "y": 0.48
+              },
+              "top_right": {
+                "x": 0.88,
+                "y": 0.48
+              },
+              "bottom_left": {
+                "x": 0.78,
+                "y": 0.45
+              },
+              "bottom_right": {
+                "x": 0.88,
+                "y": 0.45
+              },
+              "angle_degrees": 0.0,
+              "angle_radians": 0.0,
+              "confidence": 0.97,
+              "letters": [],
+              "extracted_data": {
+                "type": "currency",
+                "value": "3.99"
+              }
+            }
+          ]
+        }
+      ],
+      "layoutlm_predictions": [
+        {
+          "tokens": [
+            "SPROUTS",
+            "FARMERS",
+            "MARKET"
+          ],
+          "labels": [
+            "B-MERCHANT_NAME",
+            "I-MERCHANT_NAME",
+            "I-MERCHANT_NAME"
+          ],
+          "confidences": [
+            0.994,
+            0.991,
+            0.988
+          ]
+        },
+        {
+          "tokens": [],
+          "labels": [],
+          "confidences": []
+        },
+        {
+          "tokens": [
+            "ORGANIC",
+            "",
+            "3.99"
+          ],
+          "labels": [
+            "B-PRODUCT_NAME",
+            "O",
+            "B-LINE_TOTAL"
+          ],
+          "confidences": [
+            0.92,
+            0.31,
+            0.89
+          ]
+        },
+        {
+          "tokens": [
+            "TOTAL",
+            "3.99"
+          ],
+          "labels": [
+            "O",
+            "B-GRAND_TOTAL"
+          ],
+          "confidences": [
+            0.55,
+            0.93
+          ]
+        }
+      ],
+      "barcodes": [
+        {
+          "payload": "0123456789012",
+          "symbology": "EAN13",
+          "bounding_box": {
+            "x": 0.3,
+            "y": 0.1,
+            "width": 0.4,
+            "height": 0.08
+          },
+          "top_left": {
+            "x": 0.3,
+            "y": 0.18
+          },
+          "top_right": {
+            "x": 0.7,
+            "y": 0.18
+          },
+          "bottom_left": {
+            "x": 0.3,
+            "y": 0.1
+          },
+          "bottom_right": {
+            "x": 0.7,
+            "y": 0.1
+          },
+          "confidence": 0.9
+        }
+      ],
+      "needs_review": false
+    }
+  ],
+  "barcodes": []
+}
