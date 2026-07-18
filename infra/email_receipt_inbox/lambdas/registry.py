@@ -7,8 +7,23 @@ receipt schema (dollars as floats, ``grand_total is None`` for non-receipts).
 from __future__ import annotations
 
 import importlib
+import inspect
 import re
 from typing import Any, Optional
+
+
+class ParserContractError(Exception):
+    """A parser *integration* / return-contract violation.
+
+    Distinct from a per-message parse failure. Raised for systematic defects —
+    a missing or non-callable entry point, a signature that cannot accept the
+    single .eml path argument, or a return value that is not the shared receipt
+    schema (dict / list-of-dicts / None). These must PROPAGATE so Lambda
+    retries and, once exhausted, routes the event to the DLQ, rather than being
+    caught per-message and persisted as a false ``parse_error`` reported as
+    success. Deliberately not a subclass of ValueError/TypeError so the
+    handler's per-message parse catch never swallows it.
+    """
 
 # group -> (domain suffixes, module name, entry attr)
 GROUPS: dict[str, tuple[tuple[str, ...], str, str]] = {
@@ -58,10 +73,65 @@ def group_for_domain(domain: Optional[str]) -> Optional[str]:
     return None
 
 
+def _resolve_entrypoints() -> dict[str, Any]:
+    """Import every parser module and bind its callable entry point ONCE, at
+    cold start.
+
+    A broken deploy — a missing parser module (ImportError), a missing/renamed
+    entry attribute, or an entry that cannot be called with a single .eml path
+    — fails HERE, at import time, so the whole invocation errors and the event
+    retries / lands in the DLQ. Previously these surfaced only when a message
+    happened to route to the broken group, inside the handler's per-message
+    catch, where they were masked as a permanent ``parse_error`` and reported
+    as success. Resolving up front turns a silent, per-message data-loss bug
+    into a loud deploy failure.
+    """
+    resolved: dict[str, Any] = {}
+    for grp, (_, module_name, entry) in GROUPS.items():
+        mod = importlib.import_module(f"parsers.{module_name}")
+        fn = getattr(mod, entry, None)
+        if not callable(fn):
+            raise ParserContractError(
+                f"{grp}: parsers.{module_name}.{entry} is missing or not callable")
+        try:
+            inspect.signature(fn).bind("<eml-path>")
+        except TypeError as exc:
+            raise ParserContractError(
+                f"{grp}: parsers.{module_name}.{entry} cannot be called with a "
+                f"single .eml path argument: {exc}") from exc
+        resolved[grp] = fn
+    return resolved
+
+
+# Bound once at cold start; a broken deploy fails the invocation here.
+_ENTRYPOINTS: dict[str, Any] = _resolve_entrypoints()
+
+
+def _validate_result(grp: str, result: Any) -> Any:
+    """Assert the parser returned the shared receipt schema.
+
+    A wrong return TYPE (e.g. a bare string) is an integration defect, not a
+    per-message parse failure: without this guard it would surface downstream
+    as an ``AttributeError`` on ``parsed.get(...)`` and be swallowed as
+    ``parse_error``. Raise ParserContractError so it propagates to the DLQ.
+    """
+    if result is None or isinstance(result, dict):
+        return result
+    if isinstance(result, list):
+        if all(isinstance(x, dict) for x in result):
+            return result
+        raise ParserContractError(
+            f"{grp}: parser returned a list with non-dict elements")
+    raise ParserContractError(
+        f"{grp}: parser returned {type(result).__name__}, expected dict/list/None")
+
+
 def run_parser(grp: str, eml_path: str) -> Any:
-    _, module_name, entry = GROUPS[grp]
-    mod = importlib.import_module(f"parsers.{module_name}")
-    return getattr(mod, entry)(eml_path)
+    # Entry point resolved + signature-validated at cold start; return type
+    # validated here. Both raise ParserContractError (never a per-message parse
+    # error) so integration defects reach the DLQ instead of masquerading as a
+    # successful parse_error.
+    return _validate_result(grp, _ENTRYPOINTS[grp](eml_path))
 
 
 def classify(grp: str, subject: str, parsed: Any) -> str:

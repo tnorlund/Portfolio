@@ -205,12 +205,16 @@ def lambda_handler(event, _context):
                 email.errors.MessageError):
             # Deterministic email/parser validation failures on THIS message
             # body are permanent: recording parse_error and moving on is
-            # correct — a retry would fail identically. Operational failures are
-            # NOT caught here: ImportError (a broken deploy / missing parser
-            # module), OSError (temp-file/disk), and anything else unexpected
-            # propagate so Lambda retries them and, once retries are exhausted,
-            # routes the event to the DLQ instead of persisting a false
-            # parse_error and reporting success.
+            # correct — a retry would fail identically. Integration defects are
+            # NOT reachable here: the parser entry points are resolved and
+            # signature-checked at cold start and their return type is validated
+            # in run_parser, so a missing/renamed entry point, a bad signature,
+            # or a wrong return type raises registry.ParserContractError (not a
+            # subclass of the exceptions above) and propagates. Operational
+            # failures — ImportError (broken deploy), OSError (temp-file/disk),
+            # and anything else unexpected — likewise propagate so Lambda
+            # retries them and, once exhausted, routes the event to the DLQ
+            # instead of persisting a false parse_error and reporting success.
             out["classification"] = "parse_error"
             out["error"] = traceback.format_exc(limit=4)
 
