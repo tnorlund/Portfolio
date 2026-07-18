@@ -8,7 +8,7 @@
 
 > **computeFinalReceiptTilt**(`lines`, `hull`, `centroid`, `avgAngle`): `number`
 
-Defined in: [utils/receipt/boundingBox.ts:267](https://github.com/tnorlund/Portfolio/blob/e2c3ee62ef255d6e3d6abaff8b46edf9edee2437/portfolio/utils/receipt/boundingBox.ts#L267)
+Defined in: [utils/receipt/boundingBox.ts:267](https://github.com/tnorlund/Portfolio/blob/88bf42f25cfe6889b0eda1bf6a55e27e732b51e0/portfolio/utils/receipt/boundingBox.ts#L267)
 
 Compute the final tilt angle of the receipt by analyzing text line edges.
 
