@@ -95,6 +95,12 @@ include = ["receipt_upload/py.typed"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "receipt_upload/assets/section_order_priors_v2.json" = "receipt_upload/assets/section_order_priors_v2.json"
+"receipt_upload/assets/section_label_priors_v1.json" = "receipt_upload/assets/section_label_priors_v1.json"
+
+# The global exclude drops *.json, so sdists need the assets re-included too.
+[tool.hatch.build.targets.sdist.force-include]
+"receipt_upload/assets/section_order_priors_v2.json" = "receipt_upload/assets/section_order_priors_v2.json"
+"receipt_upload/assets/section_label_priors_v1.json" = "receipt_upload/assets/section_label_priors_v1.json"
 
 [tool.black]
 line-length = 79

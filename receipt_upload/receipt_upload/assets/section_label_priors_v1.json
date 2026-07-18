@@ -1,0 +1,852 @@
+{
+  "denominator": "p = section pair count / label's sectioned row count (co-occurrence rate per sectioned row; cells on multi-section lines can sum above 1.0)",
+  "labels": {
+    "ADDRESS_LINE": {
+      "sectioned": 5226,
+      "sectioned_lines": 1991,
+      "sections": {
+        "ADDRESS": {
+          "count": 4825,
+          "p": 0.923268
+        },
+        "FOOTER": {
+          "count": 152,
+          "p": 0.029085
+        },
+        "ITEMS": {
+          "count": 55,
+          "p": 0.010524
+        },
+        "PAYMENT": {
+          "count": 87,
+          "p": 0.016648
+        },
+        "STOREFRONT": {
+          "count": 44,
+          "p": 0.008419
+        },
+        "SUMMARY": {
+          "count": 30,
+          "p": 0.005741
+        },
+        "SURVEY": {
+          "count": 9,
+          "p": 0.001722
+        },
+        "TOTAL_LINE": {
+          "count": 4,
+          "p": 0.000765
+        },
+        "TRANSACTION_INFO": {
+          "count": 20,
+          "p": 0.003827
+        }
+      },
+      "total": 5839,
+      "unsectioned": 613
+    },
+    "CASH_BACK": {
+      "sectioned": 19,
+      "sectioned_lines": 19,
+      "sections": {
+        "ITEMS": {
+          "count": 2,
+          "p": 0.105263
+        },
+        "PAYMENT": {
+          "count": 17,
+          "p": 0.894737
+        }
+      },
+      "total": 26,
+      "unsectioned": 7
+    },
+    "CHANGE": {
+      "sectioned": 50,
+      "sectioned_lines": 50,
+      "sections": {
+        "ITEMS": {
+          "count": 1,
+          "p": 0.02
+        },
+        "PAYMENT": {
+          "count": 47,
+          "p": 0.94
+        },
+        "SUMMARY": {
+          "count": 1,
+          "p": 0.02
+        },
+        "TOTAL_LINE": {
+          "count": 1,
+          "p": 0.02
+        }
+      },
+      "total": 79,
+      "unsectioned": 29
+    },
+    "COUPON": {
+      "sectioned": 109,
+      "sectioned_lines": 66,
+      "sections": {
+        "ADDRESS": {
+          "count": 9,
+          "p": 0.082569
+        },
+        "FOOTER": {
+          "count": 48,
+          "p": 0.440367
+        },
+        "ITEMS": {
+          "count": 15,
+          "p": 0.137615
+        },
+        "PAYMENT": {
+          "count": 11,
+          "p": 0.100917
+        },
+        "STOREFRONT": {
+          "count": 9,
+          "p": 0.082569
+        },
+        "SUMMARY": {
+          "count": 3,
+          "p": 0.027523
+        },
+        "SURVEY": {
+          "count": 12,
+          "p": 0.110092
+        },
+        "TRANSACTION_INFO": {
+          "count": 2,
+          "p": 0.018349
+        }
+      },
+      "total": 270,
+      "unsectioned": 161
+    },
+    "DATE": {
+      "sectioned": 337,
+      "sectioned_lines": 286,
+      "sections": {
+        "ADDRESS": {
+          "count": 33,
+          "p": 0.097923
+        },
+        "BARCODE": {
+          "count": 1,
+          "p": 0.002967
+        },
+        "FOOTER": {
+          "count": 30,
+          "p": 0.089021
+        },
+        "ITEMS": {
+          "count": 6,
+          "p": 0.017804
+        },
+        "PAYMENT": {
+          "count": 97,
+          "p": 0.287834
+        },
+        "STOREFRONT": {
+          "count": 1,
+          "p": 0.002967
+        },
+        "SUMMARY": {
+          "count": 1,
+          "p": 0.002967
+        },
+        "TOTAL_LINE": {
+          "count": 4,
+          "p": 0.011869
+        },
+        "TRANSACTION_INFO": {
+          "count": 164,
+          "p": 0.486647
+        }
+      },
+      "total": 1162,
+      "unsectioned": 825
+    },
+    "DISCOUNT": {
+      "sectioned": 137,
+      "sectioned_lines": 97,
+      "sections": {
+        "ADDRESS": {
+          "count": 1,
+          "p": 0.007299
+        },
+        "FOOTER": {
+          "count": 20,
+          "p": 0.145985
+        },
+        "ITEMS": {
+          "count": 100,
+          "p": 0.729927
+        },
+        "PAYMENT": {
+          "count": 4,
+          "p": 0.029197
+        },
+        "STOREFRONT": {
+          "count": 1,
+          "p": 0.007299
+        },
+        "SUMMARY": {
+          "count": 10,
+          "p": 0.072993
+        },
+        "TOTAL_LINE": {
+          "count": 1,
+          "p": 0.007299
+        }
+      },
+      "total": 340,
+      "unsectioned": 203
+    },
+    "GRAND_TOTAL": {
+      "sectioned": 850,
+      "sectioned_lines": 849,
+      "sections": {
+        "ITEMS": {
+          "count": 16,
+          "p": 0.018824
+        },
+        "PAYMENT": {
+          "count": 260,
+          "p": 0.305882
+        },
+        "SUMMARY": {
+          "count": 55,
+          "p": 0.064706
+        },
+        "TOTAL_LINE": {
+          "count": 517,
+          "p": 0.608235
+        },
+        "TRANSACTION_INFO": {
+          "count": 2,
+          "p": 0.002353
+        }
+      },
+      "total": 1053,
+      "unsectioned": 203
+    },
+    "LINE_TOTAL": {
+      "sectioned": 1451,
+      "sectioned_lines": 1447,
+      "sections": {
+        "ADDRESS": {
+          "count": 2,
+          "p": 0.001378
+        },
+        "BARCODE": {
+          "count": 1,
+          "p": 0.000689
+        },
+        "FOOTER": {
+          "count": 3,
+          "p": 0.002068
+        },
+        "ITEMS": {
+          "count": 1365,
+          "p": 0.940731
+        },
+        "PAYMENT": {
+          "count": 23,
+          "p": 0.015851
+        },
+        "SECTION_HEADER": {
+          "count": 7,
+          "p": 0.004824
+        },
+        "STOREFRONT": {
+          "count": 3,
+          "p": 0.002068
+        },
+        "SUMMARY": {
+          "count": 27,
+          "p": 0.018608
+        },
+        "SURVEY": {
+          "count": 1,
+          "p": 0.000689
+        },
+        "TOTAL_LINE": {
+          "count": 16,
+          "p": 0.011027
+        },
+        "TRANSACTION_INFO": {
+          "count": 3,
+          "p": 0.002068
+        }
+      },
+      "total": 1693,
+      "unsectioned": 242
+    },
+    "LOYALTY_ID": {
+      "sectioned": 91,
+      "sectioned_lines": 77,
+      "sections": {
+        "ADDRESS": {
+          "count": 2,
+          "p": 0.021978
+        },
+        "BARCODE": {
+          "count": 8,
+          "p": 0.087912
+        },
+        "FOOTER": {
+          "count": 8,
+          "p": 0.087912
+        },
+        "ITEMS": {
+          "count": 8,
+          "p": 0.087912
+        },
+        "PAYMENT": {
+          "count": 41,
+          "p": 0.450549
+        },
+        "STOREFRONT": {
+          "count": 1,
+          "p": 0.010989
+        },
+        "SUMMARY": {
+          "count": 1,
+          "p": 0.010989
+        },
+        "SURVEY": {
+          "count": 11,
+          "p": 0.120879
+        },
+        "TRANSACTION_INFO": {
+          "count": 11,
+          "p": 0.120879
+        }
+      },
+      "total": 173,
+      "unsectioned": 82
+    },
+    "MERCHANT_NAME": {
+      "sectioned": 1287,
+      "sectioned_lines": 856,
+      "sections": {
+        "ADDRESS": {
+          "count": 140,
+          "p": 0.10878
+        },
+        "BARCODE": {
+          "count": 2,
+          "p": 0.001554
+        },
+        "FOOTER": {
+          "count": 25,
+          "p": 0.019425
+        },
+        "ITEMS": {
+          "count": 19,
+          "p": 0.014763
+        },
+        "PAYMENT": {
+          "count": 15,
+          "p": 0.011655
+        },
+        "STOREFRONT": {
+          "count": 1080,
+          "p": 0.839161
+        },
+        "SURVEY": {
+          "count": 4,
+          "p": 0.003108
+        },
+        "TRANSACTION_INFO": {
+          "count": 2,
+          "p": 0.001554
+        }
+      },
+      "total": 1817,
+      "unsectioned": 530
+    },
+    "PAYMENT_METHOD": {
+      "sectioned": 3234,
+      "sectioned_lines": 2718,
+      "sections": {
+        "ADDRESS": {
+          "count": 2,
+          "p": 0.000618
+        },
+        "FOOTER": {
+          "count": 120,
+          "p": 0.037106
+        },
+        "ITEMS": {
+          "count": 29,
+          "p": 0.008967
+        },
+        "PAYMENT": {
+          "count": 2889,
+          "p": 0.893321
+        },
+        "SECTION_HEADER": {
+          "count": 1,
+          "p": 0.000309
+        },
+        "STOREFRONT": {
+          "count": 1,
+          "p": 0.000309
+        },
+        "SUMMARY": {
+          "count": 5,
+          "p": 0.001546
+        },
+        "SURVEY": {
+          "count": 66,
+          "p": 0.020408
+        },
+        "TOTAL_LINE": {
+          "count": 62,
+          "p": 0.019171
+        },
+        "TRANSACTION_INFO": {
+          "count": 59,
+          "p": 0.018244
+        }
+      },
+      "total": 3870,
+      "unsectioned": 636
+    },
+    "PHONE_NUMBER": {
+      "sectioned": 938,
+      "sectioned_lines": 796,
+      "sections": {
+        "ADDRESS": {
+          "count": 752,
+          "p": 0.801706
+        },
+        "BARCODE": {
+          "count": 2,
+          "p": 0.002132
+        },
+        "FOOTER": {
+          "count": 38,
+          "p": 0.040512
+        },
+        "ITEMS": {
+          "count": 25,
+          "p": 0.026652
+        },
+        "PAYMENT": {
+          "count": 100,
+          "p": 0.10661
+        },
+        "SECTION_HEADER": {
+          "count": 1,
+          "p": 0.001066
+        },
+        "STOREFRONT": {
+          "count": 9,
+          "p": 0.009595
+        },
+        "TRANSACTION_INFO": {
+          "count": 11,
+          "p": 0.011727
+        }
+      },
+      "total": 1083,
+      "unsectioned": 145
+    },
+    "PRODUCT_NAME": {
+      "sectioned": 4300,
+      "sectioned_lines": 1783,
+      "sections": {
+        "ADDRESS": {
+          "count": 2,
+          "p": 0.000465
+        },
+        "BARCODE": {
+          "count": 3,
+          "p": 0.000698
+        },
+        "FOOTER": {
+          "count": 23,
+          "p": 0.005349
+        },
+        "ITEMS": {
+          "count": 4197,
+          "p": 0.976047
+        },
+        "PAYMENT": {
+          "count": 20,
+          "p": 0.004651
+        },
+        "SECTION_HEADER": {
+          "count": 12,
+          "p": 0.002791
+        },
+        "STOREFRONT": {
+          "count": 4,
+          "p": 0.00093
+        },
+        "SUMMARY": {
+          "count": 22,
+          "p": 0.005116
+        },
+        "SURVEY": {
+          "count": 7,
+          "p": 0.001628
+        },
+        "TOTAL_LINE": {
+          "count": 5,
+          "p": 0.001163
+        },
+        "TRANSACTION_INFO": {
+          "count": 5,
+          "p": 0.001163
+        }
+      },
+      "total": 5464,
+      "unsectioned": 1164
+    },
+    "QUANTITY": {
+      "sectioned": 407,
+      "sectioned_lines": 399,
+      "sections": {
+        "ADDRESS": {
+          "count": 1,
+          "p": 0.002457
+        },
+        "BARCODE": {
+          "count": 1,
+          "p": 0.002457
+        },
+        "FOOTER": {
+          "count": 6,
+          "p": 0.014742
+        },
+        "ITEMS": {
+          "count": 384,
+          "p": 0.943489
+        },
+        "PAYMENT": {
+          "count": 4,
+          "p": 0.009828
+        },
+        "SUMMARY": {
+          "count": 4,
+          "p": 0.009828
+        },
+        "TRANSACTION_INFO": {
+          "count": 7,
+          "p": 0.017199
+        }
+      },
+      "total": 552,
+      "unsectioned": 145
+    },
+    "REFUND": {
+      "sectioned": 10,
+      "sectioned_lines": 9,
+      "sections": {
+        "ITEMS": {
+          "count": 6,
+          "p": 0.6
+        },
+        "PAYMENT": {
+          "count": 2,
+          "p": 0.2
+        },
+        "TOTAL_LINE": {
+          "count": 2,
+          "p": 0.2
+        }
+      },
+      "total": 16,
+      "unsectioned": 6
+    },
+    "STORE_HOURS": {
+      "sectioned": 1186,
+      "sectioned_lines": 341,
+      "sections": {
+        "ADDRESS": {
+          "count": 12,
+          "p": 0.010118
+        },
+        "FOOTER": {
+          "count": 237,
+          "p": 0.199831
+        },
+        "ITEMS": {
+          "count": 2,
+          "p": 0.001686
+        },
+        "PAYMENT": {
+          "count": 2,
+          "p": 0.001686
+        },
+        "STOREFRONT": {
+          "count": 924,
+          "p": 0.779089
+        },
+        "SURVEY": {
+          "count": 2,
+          "p": 0.001686
+        },
+        "TRANSACTION_INFO": {
+          "count": 7,
+          "p": 0.005902
+        }
+      },
+      "total": 1266,
+      "unsectioned": 80
+    },
+    "SUBTOTAL": {
+      "sectioned": 393,
+      "sectioned_lines": 393,
+      "sections": {
+        "ADDRESS": {
+          "count": 2,
+          "p": 0.005089
+        },
+        "FOOTER": {
+          "count": 2,
+          "p": 0.005089
+        },
+        "ITEMS": {
+          "count": 33,
+          "p": 0.083969
+        },
+        "PAYMENT": {
+          "count": 25,
+          "p": 0.063613
+        },
+        "SUMMARY": {
+          "count": 289,
+          "p": 0.735369
+        },
+        "SURVEY": {
+          "count": 1,
+          "p": 0.002545
+        },
+        "TOTAL_LINE": {
+          "count": 40,
+          "p": 0.101781
+        },
+        "TRANSACTION_INFO": {
+          "count": 1,
+          "p": 0.002545
+        }
+      },
+      "total": 485,
+      "unsectioned": 92
+    },
+    "TAX": {
+      "sectioned": 386,
+      "sectioned_lines": 385,
+      "sections": {
+        "ADDRESS": {
+          "count": 1,
+          "p": 0.002591
+        },
+        "ITEMS": {
+          "count": 19,
+          "p": 0.049223
+        },
+        "PAYMENT": {
+          "count": 11,
+          "p": 0.028497
+        },
+        "STOREFRONT": {
+          "count": 1,
+          "p": 0.002591
+        },
+        "SUMMARY": {
+          "count": 345,
+          "p": 0.893782
+        },
+        "TOTAL_LINE": {
+          "count": 8,
+          "p": 0.020725
+        },
+        "TRANSACTION_INFO": {
+          "count": 1,
+          "p": 0.002591
+        }
+      },
+      "total": 485,
+      "unsectioned": 99
+    },
+    "TIME": {
+      "sectioned": 349,
+      "sectioned_lines": 298,
+      "sections": {
+        "ADDRESS": {
+          "count": 34,
+          "p": 0.097421
+        },
+        "BARCODE": {
+          "count": 1,
+          "p": 0.002865
+        },
+        "FOOTER": {
+          "count": 6,
+          "p": 0.017192
+        },
+        "ITEMS": {
+          "count": 9,
+          "p": 0.025788
+        },
+        "PAYMENT": {
+          "count": 104,
+          "p": 0.297994
+        },
+        "SUMMARY": {
+          "count": 3,
+          "p": 0.008596
+        },
+        "TOTAL_LINE": {
+          "count": 3,
+          "p": 0.008596
+        },
+        "TRANSACTION_INFO": {
+          "count": 189,
+          "p": 0.541547
+        }
+      },
+      "total": 1265,
+      "unsectioned": 916
+    },
+    "TIP": {
+      "sectioned": 41,
+      "sectioned_lines": 41,
+      "sections": {
+        "ITEMS": {
+          "count": 2,
+          "p": 0.04878
+        },
+        "PAYMENT": {
+          "count": 4,
+          "p": 0.097561
+        },
+        "SUMMARY": {
+          "count": 34,
+          "p": 0.829268
+        },
+        "TOTAL_LINE": {
+          "count": 1,
+          "p": 0.02439
+        }
+      },
+      "total": 72,
+      "unsectioned": 31
+    },
+    "UNIT_PRICE": {
+      "sectioned": 400,
+      "sectioned_lines": 399,
+      "sections": {
+        "ADDRESS": {
+          "count": 3,
+          "p": 0.0075
+        },
+        "FOOTER": {
+          "count": 2,
+          "p": 0.005
+        },
+        "ITEMS": {
+          "count": 373,
+          "p": 0.9325
+        },
+        "PAYMENT": {
+          "count": 5,
+          "p": 0.0125
+        },
+        "SECTION_HEADER": {
+          "count": 5,
+          "p": 0.0125
+        },
+        "SUMMARY": {
+          "count": 8,
+          "p": 0.02
+        },
+        "SURVEY": {
+          "count": 1,
+          "p": 0.0025
+        },
+        "TRANSACTION_INFO": {
+          "count": 3,
+          "p": 0.0075
+        }
+      },
+      "total": 531,
+      "unsectioned": 131
+    },
+    "WEBSITE": {
+      "sectioned": 599,
+      "sectioned_lines": 589,
+      "sections": {
+        "ADDRESS": {
+          "count": 26,
+          "p": 0.043406
+        },
+        "FOOTER": {
+          "count": 290,
+          "p": 0.48414
+        },
+        "ITEMS": {
+          "count": 5,
+          "p": 0.008347
+        },
+        "PAYMENT": {
+          "count": 16,
+          "p": 0.026711
+        },
+        "STOREFRONT": {
+          "count": 28,
+          "p": 0.046745
+        },
+        "SUMMARY": {
+          "count": 1,
+          "p": 0.001669
+        },
+        "SURVEY": {
+          "count": 219,
+          "p": 0.365609
+        },
+        "TRANSACTION_INFO": {
+          "count": 14,
+          "p": 0.023372
+        }
+      },
+      "total": 788,
+      "unsectioned": 189
+    }
+  },
+  "model_source": "section-label-prior-v1",
+  "schema_version": 1,
+  "sections": [
+    "ADDRESS",
+    "BARCODE",
+    "FOOTER",
+    "ITEMS",
+    "PAYMENT",
+    "SECTION_HEADER",
+    "STOREFRONT",
+    "SUMMARY",
+    "SURVEY",
+    "TOTAL_LINE",
+    "TRANSACTION_INFO"
+  ],
+  "source": {
+    "core_label_row_count": 28329,
+    "corpus_sha256": "4597ea00a415520794283e06ab01f0eab0f259301e973a033ea758b969a19fe3",
+    "legacy_valid_section_rows_excluded": 0,
+    "receipts_with_valid_labels": 813,
+    "receipts_with_valid_sections_and_labels": 794,
+    "section_row_count": 5768,
+    "sectioned_core_label_row_count": 21800,
+    "valid_label_row_count": 29015,
+    "valid_section_row_count": 5751
+  },
+  "source_environment": "dev"
+}
