@@ -18,10 +18,12 @@ Environment:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import sys
+import urllib.request
 from collections import defaultdict
 from typing import Any, Optional
 
@@ -36,7 +38,7 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import ImageContent, TextContent, Tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -79,6 +81,7 @@ def get_clients():
             }
         else:
             from receipt_dynamo.data._pulumi import load_env, load_secrets
+
             config = load_env(env=env)
             secrets = load_secrets(env=env)
             for key, value in secrets.items():
@@ -119,6 +122,165 @@ def get_clients():
 
 # Create MCP server
 server = Server("receipt-tools")
+
+
+def _resegment_word_ref_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "line_id": {"type": "integer"},
+            "word_id": {"type": "integer"},
+            "word_ids": {"type": "array", "items": {"type": "integer"}},
+        },
+        "required": ["line_id"],
+        "oneOf": [{"required": ["word_id"]}, {"required": ["word_ids"]}],
+    }
+
+
+def _resegment_visible_region_schema() -> dict:
+    return {
+        "type": "object",
+        "description": (
+            "A visible PHOTO region in normalized IMAGE coordinates (x left-to-right, "
+            "y bottom-to-top). Disconnected receipts may provide multiple regions."
+        ),
+        "properties": {
+            "region_id": {"type": "string"},
+            "line_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Optional lines expected in this visible component.",
+            },
+            "points": {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "x": {"type": "number", "minimum": 0, "maximum": 1},
+                        "y": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                    "required": ["x", "y"],
+                },
+            },
+        },
+        "required": ["points"],
+    }
+
+
+def _resegment_segment_schema(*, legacy_selectors: bool = True) -> dict:
+    properties = {
+        "segment_key": {"type": "string"},
+        "place_policy": {
+            "type": "string",
+            "enum": ["inherit", "none"],
+            "default": "none",
+        },
+        "z_index": {
+            "type": "integer",
+            "default": 0,
+            "description": "PHOTO layer order; larger values are in front.",
+        },
+        "occluded_by": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "visible_regions": {
+            "type": "array",
+            "items": _resegment_visible_region_schema(),
+        },
+    }
+    if legacy_selectors:
+        properties.update(
+            {
+                "include_line_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                },
+                "include_word_refs": {
+                    "type": "array",
+                    "items": _resegment_word_ref_schema(),
+                },
+            }
+        )
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": ["segment_key"],
+    }
+
+
+def _resegment_assignments_schema() -> dict:
+    return {
+        "type": "object",
+        "description": (
+            "Schema v2 line-first ownership. Every line must appear exactly once in "
+            "lines or discard_lines; words are sparse contiguous overrides."
+        ),
+        "properties": {
+            "lines": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "line_id": {"type": "integer"},
+                        "segment_key": {"type": "string"},
+                    },
+                    "required": ["line_id", "segment_key"],
+                },
+            },
+            "words": {
+                "type": "array",
+                "items": {
+                    **_resegment_word_ref_schema(),
+                    "properties": {
+                        **_resegment_word_ref_schema()["properties"],
+                        "segment_key": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["line_id", "segment_key", "reason"],
+                },
+            },
+            "discard_lines": {
+                "type": "array",
+                "items": {"type": "integer"},
+            },
+            "discard_words": {
+                "type": "array",
+                "items": _resegment_word_ref_schema(),
+            },
+            "discard_reason": {"type": "string"},
+            "allow_labeled_discard": {"type": "boolean", "default": False},
+        },
+        "required": ["lines"],
+    }
+
+
+def _resegment_visualization_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "strategy": {
+                "type": "string",
+                "enum": ["AUTO", "RECTANGULAR", "LAYERED_MULTI_REGION"],
+                "default": "AUTO",
+            },
+            "padding_px": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 256,
+                "default": 12,
+            },
+            "confirm_stacked_scan": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "Required before using layered geometry on a stored SCAN. "
+                    "The stored image_type cannot be overridden by the caller."
+                ),
+            },
+        },
+    }
 
 
 @server.list_tools()
@@ -528,7 +690,14 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
                         "description": "Why this status was chosen (e.g., 'tax flag indicator, not a product name'). Overwrites existing reasoning.",
                     },
                 },
-                "required": ["image_id", "receipt_id", "line_id", "word_id", "label", "new_status"],
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "line_id",
+                    "word_id",
+                    "label",
+                    "new_status",
+                ],
             },
         ),
         Tool(
@@ -587,7 +756,14 @@ image_id/receipt_id/line_id/word_id/label already exists.""",
                         "description": "Validation status for the new row. Defaults to VALID (human-reviewed). Use PENDING for machine-propagated rows (e.g. SECTION_* sections) that still need QA.",
                     },
                 },
-                "required": ["image_id", "receipt_id", "line_id", "word_id", "label", "reasoning"],
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "line_id",
+                    "word_id",
+                    "label",
+                    "reasoning",
+                ],
             },
         ),
         Tool(
@@ -634,6 +810,134 @@ and DELETES the original receipts. Only proceed after verifying with dry_run."""
                     },
                 },
                 "required": ["image_id", "receipt_ids"],
+            },
+        ),
+        Tool(
+            name="plan_receipt_resegmentation",
+            description="""Plan a safe split of one receipt into one or more outputs.
+
+Use schema_version=2 for line-first ownership. Every source line receives one
+default destination; sparse contiguous word overrides handle mixed OCR lines.
+The stored image_type selects PHOTO/SCAN behavior and cannot be overridden.
+The tool creates an assignment overlay, contact sheet, masks, visible crops,
+metrics, and one-hour signed URLs without changing receipt data.
+
+Review the returned image, findings, metrics, totals, and label counts. Revise
+the plan until clean before applying. Layered PHOTO plans are review-only until
+masked output rendering is explicitly enabled.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {"type": "string"},
+                    "source_receipt_id": {"type": "integer"},
+                    "schema_version": {
+                        "type": "integer",
+                        "enum": [1, 2],
+                        "default": 1,
+                        "description": (
+                            "Use 2 with assignments for line-first planning. "
+                            "Version 1 remains available for legacy word selectors."
+                        ),
+                    },
+                    "segments": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 23,
+                        "items": _resegment_segment_schema(),
+                    },
+                    "assignments": _resegment_assignments_schema(),
+                    "visualization": _resegment_visualization_schema(),
+                    "discard_line_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                    },
+                    "discard_word_refs": {
+                        "type": "array",
+                        "items": _resegment_word_ref_schema(),
+                    },
+                    "discard_reason": {"type": "string"},
+                    "allow_labeled_discard": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                    "padding_px": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 256,
+                        "default": 12,
+                    },
+                },
+                "required": ["image_id", "source_receipt_id", "segments"],
+            },
+        ),
+        Tool(
+            name="get_receipt_resegmentation_plan",
+            description="""Retrieve a receipt re-segmentation plan revision.
+
+Returns the immutable assignment evidence, metrics, findings, artifact hashes,
+and freshly signed visualization URLs. Use this whenever preview URLs expire or
+before revising/applying to verify that a revision is still latest and applicable.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "plan_id": {"type": "string"},
+                    "revision": {"type": "integer", "minimum": 1},
+                },
+                "required": ["plan_id"],
+            },
+        ),
+        Tool(
+            name="revise_receipt_resegmentation_plan",
+            description="""Create an immutable replacement plan revision.
+
+Submit complete segment definitions and line-first assignments. base_revision
+and base_plan_hash provide optimistic concurrency protection; stale revisions
+are rejected. The new revision receives new overlay, mask, crop, and contact-
+sheet artifacts while the previous revision remains reviewable.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "plan_id": {"type": "string"},
+                    "base_revision": {"type": "integer", "minimum": 1},
+                    "base_plan_hash": {"type": "string"},
+                    "segments": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 23,
+                        "items": _resegment_segment_schema(legacy_selectors=False),
+                    },
+                    "assignments": _resegment_assignments_schema(),
+                    "visualization": _resegment_visualization_schema(),
+                    "revision_reason": {"type": "string", "minLength": 1},
+                },
+                "required": [
+                    "plan_id",
+                    "base_revision",
+                    "base_plan_hash",
+                    "segments",
+                    "assignments",
+                    "revision_reason",
+                ],
+            },
+        ),
+        Tool(
+            name="apply_receipt_resegmentation",
+            description="""Apply a previously reviewed receipt re-segmentation plan.
+
+The apply is guarded by the plan hash and source fingerprint. New receipt IDs
+are reserved invisibly, children and embeddings are staged and verified, and
+the output parents replace the source parent atomically. Cleanup is resumable.
+
+WARNING: This creates new receipt records and deletes the source receipt after
+the staged outputs are ready. Superseded revisions and plans with blocking
+findings—including layered PHOTO plans—are rejected.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "plan_id": {"type": "string"},
+                    "plan_hash": {"type": "string"},
+                },
+                "required": ["plan_id", "plan_hash"],
             },
         ),
         Tool(
@@ -926,8 +1230,14 @@ YYYY-MM-DD, inclusive, in America/Los_Angeles.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT, inclusive)"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT, inclusive)"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD (PT, inclusive)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD (PT, inclusive)",
+                    },
                 },
                 "required": ["start_date", "end_date"],
             },
@@ -943,10 +1253,24 @@ real outside humans. Ordered by activity.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
-                    "humans_only": {"type": "boolean", "default": True, "description": "Exclude bots + WARP (default true)"},
-                    "limit": {"type": "integer", "default": 50, "description": "Max sessions to return"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD (PT)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD (PT)",
+                    },
+                    "humans_only": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Exclude bots + WARP (default true)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Max sessions to return",
+                    },
                 },
                 "required": ["start_date", "end_date"],
             },
@@ -962,9 +1286,21 @@ Use to answer "who just visited" without hand-writing SQL against raw logs.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "hours": {"type": "integer", "default": 6, "description": "Look-back window in hours (default 6, max 48)"},
-                    "humans_only": {"type": "boolean", "default": True, "description": "Exclude bots + WARP (default true)"},
-                    "limit": {"type": "integer", "default": 50, "description": "Max rows (default 50, max 200)"},
+                    "hours": {
+                        "type": "integer",
+                        "default": 6,
+                        "description": "Look-back window in hours (default 6, max 48)",
+                    },
+                    "humans_only": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Exclude bots + WARP (default true)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Max rows (default 50, max 200)",
+                    },
                 },
                 "required": [],
             },
@@ -979,11 +1315,29 @@ Returns value + hit count + distinct sessions. Bots + WARP excluded by default."
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "dimension": {"type": "string", "enum": ["page", "referrer", "ip", "country", "org"], "description": "What to rank"},
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
-                    "limit": {"type": "integer", "default": 15, "description": "Max rows"},
-                    "humans_only": {"type": "boolean", "default": True, "description": "Exclude bots + WARP (default true)"},
+                    "dimension": {
+                        "type": "string",
+                        "enum": ["page", "referrer", "ip", "country", "org"],
+                        "description": "What to rank",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD (PT)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD (PT)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 15,
+                        "description": "Max rows",
+                    },
+                    "humans_only": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Exclude bots + WARP (default true)",
+                    },
                 },
                 "required": ["dimension", "start_date", "end_date"],
             },
@@ -1000,8 +1354,14 @@ that up separately (e.g. an IP-info service).""",
                 "type": "object",
                 "properties": {
                     "ip": {"type": "string", "description": "Client IP (v4 or v6)"},
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (PT)"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD (PT)"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD (PT)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD (PT)",
+                    },
                 },
                 "required": ["ip", "start_date", "end_date"],
             },
@@ -1018,7 +1378,10 @@ analytics_* tools; use this only when they don't fit.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "sql": {"type": "string", "description": "A single read-only SELECT/WITH query"},
+                    "sql": {
+                        "type": "string",
+                        "description": "A single read-only SELECT/WITH query",
+                    },
                 },
                 "required": ["sql"],
             },
@@ -1035,8 +1398,14 @@ via analytics_reconcile. Dates YYYY-MM-DD, inclusive.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD",
+                    },
                 },
                 "required": ["start_date", "end_date"],
             },
@@ -1053,8 +1422,14 @@ can mean bot leakage. Dates YYYY-MM-DD, inclusive (Pacific).""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD",
+                    },
                 },
                 "required": ["start_date", "end_date"],
             },
@@ -1071,8 +1446,14 @@ Referrers/paths reflect the most recent 14-day snapshot. Dates YYYY-MM-DD.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
-                    "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date YYYY-MM-DD",
+                    },
                 },
                 "required": ["start_date", "end_date"],
             },
@@ -1098,7 +1479,14 @@ Use status_filter to narrow results (e.g., "succeeded", "running", "failed")."""
                     },
                     "status_filter": {
                         "type": "string",
-                        "enum": ["succeeded", "running", "failed", "pending", "cancelled", "interrupted"],
+                        "enum": [
+                            "succeeded",
+                            "running",
+                            "failed",
+                            "pending",
+                            "cancelled",
+                            "interrupted",
+                        ],
                         "description": "Filter jobs by status (optional)",
                     },
                 },
@@ -1318,8 +1706,26 @@ WARNING: This WRITES to DynamoDB and is irreversible for that row.""",
     ]
 
 
+def _resegment_contact_sheet(result: Any) -> tuple[str, str] | None:
+    if not isinstance(result, dict):
+        return None
+    url = (result.get("preview_urls") or {}).get("contact_sheet")
+    artifact = (result.get("visualizations") or {}).get("contact_sheet") or {}
+    if not url:
+        return None
+    return url, artifact.get("mime_type", "image/jpeg")
+
+
+def _fetch_mcp_preview(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=15) as response:  # nosec B310
+        data = response.read(2_500_001)
+    if len(data) > 2_500_000:
+        raise ValueError("MCP contact sheet exceeds 2.5 MB")
+    return data
+
+
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageContent]:
     """Handle tool calls."""
     try:
         dynamo_client, chroma_client, embed_fn = get_clients()
@@ -1404,6 +1810,20 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 receipt_ids=arguments["receipt_ids"],
                 dry_run=arguments.get("dry_run", True),
             )
+        elif name == "plan_receipt_resegmentation":
+            result = await plan_receipt_resegmentation_impl(arguments)
+        elif name == "get_receipt_resegmentation_plan":
+            result = await get_receipt_resegmentation_plan_impl(
+                plan_id=arguments["plan_id"],
+                revision=arguments.get("revision"),
+            )
+        elif name == "revise_receipt_resegmentation_plan":
+            result = await revise_receipt_resegmentation_plan_impl(arguments)
+        elif name == "apply_receipt_resegmentation":
+            result = await apply_receipt_resegmentation_impl(
+                plan_id=arguments["plan_id"],
+                plan_hash=arguments["plan_hash"],
+            )
         elif name == "get_receipt_words":
             result = await get_receipt_words_impl(
                 dynamo_client,
@@ -1427,9 +1847,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 label=arguments["label"],
                 reasoning=arguments["reasoning"],
                 consolidated_from=arguments.get("consolidated_from"),
-                validation_status=arguments.get(
-                    "validation_status", "VALID"
-                ),
+                validation_status=arguments.get("validation_status", "VALID"),
             )
         elif name == "compute_reocr_region":
             result = await compute_reocr_region_impl(
@@ -1492,9 +1910,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 section_type=arguments["section_type"],
                 line_ids=arguments["line_ids"],
                 validation_status=arguments.get("validation_status", "VALID"),
-                model_source=arguments.get(
-                    "model_source", "mcp-claude-review"
-                ),
+                model_source=arguments.get("model_source", "mcp-claude-review"),
             )
         elif name == "delete_receipt_section":
             result = await delete_receipt_section_impl(
@@ -1575,7 +1991,33 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         else:
             result = {"error": f"Unknown tool: {name}"}
 
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        content: list[TextContent | ImageContent] = [
+            TextContent(type="text", text=json.dumps(result, indent=2))
+        ]
+        if name in {
+            "plan_receipt_resegmentation",
+            "get_receipt_resegmentation_plan",
+            "revise_receipt_resegmentation_plan",
+        }:
+            contact_sheet = _resegment_contact_sheet(result)
+            if contact_sheet:
+                try:
+                    image_bytes = await asyncio.to_thread(
+                        _fetch_mcp_preview, contact_sheet[0]
+                    )
+                    content.append(
+                        ImageContent(
+                            type="image",
+                            data=base64.b64encode(image_bytes).decode("ascii"),
+                            mimeType=contact_sheet[1],
+                        )
+                    )
+                except Exception:
+                    logger.warning(
+                        "Unable to attach re-segmentation contact sheet",
+                        exc_info=True,
+                    )
+        return content
 
     except Exception as e:
         logger.exception("Tool error")
@@ -2348,15 +2790,18 @@ async def list_words_by_label_impl(
 
         words = []
         for record in sample:
-            words.append({
-                "text": getattr(record, "text", ""),
-                "validation_status": getattr(record, "validation_status", None) or "NONE",
-                "image_id": record.image_id,
-                "receipt_id": record.receipt_id,
-                "line_id": record.line_id,
-                "word_id": record.word_id,
-                "label_proposed_by": getattr(record, "label_proposed_by", None),
-            })
+            words.append(
+                {
+                    "text": getattr(record, "text", ""),
+                    "validation_status": getattr(record, "validation_status", None)
+                    or "NONE",
+                    "image_id": record.image_id,
+                    "receipt_id": record.receipt_id,
+                    "line_id": record.line_id,
+                    "word_id": record.word_id,
+                    "label_proposed_by": getattr(record, "label_proposed_by", None),
+                }
+            )
 
         return {
             "label": label,
@@ -2451,7 +2896,12 @@ async def validate_word_similarity_impl(
         evidence_for = []
         evidence_against = []
 
-        for metas, dists in [(positive_results.get("metadatas", [[]]), positive_results.get("distances", [[]]))]:
+        for metas, dists in [
+            (
+                positive_results.get("metadatas", [[]]),
+                positive_results.get("distances", [[]]),
+            )
+        ]:
             for meta, dist in zip(metas[0] if metas else [], dists[0] if dists else []):
                 sim = dist_to_sim(dist)
                 if sim < MIN_SIMILARITY:
@@ -2460,14 +2910,21 @@ async def validate_word_similarity_impl(
                 rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
                 if rid == chroma_id:
                     continue
-                evidence_for.append({
-                    "text": meta.get("text", ""),
-                    "similarity": round(sim, 3),
-                    "merchant": meta.get("merchant_name", ""),
-                    "same_merchant": meta.get("merchant_name", "") == merchant_name,
-                })
+                evidence_for.append(
+                    {
+                        "text": meta.get("text", ""),
+                        "similarity": round(sim, 3),
+                        "merchant": meta.get("merchant_name", ""),
+                        "same_merchant": meta.get("merchant_name", "") == merchant_name,
+                    }
+                )
 
-        for metas, dists in [(negative_results.get("metadatas", [[]]), negative_results.get("distances", [[]]))]:
+        for metas, dists in [
+            (
+                negative_results.get("metadatas", [[]]),
+                negative_results.get("distances", [[]]),
+            )
+        ]:
             for meta, dist in zip(metas[0] if metas else [], dists[0] if dists else []):
                 sim = dist_to_sim(dist)
                 if sim < MIN_SIMILARITY:
@@ -2475,12 +2932,14 @@ async def validate_word_similarity_impl(
                 rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
                 if rid == chroma_id:
                     continue
-                evidence_against.append({
-                    "text": meta.get("text", ""),
-                    "similarity": round(sim, 3),
-                    "merchant": meta.get("merchant_name", ""),
-                    "same_merchant": meta.get("merchant_name", "") == merchant_name,
-                })
+                evidence_against.append(
+                    {
+                        "text": meta.get("text", ""),
+                        "similarity": round(sim, 3),
+                        "merchant": meta.get("merchant_name", ""),
+                        "same_merchant": meta.get("merchant_name", "") == merchant_name,
+                    }
+                )
 
         total_matches = len(evidence_for) + len(evidence_against)
 
@@ -2537,7 +2996,9 @@ async def validate_word_similarity_impl(
             reason = f"{1.0 - confidence:.0%} of similar words rejected {label}"
         else:
             recommended_status = "NEEDS_REVIEW"
-            reason = f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
+            reason = (
+                f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
+            )
 
         # Find suggested labels if invalid or uncertain
         suggested_labels = []
@@ -2558,19 +3019,34 @@ async def validate_word_similarity_impl(
                         },
                         include=["distances"],
                     )
-                    cand_dists = cand_results.get("distances", [[]])[0] if cand_results.get("distances") else []
-                    cand_sims = [dist_to_sim(d) for d in cand_dists if dist_to_sim(d) >= MIN_SIMILARITY]
+                    cand_dists = (
+                        cand_results.get("distances", [[]])[0]
+                        if cand_results.get("distances")
+                        else []
+                    )
+                    cand_sims = [
+                        dist_to_sim(d)
+                        for d in cand_dists
+                        if dist_to_sim(d) >= MIN_SIMILARITY
+                    ]
                     if cand_sims:
                         avg_sim = sum(cand_sims) / len(cand_sims)
                         score = len(cand_sims) * avg_sim
-                        suggested_labels.append({
-                            "label": candidate_label,
-                            "match_count": len(cand_sims),
-                            "avg_similarity": round(avg_sim, 3),
-                            "score": round(score, 3),
-                        })
+                        suggested_labels.append(
+                            {
+                                "label": candidate_label,
+                                "match_count": len(cand_sims),
+                                "avg_similarity": round(avg_sim, 3),
+                                "score": round(score, 3),
+                            }
+                        )
                 except Exception as e:
-                    logger.warning("Error querying label %s (%s): %s", candidate_label, cand_field, e)
+                    logger.warning(
+                        "Error querying label %s (%s): %s",
+                        candidate_label,
+                        cand_field,
+                        e,
+                    )
                     continue
 
             suggested_labels.sort(key=lambda x: x["score"], reverse=True)
@@ -2679,7 +3155,8 @@ async def get_receipt_words_impl(
             labels_by_word[(label.line_id, label.word_id)].append(
                 {
                     "label": label.label,
-                    "validation_status": getattr(label, "validation_status", None) or "NONE",
+                    "validation_status": getattr(label, "validation_status", None)
+                    or "NONE",
                     "label_proposed_by": getattr(label, "label_proposed_by", None),
                 }
             )
@@ -2842,22 +3319,26 @@ async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
             receipts_info = []
             for rid in receipt_ids:
                 key = f"{img.image_id}_{rid}"
-                receipts_info.append({
-                    "receipt_id": rid,
-                    "merchant_name": places_by_key.get(key),
-                })
+                receipts_info.append(
+                    {
+                        "receipt_id": rid,
+                        "merchant_name": places_by_key.get(key),
+                    }
+                )
 
-            results.append({
-                "image_id": img.image_id,
-                "timestamp_added": _to_utc_dt(img.timestamp_added).isoformat(
-                    timespec="milliseconds"
-                ),
-                "image_type": img.image_type,
-                "receipt_count": len(receipts_info),
-                "width": img.width,
-                "height": img.height,
-                "receipts": receipts_info,
-            })
+            results.append(
+                {
+                    "image_id": img.image_id,
+                    "timestamp_added": _to_utc_dt(img.timestamp_added).isoformat(
+                        timespec="milliseconds"
+                    ),
+                    "image_type": img.image_type,
+                    "receipt_count": len(receipts_info),
+                    "width": img.width,
+                    "height": img.height,
+                    "receipts": receipts_info,
+                }
+            )
 
         return {
             "total_images": len(all_images),
@@ -2935,11 +3416,70 @@ async def merge_receipts_impl(
         return {"error": str(e)}
 
 
+async def plan_receipt_resegmentation_impl(arguments: dict) -> dict:
+    """Invoke the receipt re-segmentation Lambda in planning mode."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        return await _invoke_lambda(
+            f"resegment-receipt-{env}-resegment-receipt",
+            {**arguments, "mode": "plan"},
+        )
+    except Exception as e:
+        logger.exception("Error planning receipt re-segmentation")
+        return {"error": str(e)}
+
+
+async def get_receipt_resegmentation_plan_impl(
+    plan_id: str, revision: int | None = None
+) -> dict:
+    """Retrieve a plan and refresh its signed visualization URLs."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        payload = {"mode": "get", "plan_id": plan_id}
+        if revision is not None:
+            payload["revision"] = revision
+        return await _invoke_lambda(
+            f"resegment-receipt-{env}-resegment-receipt", payload
+        )
+    except Exception as e:
+        logger.exception("Error retrieving receipt re-segmentation plan")
+        return {"error": str(e)}
+
+
+async def revise_receipt_resegmentation_plan_impl(arguments: dict) -> dict:
+    """Create a replacement receipt re-segmentation plan revision."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        return await _invoke_lambda(
+            f"resegment-receipt-{env}-resegment-receipt",
+            {**arguments, "mode": "revise"},
+        )
+    except Exception as e:
+        logger.exception("Error revising receipt re-segmentation plan")
+        return {"error": str(e)}
+
+
+async def apply_receipt_resegmentation_impl(plan_id: str, plan_hash: str) -> dict:
+    """Invoke the receipt re-segmentation Lambda in apply mode."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        return await _invoke_lambda(
+            f"resegment-receipt-{env}-resegment-receipt",
+            {"mode": "apply", "plan_id": plan_id, "plan_hash": plan_hash},
+        )
+    except Exception as e:
+        logger.exception("Error applying receipt re-segmentation")
+        return {"error": str(e)}
+
+
 def _receipt_point_to_image(
-    rx: float, ry: float,
+    rx: float,
+    ry: float,
     coeffs: list[float],
-    receipt_width: int, receipt_height: int,
-    image_width: int, image_height: int,
+    receipt_width: int,
+    receipt_height: int,
+    image_width: int,
+    image_height: int,
 ) -> tuple[float, float]:
     """Projective forward transform: receipt-relative → full-image Vision.
 
@@ -2987,9 +3527,7 @@ async def compute_reocr_region_impl(
 
         # Filter words to only those on the requested lines
         target_line_ids = set(line_ids)
-        words_in_region = [
-            w for w in details.words if w.line_id in target_line_ids
-        ]
+        words_in_region = [w for w in details.words if w.line_id in target_line_ids]
 
         if not words_in_region:
             return {
@@ -3001,12 +3539,10 @@ async def compute_reocr_region_impl(
         min_x = min(w.bounding_box["x"] for w in words_in_region)
         min_y = min(w.bounding_box["y"] for w in words_in_region)
         max_x = max(
-            w.bounding_box["x"] + w.bounding_box["width"]
-            for w in words_in_region
+            w.bounding_box["x"] + w.bounding_box["width"] for w in words_in_region
         )
         max_y = max(
-            w.bounding_box["y"] + w.bounding_box["height"]
-            for w in words_in_region
+            w.bounding_box["y"] + w.bounding_box["height"] for w in words_in_region
         )
 
         # Always use full width — Vision OCR produces better results with
@@ -3020,20 +3556,30 @@ async def compute_reocr_region_impl(
         # receipt-relative space to full-image Vision coordinates using
         # the same projective (homography) transform that the FIRST_PASS
         # warp used.
-        from receipt_upload.geometry.transformations import find_perspective_coeffs
+        from receipt_upload.geometry.transformations import (
+            find_perspective_coeffs,
+        )
 
         receipt = details.receipt
         image = dynamo_client.get_image(image_id)
 
         src_points = [
-            (receipt.top_left["x"] * image.width,
-             (1.0 - receipt.top_left["y"]) * image.height),
-            (receipt.top_right["x"] * image.width,
-             (1.0 - receipt.top_right["y"]) * image.height),
-            (receipt.bottom_right["x"] * image.width,
-             (1.0 - receipt.bottom_right["y"]) * image.height),
-            (receipt.bottom_left["x"] * image.width,
-             (1.0 - receipt.bottom_left["y"]) * image.height),
+            (
+                receipt.top_left["x"] * image.width,
+                (1.0 - receipt.top_left["y"]) * image.height,
+            ),
+            (
+                receipt.top_right["x"] * image.width,
+                (1.0 - receipt.top_right["y"]) * image.height,
+            ),
+            (
+                receipt.bottom_right["x"] * image.width,
+                (1.0 - receipt.bottom_right["y"]) * image.height,
+            ),
+            (
+                receipt.bottom_left["x"] * image.width,
+                (1.0 - receipt.bottom_left["y"]) * image.height,
+            ),
         ]
         dst_points = [
             (0.0, 0.0),
@@ -3045,14 +3591,42 @@ async def compute_reocr_region_impl(
 
         _pt = _receipt_point_to_image
         img_corners = [
-            _pt(padded_x, padded_y, coeffs,
-                receipt.width, receipt.height, image.width, image.height),
-            _pt(padded_right, padded_y, coeffs,
-                receipt.width, receipt.height, image.width, image.height),
-            _pt(padded_x, padded_top, coeffs,
-                receipt.width, receipt.height, image.width, image.height),
-            _pt(padded_right, padded_top, coeffs,
-                receipt.width, receipt.height, image.width, image.height),
+            _pt(
+                padded_x,
+                padded_y,
+                coeffs,
+                receipt.width,
+                receipt.height,
+                image.width,
+                image.height,
+            ),
+            _pt(
+                padded_right,
+                padded_y,
+                coeffs,
+                receipt.width,
+                receipt.height,
+                image.width,
+                image.height,
+            ),
+            _pt(
+                padded_x,
+                padded_top,
+                coeffs,
+                receipt.width,
+                receipt.height,
+                image.width,
+                image.height,
+            ),
+            _pt(
+                padded_right,
+                padded_top,
+                coeffs,
+                receipt.width,
+                receipt.height,
+                image.width,
+                image.height,
+            ),
         ]
 
         img_min_x = max(0.0, min(c[0] for c in img_corners))
@@ -3075,12 +3649,8 @@ async def compute_reocr_region_impl(
         }
 
         # Include context: which lines were found, word count
-        found_line_ids = sorted(
-            target_line_ids & {w.line_id for w in details.words}
-        )
-        missing_line_ids = sorted(
-            target_line_ids - {w.line_id for w in details.words}
-        )
+        found_line_ids = sorted(target_line_ids & {w.line_id for w in details.words})
+        missing_line_ids = sorted(target_line_ids - {w.line_id for w in details.words})
 
         return {
             "image_id": image_id,
@@ -3162,9 +3732,7 @@ async def get_receipt_image_url_impl(
         return {"error": str(e)}
 
 
-async def delete_image_impl(
-    dynamo_client, image_id: str, dry_run: bool = True
-) -> dict:
+async def delete_image_impl(dynamo_client, image_id: str, dry_run: bool = True) -> dict:
     """Delete all DynamoDB records under an image partition key."""
     try:
         details = dynamo_client.get_image_details(image_id)
@@ -3245,16 +3813,10 @@ async def delete_receipt_impl(
         try:
             details = dynamo_client.get_receipt_details(image_id, receipt_id)
         except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
+            return {"error": (f"Receipt {receipt_id} not found for image {image_id}")}
 
         place = getattr(details, "place", None)
-        merchant_name = (
-            getattr(place, "merchant_name", None) if place else None
-        )
+        merchant_name = getattr(place, "merchant_name", None) if place else None
 
         # Note: ReceiptLetters are excluded from the GSI4 query that backs
         # get_receipt_details, so they are not counted here. The compactor
@@ -3322,18 +3884,12 @@ async def get_receipt_sections_impl(
         try:
             details = dynamo_client.get_receipt_details(image_id, receipt_id)
         except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
+            return {"error": (f"Receipt {receipt_id} not found for image {image_id}")}
 
         # line_id -> text so a reviewer can QA sections without a second call
         line_text = {line.line_id: line.text for line in details.lines or []}
 
-        sections = dynamo_client.get_receipt_sections_from_receipt(
-            image_id, receipt_id
-        )
+        sections = dynamo_client.get_receipt_sections_from_receipt(image_id, receipt_id)
 
         section_dicts = []
         for section in sorted(
@@ -3537,9 +4093,7 @@ async def create_receipt_section_impl(
                 )
             }
         receipt_line_ids = {line.line_id for line in details.lines or []}
-        unknown_line_ids = sorted(
-            set(normalized_line_ids) - receipt_line_ids
-        )
+        unknown_line_ids = sorted(set(normalized_line_ids) - receipt_line_ids)
         if unknown_line_ids:
             return {
                 "error": (
@@ -3635,7 +4189,6 @@ ANALYTICS_WORKGROUP = "portfolio_analytics"
 ANALYTICS_REGION = "us-east-1"
 
 
-
 def _analytics_check_date(d: str) -> str:
     # Athena's ExecutionParameters bind predicate placeholders as integer
     # (varchar/date params fail), so the structured tools validate inputs
@@ -3662,9 +4215,9 @@ def _athena_run(sql: str, max_wait: int = 90, max_rows: int = 5000) -> list:
     )["QueryExecutionId"]
     waited = 0.0
     while True:
-        status = ath.get_query_execution(QueryExecutionId=qid)[
-            "QueryExecution"
-        ]["Status"]
+        status = ath.get_query_execution(QueryExecutionId=qid)["QueryExecution"][
+            "Status"
+        ]
         state = status["State"]
         if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
@@ -4059,20 +4612,22 @@ async def list_training_jobs_impl(
             config = job.job_config or {}
             if isinstance(config, str):
                 config = json.loads(config)
-            results.append({
-                "name": job.name,
-                "status": job.status,
-                "created_at": str(job.created_at) if job.created_at else None,
-                "best_f1": r.get("best_f1"),
-                "best_epoch": r.get("best_epoch"),
-                "num_train_samples": r.get("num_train_samples"),
-                "num_val_samples": r.get("num_val_samples"),
-                "learning_rate": config.get("learning_rate"),
-                "epochs": config.get("epochs"),
-                "batch_size": config.get("batch_size"),
-                "merge_amounts": config.get("merge_amounts"),
-                "early_stopping_patience": config.get("early_stopping_patience"),
-            })
+            results.append(
+                {
+                    "name": job.name,
+                    "status": job.status,
+                    "created_at": str(job.created_at) if job.created_at else None,
+                    "best_f1": r.get("best_f1"),
+                    "best_epoch": r.get("best_epoch"),
+                    "num_train_samples": r.get("num_train_samples"),
+                    "num_val_samples": r.get("num_val_samples"),
+                    "learning_rate": config.get("learning_rate"),
+                    "epochs": config.get("epochs"),
+                    "batch_size": config.get("batch_size"),
+                    "merge_amounts": config.get("merge_amounts"),
+                    "early_stopping_patience": config.get("early_stopping_patience"),
+                }
+            )
 
         return {
             "total": len(results),
@@ -4100,9 +4655,9 @@ async def get_training_metrics_impl(
         # Group by epoch, filter to eval and training metrics
         by_epoch: dict[int, dict[str, Any]] = {}
         for m in metrics:
-            if (
-                m.metric_name.startswith("eval_")
-                or m.metric_name in ("loss", "learning_rate")
+            if m.metric_name.startswith("eval_") or m.metric_name in (
+                "loss",
+                "learning_rate",
             ):
                 epoch = m.epoch if m.epoch is not None else 0
                 if epoch not in by_epoch:
@@ -4161,9 +4716,7 @@ async def set_active_model_impl(
         old_active = dynamo_client.get_active_model_job()
         if old_active:
             old_active.tags = {
-                k: v
-                for k, v in (old_active.tags or {}).items()
-                if k != "active_model"
+                k: v for k, v in (old_active.tags or {}).items() if k != "active_model"
             }
             dynamo_client.update_job(old_active)
 

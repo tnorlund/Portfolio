@@ -50,6 +50,7 @@ from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_refresh_lambda import create_label_refresh_lambda
 from merge_receipt_lambda import create_merge_receipt_lambda
+from resegment_receipt_lambda import create_resegment_receipt_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1256,6 +1257,22 @@ merge_receipt_lambda = create_merge_receipt_lambda(
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export(
     "merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name
+)
+
+# Receipt Re-segmentation Lambda (one source receipt -> N guarded outputs)
+resegment_receipt_lambda = create_resegment_receipt_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    raw_bucket_name=raw_bucket.bucket,
+    site_bucket_name=site_bucket.bucket,
+    image_bucket_name=upload_images.image_bucket.bucket,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+)
+pulumi.export("resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn)
+pulumi.export(
+    "resegment_receipt_lambda_name",
+    resegment_receipt_lambda.lambda_function.name,
 )
 
 # Trigger Re-OCR Lambda (for manually triggering regional re-OCR)

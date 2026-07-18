@@ -17,7 +17,10 @@ IMAGE_PROCESSING_AVAILABLE = True
 
 
 def calculate_min_area_rect(
-    words: List[Dict[str, Any]], image_width: int, image_height: int
+    words: List[Dict[str, Any]],
+    image_width: int,
+    image_height: int,
+    padding_px: float = 0.0,
 ) -> Dict[str, Any]:
     """
     Calculate the minimum-area rectangle covering all words and return bounds + warping info.
@@ -64,6 +67,11 @@ def calculate_min_area_rect(
     if rw > rh:
         angle_deg -= 90.0
         rw, rh = rh, rw
+
+    if padding_px < 0:
+        raise ValueError("padding_px cannot be negative")
+    rw += 2.0 * padding_px
+    rh += 2.0 * padding_px
 
     # Get the 4 corners of the min-area rect
     box_4 = box_points((cx, cy), (rw, rh), angle_deg)

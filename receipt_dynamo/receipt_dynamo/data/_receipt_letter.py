@@ -52,6 +52,8 @@ class _ReceiptLetter(FlattenedStandardMixin):
         Returns ReceiptLetters and the last evaluated key.
     list_receipt_letters_from_word(...) -> list[ReceiptLetter]:
         Returns all ReceiptLetters for a given word.
+    list_receipt_letters_from_receipt(...) -> list[ReceiptLetter]:
+        Returns all ReceiptLetters for a receipt in one consistent query.
     """
 
     @handle_dynamodb_errors("add_receipt_letter")
@@ -476,3 +478,39 @@ class _ReceiptLetter(FlattenedStandardMixin):
             ),
             converter_func=item_to_receipt_letter,
         )
+
+    @handle_dynamodb_errors("list_receipt_letters_from_receipt")
+    def list_receipt_letters_from_receipt(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptLetter]:
+        """Return all receipt letters with one strongly consistent PK query.
+
+        ``get_receipt_details`` intentionally excludes letters. Re-segmentation
+        needs the complete hierarchy for evidence and source fingerprinting,
+        so querying each word separately would be both expensive and prone to
+        observing different snapshots.
+        """
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        letters: list[ReceiptLetter] = []
+        last_key = None
+        while True:
+            params = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                },
+                "ConsistentRead": True,
+            }
+            if last_key:
+                params["ExclusiveStartKey"] = last_key
+            response = self._client.query(**params)
+            for item in response.get("Items", []):
+                if item.get("TYPE", {}).get("S") == "RECEIPT_LETTER":
+                    letters.append(item_to_receipt_letter(item))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+        return letters
