@@ -45,6 +45,9 @@ import {
   PulumiLogo,
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
+import { ReceiptFlowLoadingShell } from "../components/ui/Figures/ReceiptFlow/ReceiptFlowLoadingShell";
+import TrainingMetricsLoadingShell from "../components/ui/Figures/TrainingMetricsAnimation/TrainingMetricsLoadingShell";
+import WordSimilarityLoadingShell from "../components/ui/Figures/WordSimilarityLoadingShell";
 
 interface ReceiptPageProps {
   uploadDiagramChars: string[];
@@ -53,6 +56,7 @@ interface ReceiptPageProps {
 
 interface FigureBoundaryProps {
   children: React.ReactNode;
+  fallback?: React.ReactNode;
   name: string;
   intrinsicSize: string;
   mobileIntrinsicSize?: string;
@@ -60,8 +64,27 @@ interface FigureBoundaryProps {
 
 const FIGURE_LAZY_ROOT_MARGIN = "1000px 0px";
 
+const LayoutLMLoadingFallback = () => (
+  <div
+    style={{
+      width: "100%",
+      maxWidth: "1000px",
+      margin: "2rem auto",
+      padding: "1.5rem",
+      background: "var(--background-color)",
+      borderRadius: "12px",
+    }}
+  >
+    <ReceiptFlowLoadingShell
+      variant="layoutlm"
+      layoutVars={{ "--rf-align-items": "center" } as React.CSSProperties}
+    />
+  </div>
+);
+
 const FigureBoundary = ({
   children,
+  fallback = null,
   name,
   intrinsicSize,
   mobileIntrinsicSize = intrinsicSize,
@@ -92,7 +115,7 @@ const FigureBoundary = ({
         } as React.CSSProperties
       }
     >
-      {shouldRender ? children : null}
+      {shouldRender ? children : fallback}
     </div>
   );
 };
@@ -105,8 +128,12 @@ const QAAgentFigure = () => {
     selectQuestion: setSelectedQuestion,
   } = useQAQueue();
 
+  if (!qaData) {
+    return <ReceiptFlowLoadingShell variant="qa" />;
+  }
+
   return (
-    <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
+    <QAAgentFlow autoPlay={true} questionData={qaData} onCycleComplete={advanceQuestion}>
       <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
     </QAAgentFlow>
   );
@@ -459,15 +486,20 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary
         name="training-metrics"
         intrinsicSize="640px"
-        mobileIntrinsicSize="560px"
+        mobileIntrinsicSize="600px"
+        fallback={<TrainingMetricsLoadingShell />}
       >
-        <ClientOnly>
+        <ClientOnly fallback={<TrainingMetricsLoadingShell />}>
           <TrainingMetricsAnimation />
         </ClientOnly>
       </FigureBoundary>
 
-      <FigureBoundary name="layoutlm-inference" intrinsicSize="640px">
-        <ClientOnly>
+      <FigureBoundary
+        name="layoutlm-inference"
+        intrinsicSize="640px"
+        fallback={<LayoutLMLoadingFallback />}
+      >
+        <ClientOnly fallback={<LayoutLMLoadingFallback />}>
           <LayoutLMInferenceVisualization />
         </ClientOnly>
       </FigureBoundary>
@@ -540,10 +572,11 @@ M1LK 2%           1    $4.4g`}</code>
 
       <FigureBoundary
         name="word-similarity"
-        intrinsicSize="1080px"
-        mobileIntrinsicSize="980px"
+        intrinsicSize="1160px"
+        mobileIntrinsicSize="1160px"
+        fallback={<WordSimilarityLoadingShell />}
       >
-        <ClientOnly>
+        <ClientOnly fallback={<WordSimilarityLoadingShell />}>
           <WordSimilarity />
         </ClientOnly>
       </FigureBoundary>

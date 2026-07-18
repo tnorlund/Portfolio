@@ -59,7 +59,11 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
   onQuestionClick,
   activeQuestion,
 }) => {
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 639px)").matches,
+  );
   useEffect(() => {
     const mql = window.matchMedia("(max-width: 639px)");
     setIsMobile(mql.matches);

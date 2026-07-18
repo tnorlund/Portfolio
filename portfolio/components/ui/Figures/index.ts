@@ -1,6 +1,8 @@
 import dynamic from "next/dynamic";
 import React from "react";
 import { ReceiptFlowLoadingShell } from "./ReceiptFlow/ReceiptFlowLoadingShell";
+import TrainingMetricsLoadingShell from "./TrainingMetricsAnimation/TrainingMetricsLoadingShell";
+import WordSimilarityLoadingShell from "./WordSimilarityLoadingShell";
 
 type LoadingVariant = React.ComponentProps<typeof ReceiptFlowLoadingShell>["variant"];
 
@@ -77,7 +79,10 @@ export const PhotoReceiptDBSCAN = dynamic(
 );
 export { default as AddressSimilarity } from "./AddressSimilarity";
 export const AddressSimilaritySideBySide = dynamic(() => import("./AddressSimilaritySideBySide"), { ssr: false });
-export const WordSimilarity = dynamic(() => import("./WordSimilarity"), { ssr: false });
+export const WordSimilarity = dynamic(() => import("./WordSimilarity"), {
+  ssr: false,
+  loading: () => React.createElement(WordSimilarityLoadingShell),
+});
 export const CICDLoop = dynamic(() => import("./CICDLoop"), { ssr: false });
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
 export const DynamoStreamAnimation = dynamic(() => import("./DynamoStreamAnimation"), { ssr: false });
@@ -96,7 +101,10 @@ export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
 export const StreamBitsRoutingDiagram = dynamic(() => import("./StreamBitsRoutingDiagram"), { ssr: false });
 export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => React.createElement(TrainingMetricsLoadingShell),
+  }
 );
 export const EpochEvaluation = dynamic(
   () => import("./EpochEvaluation"),

@@ -263,7 +263,9 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
   });
 
   // Responsive sizing - use more square layout on mobile
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;

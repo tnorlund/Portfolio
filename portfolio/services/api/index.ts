@@ -31,7 +31,9 @@ import { API_CONFIG } from "./config";
 const getAPIUrl = () => API_CONFIG.baseUrl;
 
 const fetchConfig = {
-  headers: API_CONFIG.headers,
+  // Bodyless GETs must not send Content-Type. In production these calls are
+  // cross-origin, and application/json would force an avoidable CORS preflight.
+  headers: { Accept: "application/json" },
 };
 
 // API calls that go directly to external APIs
@@ -256,11 +258,11 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchWordSimilarity(): Promise<MilkSimilarityResponse> {
+  async fetchWordSimilarity(signal?: AbortSignal): Promise<MilkSimilarityResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/word_similarity`,
-      fetchConfig
+      { ...fetchConfig, signal }
     );
     if (!response.ok) {
       throw new Error(
@@ -284,11 +286,13 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchFeaturedTrainingMetrics(): Promise<TrainingMetricsResponse> {
+  async fetchFeaturedTrainingMetrics(
+    signal?: AbortSignal
+  ): Promise<TrainingMetricsResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/jobs/featured/training-metrics?collapse_bio=true`,
-      fetchConfig
+      { ...fetchConfig, signal }
     );
     if (!response.ok) {
       throw new Error(

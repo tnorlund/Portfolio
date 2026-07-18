@@ -281,6 +281,49 @@ test.describe("Skeleton height stability", () => {
     assertBoxStable(loadingBox!, loadedBox!, "WordSimilarity");
   });
 
+  test("WordSimilarity keeps a card placeholder while its image decodes", async ({
+    page,
+  }) => {
+    const pendingImages: Route[] = [];
+    await page.route("**/*.jpg", async (route) => {
+      pendingImages.push(route);
+    });
+    await page.route("**/word_similarity*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockWordSimilarityResponse),
+      });
+    });
+    await stubOtherApis(page, ["word_similarity"]);
+    await navigateToReceipt(page);
+    await scrollToAnchor(
+      page,
+      "digs through the corpus, finds every mention of milk"
+    );
+
+    const table = page.locator("table").filter({ visible: true });
+    await expect(table).toHaveCount(1, { timeout: 15000 });
+    await expect.poll(() => pendingImages.length).toBeGreaterThan(0);
+
+    const card = page.locator("[data-receipt-key]").filter({ visible: true });
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveCSS("opacity", "1");
+    const image = card.locator("img");
+    await expect(image).toHaveCSS("opacity", "0");
+
+    for (const route of pendingImages) {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/svg+xml",
+        body: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#e8e8e8"/></svg>'
+        ),
+      });
+    }
+    await expect(image).toHaveCSS("opacity", "1");
+  });
+
   // ---------------------------------------------------------------------------
   // CICDLoop
   // ---------------------------------------------------------------------------
