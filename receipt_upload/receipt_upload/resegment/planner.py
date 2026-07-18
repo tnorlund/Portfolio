@@ -772,8 +772,17 @@ def build_source_fingerprint(
         "words": word_payload,
         "labels": label_payload,
         "place": _entity_payload(place),
+        # Source object identity is bound for every plan schema (v1 and v2):
+        # a same-key overwrite of the underlying image must invalidate the
+        # plan even when the receipt/word/label rows are unchanged.
+        "source_object": deepcopy(dict(source_object or {})),
+        "source_type_counts": dict(sorted((source_type_counts or {}).items())),
     }
-    if image is not None or source_object is not None:
+    # The layered (v2) block is keyed off the presence of the image entity,
+    # which only line-first plans supply. Moving source_object into the base
+    # payload above leaves the v2 hash unchanged (same keys and values) while
+    # extending v1 fingerprints to cover the source image bytes.
+    if image is not None:
         payload.update(
             {
                 "fingerprint_version": 2,
@@ -786,10 +795,6 @@ def build_source_fingerprint(
                     _entity_payload(letter)
                     for letter in sorted(letters, key=_letter_ref)
                 ],
-                "source_object": deepcopy(dict(source_object or {})),
-                "source_type_counts": dict(
-                    sorted((source_type_counts or {}).items())
-                ),
             }
         )
     encoded = json.dumps(

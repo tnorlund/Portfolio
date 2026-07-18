@@ -19,6 +19,8 @@ from receipt_dynamo import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_upload.resegment import compute_plan_hash
 
 from infra.resegment_receipt_lambda.lambdas import resegment_receipt
 from infra.resegment_receipt_lambda.lambdas.resegment_receipt import (
@@ -883,3 +885,316 @@ def test_create_plan_rejects_visible_regions_on_rectangular_strategy():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
         )
+
+
+_V1_SEGMENTS = [
+    {"segment_key": "left", "include_line_ids": [1]},
+    {"segment_key": "right", "include_line_ids": [2]},
+]
+
+
+def _v1_plan_event(image_id: str) -> dict:
+    return {
+        "image_id": image_id,
+        "source_receipt_id": 1,
+        "segments": _V1_SEGMENTS,
+    }
+
+
+@mock_aws
+def test_conditional_plan_writes_enforce_preconditions():
+    """M1: head-plan writes are compare-and-swap. If-None-Match:* blocks a
+    clobbering create and a stale If-Match blocks a clobbering update."""
+    raw_bucket = "resegment-raw"
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    s3_client.create_bucket(Bucket=raw_bucket)
+    plan = {"plan_id": "plan-cond", "revision": 1, "status": "PLANNED"}
+
+    etag = resegment_receipt._save_plan(
+        s3_client, raw_bucket, plan, if_none_match=True
+    )
+    assert etag
+
+    with pytest.raises(resegment_receipt.PlanPreconditionError):
+        resegment_receipt._save_plan(
+            s3_client, raw_bucket, plan, if_none_match=True
+        )
+
+    with pytest.raises(resegment_receipt.PlanPreconditionError):
+        resegment_receipt._save_plan(
+            s3_client, raw_bucket, plan, if_match="0" * 32
+        )
+
+    plan["status"] = "COMMITTING"
+    new_etag = resegment_receipt._save_plan(
+        s3_client, raw_bucket, plan, if_match=etag
+    )
+    assert new_etag and new_etag != etag
+    loaded, loaded_etag = resegment_receipt._load_plan_with_etag(
+        s3_client, raw_bucket, "plan-cond"
+    )
+    assert loaded_etag == new_etag
+    assert loaded["status"] == "COMMITTING"
+
+
+@mock_aws
+def test_create_plan_rejects_duplicate_plan_id():
+    """M1: creating a second plan with an existing plan_id must fail the
+    conditional revision/head writes rather than clobber the stored plan."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentDup", raw_bucket, "resegment-images"
+    )
+    kwargs = dict(
+        dynamo_client=client, s3_client=s3_client, raw_bucket=raw_bucket
+    )
+    create_plan(_v1_plan_event(image_id), plan_id="dup-plan", **kwargs)
+    with pytest.raises(resegment_receipt.PlanPreconditionError):
+        create_plan(_v1_plan_event(image_id), plan_id="dup-plan", **kwargs)
+
+
+def _stale_etag_loader(monkeypatch):
+    """Force apply_plan to read a valid plan body with a stale ETag so its
+    conditional writes lose the compare-and-swap, as a concurrent writer
+    would cause."""
+    real_load = resegment_receipt._load_plan_with_etag
+
+    def stale_load(s3_client, bucket, plan_id):
+        loaded, _etag = real_load(s3_client, bucket, plan_id)
+        return loaded, "0" * 32
+
+    monkeypatch.setattr(
+        resegment_receipt, "_load_plan_with_etag", stale_load
+    )
+
+
+@mock_aws
+def test_apply_bails_at_execution_lock_when_head_changed(monkeypatch):
+    """C2: a second concurrent apply loses the PLANNED->COMMITTING swap and
+    bails BEFORE reserving IDs or deleting rows, so it cannot destroy the
+    winner's data."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentLock", raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    _stale_etag_loader(monkeypatch)
+
+    with pytest.raises(ValueError, match="already in progress"):
+        apply_plan(
+            {
+                "plan_id": plan["plan_id"],
+                "plan_hash": plan["plan_hash"],
+                "create_embeddings": False,
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+            site_bucket="resegment-site",
+            chromadb_bucket="resegment-chroma",
+        )
+
+    # The source survived and no output rows were reserved or staged.
+    assert client.get_receipt(image_id, 1).receipt_id == 1
+    for output_id in (2, 3):
+        assert client.get_receipt_item_type_counts(image_id, output_id) == {}
+
+
+@mock_aws
+def test_apply_recovery_serializes_on_stale_etag(monkeypatch):
+    """C2: two workers recovering the same COMMITTING plan serialize on the
+    conditional reset; the loser bails without releasing the winner's
+    reservations."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentSerialize", raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+    # Simulate a crash mid-commit: reservations exist and status is COMMITTING.
+    client.reserve_receipt_ids(image_id, [2, 3], plan["plan_id"])
+    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored["status"] = "COMMITTING"
+    resegment_receipt._save_plan(s3_client, raw_bucket, stored)
+
+    _stale_etag_loader(monkeypatch)
+
+    with pytest.raises(ValueError, match="recovering it"):
+        apply_plan(
+            {
+                "plan_id": plan["plan_id"],
+                "plan_hash": plan["plan_hash"],
+                "create_embeddings": False,
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+            site_bucket="resegment-site",
+            chromadb_bucket="resegment-chroma",
+        )
+
+    # The loser must not have released the (winner's) reservations.
+    for output_id in (2, 3):
+        assert client.get_receipt_item_type_counts(image_id, output_id) == {
+            "RESEGMENT_RESERVATION": 1
+        }
+
+
+@mock_aws
+def test_apply_reverifies_source_fingerprint_before_commit(monkeypatch):
+    """M2: an external edit to a source label after staging but before the
+    commit is caught by the pre-commit fingerprint re-verification, and the
+    apply rolls back instead of committing stale outputs."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentReverify", raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    real_stage = resegment_receipt._stage_outputs
+
+    def stage_then_edit_source(**kwargs):
+        real_stage(**kwargs)
+        # A concurrent writer edits a source label between the up-front
+        # fingerprint check and the commit transaction.
+        client.add_receipt_word_labels(
+            [
+                ReceiptWordLabel(
+                    image_id=image_id,
+                    receipt_id=1,
+                    line_id=1,
+                    word_id=1,
+                    label="MERCHANT_NAME",
+                    reasoning="edited after the up-front check",
+                    timestamp_added=datetime.now(timezone.utc),
+                    validation_status="INVALID",
+                    label_proposed_by="test",
+                )
+            ]
+        )
+
+    monkeypatch.setattr(
+        resegment_receipt, "_stage_outputs", stage_then_edit_source
+    )
+
+    with pytest.raises(ValueError, match="source receipt changed"):
+        apply_plan(
+            {
+                "plan_id": plan["plan_id"],
+                "plan_hash": plan["plan_hash"],
+                "create_embeddings": False,
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+            site_bucket="resegment-site",
+            chromadb_bucket="resegment-chroma",
+        )
+
+    # Nothing committed: the source is intact and the outputs were rolled back.
+    assert client.get_receipt(image_id, 1).receipt_id == 1
+    for output_id in (2, 3):
+        assert client.get_receipt_item_type_counts(image_id, output_id) == {}
+
+
+@mock_aws
+def test_apply_rejects_visible_regions_on_rectangular_stored_plan():
+    """M3: even a hand-edited stored plan that pairs visible_regions with a
+    RECTANGULAR apply is rejected before any destructive work."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentApplyRegions", raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+    assert plan["visualization"]["effective_strategy"] == "RECTANGULAR"
+
+    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored["segments"][0]["visible_regions"] = [
+        {
+            "region_id": "smuggled",
+            "points": [
+                {"x": 0.1, "y": 0.1},
+                {"x": 0.2, "y": 0.1},
+                {"x": 0.2, "y": 0.2},
+            ],
+        }
+    ]
+    stored["plan_hash"] = compute_plan_hash(stored)
+    resegment_receipt._save_plan(s3_client, raw_bucket, stored)
+
+    with pytest.raises(ValueError, match="visible_regions require"):
+        apply_plan(
+            {
+                "plan_id": plan["plan_id"],
+                "plan_hash": stored["plan_hash"],
+                "create_embeddings": False,
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+            site_bucket="resegment-site",
+            chromadb_bucket="resegment-chroma",
+        )
+    # No destruction: the source still exists.
+    assert client.get_receipt(image_id, 1).receipt_id == 1
+
+
+@mock_aws
+def test_v1_plan_binds_source_image_identity():
+    """M4: a v1 plan's fingerprint now covers the source image bytes, so a
+    same-key overwrite of the image between plan and apply is detected."""
+    raw_bucket = "resegment-raw"
+    image_bucket = "resegment-images"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentV1Bytes", raw_bucket, image_bucket
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+    assert int(plan["schema_version"]) == 1
+
+    # Overwrite the underlying image bytes without touching any DynamoDB rows.
+    buffer = io.BytesIO()
+    PILImage.new("RGB", (200, 300), "black").save(buffer, format="PNG")
+    s3_client.put_object(
+        Bucket=image_bucket, Key="original.png", Body=buffer.getvalue()
+    )
+
+    with pytest.raises(ValueError, match="source receipt changed"):
+        apply_plan(
+            {
+                "plan_id": plan["plan_id"],
+                "plan_hash": plan["plan_hash"],
+                "create_embeddings": False,
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+            site_bucket="resegment-site",
+            chromadb_bucket="resegment-chroma",
+        )
+    # Rejected before any destructive work.
+    assert client.get_receipt(image_id, 1).receipt_id == 1

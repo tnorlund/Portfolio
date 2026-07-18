@@ -1,4 +1,29 @@
-"""Plan and apply safe, word-level receipt re-segmentation."""
+"""Plan and apply safe, line-first receipt re-segmentation.
+
+Concurrency and durability model
+---------------------------------
+The persisted plan document in S3 is the single source of truth for a
+re-segmentation's lifecycle. Every mutation of the head plan object is a
+conditional write (``If-Match`` on the last-read ETag, or ``If-None-Match:*``
+for creates); a lost precondition surfaces a "plan changed underneath you"
+error instead of silently clobbering a concurrent writer.
+
+``apply_plan`` treats the ``PLANNED`` -> ``COMMITTING`` transition as an
+execution lock: it is a compare-and-swap on the plan ETag performed *before*
+any DynamoDB row is reserved, deleted, or committed. A second concurrent apply
+of the same plan loses that swap and bails out before it can touch data, which
+(together with the guarded ``release_receipt_id_reservations`` and the
+``_commit_landed`` recovery) closes the concurrent-apply data-loss window.
+
+Residual race (documented, not eliminated): the child rows that become the
+output receipts are snapshotted into ``outputs`` early in apply. The source
+fingerprint is re-verified immediately before the commit transaction to shrink
+the window, but an external writer that edits a source word or label *after*
+that final check and *before* the commit lands would have its edit dropped
+from the committed outputs. Eliminating this fully requires the commit
+transaction to guard each source child row's snapshot, which the current
+single-parent commit condition does not do.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +40,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Mapping
 
 import boto3
+from botocore.exceptions import ClientError
 from PIL import Image as PILImage
 
 if TYPE_CHECKING:
@@ -22,6 +48,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+
+class PlanPreconditionError(RuntimeError):
+    """A conditional plan write lost to a concurrent writer.
+
+    Raised when an ``If-Match`` / ``If-None-Match`` precondition fails, i.e.
+    the stored plan object changed (or already exists) since it was read.
+    """
+
+
+# S3 returns PreconditionFailed for a failed If-Match/If-None-Match; some
+# stacks report the 409 ConditionalRequestConflict for racing writers.
+_PRECONDITION_CODES = {"PreconditionFailed", "ConditionalRequestConflict"}
 
 PLAN_PREFIX = "resegment-plans"
 SUPPORTED_SOURCE_TYPES = {
@@ -104,27 +143,100 @@ def _artifact_record(
     }
 
 
-def _save_plan(s3_client: "S3Client", bucket: str, plan: dict) -> None:
-    s3_client.put_object(
-        Bucket=bucket,
-        Key=_plan_key(plan["plan_id"]),
-        Body=json.dumps(plan, sort_keys=True, default=str).encode("utf-8"),
-        ContentType="application/json",
+def _put_plan_json(
+    s3_client: "S3Client",
+    bucket: str,
+    key: str,
+    payload: Mapping[str, Any],
+    *,
+    if_match: str | None = None,
+    if_none_match: bool = False,
+) -> str:
+    """Write a plan document, optionally guarded by an S3 precondition.
+
+    Returns the new object ETag (unquoted). Raises ``PlanPreconditionError``
+    when a supplied precondition fails so callers can report a clear
+    "plan changed underneath you" error instead of overwriting a racing
+    writer.
+    """
+    kwargs: dict[str, Any] = {
+        "Bucket": bucket,
+        "Key": key,
+        "Body": json.dumps(payload, sort_keys=True, default=str).encode(
+            "utf-8"
+        ),
+        "ContentType": "application/json",
+    }
+    if if_match is not None:
+        kwargs["IfMatch"] = if_match
+    if if_none_match:
+        kwargs["IfNoneMatch"] = "*"
+    try:
+        response = s3_client.put_object(**kwargs)
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code", "")
+        status = error.response.get("ResponseMetadata", {}).get(
+            "HTTPStatusCode"
+        )
+        if code in _PRECONDITION_CODES or status in (409, 412):
+            raise PlanPreconditionError(
+                "The plan changed underneath this write; retrieve the latest "
+                "plan and try again"
+            ) from error
+        raise
+    return str(response.get("ETag", "")).strip('"')
+
+
+def _save_plan(
+    s3_client: "S3Client",
+    bucket: str,
+    plan: dict,
+    *,
+    if_match: str | None = None,
+    if_none_match: bool = False,
+) -> str:
+    return _put_plan_json(
+        s3_client,
+        bucket,
+        _plan_key(plan["plan_id"]),
+        plan,
+        if_match=if_match,
+        if_none_match=if_none_match,
     )
 
 
-def _save_revision(s3_client: "S3Client", bucket: str, plan: dict) -> None:
-    s3_client.put_object(
-        Bucket=bucket,
-        Key=_revision_key(plan["plan_id"], int(plan.get("revision", 1))),
-        Body=json.dumps(plan, sort_keys=True, default=str).encode("utf-8"),
-        ContentType="application/json",
+def _save_revision(
+    s3_client: "S3Client",
+    bucket: str,
+    plan: dict,
+    *,
+    if_none_match: bool = False,
+) -> str:
+    # Revision keys are immutable and unique per revision number, so a
+    # revision write is always a create guarded by If-None-Match:* to stop
+    # two concurrent revisions from clobbering the same revision object.
+    return _put_plan_json(
+        s3_client,
+        bucket,
+        _revision_key(plan["plan_id"], int(plan.get("revision", 1))),
+        plan,
+        if_none_match=if_none_match,
     )
 
 
-def _load_plan(s3_client: "S3Client", bucket: str, plan_id: str) -> dict[str, Any]:
+def _load_plan(
+    s3_client: "S3Client", bucket: str, plan_id: str
+) -> dict[str, Any]:
+    plan, _ = _load_plan_with_etag(s3_client, bucket, plan_id)
+    return plan
+
+
+def _load_plan_with_etag(
+    s3_client: "S3Client", bucket: str, plan_id: str
+) -> tuple[dict[str, Any], str]:
     response = s3_client.get_object(Bucket=bucket, Key=_plan_key(plan_id))
-    return json.loads(response["Body"].read())
+    etag = str(response.get("ETag", "")).strip('"')
+    return json.loads(response["Body"].read()), etag
 
 
 def _load_revision(
@@ -245,8 +357,15 @@ def create_plan(
     revision: int = 1,
     supersedes_plan_hash: str | None = None,
     expected_source_fingerprint: str | None = None,
+    head_if_match: str | None = None,
 ) -> dict[str, Any]:
-    """Create and optionally persist a visual, immutable split plan."""
+    """Create and optionally persist a visual, immutable split plan.
+
+    ``head_if_match`` guards the head-plan write: pass the ETag read from the
+    existing head when superseding it with a new revision (revise), or leave
+    it ``None`` for a brand-new plan (the head is then written with
+    ``If-None-Match:*`` so it cannot clobber an existing plan_id).
+    """
     from receipt_upload.combine import (
         combine_receipt_words_to_image_coords,
         create_warped_receipt_image,
@@ -333,8 +452,11 @@ def create_plan(
         image=image_entity if schema_version == 2 else None,
         lines=details.lines if schema_version == 2 else (),
         letters=letters,
-        source_object=source_object if schema_version == 2 else None,
-        source_type_counts=type_counts if schema_version == 2 else None,
+        # Bind the source image object identity for v1 plans too (M4): a v1
+        # fingerprint that omitted it could not detect a same-key overwrite
+        # of the underlying image between plan and apply.
+        source_object=source_object,
+        source_type_counts=type_counts,
     )
     if (
         expected_source_fingerprint is not None
@@ -542,8 +664,11 @@ def create_plan(
 
     plan["plan_hash"] = compute_plan_hash(plan)
     if persist_plan:
-        _save_revision(s3_client, raw_bucket, plan)
-        _save_plan(s3_client, raw_bucket, plan)
+        _save_revision(s3_client, raw_bucket, plan, if_none_match=True)
+        if head_if_match is None:
+            _save_plan(s3_client, raw_bucket, plan, if_none_match=True)
+        else:
+            _save_plan(s3_client, raw_bucket, plan, if_match=head_if_match)
         preview_urls = _preview_delivery(s3_client, raw_bucket, plan)
 
     return {
@@ -595,7 +720,7 @@ def revise_plan(
 ) -> dict[str, Any]:
     """Create an immutable replacement revision with optimistic concurrency."""
     plan_id = str(event["plan_id"])
-    head = _load_plan(s3_client, raw_bucket, plan_id)
+    head, head_etag = _load_plan_with_etag(s3_client, raw_bucket, plan_id)
     if head.get("status") != "PLANNED":
         raise ValueError("Only a PLANNED re-segmentation can be revised")
     if int(event["base_revision"]) != int(head.get("revision", 1)):
@@ -631,6 +756,7 @@ def revise_plan(
         revision=int(head.get("revision", 1)) + 1,
         supersedes_plan_hash=head["plan_hash"],
         expected_source_fingerprint=head["source_fingerprint"],
+        head_if_match=head_etag,
     )
 
 
@@ -946,6 +1072,47 @@ def _commit_landed(
     return True
 
 
+def _current_source_fingerprint(
+    *,
+    dynamo_client: Any,
+    plan: dict[str, Any],
+    image_entity: Any,
+    source_object: dict[str, Any] | None,
+    schema_version: int,
+) -> str:
+    """Recompute the source fingerprint from the live source rows.
+
+    Used both for the up-front plan/apply consistency check and for the
+    re-verification immediately before the commit transaction (M2).
+    """
+    from receipt_upload.resegment import build_source_fingerprint
+
+    image_id = plan["image_id"]
+    source_receipt_id = int(plan["source_receipt_id"])
+    details = dynamo_client.get_receipt_details(image_id, source_receipt_id)
+    type_counts = dynamo_client.get_receipt_item_type_counts(
+        image_id, source_receipt_id
+    )
+    letters = (
+        dynamo_client.list_receipt_letters_from_receipt(
+            image_id, source_receipt_id
+        )
+        if schema_version == 2
+        else []
+    )
+    return build_source_fingerprint(
+        receipt=details.receipt,
+        words=details.words,
+        labels=details.labels,
+        place=details.place,
+        image=image_entity if schema_version == 2 else None,
+        lines=details.lines if schema_version == 2 else (),
+        letters=letters,
+        source_object=source_object,
+        source_type_counts=type_counts,
+    )
+
+
 def apply_plan(
     event: dict[str, Any],
     *,
@@ -966,7 +1133,9 @@ def apply_plan(
         compute_plan_hash,
     )
 
-    plan = _load_plan(s3_client, raw_bucket, str(event["plan_id"]))
+    plan, plan_etag = _load_plan_with_etag(
+        s3_client, raw_bucket, str(event["plan_id"])
+    )
     if event.get("plan_hash") != plan["plan_hash"]:
         raise ValueError("plan_hash does not match the stored plan")
     if compute_plan_hash(plan) != plan["plan_hash"]:
@@ -990,6 +1159,19 @@ def apply_plan(
         raise ValueError(
             "LAYERED_MULTI_REGION plans cannot be applied until masked output "
             "rendering is enabled"
+        )
+    # Defense-in-depth (M3): a RECTANGULAR apply writes the min-area crop and
+    # ignores visible_regions, so a stored plan that pairs them would apply an
+    # artifact its preview never showed. create_plan already rejects this, but
+    # re-checking here keeps a hand-edited or legacy plan from diverging.
+    if plan.get("visualization", {}).get(
+        "effective_strategy"
+    ) != "LAYERED_MULTI_REGION" and any(
+        segment.get("visible_regions") for segment in plan["segments"]
+    ):
+        raise ValueError(
+            "visible_regions require the LAYERED_MULTI_REGION strategy; this "
+            "plan pairs them with a RECTANGULAR apply and cannot be applied"
         )
 
     image_entity = dynamo_client.get_image(plan["image_id"])
@@ -1021,14 +1203,26 @@ def apply_plan(
             )
             plan["status"] = "APPLIED"
             plan["result"] = result
-            _save_plan(s3_client, raw_bucket, plan)
+            _save_plan(s3_client, raw_bucket, plan, if_match=plan_etag)
             return {"status": "APPLIED", **result}
         if source_exists:
+            # Claim the recovery exclusively before touching DynamoDB: the
+            # conditional reset is a compare-and-swap, so a second worker that
+            # also loaded this COMMITTING plan loses here and bails before it
+            # could release the winning worker's freshly-reserved rows.
+            plan["status"] = "PLANNED"
+            try:
+                plan_etag = _save_plan(
+                    s3_client, raw_bucket, plan, if_match=plan_etag
+                )
+            except PlanPreconditionError as error:
+                raise ValueError(
+                    "Another apply of this plan is already recovering it; "
+                    "retrieve the latest plan and retry"
+                ) from error
             dynamo_client.release_receipt_id_reservations(
                 plan["image_id"], output_ids, plan["plan_id"]
             )
-            plan["status"] = "PLANNED"
-            _save_plan(s3_client, raw_bucket, plan)
 
     details = dynamo_client.get_receipt_details(
         plan["image_id"], int(plan["source_receipt_id"])
@@ -1057,8 +1251,9 @@ def apply_plan(
         image=image_entity if schema_version == 2 else None,
         lines=details.lines if schema_version == 2 else (),
         letters=current_letters,
-        source_object=current_source_object if schema_version == 2 else None,
-        source_type_counts=current_type_counts if schema_version == 2 else None,
+        # Bind the source image object identity for v1 plans too (M4).
+        source_object=current_source_object,
+        source_type_counts=current_type_counts,
     )
     if current_fingerprint != plan["source_fingerprint"]:
         raise ValueError("The source receipt changed; create a new plan")
@@ -1085,14 +1280,31 @@ def apply_plan(
     if migrated_label_count != plan["totals"]["preserved_labels"]:
         raise RuntimeError("Label preservation invariant failed before staging")
 
-    dynamo_client.reserve_receipt_ids(plan["image_id"], output_ids, plan["plan_id"])
-    for output_id in output_ids:
-        dynamo_client.delete_receipt_items(
-            plan["image_id"], output_id, include_parent=False
-        )
+    # Execution lock (C2): transition PLANNED -> COMMITTING with a conditional
+    # S3 write BEFORE any destructive DynamoDB operation. This compare-and-swap
+    # is the single serialization point for a plan's apply: a second concurrent
+    # apply that also read the PLANNED head loses the swap and bails here,
+    # so it can never reserve IDs, delete staged child rows, race the commit,
+    # destroy the winner's committed outputs.
+    plan["status"] = "COMMITTING"
+    try:
+        plan_etag = _save_plan(s3_client, raw_bucket, plan, if_match=plan_etag)
+    except PlanPreconditionError as error:
+        raise ValueError(
+            "Another apply of this plan is already in progress; retry after "
+            "it finishes"
+        ) from error
+
     uploaded_keys: list[str] = []
     committed = False
     try:
+        dynamo_client.reserve_receipt_ids(
+            plan["image_id"], output_ids, plan["plan_id"]
+        )
+        for output_id in output_ids:
+            dynamo_client.delete_receipt_items(
+                plan["image_id"], output_id, include_parent=False
+            )
         _stage_outputs(
             outputs=outputs,
             dynamo_client=dynamo_client,
@@ -1109,8 +1321,23 @@ def apply_plan(
                 wait_for_embeddings=bool(event.get("wait_for_embeddings", True)),
             )
 
-        plan["status"] = "COMMITTING"
-        _save_plan(s3_client, raw_bucket, plan)
+        # Re-verify the source fingerprint immediately before the commit (M2):
+        # staging and embedding above widen the window in which an external
+        # writer could edit a source word or label after the initial check.
+        # This shrinks that window to the commit transaction itself; the
+        # residual child-snapshot race is documented in the module docstring.
+        if (
+            _current_source_fingerprint(
+                dynamo_client=dynamo_client,
+                plan=plan,
+                image_entity=image_entity,
+                source_object=current_source_object,
+                schema_version=schema_version,
+            )
+            != plan["source_fingerprint"]
+        ):
+            raise ValueError("The source receipt changed; create a new plan")
+
         try:
             dynamo_client.commit_receipt_resegmentation(
                 details.receipt,
@@ -1139,7 +1366,17 @@ def apply_plan(
         except Exception:  # pylint: disable=broad-except
             logger.exception("Re-segmentation committed; cleanup is pending")
             plan["status"] = "CLEANUP_PENDING"
-            _save_plan(s3_client, raw_bucket, plan)
+            # The data is already durably committed; the status write is
+            # bookkeeping, so a lost precondition is logged but not fatal.
+            try:
+                plan_etag = _save_plan(
+                    s3_client, raw_bucket, plan, if_match=plan_etag
+                )
+            except PlanPreconditionError:
+                logger.exception(
+                    "Failed to persist CLEANUP_PENDING for plan %s",
+                    plan["plan_id"],
+                )
             return {
                 "status": "CLEANUP_PENDING",
                 "plan_id": plan["plan_id"],
@@ -1149,17 +1386,28 @@ def apply_plan(
         result["compaction_run_ids"] = run_ids
         plan["status"] = "APPLIED"
         plan["result"] = result
-        _save_plan(s3_client, raw_bucket, plan)
+        try:
+            plan_etag = _save_plan(
+                s3_client, raw_bucket, plan, if_match=plan_etag
+            )
+        except PlanPreconditionError:
+            logger.exception(
+                "Failed to persist APPLIED status for plan %s",
+                plan["plan_id"],
+            )
         return {"status": "APPLIED", **result}
     except Exception:
         if not committed:
             if plan["status"] == "COMMITTING":
-                # The COMMITTING marker was persisted before the commit
-                # transaction; revert it so a retry re-runs the full
-                # plan validation instead of the resume path.
+                # The COMMITTING lock was acquired before staging; revert it so
+                # a retry re-runs the full plan validation instead of the
+                # resume path. The conditional write keeps this worker from
+                # stamping over a status another worker has since advanced.
                 plan["status"] = "PLANNED"
                 try:
-                    _save_plan(s3_client, raw_bucket, plan)
+                    plan_etag = _save_plan(
+                        s3_client, raw_bucket, plan, if_match=plan_etag
+                    )
                 except Exception:  # pylint: disable=broad-except
                     logger.exception(
                         "Failed to revert plan %s to PLANNED", plan["plan_id"]
