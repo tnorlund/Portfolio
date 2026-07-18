@@ -1,214 +1,292 @@
-# LayoutLM Training Metrics
+# LayoutLM Metrics
 
-This document tracks the metrics recorded during LayoutLM training runs and their storage in DynamoDB.
+Last updated: 2026-07-09 UTC.
 
-## Storage Entities
+Metrics are recorded in three places:
 
-| Entity | Purpose | Query Capabilities |
-|--------|---------|-------------------|
-| `Job` | Training run metadata, config, status | Query by status, created_at |
-| `JobMetric` | Individual metric values with epoch/step | Query by metric name across jobs (GSI1, GSI2) |
-| `JobLog` | Structured JSON logs (config, summary) | Query by job_id |
+- SageMaker training job metadata;
+- S3 run artifacts under `s3://layoutlm-training-dev-68164770/runs/<job>/`;
+- DynamoDB `Job`, `JobMetric`, and `JobLog` records when the trainer can write
+  them.
 
-## Per-Epoch Training Metrics
+For current model decisions, prefer the S3 run artifacts because they contain
+the live held-out curve and frozen run lineage.
 
-Recorded as `JobMetric` entities after each evaluation epoch.
+## Key Artifacts
 
-| Metric | Status | Source | Unit | Notes |
-|--------|--------|--------|------|-------|
-| `val_f1` | ✅ Implemented | `compute_metrics` | ratio | Entity-level F1 from seqeval |
-| `val_precision` | ✅ Implemented | `compute_metrics` | ratio | Entity-level precision |
-| `val_recall` | ✅ Implemented | `compute_metrics` | ratio | Entity-level recall |
-| `eval_loss` | ✅ Implemented | HF Trainer | loss | Validation loss (lower is better) |
-| `train_loss` | ✅ Implemented | HF Trainer `log_history` | loss | Training loss curve |
-| `learning_rate` | ✅ Implemented | HF Trainer `log_history` | rate | LR scheduler tracking |
-| `entropy_mean` | ✅ Implemented | `compute_metrics` | nats | Mean prediction entropy (model confidence) |
-| `entropy_std` | ✅ Implemented | `compute_metrics` | nats | Std dev of prediction entropy |
-| `entropy_p10` | ✅ Implemented | `compute_metrics` | nats | 10th percentile entropy (most confident) |
-| `entropy_p90` | ✅ Implemented | `compute_metrics` | nats | 90th percentile entropy (least confident) |
+Each serious run should write:
 
-**Implementation:** `receipt_layoutlm/trainer.py` → `_MetricLoggerCallback.on_evaluate()`
+- `run.json`: config, label set, split metadata, dataset counts, and training
+  summary.
+- `epochs.json`: live or post-hoc checkpoint evaluation on the frozen held-out
+  receipts.
+- `checkpoints/checkpoint-*/`: saved model checkpoints.
+- `best/`: best checkpoint copied for downstream inference/export.
+- `receipts/`: optional showcase receipt predictions from checkpoint eval.
 
-**Batch Write:** All metrics written in single `add_job_metrics()` call per epoch.
+Current v25 live metrics:
 
-## Entropy Metrics
-
-Entropy measures model confidence in its predictions. Computed from softmax probabilities:
-`H = -Σ(p × log(p))` for each token prediction.
-
-| Entropy Value | Interpretation |
-|---------------|----------------|
-| Low (~0.1-0.5) | Model is confident (good if correct, bad if wrong) |
-| High (~1.5-2.5) | Model is uncertain |
-
-**Use case:** If `entropy_mean` drops over epochs but `val_f1` plateaus, the model may be becoming overconfident on incorrect predictions (overfitting signal).
-
-**Query example:**
-```python
-# Compare entropy trends across training
-metrics, _ = dynamo.list_job_metrics(job_id)
-entropy_metrics = [m for m in metrics if m.metric_name == "entropy_mean"]
-for m in sorted(entropy_metrics, key=lambda x: x.epoch or 0):
-    print(f"Epoch {m.epoch}: entropy={m.value:.3f}")
+```text
+s3://layoutlm-training-dev-68164770/runs/layoutlm-v25-adversarial-real-20260708-022719/epochs.json
 ```
+
+Current product-detail comparison artifacts:
+
+```text
+s3://layoutlm-training-dev-68164770/runs/layoutlm-v28-control-prodmetric-20260708-063942/epochs.json
+s3://layoutlm-training-dev-68164770/runs/layoutlm-v28-item-window-prodmetric-20260708-063942/epochs.json
+```
+
+Completed v29 jobs wrote the same artifacts under:
+
+```text
+s3://layoutlm-training-dev-68164770/runs/layoutlm-v29-item-window-prodweight-20260708-145418/epochs.json
+s3://layoutlm-training-dev-68164770/runs/layoutlm-v29-product-only-item-window-20260708-145418/epochs.json
+```
+
+Current diagnostic artifacts:
+
+```text
+s3://layoutlm-training-dev-68164770/diagnostics/layoutlm-diag-v28-item-window-v2-cpu-20260709174453/
+s3://layoutlm-training-dev-68164770/diagnostics/layoutlm-diag-v29-weighted-v2-cpu-20260709174453/
+```
+
+## Metrics To Report
+
+Always report these together:
+
+- entity-level F1, precision, and recall from `seqeval`;
+- token accuracy;
+- per-label F1;
+- number of validation receipts;
+- validation key file;
+- label set;
+- best epoch;
+- latest epoch;
+- whether the run is real-only or synthetic-augmented.
+
+Token accuracy is not enough. Receipts are O-heavy, so a model can achieve high
+token accuracy while missing the labels that matter.
 
 ## Per-Label Metrics
 
-Per-label breakdown stored as one `JobMetric` per label with Dict value.
+Per-label F1 is the main diagnostic for whether the aggregate score is useful.
 
-| Metric | Status | Source | Notes |
-|--------|--------|--------|-------|
-| `label_{LABEL_NAME}` | ✅ Implemented | `classification_report` | Dict with f1, precision, recall, support |
+Labels that usually validate the model is learning receipt structure:
 
-**Storage format:** One record per label per epoch:
-```python
-JobMetric(
-    metric_name="label_MERCHANT_NAME",
-    value={"f1": 0.92, "precision": 0.94, "recall": 0.90, "support": 156},
-    unit="per_label",
-    epoch=3,
-)
-JobMetric(
-    metric_name="label_AMOUNT",
-    value={"f1": 0.85, "precision": 0.88, "recall": 0.82, "support": 423},
-    unit="per_label",
-    epoch=3,
-)
+- `DATE`
+- `TIME`
+- `PAYMENT_METHOD`
+- `MERCHANT_NAME`
+- `TAX`
+- `SUBTOTAL`
+- `GRAND_TOTAL`
+- `LINE_TOTAL`
+
+Labels that usually expose the hard part:
+
+- `PRODUCT_NAME`
+- `LOYALTY_ID`
+- `UNIT_PRICE`
+- `DISCOUNT`
+- `REFUND`
+- `TIP`
+- `QUANTITY`
+
+Do not hide weak labels behind aggregate F1. Product search and loyalty/refund
+questions depend on these fields.
+
+## Memorization Signals
+
+Track these gaps:
+
+- train-sample F1 versus held-out F1;
+- context-seen merchant F1 versus context-unseen merchant F1, or
+  training-seen versus training-unseen when the context is a persisted train
+  split;
+- canonical random split F1 versus adversarial split F1;
+- recent-upload F1 when recent uploads are held out versus when they were in
+  training;
+- synthetic-augmented F1 versus real-only F1 on the exact same validation file.
+
+Large gaps are not automatically bad. Merchant templates are a real production
+signal. The risk is claiming generalization when the split only measures
+template familiarity.
+
+## Live Curve
+
+The trainer can run windowed held-out evaluation after each saved checkpoint.
+That produces `epochs.json` during training. The useful fields are:
+
+- `best_epoch_heldout`
+- `num_val_receipts`
+- per-epoch `heldout_f1`
+- per-epoch `heldout_precision`
+- per-epoch `heldout_recall`
+- per-epoch `token_accuracy`
+- per-epoch `per_label_f1`
+- per-epoch `per_label_precision`, `per_label_recall`, and
+  `per_label_support`
+- per-epoch `product_detail_macro_f1`
+- per-epoch `entity_prediction_rate` and `gold_entity_rate`
+- `checkpoint`
+
+If F1 plateaus for many epochs while training loss continues to fall, treat the
+extra epochs as overfitting risk rather than progress.
+
+Best-checkpoint selection is configurable with `--checkpoint-metric`. The
+default remains aggregate entity F1 (`f1`). For first-pass product experiments,
+use `--checkpoint-metric product_detail_macro_f1` so `best/` follows
+`PRODUCT_NAME`, `QUANTITY`, `UNIT_PRICE`, and `LINE_TOTAL` instead of easy
+non-product fields.
+
+Product-detail loss pressure is configurable with
+`--product-detail-loss-weight`. Compare precision and recall separately when
+using it; an apparent product macro-F1 gain is not useful if it comes mostly
+from low-precision over-prediction.
+
+For v29, judge the jobs this way:
+
+- full weighted head wins only if product-detail macro F1 improves without a
+  large precision collapse and without major aggregate held-out F1 regression;
+- product-only head wins if it materially improves `PRODUCT_NAME` and
+  `UNIT_PRICE`, even if it is not directly promotable as the only production
+  model;
+- neither wins if the curves remain in the v28 band, in which case the next
+  metric work should segment by merchant/template and synthetic source rather
+  than launch another same-shape long run.
+
+## Explanation Metrics
+
+New runs also write `diagnostics` inside each `epochs.json` epoch entry. These
+fields are meant to explain why the model is or is not improving:
+
+- `token_counts`: total, correct, gold/predicted `O`, and gold/predicted entity
+  tokens.
+- `entity_counts`: gold versus predicted entity spans, plus predicted/gold
+  ratio.
+- `rates`: gold entity token rate, predicted entity token rate, `O` token
+  accuracy, and entity token accuracy.
+- `product_detail`: macro F1 and prediction balance for `PRODUCT_NAME`,
+  `QUANTITY`, `UNIT_PRICE`, and `LINE_TOTAL`.
+- `per_label_token_counts`: gold versus predicted token counts per label.
+- `per_label_entity_counts`: gold versus predicted entity counts per label.
+- `top_token_confusions`: the most common token-level label confusions.
+
+Use these to tell whether a run is under-predicting product details, spraying
+rare labels everywhere, improving recall at the cost of precision, or merely
+getting better at easy non-product fields.
+
+## Diagnostic Artifacts
+
+`epochs.json` explains how a run moved during training. `diagnose-run` explains
+why one selected checkpoint behaves the way it does on frozen validation.
+
+Run diagnostics when aggregate/product curves are not enough:
+
+```bash
+layoutlm-cli diagnose-run \
+  --run-s3-uri s3://layoutlm-training-dev-68164770/runs/<job-name>/ \
+  --dynamo-table ReceiptsTable-dc5be22 \
+  --output-dir /tmp/<job-name>-diagnostics \
+  --output-s3-uri s3://layoutlm-training-dev-68164770/diagnostics/<job-name>/
 ```
 
-**Query examples:**
-```python
-# Get MERCHANT_NAME metrics across all jobs
-metrics, _ = dynamo.get_metrics_by_name("label_MERCHANT_NAME")
-for m in metrics:
-    print(f"Job {m.job_id[:8]} Epoch {m.epoch}: F1={m.value['f1']:.3f}")
+Interpret the diagnostic files this way:
 
-# Compare label performance within a job
-label_metrics, _ = dynamo.list_job_metrics(job_id)
-for m in [m for m in label_metrics if m.metric_name.startswith("label_")]:
-    print(f"{m.metric_name}: F1={m.value['f1']:.3f} Support={m.value['support']}")
+- `summary.json`: top-level evidence for template coverage, line-item
+  structure, label/eval mismatch, and model weakness.
+- `report.md`: human-readable version of the same evidence.
+- `per_receipt.csv`: quick spreadsheet view for sorting by merchant, product
+  F1, nearest-template distance, and high-confidence product false positives.
+- `groups.json`: grouped merchant/place/template/shape slices.
+- `token_errors.jsonl`: the inner loop for debugging confidence, boundary
+  errors, false positives, misses, and wrong-label predictions.
+
+Do not treat high-confidence false positives as automatic bad labels. They are
+review prompts: either the label/eval contract is too strict, the receipt has
+unlabeled valid entities, or the model is confidently wrong.
+
+For product details, diagnostics now split high-confidence product false
+positives into review buckets while leaving strict F1 unchanged:
+
+- `likely_unlabeled_product_text`;
+- `product_name_numeric_or_code`;
+- `numeric_quantity_overprediction`;
+- `numeric_amount_overprediction`;
+- `adjustment_or_fee_term`;
+- `receipt_meta_term`;
+- other inspection buckets.
+
+Use those buckets to decide whether the next action is label-contract review,
+real receipt collection, synthetic structural coverage, or model architecture
+work. The same diagnostic run also emits `data_targeting` in `summary.json` so
+missing merchant templates, long item tables, and no-line-total layouts are
+visible as data targets rather than buried in token errors.
+
+## DynamoDB Records
+
+When enabled, training writes:
+
+- `Job`: run metadata, status, config, and final results.
+- `JobMetric`: per-epoch scalar metrics and dataset statistics.
+- `JobLog`: structured config and summary payloads.
+
+`Job.results` keeps both `best_f1`/`best_f1_epoch` and the checkpoint-selection
+fields `checkpoint_metric`, `best_checkpoint_metric_value`, and
+`best_checkpoint_metric_epoch`. Check the latter before promoting or exporting
+from `best/`.
+
+Dataset metrics to keep:
+
+- number of train examples;
+- number of validation examples;
+- train O:entity ratio before downsampling;
+- train O:entity ratio after downsampling;
+- validation O:entity ratio;
+- target O:entity ratio;
+- label merge configuration;
+- allowed-label list;
+- validation split URI.
+
+Live held-out metrics to keep:
+
+- `heldout_windowed_f1`, precision, recall, and token accuracy;
+- `heldout_windowed_product_detail_macro_f1`;
+- `heldout_windowed_entity_prediction_rate`;
+- `heldout_windowed_f1_delta_vs_training_reported`;
+- `heldout_label_PRODUCT_NAME_*`, `heldout_label_QUANTITY_*`,
+  `heldout_label_UNIT_PRICE_*`, and `heldout_label_LINE_TOTAL_*`.
+
+## Quick Checks
+
+Check SageMaker status:
+
+```bash
+aws sagemaker describe-training-job \
+  --region us-east-1 \
+  --training-job-name <job-name> \
+  --query '{Status:TrainingJobStatus,SecondaryStatus:SecondaryStatus,TrainingEndTime:TrainingEndTime,FailureReason:FailureReason,ModelArtifacts:ModelArtifacts.S3ModelArtifacts}' \
+  --output json
 ```
 
-## Training Summary Metrics
+Inspect live held-out metrics:
 
-End-of-run metrics stored in `Job.results` field after training completes.
+```bash
+aws s3 cp \
+  s3://layoutlm-training-dev-68164770/runs/<job-name>/epochs.json \
+  /tmp/<job-name>-epochs.json \
+  --region us-east-1
 
-| Metric | Status | Source | Unit |
-|--------|--------|--------|------|
-| `best_f1` | ✅ Job.results | computed | ratio |
-| `best_epoch` | ✅ Job.results | computed | epoch number |
-| `train_runtime` | ✅ Job.results | `trainer_state.json` | seconds |
-| `total_flos` | ✅ Job.results | `trainer_state.json` | FLOPs |
-| `early_stopping_triggered` | ✅ Job.results | computed | boolean |
-| `best_checkpoint_s3_path` | ✅ Job.results | computed | S3 URI |
-
-**Storage format:** Updated on Job entity after training:
-```python
-job.status = "succeeded"
-job.results = {
-    "best_f1": 0.92,
-    "best_epoch": 7,
-    "train_runtime": 3847.5,
-    "total_flos": 1200000000000000,
-    "early_stopping_triggered": True,
-    "best_checkpoint_s3_path": "s3://bucket/runs/job-name/best/",
-}
-dynamo.update_job(job)
+jq '{generated_at,best_epoch_heldout,num_val_receipts,latest:.epochs[-1]}' \
+  /tmp/<job-name>-epochs.json
 ```
 
-**Query examples:**
-```python
-# Get a job and check its results
-job = dynamo.get_job(job_id)
-if job.results:
-    print(f"Best F1: {job.results['best_f1']}")
-    print(f"Training time: {job.results['train_runtime']:.1f}s")
+Re-score all saved checkpoints:
+
+```bash
+layoutlm-cli eval-checkpoints \
+  --run-s3-uri s3://layoutlm-training-dev-68164770/runs/<job-name>/ \
+  --dynamo-table ReceiptsTable-dc5be22 \
+  --output-dir /tmp/<job-name>-eval
 ```
-
-## GPU/Resource Metrics
-
-Hardware utilization metrics. Not currently captured.
-
-| Metric | Status | Source | Notes |
-|--------|--------|--------|-------|
-| `gpu_memory_used` | ❌ Not captured | `torch.cuda.memory_allocated()` | Peak GPU usage |
-| `gpu_utilization` | ❌ Not captured | nvidia-smi or SageMaker | Compute efficiency |
-| `samples_per_second` | ❌ Not captured | HF Trainer | Throughput |
-| `steps_per_second` | ❌ Not captured | HF Trainer | Training speed |
-
-**Note:** SageMaker captures some of these in CloudWatch metrics automatically.
-
-## Dataset Quality Metrics
-
-Dataset statistics captured at training start as `JobMetric` records with `epoch=None`.
-
-| Metric | Status | Source | Unit | Notes |
-|--------|--------|--------|------|-------|
-| `num_train_samples` | ✅ Implemented | `_count_labels()` | count | Training set size (num_lines) |
-| `num_val_samples` | ✅ Implemented | `_count_labels()` | count | Validation set size (num_lines) |
-| `o_entity_ratio_train` | ✅ Implemented | `_count_labels()` | ratio | Class imbalance in training set |
-| `o_entity_ratio_val` | ✅ Implemented | `_count_labels()` | ratio | Class imbalance in validation set |
-
-**Implementation:** `receipt_layoutlm/trainer.py` → written after JobLog config entry.
-
-**Batch Write:** All 4 metrics written in single `add_job_metrics()` call at training start.
-
-**Query examples:**
-```python
-# Find jobs with high class imbalance
-metrics, _ = dynamo.get_metrics_by_name("o_entity_ratio_train")
-for m in metrics:
-    if m.value > 5.0:
-        print(f"Job {m.job_id[:8]}: O:entity ratio = {m.value:.2f}")
-
-# Compare dataset sizes across jobs
-train_sizes, _ = dynamo.get_metrics_by_name("num_train_samples")
-for m in train_sizes:
-    print(f"Job {m.job_id[:8]}: {int(m.value)} training samples")
-```
-
-## Query Examples
-
-### Compare F1 across training runs
-```python
-# Get val_f1 for all jobs, sorted by job then timestamp
-metrics, _ = dynamo.get_metrics_by_name_across_jobs("val_f1")
-
-for m in metrics:
-    print(f"Job {m.job_id[:8]} Epoch {m.epoch}: F1={m.value:.4f}")
-```
-
-### Get training curve for a job
-```python
-# Get all metrics for a specific job
-loss_metrics, _ = dynamo.list_job_metrics(job_id, metric_name="train_loss")
-lr_metrics, _ = dynamo.list_job_metrics(job_id, metric_name="learning_rate")
-
-# Plot training curve
-epochs = [m.epoch for m in loss_metrics]
-losses = [m.value for m in loss_metrics]
-```
-
-### Find best performing jobs
-```python
-# Get all val_f1 metrics
-metrics, _ = dynamo.get_metrics_by_name("val_f1")
-
-# Group by job and find max F1 per job
-from collections import defaultdict
-job_best = defaultdict(float)
-for m in metrics:
-    job_best[m.job_id] = max(job_best[m.job_id], m.value)
-
-# Sort by best F1
-ranked = sorted(job_best.items(), key=lambda x: x[1], reverse=True)
-```
-
-## GSI Structure
-
-`JobMetric` has two GSIs for efficient queries:
-
-| GSI | Key Structure | Use Case |
-|-----|---------------|----------|
-| GSI1 | `METRIC#{name}` → `{timestamp}` | "All val_f1 scores over time" |
-| GSI2 | `METRIC#{name}` → `JOB#{id}#{timestamp}` | "Compare metric across jobs" |

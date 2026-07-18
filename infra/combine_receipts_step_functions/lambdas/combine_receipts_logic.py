@@ -6,16 +6,14 @@ It can be used by both the dev script and the Lambda handler.
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities import ReceiptPlace
 
 # Import image processing (optional)
 try:
     from PIL import Image as PIL_Image
+
     from receipt_upload.utils import (
         calculate_sha256_from_bytes,
         upload_all_cdn_formats,
@@ -32,8 +30,11 @@ except ImportError as e:
 # Import helper modules
 # Use local embedding_utils instead of package version to ensure we use upload_bundled_delta_to_s3
 from embedding_utils import create_embeddings_and_compaction_run
+from s3_io import save_records_json_to_s3
+
 from receipt_upload.combine import (
     calculate_min_area_rect,
+    clone_receipt_place_for_receipt,
     combine_receipt_letters_to_image_coords,
     combine_receipt_words_to_image_coords,
     create_combined_receipt_records,
@@ -41,8 +42,8 @@ from receipt_upload.combine import (
     create_warped_receipt_image,
     get_best_receipt_place,
     migrate_receipt_word_labels,
+    upsert_receipt_place,
 )
-from s3_io import save_records_json_to_s3
 
 logger = logging.getLogger()
 
@@ -244,32 +245,16 @@ def combine_receipts(
                     combined_image.tobytes()
                 )
 
-        # Get best ReceiptPlace
+        # Get best ReceiptPlace (full clone — do not drop geo/hours/etc.)
         best_place = get_best_receipt_place(client, image_id, receipt_ids)
         receipt_place = None
         if best_place:
-            receipt_place = ReceiptPlace(
-                image_id=image_id,
-                receipt_id=new_receipt_id,
-                place_id=best_place.place_id or "",
-                merchant_name=best_place.merchant_name or "",
-                merchant_category=best_place.merchant_category or "",
-                formatted_address=best_place.formatted_address or "",
-                phone_number=best_place.phone_number or "",
-                matched_fields=(
-                    best_place.matched_fields.copy()
-                    if best_place.matched_fields
-                    else []
+            receipt_place = clone_receipt_place_for_receipt(
+                best_place,
+                new_receipt_id=new_receipt_id,
+                reasoning_prefix=(
+                    f"Combined from receipts {receipt_ids}. Original: "
                 ),
-                validated_by=best_place.validated_by
-                or ValidationMethod.TEXT_SEARCH.value,
-                timestamp=datetime.now(timezone.utc),
-                reasoning=(
-                    f"Combined from receipts {receipt_ids}. "
-                    f"Original: {best_place.reasoning or 'N/A'}"
-                ),
-                validation_status=best_place.validation_status
-                or MerchantValidationStatus.MATCHED.value,
             )
 
         # Migrate labels
@@ -352,37 +337,15 @@ def combine_receipts(
                     # Re-raise if it's a different error
                     raise
 
-            # Try to add place data, but if it already exists (from a previous failed attempt),
-            # delete it first and try again
+            # Idempotent place write (retries after partial Dynamo writes)
             if receipt_place:
-                try:
-                    client.add_receipt_place(receipt_place)
-                except Exception as e:  # pylint: disable=broad-except
-                    error_str = str(e)
-                    if (
-                        "ConditionalCheckFailed" in error_str
-                        or "already exists" in error_str.lower()
-                    ):
-                        logger.warning(
-                            "Receipt place data already exists for receipt %s/%s (likely from previous failed attempt), deleting and retrying",
-                            image_id,
-                            new_receipt_id,
-                        )
-                        # Delete the existing place data (pass the ReceiptPlace object)
-                        try:
-                            client.delete_receipt_place(receipt_place)
-                        except (
-                            Exception
-                        ) as delete_err:  # pylint: disable=broad-except
-                            logger.warning(
-                                "Error deleting existing place data (may not exist): %s",
-                                delete_err,
-                            )
-                        # Try adding again
-                        client.add_receipt_place(receipt_place)
-                    else:
-                        # Re-raise if it's a different error
-                        raise
+                place_action = upsert_receipt_place(client, receipt_place)
+                logger.info(
+                    "Receipt place %s for receipt %s/%s",
+                    place_action,
+                    image_id,
+                    new_receipt_id,
+                )
             for label in migrated_labels:
                 client.add_receipt_word_label(label)
             if compaction_run:

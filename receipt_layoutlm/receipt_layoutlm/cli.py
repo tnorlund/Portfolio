@@ -1,13 +1,12 @@
 import argparse
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from .config import MODEL_DEFAULTS, MERGE_PRESETS, DataConfig, ModelVersion, TrainingConfig
-from .export_coreml import export_coreml, export_from_s3
 from .inference import LayoutLMInference
 from .trainer import ReceiptLayoutLMTrainer
-from .validate_coreml import validate_coreml
 
 
 def _build_label_merges(
@@ -62,6 +61,36 @@ def _build_label_merges(
     return result if result else None
 
 
+def _resolve_run_s3(
+    dyn: Any,
+    run_s3_uri: Optional[str],
+    job_name: Optional[str],
+) -> Tuple[str, str, str, str]:
+    """Resolve a run S3 location from an explicit URI or DynamoDB job name."""
+    if not run_s3_uri:
+        if not job_name:
+            raise SystemExit("Provide --run-s3-uri or --job-name to locate the run")
+        jobs, _ = dyn.get_job_by_name(job_name, limit=1)
+        if not jobs:
+            raise SystemExit(f"No job found with name '{job_name}'")
+        job = jobs[0]
+        run_s3_uri = job.s3_uri_for_prefix("run_root_prefix")
+        if not run_s3_uri:
+            best = (job.results or {}).get("best_checkpoint_s3_path")
+            if best:
+                run_s3_uri = best.rstrip("/").rsplit("/", 1)[0] + "/"
+        if not run_s3_uri:
+            raise SystemExit(
+                f"Could not resolve run S3 location for job '{job_name}'. "
+                f"Pass --run-s3-uri explicitly."
+            )
+    if not job_name:
+        job_name = run_s3_uri.rstrip("/").rsplit("/", 1)[-1]
+
+    parsed = urlparse(run_s3_uri)
+    return run_s3_uri, job_name, parsed.netloc, parsed.path.lstrip("/")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Receipt LayoutLM CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -112,6 +141,35 @@ def main() -> None:
         type=int,
         default=None,
         help="Early stopping patience (epochs). Defaults to config value.",
+    )
+    train_p.add_argument(
+        "--checkpoint-metric",
+        choices=[
+            "f1",
+            "eval_f1",
+            "product_detail_macro_f1",
+            "eval_product_detail_macro_f1",
+            "loss",
+            "eval_loss",
+            "accuracy",
+            "eval_accuracy",
+        ],
+        default=None,
+        help=(
+            "Metric used for best-checkpoint selection and early stopping. "
+            "Default is aggregate entity F1; product_detail_macro_f1 favors "
+            "PRODUCT_NAME, QUANTITY, UNIT_PRICE, and LINE_TOTAL."
+        ),
+    )
+    train_p.add_argument(
+        "--product-detail-loss-weight",
+        type=float,
+        default=None,
+        help=(
+            "Multiplier applied to class weights for PRODUCT_NAME, QUANTITY, "
+            "UNIT_PRICE, and LINE_TOTAL BIO tags. Values above 1 bias training "
+            "toward product-detail recall/precision."
+        ),
     )
     train_p.add_argument(
         "--o-entity-ratio",
@@ -251,6 +309,34 @@ def main() -> None:
         help=(
             "S3 URI of a JSON file ({\"receipt_keys\": [\"img#rec\", ...]}) "
             "restricting training/eval to a curated subset of receipts."
+        ),
+    )
+    train_p.add_argument(
+        "--item-window-augment",
+        action="store_const",
+        const=True,
+        default=None,
+        help=(
+            "First-pass experiment: append train-only line-item-band windows "
+            "while validation and inference remain full-receipt windowed."
+        ),
+    )
+    train_p.add_argument(
+        "--item-window-size",
+        type=int,
+        default=None,
+        help=(
+            "Window size for --item-window-augment. Defaults to the normal "
+            "LAYOUTLM_WINDOW_SIZE / 200 full-receipt window size."
+        ),
+    )
+    train_p.add_argument(
+        "--item-window-stride",
+        type=int,
+        default=None,
+        help=(
+            "Stride for --item-window-augment. Defaults to the normal "
+            "LAYOUTLM_WINDOW_STRIDE / 150 full-receipt stride."
         ),
     )
     train_p.add_argument(
@@ -483,6 +569,100 @@ def main() -> None:
         ),
     )
 
+    diagnose_p = sub.add_parser(
+        "diagnose-run",
+        help=(
+            "Score one checkpoint receipt-by-receipt and emit diagnostics for "
+            "merchant/template coverage, line-item shape, label mismatch, and "
+            "model uncertainty"
+        ),
+    )
+    diagnose_p.add_argument(
+        "--job-name",
+        help="Training job name; run location is resolved via DynamoDB",
+    )
+    diagnose_p.add_argument(
+        "--run-s3-uri",
+        help="Explicit s3://bucket/runs/<job>/ prefix",
+    )
+    diagnose_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table (or DYNAMO_TABLE_NAME env)",
+    )
+    diagnose_p.add_argument(
+        "--region",
+        default=os.getenv("AWS_REGION", "us-east-1"),
+        help="AWS region",
+    )
+    diagnose_p.add_argument(
+        "--checkpoint",
+        default="best",
+        help=(
+            "Checkpoint directory to diagnose: best, checkpoint-1234, or a "
+            "bare step number. Default: best."
+        ),
+    )
+    diagnose_p.add_argument(
+        "--epoch",
+        type=int,
+        default=None,
+        help="Diagnose the checkpoint saved for this epoch instead of --checkpoint",
+    )
+    diagnose_p.add_argument(
+        "--output-dir",
+        default="./layoutlm-diagnostics",
+        help="Local directory for summary/report/per-receipt artifacts",
+    )
+    diagnose_p.add_argument(
+        "--output-s3-uri",
+        default=None,
+        help="Optional s3://bucket/prefix/ to upload diagnostic artifacts",
+    )
+    diagnose_p.add_argument(
+        "--max-receipts",
+        type=int,
+        default=None,
+        help="Cap validation receipts diagnosed (default: full frozen set)",
+    )
+    diagnose_p.add_argument(
+        "--window-size",
+        type=int,
+        default=None,
+        help="Inference window size; default uses run.json then 200",
+    )
+    diagnose_p.add_argument(
+        "--window-stride",
+        type=int,
+        default=None,
+        help="Inference window stride; default uses run.json then 150",
+    )
+    diagnose_p.add_argument(
+        "--skip-train-context",
+        action="store_true",
+        help=(
+            "Skip loading coverage context. Faster, but disables "
+            "context-seen merchant/template and nearest-template evidence."
+        ),
+    )
+    diagnose_p.add_argument(
+        "--max-train-context-receipts",
+        type=int,
+        default=None,
+        help="Optional cap for coverage-context receipts loaded from DynamoDB",
+    )
+    diagnose_p.add_argument(
+        "--error-confidence-threshold",
+        type=float,
+        default=0.75,
+        help="Confidence threshold for high-confidence error evidence",
+    )
+    diagnose_p.add_argument(
+        "--allow-hash-mismatch",
+        action="store_true",
+        help="Proceed if a reconstructed validation split hash mismatches",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "train":
@@ -522,6 +702,12 @@ def main() -> None:
             train_cfg.label_smoothing = args.label_smoothing
         if args.early_stopping_patience is not None:
             train_cfg.early_stopping_patience = args.early_stopping_patience
+        if args.checkpoint_metric is not None:
+            train_cfg.checkpoint_metric = args.checkpoint_metric
+        if args.product_detail_loss_weight is not None:
+            train_cfg.product_detail_loss_weight = (
+                args.product_detail_loss_weight
+            )
         if args.gradient_accumulation_steps is not None:
             train_cfg.gradient_accumulation_steps = (
                 args.gradient_accumulation_steps
@@ -541,7 +727,24 @@ def main() -> None:
         if getattr(args, "scope", "full") and args.scope != "full":
             os.environ["LAYOUTLM_SCOPE"] = args.scope
         if getattr(args, "receipt_allowlist_s3", None):
-            os.environ["LAYOUTLM_RECEIPT_ALLOWLIST_S3"] = args.receipt_allowlist_s3
+            os.environ["LAYOUTLM_RECEIPT_ALLOWLIST_S3"] = (
+                args.receipt_allowlist_s3
+            )
+        if getattr(args, "item_window_augment", None) is not None:
+            data_cfg.item_window_augmentation = bool(args.item_window_augment)
+            os.environ["LAYOUTLM_ITEM_WINDOW_AUGMENT"] = (
+                "true" if args.item_window_augment else "false"
+            )
+        if getattr(args, "item_window_size", None) is not None:
+            data_cfg.item_window_size = int(args.item_window_size)
+            os.environ["LAYOUTLM_ITEM_WINDOW_SIZE"] = str(
+                args.item_window_size
+            )
+        if getattr(args, "item_window_stride", None) is not None:
+            data_cfg.item_window_stride = int(args.item_window_stride)
+            os.environ["LAYOUTLM_ITEM_WINDOW_STRIDE"] = str(
+                args.item_window_stride
+            )
 
         # Optional label whitelist
         data_cfg.allowed_labels = (
@@ -605,6 +808,8 @@ def main() -> None:
             )
         )
     elif args.cmd == "export-coreml":
+        from .export_coreml import export_coreml, export_from_s3
+
         if not args.checkpoint_dir and not args.s3_uri:
             raise SystemExit("Either --checkpoint-dir or --s3-uri is required")
 
@@ -628,6 +833,8 @@ def main() -> None:
         print(f"CoreML bundle created: {bundle_path}")
 
     elif args.cmd == "validate-coreml":
+        from .validate_coreml import validate_coreml
+
         result = validate_coreml(
             checkpoint_dir=args.checkpoint_dir,
             coreml_bundle_dir=args.coreml_bundle,
@@ -669,7 +876,6 @@ def main() -> None:
 
     elif args.cmd == "eval-checkpoints":
         import logging
-        from urllib.parse import urlparse
 
         from receipt_dynamo import DynamoClient
 
@@ -687,37 +893,9 @@ def main() -> None:
 
         dyn = DynamoClient(table_name=args.dynamo_table, region=args.region)
 
-        # Resolve the run's S3 location: explicit URI wins, else look it up by
-        # job name (newest match) via the Job entity's storage prefixes.
-        run_s3_uri = args.run_s3_uri
-        job_name = args.job_name
-        if not run_s3_uri:
-            if not job_name:
-                raise SystemExit(
-                    "Provide --run-s3-uri or --job-name to locate the run"
-                )
-            jobs, _ = dyn.get_job_by_name(job_name, limit=1)
-            if not jobs:
-                raise SystemExit(f"No job found with name '{job_name}'")
-            job = jobs[0]
-            run_s3_uri = job.s3_uri_for_prefix("run_root_prefix")
-            if not run_s3_uri:
-                best = (job.results or {}).get("best_checkpoint_s3_path")
-                if best:
-                    # Strip a trailing best/ or checkpoint-*/ to get the run root
-                    trimmed = best.rstrip("/").rsplit("/", 1)[0]
-                    run_s3_uri = trimmed + "/"
-            if not run_s3_uri:
-                raise SystemExit(
-                    f"Could not resolve run S3 location for job '{job_name}'. "
-                    f"Pass --run-s3-uri explicitly."
-                )
-        if not job_name:
-            job_name = run_s3_uri.rstrip("/").rsplit("/", 1)[-1]
-
-        parsed = urlparse(run_s3_uri)
-        bucket = parsed.netloc
-        run_prefix = parsed.path.lstrip("/")
+        _, job_name, bucket, run_prefix = _resolve_run_s3(
+            dyn, args.run_s3_uri, args.job_name
+        )
 
         payload = evaluate_run(
             dynamo=dyn,
@@ -752,6 +930,67 @@ def main() -> None:
                     "best_epoch_training_reported": payload[
                         "best_epoch_training_reported"
                     ],
+                    "output_dir": args.output_dir,
+                    "output_s3_uri": args.output_s3_uri,
+                },
+                indent=2,
+            )
+        )
+    elif args.cmd == "diagnose-run":
+        import logging
+
+        from receipt_dynamo import DynamoClient
+
+        from .diagnose import diagnose_run, sync_diagnostics_to_s3
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+
+        if not args.dynamo_table:
+            raise SystemExit(
+                "--dynamo-table or DYNAMO_TABLE_NAME env is required"
+            )
+
+        dyn = DynamoClient(table_name=args.dynamo_table, region=args.region)
+
+        _, job_name, bucket, run_prefix = _resolve_run_s3(
+            dyn, args.run_s3_uri, args.job_name
+        )
+
+        payload = diagnose_run(
+            dynamo=dyn,
+            bucket=bucket,
+            run_prefix=run_prefix,
+            job_name=job_name,
+            output_dir=args.output_dir,
+            checkpoint=args.checkpoint,
+            epoch=args.epoch,
+            max_receipts=args.max_receipts,
+            window_size=args.window_size,
+            window_stride=args.window_stride,
+            include_train_context=not args.skip_train_context,
+            max_train_context_receipts=args.max_train_context_receipts,
+            error_confidence_threshold=args.error_confidence_threshold,
+            allow_hash_mismatch=args.allow_hash_mismatch,
+        )
+
+        if args.output_s3_uri:
+            sync_diagnostics_to_s3(args.output_dir, args.output_s3_uri)
+
+        print(
+            json.dumps(
+                {
+                    "job_name": payload["job_name"],
+                    "checkpoint": payload["checkpoint"]["name"],
+                    "num_receipts": payload["validation"][
+                        "num_receipts_loaded"
+                    ],
+                    "heldout_f1": payload["aggregate"]["scores"]["f1"],
+                    "product_detail_macro_f1": payload["aggregate"][
+                        "diagnostics"
+                    ]["product_detail"]["macro_f1"],
                     "output_dir": args.output_dir,
                     "output_s3_uri": args.output_s3_uri,
                 },
