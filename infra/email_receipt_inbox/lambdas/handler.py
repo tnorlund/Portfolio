@@ -197,7 +197,14 @@ def lambda_handler(event, _context):
                             parsed = parsed[0] if parsed else {}
                         out["classification"] = registry.classify(
                             grp, out["subject"], parsed)
-                        if out["classification"] in ("receipt", "txn_signal"):
+                        # Persist the parser's raw schema whenever it produced
+                        # one — including needs_ocr, where the parser already
+                        # extracted usable fields (e.g. Apple retail PDF stubs
+                        # carry merchant/date/order_id/attachment name before
+                        # flagging needs_pdf). Dropping it here would force
+                        # downstream to re-derive data the parser already has.
+                        if out["classification"] in (
+                                "receipt", "txn_signal", "needs_ocr"):
                             out["receipt"] = parsed
                     finally:
                         os.unlink(path)
