@@ -80,6 +80,44 @@ def resolve_slug(merchant_name: str | None) -> str | None:
     return merchant_slug(merchant_name) or generic_slug(merchant_name)
 
 
+def _load_merchant_of(table: str) -> dict[tuple[str, int], str]:
+    """Map (image_id, receipt_id) -> current merchant_name for every place.
+
+    Reads raw items off the TYPE index instead of ``list_receipt_places`` so a
+    handful of dev rows whose stored GSI1PK still encodes a superseded merchant
+    (the entity loader hard-rejects that drift) don't abort the whole corpus
+    load. We only need merchant_name here, taken from the item's live attribute,
+    so those receipts join under their corrected merchant rather than dropping.
+    """
+    import boto3
+
+    dynamo = boto3.client("dynamodb")
+    merchant_of: dict[tuple[str, int], str] = {}
+    lek = None
+    while True:
+        kw = dict(
+            TableName=table,
+            IndexName="GSITYPE",
+            KeyConditionExpression="#t = :t",
+            ExpressionAttributeNames={"#t": "TYPE"},
+            ExpressionAttributeValues={":t": {"S": "RECEIPT_PLACE"}},
+        )
+        if lek:
+            kw["ExclusiveStartKey"] = lek
+        resp = dynamo.query(**kw)
+        for it in resp["Items"]:
+            name = it.get("merchant_name", {}).get("S")
+            if not name:
+                continue
+            image_id = it["PK"]["S"].split("#", 1)[1]
+            receipt_id = int(it["SK"]["S"].split("#")[1])
+            merchant_of[(image_id, receipt_id)] = name
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
+    return merchant_of
+
+
 def load_corpus(table: str):
     """All VALID sections grouped per receipt + the merchant of each receipt."""
     client = _client(table)
@@ -93,15 +131,7 @@ def load_corpus(table: str):
             break
     valid = [s for s in sections if s.validation_status == "VALID"]
 
-    places, lek = [], None
-    while True:
-        batch, lek = client.list_receipt_places(
-            limit=1000, last_evaluated_key=lek
-        )
-        places.extend(batch)
-        if lek is None:
-            break
-    merchant_of = {(p.image_id, p.receipt_id): p.merchant_name for p in places}
+    merchant_of = _load_merchant_of(table)
 
     by_receipt: dict[tuple[str, int], list] = defaultdict(list)
     for s in valid:

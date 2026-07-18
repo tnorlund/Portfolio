@@ -770,27 +770,56 @@ def _load_words_and_real(merchant: str, image_id: str, receipt_id: int):
     del merchant
     import boto3
 
-    from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_dynamo.entities.receipt import item_to_receipt
+    from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 
     table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
     region = os.environ.get("AWS_REGION", "us-east-1")
-    client = DynamoClient(table_name=table, region=region)
     s3 = boto3.client("s3", region_name=region)
-    details = client.get_image_details(image_id)
-    receipt = next(
-        (
-            item
-            for item in details.receipts
-            if str(item.receipt_id) == str(receipt_id)
-        ),
-        None,
-    )
+
+    # Read the RECEIPT and RECEIPT_WORD rows straight off the image partition
+    # rather than via get_image_details: that aggregator reconstructs every
+    # entity in the partition and aborts when a post-re-OCR OCR_JOB row fails
+    # its strict round-trip check. We only need this receipt's words + s3 keys.
+    dynamo = boto3.client("dynamodb", region_name=region)
+    receipt = None
+    raw_words = []
+    lek = None
+    while True:
+        kw = dict(
+            TableName=table,
+            KeyConditionExpression="#pk = :pk",
+            ExpressionAttributeNames={"#pk": "PK", "#t": "TYPE"},
+            ExpressionAttributeValues={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":r": {"S": "RECEIPT"},
+                ":rw": {"S": "RECEIPT_WORD"},
+            },
+            FilterExpression="#t IN (:r, :rw)",
+        )
+        if lek:
+            kw["ExclusiveStartKey"] = lek
+        resp = dynamo.query(**kw)
+        for it in resp["Items"]:
+            t = it["TYPE"]["S"]
+            try:
+                if t == "RECEIPT":
+                    r = item_to_receipt(it)
+                    if str(r.receipt_id) == str(receipt_id):
+                        receipt = r
+                elif t == "RECEIPT_WORD":
+                    raw_words.append(item_to_receipt_word(it))
+            except Exception:  # noqa: BLE001 - skip a drifted row, not the receipt
+                continue
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
     if receipt is None:
         raise RuntimeError(
             f"receipt {receipt_id} not found for image {image_id}"
         )
     words = []
-    for word in details.receipt_words:
+    for word in raw_words:
         if str(word.receipt_id) != str(receipt_id):
             continue
         words.append(
