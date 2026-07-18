@@ -44,6 +44,12 @@ class SplitMetadata:
     # different window/stride shifts the F1 curve by inference, not quality).
     window_size: Optional[int] = None
     window_stride: Optional[int] = None
+    # Optional first-pass training augmentation: add extra line-item-band windows
+    # to TRAIN only while keeping validation and inference on full receipts.
+    item_window_augmentation: bool = False
+    num_item_window_examples: int = 0
+    item_window_size: Optional[int] = None
+    item_window_stride: Optional[int] = None
 
 
 @dataclass
@@ -477,6 +483,44 @@ def _crop_to_line_item_band(
     ]
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(
+            f"[data_loader] WARN: {name}={raw!r} is not a valid int; "
+            f"falling back to {default}"
+        )
+        return default
+    if value <= 0:
+        print(
+            f"[data_loader] WARN: {name}={raw!r} must be positive; "
+            f"falling back to {default}"
+        )
+        return default
+    return value
+
+
+def _positive_int_or_default(name: str, value: int, default: int) -> int:
+    if value > 0:
+        return value
+    print(
+        f"[data_loader] WARN: {name}={value!r} must be positive; "
+        f"falling back to {default}"
+    )
+    return default
+
+
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
@@ -484,6 +528,9 @@ def load_datasets(
     label_merges: Optional[Dict[str, List[str]]] = None,
     allowed_labels: Optional[List[str]] = None,
     model_version: str = "v1",
+    item_window_augmentation: Optional[bool] = None,
+    item_window_size: Optional[int] = None,
+    item_window_stride: Optional[int] = None,
 ) -> Tuple[Any, SplitMetadata, MergeInfo]:
     """Load and process datasets from DynamoDB.
 
@@ -494,6 +541,11 @@ def load_datasets(
         label_merges: Dict mapping target labels to source labels to merge.
             E.g., {"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}
         allowed_labels: Optional list of allowed labels (whitelist).
+        item_window_augmentation: Optional first-pass product/detail experiment
+            flag. When true in full scope, append extra line-item-band windows to
+            train only. When None, falls back to LAYOUTLM_ITEM_WINDOW_AUGMENT.
+        item_window_size: Optional item-window size. Falls back to env/defaults.
+        item_window_stride: Optional item-window stride. Falls back to env/defaults.
 
     Returns:
         Tuple of (DatasetDict, SplitMetadata, MergeInfo).
@@ -620,11 +672,33 @@ def load_datasets(
     # This matches the inference distribution where the Mac OCR worker feeds
     # full multi-line word sequences — not pre-segmented same-label blocks.
     examples: List[LineExample] = []
-    window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
-    window_stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
+    item_window_examples_by_receipt: Dict[str, List[LineExample]] = {}
+    window_size = _env_positive_int("LAYOUTLM_WINDOW_SIZE", 200)
+    window_stride = _env_positive_int("LAYOUTLM_WINDOW_STRIDE", 150)
+    if item_window_augmentation is None:
+        item_window_augmentation = _env_flag(
+            "LAYOUTLM_ITEM_WINDOW_AUGMENT", False
+        )
+    if item_window_size is None:
+        item_window_size = _env_positive_int(
+            "LAYOUTLM_ITEM_WINDOW_SIZE", window_size
+        )
+    else:
+        item_window_size = _positive_int_or_default(
+            "item_window_size", item_window_size, window_size
+        )
+    if item_window_stride is None:
+        item_window_stride = _env_positive_int(
+            "LAYOUTLM_ITEM_WINDOW_STRIDE", window_stride
+        )
+    else:
+        item_window_stride = _positive_int_or_default(
+            "item_window_stride", item_window_stride, window_stride
+        )
     scope = os.getenv("LAYOUTLM_SCOPE", "full")
 
     for (img_id, rec_id), words_in_receipt in receipt_words.items():
+        receipt_key = f"{img_id}#{rec_id:05d}"
         if scope == "line_items":
             # Second-pass scope: train only on the line-item band of each receipt.
             words_in_receipt = _crop_to_line_item_band(
@@ -632,7 +706,24 @@ def load_datasets(
             )
             if not words_in_receipt:
                 continue
-        receipt_key = f"{img_id}#{rec_id:05d}"
+        elif scope == "full" and item_window_augmentation:
+            # First-pass augmentation: keep full-receipt examples for the real
+            # inference distribution, but prepare extra item-band examples that
+            # will be appended to TRAIN only after the receipt split. This gives
+            # product/detail labels more gradient without contaminating val or
+            # requiring a second inference pass.
+            item_words = _crop_to_line_item_band(
+                words_in_receipt, label_map, img_id, rec_id
+            )
+            if item_words:
+                item_window_examples_by_receipt[receipt_key] = (
+                    _build_receipt_window_examples(
+                        item_words,
+                        receipt_key,
+                        window_size=item_window_size,
+                        stride=item_window_stride,
+                    )
+                )
         examples.extend(
             _build_receipt_window_examples(
                 words_in_receipt,
@@ -641,34 +732,6 @@ def load_datasets(
                 stride=window_stride,
             )
         )
-
-    ds_mod = importlib.import_module("datasets")
-    Dataset = getattr(ds_mod, "Dataset")
-    DatasetDict = getattr(ds_mod, "DatasetDict")
-    Features = getattr(ds_mod, "Features")
-    Sequence = getattr(ds_mod, "Sequence")
-    Value = getattr(ds_mod, "Value")
-
-    features = Features(
-        {
-            "tokens": Sequence(Value("string")),
-            "bboxes": Sequence(Sequence(Value("int64"))),
-            "ner_tags": Sequence(Value("string")),
-            "receipt_key": Value("string"),
-            "image_id": Value("string"),
-        }
-    )
-
-    dataset = Dataset.from_dict(
-        {
-            "tokens": [ex.tokens for ex in examples],
-            "bboxes": [ex.bboxes for ex in examples],
-            "ner_tags": [ex.ner_tags for ex in examples],
-            "receipt_key": [ex.receipt_key for ex in examples],
-            "image_id": [ex.image_id for ex in examples],
-        },
-        features=features,
-    )
 
     # Receipt-level split by unique (image_id, receipt_id).
     unique_receipts = sorted(
@@ -708,6 +771,13 @@ def load_datasets(
     val_receipts_hash = hashlib.sha256(
         ",".join(sorted(val_receipts_list)).encode()
     ).hexdigest()[:16]
+
+    num_item_window_examples = 0
+    if scope == "full" and item_window_augmentation:
+        for receipt_key in train_receipts_list:
+            extra_examples = item_window_examples_by_receipt.get(receipt_key, [])
+            examples.extend(extra_examples)
+            num_item_window_examples += len(extra_examples)
 
     train_indices = [
         i for i, ex in enumerate(examples) if ex.receipt_key in train_receipts
@@ -793,6 +863,34 @@ def load_datasets(
         else float("inf")
     )
 
+    ds_mod = importlib.import_module("datasets")
+    Dataset = ds_mod.Dataset
+    DatasetDict = ds_mod.DatasetDict
+    Features = ds_mod.Features
+    Sequence = ds_mod.Sequence
+    Value = ds_mod.Value
+
+    features = Features(
+        {
+            "tokens": Sequence(Value("string")),
+            "bboxes": Sequence(Sequence(Value("int64"))),
+            "ner_tags": Sequence(Value("string")),
+            "receipt_key": Value("string"),
+            "image_id": Value("string"),
+        }
+    )
+
+    dataset = Dataset.from_dict(
+        {
+            "tokens": [ex.tokens for ex in examples],
+            "bboxes": [ex.bboxes for ex in examples],
+            "ner_tags": [ex.ner_tags for ex in examples],
+            "receipt_key": [ex.receipt_key for ex in examples],
+            "image_id": [ex.image_id for ex in examples],
+        },
+        features=features,
+    )
+
     # Download warped receipt images for v3 training
     image_cache_dir: Optional[str] = None
     if model_version == "v3":
@@ -820,6 +918,12 @@ def load_datasets(
         val_receipt_keys=sorted(val_receipts_list),
         window_size=window_size,
         window_stride=window_stride,
+        item_window_augmentation=(
+            scope == "full" and item_window_augmentation
+        ),
+        num_item_window_examples=num_item_window_examples,
+        item_window_size=item_window_size,
+        item_window_stride=item_window_stride,
     )
 
     # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()

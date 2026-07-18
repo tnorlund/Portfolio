@@ -5,15 +5,31 @@ This module contains functions for selecting and migrating place data and labels
 when combining receipts.
 """
 
+from __future__ import annotations
+
 import logging
+from copy import deepcopy
+from dataclasses import fields
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import MerchantValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import ReceiptPlace, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
+
+# Mutable container fields that must be deep-copied when cloning a place so
+# the source entity and the merged entity cannot share list/dict identity.
+_MUTABLE_PLACE_FIELDS = (
+    "merchant_types",
+    "matched_fields",
+    "hours_summary",
+    "photo_references",
+    "address_components",
+    "hours_data",
+)
 
 
 def get_best_receipt_place(
@@ -23,6 +39,10 @@ def get_best_receipt_place(
 ) -> Optional[ReceiptPlace]:
     """
     Get the best ReceiptPlace from the original receipts.
+
+    Returns the live Dynamo entity for the winning source receipt. Callers that
+    need to re-key the place onto a new receipt_id must clone via
+    ``clone_receipt_place_for_receipt`` — never mutate ``receipt_id`` in place.
 
     Args:
         client: DynamoDB client
@@ -70,6 +90,57 @@ def get_best_receipt_place(
 
     places.sort(key=lambda p: (score_place(p), p.timestamp), reverse=True)
     return places[0]
+
+
+def clone_receipt_place_for_receipt(
+    source: ReceiptPlace,
+    *,
+    new_receipt_id: int,
+    reasoning_prefix: str | None = None,
+    refresh_timestamp: bool = True,
+) -> ReceiptPlace:
+    """
+    Deep-copy a ReceiptPlace onto a new receipt_id without mutating ``source``.
+
+    Preserves all Google Places fields (geo, hours, confidence, media, etc.)
+    that partial field-by-field constructors historically dropped.
+    """
+    kwargs = {f.name: getattr(source, f.name) for f in fields(source)}
+    kwargs["receipt_id"] = new_receipt_id
+    for name in _MUTABLE_PLACE_FIELDS:
+        if name in kwargs:
+            kwargs[name] = deepcopy(kwargs[name])
+    if refresh_timestamp:
+        kwargs["timestamp"] = datetime.now(timezone.utc)
+    if reasoning_prefix:
+        original = kwargs.get("reasoning") or "N/A"
+        kwargs["reasoning"] = f"{reasoning_prefix}{original}"
+    return ReceiptPlace(**kwargs)
+
+
+def upsert_receipt_place(client: DynamoClient, place: ReceiptPlace) -> str:
+    """
+    Persist a ReceiptPlace, treating an existing key as an overwrite.
+
+    Merge/combine retries can leave a place row for ``new_receipt_id`` after a
+    partial write. ``add_receipt_place`` is create-only and would otherwise
+    abort the pipeline before embeddings and source deletion.
+
+    Returns:
+        ``"added"`` if the place was created, ``"updated"`` if it already existed.
+    """
+    try:
+        client.add_receipt_place(place)
+        return "added"
+    except EntityAlreadyExistsError:
+        logger.warning(
+            "ReceiptPlace already exists for image_id=%s receipt_id=%s; "
+            "updating in place (merge/combine retry)",
+            place.image_id,
+            place.receipt_id,
+        )
+        client.update_receipt_place(place)
+        return "updated"
 
 
 def migrate_receipt_word_labels(

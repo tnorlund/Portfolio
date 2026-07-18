@@ -55,6 +55,8 @@ from .data_loader import _box_from_word, _normalize_box_from_extents
 
 logger = logging.getLogger(__name__)
 
+_PRODUCT_DETAIL_LABELS = ("PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL")
+
 # ----------------------------------------------------------------------------
 # BIO / label helpers (mirrors the inference-cache Lambda so the per-receipt
 # records this emits are byte-compatible with what the frontend already renders)
@@ -572,6 +574,9 @@ def _seqeval_scores(
             "precision": acc,
             "recall": acc,
             "per_label_f1": {},
+            "per_label_precision": {},
+            "per_label_recall": {},
+            "per_label_support": {},
         }
 
     f1 = float(seqeval.f1_score(y_true_lines, y_pred_lines))
@@ -579,6 +584,9 @@ def _seqeval_scores(
     recall = float(seqeval.recall_score(y_true_lines, y_pred_lines))
 
     per_label_f1: Dict[str, float] = {}
+    per_label_precision: Dict[str, float] = {}
+    per_label_recall: Dict[str, float] = {}
+    per_label_support: Dict[str, int] = {}
     report_fn = getattr(seqeval, "classification_report", None)
     if report_fn is not None:
         try:
@@ -588,6 +596,11 @@ def _seqeval_scores(
             for label, stats in report.items():
                 if isinstance(stats, dict) and "f1-score" in stats:
                     per_label_f1[label] = float(stats["f1-score"])
+                    per_label_precision[label] = float(
+                        stats.get("precision", 0.0)
+                    )
+                    per_label_recall[label] = float(stats.get("recall", 0.0))
+                    per_label_support[label] = int(stats.get("support", 0))
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
@@ -597,6 +610,9 @@ def _seqeval_scores(
         "precision": precision,
         "recall": recall,
         "per_label_f1": per_label_f1,
+        "per_label_precision": per_label_precision,
+        "per_label_recall": per_label_recall,
+        "per_label_support": per_label_support,
     }
 
 
@@ -609,6 +625,195 @@ def _token_accuracy(
             total += 1
             correct += int(a == b)
     return correct / total if total else 0.0
+
+
+def _safe_ratio(numerator: int | float, denominator: int | float) -> Optional[float]:
+    return float(numerator) / float(denominator) if denominator else None
+
+
+def _bio_spans(tags: List[str]) -> List[Tuple[str, int, int]]:
+    """Return entity spans as ``(base_label, start, end_exclusive)``."""
+    spans: List[Tuple[str, int, int]] = []
+    active_label: Optional[str] = None
+    active_start: Optional[int] = None
+
+    for idx, tag in enumerate([*tags, "O"]):
+        if not tag or tag == "O":
+            prefix = "O"
+            base = "O"
+        elif tag.startswith("B-") or tag.startswith("I-"):
+            prefix = tag[:1]
+            base = tag[2:]
+        else:
+            prefix = "B"
+            base = tag
+
+        starts_new = base != "O" and (
+            prefix == "B" or active_label is None or active_label != base
+        )
+        closes_active = base == "O" or starts_new
+
+        if closes_active and active_label is not None and active_start is not None:
+            spans.append((active_label, active_start, idx))
+            active_label = None
+            active_start = None
+
+        if starts_new:
+            active_label = base
+            active_start = idx
+
+    return spans
+
+
+def _evaluation_diagnostics(
+    y_true_lines: List[List[str]],
+    y_pred_lines: List[List[str]],
+    *,
+    per_label_f1: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    """Compute explanation-oriented metrics for the held-out curve."""
+    per_label_f1 = per_label_f1 or {}
+    total_tokens = 0
+    correct_tokens = 0
+    gold_o_tokens = 0
+    pred_o_tokens = 0
+    gold_entity_tokens = 0
+    pred_entity_tokens = 0
+    correct_o_tokens = 0
+    correct_entity_tokens = 0
+    gold_label_tokens: Dict[str, int] = {}
+    pred_label_tokens: Dict[str, int] = {}
+    true_positive_label_tokens: Dict[str, int] = {}
+    token_confusions: Dict[Tuple[str, str], int] = {}
+    gold_entity_counts: Dict[str, int] = {}
+    pred_entity_counts: Dict[str, int] = {}
+
+    for y_true, y_pred in zip(y_true_lines, y_pred_lines):
+        for label, _start, _end in _bio_spans(y_true):
+            gold_entity_counts[label] = gold_entity_counts.get(label, 0) + 1
+        for label, _start, _end in _bio_spans(y_pred):
+            pred_entity_counts[label] = pred_entity_counts.get(label, 0) + 1
+
+        for true_tag, pred_tag in zip(y_true, y_pred):
+            gold = _get_base_label(true_tag)
+            pred = _get_base_label(pred_tag)
+            total_tokens += 1
+            if gold == pred:
+                correct_tokens += 1
+            else:
+                token_confusions[(gold, pred)] = (
+                    token_confusions.get((gold, pred), 0) + 1
+                )
+
+            if gold == "O":
+                gold_o_tokens += 1
+                if pred == "O":
+                    correct_o_tokens += 1
+            else:
+                gold_entity_tokens += 1
+                gold_label_tokens[gold] = gold_label_tokens.get(gold, 0) + 1
+                if gold == pred:
+                    correct_entity_tokens += 1
+                    true_positive_label_tokens[gold] = (
+                        true_positive_label_tokens.get(gold, 0) + 1
+                    )
+
+            if pred == "O":
+                pred_o_tokens += 1
+            else:
+                pred_entity_tokens += 1
+                pred_label_tokens[pred] = pred_label_tokens.get(pred, 0) + 1
+
+    labels = sorted(
+        set(gold_label_tokens)
+        | set(pred_label_tokens)
+        | set(gold_entity_counts)
+        | set(pred_entity_counts)
+    )
+    per_label_token_counts: Dict[str, Dict[str, Any]] = {}
+    per_label_entity_counts: Dict[str, Dict[str, Any]] = {}
+    for label in labels:
+        gold_tokens = gold_label_tokens.get(label, 0)
+        pred_tokens = pred_label_tokens.get(label, 0)
+        token_tp = true_positive_label_tokens.get(label, 0)
+        per_label_token_counts[label] = {
+            "gold_tokens": gold_tokens,
+            "predicted_tokens": pred_tokens,
+            "true_positive_tokens": token_tp,
+            "prediction_gold_ratio": _safe_ratio(pred_tokens, gold_tokens),
+        }
+        gold_entities = gold_entity_counts.get(label, 0)
+        pred_entities = pred_entity_counts.get(label, 0)
+        per_label_entity_counts[label] = {
+            "gold_entities": gold_entities,
+            "predicted_entities": pred_entities,
+            "prediction_gold_ratio": _safe_ratio(pred_entities, gold_entities),
+        }
+
+    product_f1_values = [
+        per_label_f1[label]
+        for label in _PRODUCT_DETAIL_LABELS
+        if isinstance(per_label_f1.get(label), (int, float))
+    ]
+    product_gold_entities = sum(
+        gold_entity_counts.get(label, 0) for label in _PRODUCT_DETAIL_LABELS
+    )
+    product_pred_entities = sum(
+        pred_entity_counts.get(label, 0) for label in _PRODUCT_DETAIL_LABELS
+    )
+
+    top_confusions = [
+        {"gold": gold, "predicted": pred, "count": count}
+        for (gold, pred), count in sorted(
+            token_confusions.items(), key=lambda item: item[1], reverse=True
+        )[:20]
+    ]
+
+    return {
+        "token_counts": {
+            "total": total_tokens,
+            "correct": correct_tokens,
+            "gold_o": gold_o_tokens,
+            "predicted_o": pred_o_tokens,
+            "gold_entity": gold_entity_tokens,
+            "predicted_entity": pred_entity_tokens,
+        },
+        "entity_counts": {
+            "gold": sum(gold_entity_counts.values()),
+            "predicted": sum(pred_entity_counts.values()),
+            "prediction_gold_ratio": _safe_ratio(
+                sum(pred_entity_counts.values()), sum(gold_entity_counts.values())
+            ),
+        },
+        "rates": {
+            "gold_entity_token_rate": _safe_ratio(
+                gold_entity_tokens, total_tokens
+            ),
+            "predicted_entity_token_rate": _safe_ratio(
+                pred_entity_tokens, total_tokens
+            ),
+            "o_token_accuracy": _safe_ratio(correct_o_tokens, gold_o_tokens),
+            "entity_token_accuracy": _safe_ratio(
+                correct_entity_tokens, gold_entity_tokens
+            ),
+        },
+        "product_detail": {
+            "labels": list(_PRODUCT_DETAIL_LABELS),
+            "macro_f1": (
+                sum(product_f1_values) / len(product_f1_values)
+                if product_f1_values
+                else None
+            ),
+            "gold_entities": product_gold_entities,
+            "predicted_entities": product_pred_entities,
+            "prediction_gold_ratio": _safe_ratio(
+                product_pred_entities, product_gold_entities
+            ),
+        },
+        "per_label_token_counts": per_label_token_counts,
+        "per_label_entity_counts": per_label_entity_counts,
+        "top_token_confusions": top_confusions,
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -895,6 +1100,11 @@ def evaluate_run(
                     json.dump(record, f, default=str)
 
             scores = _seqeval_scores(all_true, all_pred)
+            diagnostics = _evaluation_diagnostics(
+                all_true,
+                all_pred,
+                per_label_f1=scores.get("per_label_f1", {}),
+            )
             entry = {
                 "checkpoint": name,
                 "step": step,
@@ -904,6 +1114,22 @@ def evaluate_run(
                 "heldout_recall": scores["recall"],
                 "heldout_metric": scores["metric"],
                 "per_label_f1": scores["per_label_f1"],
+                "per_label_precision": scores.get("per_label_precision", {}),
+                "per_label_recall": scores.get("per_label_recall", {}),
+                "per_label_support": scores.get("per_label_support", {}),
+                "diagnostics": diagnostics,
+                "product_detail_macro_f1": diagnostics["product_detail"][
+                    "macro_f1"
+                ],
+                "entity_prediction_rate": diagnostics["rates"][
+                    "predicted_entity_token_rate"
+                ],
+                "gold_entity_rate": diagnostics["rates"]["gold_entity_token_rate"],
+                "heldout_f1_delta_vs_training_reported": (
+                    scores["f1"] - step_to_f1[step]
+                    if step is not None and step_to_f1.get(step) is not None
+                    else None
+                ),
                 "token_accuracy": _token_accuracy(all_true, all_pred),
                 "training_reported_f1": (
                     step_to_f1.get(step) if step is not None else None
@@ -1098,6 +1324,11 @@ def evaluate_live_checkpoint(
             json.dump(record, f, default=str)
 
     scores = _seqeval_scores(all_true, all_pred)
+    diagnostics = _evaluation_diagnostics(
+        all_true,
+        all_pred,
+        per_label_f1=scores.get("per_label_f1", {}),
+    )
     entry = {
         "checkpoint": checkpoint_name,
         "step": step,
@@ -1107,6 +1338,20 @@ def evaluate_live_checkpoint(
         "heldout_recall": scores["recall"],
         "heldout_metric": scores["metric"],
         "per_label_f1": scores["per_label_f1"],
+        "per_label_precision": scores.get("per_label_precision", {}),
+        "per_label_recall": scores.get("per_label_recall", {}),
+        "per_label_support": scores.get("per_label_support", {}),
+        "diagnostics": diagnostics,
+        "product_detail_macro_f1": diagnostics["product_detail"]["macro_f1"],
+        "entity_prediction_rate": diagnostics["rates"][
+            "predicted_entity_token_rate"
+        ],
+        "gold_entity_rate": diagnostics["rates"]["gold_entity_token_rate"],
+        "heldout_f1_delta_vs_training_reported": (
+            scores["f1"] - training_reported_f1
+            if training_reported_f1 is not None
+            else None
+        ),
         "token_accuracy": _token_accuracy(all_true, all_pred),
         "training_reported_f1": training_reported_f1,
         "num_receipts_evaluated": len(details_by_receipt),

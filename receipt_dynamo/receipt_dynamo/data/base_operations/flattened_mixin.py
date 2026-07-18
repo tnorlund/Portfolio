@@ -44,6 +44,25 @@ if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
 
 
+def _entity_display_id(entity: Any) -> str:
+    """Human-readable id for entity error messages.
+
+    Many entities (e.g. ReceiptPlace) have no ``id`` attribute and key on
+    ``image_id`` + ``receipt_id`` instead. Prefer those over the opaque
+    fallback ``\"unknown\"``.
+    """
+    entity_id = getattr(entity, "id", None)
+    if entity_id is not None:
+        return str(entity_id)
+    image_id = getattr(entity, "image_id", None)
+    if image_id is not None:
+        receipt_id = getattr(entity, "receipt_id", None)
+        if receipt_id is not None:
+            return f"{image_id}#{receipt_id}"
+        return str(image_id)
+    return "unknown"
+
+
 class FlattenedStandardMixin:
     """
     A flattened mixin that provides all standard DynamoDB operations.
@@ -261,7 +280,7 @@ class FlattenedStandardMixin:
                 == "ConditionalCheckFailedException"
             ):
                 entity_name = entity.__class__.__name__
-                entity_id = getattr(entity, "id", "unknown")
+                entity_id = _entity_display_id(entity)
                 raise EntityAlreadyExistsError(
                     f"{entity_name} with ID {entity_id} already exists"
                 ) from e
@@ -314,7 +333,7 @@ class FlattenedStandardMixin:
                 == "ConditionalCheckFailedException"
             ):
                 entity_name = entity.__class__.__name__
-                entity_id = getattr(entity, "id", "unknown")
+                entity_id = _entity_display_id(entity)
                 raise EntityNotFoundError(
                     f"{entity_name} with ID {entity_id} does not exist"
                 ) from e
@@ -340,7 +359,7 @@ class FlattenedStandardMixin:
                 == "ConditionalCheckFailedException"
             ):
                 entity_name = entity.__class__.__name__
-                entity_id = getattr(entity, "id", "unknown")
+                entity_id = _entity_display_id(entity)
                 raise EntityNotFoundError(
                     f"{entity_name} with ID {entity_id} does not exist"
                 ) from e
