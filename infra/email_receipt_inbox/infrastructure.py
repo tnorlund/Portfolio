@@ -207,6 +207,10 @@ class EmailReceiptInbox(ComponentResource):
             role=role.arn,
             timeout=60,
             memory_size=256,
+            # Public ingress: cap this function's slice of the account's shared
+            # concurrency so a mail flood cannot starve every other Lambda.
+            # Throttled async S3 invokes retry, so the cap loses no mail.
+            reserved_concurrent_executions=10,
             code=pulumi.AssetArchive({
                 ".": pulumi.FileArchive(LAMBDA_DIR),
             }),
@@ -216,11 +220,14 @@ class EmailReceiptInbox(ComponentResource):
             # AccessDenied on GetObject/PutObject.
             opts=ResourceOptions(parent=self,
                                  depends_on=[s3_policy, logs_attach]))
-        # Route async invokes that exhaust retries to the DLQ.
-        aws.lambda_.FunctionEventInvokeConfig(
+        # Route async invokes that exhaust retries to the DLQ. Bound the retry
+        # window so a persistently failing event drains to the DLQ within the
+        # hour instead of retrying against the 6h default.
+        async_config = aws.lambda_.FunctionEventInvokeConfig(
             f"{name}-parser-async",
             function_name=self.parser.name,
             maximum_retry_attempts=2,
+            maximum_event_age_in_seconds=3600,
             destination_config={"on_failure": {"destination": dlq.arn}},
             opts=child)
         invoke_perm = aws.lambda_.Permission(
@@ -239,9 +246,15 @@ class EmailReceiptInbox(ComponentResource):
                 "filter_prefix": "raw/",
             }],
             # S3 validates it can invoke the target at create time, so the
-            # invoke permission must already exist.
-            opts=ResourceOptions(parent=self,
-                                 depends_on=[self.parser, invoke_perm]))
+            # invoke permission must already exist. Also gate on the async
+            # config so the DLQ failure destination is in place before any
+            # delivered message can invoke the parser — otherwise an early
+            # failure exhausts the default retries and is silently discarded.
+            # activation and the MX record both depend on this notification, so
+            # this dependency propagates to the whole mail-accepting graph.
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[self.parser, invoke_perm, async_config]))
 
         # --- receipt rule set
         rule_set = aws.ses.ReceiptRuleSet(

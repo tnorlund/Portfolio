@@ -30,6 +30,7 @@ a matter of re-running over raw/.
 from __future__ import annotations
 
 import email
+import email.errors
 import email.policy
 import email.utils
 import hashlib
@@ -45,6 +46,12 @@ import boto3
 import registry
 
 s3 = boto3.client("s3")
+
+# SES delivers S3-stored messages up to 40 MB, but receipt emails are a few
+# hundred KB. This 256 MB function holds the raw bytes, the parsed MIME tree, a
+# normalized copy, and parser-specific representations at once, so a large
+# payload can OOM. Reject anything oversized BEFORE fetching it into memory.
+MAX_RAW_BYTES = 15 * 1024 * 1024
 
 
 def _from_domain(msg) -> tuple[str, str]:
@@ -115,6 +122,25 @@ def lambda_handler(event, _context):
                "group": None, "classification": "unknown_sender",
                "receipt": None, "error": None}
 
+        # Size guard BEFORE any fetch: an oversized payload is quarantined
+        # without ever loading its body into memory. Identity falls back to the
+        # S3 ETag since we deliberately never hash the (unread) bytes; the
+        # object is still recorded under parsed/ rather than silently dropped.
+        size = obj.get("size")
+        if size is not None and size > MAX_RAW_BYTES:
+            ident = (obj.get("eTag") or "oversized").strip('"')
+            out["ingest_id"] = ident
+            out["classification"] = "quarantine"
+            out["error"] = f"oversized: {size} bytes exceeds {MAX_RAW_BYTES}"
+            dest = ("parsed/" + key.split("/", 1)[-1] + "." + ident + ".json")
+            s3.put_object(
+                Bucket=bucket, Key=dest,
+                Body=json.dumps(out, ensure_ascii=False, default=str).encode(),
+                ContentType="application/json")
+            results.append({"key": key,
+                            "classification": out["classification"]})
+            continue
+
         # Infra fetch stays OUTSIDE the parse-error catch: throttling, transient
         # GetObject failures, and missing-object races must raise so Lambda
         # retries them (and, exhausted, land in the DLQ) rather than being
@@ -174,8 +200,16 @@ def lambda_handler(event, _context):
                             out["receipt"] = parsed
                     finally:
                         os.unlink(path)
-        except Exception:
-            # Only deterministic email/parser validation errors are permanent.
+        except (ValueError, KeyError, IndexError, AttributeError, TypeError,
+                email.errors.MessageError):
+            # Deterministic email/parser validation failures on THIS message
+            # body are permanent: recording parse_error and moving on is
+            # correct — a retry would fail identically. Operational failures are
+            # NOT caught here: ImportError (a broken deploy / missing parser
+            # module), OSError (temp-file/disk), and anything else unexpected
+            # propagate so Lambda retries them and, once retries are exhausted,
+            # routes the event to the DLQ instead of persisting a false
+            # parse_error and reporting success.
             out["classification"] = "parse_error"
             out["error"] = traceback.format_exc(limit=4)
 

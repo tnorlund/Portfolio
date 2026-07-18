@@ -77,6 +77,17 @@ def classify(grp: str, subject: str, parsed: Any) -> str:
                 and parsed.get("grand_total") is not None):
             return "txn_signal"
         return "non_receipt"
+    if grp == "uber" and parsed.get("_trip_summary_no_payment"):
+        # 2024+ Uber "trip summary" emails carry a fare total but state "This is
+        # not a payment receipt". Honor the parser's hint over the bare total so
+        # a non-charge is not emitted as a purchase.
+        return "non_receipt"
+    if grp == "venmo" and parsed.get("transaction_kind") in (
+            "p2p_sent", "p2p_received"):
+        # Peer-to-peer transfers are money movement, not merchant receipts. Emit
+        # them as a reconciliation signal; merchant_purchase falls through to
+        # the normal receipt path below.
+        return "txn_signal"
     if parsed.get("needs_pdf") or parsed.get("needs_ocr"):
         return "needs_ocr"
     gate = SUBJECT_DROP.get(grp)
