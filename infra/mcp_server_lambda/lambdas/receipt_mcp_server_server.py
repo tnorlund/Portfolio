@@ -531,6 +531,104 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
                 "required": ["image_id", "receipt_id", "line_id", "word_id", "label", "new_status"],
             },
         ),
+        # NOTE: keep in sync with scripts/receipt_mcp_server.py
+        Tool(
+            name="batch_update_word_labels",
+            description="""Batch-update existing ReceiptWordLabel validation statuses.
+
+This operation is dev-table-only and permits only whitelisted status
+transitions. Every live write is preceded by a JSONL audit record.
+dry_run defaults to true, and each batch is capped at 500 rows.
+
+This capability is motivated by the 2026-07-18 triage campaign, which
+processed 1,369 rows with zero bad writes.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "updates": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "image_id": {
+                                    "type": "string",
+                                    "description": "Image ID of the word",
+                                },
+                                "receipt_id": {
+                                    "type": "integer",
+                                    "description": "Receipt ID of the word",
+                                },
+                                "line_id": {
+                                    "type": "integer",
+                                    "description": "Line ID of the word",
+                                },
+                                "word_id": {
+                                    "type": "integer",
+                                    "description": "Word ID within the line",
+                                },
+                                "label": {
+                                    "type": "string",
+                                    "description": "The existing label name",
+                                },
+                                "new_status": {
+                                    "type": "string",
+                                    "enum": [
+                                        "VALID",
+                                        "INVALID",
+                                        "NEEDS_REVIEW",
+                                    ],
+                                    "description": "Whitelisted destination status",
+                                },
+                                "reasoning": {
+                                    "type": "string",
+                                    "description": "Reason for the status transition",
+                                },
+                            },
+                            "required": [
+                                "image_id",
+                                "receipt_id",
+                                "line_id",
+                                "word_id",
+                                "label",
+                                "new_status",
+                                "reasoning",
+                            ],
+                        },
+                    },
+                    "label_proposed_by": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Required audit identity for the reviewer",
+                    },
+                    "audit_path": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "JSONL path written before each live update",
+                    },
+                    "expected_old_status": {
+                        "type": "string",
+                        "enum": [
+                            "VALID",
+                            "INVALID",
+                            "NEEDS_REVIEW",
+                        ],
+                        "default": "VALID",
+                        "description": "Required current status for every row",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Pre-check without audit or writes",
+                    },
+                },
+                "required": [
+                    "updates",
+                    "label_proposed_by",
+                    "audit_path",
+                ],
+            },
+        ),
         Tool(
             name="create_word_label",
             description="""Create a NEW ReceiptWordLabel record in DynamoDB.
@@ -1397,6 +1495,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 label=arguments["label"],
                 new_status=arguments["new_status"],
                 reasoning=arguments.get("reasoning"),
+            )
+        elif name == "batch_update_word_labels":
+            result = await batch_update_word_labels_impl(
+                dynamo_client,
+                updates=arguments["updates"],
+                label_proposed_by=arguments["label_proposed_by"],
+                audit_path=arguments["audit_path"],
+                expected_old_status=arguments.get(
+                    "expected_old_status", "VALID"
+                ),
+                dry_run=arguments.get("dry_run", True),
             )
         elif name == "merge_receipts":
             result = await merge_receipts_impl(
@@ -2660,6 +2769,35 @@ async def update_word_label_impl(
 
     except Exception as e:
         logger.exception("Error updating word label")
+        return {"error": str(e)}
+
+
+async def batch_update_word_labels_impl(
+    dynamo_client,
+    updates: list[dict[str, Any]],
+    label_proposed_by: str,
+    audit_path: str,
+    expected_old_status: str = "VALID",
+    dry_run: bool = True,
+) -> dict:
+    """Apply guarded batch label transitions through the shared helper."""
+    from receipt_dynamo.data.batch_label_update import (
+        batch_update_word_labels,
+    )
+
+    try:
+        return batch_update_word_labels(
+            dynamo_client,
+            updates,
+            label_proposed_by=label_proposed_by,
+            audit_path=audit_path,
+            expected_old_status=expected_old_status,
+            dry_run=dry_run,
+        )
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        logger.exception("Error batch-updating word labels")
         return {"error": str(e)}
 
 
