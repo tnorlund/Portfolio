@@ -473,20 +473,23 @@ class CostTrackingCallback:
             self.prompt_tokens += p_tokens
             self.completion_tokens += c_tokens
 
+        call_usage = {
+            "input_tokens": p_tokens,
+            "output_tokens": c_tokens,
+            "total_tokens": t_tokens,
+            "total_cost": cost,
+        }
+
         if cost > 0:
             try:
                 from langsmith.run_helpers import get_current_run_tree
 
                 run_tree = get_current_run_tree()
                 if run_tree:
-                    run_tree.set(
-                        usage_metadata={
-                            "input_tokens": p_tokens,
-                            "output_tokens": c_tokens,
-                            "total_tokens": t_tokens,
-                            "total_cost": cost,
-                        }
-                    )
+                    # LangSmith aggregates child usage into the root trace.
+                    # Attach only this turn's usage so a multi-turn loop is
+                    # not overcounted by repeatedly adding cumulative totals.
+                    run_tree.set(usage_metadata=call_usage)
             except Exception as e:
                 logger.debug("Could not add cost to LangSmith run: %s", e)
 
@@ -499,6 +502,15 @@ class CostTrackingCallback:
                 "completion_tokens": self.completion_tokens,
                 "llm_calls": self.llm_calls,
             }
+
+    def reset(self) -> None:
+        """Reset counters before a new graph invocation."""
+        with self._lock:
+            self.total_cost = 0.0
+            self.total_tokens = 0
+            self.prompt_tokens = 0
+            self.completion_tokens = 0
+            self.llm_calls = 0
 
 
 # =============================================================================

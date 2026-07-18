@@ -9,7 +9,12 @@ import logging
 import os
 from typing import Any, Callable, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -24,7 +29,10 @@ from receipt_agent.subagents.place_finder.state import (
     ReceiptPlaceFinderState,
 )
 from receipt_agent.utils.agent_common import create_agent_node_with_retry
-from receipt_agent.utils.llm_factory import create_llm_from_settings
+from receipt_agent.utils.llm_factory import (
+    CostTrackingCallback,
+    create_llm,
+)
 
 
 # Helper function for building line IDs (matches agentic.py)
@@ -34,6 +42,84 @@ def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_env_int(
+    name: str, default: int, maximum: int, minimum: int = 1
+) -> int:
+    """Read a positive integer environment value within a safe bound."""
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        logger.warning("Invalid %s; using %d", name, default)
+        return default
+    return max(minimum, min(value, maximum))
+
+
+def _tiered_mode_enabled() -> bool:
+    """Return whether fix-place is using the constrained tiered rollout."""
+    return (
+        os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
+        == "tiered"
+    )
+
+
+def _receipt_place_recursion_limit() -> int:
+    """Constrain Tier 3 while preserving the legacy agent-mode budget."""
+    if not _tiered_mode_enabled():
+        return 100
+    return _bounded_env_int(
+        "FIX_PLACE_AGENT_RECURSION_LIMIT", 12, 12, minimum=4
+    )
+
+
+def _compact_agent_messages(messages: list[Any]) -> list[Any]:
+    """Keep the initial request plus complete recent tool-call groups."""
+    if len(messages) <= 8:
+        return list(messages)
+
+    prefix = list(messages[:2])
+    groups: list[list[Any]] = []
+    for message in messages[2:]:
+        if isinstance(message, ToolMessage):
+            if not groups or not isinstance(groups[-1][0], AIMessage):
+                continue
+            expected_ids = {
+                tool_call.get("id") for tool_call in groups[-1][0].tool_calls
+            }
+            if message.tool_call_id in expected_ids:
+                groups[-1].append(message)
+            continue
+        groups.append([message])
+
+    complete_groups = []
+    for group in groups:
+        first = group[0]
+        if isinstance(first, AIMessage) and first.tool_calls:
+            expected_ids = {
+                tool_call.get("id") for tool_call in first.tool_calls
+            }
+            result_ids = {
+                message.tool_call_id
+                for message in group[1:]
+                if isinstance(message, ToolMessage)
+            }
+            if not expected_ids.issubset(result_ids):
+                continue
+        complete_groups.append(group)
+
+    selected_groups: list[list[Any]] = []
+    selected_count = 0
+    for group in reversed(complete_groups):
+        if selected_groups and selected_count + len(group) > 6:
+            break
+        selected_groups.append(group)
+        selected_count += len(group)
+
+    compacted = [
+        message for group in reversed(selected_groups) for message in group
+    ]
+    return prefix + compacted
 
 
 # ======================================================================
@@ -355,16 +441,60 @@ def create_receipt_place_finder_graph(
     submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
-    # Create LLM with tools bound (reasoning disabled to avoid
-    # hidden cost/latency on every tool-calling step)
-    llm = create_llm_from_settings(temperature=0.0, reasoning=False)
-    llm = llm.bind_tools(tools)
+    # This graph invokes a raw bound model instead of LLMInvoker, so attach the
+    # shared OpenRouter usage callback explicitly in the runner below.
+    state_holder["cost_callback"] = CostTrackingCallback()
 
-    # Create agent node with retry logic using shared utility
-    agent_node = create_agent_node_with_retry(
-        llm=llm,
+    # Keep the model independently configurable for gradual rollout. Without
+    # the fix-place override this preserves the existing application model.
+    model = (
+        os.environ.get("FIX_PLACE_AGENT_MODEL") or settings.openrouter_model
+    )
+    base_llm = create_llm(
+        model=model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        temperature=0.0,
+        timeout=120,
+        reasoning=False,
+        stream_usage=True,
+    )
+    normal_agent_node = create_agent_node_with_retry(
+        llm=base_llm.bind_tools(tools),
         agent_name="place_finder",
     )
+    forced_submit_node = create_agent_node_with_retry(
+        llm=base_llm.bind_tools(
+            [submit_tool],
+            tool_choice="submit_place",
+        ),
+        agent_name="place_finder_final_submit",
+    )
+    constrained_tier3 = _tiered_mode_enabled()
+    max_rounds = (
+        _bounded_env_int("FIX_PLACE_AGENT_MAX_ROUNDS", 3, 3)
+        if constrained_tier3
+        else None
+    )
+
+    def agent_node(state: ReceiptPlaceFinderState) -> dict:
+        """Apply rollout limits only to the tiered fix-place path."""
+        if not constrained_tier3:
+            return normal_agent_node(state)
+
+        compact_state = state.model_copy(
+            update={"messages": _compact_agent_messages(state.messages)}
+        )
+        completed_rounds = sum(
+            isinstance(message, AIMessage) for message in state.messages
+        )
+        if max_rounds is not None and completed_rounds >= max_rounds:
+            logger.warning(
+                "Place finder reached %d rounds; forcing submit_place",
+                completed_rounds,
+            )
+            return forced_submit_node(compact_state)
+        return normal_agent_node(compact_state)
 
     # Define tool node
     tool_node = ToolNode(tools)
@@ -379,24 +509,29 @@ def create_receipt_place_finder_graph(
         # Check last message for tool calls
         if state.messages:
             last_message = state.messages[-1]
-            if isinstance(last_message, AIMessage):
-                if last_message.tool_calls:
-                    return "tools"
-                # Give it another chance if no tool calls
+            if isinstance(last_message, AIMessage) and last_message.tool_calls:
+                return "tools"
+            if not constrained_tier3:
+                if len(state.messages) > 20:
+                    logger.error(
+                        "Legacy place agent exceeded 20 messages without "
+                        "submitting; ending the stalled run"
+                    )
+                    return "end"
                 if len(state.messages) > 10:
                     logger.warning(
-                        "Agent has made many steps without submitting"
-                        " - may need reminder"
+                        "Legacy place agent has made many steps without "
+                        "submitting"
                     )
-            if len(state.messages) > 20:
-                logger.error(
-                    "Agent exceeded 20 steps without submitting"
-                    " - forcing end"
-                )
-                return "end"
             return "agent"
 
         return "agent"
+
+    def after_tools(_state: ReceiptPlaceFinderState) -> str:
+        """Stop immediately after submit_place instead of paying for another turn."""
+        return (
+            "end" if state_holder.get("place_result") is not None else "agent"
+        )
 
     # Build the graph
     workflow = StateGraph(ReceiptPlaceFinderState)
@@ -419,8 +554,11 @@ def create_receipt_place_finder_graph(
         },
     )
 
-    # After tools, go back to agent
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges(
+        "tools",
+        after_tools,
+        {"agent": "agent", "end": END},
+    )
 
     # Compile
     compiled = workflow.compile()
@@ -442,6 +580,7 @@ async def run_receipt_place_finder(
     word_embeddings: Optional[dict[str, list[float]]] = None,
     receipt_lines: Optional[list] = None,
     receipt_words: Optional[list] = None,
+    receipt_labels: Optional[list] = None,
     reason: Optional[str] = None,
 ) -> dict:
     """
@@ -458,6 +597,7 @@ async def run_receipt_place_finder(
             read)
         receipt_words: Pre-loaded receipt words (optional, avoids DynamoDB
             read)
+        receipt_labels: Pre-loaded word labels used to annotate receipt words
         reason: Why the current place data is wrong (optional hint for
             the agent)
 
@@ -482,6 +622,14 @@ async def run_receipt_place_finder(
             for line in receipt_lines
         ]
 
+    labels_by_word: dict[tuple[int, int], list[str]] = {}
+    for label in receipt_labels or []:
+        status = str(getattr(label, "validation_status", "")).upper()
+        if status.endswith("INVALID"):
+            continue
+        key = (label.line_id, label.word_id)
+        labels_by_word.setdefault(key, []).append(label.label)
+
     if receipt_words:
         # Convert ReceiptWord entities to dict format expected by tools
         words_dict = [
@@ -489,7 +637,10 @@ async def run_receipt_place_finder(
                 "line_id": word.line_id,
                 "word_id": word.word_id,
                 "text": word.text,
-                "label": getattr(word, "label", None),
+                "label": (
+                    labels_by_word.get((word.line_id, word.word_id), [None])[0]
+                ),
+                "labels": labels_by_word.get((word.line_id, word.word_id), []),
             }
             for word in receipt_words
         ]
@@ -505,6 +656,9 @@ async def run_receipt_place_finder(
         word_embeddings=word_embeddings,
     )
     state_holder["place_result"] = None
+    cost_callback = state_holder.get("cost_callback")
+    if cost_callback is not None:
+        cost_callback.reset()
 
     # Build the human message, including the reason if provided
     human_content = (
@@ -539,7 +693,7 @@ async def run_receipt_place_finder(
     # Run the workflow
     try:
         config = {
-            "recursion_limit": 100,
+            "recursion_limit": _receipt_place_recursion_limit(),
             "configurable": {
                 "thread_id": f"{image_id}#{receipt_id}",
             },
@@ -552,6 +706,9 @@ async def run_receipt_place_finder(
                 "receipt_id": receipt_id,
                 "workflow": "receipt_place_finder",
             }
+
+        if cost_callback is not None:
+            config["callbacks"] = [cost_callback.handler]
 
         await graph.ainvoke(initial_state, config=config)
 

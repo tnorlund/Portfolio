@@ -31,9 +31,14 @@ from receipt_agent.agents.agentic.tools import (
 from receipt_agent.agents.place_id_finder.state import PlaceIdFinderState
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.agent_common import create_agent_node_with_retry
-from receipt_agent.utils.llm_factory import create_llm
+from receipt_agent.utils.llm_factory import CostTrackingCallback, create_llm
 
 logger = logging.getLogger(__name__)
+
+
+def _agent_recursion_limit() -> int:
+    """Preserve the upload place-ID finder's established execution budget."""
+    return 100
 
 
 # ==============================================================================
@@ -297,6 +302,10 @@ def create_place_id_finder_graph(
     submit_tool = create_place_id_submission_tool(state_holder)
     tools.append(submit_tool)
 
+    # This graph invokes a raw bound model instead of LLMInvoker, so attach the
+    # shared OpenRouter usage callback explicitly in run_place_id_finder().
+    state_holder["cost_callback"] = CostTrackingCallback()
+
     # Create LLM with tools bound (uses OpenRouter)
     llm = create_llm(
         model=settings.openrouter_model,
@@ -304,6 +313,7 @@ def create_place_id_finder_graph(
         api_key=settings.openrouter_api_key.get_secret_value(),
         temperature=0.0,
         timeout=120,
+        stream_usage=True,
     ).bind_tools(tools)
 
     # Create agent node with retry logic and robust logging
@@ -347,6 +357,14 @@ def create_place_id_finder_graph(
         # If no messages or no tool calls, go back to agent
         return "agent"
 
+    def after_tools(_state: PlaceIdFinderState) -> str:
+        """Stop immediately after submit_place_id succeeds."""
+        return (
+            "end"
+            if state_holder.get("place_id_result") is not None
+            else "agent"
+        )
+
     # Build the graph
     workflow = StateGraph(PlaceIdFinderState)
 
@@ -368,8 +386,11 @@ def create_place_id_finder_graph(
         },
     )
 
-    # After tools, go back to agent
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges(
+        "tools",
+        after_tools,
+        {"agent": "agent", "end": END},
+    )
 
     # Compile
     compiled = workflow.compile()
@@ -417,6 +438,9 @@ async def run_place_id_finder(
         word_embeddings=word_embeddings,
     )
     state_holder["place_id_result"] = None
+    cost_callback = state_holder.get("cost_callback")
+    if cost_callback is not None:
+        cost_callback.reset()
 
     # Create initial state
     initial_state = PlaceIdFinderState(
@@ -441,7 +465,7 @@ async def run_place_id_finder(
     try:
         # Configure LangSmith tracing if available
         config: dict[str, Any] = {
-            "recursion_limit": 100,  # Increased to prevent early termination
+            "recursion_limit": _agent_recursion_limit(),
             "configurable": {
                 "thread_id": f"{image_id}#{receipt_id}",  # Unique thread ID for this receipt
             },
@@ -459,11 +483,15 @@ async def run_place_id_finder(
                 "LANGCHAIN_PROJECT", "receipt-label-validation"
             )
             config["run_name"] = "place_id_finder_agent"
-            config["tags"] = ["place_id_finder", "tier2"]
+            config["tags"] = ["place_id_finder", "tier3"]
 
-        # Pass callbacks for parent trace context (enables nested traces)
-        if callbacks:
-            config["callbacks"] = callbacks
+        # Pass callbacks for parent trace context and always include the shared
+        # cost handler. Graph-level callbacks propagate to every LLM turn.
+        configured_callbacks = list(callbacks or [])
+        if cost_callback is not None:
+            configured_callbacks.append(cost_callback.handler)
+        if configured_callbacks:
+            config["callbacks"] = configured_callbacks
 
         _ = await graph.ainvoke(initial_state, config=config)
 

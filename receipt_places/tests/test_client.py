@@ -133,6 +133,58 @@ class TestSearchByPhone:
         result = places_client.search_by_phone("999-999-9999")
         assert result is None
 
+    @responses.activate
+    def test_search_by_phone_rejects_unrelated_text_fallback(
+        self,
+        places_client: PlacesClient,
+    ) -> None:
+        """A broad text result must not be cached as an exact phone match."""
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+            json={"status": "ZERO_RESULTS", "candidates": []},
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/place/textsearch/json",
+            json={
+                "status": "OK",
+                "results": [
+                    {
+                        "place_id": "wrong-place",
+                        "name": "Unrelated Business",
+                        "formatted_address": "999 Wrong St, City, ST 12345",
+                        "types": ["roofing_contractor"],
+                    }
+                ],
+            },
+            status=200,
+        )
+        wrong_details = dict(SAMPLE_DETAILS_RESPONSE["result"])
+        wrong_details.update(
+            {
+                "place_id": "wrong-place",
+                "name": "Unrelated Business",
+                "formatted_phone_number": "(702) 500-0670",
+                "international_phone_number": "+1 702-500-0670",
+            }
+        )
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/place/details/json",
+            json={"status": "OK", "result": wrong_details},
+            status=200,
+        )
+
+        result = places_client.search_by_phone("702-728-5838")
+
+        assert result is None
+        assert (
+            places_client._cache.get("PHONE", "7027285838")  # noqa: SLF001
+            is None
+        )
+
 
 class TestSearchByAddress:
     """Test address search functionality."""
@@ -317,6 +369,40 @@ class TestGetPlaceDetails:
         assert result.place_id == "ChIJtest123"
         assert result.name == "Test Business"
         assert result.formatted_phone_number == "(555) 123-4567"
+
+    @responses.activate
+    def test_get_place_details_allows_missing_optional_fields(
+        self,
+        places_client: PlacesClient,
+    ) -> None:
+        """Businesses need not publish phone, website, hours, or ratings."""
+        required = {
+            "place_id",
+            "name",
+            "formatted_address",
+            "geometry",
+            "types",
+        }
+        responses.add(
+            responses.GET,
+            "https://maps.googleapis.com/maps/api/place/details/json",
+            json={
+                "status": "OK",
+                "result": {
+                    key: value
+                    for key, value in SAMPLE_DETAILS_RESPONSE["result"].items()
+                    if key in required
+                },
+            },
+            status=200,
+        )
+
+        result = places_client.get_place_details("ChIJtest123")
+
+        assert result is not None
+        assert result.place_id == "ChIJtest123"
+        assert result.formatted_phone_number is None
+        assert result.website is None
 
     def test_get_place_details_empty(
         self,

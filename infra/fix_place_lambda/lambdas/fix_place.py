@@ -34,6 +34,10 @@ Environment Variables:
     CHROMA_CLOUD_API_KEY: Chroma Cloud API key
     CHROMA_CLOUD_TENANT: Chroma Cloud tenant ID
     CHROMA_CLOUD_DATABASE: Chroma Cloud database name
+    FIX_PLACE_RESOLUTION_MODE: "agent" or "tiered"
+    FIX_PLACE_TIER2_MODEL: Cheap structured picker model
+    FIX_PLACE_AGENT_MODEL: Tier 3 tool-calling model
+    FIX_PLACE_AGENT_RECURSION_LIMIT: Hard graph step cap (maximum 12)
 """
 
 import asyncio
@@ -108,8 +112,8 @@ async def _run_place_finder(
     image_id: str,
     receipt_id: int,
     reason: str,
-) -> tuple[dict[str, Any], Any]:
-    """Run the LangGraph place finder agent for a single receipt."""
+) -> tuple[dict[str, Any], Any, dict[str, Any]]:
+    """Resolve one receipt through deterministic, picker, then agent tiers."""
     # pylint: disable=import-outside-toplevel
     from receipt_agent.clients.factory import (
         create_embed_fn,
@@ -124,8 +128,26 @@ async def _run_place_finder(
 
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
     dynamo_client = DynamoClient(table_name=table_name)
+    details = dynamo_client.get_receipt_details(image_id, receipt_id)
+    places_client = create_places_client()
+    tiered_stats: dict[str, Any] = {}
 
-    # Create Chroma Cloud client
+    resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
+    if resolution_mode == "tiered":
+        from receipt_agent.subagents.place_finder.tiered import (
+            resolve_tiered_place,
+        )
+
+        tiered_result, tiered_stats = await resolve_tiered_place(details, places_client)
+        if tiered_result is not None:
+            return tiered_result, details, tiered_stats
+    elif resolution_mode != "agent":
+        logger.warning(
+            "Unknown FIX_PLACE_RESOLUTION_MODE=%s; using agent fallback",
+            resolution_mode,
+        )
+
+    # Tier 3 only: initialize the clients needed by the full agent.
     cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "")
     cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT")
     cloud_database = os.environ.get("CHROMA_CLOUD_DATABASE")
@@ -138,7 +160,6 @@ async def _run_place_finder(
     )
 
     embed_fn = create_embed_fn()
-    places_client = create_places_client()
 
     graph, state_holder = create_receipt_place_finder_graph(
         dynamo_client=dynamo_client,
@@ -147,9 +168,6 @@ async def _run_place_finder(
         places_api=places_client,
     )
 
-    # Get receipt details for pre-loading
-    details = dynamo_client.get_receipt_details(image_id, receipt_id)
-
     result = await run_receipt_place_finder(
         graph=graph,
         state_holder=state_holder,
@@ -157,10 +175,16 @@ async def _run_place_finder(
         receipt_id=receipt_id,
         receipt_lines=details.lines,
         receipt_words=details.words,
+        receipt_labels=details.labels,
         reason=reason,
     )
+    result["resolution_tier"] = "tier3"
 
-    return result, details
+    cost_callback = state_holder.get("cost_callback")
+    llm_stats = cost_callback.get_stats() if cost_callback else {}
+    for key, value in tiered_stats.items():
+        llm_stats[key] = llm_stats.get(key, 0) + value
+    return result, details, llm_stats
 
 
 def handler(  # pylint: disable=unused-argument
@@ -176,10 +200,19 @@ def handler(  # pylint: disable=unused-argument
     4. Submit place data with confidence scoring
     5. Update ReceiptPlace with corrected data
     """
+    image_id = event.get("image_id")
+    receipt_id = event.get("receipt_id")
+    invocation_llm_stats = {
+        "total_cost": 0.0,
+        "llm_calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
+    resolution_tier = "none"
+    resolution_succeeded = False
     try:
         # Validate input
-        image_id = event.get("image_id")
-        receipt_id = event.get("receipt_id")
         reason = event.get("reason", "User reported incorrect merchant")
 
         if not image_id or receipt_id is None:
@@ -197,31 +230,35 @@ def handler(  # pylint: disable=unused-argument
 
         _propagate_env_vars()
 
-        # The agent occasionally returns found=true with merchant_name but
-        # empty/None place_id. place_id is the canonical key — without it
-        # we can't write a usable ReceiptPlace. Retry up to MAX_ATTEMPTS,
-        # augmenting the reason on each retry so the agent knows to find
-        # the Google Places place_id explicitly.
-        MAX_ATTEMPTS = 3
+        # The legacy agent occasionally returns found=true with merchant_name
+        # but no place_id, so retain its historical retry behavior. Tiered
+        # mode already contains a bounded agent and a single structured picker;
+        # rerunning the whole cascade would multiply both limits and cost.
+        resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
+        max_attempts = 1 if resolution_mode == "tiered" else 3
         agent_result = None
         details = None
         attempted_reason = reason
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            agent_result, details = _loop.run_until_complete(
+        for attempt in range(1, max_attempts + 1):
+            agent_result, details, attempt_llm_stats = _loop.run_until_complete(
                 _run_place_finder(image_id, receipt_id, attempted_reason)
             )
+            for key in invocation_llm_stats:
+                invocation_llm_stats[key] += attempt_llm_stats.get(key, 0)
+            resolution_tier = agent_result.get("resolution_tier", "tier3")
             if (
                 agent_result
                 and agent_result.get("found")
                 and agent_result.get("merchant_name")
                 and agent_result.get("place_id")
             ):
+                resolution_succeeded = True
                 break
             logger.warning(
                 "place_finder attempt %d/%d incomplete: found=%s merchant=%s "
                 "place_id=%s",
                 attempt,
-                MAX_ATTEMPTS,
+                max_attempts,
                 bool(agent_result and agent_result.get("found")),
                 bool(agent_result and agent_result.get("merchant_name")),
                 bool(agent_result and agent_result.get("place_id")),
@@ -244,7 +281,7 @@ def handler(  # pylint: disable=unused-argument
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
-                "attempts": MAX_ATTEMPTS,
+                "attempts": max_attempts,
                 "reasoning": (
                     agent_result.get("reasoning", "") if agent_result else ""
                 ),
@@ -254,9 +291,7 @@ def handler(  # pylint: disable=unused-argument
         if not agent_result.get("merchant_name"):
             return {
                 "success": False,
-                "error": (
-                    "Agent found a place but merchant_name " "is missing"
-                ),
+                "error": ("Agent found a place but merchant_name " "is missing"),
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
@@ -272,12 +307,12 @@ def handler(  # pylint: disable=unused-argument
                 "error": (
                     f"Agent found a place named "
                     f"'{agent_result.get('merchant_name')}' but no "
-                    f"Google Places place_id after {MAX_ATTEMPTS} attempts"
+                    f"Google Places place_id after {max_attempts} attempts"
                 ),
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
-                "attempts": MAX_ATTEMPTS,
+                "attempts": max_attempts,
                 "reasoning": agent_result.get("reasoning", ""),
                 "fields_found": agent_result.get("fields_found", []),
             }
@@ -302,6 +337,7 @@ def handler(  # pylint: disable=unused-argument
             "reasoning": agent_result.get("reasoning", ""),
             "fields_found": agent_result.get("fields_found", []),
             "sources": agent_result.get("sources", {}),
+            "resolution_tier": resolution_tier,
         }
 
         logger.info("Successfully fixed place: %s", response)
@@ -317,6 +353,25 @@ def handler(  # pylint: disable=unused-argument
         }
 
     finally:
+        logger.info(
+            "fix_place_resolution image_id=%s receipt_id=%s tier=%s " "success=%s",
+            image_id,
+            receipt_id,
+            resolution_tier,
+            resolution_succeeded,
+        )
+        logger.info(
+            "fix_place_llm_usage image_id=%s receipt_id=%s cost_usd=%.8f "
+            "llm_calls=%d prompt_tokens=%d completion_tokens=%d "
+            "total_tokens=%d",
+            image_id,
+            receipt_id,
+            invocation_llm_stats["total_cost"],
+            invocation_llm_stats["llm_calls"],
+            invocation_llm_stats["prompt_tokens"],
+            invocation_llm_stats["completion_tokens"],
+            invocation_llm_stats["total_tokens"],
+        )
         flush_langsmith_traces()
 
 
@@ -347,15 +402,14 @@ def _update_receipt_place(
             current_place.merchant_name = agent_result["merchant_name"]
         if agent_result.get("address"):
             current_place.formatted_address = agent_result["address"]
-        if agent_result.get("phone_number"):
-            current_place.phone_number = agent_result["phone_number"]
+        phone_number = agent_result.get("phone_number")
+        if phone_number is not None:
+            current_place.phone_number = phone_number
 
         current_place.confidence = confidence
         current_place.reasoning = reasoning
         current_place.validated_by = "INFERENCE"
-        current_place.validation_status = (
-            "MATCHED" if confidence >= 0.8 else "UNSURE"
-        )
+        current_place.validation_status = "MATCHED" if confidence >= 0.8 else "UNSURE"
         current_place.timestamp = now
 
         dynamo_client.update_receipt_place(current_place)

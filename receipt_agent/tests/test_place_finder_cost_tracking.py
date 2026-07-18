@@ -1,0 +1,54 @@
+"""Cost visibility tests for the live fix-place graph runner."""
+
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from receipt_agent.subagents.place_finder.graph import (
+    run_receipt_place_finder,
+)
+from receipt_agent.utils.llm_factory import CostTrackingCallback
+
+
+def test_fix_place_runner_attaches_cost_callback_to_graph(monkeypatch):
+    """The graph-level handler must propagate to every tool-calling turn."""
+    monkeypatch.setenv("FIX_PLACE_RESOLUTION_MODE", "tiered")
+    graph = AsyncMock()
+    callback = CostTrackingCallback()
+    state_holder = {"cost_callback": callback}
+
+    async def complete_with_result(_state, config):
+        state_holder["place_result"] = {
+            "found": True,
+            "place_id": "ChIJ-test",
+            "merchant_name": "Test Merchant",
+            "confidence": 0.99,
+            "fields_found": ["place_id", "merchant_name"],
+        }
+        return config
+
+    graph.ainvoke.side_effect = complete_with_result
+
+    result = asyncio.run(
+        run_receipt_place_finder(
+            graph=graph,
+            state_holder=state_holder,
+            image_id="image-1",
+            receipt_id=1,
+            receipt_words=[SimpleNamespace(line_id=2, word_id=3, text="Test")],
+            receipt_labels=[
+                SimpleNamespace(
+                    line_id=2,
+                    word_id=3,
+                    label="MERCHANT_NAME",
+                    validation_status="VALID",
+                )
+            ],
+        )
+    )
+
+    assert result["found"] is True
+    config = graph.ainvoke.call_args.kwargs["config"]
+    assert callback.handler in config["callbacks"]
+    assert config["recursion_limit"] == 12
+    assert state_holder["context"].words[0]["label"] == "MERCHANT_NAME"

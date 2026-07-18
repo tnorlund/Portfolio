@@ -285,6 +285,24 @@ class PlacesClient:
         if not details:
             return None
 
+        returned_phone = (
+            details.formatted_phone_number
+            or details.international_phone_number
+            or ""
+        )
+        returned_digits = self._extract_digits(returned_phone)
+        if not returned_digits or (
+            returned_digits[-10:] != digits[-10:]
+            if len(returned_digits) >= 10 and len(digits) >= 10
+            else returned_digits != digits
+        ):
+            logger.warning(
+                "Rejecting phone text-search fallback: returned place phone "
+                "does not match %s",
+                phone_number,
+            )
+            return None
+
         # Cache with phone digits as key
         details_response = {
             "status": "OK",
@@ -544,7 +562,19 @@ class PlacesClient:
                 "user_ratings_total",
             ]
 
-            expected_fields = set(fields)
+            # Google legitimately omits optional requested fields (for
+            # example phone, website, hours, or ratings). Requiring every
+            # field made otherwise valid address/phone results disappear from
+            # the fix-place cascade. Keep the quality gate on the stable
+            # identity and location fields; optional enrichment remains typed
+            # as ``None`` when Google does not return it.
+            expected_fields = {
+                "place_id",
+                "name",
+                "formatted_address",
+                "geometry",
+                "types",
+            }
 
             data = self._make_request(
                 "details/json",
