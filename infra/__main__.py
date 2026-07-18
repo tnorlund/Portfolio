@@ -1594,3 +1594,16 @@ if hasattr(api_gateway, "api"):
         lambda_function=qa_viz_cache.api_lambda,
         permission_name="qa_viz_lambda_permission",
     )
+
+
+# Inbound email receipt pipeline (SES -> S3 -> parser Lambda -> S3 parsed/).
+# Gated off by default: enable per-stack with
+#   pulumi config set portfolio:email_receipt_inbox_enabled true
+# CAUTION: activates the account's SES receipt rule set (one active per
+# account+region) — see email_receipt_inbox/infrastructure.py.
+if portfolio_config.get_bool("email_receipt_inbox_enabled"):
+    from email_receipt_inbox import EmailReceiptInbox
+
+    email_inbox = EmailReceiptInbox("email-receipt-inbox")
+    pulumi.export("email_receipt_inbox_address", email_inbox.address)
+    pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
