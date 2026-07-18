@@ -817,7 +817,7 @@
   ],
   "source": {
     "core_label_row_count": 28329,
-    "corpus_sha256": "94f12973bc6886c909f7b0d8d723d340f941e52ec4cd814a96d4163cd9549f41",
+    "corpus_sha256": "4597ea00a415520794283e06ab01f0eab0f259301e973a033ea758b969a19fe3",
     "legacy_valid_section_rows_excluded": 0,
     "receipts_with_valid_labels": 813,
     "receipts_with_valid_sections_and_labels": 794,

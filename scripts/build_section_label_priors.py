@@ -151,8 +151,8 @@ def _line_ids(item: dict[str, Any]) -> set[int]:
 
 def _label_identity(
     item: dict[str, Any],
-) -> Optional[tuple[str, int, int, str]]:
-    """Parse image, receipt, line, and label from a GSI3 sort key."""
+) -> Optional[tuple[str, int, int, int, str]]:
+    """Parse image, receipt, line, word, and label from a GSI3 sort key."""
     sort_key = _string_attribute(item, "GSI3SK")
     match = _LABEL_SK_RE.match(sort_key)
     if match is None:
@@ -161,6 +161,7 @@ def _label_identity(
         match.group("image"),
         int(match.group("receipt")),
         int(match.group("line")),
+        int(match.group("word")),
         match.group("label"),
     )
 
@@ -228,7 +229,7 @@ def _build_model(
         if identity is None:
             continue
 
-        image_id, receipt_id, line_id, label = identity
+        image_id, receipt_id, line_id, word_id, label = identity
         receipts_with_valid_labels.add((image_id, receipt_id))
         if label not in CORE_LABELS:
             continue
@@ -249,6 +250,7 @@ def _build_model(
                         image_id,
                         receipt_id,
                         line_id,
+                        word_id,
                         label,
                         section_type,
                     ]
@@ -262,6 +264,7 @@ def _build_model(
                     image_id,
                     receipt_id,
                     line_id,
+                    word_id,
                     label,
                     "<line-unsectioned>",
                 ]

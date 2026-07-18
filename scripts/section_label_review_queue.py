@@ -470,7 +470,13 @@ def main() -> int:
 
     priors_bytes = args.priors.read_bytes()
     priors_sha256 = hashlib.sha256(priors_bytes).hexdigest()
-    priors = gate.load_priors(args.priors)
+    # Parse the exact bytes just hashed so priors_sha256 always describes
+    # the priors actually evaluated, even if the file is replaced meanwhile.
+    priors = json.loads(priors_bytes)
+    if priors.get("source_environment") != "dev":
+        raise SystemExit(
+            "Refusing priors artifact whose source_environment is not 'dev'"
+        )
 
     client = boto3.client("dynamodb", region_name=AWS_REGION)
     section_items = _query_all(
