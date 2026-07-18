@@ -78,14 +78,20 @@ def build_judging_artifacts(judge_data: dict, out_dir: str) -> tuple[str, str]:
     packet_dir = os.path.join(
         os.path.abspath(out_dir), "judging", judge_data["packet_id"]
     )
-    line_path = os.path.join(packet_dir, "line_x4.png")
+    # Small-cap lines lose their dot structure at x4 — the Costco b1 gate
+    # showed codex misreading <25px-cap dot-matrix as proportional sans.
+    # x8 keeps per-dot detail visible at exactly the sizes where it
+    # matters; the factor is derived from the blind context only.
+    cap_px = judge_data["context"].get("cap_px")
+    line_scale = 8 if cap_px is not None and cap_px < 25 else 4
+    line_path = os.path.join(packet_dir, f"line_x{line_scale}.png")
     letters_path = os.path.join(packet_dir, "letters_x8.png")
 
     source_line = _safe_crop_path(out_dir, judge_data["line_crop"]["path"])
     with Image.open(source_line) as image:
         line = image.convert("L")
         enlarged = line.resize(
-            (line.width * 4, line.height * 4),
+            (line.width * line_scale, line.height * line_scale),
             resample=Image.Resampling.NEAREST,
         )
         _write_immutable_bytes(line_path, _png_bytes(enlarged))
@@ -151,6 +157,13 @@ def build_prompt(
                 "and (b) a horizontal contact sheet of its per-letter crops "
                 "in reading order."
             ),
+            (
+                "Look closely at per-letter DOT CONSTRUCTION in the contact "
+                "sheet: receipt printers build glyphs from discrete dots on "
+                "a fixed cell grid. Dotted strokes + uniform advance width "
+                "mean a monospaced printer face even when the line crop "
+                "looks smooth or proportional at a glance."
+            ),
             "Blind judge input:\n" + canonical_json(judge_data),
             (
                 "tier is DERIVED from the provided geometry: compare cap_px "
@@ -206,18 +219,21 @@ def _last_json_object(text: str) -> dict | None:
     return min(ending_latest, key=lambda item: item[1])[2]
 
 
-def extract_verdict(judge: str, stdout: str) -> dict | None:
+def extract_verdict(judge: str, stdout: str) -> tuple[dict | None, float]:
+    """Return (verdict, call_cost_usd); cost is 0.0 when not reported."""
     if judge == "codex":
-        return _last_json_object(stdout)
+        return _last_json_object(stdout), 0.0
     try:
         document = json.loads(stdout)
     except (json.JSONDecodeError, TypeError):
-        return None
+        return None, 0.0
     if not isinstance(document, dict) or not isinstance(
         document.get("text"), str
     ):
-        return None
-    return _last_json_object(document["text"])
+        return None, 0.0
+    cost = document.get("total_cost_usd")
+    cost_usd = float(cost) if isinstance(cost, (int, float)) else 0.0
+    return _last_json_object(document["text"]), cost_usd
 
 
 def validate_verdict(
@@ -262,7 +278,7 @@ def _invoke_judge(
     line_path: str,
     letters_path: str,
     timeout: float,
-) -> tuple[dict | None, str | None]:
+) -> tuple[dict | None, str | None, float]:
     if judge == "codex":
         command = [
             "codex",
@@ -281,15 +297,19 @@ def _invoke_judge(
     try:
         completed = _run_subprocess(command, timeout)
     except subprocess.TimeoutExpired:
-        return None, f"judge timed out after {timeout:g} seconds"
+        return None, f"judge timed out after {timeout:g} seconds", 0.0
     except OSError as exc:
-        return None, f"judge process failed: {exc}"
-    verdict = extract_verdict(judge, completed.stdout)
+        return None, f"judge process failed: {exc}", 0.0
+    verdict, cost_usd = extract_verdict(judge, completed.stdout)
     if verdict is None:
         detail = completed.stderr.strip()
         if detail:
-            return None, f"no verdict in stdout; stderr: {detail[:300]}"
-    return verdict, None
+            return (
+                None,
+                f"no verdict in stdout; stderr: {detail[:300]}",
+                cost_usd,
+            )
+    return verdict, None, cost_usd
 
 
 def _runner_abstain(packet_id: str, judge: str, content_hash: str) -> dict:
@@ -327,6 +347,7 @@ def judge_packet(
     verdict = None
     error = None
     attempts = 0
+    cost_usd = 0.0
     for attempts in range(1, retry + 2):
         attempt_prompt = prompt
         if error is not None:
@@ -335,9 +356,10 @@ def judge_packet(
                 f"{error}. Return only the corrected JSON object with no "
                 "text after it."
             )
-        verdict, invocation_error = _invoke_judge(
+        verdict, invocation_error, attempt_cost = _invoke_judge(
             judge, attempt_prompt, line_path, letters_path, timeout
         )
+        cost_usd += attempt_cost
         error = invocation_error or validate_verdict(
             verdict, schema, blind_input["packet_id"], judge, content_hash
         )
@@ -354,6 +376,7 @@ def judge_packet(
         "runner_abstain": runner_abstain,
         "attempts": attempts,
         "elapsed_s": round(time.monotonic() - started, 1),
+        "cost_usd": round(cost_usd, 6),
     }
 
 
@@ -503,12 +526,16 @@ def run(args) -> dict:
             else 0.0
         ),
         "total_wall_s": round(time.monotonic() - wall_started, 1),
+        "total_cost_usd": round(
+            sum(float(row.get("cost_usd", 0.0)) for row in selected_rows), 4
+        ),
         "artifact": artifact_path,
     }
     print(
         "judged={judged} runner_abstains={runner_abstains} "
         "judge_abstains={judge_abstains} mean_elapsed_s={mean_elapsed_s:.1f} "
-        "total_wall_s={total_wall_s:.1f}".format(**summary)
+        "total_wall_s={total_wall_s:.1f} "
+        "total_cost_usd={total_cost_usd}".format(**summary)
     )
     print(f"verdicts={artifact_path}")
     return summary

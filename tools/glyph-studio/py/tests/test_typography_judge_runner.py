@@ -159,13 +159,15 @@ def test_json_extraction_from_codex_and_grok_transcripts():
         + canonical_json(verdict)
         + "\n"
     )
-    assert tjr.extract_verdict("codex", codex_stdout) == verdict
+    assert tjr.extract_verdict("codex", codex_stdout) == (verdict, 0.0)
 
     reply = "analysis before answer\n" + canonical_json(verdict)
-    grok_stdout = json.dumps({"text": reply, "usage": {"tokens": 5}})
-    assert tjr.extract_verdict("grok", grok_stdout) == verdict
-    assert tjr.extract_verdict("codex", "garbage") is None
-    assert tjr.extract_verdict("grok", "not JSON") is None
+    grok_stdout = json.dumps(
+        {"text": reply, "usage": {"tokens": 5}, "total_cost_usd": 0.0421}
+    )
+    assert tjr.extract_verdict("grok", grok_stdout) == (verdict, 0.0421)
+    assert tjr.extract_verdict("codex", "garbage") == (None, 0.0)
+    assert tjr.extract_verdict("grok", "not JSON") == (None, 0.0)
 
 
 def test_wrong_identity_retries_then_records_runner_abstain(
@@ -238,14 +240,26 @@ def test_contact_sheet_and_line_upscale_are_deterministic(tmp_path):
     second = (Path(line_path).read_bytes(), Path(sheet_path).read_bytes())
     assert first == second
 
+    # cap_px 12 < 25 -> the small-cap protocol fix upscales the line x8.
+    assert line_path.endswith("line_x8.png")
     with Image.open(line_path) as image:
-        assert image.size == (12, 8)
+        assert image.size == (24, 16)
     with Image.open(sheet_path) as image:
         # 2*8 + 1*8 + one fixed 16px gutter, bottom-aligned at 24px.
         assert image.size == (40, 24)
         assert image.getpixel((0, 0)) == 255
         assert image.getpixel((0, 8)) == 0
         assert image.getpixel((20, 12)) == 255
+
+    # A large-cap line keeps the x4 factor (only small caps need x8).
+    big = _packet(tmp_path, _PID2, "large", 0.0)
+    big["features"]["cap_px"] = 40.0
+    big_line, _ = tjr.build_judging_artifacts(
+        tjr.judge_input(big), str(tmp_path)
+    )
+    assert big_line.endswith("line_x4.png")
+    with Image.open(big_line) as image:
+        assert image.size == (12, 8)
 
 
 def test_prompt_is_blind_to_packet_merchant_and_slug(tmp_path):

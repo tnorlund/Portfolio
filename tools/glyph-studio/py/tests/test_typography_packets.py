@@ -298,6 +298,7 @@ def _args(out_dir: Path, max_lines: int = 25) -> SimpleNamespace:
         min_letters=1,
         max_overlaps=2,
         contamination=0.2,
+        max_crop_cap_ratio=3.0,
         out_dir=str(out_dir),
         table="Table",
     )

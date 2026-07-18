@@ -433,6 +433,7 @@ def generate_packets(
         measured_lines = 0
         measured_letters = 0
         contaminated = 0
+        misgrouped = 0
         for receipt in receipts:
             lines = receipt["lines"]
             body_cap, body_stroke = assign_tiers(lines)
@@ -440,6 +441,21 @@ def generate_packets(
             measured_letters += sum(line["n_letters"] for line in lines)
             for line in sorted(lines, key=lambda item: item["index"]):
                 if line["n_letters"] < args.min_letters:
+                    continue
+                # A crop much taller than its own cap height means the
+                # y-center grouping merged several physical lines (seen in
+                # Costco b1: one 5-line crop reached a judge). Never packet
+                # such crops; count and report them.
+                cap = line.get("cap_px")
+                crop_h = line["line_crop"].shape[0]
+                if cap and crop_h > args.max_crop_cap_ratio * cap:
+                    misgrouped += 1
+                    print(
+                        f"  [misgroup] {receipt['image_id'][:8]}"
+                        f"#{receipt['receipt_id']} line {line['index']}: "
+                        f"crop_h={crop_h} > "
+                        f"{args.max_crop_cap_ratio:g}x cap={cap}"
+                    )
                     continue
                 if len(merchant_packets) >= args.max_lines:
                     continue
@@ -459,6 +475,7 @@ def generate_packets(
             "merchant": merchant,
             "accepted": len(receipts),
             "vetted_out": vetted_out,
+            "misgrouped_rejected": misgrouped,
             "packets": len(merchant_packets),
             "lines": measured_lines,
             "letters": measured_letters,
@@ -493,6 +510,7 @@ def generate_packets(
         "min_letters": args.min_letters,
         "max_overlaps": args.max_overlaps,
         "contamination_max": args.contamination,
+        "max_crop_cap_ratio": args.max_crop_cap_ratio,
         "table": args.table,
         "merchants": [
             f"{merchant}:{slug}"
@@ -548,6 +566,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--contamination", type=_fraction, default=CONTAMINATION_MAX
     )
+    parser.add_argument("--max-crop-cap-ratio", type=float, default=3.0)
     parser.add_argument(
         "--out-dir",
         default=os.path.join(_ROOT, ".out", "typography_packets"),
