@@ -57,8 +57,10 @@ def _write_json(path: Path, value: Any) -> None:
 def test_upload_manifest_requires_claude_a_and_post_freeze_receipts() -> None:
     manifest = _upload_manifest()
 
-    receipts = shadow._validate_upload_manifest(  # pylint: disable=protected-access
-        manifest, corrected_committed_at=_COMMITTED_AT
+    receipts = (
+        shadow._validate_upload_manifest(  # pylint: disable=protected-access
+            manifest, corrected_committed_at=_COMMITTED_AT
+        )
     )
 
     assert len(receipts) == 1
@@ -81,8 +83,10 @@ def test_upload_manifest_rejects_pre_freeze_receipt() -> None:
 
 def test_truth_lock_must_be_claude_b_and_bind_exact_manifest() -> None:
     upload_sha256 = "a" * 64
-    receipts = shadow._validate_upload_manifest(  # pylint: disable=protected-access
-        _upload_manifest(), corrected_committed_at=_COMMITTED_AT
+    receipts = (
+        shadow._validate_upload_manifest(  # pylint: disable=protected-access
+            _upload_manifest(), corrected_committed_at=_COMMITTED_AT
+        )
     )
     truth = _truth_lock(upload_sha256)
 
@@ -133,11 +137,15 @@ def test_run_once_does_not_create_state_before_truth_exists(
     assert not (artifact_dir / shadow.RUN_STATE).exists()
 
 
-def test_existing_run_state_prevents_any_second_attempt(tmp_path: Path) -> None:
+def test_existing_run_state_prevents_any_second_attempt(
+    tmp_path: Path,
+) -> None:
     (tmp_path / shadow.RUN_STATE).write_text("{}\n", encoding="utf-8")
 
     with pytest.raises(FileExistsError, match="run-once refusal"):
-        shadow._assert_no_prior_run(tmp_path)  # pylint: disable=protected-access
+        shadow._assert_no_prior_run(
+            tmp_path
+        )  # pylint: disable=protected-access
 
 
 def test_candidate_environment_drops_python_checkout_controls(
@@ -148,7 +156,9 @@ def test_candidate_environment_drops_python_checkout_controls(
     monkeypatch.setenv("VIRTUAL_ENV", "/another/venv")
     monkeypatch.setenv("AWS_PROFILE", "dev-readonly")
 
-    environment = shadow._candidate_environment()  # pylint: disable=protected-access
+    environment = (
+        shadow._candidate_environment()
+    )  # pylint: disable=protected-access
 
     assert "PYTHONPATH" not in environment
     assert "PYTHONHOME" not in environment
@@ -177,8 +187,10 @@ def test_nested_claude_a_intake_manifest_is_supported() -> None:
         ],
     }
 
-    receipts = shadow._validate_upload_manifest(  # pylint: disable=protected-access
-        manifest, corrected_committed_at=_COMMITTED_AT
+    receipts = (
+        shadow._validate_upload_manifest(  # pylint: disable=protected-access
+            manifest, corrected_committed_at=_COMMITTED_AT
+        )
     )
 
     assert [(item["image_id"], item["receipt_id"]) for item in receipts] == [
@@ -188,8 +200,10 @@ def test_nested_claude_a_intake_manifest_is_supported() -> None:
 
 def test_ambiguous_truth_requires_note_and_other_remains_scored() -> None:
     upload_sha256 = "a" * 64
-    receipts = shadow._validate_upload_manifest(  # pylint: disable=protected-access
-        _upload_manifest(), corrected_committed_at=_COMMITTED_AT
+    receipts = (
+        shadow._validate_upload_manifest(  # pylint: disable=protected-access
+            _upload_manifest(), corrected_committed_at=_COMMITTED_AT
+        )
     )
     truth = _truth_lock(upload_sha256)
     truth["receipts"][0]["rows"].extend(
@@ -203,10 +217,12 @@ def test_ambiguous_truth_requires_note_and_other_remains_scored() -> None:
         ]
     )
 
-    normalized, _ = shadow._validate_truth_lock(  # pylint: disable=protected-access
-        truth,
-        upload_sha256=upload_sha256,
-        upload_receipts=receipts,
+    normalized, _ = (
+        shadow._validate_truth_lock(  # pylint: disable=protected-access
+            truth,
+            upload_sha256=upload_sha256,
+            upload_receipts=receipts,
+        )
     )
 
     assert [row["section_type"] for row in normalized[(_IMAGE_ID, 1)]] == [
@@ -255,7 +271,9 @@ def test_score_includes_unassigned_rows_and_dense_confusion_matrix() -> None:
 
 
 def test_wilson_interval_is_bounded_and_preserves_denominator() -> None:
-    interval = worker._wilson_interval(18, 22)  # pylint: disable=protected-access
+    interval = worker._wilson_interval(
+        18, 22
+    )  # pylint: disable=protected-access
 
     assert interval["successes"] == 18
     assert interval["total"] == 22
@@ -279,7 +297,9 @@ def _candidate_result(section_types: list[str]) -> dict[str, Any]:
         {"row_id": index, "section_type": section_type, "confidence": 0.9}
         for index, section_type in enumerate(section_types, start=1)
     ]
-    fragment = worker._fragmentation(section_types)  # pylint: disable=protected-access
+    fragment = worker._fragmentation(
+        section_types
+    )  # pylint: disable=protected-access
     return {
         "evaluation": {
             "input_snapshot_sha256": "snapshot",
@@ -346,7 +366,9 @@ def test_comparison_preregisters_strict_promotion_evidence() -> None:
     )
 
 
-def test_manifest_hash_is_file_bytes_not_reformatted_json(tmp_path: Path) -> None:
+def test_manifest_hash_is_file_bytes_not_reformatted_json(
+    tmp_path: Path,
+) -> None:
     compact = tmp_path / "manifest.json"
     pretty = tmp_path / "manifest-pretty.json"
     compact.write_text('{"producer":"claude_a"}\n', encoding="utf-8")
@@ -385,6 +407,8 @@ def test_locked_preregistration_hash_and_candidate_ids_are_verified(
     monkeypatch.setattr(shadow, "PREREGISTRATION_SHA256", actual_hash)
 
     assert (
-        shadow._validate_preregistration(tmp_path)  # pylint: disable=protected-access
+        shadow._validate_preregistration(
+            tmp_path
+        )  # pylint: disable=protected-access
         == actual_hash
     )

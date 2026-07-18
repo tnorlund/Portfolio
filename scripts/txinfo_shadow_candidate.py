@@ -33,7 +33,9 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--candidate-name", required=True)
     parser.add_argument("--candidate-commit", required=True)
     parser.add_argument("--expected-priors-sha256", required=True)
-    parser.add_argument("--mode", choices=("verify", "evaluate"), required=True)
+    parser.add_argument(
+        "--mode", choices=("verify", "evaluate"), required=True
+    )
     parser.add_argument("--job", type=Path)
     parser.add_argument("--table")
     parser.add_argument("--output", required=True, type=Path)
@@ -49,7 +51,9 @@ def _sha256_file(path: Path) -> str:
 
 
 def _canonical_json(value: Any) -> bytes:
-    return json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return json.dumps(value, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -78,7 +82,9 @@ def _configure_candidate_imports(
     package_paths = [candidate_root / package for package in _PROJECT_PACKAGES]
     missing = [str(path) for path in package_paths if not path.is_dir()]
     if missing:
-        raise ValueError(f"candidate archive is missing package roots: {missing}")
+        raise ValueError(
+            f"candidate archive is missing package roots: {missing}"
+        )
 
     retained: list[str] = []
     removed = 0
@@ -86,7 +92,9 @@ def _configure_candidate_imports(
         if not item:
             continue
         path = Path(item).resolve()
-        if _contains_project_package(path) and not _is_within(path, candidate_root):
+        if _contains_project_package(path) and not _is_within(
+            path, candidate_root
+        ):
             removed += 1
             continue
         retained.append(str(path))
@@ -132,14 +140,21 @@ def _assert_no_project_module_leaks(candidate_root: Path) -> None:
 
 def _wilson_interval(successes: int, total: int) -> dict[str, Any]:
     if total == 0:
-        return {"successes": successes, "total": total, "estimate": None, "ci95": None}
+        return {
+            "successes": successes,
+            "total": total,
+            "estimate": None,
+            "ci95": None,
+        }
     estimate = successes / total
     z_squared = _WILSON_Z**2
     denominator = 1 + z_squared / total
     center = (estimate + z_squared / (2 * total)) / denominator
     margin = (
         _WILSON_Z
-        * math.sqrt(estimate * (1 - estimate) / total + z_squared / (4 * total**2))
+        * math.sqrt(
+            estimate * (1 - estimate) / total + z_squared / (4 * total**2)
+        )
         / denominator
     )
     return {
@@ -197,12 +212,16 @@ def _score(
         if predicted != _UNASSIGNED:
             predicted_totals[predicted] += 1
         if predicted == "TRANSACTION_INFO" and truth != "TRANSACTION_INFO":
-            txinfo_false_positives[(truth, str(row.get("merchant") or "UNKNOWN"))] += 1
+            txinfo_false_positives[
+                (truth, str(row.get("merchant") or "UNKNOWN"))
+            ] += 1
         if predicted == truth:
             matched += 1
             matched_totals[truth] += 1
 
-    labels = sorted(set(vocabulary) | set(truth_totals) | set(predicted_totals))
+    labels = sorted(
+        set(vocabulary) | set(truth_totals) | set(predicted_totals)
+    )
     predicted_labels = labels + [_UNASSIGNED]
     per_type = {}
     for label in labels:
@@ -233,18 +252,25 @@ def _score(
             "truth_labels": labels,
             "predicted_labels": predicted_labels,
             "matrix": [
-                [confusion[(truth, predicted)] for predicted in predicted_labels]
+                [
+                    confusion[(truth, predicted)]
+                    for predicted in predicted_labels
+                ]
                 for truth in labels
             ],
         },
         "txinfo_false_positives_by_truth_and_merchant": [
             {"truth": truth, "merchant": merchant, "count": count}
-            for (truth, merchant), count in sorted(txinfo_false_positives.items())
+            for (truth, merchant), count in sorted(
+                txinfo_false_positives.items()
+            )
         ],
     }
 
 
-def _input_snapshot(rows: Sequence[Any], lines: Sequence[Any]) -> dict[str, Any]:
+def _input_snapshot(
+    rows: Sequence[Any], lines: Sequence[Any]
+) -> dict[str, Any]:
     return {
         "rows": [
             {
@@ -266,10 +292,14 @@ def _input_snapshot(rows: Sequence[Any], lines: Sequence[Any]) -> dict[str, Any]
 
 
 def _case_id(image_id: str, receipt_id: int, salt: str) -> str:
-    return _sha256_bytes(f"{salt}:{image_id}:{receipt_id}".encode("utf-8"))[:12]
+    return _sha256_bytes(f"{salt}:{image_id}:{receipt_id}".encode("utf-8"))[
+        :12
+    ]
 
 
-def _aggregate_fragmentation(receipts: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _aggregate_fragmentation(
+    receipts: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
     fields = (
         "row_count",
         "run_count",
@@ -279,7 +309,9 @@ def _aggregate_fragmentation(receipts: Sequence[Mapping[str, Any]]) -> dict[str,
         "extra_repeated_runs",
     )
     totals = {
-        field: sum(int(receipt["fragmentation"][field]) for receipt in receipts)
+        field: sum(
+            int(receipt["fragmentation"][field]) for receipt in receipts
+        )
         for field in fields
     }
     receipt_count = len(receipts)
@@ -291,7 +323,8 @@ def _aggregate_fragmentation(receipts: Sequence[Mapping[str, Any]]) -> dict[str,
             for receipt in receipts
         ),
         "type_contiguous_receipts": sum(
-            bool(receipt["fragmentation"]["type_contiguous"]) for receipt in receipts
+            bool(receipt["fragmentation"]["type_contiguous"])
+            for receipt in receipts
         ),
         "mean_runs_per_receipt": (
             totals["run_count"] / receipt_count if receipt_count else 0.0
@@ -308,7 +341,9 @@ def _evaluate(
     model: Mapping[str, Any],
 ) -> dict[str, Any]:
     if job.get("truth_lock_validated") is not True:
-        raise ValueError("worker refuses evaluation without validated truth lock")
+        raise ValueError(
+            "worker refuses evaluation without validated truth lock"
+        )
     client = client_type(table)
     receipt_results = []
     all_scored_rows: list[dict[str, Any]] = []
@@ -320,9 +355,12 @@ def _evaluate(
         merchant = receipt.get("merchant")
         rows = client.get_receipt_rows_from_receipt(image_id, receipt_id)
         lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
-        assignments = assignment.assign_row_sections(rows, lines, model, merchant)
+        assignments = assignment.assign_row_sections(
+            rows, lines, model, merchant
+        )
         predicted = {
-            int(item.row.row_id): str(item.section_type) for item in assignments
+            int(item.row.row_id): str(item.section_type)
+            for item in assignments
         }
         truth = {
             int(item["row_id"]): str(item["section_type"])
@@ -342,7 +380,9 @@ def _evaluate(
         snapshot_sha = _sha256_bytes(_canonical_json(snapshot))
         case = _case_id(image_id, receipt_id, case_salt)
         snapshot_records.append({"case": case, "sha256": snapshot_sha})
-        fragment = _fragmentation([str(item.section_type) for item in assignments])
+        fragment = _fragmentation(
+            [str(item.section_type) for item in assignments]
+        )
         receipt_score = _score(scored_rows, model["global"]["sections"])
         receipt_results.append(
             {
@@ -366,7 +406,9 @@ def _evaluate(
 
     return {
         "input_snapshot_sha256": _sha256_bytes(
-            _canonical_json(sorted(snapshot_records, key=lambda item: item["case"]))
+            _canonical_json(
+                sorted(snapshot_records, key=lambda item: item["case"])
+            )
         ),
         "metrics": _score(all_scored_rows, model["global"]["sections"]),
         "fragmentation": _aggregate_fragmentation(receipt_results),
@@ -383,8 +425,8 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
 def main() -> int:
     args = _arguments()
     candidate_root = args.candidate_root.resolve()
-    assignment, client_type, provenance, removed_paths = _configure_candidate_imports(
-        candidate_root
+    assignment, client_type, provenance, removed_paths = (
+        _configure_candidate_imports(candidate_root)
     )
     priors_path = (
         candidate_root
