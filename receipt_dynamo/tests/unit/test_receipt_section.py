@@ -338,10 +338,11 @@ def test_item_to_receipt_section(example_receipt_section):
         "SURVEY",
         "FOOTER",
         "BARCODE",
+        "TRANSACTION_INFO",
     ],
 )
 def test_canonical_section_types_accepted(canonical):
-    """All ten canonical section types are valid."""
+    """All eleven canonical section types are valid."""
     s = ReceiptSection(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
