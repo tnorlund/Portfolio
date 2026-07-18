@@ -221,14 +221,18 @@ def _build_model(
     }
     observations: list[list[Any]] = []
     receipts_with_valid_labels: set[tuple[str, int]] = set()
+    valid_label_row_count = 0
     core_label_row_count = 0
     sectioned_core_label_row_count = 0
 
     for item in label_items:
+        # The GSI3 VALID partition may hold other entity types; only items
+        # whose sort key parses as a word-label row are counted at all.
         identity = _label_identity(item)
         if identity is None:
             continue
 
+        valid_label_row_count += 1
         image_id, receipt_id, line_id, word_id, label = identity
         receipts_with_valid_labels.add((image_id, receipt_id))
         if label not in CORE_LABELS:
@@ -296,7 +300,7 @@ def _build_model(
         "section_row_count": len(section_items),
         "valid_section_row_count": valid_section_row_count,
         "legacy_valid_section_rows_excluded": (legacy_valid_section_rows_excluded),
-        "valid_label_row_count": len(label_items),
+        "valid_label_row_count": valid_label_row_count,
         "core_label_row_count": core_label_row_count,
         "sectioned_core_label_row_count": sectioned_core_label_row_count,
         "receipts_with_valid_labels": len(receipts_with_valid_labels),
