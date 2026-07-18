@@ -302,6 +302,37 @@ def parse_landing(rec, lines, subject):
     return rec
 
 
+# ---------------------------------------------------------------- entry points
+
+class _Args:
+    """Stand-in for argparse Namespace when called as a library (no mbox)."""
+    mbox_file = None
+    byte_offset = None
+
+
+def _dispatch(msg):
+    rec = base_record(msg, _Args())
+    subject = msg.get("Subject", "") or ""
+    lines = body_lines(msg)
+    dom = rec["sender_domain"] or ""
+
+    if "airbnb" in dom:
+        return parse_airbnb(rec, lines, subject)
+    if "tesla" in dom:
+        return parse_tesla(rec, lines, subject, msg)
+    if "landing" in dom or "hellolanding" in dom:
+        return parse_landing(rec, lines, subject)
+    rec["_note"] = f"unrecognized domain {dom}"
+    return rec
+
+
+def parse(path):
+    """Registry entry point: parse one .eml file into the summary schema."""
+    with open(path, "rb") as f:
+        msg = BytesParser(policy=policy.default).parse(f)
+    return _dispatch(msg)
+
+
 # ---------------------------------------------------------------- main
 
 def main():

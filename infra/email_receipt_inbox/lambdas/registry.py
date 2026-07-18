@@ -31,6 +31,9 @@ GROUPS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "services": (("socalgas.com", "digitalocean.com", "stripe.com",
                   "accounts.nintendo.com"), "parse_services", "parse"),
     "chase-alerts": (("chase.com",), "parse_chase_alerts", "parse"),
+    "costco": (("costco.com", "costco.com.mx"), "parse_costco", "parse"),
+    "travel-housing": (("airbnb.com", "tesla.com", "hellolanding.com",
+                        "landing.com"), "parse_travel_housing", "parse"),
 }
 
 # Notification/marketing templates whose bodies carry amounts that are NOT
@@ -63,11 +66,17 @@ def run_parser(grp: str, eml_path: str) -> Any:
 
 def classify(grp: str, subject: str, parsed: Any) -> str:
     """-> 'receipt' | 'txn_signal' | 'needs_ocr' | 'non_receipt'."""
-    if grp == "chase-alerts":
-        return "txn_signal"
     if isinstance(parsed, list):
         parsed = parsed[0] if parsed else {}
     parsed = parsed or {}
+    if grp == "chase-alerts":
+        # Only a recognized alert with a direction and amount is a usable
+        # reconciliation signal. Marketing, security notices, and malformed or
+        # spoofed mail that the parser could not classify are NOT signals.
+        if (parsed.get("alert_type") and parsed.get("direction")
+                and parsed.get("grand_total") is not None):
+            return "txn_signal"
+        return "non_receipt"
     if parsed.get("needs_pdf") or parsed.get("needs_ocr"):
         return "needs_ocr"
     gate = SUBJECT_DROP.get(grp)
