@@ -10,8 +10,14 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pillow",
-    "receipt-chroma",
 ]
+
+[project.optional-dependencies]
+# receipt-chroma is a local monorepo package (not on PyPI). Only
+# section_propagate / section_propagate_eval need it; the glyph MCP Lambda
+# image installs the default (numpy + PIL only) package and must stay
+# resolvable without it.
+sections = ["receipt-chroma"]
 
 [tool.setuptools]
 packages = ["glyphstudio"]
