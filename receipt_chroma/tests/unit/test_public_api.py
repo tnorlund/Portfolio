@@ -30,6 +30,10 @@ from receipt_chroma.embedding import (
     upload_lines_delta,
     upload_words_delta,
 )
+from receipt_chroma.embedding.formatting import build_receipt_rows
+from receipt_chroma.embedding.formatting.receipt_rows import (
+    build_receipt_rows as internal_build_receipt_rows,
+)
 from receipt_chroma.embedding.orchestration import (
     EmbeddingConfig as InternalEmbeddingConfig,
 )
@@ -82,6 +86,12 @@ def test_embedding_facade_exports_orchestration_stages() -> None:
     assert upload_words_delta is internal_upload_words_delta
 
 
+def test_formatting_facade_exports_receipt_row_builder() -> None:
+    """Upload code can materialize rows without importing an internal module."""
+
+    assert build_receipt_rows is internal_build_receipt_rows
+
+
 def test_s3_facade_exports_hash_upload() -> None:
     """Snapshot hash uploads do not require importing the helpers module."""
     assert upload_snapshot_with_hash is internal_upload_snapshot_with_hash
@@ -126,6 +136,7 @@ def test_external_runtime_callers_use_public_facades() -> None:
         "receipt_chroma.compaction.dual_write",
         "receipt_chroma.compaction.models",
         "receipt_chroma.embedding.formatting.line_format",
+        "receipt_chroma.embedding.formatting.receipt_rows",
         "receipt_chroma.embedding.formatting.word_format",
         "receipt_chroma.embedding.openai.realtime",
         "receipt_chroma.embedding.orchestration",

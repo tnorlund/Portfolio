@@ -1,3 +1,5 @@
+"""DynamoDB entity for a materialized visual receipt row."""
+
 import math
 from dataclasses import dataclass
 from datetime import datetime
@@ -68,6 +70,11 @@ class ReceiptRow:
     x_min: float
     x_max: float
     created_at: datetime | str
+    price_column_x: float | None = None
+    label_text: str | None = None
+    amount_text: str | None = None
+    amount_line_id: int | None = None
+    amount_word_id: int | None = None
 
     def __post_init__(self):
         """Validate and initialize the ReceiptRow instance."""
@@ -122,12 +129,62 @@ class ReceiptRow:
         if self.x_min > self.x_max:
             raise ValueError("x_min must be <= x_max")
 
+        self._validate_pairing()
+
         if isinstance(self.created_at, str):
             self.created_at = datetime.fromisoformat(self.created_at)
         elif isinstance(self.created_at, datetime):
             pass  # Already a datetime
         else:
             raise ValueError("created_at must be a datetime or ISO string")
+
+    def _validate_pairing(self) -> None:
+        """Validate optional price-column label/amount provenance."""
+
+        if self.price_column_x is not None:
+            if isinstance(self.price_column_x, bool) or not isinstance(
+                self.price_column_x, (int, float)
+            ):
+                raise ValueError("price_column_x must be a number or None")
+            if not math.isfinite(self.price_column_x):
+                raise ValueError("price_column_x must be finite")
+            self.price_column_x = float(self.price_column_x)
+
+        pairing = (
+            self.amount_text,
+            self.amount_line_id,
+            self.amount_word_id,
+        )
+        if any(value is not None for value in pairing) and not all(
+            value is not None for value in pairing
+        ):
+            raise ValueError(
+                "amount_text, amount_line_id, and amount_word_id must be "
+                "set together"
+            )
+        if self.label_text is not None and not isinstance(
+            self.label_text, str
+        ):
+            raise ValueError("label_text must be a string or None")
+        if self.amount_text is not None and not isinstance(
+            self.amount_text, str
+        ):
+            raise ValueError("amount_text must be a string or None")
+        for name in ("amount_line_id", "amount_word_id"):
+            value = getattr(self, name)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.amount_line_id is not None:
+            if self.amount_line_id not in self.line_ids:
+                raise ValueError("amount_line_id must belong to the row")
+            if self.price_column_x is None:
+                raise ValueError(
+                    "price_column_x is required for an amount pairing"
+                )
 
     @property
     def key(self) -> dict[str, Any]:
@@ -143,7 +200,7 @@ class ReceiptRow:
 
     def to_item(self) -> dict[str, Any]:
         """Convert the ReceiptRow to a DynamoDB item."""
-        return {
+        item = {
             **self.key,
             "TYPE": {"S": "RECEIPT_ROW"},
             "line_ids": {
@@ -154,8 +211,17 @@ class ReceiptRow:
             "y_max": {"N": str(self.y_max)},
             "x_min": {"N": str(self.x_min)},
             "x_max": {"N": str(self.x_max)},
-            "created_at": {"S": self.created_at.isoformat()},
+            "created_at": {"S": self._created_at_iso()},
         }
+        if self.price_column_x is not None:
+            item["price_column_x"] = {"N": str(self.price_column_x)}
+        if self.label_text is not None:
+            item["label_text"] = {"S": self.label_text}
+        if self.amount_text is not None:
+            item["amount_text"] = {"S": self.amount_text}
+            item["amount_line_id"] = {"N": str(self.amount_line_id)}
+            item["amount_word_id"] = {"N": str(self.amount_word_id)}
+        return item
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptRow object."""
@@ -170,7 +236,12 @@ class ReceiptRow:
             f"y_max={self.y_max}, "
             f"x_min={self.x_min}, "
             f"x_max={self.x_max}, "
-            f"created_at={_repr_str(self.created_at.isoformat())}"
+            f"price_column_x={self.price_column_x}, "
+            f"label_text={_repr_str(self.label_text)}, "
+            f"amount_text={_repr_str(self.amount_text)}, "
+            f"amount_line_id={self.amount_line_id}, "
+            f"amount_word_id={self.amount_word_id}, "
+            f"created_at={_repr_str(self._created_at_iso())}"
             f")"
         )
 
@@ -185,7 +256,12 @@ class ReceiptRow:
         yield "y_max", self.y_max
         yield "x_min", self.x_min
         yield "x_max", self.x_max
-        yield "created_at", self.created_at.isoformat()
+        yield "price_column_x", self.price_column_x
+        yield "label_text", self.label_text
+        yield "amount_text", self.amount_text
+        yield "amount_line_id", self.amount_line_id
+        yield "amount_word_id", self.amount_word_id
+        yield "created_at", self._created_at_iso()
 
     def __hash__(self) -> int:
         """Return a hash of the ReceiptRow."""
@@ -200,9 +276,21 @@ class ReceiptRow:
                 self.y_max,
                 self.x_min,
                 self.x_max,
-                self.created_at.isoformat(),
+                self.price_column_x,
+                self.label_text,
+                self.amount_text,
+                self.amount_line_id,
+                self.amount_word_id,
+                self._created_at_iso(),
             )
         )
+
+    def _created_at_iso(self) -> str:
+        """Return the normalized timestamp after ``__post_init__``."""
+
+        if not isinstance(self.created_at, datetime):  # pragma: no cover
+            raise TypeError("created_at was not normalized")
+        return self.created_at.isoformat()
 
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptRow":
@@ -246,6 +334,27 @@ class ReceiptRow:
             x_min = float(item["x_min"]["N"])
             x_max = float(item["x_max"]["N"])
             created_at = datetime.fromisoformat(item["created_at"]["S"])
+            price_column_x = (
+                float(item["price_column_x"]["N"])
+                if "price_column_x" in item
+                else None
+            )
+            label_text = (
+                item["label_text"]["S"] if "label_text" in item else None
+            )
+            amount_text = (
+                item["amount_text"]["S"] if "amount_text" in item else None
+            )
+            amount_line_id = (
+                int(item["amount_line_id"]["N"])
+                if "amount_line_id" in item
+                else None
+            )
+            amount_word_id = (
+                int(item["amount_word_id"]["N"])
+                if "amount_word_id" in item
+                else None
+            )
 
             return cls(
                 receipt_id=receipt_id,
@@ -258,6 +367,11 @@ class ReceiptRow:
                 x_min=x_min,
                 x_max=x_max,
                 created_at=created_at,
+                price_column_x=price_column_x,
+                label_text=label_text,
+                amount_text=amount_text,
+                amount_line_id=amount_line_id,
+                amount_word_id=amount_word_id,
             )
         except (KeyError, IndexError, ValueError) as e:
             raise ValueError(

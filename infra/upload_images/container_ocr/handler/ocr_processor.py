@@ -43,6 +43,7 @@ from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
+from receipt_upload.receipt_processing.rows import persist_receipt_rows
 from receipt_upload.receipt_processing.scan import process_scan
 from receipt_upload.route_images import classify_image_layout
 from receipt_upload.utils import (
@@ -1431,6 +1432,13 @@ class OCRProcessor:
             if receipt_words:
                 self.dynamo.add_receipt_words(receipt_words)
                 all_receipt_words.extend(receipt_words)
+            persist_receipt_rows(
+                self.dynamo,
+                image_id,
+                receipt_id,
+                receipt_lines,
+                receipt_words,
+            )
             if receipt_letters:
                 self.dynamo.add_receipt_letters(receipt_letters)
 
