@@ -188,6 +188,56 @@ def _make_processor():
 
 
 # ===========================================================================
+# 0. Full-receipt refinement
+# ===========================================================================
+
+class TestRefinementRowIdentity:
+    def test_forwards_nondefault_receipt_id_to_row_persistence(
+        self, tmp_path
+    ):
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID,
+            receipt_id=2,
+            job_id="refine-2",
+        )
+        routing = SimpleNamespace(s3_bucket="bucket", s3_key="ocr.json")
+        ocr_path = tmp_path / "ocr.json"
+        ocr_path.write_text("{}")
+        line = _make_line(receipt_id=2)
+        word = _make_word(receipt_id=2)
+
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3",
+                return_value=ocr_path,
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([line], [word], []),
+            ),
+            patch(
+                "receipt_upload.receipt_processing.receipt.refine_receipt"
+            ) as refine,
+        ):
+            result = proc._process_refinement_job(ocr_job, routing)
+
+        refine.assert_called_once_with(
+            dynamo_table_name="test-table",
+            receipt_id=2,
+            receipt_lines=[line],
+            receipt_words=[word],
+            receipt_letters=[],
+            ocr_routing_decision=routing,
+        )
+        assert result["receipt_id"] == 2
+
+
+# ===========================================================================
 # 1. Coordinate remapping (pure, no mocking)
 # ===========================================================================
 

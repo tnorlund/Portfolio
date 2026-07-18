@@ -19,6 +19,7 @@ from receipt_upload.utils import download_file_from_s3
 
 def refine_receipt(
     dynamo_table_name: str,
+    receipt_id: int,
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
     receipt_letters: list[ReceiptLetter],
@@ -32,7 +33,7 @@ def refine_receipt(
     persist_receipt_rows(
         dynamo_client,
         ocr_routing_decision.image_id,
-        1,
+        receipt_id,
         receipt_lines,
         receipt_words,
     )

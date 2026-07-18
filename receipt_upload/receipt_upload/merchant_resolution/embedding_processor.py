@@ -382,6 +382,7 @@ def _run_lines_pipeline_worker(
     """
     # Import inside worker to avoid pickling issues
     from receipt_chroma.embedding.formatting import (
+        build_receipt_rows,
         group_lines_into_visual_rows,
     )
     from receipt_chroma.embedding.records import (
@@ -399,6 +400,8 @@ def _run_lines_pipeline_worker(
         MerchantResolver,
         merchant_name_matches_receipt,
     )
+    from receipt_upload.section_assignment import assign_and_persist_sections
+    from receipt_upload.section_verifier import verify_receipt_sections
 
     def _do_lines_work() -> Dict[str, Any]:
         """Run the lines pipeline: merchant resolution, build payload, upsert, upload."""
@@ -497,11 +500,63 @@ def _run_lines_pipeline_worker(
                 )
                 validated_merchant_name = None
 
+            # D2: assign persisted visual rows synchronously before the row
+            # embedding payload is built, so the first Chroma delta already
+            # carries deterministic section metadata. D1 guarantees rows at
+            # ingest; reconstruction keeps legacy/dev replays compatible.
+            persisted_rows = dynamo.get_receipt_rows_from_receipt(
+                image_id, receipt_id
+            )
+            if not persisted_rows:
+                persisted_rows = build_receipt_rows(lines, words)
+            _, section_by_line = assign_and_persist_sections(
+                dynamo,
+                persisted_rows,
+                lines,
+                validated_merchant_name,
+            )
+
+            rows_by_id = {row.row_id: row for row in persisted_rows}
+            embedding_rows = [
+                rows_by_id[record.primary_line.line_id]
+                for record in row_records
+            ]
+            verification_stats: Dict[str, Any] = {}
+            try:
+                verified = verify_receipt_sections(
+                    client,
+                    dynamo,
+                    embedding_rows,
+                    row_embeddings,
+                )
+                verification_stats = {
+                    "verified_row_count": len(verified),
+                    "verification_disagreement_count": sum(
+                        section.verification_status == "DISAGREED"
+                        for section in dynamo.get_receipt_sections_from_receipt(
+                            image_id, receipt_id
+                        )
+                        if section.model_source == "upload-determinism-v1"
+                    ),
+                }
+            # Verification is independent evidence; an unavailable neighbor
+            # index must not discard the deterministic section proposal.
+            except Exception as error:
+                logging.getLogger(__name__).exception(
+                    "Section KNN verification failed for %s#%d: %s",
+                    image_id,
+                    receipt_id,
+                    error,
+                )
+                verification_stats = {"verification_error": str(error)}
+
             # Build row payload with validated merchant name
             line_payload = build_row_payload(
                 row_records,
                 words,
+                all_labels=word_labels,
                 merchant_name=validated_merchant_name,
+                section_by_line=section_by_line,
             )
 
             # Upsert into the local snapshot client (skip in cloud mode — the
@@ -532,6 +587,7 @@ def _run_lines_pipeline_worker(
                 "address": merchant_result.address,
                 "source_image_id": merchant_result.source_image_id,
                 "source_receipt_id": merchant_result.source_receipt_id,
+                **verification_stats,
                 "similarity_matches": [
                     {
                         "image_id": m.image_id,

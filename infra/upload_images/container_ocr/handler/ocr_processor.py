@@ -215,6 +215,7 @@ class OCRProcessor:
 
         refine_receipt(
             dynamo_table_name=self.table_name,
+            receipt_id=ocr_job.receipt_id,
             receipt_lines=receipt_lines,
             receipt_words=receipt_words,
             receipt_letters=receipt_letters,

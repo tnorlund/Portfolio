@@ -383,6 +383,24 @@ class TestSectionLabelWiring:
         m = sections_to_line_map([s_low, s_high])
         assert m == {1: "ITEMS", 2: "TOTAL_LINE"}  # line 2: higher conf wins
 
+    def test_sections_to_line_map_valid_wins_over_pending(self) -> None:
+        from receipt_chroma.section_labels import sections_to_line_map
+
+        valid = Mock(
+            line_ids=[7],
+            section_type="ITEMS",
+            confidence=0.2,
+            validation_status="VALID",
+        )
+        pending = Mock(
+            line_ids=[7],
+            section_type="PAYMENT",
+            confidence=0.99,
+            validation_status="PENDING",
+        )
+
+        assert sections_to_line_map([valid, pending]) == {7: "ITEMS"}
+
 
 class TestSectionGuards:
     """Codex P2s: skip INVALID sections; don't stamp on a tie."""

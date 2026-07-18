@@ -35,6 +35,7 @@ dependencies = [
   "receipt-dynamo",  # Local package for DynamoDB entities and operations
   "receipt-chroma",  # Local package for ChromaDB embedding operations
   "receipt-places",  # Local package for Google Places API
+  "numpy>=1.26.0,<3.0.0",
   "Pillow>=11.2.1",
   "pillow-avif-plugin>=1.3.0",
   "boto3>=1.43.32,<1.44.0",
@@ -91,6 +92,9 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_upload"]
 include = ["receipt_upload/py.typed"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"receipt_upload/assets/section_order_priors_v2.json" = "receipt_upload/assets/section_order_priors_v2.json"
 
 [tool.black]
 line-length = 79
