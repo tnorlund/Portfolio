@@ -32,7 +32,8 @@
     },
     "tier": {
       "type": ["string", "null"],
-      "enum": ["normal", "bold", "large", "unknown", null]
+      "enum": ["normal", "bold", "large", "unknown", null],
+      "description": "DERIVED attribute: computable from the judge-input geometry (cap_px / stroke_med vs receipt body medians), not an independent perception. Reported for consistency checking only; excluded from acceptance metrics."
     },
     "underline": {"type": ["boolean", "null"]},
     "reverse_video": {"type": ["boolean", "null"]},

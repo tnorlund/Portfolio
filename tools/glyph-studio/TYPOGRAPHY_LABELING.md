@@ -62,6 +62,12 @@ text, and neutral geometry context (`cap_px`, `stroke_med`,
 `receipt_body_cap_px`, `receipt_body_stroke_px` — required to make
 receipt-relative size/weight judgeable at all).
 
+Because tier is essentially the ratio of those provided geometry fields,
+a judge's `tier` answer is arithmetic, not perception — it is therefore
+classified as a DERIVED verdict attribute (owner review, 2026-07-18):
+still reported (consistency check) but never counted as independent
+agreement and excluded from acceptance metrics.
+
 A judge NEVER sees (blindness lesson from the 2026-07-18 triage audit):
 
 - merchant name/slug, section types, or any cross-receipt statistics;
@@ -81,9 +87,9 @@ validate.
 Schema: `schemas/typography_judge_verdict.schema.json` (`tj-out-1`).
 
 Per line: descriptive typeface classification (`family_class`,
-`monospace`, `italic`, `weight`, free-text description), `tier`,
-`underline`, `reverse_video`, `slant_deg`, per-attribute confidences, and
-an explicit `abstain` + reason. Judges classify *descriptively*; they do
+`monospace`, `italic`, `weight`, free-text description), `tier`
+(DERIVED — see §3), `underline`, `reverse_video`, `slant_deg`,
+per-attribute confidences, and an explicit `abstain` + reason. Judges classify *descriptively*; they do
 not name registry typefaces (they can't — they're blind to the merchant).
 Mapping verdicts onto per-merchant registry entries (T0..Tk) happens in
 adjudication, where merchant identity is restored.
@@ -120,18 +126,22 @@ atlases — bitMatrix-C2 and C2-heavy — under `fonts/costco` +
 Batch one therefore runs Costco alone, and its verdicts are scored
 against measured ground truth before any other merchant is labeled:
 
-- **typeface**: for each judged line, per-letter calibrated shifted-IoU
-  against the Costco atlas (per-char norms, per-receipt centering — the
-  pilot's two measured calibrations) decides whether the line IS the
-  known body face. Judge `family_class`/`monospace` verdicts must match
-  that ground truth (body lines → mono).
-- **tier**: judge tier vs `assign_tiers` output from measured
-  `cap_px`/`stroke_med` (receipt-relative thresholds 1.45× cap / 1.30×
-  stroke).
-- **Acceptance gate**: >= 90 % per-attribute agreement with ground truth
-  on non-abstained lines, and abstain rate <= 15 %, over the batch. Both
-  judges must clear the gate independently. Fail → fix
-  prompts/packets/schemas and re-run Costco; no other merchant is
+- **typeface (shape attributes)**: for each judged line, per-letter
+  calibrated shifted-IoU against the Costco atlas (per-char norms,
+  per-receipt centering — the pilot's two measured calibrations) decides
+  whether the line IS the known body face. Judge `family_class`,
+  `monospace`, and `italic` verdicts must match that ground truth (body
+  lines → mono, upright), and `typeface.description` is graded for
+  consistency with the bitMatrix-C2 letterforms (dot-matrix/mono
+  character) on body lines.
+- **tier is EXCLUDED from the gate** (owner review): judges receive the
+  geometry that determines tier, so tier agreement is arithmetic, not
+  perception. It is recorded as a derived consistency check only.
+- **Acceptance gate**: >= 90 % agreement with ground truth on each SHAPE
+  attribute (`family_class`, `monospace`, `italic`) on non-abstained
+  lines, description-quality pass on review, and abstain rate <= 15 %,
+  over the batch. Both judges must clear the gate independently. Fail →
+  fix prompts/packets/schemas and re-run Costco; no other merchant is
   labeled until the gate passes.
 
 ## 6. Dual-judge + adjudication flow (documented, NOT run in Phase 0)
@@ -142,6 +152,26 @@ against measured ground truth before any other merchant is labeled:
    validating against `tj-out-1`. Invalid verdicts are re-prompted once,
    then recorded as abstains. Batches are keyed by
    `content_hash` — verdicts against a stale manifest are rejected.
+
+   **Proven image-delivery mechanisms** (smoke-tested 2026-07-18 on the
+   dry-run crop `01c0bc98…_1_L002/letters/000_u0048.png`, an 18×20 "H"
+   from Costco's dot-matrix `Henderson #673` line):
+
+   - **codex** — native image attachment, non-interactive:
+     `codex exec --sandbox read-only -i <crop.png> -- "<prompt>"`
+     → answered `H, sans-serif, regular.` (char correct).
+   - **grok** — file-path vision in headless mode:
+     `grok --output-format json -p "View the image file at <path> …"`
+     (its file-viewing tool loads the image). Raw 18×20 crops are below
+     its vision floor and its shell-based enlarge attempt is
+     sandbox-cancelled, so **judge delivery must pre-upscale letter
+     crops (×8 nearest-neighbor)**; with the ×8 crop it answered
+     `ANSWER: H, sans, bold` (char correct; the weight split vs codex on
+     a dot-matrix glyph is exactly what adjudication arbitrates).
+
+   Pre-upscaling is a judge-delivery step (deterministic, nearest-
+   neighbor — no resampling invention); packet crops on disk stay at
+   native resolution and keep their manifest hashes.
 3. Agreement rule, per attribute: both judges non-abstaining and equal
    (for `slant_deg`: within 3°) → accepted. One abstain → the other's
    verdict accepted only at confidence >= 0.8, else UNRESOLVED. Both
