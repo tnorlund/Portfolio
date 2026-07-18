@@ -396,7 +396,8 @@ final class OCRResultContractTests: XCTestCase {
         let worker = OCRWorker(
             config: cfg, ocr: FixtureOCREngine(), sqs: sqs, s3: s3, dynamo: dynamo
         )
-        XCTAssertTrue(try await worker.processBatch())
+        let processedBatch = try await worker.processBatch()
+        XCTAssertTrue(processedBatch)
 
         // Warped receipt crop and OCR JSON both land in the raw bucket.
         let uploadKeys = s3.uploads.map { $0.key }
