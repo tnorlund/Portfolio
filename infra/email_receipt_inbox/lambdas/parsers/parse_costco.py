@@ -104,8 +104,17 @@ def _parse_gas_pdf(msg, rec):
         if part.get_content_type() == "application/pdf":
             pdf_bytes = part.get_content()
             break
-    if pdf_bytes is None or PdfReader is None:
-        rec["_note"] = "gas ticket PDF missing or pypdf unavailable"
+    if pdf_bytes is None:
+        rec["_note"] = "gas ticket PDF missing"
+        return rec
+    if PdfReader is None:
+        # pypdf is not in the Lambda runtime (managed Python ships Boto3 only,
+        # not arbitrary packages), yet the gas ticket's amounts live entirely
+        # in the PDF. Flag needs_ocr so the message stays actionable instead of
+        # falling through to grand_total=None -> non_receipt, which would
+        # silently discard a real receipt and its already-extracted metadata.
+        rec["_note"] = "pypdf unavailable; route gas ticket PDF through OCR"
+        rec["needs_ocr"] = True
         return rec
     import io
     import os
