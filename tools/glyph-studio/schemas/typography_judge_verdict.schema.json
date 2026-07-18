@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "typography_judge_verdict.schema.json",
+  "title": "Typography blind judge verdict",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "packet_id",
+    "judge",
+    "manifest_content_hash",
+    "abstain",
+    "abstain_reason"
+  ],
+  "properties": {
+    "schema_version": {"const": "tj-out-1"},
+    "packet_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f-]{36}_[0-9]+_L[0-9]{3,}$"
+    },
+    "judge": {"type": "string", "enum": ["codex", "grok"]},
+    "manifest_content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "abstain": {"type": "boolean"},
+    "abstain_reason": {"type": ["string", "null"], "maxLength": 200},
+    "typeface": {
+      "oneOf": [
+        {"$ref": "#/$defs/typeface"},
+        {"type": "null"}
+      ]
+    },
+    "tier": {
+      "type": ["string", "null"],
+      "enum": ["normal", "bold", "large", "unknown", null]
+    },
+    "underline": {"type": ["boolean", "null"]},
+    "reverse_video": {"type": ["boolean", "null"]},
+    "slant_deg": {
+      "type": ["number", "null"],
+      "minimum": -45,
+      "maximum": 45
+    },
+    "confidence": {
+      "oneOf": [
+        {"$ref": "#/$defs/confidence"},
+        {"type": "null"}
+      ]
+    },
+    "notes": {"type": "string", "maxLength": 400}
+  },
+  "$defs": {
+    "typeface": {
+      "type": "object",
+      "required": ["family_class", "monospace", "italic", "weight", "description"],
+      "properties": {
+        "family_class": {
+          "type": "string",
+          "enum": ["mono", "sans", "serif", "slab", "script", "decorative", "unknown"]
+        },
+        "monospace": {"type": ["boolean", "null"]},
+        "italic": {"type": ["boolean", "null"]},
+        "weight": {"type": "string", "enum": ["normal", "bold", "unknown"]},
+        "description": {"type": "string", "maxLength": 140}
+      },
+      "additionalProperties": false
+    },
+    "confidence": {
+      "type": "object",
+      "required": ["typeface", "tier", "underline", "reverse_video", "slant"],
+      "properties": {
+        "typeface": {"type": "number", "minimum": 0, "maximum": 1},
+        "tier": {"type": "number", "minimum": 0, "maximum": 1},
+        "underline": {"type": "number", "minimum": 0, "maximum": 1},
+        "reverse_video": {"type": "number", "minimum": 0, "maximum": 1},
+        "slant": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"abstain": {"const": true}}, "required": ["abstain"]},
+      "then": {
+        "properties": {
+          "abstain_reason": {"type": "string", "minLength": 1, "maxLength": 200},
+          "typeface": {"type": "null"},
+          "tier": {"type": "null"},
+          "underline": {"type": "null"},
+          "reverse_video": {"type": "null"},
+          "slant_deg": {"type": "null"},
+          "confidence": {"type": "null"}
+        }
+      },
+      "else": {
+        "required": [
+          "typeface",
+          "tier",
+          "underline",
+          "reverse_video",
+          "slant_deg",
+          "confidence"
+        ],
+        "properties": {
+          "abstain_reason": {"type": "null"},
+          "typeface": {"$ref": "#/$defs/typeface"},
+          "tier": {"type": "string", "enum": ["normal", "bold", "large", "unknown"]},
+          "confidence": {"$ref": "#/$defs/confidence"}
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}
