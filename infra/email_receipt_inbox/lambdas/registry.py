@@ -84,10 +84,16 @@ def classify(grp: str, subject: str, parsed: Any) -> str:
         return "non_receipt"
     if grp == "venmo" and parsed.get("transaction_kind") in (
             "p2p_sent", "p2p_received"):
-        # Peer-to-peer transfers are money movement, not merchant receipts. Emit
-        # them as a reconciliation signal; merchant_purchase falls through to
-        # the normal receipt path below.
-        return "txn_signal"
+        # Peer-to-peer transfers are money movement, not merchant receipts. Only
+        # a transfer with a real amount AND direction is a usable reconciliation
+        # signal — subject-only matches (e.g. "You sent money on iMessage")
+        # carry no amount and would emit an unusable signal, so drop them the
+        # same way Chase alerts require direction + grand_total. merchant_purchase
+        # falls through to the normal receipt path below.
+        if (parsed.get("grand_total") is not None
+                and parsed.get("direction")):
+            return "txn_signal"
+        return "non_receipt"
     if parsed.get("needs_pdf") or parsed.get("needs_ocr"):
         return "needs_ocr"
     gate = SUBJECT_DROP.get(grp)

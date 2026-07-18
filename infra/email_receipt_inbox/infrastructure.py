@@ -32,6 +32,7 @@ class EmailReceiptInbox(ComponentResource):
         subdomain: str = "in",
         recipient_localpart: str = "receipts",
         activate: bool = True,
+        external_active_rule_set: bool = False,
         raw_retention_days: Optional[int] = None,
         tags: Optional[dict[str, str]] = None,
         opts: Optional[ResourceOptions] = None,
@@ -295,17 +296,27 @@ class EmailReceiptInbox(ComponentResource):
         # accepting mail; gating it on the active rule set (or at least the
         # store rule) plus versioning + notification means no delivered message
         # can arrive before the storage/trigger graph exists.
-        mx_deps = [store_rule, versioning, notification]
-        if activation is not None:
-            mx_deps.append(activation)
-        aws.route53.Record(
-            f"{name}-mx",
-            zone_id=zone.zone_id,
-            name=domain,
-            type="MX",
-            ttl=300,
-            records=[f"10 inbound-smtp.{region}.amazonaws.com"],
-            opts=ResourceOptions(parent=self, depends_on=mx_deps))
+        #
+        # Only publish MX once this rule set is actually the one SES will
+        # evaluate. SES has a single active receipt rule set per account+region:
+        # if this component did not activate its rule set (``activate=False``),
+        # publishing MX would route mail to whatever OTHER set is active — which
+        # has no rule for this recipient — so the message is rejected or dropped
+        # instead of stored. Publish only when we activated the set, or when the
+        # caller asserts our store rule was merged into an externally-managed
+        # active set (``external_active_rule_set=True``).
+        if activation is not None or external_active_rule_set:
+            mx_deps = [store_rule, versioning, notification]
+            if activation is not None:
+                mx_deps.append(activation)
+            aws.route53.Record(
+                f"{name}-mx",
+                zone_id=zone.zone_id,
+                name=domain,
+                type="MX",
+                ttl=300,
+                records=[f"10 inbound-smtp.{region}.amazonaws.com"],
+                opts=ResourceOptions(parent=self, depends_on=mx_deps))
 
         self.register_outputs({
             "address": self.address,

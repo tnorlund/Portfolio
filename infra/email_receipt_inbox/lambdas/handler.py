@@ -161,7 +161,8 @@ def lambda_handler(event, _context):
             from_addr, domain = _from_domain(msg)
             out["from_domain"] = domain
             out["original_from"] = from_addr
-            if _content_rejected(out["virus_verdict"], out["spam_verdict"]):
+            if _content_rejected(spam=out["spam_verdict"],
+                                 virus=out["virus_verdict"]):
                 # SES flagged (or could not clear) malware/spam; hold it out of
                 # reconciliation. Distinct from parser-determined non_receipt so
                 # downstream can treat scan failures differently.
