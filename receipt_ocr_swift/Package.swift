@@ -35,7 +35,8 @@ let package = Package(
         ),
         .testTarget(
             name: "ReceiptOCRCoreTests",
-            dependencies: ["ReceiptOCRCore"]
+            dependencies: ["ReceiptOCRCore"],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "IntegrationTests",
