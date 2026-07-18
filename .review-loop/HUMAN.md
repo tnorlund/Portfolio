@@ -1,0 +1,1 @@
+10. [low] `infra/email_receipt_inbox/infrastructure.py:35,93-100` — Raw mail and parsed financial data are retained indefinitely by default, allowing a public sender to accumulate sensitive data and storage cost. Set explicit default retention for both prefixes, include noncurrent-version expiration if versioning is added, and alarm on object count/bytes.
