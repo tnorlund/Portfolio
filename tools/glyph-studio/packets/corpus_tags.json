@@ -1,0 +1,20 @@
+{
+ "costco_b2": {
+  "manifest": "manifest_f26ce354e4827e01.json",
+  "note": "corpus unchanged from b1 for comparability, per owner steer",
+  "robustness_only_image_ids": []
+ },
+ "policy": "owner steer 2026-07-18: discovery/minting corpora prefer SCAN; PHOTO receipts are robustness-only (excluded from clustering, minting, exemplar voting; scored as a separate stratum)",
+ "sprouts_p1": {
+  "manifest": "manifest_4b09bac7fdb40d72.json",
+  "note": "08665671 is the pilot's known low-res 11px-cap photo receipt",
+  "robustness_only_image_ids": [
+   "08665671-3c2c-4540-b1f9-da16b8b815e6"
+  ]
+ },
+ "vons_r1": {
+  "manifest": "manifest_32e2c5b7f67556d1.json",
+  "note": "no PHOTO receipts exist for Vons in dev (checked all 60 places); robustness stratum empty by data availability",
+  "robustness_only_image_ids": []
+ }
+}

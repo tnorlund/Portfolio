@@ -1,0 +1,299 @@
+[
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "01c0bc98-4fdc-4f7d-baf6-72c2e3a9564d_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "01c0bc98-4fdc-4f7d-baf6-72c2e3a9564d_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "register/date body line, upright (b1 visual class)",
+  "packet_id": "01c0bc98-4fdc-4f7d-baf6-72c2e3a9564d_1_L027",
+  "resolution": {
+   "italic": false
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "0324604e-e1f7-4021-b887-7ef7e012c563_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "0324604e-e1f7-4021-b887-7ef7e012c563_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "04b16930-7baf-4539-866f-b77d8e73cff8_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "04b16930-7baf-4539-866f-b77d8e73cff8_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "merged wordmark line (COSTCO + oblique WHOLESALE); b1 visual truth",
+  "packet_id": "165b9d15-9fa1-4a3c-a568-1b4e98170ab5_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "large dot-matrix display (C2-heavy class, b1 visual); weight by stroke ratio 1.09",
+  "packet_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1_1_L030",
+  "resolution": {
+   "family_class": "mono",
+   "italic": false,
+   "monospace": true,
+   "weight": "normal"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "25c91d78-ed11-4c68-8051-e1d364762bcb_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "25c91d78-ed11-4c68-8051-e1d364762bcb_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "courtesy footer, dot-matrix mono (b1 visual); weight by stroke ratio 0.99",
+  "packet_id": "25c91d78-ed11-4c68-8051-e1d364762bcb_1_L030",
+  "resolution": {
+   "family_class": "mono",
+   "italic": false,
+   "monospace": true,
+   "weight": "normal"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "314ac65b-2b97-45d6-81c2-e48fb0b8cef4_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "314ac65b-2b97-45d6-81c2-e48fb0b8cef4_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "large dot-matrix display (C2-heavy class, b1 visual); weight by stroke ratio 1.14",
+  "packet_id": "314ac65b-2b97-45d6-81c2-e48fb0b8cef4_1_L036",
+  "resolution": {
+   "family_class": "mono",
+   "italic": false,
+   "monospace": true,
+   "weight": "normal"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "3885af9f-8f97-4cf3-9b6c-8d838e133a2d_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "3885af9f-8f97-4cf3-9b6c-8d838e133a2d_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "courtesy footer, dot-matrix mono (b1 visual); weight by stroke ratio 1.60",
+  "packet_id": "3885af9f-8f97-4cf3-9b6c-8d838e133a2d_1_L026",
+  "resolution": {
+   "family_class": "mono",
+   "italic": false,
+   "monospace": true,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "3ea1b045-48f9-425e-a9e6-10a347a71113_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "3ea1b045-48f9-425e-a9e6-10a347a71113_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "courtesy footer, dot-matrix mono (b1 visual); weight by stroke ratio 1.03",
+  "packet_id": "3ea1b045-48f9-425e-a9e6-10a347a71113_1_L029",
+  "resolution": {
+   "family_class": "mono",
+   "italic": false,
+   "monospace": true,
+   "weight": "normal"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "41885f70-0a10-4897-8840-8f7373d150cd_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "41885f70-0a10-4897-8840-8f7373d150cd_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "471788b6-a210-4570-b5c4-47de5ac4518d_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "471788b6-a210-4570-b5c4-47de5ac4518d_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "large dot-matrix display (C2-heavy class, b1 visual); weight by stroke ratio 1.22",
+  "packet_id": "471788b6-a210-4570-b5c4-47de5ac4518d_1_L032",
+  "resolution": {
+   "family_class": "mono",
+   "italic": false,
+   "monospace": true,
+   "weight": "normal"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark: heavy rounded display sans, upright (b1 visually confirmed); overrides b2 over-steer",
+  "packet_id": "57cb7f2c-7dcc-4974-9ef8-a460232f3b1d_1_L000",
+  "resolution": {
+   "family_class": "sans",
+   "italic": false,
+   "monospace": false,
+   "weight": "bold"
+  }
+ },
+ {
+  "adjudicator_note": "wordmark subtitle: heavy oblique sans (b1 visually confirmed); overrides agreed-wrong mono=True from b2 dot-prompt over-steer",
+  "packet_id": "57cb7f2c-7dcc-4974-9ef8-a460232f3b1d_1_L001",
+  "resolution": {
+   "family_class": "sans",
+   "italic": true,
+   "monospace": false,
+   "weight": "bold"
+  }
+ }
+]
