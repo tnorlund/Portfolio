@@ -179,10 +179,11 @@ class EmailReceiptInbox(ComponentResource):
         # --- durable backstop: async S3 invokes that exhaust Lambda retries
         # land in a DLQ instead of being silently discarded (see FunctionEvent
         # InvokeConfig below).
-        dlq = aws.sqs.Queue(
+        self.dlq = aws.sqs.Queue(
             f"{name}-parser-dlq",
             message_retention_seconds=1209600,  # 14 days
             tags=tags, opts=child)
+        dlq = self.dlq
         s3_policy = aws.iam.RolePolicy(
             f"{name}-parser-s3",
             role=role.id,
@@ -209,7 +210,10 @@ class EmailReceiptInbox(ComponentResource):
             memory_size=256,
             # Public ingress: cap this function's slice of the account's shared
             # concurrency so a mail flood cannot starve every other Lambda.
-            # Throttled async S3 invokes retry, so the cap loses no mail.
+            # Throttled async S3 invokes retry; any that still exhaust the
+            # retry/age window land in the DLQ (alarmed below), and the raw
+            # email persists in S3 under raw/ independent of the async trigger,
+            # so it can be redriven from raw/ — the cap loses no mail.
             reserved_concurrent_executions=10,
             code=pulumi.AssetArchive({
                 ".": pulumi.FileArchive(LAMBDA_DIR),
@@ -230,12 +234,36 @@ class EmailReceiptInbox(ComponentResource):
             maximum_event_age_in_seconds=3600,
             destination_config={"on_failure": {"destination": dlq.arn}},
             opts=child)
+        # The DLQ is the sole capture point for async invokes that exhaust
+        # retries or the age window under a sustained flood. Alarm on its depth
+        # so those failures surface for redrive-from-raw/ instead of silently
+        # aging out at the 14-day retention.
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-parser-dlq-depth",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=1,
+            metric_name="ApproximateNumberOfMessagesVisible",
+            namespace="AWS/SQS",
+            period=300,
+            statistic="Maximum",
+            threshold=0,
+            alarm_description=(
+                "Async parser invokes are landing in the DLQ; redrive from "
+                "raw/ before the 14-day message retention expires."),
+            dimensions={"QueueName": dlq.name},
+            treat_missing_data="notBreaching",
+            tags=tags,
+            opts=child)
         invoke_perm = aws.lambda_.Permission(
             f"{name}-parser-s3-invoke",
             action="lambda:InvokeFunction",
             function=self.parser.name,
             principal="s3.amazonaws.com",
             source_arn=self.bucket.arn,
+            # S3 bucket ARNs carry no account id, so pin the owning account too:
+            # if the bucket name were reclaimed in another account after deletion,
+            # that account's bucket could not invoke this function.
+            source_account=account_id,
             opts=child)
         notification = aws.s3.BucketNotification(
             f"{name}-mail-notify",
@@ -323,4 +351,5 @@ class EmailReceiptInbox(ComponentResource):
             "address": self.address,
             "bucket": self.bucket.bucket,
             "parser_arn": self.parser.arn,
+            "dlq_url": self.dlq.url,
         })
