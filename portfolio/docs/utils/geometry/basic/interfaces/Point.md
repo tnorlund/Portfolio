@@ -6,7 +6,7 @@
 
 # Interface: Point
 
-Defined in: [utils/geometry/basic.ts:4](https://github.com/tnorlund/Portfolio/blob/fa5562d4274763209096aa8c2ffca889897d9d07/portfolio/utils/geometry/basic.ts#L4)
+Defined in: [utils/geometry/basic.ts:4](https://github.com/tnorlund/Portfolio/blob/ec924f031c224fe3a282970a69c683f9b26510d8/portfolio/utils/geometry/basic.ts#L4)
 
 Represents a 2D coordinate used by the geometry utilities.
 
@@ -16,7 +16,7 @@ Represents a 2D coordinate used by the geometry utilities.
 
 > **x**: `number`
 
-Defined in: [utils/geometry/basic.ts:6](https://github.com/tnorlund/Portfolio/blob/fa5562d4274763209096aa8c2ffca889897d9d07/portfolio/utils/geometry/basic.ts#L6)
+Defined in: [utils/geometry/basic.ts:6](https://github.com/tnorlund/Portfolio/blob/ec924f031c224fe3a282970a69c683f9b26510d8/portfolio/utils/geometry/basic.ts#L6)
 
 Horizontal coordinate in normalized [0,1] space.
 
@@ -26,6 +26,6 @@ Horizontal coordinate in normalized [0,1] space.
 
 > **y**: `number`
 
-Defined in: [utils/geometry/basic.ts:8](https://github.com/tnorlund/Portfolio/blob/fa5562d4274763209096aa8c2ffca889897d9d07/portfolio/utils/geometry/basic.ts#L8)
+Defined in: [utils/geometry/basic.ts:8](https://github.com/tnorlund/Portfolio/blob/ec924f031c224fe3a282970a69c683f9b26510d8/portfolio/utils/geometry/basic.ts#L8)
 
 Vertical coordinate in normalized [0,1] space.
