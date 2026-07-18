@@ -8,7 +8,7 @@
 
 > **APIFunction**\<`T`, `R`\> = (...`args`) => `Promise`\<`R`\>
 
-Defined in: [utils/performance/api-wrapper.ts:3](https://github.com/tnorlund/Portfolio/blob/0ee11c63efae48c195a8b94939dd86ccdfa3258b/portfolio/utils/performance/api-wrapper.ts#L3)
+Defined in: [utils/performance/api-wrapper.ts:3](https://github.com/tnorlund/Portfolio/blob/735f2d99b9cc86911886f5f7a8692aa9483caa18/portfolio/utils/performance/api-wrapper.ts#L3)
 
 ## Type Parameters
 

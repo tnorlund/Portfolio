@@ -48,6 +48,49 @@ logger = __import__("logging").getLogger(__name__)
 MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 
+# Well-formed shapes for the GSI keys that embed a mutable business field.
+# Used on read to accept a stale-but-well-formed projection left by a partial
+# update (merchant remap, place remap, confidence bump) while still rejecting
+# genuinely malformed values. See ReceiptPlace.from_item for the rationale.
+#
+# Each "well-formed" shape mirrors what gsi*_key could legitimately emit for a
+# valid entity, so a stale projection is accepted only if some earlier valid
+# state could have produced it; anything else is treated as corruption.
+#
+# GSI1PK: "MERCHANT#" + the slug merchant_name normalization emits (uppercase
+# alphanumeric groups joined by single underscores, no leading/trailing "_").
+# The entity guarantees this slug is non-empty.
+_MERCHANT_GSI1PK_RE = re.compile(r"MERCHANT#[A-Z0-9]+(?:_[A-Z0-9]+)*")
+# GSI3SK: CONFIDENCE#<0.0000-1.0000>#STATUS#<status>#IMAGE#<image_id>.
+# gsi3_key formats confidence as a 4-decimal value the entity constrains to
+# [0.0, 1.0]. validation_status is a free-form string that may be empty or
+# even contain '#', so the status segment is not pattern-matched; instead the
+# CONFIDENCE# prefix and the identity #IMAGE#<image_id> suffix are anchored in
+# _is_wellformed_validation_sk and everything between is treated as the status.
+_GSI3SK_CONFIDENCE_PREFIX_RE = re.compile(
+    r"CONFIDENCE#(?:0\.\d{4}|1\.0000)#STATUS#"
+)
+
+
+def _is_wellformed_place_partition(value: str) -> bool:
+    """GSI2PK is "PLACE#" + place_id. The entity accepts any non-whitespace-only
+    place_id (Google place ids are opaque), so mirror that rather than a charset.
+    """
+    prefix = "PLACE#"
+    return value.startswith(prefix) and bool(value[len(prefix) :].strip())
+
+
+def _is_wellformed_validation_sk(value: str, image_id: str) -> bool:
+    """A GSI3SK is well-formed if its identity anchor (the trailing
+    #IMAGE#<id>) matches this row and the head is CONFIDENCE#<0-1>#STATUS#
+    followed by a free-form status (which may be empty or contain '#')."""
+    suffix = f"#IMAGE#{image_id}"
+    if not value.endswith(suffix):
+        return False
+    head = value[: -len(suffix)]
+    return _GSI3SK_CONFIDENCE_PREFIX_RE.match(head) is not None
+
+
 # Fields that are computed (GSI keys) and should not be passed to
 # constructor. Includes GSI4 and geohash for backward compatibility
 # with older records that had geospatial indexing.
@@ -598,7 +641,45 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
             **result.gsi3_key,
             **result.gsi4_key,
         }
+        # Some GSI keys embed a *mutable* business field, so a partial update
+        # (e.g. a merchant remap or a confidence bump) can correct the scalar
+        # field without rewriting the projected GSI value. Real dev/prod rows
+        # carry that drift: the merchant-normalization migration fixed 144
+        # merchants but left 6 dev rows whose GSI1PK/GSI2PK/GSI3SK still encode
+        # the superseded merchant, place_id, and confidence (e.g.
+        # merchant_name="Wild Fork" with GSI1PK=MERCHANT#THOUSAND_OAKS and
+        # GSI2PK=PLACE#<old place id>; confidence bumped 0.80->0.95 without
+        # rewriting GSI3SK). The scalar fields are authoritative on read, so
+        # tolerate a stale-but-well-formed projection here rather than
+        # hard-failing a read of pre-existing data. Only these three keys carry
+        # a mutable field; every other key derives from identity
+        # (image_id/receipt_id) or a constant and stays a strict exact match.
+        # GSI2PK is only present in expected_keys when place_id is set, so the
+        # empty-place_id legacy handling below is unaffected.
+        business_key_validators = {
+            "GSI1PK": lambda value: bool(_MERCHANT_GSI1PK_RE.fullmatch(value)),
+            "GSI2PK": _is_wellformed_place_partition,
+            "GSI3SK": lambda value: _is_wellformed_validation_sk(
+                value, result.image_id
+            ),
+        }
         for key_name, expected_value in expected_keys.items():
+            validator = business_key_validators.get(key_name)
+            if validator is not None:
+                stored = item.get(key_name)
+                # Absent (sparse/tolerated) or the canonical current value: the
+                # exact-match short-circuit means a legitimately generated key
+                # is never rejected by the looser well-formed patterns below.
+                if stored is None or stored == expected_value:
+                    continue
+                # Stored value differs from the regenerated projection, i.e. it
+                # is stale: accept only if it is a shape the generator could
+                # have emitted for some earlier valid state, else it is corrupt.
+                if not isinstance(stored, dict) or not validator(
+                    stored.get("S") or ""
+                ):
+                    raise ValueError(f"{key_name} does not match entity keys")
+                continue
             if key_name in item and item[key_name] != expected_value:
                 raise ValueError(f"{key_name} does not match entity keys")
 
