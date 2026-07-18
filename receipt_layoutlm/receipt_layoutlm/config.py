@@ -33,6 +33,11 @@ class DataConfig:
     # S3 URI of the pinned canonical val split (recorded for run lineage so the
     # Job entity / run.json says which shared val set this run held out).
     val_keys_s3: Optional[str] = None
+    # First-pass product/detail experiment: append train-only line-item-band
+    # windows while keeping validation and inference on full receipts.
+    item_window_augmentation: Optional[bool] = None
+    item_window_size: Optional[int] = None
+    item_window_stride: Optional[int] = None
 
     def get_effective_label_merges(self) -> Dict[str, List[str]]:
         """Return the effective label merges, combining explicit config and legacy flags.
@@ -86,6 +91,12 @@ class TrainingConfig:
     auto_export_coreml: bool = False
     coreml_quantize: Optional[str] = "float16"
     model_version: str = ModelVersion.V1.value
+    # Metric used by HuggingFace Trainer for best-checkpoint selection and
+    # early stopping. Values are normalized to eval_* metric names by trainer.
+    checkpoint_metric: str = "f1"
+    # Extra class-weight multiplier for product detail labels. This keeps the
+    # 22-label first-pass head, but makes product-detail mistakes cost more.
+    product_detail_loss_weight: float = 1.0
     # Run the windowed held-out eval in-process after each epoch's checkpoint
     # is saved, emitting epochs.json live (the viz cache) on the training GPU —
     # no separate Processing job needed for new runs. Best-effort: failures are
