@@ -228,6 +228,22 @@ def test_gate_result_carries_prior_and_threshold(
     assert result.threshold == pytest.approx(0.03)
 
 
+def test_malformed_prior_cell_raises(
+    synthetic_priors: dict[str, Any],
+) -> None:
+    """Fail loudly on NaN or out-of-range prior cells instead of passing OK."""
+    synthetic_priors["labels"]["PRODUCT_NAME"]["sections"]["ITEMS"]["p"] = (
+        float("nan")
+    )
+
+    with pytest.raises(ValueError, match="finite probability"):
+        evaluate_label_section(
+            "PRODUCT_NAME",
+            ["ITEMS"],
+            synthetic_priors,
+        )
+
+
 def test_packaged_prior_asset_has_loose_invariants() -> None:
     """Integration-lite: verify the packaged artifact is readable and sane."""
     artifact = load_priors()

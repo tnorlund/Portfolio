@@ -17,6 +17,7 @@ an immutable prior artifact and caller-provided section values.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib.resources import files
@@ -123,10 +124,19 @@ def evaluate_label_section(
         )
 
     section_priors = entry.get("sections", {})
-    prior = max(
+    cell_values = [
         float(section_priors.get(section_type, {}).get("p", 0.0))
         for section_type in line_sections
-    )
+    ]
+    # A malformed artifact (NaN/inf/out-of-range cells) must fail loudly:
+    # NaN compares False against the threshold and would silently pass as OK.
+    for value in cell_values:
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(
+                f"Malformed prior cell for label {label!r}: {value!r} is "
+                "not a finite probability in [0, 1]"
+            )
+    prior = max(cell_values)
     if prior < threshold:
         return GateResult(
             verdict=VERDICT_LOW_PRIOR,
