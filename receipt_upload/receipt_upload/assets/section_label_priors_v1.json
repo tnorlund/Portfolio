@@ -1,8 +1,9 @@
 {
-  "denominator": "pairs of (VALID core-label row, VALID canonical section on the row's line); p = count / label pair total",
+  "denominator": "p = section pair count / label's sectioned row count (co-occurrence rate per sectioned row; cells on multi-section lines can sum above 1.0)",
   "labels": {
     "ADDRESS_LINE": {
       "sectioned": 5226,
+      "sectioned_lines": 1991,
       "sections": {
         "ADDRESS": {
           "count": 4825,
@@ -46,6 +47,7 @@
     },
     "CASH_BACK": {
       "sectioned": 19,
+      "sectioned_lines": 19,
       "sections": {
         "ITEMS": {
           "count": 2,
@@ -61,6 +63,7 @@
     },
     "CHANGE": {
       "sectioned": 50,
+      "sectioned_lines": 50,
       "sections": {
         "ITEMS": {
           "count": 1,
@@ -84,6 +87,7 @@
     },
     "COUPON": {
       "sectioned": 109,
+      "sectioned_lines": 66,
       "sections": {
         "ADDRESS": {
           "count": 9,
@@ -123,6 +127,7 @@
     },
     "DATE": {
       "sectioned": 337,
+      "sectioned_lines": 286,
       "sections": {
         "ADDRESS": {
           "count": 33,
@@ -166,6 +171,7 @@
     },
     "DISCOUNT": {
       "sectioned": 137,
+      "sectioned_lines": 97,
       "sections": {
         "ADDRESS": {
           "count": 1,
@@ -201,6 +207,7 @@
     },
     "GRAND_TOTAL": {
       "sectioned": 850,
+      "sectioned_lines": 849,
       "sections": {
         "ITEMS": {
           "count": 16,
@@ -228,6 +235,7 @@
     },
     "LINE_TOTAL": {
       "sectioned": 1451,
+      "sectioned_lines": 1447,
       "sections": {
         "ADDRESS": {
           "count": 2,
@@ -279,6 +287,7 @@
     },
     "LOYALTY_ID": {
       "sectioned": 91,
+      "sectioned_lines": 77,
       "sections": {
         "ADDRESS": {
           "count": 2,
@@ -322,6 +331,7 @@
     },
     "MERCHANT_NAME": {
       "sectioned": 1287,
+      "sectioned_lines": 856,
       "sections": {
         "ADDRESS": {
           "count": 140,
@@ -361,6 +371,7 @@
     },
     "PAYMENT_METHOD": {
       "sectioned": 3234,
+      "sectioned_lines": 2718,
       "sections": {
         "ADDRESS": {
           "count": 2,
@@ -408,6 +419,7 @@
     },
     "PHONE_NUMBER": {
       "sectioned": 938,
+      "sectioned_lines": 796,
       "sections": {
         "ADDRESS": {
           "count": 752,
@@ -447,6 +459,7 @@
     },
     "PRODUCT_NAME": {
       "sectioned": 4300,
+      "sectioned_lines": 1783,
       "sections": {
         "ADDRESS": {
           "count": 2,
@@ -498,6 +511,7 @@
     },
     "QUANTITY": {
       "sectioned": 407,
+      "sectioned_lines": 399,
       "sections": {
         "ADDRESS": {
           "count": 1,
@@ -533,6 +547,7 @@
     },
     "REFUND": {
       "sectioned": 10,
+      "sectioned_lines": 9,
       "sections": {
         "ITEMS": {
           "count": 6,
@@ -552,6 +567,7 @@
     },
     "STORE_HOURS": {
       "sectioned": 1186,
+      "sectioned_lines": 341,
       "sections": {
         "ADDRESS": {
           "count": 12,
@@ -587,6 +603,7 @@
     },
     "SUBTOTAL": {
       "sectioned": 393,
+      "sectioned_lines": 393,
       "sections": {
         "ADDRESS": {
           "count": 2,
@@ -626,6 +643,7 @@
     },
     "TAX": {
       "sectioned": 386,
+      "sectioned_lines": 385,
       "sections": {
         "ADDRESS": {
           "count": 1,
@@ -661,6 +679,7 @@
     },
     "TIME": {
       "sectioned": 349,
+      "sectioned_lines": 298,
       "sections": {
         "ADDRESS": {
           "count": 34,
@@ -700,6 +719,7 @@
     },
     "TIP": {
       "sectioned": 41,
+      "sectioned_lines": 41,
       "sections": {
         "ITEMS": {
           "count": 2,
@@ -723,6 +743,7 @@
     },
     "UNIT_PRICE": {
       "sectioned": 400,
+      "sectioned_lines": 399,
       "sections": {
         "ADDRESS": {
           "count": 3,
@@ -762,6 +783,7 @@
     },
     "WEBSITE": {
       "sectioned": 599,
+      "sectioned_lines": 589,
       "sections": {
         "ADDRESS": {
           "count": 26,

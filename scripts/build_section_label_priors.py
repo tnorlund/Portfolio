@@ -213,6 +213,7 @@ def _build_model(
     tallies: dict[str, dict[str, Any]] = {
         label: {
             "sectioned": 0,
+            "sectioned_line_keys": set(),
             "section_pairs": Counter(),
             "total": 0,
             "unsectioned": 0,
@@ -246,6 +247,7 @@ def _build_model(
 
         if line_sections:
             label_tally["sectioned"] += 1
+            label_tally["sectioned_line_keys"].add(line_key)
             sectioned_core_label_row_count += 1
             for section_type in sorted(line_sections):
                 label_tally["section_pairs"][section_type] += 1
@@ -278,17 +280,22 @@ def _build_model(
     for label in sorted(CORE_LABELS):
         tally = tallies[label]
         section_pairs: Counter[str] = tally["section_pairs"]
-        pair_total = sum(section_pairs.values())
+        sectioned_rows = tally["sectioned"]
+        # p is the co-occurrence rate per sectioned row (count / sectioned),
+        # matching the gate's max-over-sections decision rule. On lines with
+        # more than one section a row contributes to several cells, so the
+        # cells can sum above 1.0 — they are rates, not a partition.
         section_probabilities = {
             section_type: {
                 "count": count,
-                "p": round(count / pair_total, 6),
+                "p": round(count / sectioned_rows, 6),
             }
             for section_type, count in sorted(section_pairs.items())
         }
         labels[label] = {
             "total": tally["total"],
             "sectioned": tally["sectioned"],
+            "sectioned_lines": len(tally["sectioned_line_keys"]),
             "unsectioned": tally["unsectioned"],
             "sections": section_probabilities,
         }
@@ -315,8 +322,9 @@ def _build_model(
         "model_source": "section-label-prior-v1",
         "source_environment": "dev",
         "denominator": (
-            "pairs of (VALID core-label row, VALID canonical section on the "
-            "row's line); p = count / label pair total"
+            "p = section pair count / label's sectioned row count "
+            "(co-occurrence rate per sectioned row; cells on multi-section "
+            "lines can sum above 1.0)"
         ),
         "sections": canonical_sections,
         "source": source,

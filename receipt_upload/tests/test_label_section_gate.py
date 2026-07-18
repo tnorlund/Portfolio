@@ -33,6 +33,7 @@ def synthetic_priors() -> dict[str, Any]:
             "ADDRESS_LINE": {
                 "total": 100,
                 "sectioned": 90,
+                "sectioned_lines": 80,
                 "unsectioned": 10,
                 "sections": {
                     "ADDRESS": {"count": 83, "p": 0.923},
@@ -42,6 +43,7 @@ def synthetic_priors() -> dict[str, Any]:
             "PRODUCT_NAME": {
                 "total": 100,
                 "sectioned": 100,
+                "sectioned_lines": 95,
                 "unsectioned": 0,
                 "sections": {
                     "ADDRESS": {"count": 2, "p": 0.02},
@@ -51,6 +53,7 @@ def synthetic_priors() -> dict[str, Any]:
             "DATE": {
                 "total": 100,
                 "sectioned": 58,
+                "sectioned_lines": 58,
                 "unsectioned": 42,
                 "sections": {
                     "TRANSACTION_INFO": {"count": 58, "p": 0.8},
@@ -59,6 +62,7 @@ def synthetic_priors() -> dict[str, Any]:
             "TAX": {
                 "total": 100,
                 "sectioned": 80,
+                "sectioned_lines": 75,
                 "unsectioned": 20,
                 "sections": {
                     "SUMMARY": {"count": 4, "p": 0.05},
@@ -226,6 +230,38 @@ def test_gate_result_carries_prior_and_threshold(
     assert result.verdict == VERDICT_LOW_PRIOR
     assert result.prior == pytest.approx(0.02)
     assert result.threshold == pytest.approx(0.03)
+
+
+def test_support_floor_uses_distinct_lines(
+    synthetic_priors: dict[str, Any],
+) -> None:
+    """Abstain when line-level support is thin despite many word rows."""
+    entry = synthetic_priors["labels"]["PRODUCT_NAME"]
+    entry["sectioned"] = 200
+    entry["sectioned_lines"] = 10
+
+    result = evaluate_label_section(
+        "PRODUCT_NAME",
+        ["ITEMS"],
+        synthetic_priors,
+    )
+
+    assert result.verdict == VERDICT_ABSTAIN
+    assert result.reason == "insufficient-support"
+
+
+def test_invalid_threshold_raises(
+    synthetic_priors: dict[str, Any],
+) -> None:
+    """Reject NaN and out-of-range thresholds instead of passing rows OK."""
+    for bad in (float("nan"), -0.1, 1.5):
+        with pytest.raises(ValueError, match="threshold"):
+            evaluate_label_section(
+                "ADDRESS_LINE",
+                ["ADDRESS"],
+                synthetic_priors,
+                threshold=bad,
+            )
 
 
 def test_malformed_prior_cell_raises(

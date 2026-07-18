@@ -40,7 +40,10 @@ DEFAULT_LOW_PRIOR_THRESHOLD = 0.05
 
 # ceil(ln(0.05) / ln(1 - 0.05)) = 59. This is the smallest sample size for
 # which a cell with a true rate equal to the threshold has less than a 5%
-# probability of producing zero observations.
+# probability of producing zero observations. Support is counted in DISTINCT
+# SECTIONED LINES (``sectioned_lines``), not word rows: all words on a line
+# share the same section assignment, so word rows are not independent trials
+# and counting them would overstate support (pseudo-replication).
 MIN_SECTIONED_SUPPORT = 59
 
 
@@ -91,6 +94,12 @@ def evaluate_label_section(
     min_support: int = MIN_SECTIONED_SUPPORT,
 ) -> GateResult:
     """Evaluate one label against the canonical sections assigned to a line."""
+    # NaN compares False everywhere, so an invalid threshold would silently
+    # pass every row as OK; fail loudly instead.
+    if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError(
+            f"threshold {threshold!r} must be a finite value in [0, 1]"
+        )
     canonical_sections = set(priors.get("sections", []))
     line_sections = {
         section_type
@@ -115,7 +124,8 @@ def evaluate_label_section(
         )
 
     entry = labels[label]
-    if int(entry.get("sectioned", 0)) < min_support:
+    support = int(entry.get("sectioned_lines", entry.get("sectioned", 0)))
+    if support < min_support:
         return GateResult(
             verdict=VERDICT_ABSTAIN,
             prior=None,
