@@ -48,6 +48,14 @@ class EmailReceiptInbox(ComponentResource):
         self.address = f"{recipient_localpart}@{domain}"
         zone = aws.route53.get_zone(name=zone_name)
 
+        # Deterministic SES physical names so the bucket policy can pin the
+        # exact receipt rule allowed to write under raw/ (confused-deputy guard).
+        rule_set_name = f"{name}-{stack}"
+        store_rule_name = f"{name}-store-{stack}"
+        store_rule_arn = (f"arn:aws:ses:{region}:{account_id}:"
+                          f"receipt-rule-set/{rule_set_name}:"
+                          f"receipt-rule/{store_rule_name}")
+
         # --- SES identity + DKIM + inbound MX on the isolated subdomain
         identity = aws.ses.DomainIdentity(f"{name}-identity", domain=domain,
                                           opts=child)
@@ -80,14 +88,10 @@ class EmailReceiptInbox(ComponentResource):
                 ttl=300,
                 records=[token.apply(lambda t: f"{t}.dkim.amazonses.com")],
                 opts=child)
-        aws.route53.Record(
-            f"{name}-mx",
-            zone_id=zone.zone_id,
-            name=domain,
-            type="MX",
-            ttl=300,
-            records=[f"10 inbound-smtp.{region}.amazonaws.com"],
-            opts=child)
+        # The inbound MX record is published LAST (see end of __init__): once it
+        # exists, SES can accept mail, so everything a delivered message needs
+        # (bucket versioning, the S3->Lambda notification, an active rule set)
+        # must already be in place or the first message is lost/unversioned.
 
         # --- raw + parsed mail bucket
         self.bucket = aws.s3.Bucket(
@@ -109,7 +113,7 @@ class EmailReceiptInbox(ComponentResource):
             opts=child)
         # Versioning gives replays/overwrites an immutable lineage: the handler
         # fetches the exact event version rather than "latest" (see handler.py).
-        aws.s3.BucketVersioning(
+        versioning = aws.s3.BucketVersioning(
             f"{name}-mail-versioning",
             bucket=self.bucket.id,
             versioning_configuration={"status": "Enabled"},
@@ -132,7 +136,10 @@ class EmailReceiptInbox(ComponentResource):
                      "expiration": expire,
                      "noncurrent_version_expiration": noncurrent},
                 ],
-                opts=child)
+                # Noncurrent-version expiration is meaningless until versioning
+                # is Enabled; order it after so the rule isn't applied to an
+                # unversioned bucket.
+                opts=ResourceOptions(parent=self, depends_on=[versioning]))
         bucket_policy = aws.s3.BucketPolicy(
             f"{name}-mail-ses-policy",
             bucket=self.bucket.id,
@@ -145,8 +152,11 @@ class EmailReceiptInbox(ComponentResource):
                         "Principal": {"Service": "ses.amazonaws.com"},
                         "Action": "s3:PutObject",
                         "Resource": f"{a[0]}/raw/*",
+                        # Scope to this account AND the specific receipt rule, so
+                        # no other SES rule in the account can write under raw/.
                         "Condition": {"StringEquals": {
-                            "aws:SourceAccount": a[1]}},
+                            "aws:SourceAccount": a[1],
+                            "aws:SourceArn": store_rule_arn}},
                     }],
                 })),
             opts=child)
@@ -220,7 +230,7 @@ class EmailReceiptInbox(ComponentResource):
             principal="s3.amazonaws.com",
             source_arn=self.bucket.arn,
             opts=child)
-        aws.s3.BucketNotification(
+        notification = aws.s3.BucketNotification(
             f"{name}-mail-notify",
             bucket=self.bucket.id,
             lambda_functions=[{
@@ -235,9 +245,10 @@ class EmailReceiptInbox(ComponentResource):
 
         # --- receipt rule set
         rule_set = aws.ses.ReceiptRuleSet(
-            f"{name}-rules", rule_set_name=f"{name}-{stack}", opts=child)
+            f"{name}-rules", rule_set_name=rule_set_name, opts=child)
         store_rule = aws.ses.ReceiptRule(
             f"{name}-store-rule",
+            name=store_rule_name,
             rule_set_name=rule_set.rule_set_name,
             recipients=[self.address],
             enabled=True,
@@ -255,14 +266,33 @@ class EmailReceiptInbox(ComponentResource):
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[rule_set, verification, bucket_policy]))
+        activation = None
         if activate:
-            # Activate only after the rule exists, so we never briefly publish
-            # an empty active rule set.
-            aws.ses.ActiveReceiptRuleSet(
+            # Activate only after the rule exists (never briefly publish an
+            # empty active set) AND after the bucket pipeline is ready, so the
+            # first stored message is versioned and triggers the parser.
+            activation = aws.ses.ActiveReceiptRuleSet(
                 f"{name}-rules-active",
                 rule_set_name=rule_set.rule_set_name,
-                opts=ResourceOptions(parent=self,
-                                     depends_on=[store_rule]))
+                opts=ResourceOptions(
+                    parent=self,
+                    depends_on=[store_rule, versioning, notification]))
+
+        # --- inbound MX, published LAST. Once this resolves SES starts
+        # accepting mail; gating it on the active rule set (or at least the
+        # store rule) plus versioning + notification means no delivered message
+        # can arrive before the storage/trigger graph exists.
+        mx_deps = [store_rule, versioning, notification]
+        if activation is not None:
+            mx_deps.append(activation)
+        aws.route53.Record(
+            f"{name}-mx",
+            zone_id=zone.zone_id,
+            name=domain,
+            type="MX",
+            ttl=300,
+            records=[f"10 inbound-smtp.{region}.amazonaws.com"],
+            opts=ResourceOptions(parent=self, depends_on=mx_deps))
 
         self.register_outputs({
             "address": self.address,

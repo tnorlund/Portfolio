@@ -2,10 +2,12 @@
 
 SES writes each inbound message to s3://<bucket>/raw/<messageId>. This handler
 parses it through the sender registry and writes a result document to
-parsed/<messageId>.json:
+parsed/<messageId>.<ingest_id>.json:
 
     {
       "message_id": "...",        # RFC-822 Message-ID (falls back to S3 key)
+      "ingest_id": "...",         # sha256 of the raw bytes — the stable, non-
+                                  # spoofable identity keying the parsed object
       "s3_key": "raw/...",
       "from_domain": "doordash.com",
       "original_from": "...",     # unwrapped when the mail arrived via a
@@ -13,14 +15,17 @@ parsed/<messageId>.json:
       "subject": "...",
       "group": "doordash" | null,
       "classification": "receipt" | "txn_signal" | "needs_ocr" | "non_receipt"
-                        | "unknown_sender" | "parse_error",
+                        | "quarantine" | "unknown_sender" | "parse_error",
       "receipt": {...} | null,    # the parser's raw schema output
       "error": "..." | null
     }
 
-The private reconciliation plane polls parsed/ and ingests idempotently by
-message_id. This function deliberately writes derived data only — no DynamoDB
-coupling — so re-parses are a matter of re-running over raw/.
+The private reconciliation plane polls parsed/ and MUST ingest idempotently by
+``ingest_id`` (the content digest): S3 notifications are unordered, so keying by
+message_id/S3 key alone would let an older replay clobber a newer parse. Each
+distinct message body maps to exactly one parsed object. This function
+deliberately writes derived data only — no DynamoDB coupling — so re-parses are
+a matter of re-running over raw/.
 """
 from __future__ import annotations
 
@@ -80,6 +85,24 @@ def _ses_auth(msg) -> dict:
     return {"spam_verdict": spam, "virus_verdict": virus, "auth": auth}
 
 
+def _content_rejected(spam, virus) -> bool:
+    """Fail CLOSED on indeterminate SES content scans.
+
+    SES emits PASS / FAIL / GRAY / PROCESSING_FAILED, and a verdict may be
+    absent entirely if the message could not be scanned. Only an explicit
+    ``PASS`` clears the virus scan — GRAY, PROCESSING_FAILED, FAIL, or a missing
+    verdict all mean SES never affirmed the payload is clean, so quarantine.
+    For spam, an explicit FAIL is spam and PROCESSING_FAILED means SES could not
+    scan (e.g. malformed MIME); GRAY (borderline) is allowed through with the
+    verdict recorded so downstream can weigh it.
+    """
+    if virus != "PASS":
+        return True
+    if spam in ("FAIL", "PROCESSING_FAILED"):
+        return True
+    return False
+
+
 def lambda_handler(event, _context):
     results = []
     for record in event.get("Records", []):
@@ -112,16 +135,34 @@ def lambda_handler(event, _context):
             from_addr, domain = _from_domain(msg)
             out["from_domain"] = domain
             out["original_from"] = from_addr
-            if out["virus_verdict"] == "FAIL" or out["spam_verdict"] == "FAIL":
-                # SES flagged malware/spam; do not feed it to reconciliation.
-                out["classification"] = "non_receipt"
+            if _content_rejected(out["virus_verdict"], out["spam_verdict"]):
+                # SES flagged (or could not clear) malware/spam; hold it out of
+                # reconciliation. Distinct from parser-determined non_receipt so
+                # downstream can treat scan failures differently.
+                out["classification"] = "quarantine"
             else:
                 grp = registry.group_for_domain(domain)
                 out["group"] = grp
                 if grp:
+                    # The registry chose the group from the canonical sender
+                    # (X-Original-From in the iCloud-forwarding case), but the
+                    # parsers re-dispatch on the message's own ``From`` header —
+                    # which the forwarder rewrote to itself. Normalize ONLY the
+                    # parser's temp copy so its From matches the sender the
+                    # registry keyed on; the stored raw/ evidence is untouched.
+                    parser_bytes = raw
+                    orig_from = msg.get("X-Original-From")
+                    if orig_from:
+                        norm = email.message_from_bytes(
+                            raw, policy=email.policy.default)
+                        if norm.get("From") is not None:
+                            norm.replace_header("From", orig_from)
+                        else:
+                            norm["From"] = orig_from
+                        parser_bytes = norm.as_bytes()
                     with tempfile.NamedTemporaryFile(
                             suffix=".eml", delete=False) as tmp:
-                        tmp.write(raw)
+                        tmp.write(parser_bytes)
                         path = tmp.name
                     try:
                         parsed = registry.run_parser(grp, path)
@@ -139,7 +180,12 @@ def lambda_handler(event, _context):
             out["error"] = traceback.format_exc(limit=4)
 
         # put_object is likewise retryable — keep it outside the catch.
-        dest = "parsed/" + key.split("/", 1)[-1] + ".json"
+        # Key by content digest, not the raw key: two versions of the same S3
+        # key (a replay of the same messageId) would otherwise collide on one
+        # parsed object, and unordered notifications could let the older version
+        # win. ingest_id makes each distinct body its own idempotent object.
+        dest = ("parsed/" + key.split("/", 1)[-1] + "."
+                + out["ingest_id"] + ".json")
         s3.put_object(
             Bucket=bucket, Key=dest,
             Body=json.dumps(out, ensure_ascii=False, default=str).encode(),
