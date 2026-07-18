@@ -32,7 +32,6 @@ class EmailReceiptInbox(ComponentResource):
         subdomain: str = "in",
         recipient_localpart: str = "receipts",
         activate: bool = True,
-        external_active_rule_set: bool = False,
         raw_retention_days: Optional[int] = None,
         tags: Optional[dict[str, str]] = None,
         opts: Optional[ResourceOptions] = None,
@@ -293,22 +292,21 @@ class EmailReceiptInbox(ComponentResource):
                     depends_on=[store_rule, versioning, notification]))
 
         # --- inbound MX, published LAST. Once this resolves SES starts
-        # accepting mail; gating it on the active rule set (or at least the
-        # store rule) plus versioning + notification means no delivered message
-        # can arrive before the storage/trigger graph exists.
+        # accepting mail; gating it on the active rule set plus versioning +
+        # notification means no delivered message can arrive before the
+        # storage/trigger graph exists.
         #
         # Only publish MX once this rule set is actually the one SES will
-        # evaluate. SES has a single active receipt rule set per account+region:
-        # if this component did not activate its rule set (``activate=False``),
-        # publishing MX would route mail to whatever OTHER set is active — which
-        # has no rule for this recipient — so the message is rejected or dropped
-        # instead of stored. Publish only when we activated the set, or when the
-        # caller asserts our store rule was merged into an externally-managed
-        # active set (``external_active_rule_set=True``).
-        if activation is not None or external_active_rule_set:
-            mx_deps = [store_rule, versioning, notification]
-            if activation is not None:
-                mx_deps.append(activation)
+        # evaluate. SES has a single active receipt rule set per account+region,
+        # and this component's store rule lives ONLY inside the rule set it
+        # creates here — it is never merged into a foreign set. So the sole way
+        # this recipient's mail gets stored is if we activate our own set. If we
+        # did not (``activate=False``), publishing MX would route mail to
+        # whatever OTHER set is active — which has no rule for this recipient —
+        # so the message is rejected or dropped instead of stored. Therefore MX
+        # is published only when we activated our set (``activation is not
+        # None``), with the MX record depending on that activation.
+        if activation is not None:
             aws.route53.Record(
                 f"{name}-mx",
                 zone_id=zone.zone_id,
@@ -316,7 +314,10 @@ class EmailReceiptInbox(ComponentResource):
                 type="MX",
                 ttl=300,
                 records=[f"10 inbound-smtp.{region}.amazonaws.com"],
-                opts=ResourceOptions(parent=self, depends_on=mx_deps))
+                opts=ResourceOptions(
+                    parent=self,
+                    depends_on=[store_rule, versioning, notification,
+                                activation]))
 
         self.register_outputs({
             "address": self.address,
