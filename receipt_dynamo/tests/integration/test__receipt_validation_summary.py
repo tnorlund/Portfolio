@@ -20,8 +20,9 @@ from receipt_dynamo.data.shared_exceptions import (
 pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
 
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+RECEIPT_ID = 12345
 MISSING_ENTITY_ERROR = (
-    "ReceiptValidationSummary with ID unknown does not exist"
+    f"ReceiptValidationSummary with ID {IMAGE_ID}#{RECEIPT_ID} does not exist"
 )
 
 COMMON_ERROR_SCENARIOS = [
@@ -81,7 +82,7 @@ def _summary() -> ReceiptValidationSummary:
     """Return a representative validation summary with nested data."""
     return ReceiptValidationSummary(
         image_id=IMAGE_ID,
-        receipt_id=12345,
+        receipt_id=RECEIPT_ID,
         overall_status="valid",
         overall_reasoning="All fields validated successfully",
         validation_timestamp=datetime.now().isoformat(),
