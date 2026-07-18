@@ -1432,8 +1432,13 @@ class OCRProcessor:
             if receipt_words:
                 self.dynamo.add_receipt_words(receipt_words)
                 all_receipt_words.extend(receipt_words)
-            if receipt_lines:
-                persist_receipt_rows(self.dynamo, receipt_lines, receipt_words)
+            persist_receipt_rows(
+                self.dynamo,
+                image_id,
+                receipt_id,
+                receipt_lines,
+                receipt_words,
+            )
             if receipt_letters:
                 self.dynamo.add_receipt_letters(receipt_letters)
 
