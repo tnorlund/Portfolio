@@ -74,7 +74,8 @@ _GSI3SK_CONFIDENCE_PREFIX_RE = re.compile(
 
 def _is_wellformed_place_partition(value: str) -> bool:
     """GSI2PK is "PLACE#" + place_id. The entity accepts any non-whitespace-only
-    place_id (Google place ids are opaque), so mirror that rather than a charset."""
+    place_id (Google place ids are opaque), so mirror that rather than a charset.
+    """
     prefix = "PLACE#"
     return value.startswith(prefix) and bool(value[len(prefix) :].strip())
 
@@ -88,6 +89,7 @@ def _is_wellformed_validation_sk(value: str, image_id: str) -> bool:
         return False
     head = value[: -len(suffix)]
     return _GSI3SK_CONFIDENCE_PREFIX_RE.match(head) is not None
+
 
 # Fields that are computed (GSI keys) and should not be passed to
 # constructor. Includes GSI4 and geohash for backward compatibility
@@ -655,9 +657,7 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
         # GSI2PK is only present in expected_keys when place_id is set, so the
         # empty-place_id legacy handling below is unaffected.
         business_key_validators = {
-            "GSI1PK": lambda value: bool(
-                _MERCHANT_GSI1PK_RE.fullmatch(value)
-            ),
+            "GSI1PK": lambda value: bool(_MERCHANT_GSI1PK_RE.fullmatch(value)),
             "GSI2PK": _is_wellformed_place_partition,
             "GSI3SK": lambda value: _is_wellformed_validation_sk(
                 value, result.image_id
@@ -678,9 +678,7 @@ class ReceiptPlace(  # pylint: disable=too-many-instance-attributes
                 if not isinstance(stored, dict) or not validator(
                     stored.get("S") or ""
                 ):
-                    raise ValueError(
-                        f"{key_name} does not match entity keys"
-                    )
+                    raise ValueError(f"{key_name} does not match entity keys")
                 continue
             if key_name in item and item[key_name] != expected_value:
                 raise ValueError(f"{key_name} does not match entity keys")

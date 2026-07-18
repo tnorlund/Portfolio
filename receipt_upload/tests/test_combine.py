@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import (
     Receipt,
     ReceiptPlace,
@@ -11,11 +12,13 @@ from receipt_dynamo.entities import (
 
 from receipt_upload.combine import (
     calculate_min_area_rect,
+    clone_receipt_place_for_receipt,
     combine_receipt_words_to_image_coords,
     create_combined_receipt_records,
     get_best_receipt_place,
     migrate_receipt_word_labels,
     transform_point_to_warped_space,
+    upsert_receipt_place,
 )
 from receipt_upload.combine.records_builder import (
     _get_receipt_to_image_transform,
@@ -93,6 +96,107 @@ def _make_label(
         validation_status=validation_status,
         label_proposed_by=label_proposed_by,
     )
+
+
+@pytest.mark.unit
+def test_clone_receipt_place_for_receipt_preserves_fields_and_does_not_mutate_source():
+    source = _make_place(
+        receipt_id=1,
+        place_id="ChIJabc",
+        merchant_name="Roosterfish",
+        formatted_address="1302 Abbot Kinney Blvd",
+        phone_number="(424) 387-8221",
+        validation_status=MerchantValidationStatus.MATCHED.value,
+    )
+    source.latitude = 33.990
+    source.longitude = -118.466
+    source.confidence = 0.91
+    source.hours_data = {"periods": [{"open": {"day": 1}}]}
+    source.merchant_types = ["bar", "restaurant"]
+    source.matched_fields = ["name", "phone"]
+    source.reasoning = "text search"
+
+    cloned = clone_receipt_place_for_receipt(
+        source,
+        new_receipt_id=3,
+        reasoning_prefix="Merged from receipts [1, 2]. Original: ",
+    )
+
+    assert cloned.receipt_id == 3
+    assert source.receipt_id == 1  # source not re-keyed
+    assert cloned.place_id == "ChIJabc"
+    assert cloned.merchant_name == "Roosterfish"
+    assert cloned.latitude == 33.990
+    assert cloned.longitude == -118.466
+    assert cloned.confidence == 0.91
+    assert cloned.hours_data == {"periods": [{"open": {"day": 1}}]}
+    assert cloned.merchant_types == ["bar", "restaurant"]
+    assert "Merged from receipts [1, 2]" in cloned.reasoning
+    assert "text search" in cloned.reasoning
+
+    # Deep copy: mutating clone containers must not touch source
+    cloned.merchant_types.append("night_club")
+    cloned.hours_data["periods"].append({"open": {"day": 2}})
+    assert source.merchant_types == ["bar", "restaurant"]
+    assert source.hours_data == {"periods": [{"open": {"day": 1}}]}
+
+
+@pytest.mark.unit
+def test_upsert_receipt_place_adds_when_missing():
+    place = _make_place(
+        receipt_id=3,
+        place_id="p1",
+        merchant_name="Cafe",
+    )
+
+    class _Client:
+        def __init__(self):
+            self.added = []
+            self.updated = []
+
+        def add_receipt_place(self, receipt_place):
+            self.added.append(receipt_place)
+
+        def update_receipt_place(self, receipt_place):
+            self.updated.append(receipt_place)
+
+    client = _Client()
+    action = upsert_receipt_place(client, place)
+
+    assert action == "added"
+    assert client.added == [place]
+    assert client.updated == []
+
+
+@pytest.mark.unit
+def test_upsert_receipt_place_updates_on_already_exists():
+    place = _make_place(
+        receipt_id=3,
+        place_id="p1",
+        merchant_name="Cafe",
+    )
+
+    class _Client:
+        def __init__(self):
+            self.added = []
+            self.updated = []
+
+        def add_receipt_place(self, receipt_place):
+            self.added.append(receipt_place)
+            raise EntityAlreadyExistsError(
+                f"ReceiptPlace with ID {receipt_place.image_id}#"
+                f"{receipt_place.receipt_id} already exists"
+            )
+
+        def update_receipt_place(self, receipt_place):
+            self.updated.append(receipt_place)
+
+    client = _Client()
+    action = upsert_receipt_place(client, place)
+
+    assert action == "updated"
+    assert len(client.added) == 1
+    assert client.updated == [place]
 
 
 @pytest.mark.unit

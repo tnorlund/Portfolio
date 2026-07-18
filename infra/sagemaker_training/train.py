@@ -89,6 +89,9 @@ def build_train_command(hps: dict) -> list[str]:
         "gradient_accumulation_steps": "--gradient-accumulation-steps",
         "label_smoothing": "--label-smoothing",
         "early_stopping_patience": "--early-stopping-patience",
+        "checkpoint_metric": "--checkpoint-metric",
+        "metric_for_best_model": "--checkpoint-metric",
+        "product_detail_loss_weight": "--product-detail-loss-weight",
         "pretrained": "--pretrained",
         "o_entity_ratio": "--o-entity-ratio",
         "resume_from_s3": "--resume-from-s3",
@@ -145,6 +148,18 @@ def build_train_command(hps: dict) -> list[str]:
         cmd.extend(
             ["--receipt-allowlist-s3", str(hps["receipt_allowlist_s3"])]
         )
+
+    # First-pass product/detail experiment: add train-only line-item windows
+    # while validation and inference stay on full receipts.
+    item_window_flag = hps.get(
+        "item_window_augmentation", hps.get("item_window_augment")
+    )
+    if str(item_window_flag).lower() == "true":
+        cmd.append("--item-window-augment")
+    if hps.get("item_window_size"):
+        cmd.extend(["--item-window-size", str(hps["item_window_size"])])
+    if hps.get("item_window_stride"):
+        cmd.extend(["--item-window-stride", str(hps["item_window_stride"])])
 
     # Output path - use SageMaker's model dir
     # The trainer will save here, and SageMaker uploads to S3 automatically
