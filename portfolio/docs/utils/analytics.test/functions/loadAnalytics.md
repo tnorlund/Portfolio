@@ -8,7 +8,7 @@
 
 > **loadAnalytics**(`env?`): [`utils/analytics`](../../analytics/README.md)
 
-Defined in: [utils/analytics.test.ts:6](https://github.com/tnorlund/Portfolio/blob/ec924f031c224fe3a282970a69c683f9b26510d8/portfolio/utils/analytics.test.ts#L6)
+Defined in: [utils/analytics.test.ts:6](https://github.com/tnorlund/Portfolio/blob/e6d2543ac0b9790c58b3dc98b231aad1ab5322a8/portfolio/utils/analytics.test.ts#L6)
 
 ## Parameters
 
