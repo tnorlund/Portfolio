@@ -973,7 +973,7 @@ def _embed_outputs(
     chromadb_bucket: str,
     wait_for_embeddings: bool,
 ) -> list[str]:
-    from receipt_chroma.embedding.orchestration import (
+    from receipt_chroma.embedding import (
         EmbeddingConfig,
         create_embeddings_and_compaction_run,
     )
