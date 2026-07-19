@@ -230,6 +230,31 @@ class McpServerLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
+        # The receipt-health tools resolve the current ledger Lambda through
+        # a stable SSM parameter. This avoids granting ListFunctions or
+        # embedding Pulumi-generated Lambda names in Routine prompts.
+        RolePolicy(
+            f"{name}-lambda-receipt-health-target-policy",
+            role=lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["ssm:GetParameter"],
+                            "Resource": (
+                                "arn:aws:ssm:us-east-1:"
+                                f"{account_id}:parameter/{stack}/mcp/"
+                                "receipt-health-ledger-lambda"
+                            ),
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
         # ============================================================
         # Container Lambda
         # ============================================================

@@ -9,6 +9,7 @@ section tools are registered with valid input schemas and matching impls.
 
 import asyncio
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -41,6 +42,11 @@ EXPECTED_RESEGMENT_TOOLS = {
     "get_receipt_resegmentation_plan",
     "revise_receipt_resegmentation_plan",
     "apply_receipt_resegmentation",
+}
+
+EXPECTED_ROUTINE_TOOLS = {
+    "list_receipt_health_issues",
+    "update_receipt_health_issue",
 }
 
 
@@ -224,6 +230,84 @@ def test_both_servers_expose_identical_resegment_tool_shape():
     for module in (stdio, lam):
         for name in EXPECTED_RESEGMENT_TOOLS:
             assert callable(getattr(module, f"{name}_impl"))
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_routine_tools_present_with_scoped_schema(label):
+    module = _load_module(label, SERVER_FILES[label])
+    tools = asyncio.run(module.list_tools())
+    by_name = {tool.name: tool for tool in tools}
+
+    assert EXPECTED_ROUTINE_TOOLS <= set(by_name)
+    list_schema = by_name["list_receipt_health_issues"].inputSchema
+    assert list_schema["properties"]["limit"]["maximum"] == 10
+    update_schema = by_name["update_receipt_health_issue"].inputSchema
+    assert set(update_schema["required"]) == {"issue_id", "action"}
+    assert "mark_attempted" in update_schema["properties"]["action"]["enum"]
+
+
+def test_both_servers_expose_identical_routine_tool_shape():
+    stdio = _load_module("stdio-routine", SERVER_FILES["stdio"])
+    lam = _load_module("lambda-routine", SERVER_FILES["lambda"])
+
+    def shape(module):
+        tools = asyncio.run(module.list_tools())
+        return {
+            tool.name: (tool.description, tool.inputSchema)
+            for tool in tools
+            if tool.name in EXPECTED_ROUTINE_TOOLS
+        }
+
+    assert shape(stdio) == shape(lam)
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_routine_tools_proxy_to_internal_ledger_lambda(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    calls = []
+
+    async def fake_lambda_name():
+        return "receipt-health-ledger"
+
+    async def fake_invoke(function_name, payload):
+        calls.append((function_name, payload))
+        body = {"issues": [], "count": 0}
+        if payload.get("operation"):
+            body = {"issue": {"issue_id": payload["body"]["issue_id"]}}
+        return {"statusCode": 200, "body": json.dumps(body)}
+
+    monkeypatch.setattr(module, "_receipt_health_lambda_name", fake_lambda_name)
+    monkeypatch.setattr(module, "_invoke_lambda", fake_invoke)
+
+    listed = asyncio.run(
+        module.list_receipt_health_issues_impl(
+            {
+                "state": "eligible",
+                "check_id": "financial_math",
+                "classification": "safe_exact_plan",
+                "limit": 100,
+            }
+        )
+    )
+    updated = asyncio.run(
+        module.update_receipt_health_issue_impl(
+            {"issue_id": "issue-1", "action": "mark_attempted"}
+        )
+    )
+
+    assert listed == {"issues": [], "count": 0}
+    assert updated == {"issue": {"issue_id": "issue-1"}}
+    assert [function_name for function_name, _ in calls] == [
+        "receipt-health-ledger",
+        "receipt-health-ledger",
+    ]
+    list_event = calls[0][1]
+    assert list_event["requestContext"]["http"]["method"] == "GET"
+    assert list_event["queryStringParameters"]["limit"] == "10"
+    assert calls[1][1] == {
+        "operation": "receipt_health_issue_update",
+        "body": {"issue_id": "issue-1", "action": "mark_attempted"},
+    }
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))

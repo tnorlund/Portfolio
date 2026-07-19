@@ -686,6 +686,80 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
             },
         ),
         Tool(
+            name="list_receipt_health_issues",
+            description="""List deterministic receipt-health issues for automation.
+
+Returns the same bounded issue ledger used by the receipt-health dashboard.
+Routine callers should request state=eligible, check_id=financial_math, and
+classification=safe_exact_plan, then apply only the proposed actions returned
+by this tool. This tool is read-only.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "state": {
+                        "type": "string",
+                        "default": "eligible",
+                        "description": "Ledger state to return",
+                    },
+                    "check_id": {
+                        "type": "string",
+                        "default": "financial_math",
+                        "description": "Receipt-health check identifier",
+                    },
+                    "classification": {
+                        "type": "string",
+                        "default": "safe_exact_plan",
+                        "description": "Preflight classification to return",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 10,
+                        "description": "Maximum issues to return",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="update_receipt_health_issue",
+            description="""Record the outcome of a receipt-health issue action.
+
+Use mark_attempted only after every stored safe_exact_plan action succeeds.
+Use manual_review when a plan is structurally invalid, known_limitation for a
+stable evaluator limitation, or blocked when an external dependency prevents
+progress. This tool updates the durable issue ledger.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issue_id": {
+                        "type": "string",
+                        "description": "Receipt-health ledger issue ID",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "claim",
+                            "mark_attempted",
+                            "manual_review",
+                            "known_limitation",
+                            "blocked",
+                        ],
+                    },
+                    "agent": {"type": "string"},
+                    "agent_run_id": {"type": "string"},
+                    "attempt_summary": {"type": "string"},
+                    "actions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "reason": {"type": "string"},
+                    "suppression_fingerprint": {"type": "string"},
+                },
+                "required": ["issue_id", "action"],
+            },
+        ),
+        Tool(
             name="create_word_label",
             description="""Create a NEW ReceiptWordLabel record in DynamoDB.
 
@@ -1789,6 +1863,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
                 new_status=arguments["new_status"],
                 reasoning=arguments.get("reasoning"),
             )
+        elif name == "list_receipt_health_issues":
+            result = await list_receipt_health_issues_impl(arguments)
+        elif name == "update_receipt_health_issue":
+            result = await update_receipt_health_issue_impl(arguments)
         elif name == "merge_receipts":
             result = await merge_receipts_impl(
                 image_id=arguments["image_id"],
@@ -3365,6 +3443,80 @@ async def _invoke_lambda(function_name: str, payload: dict) -> dict:
         }
 
     return response_payload
+
+
+async def _receipt_health_lambda_name() -> str:
+    """Resolve the current receipt-health ledger Lambda from SSM."""
+    import boto3
+
+    env = os.environ.get("PORTFOLIO_ENV", "dev")
+    parameter_name = f"/{env}/mcp/receipt-health-ledger-lambda"
+
+    def _get_parameter() -> str:
+        response = boto3.client("ssm", region_name="us-east-1").get_parameter(
+            Name=parameter_name
+        )
+        return response["Parameter"]["Value"]
+
+    return await asyncio.to_thread(_get_parameter)
+
+
+def _decode_lambda_http_response(response: dict) -> dict:
+    """Decode the label-evaluator Lambda's API-style response."""
+    if "error" in response and "statusCode" not in response:
+        return response
+
+    status_code = int(response.get("statusCode", 500))
+    body = response.get("body", {})
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            body = {"message": body}
+    if not isinstance(body, dict):
+        body = {"result": body}
+    if status_code >= 400:
+        return {"error": body.get("error", "Receipt-health request failed"), **body}
+    return body
+
+
+async def list_receipt_health_issues_impl(arguments: dict) -> dict:
+    """Read bounded receipt-health issues through the internal API Lambda."""
+    query = {
+        "state": arguments.get("state", "eligible"),
+        "check_id": arguments.get("check_id", "financial_math"),
+        "classification": arguments.get("classification", "safe_exact_plan"),
+        "limit": str(min(max(int(arguments.get("limit", 10)), 1), 10)),
+    }
+    function_name = await _receipt_health_lambda_name()
+    response = await _invoke_lambda(
+        function_name,
+        {
+            "version": "2.0",
+            "rawPath": "/label_evaluator/receipt_health_issues",
+            "requestContext": {
+                "http": {
+                    "method": "GET",
+                    "path": "/label_evaluator/receipt_health_issues",
+                }
+            },
+            "queryStringParameters": query,
+        },
+    )
+    return _decode_lambda_http_response(response)
+
+
+async def update_receipt_health_issue_impl(arguments: dict) -> dict:
+    """Update one receipt-health issue through the internal API Lambda."""
+    function_name = await _receipt_health_lambda_name()
+    response = await _invoke_lambda(
+        function_name,
+        {
+            "operation": "receipt_health_issue_update",
+            "body": arguments,
+        },
+    )
+    return _decode_lambda_http_response(response)
 
 
 async def fix_place_impl(

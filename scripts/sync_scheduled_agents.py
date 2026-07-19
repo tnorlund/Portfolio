@@ -1,52 +1,30 @@
 #!/usr/bin/env python3
-"""Sync scheduled agent configs to Claude Code routines API.
+"""Validate scheduled agent configs and print Claude Routine setup steps.
 
-Reads JSON configs from infra/scheduled_agents/ and creates or updates
-the corresponding routines via the Claude Code RemoteTrigger API.
+Claude stores OAuth connector grants in the user's account. They cannot be
+created safely from repository JSON, so this script deliberately records only
+the required connected-connector names and never serializes connector URLs,
+client secrets, or bearer tokens.
 
 Usage:
     # Dry run — show what would change
     python scripts/sync_scheduled_agents.py
 
-    # Apply changes
+    # Print the account-level update steps
     python scripts/sync_scheduled_agents.py --apply
 
     # List current routines
     python scripts/sync_scheduled_agents.py --list
 
-Requires: claude CLI authenticated (uses claude api triggers)
+Requires: an authenticated Claude account with the named connectors connected
 """
 
 import argparse
 import json
-import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 AGENTS_DIR = Path(__file__).parent.parent / "infra" / "scheduled_agents"
-ENVIRONMENT_ID = "env_01ELefm6C9bVcvqCVgbptR5N"
-
-
-def run_claude_api(action: str, trigger_id: str = None, body: dict = None) -> dict:
-    """Call the Claude Code routines API via subprocess."""
-    # Use curl with the auth token from claude CLI config
-    import os
-
-    # Build the API call - we shell out to claude since it handles auth
-    cmd = ["claude", "api", "triggers"]
-    if action == "list":
-        cmd.append("list")
-    elif action == "create":
-        cmd.extend(["create", "--body", json.dumps(body)])
-    elif action == "update":
-        cmd.extend(["update", trigger_id, "--body", json.dumps(body)])
-    elif action == "get":
-        cmd.extend(["get", trigger_id])
-
-    # For now, print the equivalent curl command since claude api triggers
-    # may not exist as a CLI command
-    return {"action": action, "trigger_id": trigger_id, "body": body}
 
 
 def load_agent_config(path: Path) -> dict:
@@ -54,56 +32,23 @@ def load_agent_config(path: Path) -> dict:
     with open(path) as f:
         config = json.load(f)
 
-    required = ["name", "cron_expression", "prompt"]
+    required = ["name", "cron_expression", "prompt", "required_connectors"]
     for field in required:
         if field not in config:
             raise ValueError(f"Missing required field '{field}' in {path.name}")
 
+    connectors = config["required_connectors"]
+    if not isinstance(connectors, list) or not connectors:
+        raise ValueError(f"required_connectors must be a non-empty list in {path.name}")
+    if not all(isinstance(name, str) and name.strip() for name in connectors):
+        raise ValueError(
+            f"required_connectors must contain connector names in {path.name}"
+        )
+    if "mcp_connector" in config:
+        raise ValueError(
+            f"{path.name} must reference account connectors by name, not raw URLs"
+        )
     return config
-
-
-def config_to_api_body(config: dict) -> dict:
-    """Convert a simplified config to the full API body."""
-    mcp_connections = []
-    if config.get("mcp_connector"):
-        mc = config["mcp_connector"]
-        mcp_connections.append({
-            "name": mc["name"],
-            "url": mc["url"],
-        })
-
-    return {
-        "name": config["name"],
-        "cron_expression": config["cron_expression"],
-        "enabled": config.get("enabled", True),
-        "mcp_connections": mcp_connections,
-        "job_config": {
-            "ccr": {
-                "environment_id": ENVIRONMENT_ID,
-                "session_context": {
-                    "model": config.get("model", "claude-sonnet-4-6"),
-                    "sources": [
-                        {"git_repository": {"url": config.get("repository", "")}}
-                    ],
-                    "allowed_tools": ["Bash", "Read", "Write"],
-                },
-                "events": [
-                    {
-                        "data": {
-                            "uuid": str(uuid.uuid4()),
-                            "session_id": "",
-                            "type": "user",
-                            "parent_tool_use_id": None,
-                            "message": {
-                                "content": config["prompt"],
-                                "role": "user",
-                            },
-                        }
-                    }
-                ],
-            }
-        },
-    }
 
 
 def main():
@@ -125,26 +70,25 @@ def main():
 
     for path in configs:
         config = load_agent_config(path)
-        body = config_to_api_body(config)
-
         print(f"  {config['name']}")
         print(f"    Schedule: {config['cron_expression']}")
         print(f"    Model: {config.get('model', 'claude-sonnet-4-6')}")
         print(f"    Enabled: {config.get('enabled', True)}")
-        if config.get("mcp_connector"):
-            print(f"    MCP: {config['mcp_connector']['name']} @ {config['mcp_connector']['url'][:50]}...")
+        print("    Connectors: " + ", ".join(config["required_connectors"]))
         print(f"    Prompt: {config['prompt'][:80]}...")
         print()
 
         if args.apply:
-            print(f"    To sync, use Claude Code:")
-            print(f"    /schedule update receipt-label-fixer")
-            print(f"    Or use the RemoteTrigger API with this body:")
-            print(f"    {json.dumps(body, indent=2)[:200]}...")
+            print("    Update this account-owned Routine with:")
+            print(f"    /schedule update {config['name']}")
+            print("    Attach these already-connected account connectors:")
+            for connector in config["required_connectors"]:
+                print(f"      - {connector}")
+            print("    Then copy the checked-in prompt into the Routine.")
             print()
 
     if not args.apply:
-        print("Dry run. Use --apply to see sync instructions.")
+        print("Validated. Use --apply to print account-level update steps.")
 
 
 if __name__ == "__main__":

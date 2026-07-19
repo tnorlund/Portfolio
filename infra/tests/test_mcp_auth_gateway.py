@@ -6,21 +6,25 @@ from pathlib import Path
 import pytest
 
 _MODULE_PATH = Path(__file__).parents[1] / "mcp_auth_gateway.py"
-_SPEC = importlib.util.spec_from_file_location(
-    "mcp_auth_gateway", _MODULE_PATH
-)
+_SPEC = importlib.util.spec_from_file_location("mcp_auth_gateway", _MODULE_PATH)
 assert _SPEC and _SPEC.loader
 _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
+_public_hostname = _MODULE._public_hostname
 _token_validity = _MODULE._token_validity
 
 
 class _Config:
-    def __init__(self, values: dict[str, int]) -> None:
+    def __init__(self, values: dict[str, int | str]) -> None:
         self._values = values
 
     def get_int(self, key: str) -> int | None:
-        return self._values.get(key)
+        value = self._values.get(key)
+        return value if isinstance(value, int) else None
+
+    def get(self, key: str) -> str | None:
+        value = self._values.get(key)
+        return value if isinstance(value, str) else None
 
 
 def test_token_validity_uses_secure_defaults() -> None:
@@ -52,3 +56,29 @@ def test_token_validity_rejects_out_of_range_values(
 ) -> None:
     with pytest.raises(ValueError):
         _token_validity(_Config(values))
+
+
+def test_public_hostname_accepts_stable_dev_subdomain() -> None:
+    config = _Config({"mcpPublicHostname": "MCP-DEV.TYLERNORLUND.COM."})
+
+    assert _public_hostname(config, "dev") == "mcp-dev.tylernorlund.com"
+
+
+def test_public_hostname_is_optional() -> None:
+    assert _public_hostname(_Config({}), "prod") is None
+
+
+@pytest.mark.parametrize(
+    ("hostname", "stack"),
+    [
+        ("mcp.tylernorlund.com", "prod"),
+        ("mcp.example.com", "dev"),
+        ("not a hostname", "dev"),
+    ],
+)
+def test_public_hostname_rejects_unsafe_configuration(
+    hostname: str,
+    stack: str,
+) -> None:
+    with pytest.raises(ValueError):
+        _public_hostname(_Config({"mcpPublicHostname": hostname}), stack)

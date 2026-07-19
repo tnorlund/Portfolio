@@ -104,15 +104,28 @@ def test_gateway_supports_claude_connector_oauth():
     assert "apigateway.RestApi" not in source
 
 
-def test_label_fixer_sends_bearer_token():
-    """The scheduled agent must fetch a client-credentials token and
-    send it on every MCP tools/call once the gateway fronts the URL."""
+def test_label_fixer_uses_account_connected_native_tools():
+    """Claude Routines must reuse account OAuth instead of embedding secrets."""
     import json as _json
 
     config = _json.loads(
         (REPO_ROOT / "infra/scheduled_agents/receipt_label_fixer.json").read_text()
     )
     prompt = config["prompt"]
-    assert "grant_type=client_credentials" in prompt
-    assert "/mcp/oauth/receipt-automation-client" in prompt
-    assert '-H "Authorization: Bearer $MCP_TOKEN"' in prompt
+    assert config["required_connectors"] == ["receipt-tools-dev"]
+    assert "mcp_connector" not in config
+    assert "list_receipt_health_issues" in prompt
+    assert "update_receipt_health_issue" in prompt
+    assert "grant_type=client_credentials" not in prompt
+    assert "secretsmanager get-secret-value" not in prompt
+    assert "curl " not in prompt
+
+
+def test_gateway_has_stable_dev_hostname_configuration():
+    config = (REPO_ROOT / "infra" / "Pulumi.dev.yaml").read_text()
+    source = (REPO_ROOT / "infra" / "mcp_auth_gateway.py").read_text()
+
+    assert 'portfolio:mcpPublicHostname: "mcp-dev.tylernorlund.com"' in config
+    assert "aws.apigatewayv2.DomainName" in source
+    assert "aws.apigatewayv2.ApiMapping" in source
+    assert "aws.route53.Record" in source

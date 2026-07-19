@@ -14,6 +14,7 @@ not interpolate inside static response parameters).
 """
 
 import json
+import re
 from typing import List, Optional
 
 import pulumi
@@ -34,6 +35,11 @@ _DEFAULT_CALLBACK_URLS = [
 
 _DEFAULT_REFRESH_TOKEN_VALIDITY_DAYS = 30
 _DEFAULT_ACCESS_TOKEN_VALIDITY_HOURS = 1
+_BASE_DOMAIN = "tylernorlund.com"
+_HOSTNAME_PATTERN = re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+)
 
 # Serves the RFC 9728 protected-resource metadata documents. HTTP APIs
 # have no mock integrations, so a minimal Lambda answers the well-known
@@ -107,6 +113,27 @@ def _token_validity(config: Config) -> tuple[int, int]:
     return refresh_days, access_hours
 
 
+def _public_hostname(config: Config, stack: str) -> Optional[str]:
+    """Return the stable public MCP hostname for the development stack."""
+    configured_hostname = config.get("mcpPublicHostname")
+    if configured_hostname is None:
+        return None
+
+    hostname = configured_hostname.strip().lower().rstrip(".")
+    if stack != "dev":
+        raise ValueError(
+            "portfolio:mcpPublicHostname is development-only; do not expose "
+            "the personal MCP connector from another stack"
+        )
+    if not _HOSTNAME_PATTERN.fullmatch(hostname):
+        raise ValueError("portfolio:mcpPublicHostname must be a valid hostname")
+    if not hostname.endswith(f".{_BASE_DOMAIN}"):
+        raise ValueError(
+            f"portfolio:mcpPublicHostname must be a subdomain of {_BASE_DOMAIN}"
+        )
+    return hostname
+
+
 class McpAuthGateway(ComponentResource):
     """Cognito-protected HTTP API routes for receipt and glyph MCP."""
 
@@ -125,6 +152,7 @@ class McpAuthGateway(ComponentResource):
         region = aws.get_region().region
         account_id = aws.get_caller_identity().account_id
         child_opts = ResourceOptions(parent=self)
+        public_hostname = _public_hostname(config, stack)
 
         self.user_pool = aws.cognito.UserPool(
             f"{name}-users",
@@ -285,8 +313,13 @@ class McpAuthGateway(ComponentResource):
             },
             opts=child_opts,
         )
-        self.receipt_url = Output.format("{}/receipt/mcp", self.api.api_endpoint)
-        self.glyph_url = Output.format("{}/glyph/mcp", self.api.api_endpoint)
+        public_base_url = (
+            Output.from_input(f"https://{public_hostname}")
+            if public_hostname
+            else self.api.api_endpoint
+        )
+        self.receipt_url = Output.format("{}/receipt/mcp", public_base_url)
+        self.glyph_url = Output.format("{}/glyph/mcp", public_base_url)
 
         # Cognito access tokens carry the client id in the client_id
         # claim; HTTP API JWT authorizers accept it in place of aud.
@@ -432,6 +465,74 @@ class McpAuthGateway(ComponentResource):
             opts=child_opts,
         )
 
+        if public_hostname:
+            hosted_zone = aws.route53.get_zone(name=_BASE_DOMAIN)
+            certificate = aws.acm.Certificate(
+                f"{name}-public-certificate",
+                domain_name=public_hostname,
+                validation_method="DNS",
+                opts=child_opts,
+            )
+            validation_option = certificate.domain_validation_options[0]
+            validation_record = aws.route53.Record(
+                f"{name}-public-certificate-validation-record",
+                zone_id=hosted_zone.zone_id,
+                name=validation_option.resource_record_name,
+                type=validation_option.resource_record_type,
+                records=[validation_option.resource_record_value],
+                ttl=60,
+                opts=child_opts,
+            )
+            certificate_validation = aws.acm.CertificateValidation(
+                f"{name}-public-certificate-validation",
+                certificate_arn=certificate.arn,
+                validation_record_fqdns=[validation_record.fqdn],
+                opts=ResourceOptions(
+                    parent=self,
+                    depends_on=[validation_record],
+                ),
+            )
+            custom_domain = aws.apigatewayv2.DomainName(
+                f"{name}-public-domain",
+                domain_name=public_hostname,
+                domain_name_configuration=(
+                    aws.apigatewayv2.DomainNameDomainNameConfigurationArgs(
+                        certificate_arn=certificate_validation.certificate_arn,
+                        endpoint_type="REGIONAL",
+                        security_policy="TLS_1_2",
+                    )
+                ),
+                opts=ResourceOptions(
+                    parent=self,
+                    depends_on=[certificate_validation],
+                ),
+            )
+            aws.apigatewayv2.ApiMapping(
+                f"{name}-public-domain-mapping",
+                api_id=self.api.id,
+                domain_name=custom_domain.id,
+                stage=self.stage.id,
+                opts=child_opts,
+            )
+            aws.route53.Record(
+                f"{name}-public-domain-alias",
+                zone_id=hosted_zone.zone_id,
+                name=public_hostname,
+                type="A",
+                aliases=[
+                    {
+                        "name": (
+                            custom_domain.domain_name_configuration.target_domain_name
+                        ),
+                        "zone_id": (
+                            custom_domain.domain_name_configuration.hosted_zone_id
+                        ),
+                        "evaluateTargetHealth": True,
+                    }
+                ],
+                opts=child_opts,
+            )
+
         self.register_outputs(
             {
                 "receipt_url": self.receipt_url,
@@ -439,5 +540,6 @@ class McpAuthGateway(ComponentResource):
                 "issuer_url": self.issuer_url,
                 "interactive_client_id": self.interactive_client.id,
                 "automation_secret_arn": self.automation_secret_arn,
+                "public_hostname": public_hostname,
             }
         )

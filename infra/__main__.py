@@ -1490,9 +1490,22 @@ if hasattr(api_gateway, "api"):
     label_evaluator_viz_cache = create_label_evaluator_viz_cache(
         cache_bucket_name=label_evaluator_shared.viz_cache_bucket_name,
     )
+    receipt_health_ledger_lambda_parameter = aws.ssm.Parameter(
+        "receipt-health-ledger-lambda-parameter",
+        name=f"/{stack}/mcp/receipt-health-ledger-lambda",
+        type="String",
+        value=label_evaluator_viz_cache.api_lambda.name,
+        description=(
+            "Current receipt-health ledger Lambda used by native MCP tools"
+        ),
+    )
     pulumi.export(
         "label_evaluator_viz_cache_bucket",
         label_evaluator_shared.viz_cache_bucket_name,
+    )
+    pulumi.export(
+        "receipt_health_ledger_lambda_parameter",
+        receipt_health_ledger_lambda_parameter.name,
     )
 
     create_lambda_route(

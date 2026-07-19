@@ -12,6 +12,7 @@ config:
     - http://127.0.0.1:8765/callback/rzKPyJle2jYU
   portfolio:mcpOAuthRefreshTokenValidityDays: "365"
   portfolio:mcpOAuthAccessTokenValidityHours: "24"
+  portfolio:mcpPublicHostname: "mcp-dev.tylernorlund.com"
   portfolio:cloudFrontLogRetentionDays: "30"
   portfolio:GOOGLE_PLACES_API_KEY:
     secure: AAABAMdOnUV9nUeit+P9YPMiDy4umwO9lKpzqcDkePvg0IpPsRmthwzeAeWvjVqq6QGr2TWt1gbYn67zGP6a1pfq2o6HL0o=

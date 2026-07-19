@@ -42,6 +42,23 @@ clients derive it. (A REST API's `/{stage}/` prefix breaks that
 derivation, and REST gateway responses can't emit a per-route
 `WWW-Authenticate` hint — that is why this is an HTTP API.)
 
+The development stack publishes the stable receipt connector URL
+`https://mcp-dev.tylernorlund.com/receipt/mcp`. The hostname is publicly
+routable because Claude Routines execute in Anthropic's cloud, but the MCP
+route is not anonymously accessible: API Gateway requires a valid Cognito
+access token with the receipt scope. OAuth discovery documents remain public
+by design. `portfolio:mcpPublicHostname` is rejected outside the development
+stack so the personal connector cannot accidentally acquire a production
+hostname.
+
+Claude Routines must attach the already-connected `receipt-tools-dev`
+connector from the Routine's **Connectors** tab. Authenticate that connector
+once in Claude Settings, then let Claude retain and refresh the delegated
+OAuth grant. Routine prompts must call native MCP tools; they must not fetch
+the automation client secret, construct bearer tokens, or call the MCP URL
+with `curl`. The checked-in Routine config records the required connector by
+name because account connector grants cannot be represented safely in Git.
+
 User signup is administrator-only. Create the first user after deployment:
 
 ```bash
@@ -59,6 +76,9 @@ scheduled receipt workload read access to that one secret, fetch a short-lived
 token, and send it as `Authorization: Bearer <token>`. Never copy the client
 secret into a config file or repository variable. Glyph automation should get
 its own single-scope client if it is ever needed.
+
+This client-credentials path is for non-Claude machine callers. Claude
+Routines use their account-connected authorization-code grant instead.
 
 ## Configuration and rollout
 
@@ -78,6 +98,7 @@ refresh token to reduce local-tool reconnect friction:
 ```bash
 pulumi config set portfolio:mcpOAuthAccessTokenValidityHours 24
 pulumi config set portfolio:mcpOAuthRefreshTokenValidityDays 365
+pulumi config set portfolio:mcpPublicHostname mcp-dev.tylernorlund.com
 ```
 
 Review infrastructure without applying it:
