@@ -468,10 +468,15 @@ def test_style_metric_fails_on_synth_only_styling():
 def test_amount_of_signs():
     assert ffe._amount_of("-4.00") == -4.0
     assert ffe._amount_of("-$4.00") == -4.0
+    assert ffe._amount_of("$-4.00") == -4.0
     assert ffe._amount_of("4.00-") == -4.0
     assert ffe._amount_of("$1,299.00") == 1299.0
     assert ffe._amount_of("1299.00") == 1299.0
     assert ffe._amount_of("3.49T") == 3.49
+    # double-signed tokens are malformed, not amounts
+    assert ffe._amount_of("-4.00+") is None
+    assert ffe._amount_of("+4.00-") is None
+    assert ffe._amount_of("-$-4.00") is None
 
 
 def test_overall_reports_coverage_gaps(monkeypatch, tmp_path):

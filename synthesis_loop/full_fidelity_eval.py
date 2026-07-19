@@ -1239,15 +1239,23 @@ _DISCOUNT_LABELS = {"DISCOUNT", "COUPON", "REFUND", "SAVINGS"}
 def _amount_of(text: str) -> float | None:
     """Signed amount value, honoring BOTH sign conventions.
 
-    Receipts print negatives leading ("-4.00") or trailing ("4.00-", the
-    register-tape convention); either reads as negative.
+    Receipts print negatives leading ("-4.00", "$-4.00") or trailing
+    ("4.00-", the register-tape convention); either reads as negative. A
+    token signed at BOTH ends (or twice in front) is malformed, not an
+    amount.
     """
     t = str(text or "").strip().replace(",", "")
-    m = re.match(r"^([-+]?)\$?(\d+\.\d{2})[A-Z]?([-+]?)$", t)
+    m = re.match(r"^([-+]?)\$?([-+]?)(\d+\.\d{2})[A-Z]?([-+]?)$", t)
     if not m:
         return None
-    value = float(m.group(2))
-    if "-" in (m.group(1), m.group(3)):
+    if m.group(1) and m.group(2):
+        return None
+    lead = m.group(1) or m.group(2)
+    trail = m.group(4)
+    if lead and trail:
+        return None
+    value = float(m.group(3))
+    if "-" in (lead, trail):
         value = -value
     return value
 
