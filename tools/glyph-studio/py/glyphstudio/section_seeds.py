@@ -20,15 +20,11 @@ Nothing in this module writes ``SECTION_*`` rows — that is the approval gate.
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Iterable, Optional, Sequence
 
 from .sections import normalize_stylescan_section, section_for_core_label
-
-# Same price cue stylescan uses to decide an unruled line is an item line.
-_PRICE_RE = re.compile(r"\d+\.\d{2}")
 
 # Canonical merchant name (ReceiptMetadata) -> stylescan rule slug. Convenience
 # defaults for the nine calibrated merchants; the CLI can override.
@@ -116,7 +112,11 @@ def word_label_section(
 def _line_text_and_price(words: Sequence[SeedWord]) -> tuple[str, bool]:
     ordered = sorted(words, key=lambda w: w.word_id)
     text = " ".join(w.text for w in ordered)
-    has_price = bool(ordered and _PRICE_RE.search(ordered[-1].text))
+    # shared predicate with stylescan.measure: a line classifies identically
+    # through every entry point (#1188 review F12)
+    from .stylescan import line_has_price
+
+    has_price = line_has_price(w.text for w in ordered)
     return text, has_price
 
 
@@ -203,11 +203,15 @@ class SeedReport:
 
     @property
     def coverage(self) -> float:
-        return self.covered_words / self.total_words if self.total_words else 0.0
+        return (
+            self.covered_words / self.total_words if self.total_words else 0.0
+        )
 
     @property
     def agreement(self) -> float:
-        return self.both_agree / self.both_present if self.both_present else 0.0
+        return (
+            self.both_agree / self.both_present if self.both_present else 0.0
+        )
 
     def add_receipt(
         self,

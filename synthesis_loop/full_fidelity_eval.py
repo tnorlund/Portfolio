@@ -146,12 +146,22 @@ STYLE_BOLD_RATIO = 1.4
 STYLE_REAL_STYLED_MIN = 0.5
 STYLE_SYN_STYLED_MIN = 0.25
 STYLE_MIN_ROWS = 2
+# gross uniform re-weighting backstop: the synth body's stroke-per-height
+# may differ from the real's by at most this factor. Generous (approved
+# renders measure ~1.33x; a doubled stroke measures 2.0x) -- FINE absolute
+# weight/size is the existing scorecard gate's jurisdiction.
+STYLE_BODY_REL_RATIO_MAX = 1.6
 # columns: backstop against a whole lane translating while staying straight
 # (residuals + lane gaps can't see it when only one lane is measurable).
 # Generous because OCR-box-vs-ink offsets on ALIGNED receipts measure up to
 # ~0.9 cells (real boxes pad past ink; synth snaps to boxes); 1.5 cells only
 # catches gross whole-lane shifts.
 COLUMN_ABS_DRIFT_LIMIT_CELLS = 1.5
+# columns: the Theil-Sen fit removes tilt PER SIDE, so a linearly sheared
+# synthetic lane would otherwise pass. The synth may not be sheared more
+# than this many px/100rows beyond the real scan's own tilt (Gelson's real
+# tilt measures ~1.7; the axis-aligned synth ~0.5 -- diffs stay under 3).
+COLUMN_SHEAR_LIMIT_PX_PER_100 = 6.0
 # tokens
 TOKEN_INK_RECALL_MIN = 0.98
 TOKEN_TEXT_RECALL_MIN = 0.98
@@ -166,10 +176,14 @@ SEPARATOR_Y_TOL = 0.025
 # background (a receipt photographed on a dark surface reads as a giant
 # full-width "rule" without this cap).
 SEPARATOR_MAX_H_PX = 24
-# graphics: y agreement tolerance for matched codes.
+# graphics: y/x agreement tolerances for matched codes.
 GRAPHIC_Y_TOL = 0.05
-# logo
+GRAPHIC_X_TOL = 0.15
+# logo: height, width and ink-MASS ratios (mass is what stops a 1px line
+# of the right height from passing as a logo)
 LOGO_SIZE_RATIO_RANGE = (0.6, 1.6)
+LOGO_WIDTH_RATIO_RANGE = (0.5, 2.0)
+LOGO_AREA_RATIO_RANGE = (0.25, 4.0)
 LOGO_CENTER_OFFSET_MAX = 0.12  # fraction of width
 # arithmetic
 CENTS_TOL = 0.005
@@ -213,19 +227,21 @@ def profile_hash(merchant: str) -> str:
 
 
 def atlas_hash(merchant: str) -> str:
-    """SHA over the atlas npz + logo bytes the profile references."""
+    """SHA over the render ARTIFACTS the profile references: atlas npz,
+    logo, and the published stylemap JSON (stylemaps change styling without
+    touching the profile block, so they must be in the stamp)."""
     with open(
         os.path.join(REPO, "scripts", "merchant_profiles.json"),
         encoding="utf-8",
     ) as fh:
         block = json.load(fh)["profiles"].get(merchant, {})
     bitdir = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
+    typography = block.get("typography") or {}
     names = sorted(
         set(
-            list(
-                (block.get("typography") or {}).get("bitmap_font", {}).values()
-            )
+            list(typography.get("bitmap_font", {}).values())
             + ([block["logo"]] if block.get("logo") else [])
+            + ([typography["stylemap"]] if typography.get("stylemap") else [])
         )
     )
     digest = hashlib.sha256()
@@ -254,6 +270,38 @@ def build_stamp(merchant: str, *, allow_dirty: bool) -> dict:
         "atlas_hash": atlas_hash(merchant),
         "merchant": merchant,
     }
+
+
+def inputs_hash(real_png: str, manifest_words: list[dict]) -> str:
+    """SHA over the RUN-TIME inputs the code stamps cannot pin: the fetched
+    real image bytes, the fetched OCR manifest, and the barcode detector
+    binary. Dynamo/S3 state can change under an identical git SHA; this
+    hash makes that drift visible in the stamp. (The cached font profile is
+    itself derived from the same Dynamo words; the manifest hash covers its
+    inputs.)"""
+    digest = hashlib.sha256()
+    with open(real_png, "rb") as fh:
+        digest.update(fh.read())
+    payload = json.dumps(
+        [
+            (
+                w.get("line_id"),
+                w.get("word_id"),
+                w.get("text"),
+                w.get("bbox"),
+                sorted(w.get("labels") or []),
+            )
+            for w in manifest_words
+        ],
+        sort_keys=True,
+    )
+    digest.update(payload.encode())
+    if os.path.exists(_BARCODE_BIN):
+        with open(_BARCODE_BIN, "rb") as fh:
+            digest.update(fh.read())
+    else:
+        digest.update(b"<no-detector>")
+    return digest.hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +489,8 @@ def measure_column(
             lo = max(lo, mid)
     points: list[tuple[float, float]] = []
     for row in rows:
+        # EVERY role types its carriers: unrelated ink at the expected edge
+        # must never certify a lane the row does not actually carry.
         if column["role"] == "amount":
             carriers = [w for w in row if is_price_token(w["text"])]
         elif column["role"] == "flag":
@@ -449,8 +499,14 @@ def measure_column(
                 for w in row
                 if len(w["text"].strip()) == 1 and w["text"].strip().isalpha()
             ]
-        else:
-            carriers = row
+        elif column["role"] == "qty":
+            carriers = [
+                w for w in row if re.fullmatch(r"\d{1,2}", w["text"].strip())
+            ]
+        else:  # desc / label: word-like tokens (>= 2 alphabetic chars)
+            carriers = [
+                w for w in row if sum(ch.isalpha() for ch in w["text"]) >= 2
+            ]
         edge_of = (
             (lambda w: w["r"])
             if column["anchor"] == "right"
@@ -493,7 +549,7 @@ def measure_column(
         "outlier_frac": round(outliers / len(points), 3),
         "lane_x_px": round(a + b_slope * mid_y, 2),
         "lane_mid_y_px": round(float(mid_y), 1),
-        "tilt_px_per_100rows": round(b_slope * 100.0, 3),
+        "tilt_px_per_100px": round(b_slope * 100.0, 3),
     }
 
 
@@ -541,12 +597,17 @@ def metric_columns(
         # ~0.9 cells on aligned receipts).
         abs_drift = abs(syn_m["median_dev_px"] - real_m["median_dev_px"])
         fail_abs_drift = abs_drift > COLUMN_ABS_DRIFT_LIMIT_CELLS * cell_w
+        # the per-side fit removes tilt, so gate the tilt DIFFERENCE: a
+        # sheared synth lane vs the real scan's genuine tilt
+        shear = abs(syn_m["tilt_px_per_100px"] - real_m["tilt_px_per_100px"])
+        fail_shear = shear > COLUMN_SHEAR_LIMIT_PX_PER_100
         entry["wobble_limit_px"] = round(wobble_limit, 2)
         entry["outlier_limit"] = round(outlier_limit, 3)
         entry["abs_drift_px"] = round(abs_drift, 2)
         entry["abs_drift_limit_px"] = round(
             COLUMN_ABS_DRIFT_LIMIT_CELLS * cell_w, 2
         )
+        entry["shear_px_per_100px"] = round(shear, 2)
         fails = []
         if fail_wobble:
             fails.append("wobble")
@@ -554,6 +615,8 @@ def metric_columns(
             fails.append("outliers")
         if fail_abs_drift:
             fails.append("abs_drift")
+        if fail_shear:
+            fails.append("shear")
         entry["verdict"] = "FAIL" if fails else "PASS"
         if fails:
             entry["failed_on"] = fails
@@ -595,13 +658,21 @@ def metric_columns(
             if gap_entry["verdict"] == "FAIL":
                 verdict = "FAIL"
             gaps.append(gap_entry)
+    untested = sorted(
+        r["column"]["role"] for r in results if r["verdict"] == "UNTESTED"
+    )
     if not tested:
         verdict = "UNTESTED"
+    elif verdict == "PASS" and untested:
+        # some lanes passed but others carried no evidence: this is not the
+        # same claim as "all declared lanes verified"
+        verdict = "PASS_WITH_GAPS"
     return {
         "verdict": verdict,
         "cell_w_px": round(cell_w, 2),
         "columns": results,
         "lane_gaps": gaps,
+        "untested_roles": untested,
     }
 
 
@@ -786,8 +857,38 @@ def metric_style(
         if fails or extra:
             verdict = "FAIL"
         entries.append(entry)
+    # absolute weight-per-size backstop (codex F5): per-class agreement is
+    # body-relative on each side, so a synth whose EVERY stroke doubled
+    # would otherwise pass. Fine absolute weight/size fidelity remains the
+    # existing scorecard gate's job (h_ratio / wpc / density); this only
+    # catches gross uniform re-weighting.
+    body_ratio = (body_syn / body_real) if body_real else None
+    if (
+        verdict != "FAIL"
+        and body_ratio is not None
+        and not (
+            1.0 / STYLE_BODY_REL_RATIO_MAX
+            <= body_ratio
+            <= STYLE_BODY_REL_RATIO_MAX
+        )
+    ):
+        verdict = "FAIL"
+        body_fail = True
+    else:
+        body_fail = False
+    untested_classes = sorted(
+        e["class"] for e in entries if e["verdict"] == "UNTESTED"
+    )
+    tested = [e for e in entries if e["verdict"] != "UNTESTED"]
+    if verdict != "FAIL":
+        if not tested and not body_fail:
+            verdict = "UNTESTED"
+        elif untested_classes:
+            verdict = "PASS_WITH_GAPS"
     return {
         "verdict": verdict,
+        "body_stroke_fail": body_fail,
+        "untested_classes": untested_classes,
         "body_stroke_rel": {
             "real": round(body_real, 4),
             "synth": round(body_syn, 4),
@@ -803,6 +904,38 @@ def _norm_token(text: str) -> str:
     return re.sub(r"\s+", "", str(text or "")).upper()
 
 
+# A drawn word's ink must look like GLYPHS, not a speck: minimum ink
+# fraction of the box, and the ink's own bbox must span most of the box
+# width and a real share of its height. A 2x2 dot in a word box clears
+# none of these; rendered text at eval resolution clears all comfortably.
+TOKEN_INK_FRAC_MIN = 0.02
+TOKEN_INK_WIDTH_SPAN_MIN = 0.35
+TOKEN_INK_HEIGHT_SPAN_MIN = 0.25
+
+
+def _box_has_glyph_ink(gray: np.ndarray, w: dict, thresh: float) -> bool:
+    """True when a word box contains PLAUSIBLE glyph ink (see constants)."""
+    H, W = gray.shape
+    l = max(0, int(w["l"]) - 2)
+    r = min(W, int(w["r"]) + 3)
+    tt = max(0, int(w["t"]) - 2)
+    bb = min(H, int(w["b"]) + 3)
+    if r - l < 2 or bb - tt < 2:
+        return True  # degenerate box: not evidence either way
+    crop = gray[tt:bb, l:r] < thresh
+    n_ink = int(crop.sum())
+    area = crop.shape[0] * crop.shape[1]
+    if n_ink < max(8, TOKEN_INK_FRAC_MIN * area):
+        return False
+    ys, xs = np.nonzero(crop)
+    width_span = (xs.max() - xs.min() + 1) / crop.shape[1]
+    height_span = (ys.max() - ys.min() + 1) / crop.shape[0]
+    return (
+        width_span >= TOKEN_INK_WIDTH_SPAN_MIN
+        and height_span >= TOKEN_INK_HEIGHT_SPAN_MIN
+    )
+
+
 def metric_tokens(
     manifest_words: list[dict],
     drawn_words: list[dict],
@@ -810,13 +943,18 @@ def metric_tokens(
     *,
     composed: bool,
 ) -> dict:
-    """Manifest-vs-drawn content check.
+    """Manifest-vs-drawn content check, grounded in PIXELS.
 
     ``text_recall``: fraction of manifest tokens present in the drawn word
-    multiset (composed layouts compare ALPHABETIC tokens only -- amount repair
-    is arithmetic's job). ``ink_recall`` (faithful renders only): fraction of
-    manifest word boxes that contain ink in the synth image -- this is what
-    catches an eraser that paints over content the input still carries.
+    multiset (composed layouts compare ALPHABETIC tokens only -- amount
+    repair is arithmetic's job). ``ink_recall``: fraction of drawn-geometry
+    word boxes containing plausible GLYPH ink in the synth image
+    (:func:`_box_has_glyph_ink` -- a 2x2 dot or a blank canvas fails). For
+    faithful renders the drawn geometry IS the manifest geometry, so this
+    also catches an eraser painting over content the input still carries;
+    for composed renders it verifies the composed layout was actually
+    drawn, which is what grounds the arithmetic metric's use of composed
+    words (numbers it checks are verifiably inked).
     """
     from collections import Counter
 
@@ -843,27 +981,23 @@ def metric_tokens(
 
     ink_recall = None
     ink_missing: list[str] = []
-    if syn_gray is not None and not composed:
+    if syn_gray is not None:
         H, W = syn_gray.shape
         thresh = paper_threshold(syn_gray)
         n_checked = n_hit = 0
-        for w in words_to_px(manifest_words, W, H):
+        # ink is verified at the DRAWN geometry (composed layouts moved the
+        # words; faithful renders share the manifest geometry)
+        for w in words_to_px(drawn_words, W, H):
             t = _norm_token(w["text"])
             if len(t) < 2 or not any(ch.isalnum() for ch in t):
                 continue
-            l = max(0, int(w["l"]) - 2)
-            r = min(W, int(w["r"]) + 3)
-            tt = max(0, int(w["t"]) - 2)
-            bb = min(H, int(w["b"]) + 3)
-            if r - l < 2 or bb - tt < 2:
-                continue
             n_checked += 1
-            crop = syn_gray[tt:bb, l:r]
-            if int((crop < thresh).sum()) >= 4:
+            if _box_has_glyph_ink(syn_gray, w, thresh):
                 n_hit += 1
             else:
                 ink_missing.append(t)
-        ink_recall = n_hit / n_checked if n_checked else 1.0
+        # zero checkable words is absent evidence, not a pass
+        ink_recall = n_hit / n_checked if n_checked else None
 
     fail = (
         text_recall < TOKEN_TEXT_RECALL_MIN
@@ -1008,6 +1142,7 @@ def metric_separators(
         detect_separators(syn_gray), rows_syn, syn_gray.shape[0]
     )
     matched = []
+    kind_fails = []
     unmatched_real = list(real_seps)
     unmatched_syn = list(syn_seps)
     for rs in real_seps:
@@ -1017,17 +1152,23 @@ def metric_separators(
             if dy <= SEPARATOR_Y_TOL and (best is None or dy < best[0]):
                 best = (dy, ss)
         if best:
-            matched.append(
-                {"real": rs, "synth": best[1], "dy": round(best[0], 4)}
-            )
+            entry = {"real": rs, "synth": best[1], "dy": round(best[0], 4)}
+            # dash<->double is a resolution artifact on dotted rules (not
+            # gated), but SOLID vs patterned is a visible substitution.
+            solid_pair = {rs["kind"], best[1]["kind"]}
+            if "solid" in solid_pair and len(solid_pair) > 1:
+                entry["kind_mismatch"] = True
+                kind_fails.append(entry)
+            matched.append(entry)
             unmatched_real.remove(rs)
             unmatched_syn.remove(best[1])
-    fail = bool(unmatched_real or unmatched_syn)
+    fail = bool(unmatched_real or unmatched_syn or kind_fails)
     return {
         "verdict": "FAIL" if fail else "PASS",
         "real_count": len(real_seps),
         "synth_count": len(syn_seps),
         "matched": matched,
+        "kind_mismatches": len(kind_fails),
         "missing_in_synth": unmatched_real,
         "phantom_in_synth": unmatched_syn,
     }
@@ -1080,18 +1221,34 @@ def detect_graphics(png_path: str) -> list[dict] | None:
         y_frac = 1.0 - (
             float(bb.get("y", 0.0)) + float(bb.get("height", 0.0)) / 2.0
         )
+        x_frac = float(bb.get("x", 0.0)) + float(bb.get("width", 0.0)) / 2.0
         kind = (
             "qr"
             if any(k in sym for k in ("qr", "aztec", "datamatrix"))
             else "1d"
         )
         out.append(
-            {"symbology": sym, "kind": kind, "y_frac": round(y_frac, 4)}
+            {
+                "symbology": sym,
+                "kind": kind,
+                "y_frac": round(y_frac, 4),
+                "x_frac": round(x_frac, 4),
+                "payload": c.get("payload"),
+            }
         )
     return sorted(out, key=lambda c: c["y_frac"])
 
 
 def metric_graphics(real_png: str, syn_png: str) -> dict:
+    """Barcode/QR inventory agreement.
+
+    Codes match on EXACT symbology (a QR replaced by an Aztec at the same y
+    is a different graphic) plus x/y position. Payload equality is REPORTED
+    per match but not gated: on the fallback render path the synth payload
+    is a deterministic stand-in by design (only detected-entity barcodes
+    carry the real payload through), so gating it would fail intended
+    behavior.
+    """
     real_codes = detect_graphics(real_png)
     syn_codes = detect_graphics(syn_png)
     if real_codes is None or syn_codes is None:
@@ -1105,14 +1262,28 @@ def metric_graphics(real_png: str, syn_png: str) -> dict:
     for rc in real_codes:
         best = None
         for sc in unmatched_syn:
-            if sc["kind"] != rc["kind"]:
+            if sc["symbology"] != rc["symbology"]:
                 continue
             dy = abs(sc["y_frac"] - rc["y_frac"])
-            if dy <= GRAPHIC_Y_TOL and (best is None or dy < best[0]):
+            dx = abs(sc["x_frac"] - rc["x_frac"])
+            if (
+                dy <= GRAPHIC_Y_TOL
+                and dx <= GRAPHIC_X_TOL
+                and (best is None or dy < best[0])
+            ):
                 best = (dy, sc)
         if best:
             matched.append(
-                {"real": rc, "synth": best[1], "dy": round(best[0], 4)}
+                {
+                    "real": rc,
+                    "synth": best[1],
+                    "dy": round(best[0], 4),
+                    "payload_match": (
+                        rc.get("payload") == best[1].get("payload")
+                        if rc.get("payload") is not None
+                        else None
+                    ),
+                }
             )
             unmatched_real.remove(rc)
             unmatched_syn.remove(best[1])
@@ -1187,9 +1358,12 @@ def metric_logo(
 ) -> dict:
     """Storefront-band graphic comparison.
 
-    Compares the dominant ink blob of the top band in both images: presence,
-    height ratio, and horizontal center offset. ``expects_logo=False``
-    (wordmark-as-text merchants) only checks the band is non-empty in both.
+    Compares the dominant ink blob of the top band in both images:
+    presence, height/width ratio, ink MASS ratio (a 1px line of the right
+    height is not a logo), and horizontal center offset.
+    ``expects_logo=False`` (wordmark-as-text merchants) only checks the
+    band is non-empty in both -- the wordmark is rendered TEXT and its
+    fidelity is the token/style metrics' jurisdiction.
     """
     H, W = real_gray.shape
     a, b = int(band[0] * H), int(band[1] * H)
@@ -1208,13 +1382,22 @@ def metric_logo(
         entry["note"] = "wordmark_as_text: presence-only check"
         return entry
     size_ratio = syn_blob["h"] / max(1.0, real_blob["h"])
+    width_ratio = syn_blob["w"] / max(1.0, real_blob["w"])
+    area_ratio = syn_blob["area"] / max(1.0, real_blob["area"])
     center_off = abs(syn_blob["cx"] - real_blob["cx"]) / W
     entry["size_ratio"] = round(size_ratio, 3)
+    entry["width_ratio"] = round(width_ratio, 3)
+    entry["area_ratio"] = round(area_ratio, 3)
     entry["center_offset_frac"] = round(center_off, 4)
     lo, hi = LOGO_SIZE_RATIO_RANGE
+    wlo, whi = LOGO_WIDTH_RATIO_RANGE
+    alo, ahi = LOGO_AREA_RATIO_RANGE
     entry["verdict"] = (
         "FAIL"
-        if not (lo <= size_ratio <= hi) or center_off > LOGO_CENTER_OFFSET_MAX
+        if not (lo <= size_ratio <= hi)
+        or not (wlo <= width_ratio <= whi)
+        or not (alo <= area_ratio <= ahi)
+        or center_off > LOGO_CENTER_OFFSET_MAX
         else "PASS"
     )
     return entry
@@ -1510,9 +1693,25 @@ def profile_block(merchant: str) -> dict:
 
 
 def profile_columns(merchant: str, section: str) -> list[dict]:
-    """Measured columns from the profile's layout_template (P2 source)."""
+    """Measured columns from the profile's layout_template (P2 source).
+
+    Validates the block's schema version and shape before consuming it --
+    a template from a future schema version (or a hand-mangled one) is
+    ignored loudly rather than silently misread.
+    """
     block = profile_block(merchant)
     template = block.get("layout_template") or {}
+    if not template:
+        return []
+    from glyphstudio.layout_template import validate_layout_template
+
+    problems = validate_layout_template(template)
+    if problems:
+        print(
+            f"layout_template for {merchant!r} ignored: {problems}",
+            file=sys.stderr,
+        )
+        return []
     cols = (template.get("columns") or {}).get(section) or []
     return [dict(c) for c in cols]
 
@@ -1583,10 +1782,19 @@ def evaluate_pair(
         )
         result["source"] = source
         per_band_columns[name] = result
-        if result["verdict"] == "FAIL":
-            columns_verdict = "FAIL"
-        elif result["verdict"] == "PASS" and columns_verdict != "FAIL":
-            columns_verdict = "PASS"
+    band_verdicts = [b["verdict"] for b in per_band_columns.values()]
+    if "FAIL" in band_verdicts:
+        columns_verdict = "FAIL"
+    elif "PASS" in band_verdicts:
+        # a band that passed alongside any untested/gapped band is partial
+        # coverage, not a full pass
+        columns_verdict = (
+            "PASS"
+            if all(v == "PASS" for v in band_verdicts)
+            else "PASS_WITH_GAPS"
+        )
+    elif band_verdicts:
+        columns_verdict = "UNTESTED"
 
     classes_real = classify_rows(rows_real, slug)
     classes_syn = classify_rows(rows_syn, slug)
@@ -1614,18 +1822,25 @@ def evaluate_pair(
         "arithmetic": arithmetic,
     }
     verdicts = [m["verdict"] for m in checks.values()]
-    # A PASS with untested/skipped metrics is not the same claim as a full
-    # pass -- name the coverage gaps so incomplete coverage can never be
-    # silently read as "all seven metrics green".
+    # A PASS with untested/skipped metrics -- at ANY depth -- is not the
+    # same claim as a full pass. Sub-metric gaps (an untested lane inside a
+    # passing columns band, a class with too few rows inside style) surface
+    # here with their location, so incomplete coverage can never be read as
+    # "all seven metrics green".
     gaps = sorted(
         name
         for name, m in checks.items()
-        if m["verdict"] in ("UNTESTED", "SKIPPED")
+        if m["verdict"] in ("UNTESTED", "SKIPPED", "PASS_WITH_GAPS")
     )
-    checks["coverage_gaps"] = gaps
+    for band, b in per_band_columns.items():
+        for role in b.get("untested_roles", []):
+            gaps.append(f"columns:{band}:{role}")
+    for cls in style.get("untested_classes", []):
+        gaps.append(f"style:{cls}")
+    checks["coverage_gaps"] = sorted(set(gaps))
     if "FAIL" in verdicts:
         checks["overall"] = "FAIL"
-    elif gaps:
+    elif checks["coverage_gaps"]:
         checks["overall"] = "PASS_WITH_GAPS"
     else:
         checks["overall"] = "PASS"
@@ -1713,6 +1928,12 @@ def run(args) -> int:
     )
     if real is None:
         raise SystemExit("real image unavailable; cannot evaluate fidelity")
+    # The MANIFEST is loaded independently of the render input: the render
+    # pipeline may mutate its word dicts in place (content cleaning), and a
+    # manifest aliasing those dicts would make recall tautological.
+    _, manifest_words, _ = _load_real(
+        args.merchant, args.image_id, args.receipt_id
+    )
     block = profile_block(args.merchant)
     composed = bool(block.get("compose"))
     words_syn = words
@@ -1725,10 +1946,11 @@ def run(args) -> int:
     syn_png = stem + ".syn.png"
     real.save(real_png)
     syn.save(syn_png)
+    stamp["inputs_hash"] = inputs_hash(real_png, manifest_words)
     checks = evaluate_pair(
         real,
         syn,
-        words,
+        manifest_words,
         words_syn,
         slug=args.slug,
         merchant=args.merchant,
@@ -1790,51 +2012,22 @@ def run_real_real(args) -> int:
     real_a.save(png_a)
     real_b.save(png_b)
 
-    # Structural metrics that are meaningful across DIFFERENT receipts of one
-    # merchant: columns (each side vs its own derived lanes), style, graphics
-    # count-by-kind. Content metrics (tokens/arithmetic/separator y-order) are
-    # receipt-specific and skipped.
+    # Structural metrics that are meaningful across DIFFERENT receipts of
+    # one merchant: columns, style, graphics. Content metrics (tokens /
+    # arithmetic / separator y-order) are receipt-specific and skipped.
     gray_a = np.asarray(real_a.convert("L"), dtype=np.uint8)
     gray_b = np.asarray(real_b.convert("L"), dtype=np.uint8)
     rows_a = group_visual_rows(words_to_px(words_a, *real_a.size))
     rows_b = group_visual_rows(words_to_px(words_b, *real_b.size))
     cell_a = ocr_cell_width(rows_a)
-    cell_b = ocr_cell_width(rows_b)
 
-    def side_columns(gray, rows, W, cell):
-        cols = derive_columns_bootstrap(rows, W)
-        return [
-            {"column": c, "measured": measure_column(gray, rows, c, cell)}
-            for c in cols
-        ]
-
-    side_a = side_columns(gray_a, rows_a, real_a.size[0], cell_a)
-    side_b = side_columns(gray_b, rows_b, real_b.size[0], cell_b)
-
-    # PASS iff each side's own lanes are tight: a real receipt's residual
-    # wobble (around its own Theil-Sen lane fit, so scan tilt cancels) must
-    # stay under half a cell + margin. That is the null test: if real
-    # receipts tripped this, the wobble gate would measure noise.
-    verdict = "PASS"
-    details = []
-    for label, side, cell in (("a", side_a, cell_a), ("b", side_b, cell_b)):
-        for entry in side:
-            m = entry["measured"]
-            if m.get("n_rows", 0) < COLUMN_MIN_ROWS:
-                continue
-            limit = COLUMN_WOBBLE_MARGIN_PX + 0.5 * cell
-            ok = m["wobble_iqr_px"] <= limit
-            details.append(
-                {
-                    "side": label,
-                    "column": entry["column"],
-                    "measured": m,
-                    "wobble_limit_px": round(limit, 2),
-                    "verdict": "PASS" if ok else "FAIL",
-                }
-            )
-            if not ok:
-                verdict = "FAIL"
+    # The null test runs the PRODUCTION column gate itself: receipt B plays
+    # the "synth" side against receipt A's derived lanes (same merchant ->
+    # same normalized column layout), so the exact wobble / outlier /
+    # abs-drift / shear / lane-gap thresholds that must reject a defective
+    # render must also accept an honest second real receipt.
+    columns = derive_columns_bootstrap(rows_a, real_a.size[0])
+    details = metric_columns(gray_a, gray_b, rows_a, rows_b, columns, cell_a)
 
     style = metric_style(
         gray_a,
@@ -1846,14 +2039,14 @@ def run_real_real(args) -> int:
     )
     graphics = metric_graphics(png_a, png_b)
     checks = {
-        "columns": {"verdict": verdict, "sides": details},
+        "columns": details,
         "style": style,
         "graphics": graphics,
     }
     gaps = sorted(
         name
         for name, m in checks.items()
-        if m["verdict"] in ("UNTESTED", "SKIPPED")
+        if m["verdict"] in ("UNTESTED", "SKIPPED", "PASS_WITH_GAPS")
     )
     checks["coverage_gaps"] = gaps
     if any(m["verdict"] == "FAIL" for m in checks.values() if "verdict" in m):

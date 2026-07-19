@@ -73,11 +73,36 @@ def test_receipt_columns_cluster_and_support():
     cols = receipt_section_columns(lines)
     items = cols["items"]
     amounts = [c for c in items if c["role"] == "amount"]
-    assert len(amounts) == 1  # the lone 0.60 edge lacks support
-    assert abs(amounts[0]["x"] - 0.86) < 1e-6
-    assert amounts[0]["support"] == 6
+    # singletons are KEPT at receipt level (a one-row total_line lane is
+    # legitimate); the cross-receipt pooling majority filters noise
+    assert len(amounts) == 2
+    main = max(amounts, key=lambda c: c["support"])
+    assert abs(main["x"] - 0.86) < 1e-6
+    assert main["support"] == 6
+    lone = min(amounts, key=lambda c: c["support"])
+    assert lone["support"] == 1
     descs = [c for c in items if c["role"] == "desc"]
     assert descs and descs[0]["anchor"] == "left"
+
+
+def test_singleton_total_line_lane_survives_pooling():
+    # review F9: three receipts, each with ONE identical total_line amount;
+    # dropping singletons per-receipt made this lane unlearnable
+    def receipt():
+        return {
+            "total_line": [
+                {
+                    "role": "amount",
+                    "anchor": "right",
+                    "x": 0.91,
+                    "spread": 0.0,
+                    "support": 1,
+                }
+            ]
+        }
+
+    pooled = pool_columns([receipt(), receipt(), receipt()])
+    assert pooled["total_line"][0]["support"] == 3
 
 
 def test_pool_columns_requires_majority():
@@ -153,12 +178,15 @@ def test_section_sequence_and_separators():
         _scan(["storefront", "items", "summary", "footer"], "summary"),
     ]
     seq = measure_section_sequence(scans)
-    assert seq[0] == "storefront" and seq[-1] == "footer"
-    assert seq.index("items") < seq.index("summary")
+    names = [s["name"] for s in seq]
+    assert names[0] == "storefront" and names[-1] == "footer"
+    assert names.index("items") < names.index("summary")
+    assert all(s["support"] >= 2 for s in seq)
     seps = measure_separators(scans)
     assert len(seps) == 1
     assert seps[0]["char"] == "*"
     assert seps[0]["after_section"] == "summary"
+    assert seps[0]["ordinal"] == 0
     assert seps[0]["support"] == 3
 
 

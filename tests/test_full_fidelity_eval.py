@@ -89,13 +89,14 @@ def test_column_metric_fails_on_wobble_and_passes_when_tight():
 
 
 def test_column_metric_tolerates_scan_tilt():
-    # a tilted real scan (lane slides 1.5px per row) is geometry, not wobble
+    # a tilted real scan (lane slides 1px/row = ~4px per 100 y-px, within
+    # the real-scan range) is geometry, not wobble and not shear
     rows = _amount_rows([300] * 8)
     cols = ffe.derive_columns_bootstrap(rows, W)
     real = blank()
     for i, row in enumerate(rows):
         for w in row:
-            stamp(real, w["l"] + 1.5 * i, w["t"], w["r"] + 1.5 * i, w["b"])
+            stamp(real, w["l"] + 1.0 * i, w["t"], w["r"] + 1.0 * i, w["b"])
     tight = blank()
     _ink_for_rows(tight, rows, jitter=[0])
     out = ffe.metric_columns(real, tight, rows, rows, cols, 8.0)
@@ -498,3 +499,122 @@ def test_render_path_call_sites_reference_shared_patterns():
 
     assert rsr._PRICE_TOKEN_RE is SYNTH_PRICE_TOKEN
     assert cdt._PRICE_RE is DOLLARTREE_PRICE_TOKEN
+
+
+# ---------------------------------------------------------------------------
+# adversarial fixtures (independent review of PR #1192): each is a case
+# codex constructed that previously PASSed and must now FAIL
+# ---------------------------------------------------------------------------
+def test_adversarial_blank_composed_image_fails_tokens():
+    # F1: a completely blank canvas for a composed render previously passed
+    # (ink verification was skipped for composed layouts)
+    man = _manifest()
+    blank_img = blank()
+    out = ffe.metric_tokens(man, man, blank_img, composed=True)
+    assert out["verdict"] == "FAIL"
+    assert out["ink_recall"] == 0.0
+
+
+def test_adversarial_dot_tokens_fail_ink_check():
+    # F1: every token replaced by a 2x2 dot previously cleared the >=4px bar
+    man = _manifest()
+    dots = blank()
+    for w in ffe.words_to_px(man, W, H):
+        cx, cy = int((w["l"] + w["r"]) / 2), int((w["t"] + w["b"]) / 2)
+        stamp(dots, cx, cy, cx + 2, cy + 2)
+    out = ffe.metric_tokens(man, man, dots, composed=False)
+    assert out["verdict"] == "FAIL"
+    assert out["ink_recall"] == 0.0
+    # and real glyph-shaped ink still passes
+    full = blank()
+    for w in ffe.words_to_px(man, W, H):
+        for x in range(int(w["l"]), int(w["r"]) - 3, 7):
+            stamp(full, x, w["t"] + 1, x + 4, w["b"] - 1)
+    out2 = ffe.metric_tokens(man, man, full, composed=False)
+    assert out2["verdict"] == "PASS"
+
+
+def test_adversarial_sheared_synth_lane_fails():
+    # F2: a lane drifting linearly -10..+10px was invisible to per-side
+    # Theil-Sen fits; the shear gate sees the tilt difference
+    rows = _amount_rows([300] * 8)
+    cols = ffe.derive_columns_bootstrap(rows, W)
+    real = blank()
+    _ink_for_rows(real, rows, jitter=[0])
+    sheared = blank()
+    for i, row in enumerate(rows):
+        dx = -10 + int(round(20 * i / 7))
+        for w in row:
+            stamp(sheared, w["l"] + dx, w["t"], w["r"] + dx, w["b"])
+    out = ffe.metric_columns(real, sheared, rows, rows, cols, 8.0)
+    assert out["verdict"] == "FAIL"
+    assert "shear" in out["columns"][0]["failed_on"]
+
+
+def test_adversarial_typed_lane_needs_typed_carriers():
+    # F3: a declared qty lane over rows carrying no qty tokens previously
+    # PASSed on unrelated ink; typed carriers leave it UNTESTED, and the
+    # columns metric reports the gap instead of a clean PASS
+    rows = _amount_rows([300] * 8)  # rows have ITEM + price, no qty tokens
+    qty_col = {
+        "role": "qty",
+        "anchor": "right",
+        "x": 90 / W,  # the ITEM text right edge: plenty of unrelated ink
+        "spread": 0.0,
+        "support": 8,
+    }
+    img = blank()
+    _ink_for_rows(img, rows, jitter=[0])
+    out = ffe.metric_columns(img, img, rows, rows, [qty_col], 8.0)
+    assert out["verdict"] == "UNTESTED"
+    amount_col = ffe.derive_columns_bootstrap(rows, W)
+    out2 = ffe.metric_columns(
+        img, img, rows, rows, amount_col + [qty_col], 8.0
+    )
+    assert out2["verdict"] == "PASS_WITH_GAPS"
+    assert out2["untested_roles"] == ["qty"]
+
+
+def test_adversarial_doubled_stroke_fails_style():
+    # F5: uniformly doubling every synth stroke passed body-relative
+    # normalization (per-class ratios are unchanged when everything
+    # doubles); the body stroke-rel ratio backstop catches it
+    real, _, rows, classes = _style_fixture(header_bold_in_syn=True)
+    doubled = blank()
+    for i, row in enumerate(rows):
+        is_header = i < 2
+        y = 30 + i * 30
+        bar = 12 if is_header else 4  # 2x the fixture's 6/2
+        for x in range(40, 240, 20):  # wider step: bars stay distinct runs
+            stamp(doubled, x, y + 2, x + bar, y + 12, 40)
+    out = ffe.metric_style(real, doubled, rows, rows, classes, classes)
+    assert out["verdict"] == "FAIL"
+    assert out["body_stroke_fail"]
+
+
+def test_adversarial_solid_separator_substitute_fails():
+    # F7: dash -> solid at the same y previously matched and passed
+    real = _with_rules([80, 200])
+    solid = blank()
+    for y in (80, 200):
+        stamp(solid, int(0.05 * W), y, int(0.95 * W), y + 3)
+    out = ffe.metric_separators(real, solid)
+    assert out["verdict"] == "FAIL"
+    assert out["kind_mismatches"] == 2
+
+
+def test_adversarial_thin_line_logo_fails():
+    # F7: a centered 1px vertical line of the right height passed the
+    # height+center gates; the ink-mass gate rejects it
+    real = blank()
+    stamp(real, 140, 8, 260, 34)
+    line = blank()
+    stamp(line, 199, 8, 200, 34)
+    out = ffe.metric_logo(real, line, (0.0, 0.15), expects_logo=True)
+    assert out["verdict"] == "FAIL"
+
+
+def test_evaluate_pair_style_and_columns_gaps_surface_in_overall():
+    # F4: sub-metric UNTESTED entries must reach coverage_gaps / overall
+    out = ffe.metric_style(blank(), blank(), [], [], [], [])
+    assert out["verdict"] == "UNTESTED"

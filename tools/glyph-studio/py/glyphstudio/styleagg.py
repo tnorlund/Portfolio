@@ -92,8 +92,11 @@ def receipt_section_columns(
     out: dict[str, list[dict]] = defaultdict(list)
     for (section, role), vals in edges.items():
         for cluster in _cluster_1d(vals, tol):
-            if len(cluster) < 2:
-                continue
+            # singleton clusters are KEPT: one-row sections (total_line, a
+            # lone header amount) are legitimate lanes, and the
+            # cross-receipt pooling's distinct-receipt majority is what
+            # filters per-receipt noise -- dropping singletons here made
+            # stable single-row lanes unlearnable fleet-wide.
             out[section].append(
                 {
                     "role": role,

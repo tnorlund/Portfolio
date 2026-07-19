@@ -131,6 +131,16 @@ def _token_role(
     return "label" if label_row else "desc"
 
 
+def line_has_price(texts) -> bool:
+    """True when ANY token of a line is a canonical price token.
+
+    The single line-level price predicate for every classification entry
+    point (stylescan.measure, section_seeds) -- a row ending in a detached
+    tax flag ("MILK 4.29 F") must classify identically everywhere.
+    """
+    return any(_amount_token(str(t or "").strip()) for t in texts)
+
+
 def _amount_token(text: str) -> bool:
     """Canonical price-token test (lazy import: pure-glyphstudio envs load
     this module without receipt_agent installed)."""
@@ -749,7 +759,7 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         # columnscan aggregation of the items section entirely (#1188 P2).
         # Word-ANCHORED via the canonical token test, so a substring match
         # inside a URL / product code can't promote a row to 'item'.
-        has_price = any(_amount_token(str(w["text"]).strip()) for w in line)
+        has_price = line_has_price(w["text"] for w in line)
         section = _classify(text, has_price, merchant)
         # OCR line_ids covered by this visual line (words carry line_id). Lets a
         # caller join each measured row to a QA'd ReceiptSection (which stores

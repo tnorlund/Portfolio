@@ -78,8 +78,14 @@ def _line_y_frac(line: dict, scan: dict, i: int, n_lines: int) -> float:
     return i / n_lines
 
 
-def measure_section_sequence(scans: list[dict]) -> list[str]:
-    """Canonical sections ordered by median first-appearance position."""
+def measure_section_sequence(scans: list[dict]) -> list[dict]:
+    """Canonical sections ordered by median first-appearance position.
+
+    Emitted as OBJECTS ``{name, pos_frac_med, support}`` so later schema
+    versions can add fields (optionality, boundaries) without changing the
+    container shape, and so support/position are data instead of implied by
+    array order.
+    """
     firsts: dict[str, list[float]] = defaultdict(list)
     need = _support_need(len(scans))
     for scan in scans:
@@ -93,10 +99,19 @@ def measure_section_sequence(scans: list[dict]) -> list[str]:
             if sec and sec not in seen:
                 seen.add(sec)
                 firsts[sec].append(_line_y_frac(line, scan, i, n))
-    ordered = [
-        (median(pos), sec) for sec, pos in firsts.items() if len(pos) >= need
+    ordered = sorted(
+        (median(pos), sec, len(pos))
+        for sec, pos in firsts.items()
+        if len(pos) >= need
+    )
+    return [
+        {
+            "name": sec,
+            "pos_frac_med": round(pos, 3),
+            "support": support,
+        }
+        for pos, sec, support in ordered
     ]
-    return [sec for _, sec in sorted(ordered)]
 
 
 def _separator_char(text: str) -> str | None:
@@ -162,9 +177,44 @@ def measure_separators(scans: list[dict]) -> list[dict]:
     return out
 
 
+VALID_ROLES = frozenset({"amount", "qty", "flag", "desc", "label"})
+VALID_ANCHORS = frozenset({"left", "right"})
+
+
+def validate_layout_template(template: dict) -> list[str]:
+    """Schema-v1 shape validation. Returns a list of problems (empty = OK).
+
+    Used by the writer (never commit a malformed block) and by consumers
+    (never silently interpret a block from a different schema version).
+    """
+    problems: list[str] = []
+    if template.get("version") != 1:
+        problems.append(f"unsupported version {template.get('version')!r}")
+        return problems
+    for section, cols in (template.get("columns") or {}).items():
+        for col in cols:
+            if col.get("role") not in VALID_ROLES:
+                problems.append(f"{section}: bad role {col.get('role')!r}")
+            if col.get("anchor") not in VALID_ANCHORS:
+                problems.append(f"{section}: bad anchor {col.get('anchor')!r}")
+            x = col.get("x")
+            if not isinstance(x, (int, float)) or not 0.0 <= x <= 1.0:
+                problems.append(f"{section}: x out of range: {x!r}")
+            if not isinstance(col.get("support"), int):
+                problems.append(f"{section}: missing/bad support")
+    for sec in template.get("sections") or []:
+        if not isinstance(sec, dict) or "name" not in sec:
+            problems.append(f"sections entry not an object: {sec!r}")
+    for sep in template.get("separators") or []:
+        if not isinstance(sep, dict) or "char" not in sep:
+            problems.append(f"separators entry not an object: {sep!r}")
+    return problems
+
+
 def build_layout_template(scans: list[dict]) -> dict:
     per_receipt = [receipt_section_columns(scan["lines"]) for scan in scans]
     sha = "unknown"
+    dirty = False
     try:
         sha = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -173,6 +223,15 @@ def build_layout_template(scans: list[dict]) -> dict:
             text=True,
             check=True,
         ).stdout.strip()[:12]
+        dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=_REPO,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        )
     except Exception:  # noqa: BLE001
         pass
     return {
@@ -186,6 +245,7 @@ def build_layout_template(scans: list[dict]) -> dict:
         "measured": {
             "receipts": len(scans),
             "tool_git_sha": sha,
+            "tool_dirty": dirty,
         },
         "columns": pool_columns(per_receipt),
         "sections": measure_section_sequence(scans),
@@ -194,6 +254,9 @@ def build_layout_template(scans: list[dict]) -> dict:
 
 
 def write_layout_template(profile_key: str, template: dict) -> None:
+    problems = validate_layout_template(template)
+    if problems:
+        raise SystemExit(f"refusing to write malformed template: {problems}")
     with open(PROFILES_PATH, encoding="utf-8") as fh:
         doc = json.load(fh)
     if profile_key not in doc["profiles"]:
