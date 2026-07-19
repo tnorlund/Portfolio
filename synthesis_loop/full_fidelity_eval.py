@@ -162,8 +162,12 @@ COLUMN_ABS_DRIFT_LIMIT_CELLS = 1.5
 # than this many px/100rows beyond the real scan's own tilt (Gelson's real
 # tilt measures ~1.7; the axis-aligned synth ~0.5 -- diffs stay under 3).
 COLUMN_SHEAR_LIMIT_PX_PER_100 = 6.0
-# tokens
-TOKEN_INK_RECALL_MIN = 0.98
+# tokens. Ink recall 0.97 is calibrated between the two measured states:
+# the approved Gelson's render reads 0.9766 (a couple of display-row words
+# repositioned past the ink-overlap window -- intended centering, not
+# erasure) while the reproduced address-eraser state reads 0.953. Raising
+# this back toward 0.98 requires loosening the neighbor-ink overlap guard.
+TOKEN_INK_RECALL_MIN = 0.97
 TOKEN_TEXT_RECALL_MIN = 0.98
 # faithful renders draw only manifest content; fabricated tokens fail.
 # Composed layouts legitimately re-emit repaired/normalized tokens, so they
@@ -940,9 +944,15 @@ def _box_has_glyph_ink(gray: np.ndarray, w: dict, thresh: float) -> bool:
     ys, xs = np.nonzero(crop)
     width_span = (xs.max() - xs.min() + 1) / box_w
     height_span = (ys.max() - ys.min() + 1) / box_h
+    # the ink's x-extent must still OVERLAP the original box: without this,
+    # a dense row's neighboring words could certify a fully erased target
+    ink_lo = l + float(xs.min())
+    ink_hi = l + float(xs.max())
+    overlap = min(ink_hi, w["r"]) - max(ink_lo, w["l"])
     return (
         width_span >= TOKEN_INK_WIDTH_SPAN_MIN
         and height_span >= TOKEN_INK_HEIGHT_SPAN_MIN
+        and overlap >= 0.25 * box_w
     )
 
 
@@ -1805,9 +1815,9 @@ def evaluate_pair(
     band_verdicts = [b["verdict"] for b in per_band_columns.values()]
     if "FAIL" in band_verdicts:
         columns_verdict = "FAIL"
-    elif "PASS" in band_verdicts:
-        # a band that passed alongside any untested/gapped band is partial
-        # coverage, not a full pass
+    elif "PASS" in band_verdicts or "PASS_WITH_GAPS" in band_verdicts:
+        # ANY tested evidence counts; anything short of every band fully
+        # passing is partial coverage, not a full pass
         columns_verdict = (
             "PASS"
             if all(v == "PASS" for v in band_verdicts)

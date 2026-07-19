@@ -188,11 +188,23 @@ def validate_layout_template(template: dict) -> list[str]:
     (never silently interpret a block from a different schema version).
     """
     problems: list[str] = []
+    if not isinstance(template, dict):
+        return [f"template is not an object: {type(template).__name__}"]
     if template.get("version") != 1:
         problems.append(f"unsupported version {template.get('version')!r}")
         return problems
-    for section, cols in (template.get("columns") or {}).items():
+    columns = template.get("columns") or {}
+    if not isinstance(columns, dict):
+        problems.append(f"columns is not an object: {columns!r}")
+        columns = {}
+    for section, cols in columns.items():
+        if not isinstance(cols, list):
+            problems.append(f"{section}: columns entry is not a list")
+            continue
         for col in cols:
+            if not isinstance(col, dict):
+                problems.append(f"{section}: column is not an object")
+                continue
             if col.get("role") not in VALID_ROLES:
                 problems.append(f"{section}: bad role {col.get('role')!r}")
             if col.get("anchor") not in VALID_ANCHORS:
@@ -202,10 +214,12 @@ def validate_layout_template(template: dict) -> list[str]:
                 problems.append(f"{section}: x out of range: {x!r}")
             if not isinstance(col.get("support"), int):
                 problems.append(f"{section}: missing/bad support")
-    for sec in template.get("sections") or []:
+    sections = template.get("sections") or []
+    for sec in sections if isinstance(sections, list) else [sections]:
         if not isinstance(sec, dict) or "name" not in sec:
             problems.append(f"sections entry not an object: {sec!r}")
-    for sep in template.get("separators") or []:
+    separators = template.get("separators") or []
+    for sep in separators if isinstance(separators, list) else [separators]:
         if not isinstance(sep, dict) or "char" not in sep:
             problems.append(f"separators entry not an object: {sep!r}")
     return problems
