@@ -1497,6 +1497,23 @@ def _render_cached_hybrid(
     face_source: str = "stylemap",
     row_faces: dict | None = None,
 ) -> str:
+    # Canonical composition: a profile may declare that this merchant's OCR
+    # is not renderable as-is (Dollar Tree: every dev source is a sheared
+    # photo) and route the words through a composer BEFORE any layout. This
+    # is the production hook -- glyph_review, section_compare and normal
+    # renders all pass through here, so the composed layout IS the render.
+    compose_kind = get_merchant_profile(receipt.get("merchant_name")).get(
+        "compose"
+    )
+    if compose_kind == "dollartree":
+        synth_dir = os.path.join(REPO_ROOT, "synthesis_loop")
+        if synth_dir not in sys.path:
+            sys.path.insert(0, synth_dir)
+        from compose_dollartree import canonical_words  # noqa: E402
+
+        receipt = dict(
+            receipt, words=canonical_words(receipt.get("words") or [])
+        )
     receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell

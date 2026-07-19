@@ -406,7 +406,7 @@ _GELSONS_RULES = [
         "section_header",
         re.compile(
             r"^(GROCERY|PRODUCE|MEAT|SEAFOOD|REG DELI|SERVICE DELI|DELI|"
-            r"BAKERY|DAIRY|FROZEN|LIQUOR|FLORAL|SUSHI)\b",
+            r"BAKERY|DAIRY|FROZEN|LIQUOR|FLORAL|SUSHI)\s*:?$",
             re.I,
         ),
     ),

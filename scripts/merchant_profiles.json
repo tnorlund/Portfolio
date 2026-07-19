@@ -266,7 +266,8 @@
     "bitmap_cap_ratio": 0.66,
     "ocr_font_sizing": true,
     "ocr_cap_height_ratio": 0.649,
-    "mixed_layout": true
+    "mixed_layout": true,
+    "bitmap_thin": 0.0
    },
    "logo": "gelsons_logo.png",
    "graphics": {
@@ -411,7 +412,8 @@
     "bitmap_cap_ratio": 0.66,
     "ocr_font_sizing": true,
     "ocr_cap_height_ratio": 0.745,
-    "mixed_layout": true
+    "mixed_layout": true,
+    "bitmap_thin": 0.4
    },
    "graphics": {
     "footer_qr_only": true,
@@ -421,7 +423,7 @@
    }
   },
   "Dollar Tree": {
-   "_comment": "bitMatrix-B2 ROM atlas per receiptfont.com attribution, validated on 2736 real letters across the 5 dev receipts (B2 median IoU 0.5283 vs F1 0.5133 - B2 wins). Logo from the flattest store-5304 crop (4bdefa9e). All dev sources are sheared photos: renders use compose_dollartree.py canonical composition, not faithful OCR.",
+   "_comment": "bitMatrix-B2 ROM atlas per receiptfont.com attribution, validated on 2736 real letters across the 5 dev receipts (B2 median IoU 0.5283 vs F1 0.5133 - B2 wins). Logo from the flattest store-5304 crop (4bdefa9e). All dev sources are sheared photos: renders use compose_dollartree.py canonical composition, not faithful OCR. Atlas staged via build_dollartree_font.py (B2 + 1px double-strike).",
    "logo": "dollartree_logo.png",
    "logo_anchor": {
     "phrases": [
@@ -442,14 +444,16 @@
     "bitmap_cap_ratio": 0.66,
     "ocr_font_sizing": true,
     "ocr_cap_height_ratio": 0.649,
-    "mixed_layout": true
+    "mixed_layout": true,
+    "bitmap_thin": 0.0
    },
    "graphics": {
     "footer_codes": false,
     "inbody_barcode": {
      "max_count": 0
     }
-   }
+   },
+   "compose": "dollartree"
   },
   "Italia Deli & Bakery": {
    "_comment": "Minted atlas (fonts/italiadeli, 2026-07-19), 8 scan receipts.",
@@ -464,7 +468,8 @@
     "ocr_font_sizing": true,
     "ocr_cap_height_ratio": 0.685,
     "mixed_layout": true,
-    "bitmap_glyph_vscale": 1.056
+    "bitmap_glyph_vscale": 1.0,
+    "bitmap_thin": 0.1
    },
    "graphics": {
     "footer_codes": false,

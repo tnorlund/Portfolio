@@ -91,6 +91,18 @@ def render_pair(merchant: str, image_id: str, receipt_id: int):
         atlas = rsr.cached_glyph_atlas(
             table, merchant, region=region, max_receipts=8
         )
+    # Same recipe as glyph_review receipt mode: an unpinned bitmap_thin is
+    # DERIVED, not defaulted, or density comparisons run at the wrong weight.
+    if "bitmap_font" in typ and "bitmap_thin" not in typ:
+        typ["bitmap_thin"] = rsr.resolve_bitmap_thin(
+            table,
+            merchant,
+            region=region,
+            atlas=atlas,
+            profile=prof,
+            section_scale=ss,
+            typography=typ,
+        )
 
     d = c.get_receipt_details(image_id, receipt_id)
     rec = d.receipt
