@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "char": "1",
+ "codepoint": 49,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "thestand.refined.npz",
+  "samples": 59,
+  "consensusHash": "95b8107f0af7",
+  "date": "2026-07-19"
+ },
+ "width": 340.4,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 262.2,
+     "y": 33.1,
+     "type": "corner"
+    },
+    {
+     "x": 262.2,
+     "y": 966.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 251.8,
+     "y": 827.8,
+     "type": "corner"
+    },
+    {
+     "x": 45.0,
+     "y": 745.6,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

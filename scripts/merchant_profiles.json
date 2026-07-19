@@ -387,6 +387,38 @@
      "max_count": 0
     }
    }
+  },
+  "The Stand - American Classics Redefined": {
+   "_comment": "Minted atlas (fonts/thestand, 2026-07-19); badge logo vectorized from the best single crop (dc09ed13, ring + ALWAYS THE FINEST arc preserved - the logo_master median vote destroyed the thin ring). Real footer references a QR only, and per-item barcodes do not exist on the printed ticket.",
+   "aliases": [
+    "THE STAND"
+   ],
+   "logo": "thestand_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "STAND"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "typography": {
+    "bitmap_font": {
+     "regular": "thestand.glyphs.npz",
+     "heavy": "thestand-heavy.glyphs.npz"
+    },
+    "condense": 0.9376,
+    "pitch_ratio": 0.647,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.745,
+    "mixed_layout": true
+   },
+   "graphics": {
+    "footer_qr_only": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   }
  }
 }

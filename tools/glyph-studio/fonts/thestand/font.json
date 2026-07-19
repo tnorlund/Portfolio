@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "name": "thestand",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350,
+  "pitchRatioTarget": 0.7426,
+  "pitchRatioNote": "median OCR letter pitch / cap across the 8 dev The Stand receipts"
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 66.3,
+   "pitch": 0.4
+  },
+  "weight": 1.45,
+  "trackingScale": 1.0,
+  "slant": 0.0,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 0.9283,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {
+  "merchant": "The Stand - American Classics Redefined",
+  "imageId": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a",
+  "receiptId": 1
+ }
+}

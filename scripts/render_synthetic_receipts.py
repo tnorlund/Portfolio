@@ -2421,6 +2421,17 @@ def _overlay_qr_and_barcode(
     block_full = qr_size + gap + bar_h
 
     gfx = graphics_for_merchant(receipt.get("merchant_name"))
+    # A merchant whose real footer references ONLY a QR ("Or scan this QR
+    # Code" -- The Stand) must not get a fabricated Code128 stacked under it.
+    if gfx.get("footer_qr_only", False):
+        if avail_h >= 64:
+            qs = min(qr_size, int(avail_h))
+            y0 = int(gtop + (avail_h - qs) / 2)
+            qr_tile = receipt_graphics.render_qr_tile(
+                _qr_payload(receipt, seed), qs, seed
+            )
+            _paste_graphic_tile(image, qr_tile, int(cx - qs / 2), y0)
+        return
     kind = gfx["barcode_kind"]
     with_hri = gfx["barcode_with_hri"]
     barcode_tile = receipt_graphics.render_barcode_tile(
@@ -2545,7 +2556,7 @@ def _phrase_logo_placement(
     norm = [_normalize_phrase(p) for p in phrases if p]
     if not norm:
         return None
-    drop, boxes = [], []
+    matched: list[tuple[float, float, list[dict]]] = []
     for words in _receipt_lines(receipt):
         # Match a phrase only when it spans a CONTIGUOUS run of whole word
         # tokens on the line -- so multi-word slogans still match
@@ -2567,8 +2578,33 @@ def _phrase_logo_placement(
         ]
         if ys and (sum(ys) / len(ys)) < 780.0:
             continue
+        if ys:
+            matched.append((max(ys), max(ys) - min(ys), words))
+    # Absorb only the TOP cluster of matched lines (contiguous within ~one
+    # line height). A graphic badge's shed tokens sit adjacent to each other;
+    # a REAL text line printed further below (The Stand's "THE STAND" under
+    # its badge) also matches a brand phrase but must keep rendering as text,
+    # not be unioned into the logo band and painted over. Single-matched-line
+    # merchants (and adjacent multi-line wordmarks like DOLLAR/TREE) are
+    # unaffected.
+    matched.sort(key=lambda m: -m[0])  # y-up: top of paper first
+    drop, boxes = [], []
+    cluster_bottom = None
+    for top_y, line_h, words in matched:
+        if cluster_bottom is not None and (
+            cluster_bottom - top_y > 1.0 * max(line_h, 1.0)
+        ):
+            break
         drop.extend(words)
         boxes.extend(w["bbox"] for w in words if w.get("bbox"))
+        line_bottom = min(
+            min(w["bbox"][1], w["bbox"][3]) for w in words if w.get("bbox")
+        )
+        cluster_bottom = (
+            line_bottom
+            if cluster_bottom is None
+            else min(cluster_bottom, line_bottom)
+        )
     band = _union_bbox(boxes)
     if band is None:
         return None
