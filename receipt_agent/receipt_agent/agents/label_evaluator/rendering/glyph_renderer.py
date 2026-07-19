@@ -44,6 +44,12 @@ from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     GlyphAtlas,
     GlyphCrop,
 )
+from receipt_agent.agents.label_evaluator.rendering.price_tokens import (
+    GLYPH_AMOUNT_TOKEN,
+)
+from receipt_agent.agents.label_evaluator.rendering.row_bands import (
+    group_rows_greedy as _group_rows_greedy,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     _detect_coord_max,
     _iter_words,
@@ -100,7 +106,9 @@ _AMOUNT_LABELS = frozenset(
         "PRICE",
     }
 )
-_AMOUNT_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}\$?[A-Z]?-?$")
+# Defined once in price_tokens (the stamping variant: 4-digit head, optional
+# trailing currency / flag letter / minus).
+_AMOUNT_RE = GLYPH_AMOUNT_TOKEN
 # A standalone long digit run is the human-readable barcode number; real receipts
 # print the bar field just above it (OCR never captures the bars themselves).
 # Require 14+ digits (UPC/product codes are 11-13) AND, at draw time, that the
@@ -942,25 +950,23 @@ def _group_words_by_line(
             return grouped
     # Flat fallback: bucket by center-y (boxes are y high-is-top). Bad/degenerate
     # bboxes are skipped here the same way ``_to_pixel_box`` ignores them, so a
-    # non-numeric coordinate never crashes the render.
+    # non-numeric coordinate never crashes the render. The greedy chain lives in
+    # row_bands (shared with the render path's other row groupers, P1b).
     rows: list[tuple[float, Mapping[str, Any]]] = []
     for w in words:
         cy = _bbox_center_y(w)
         if cy is not None:
             rows.append((cy, w))
-    rows.sort(key=lambda r: -r[0])
-    grouped, current, last_cy = [], [], None
-    tol = _row_tolerance(rows)
-    for cy, w in rows:
-        if last_cy is None or abs(cy - last_cy) <= tol:
-            current.append(w)
-        else:
-            grouped.append(current)
-            current = [w]
-        last_cy = cy
-    if current:
-        grouped.append(current)
-    return grouped
+    return [
+        [w for _, w in row]
+        for row in _group_rows_greedy(
+            rows,
+            lambda r: r[0],
+            _row_tolerance(rows),
+            reference="prev",
+            descending=True,
+        )
+    ]
 
 
 def _line_text(line: Sequence[Mapping[str, Any]]) -> str:

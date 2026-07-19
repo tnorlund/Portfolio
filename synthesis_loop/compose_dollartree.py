@@ -32,9 +32,17 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (HERE, os.path.join(os.path.dirname(HERE), "scripts")):
+for _p in (
+    HERE,
+    os.path.join(os.path.dirname(HERE), "scripts"),
+    os.path.join(os.path.dirname(HERE), "receipt_agent"),
+):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+from receipt_agent.agents.label_evaluator.rendering.price_tokens import (  # noqa: E402
+    DOLLARTREE_PRICE_TOKEN,
+)
 
 MERCHANT = "Dollar Tree"
 
@@ -49,7 +57,8 @@ ROW_PITCH = 38.0  # 1000-units per body row (measured ~0.038 of page)
 CAP_H = 24.0
 CHAR_W = 0.0182  # per-char advance, paper-width fraction (pitch/cap 0.50)
 
-_PRICE_RE = re.compile(r"^\$?\d*\.?\d+T?$")
+# Defined once in price_tokens (the shattered-photo-OCR variant).
+_PRICE_RE = DOLLARTREE_PRICE_TOKEN
 _QTY_RE = re.compile(r"^\d{1,2}$")
 
 
