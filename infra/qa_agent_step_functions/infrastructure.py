@@ -3,7 +3,7 @@ Pulumi infrastructure for QA Agent Step Function pipeline.
 
 This component creates a Step Function that:
 1. Runs all 32 marquee questions through the 5-node QA graph (single container Lambda)
-2. Queries DynamoDB for receipt metadata (zip Lambda)
+2. Queries DynamoDB for receipt rendering data (zip Lambda)
 3. Triggers LangSmith bulk export (reuses existing Lambda)
 4. Polls export status with retry loop (reuses existing Lambda)
 5. Starts EMR Spark job to build per-question viz cache
@@ -21,6 +21,10 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
+
+# Import shared components
+from codebuild_docker_image import CodeBuildDockerImage
+from lambda_layer import dynamo_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -29,10 +33,6 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
-
-# Import shared components
-from codebuild_docker_image import CodeBuildDockerImage
-from lambda_layer import dynamo_layer
 
 # Load secrets
 config = Config("portfolio")
@@ -56,7 +56,7 @@ class QAAgentStepFunction(ComponentResource):
 
     Workflow:
     1. RunAllQuestions → run 32 questions, write NDJSON, extract receipt keys
-    2. QueryReceiptMetadata → receipts-lookup.json to S3
+    2. QueryReceiptData → receipts-lookup.json to S3
     3. TriggerLangSmithExport → start bulk export
     4. WaitForExport → 60s wait
     5. CheckExportStatus → poll loop (max 30 retries)
@@ -534,7 +534,7 @@ def _build_state_machine_definition(
     """Build the Step Function ASL definition.
 
     Pipeline:
-    Initialize → RunAllQuestions → QueryReceiptMetadata →
+    Initialize → RunAllQuestions → QueryReceiptData →
     TriggerLangSmithExport → WaitForExport ⟷ CheckExportStatus →
     PrepareEMRArgs → StartEMRJob → Done
     """
@@ -580,9 +580,9 @@ def _build_state_machine_definition(
                         "BackoffRate": 1,
                     }
                 ],
-                "Next": "QueryReceiptMetadata",
+                "Next": "QueryReceiptData",
             },
-            "QueryReceiptMetadata": {
+            "QueryReceiptData": {
                 "Type": "Task",
                 "Resource": "arn:aws:states:::lambda:invoke",
                 "Parameters": {

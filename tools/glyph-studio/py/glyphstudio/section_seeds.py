@@ -30,7 +30,7 @@ from .sections import normalize_stylescan_section, section_for_core_label
 # Same price cue stylescan uses to decide an unruled line is an item line.
 _PRICE_RE = re.compile(r"\d+\.\d{2}")
 
-# Canonical merchant name (ReceiptMetadata) -> stylescan rule slug. Convenience
+# Canonical ReceiptPlace merchant name -> stylescan rule slug. Convenience
 # defaults for the nine calibrated merchants; the CLI can override.
 MERCHANT_SLUGS: dict[str, str] = {
     "sprouts farmers market": "sprouts",
@@ -203,11 +203,15 @@ class SeedReport:
 
     @property
     def coverage(self) -> float:
-        return self.covered_words / self.total_words if self.total_words else 0.0
+        return (
+            self.covered_words / self.total_words if self.total_words else 0.0
+        )
 
     @property
     def agreement(self) -> float:
-        return self.both_agree / self.both_present if self.both_present else 0.0
+        return (
+            self.both_agree / self.both_present if self.both_present else 0.0
+        )
 
     def add_receipt(
         self,

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from receipt_agent.agents.label_evaluator.rendering import font_profile
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
     ReceiptFontProfile,
     build_merchant_font_profile,
+    build_merchant_font_profile_from_dynamo,
     extract_receipt_font_profile,
 )
 
@@ -323,6 +325,51 @@ def test_to_geometry_params_scales_to_canvas():
 
 def test_build_merchant_profile_none_for_empty():
     assert build_merchant_font_profile("M", []) is None
+
+
+def test_dynamo_profile_resolves_receipts_through_receipt_place(monkeypatch):
+    words, lines = _simple_receipt()
+    for line in lines:
+        line.receipt_id = 1
+
+    class PlaceOnlyClient:
+        def __init__(self):
+            self.merchant_queries = []
+            self.image_queries = []
+
+        def get_receipt_places_by_merchant(self, merchant_name):
+            self.merchant_queries.append(merchant_name)
+            place = SimpleNamespace(image_id="image-1", receipt_id=1)
+            return [place, place], None
+
+        def get_image_details(self, image_id):
+            self.image_queries.append(image_id)
+            return SimpleNamespace(
+                receipt_lines=lines,
+                receipt_words=words,
+                receipt_letters=[],
+                receipts=[],
+            )
+
+    client = PlaceOnlyClient()
+    monkeypatch.setattr(
+        "receipt_dynamo.data.dynamo_client.DynamoClient",
+        lambda **_kwargs: client,
+    )
+    monkeypatch.setattr(
+        font_profile,
+        "analyze_receipt_fonts",
+        lambda *_args, **_kwargs: None,
+    )
+
+    profile = build_merchant_font_profile_from_dynamo(
+        "ReceiptsTable-dc5be22", "Test Merchant"
+    )
+
+    assert isinstance(profile, MerchantFontProfile)
+    assert profile.receipt_count == 1
+    assert client.merchant_queries == ["Test Merchant"]
+    assert client.image_queries == ["image-1"]
 
 
 def test_extract_uses_dominant_cluster_when_letters_present():

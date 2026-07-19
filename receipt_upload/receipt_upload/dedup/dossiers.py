@@ -17,6 +17,65 @@ from receipt_upload.dedup.context import LabelObs
 ENV_TABLE = {"dev": "ReceiptsTable-dc5be22", "prod": "ReceiptsTable-d7ff76a"}
 
 
+def _receipt_place_merchants(
+    dc: DynamoClient,
+) -> dict[tuple[str, int], str | None]:
+    """Load merchant names from raw ``RECEIPT_PLACE`` rows.
+
+    A table-wide dedup census cannot rely on strict entity conversion because
+    historical place rows may retain stale secondary-index projections. Query
+    ``GSITYPE`` directly and read only scalar identity/name fields instead.
+    """
+    merchants: dict[tuple[str, int], str | None] = {}
+    last_evaluated_key = None
+
+    while True:
+        query = {
+            "TableName": dc.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#entity_type = :entity_type",
+            "ExpressionAttributeNames": {"#entity_type": "TYPE"},
+            "ExpressionAttributeValues": {
+                ":entity_type": {"S": "RECEIPT_PLACE"}
+            },
+        }
+        if last_evaluated_key is not None:
+            query["ExclusiveStartKey"] = last_evaluated_key
+
+        response = dc._client.query(**query)
+        for item in response.get("Items", []):
+            image_id = item.get("image_id", {}).get("S")
+            if not image_id:
+                image_id = (
+                    item.get("PK", {}).get("S", "").removeprefix("IMAGE#")
+                )
+
+            raw_receipt_id = item.get("receipt_id", {}).get("N")
+            if raw_receipt_id is None:
+                sk_parts = item.get("SK", {}).get("S", "").split("#")
+                raw_receipt_id = (
+                    sk_parts[1]
+                    if len(sk_parts) == 3
+                    and sk_parts[0] == "RECEIPT"
+                    and sk_parts[2] == "PLACE"
+                    else None
+                )
+            try:
+                receipt_id = int(raw_receipt_id)
+            except (TypeError, ValueError):
+                continue
+            if not image_id:
+                continue
+
+            merchants[(image_id, receipt_id)] = item.get(
+                "merchant_name", {}
+            ).get("S")
+
+        last_evaluated_key = response.get("LastEvaluatedKey")
+        if last_evaluated_key is None:
+            return merchants
+
+
 def load_inputs(table: str, *, with_summaries: bool = False):
     """Return ``(receipts, words_by_receipt, labels_by_receipt)``.
 
@@ -61,9 +120,5 @@ def load_inputs(table: str, *, with_summaries: bool = False):
         g = getattr(su, "grand_total", None)
         if g is not None:
             totals[(su.image_id, su.receipt_id)] = float(g)
-    merchants = {}
-    for m in dc.list_receipt_metadatas()[0]:
-        merchants[(m.image_id, m.receipt_id)] = getattr(
-            m, "canonical_merchant_name", None
-        ) or getattr(m, "merchant_name", None)
+    merchants = _receipt_place_merchants(dc)
     return receipts, words_by_receipt, labels_by_receipt, totals, merchants
