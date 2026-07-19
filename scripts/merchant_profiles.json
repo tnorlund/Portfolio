@@ -450,6 +450,28 @@
      "max_count": 0
     }
    }
+  },
+  "Italia Deli & Bakery": {
+   "_comment": "Minted atlas (fonts/italiadeli, 2026-07-19), 8 scan receipts.",
+   "typography": {
+    "bitmap_font": {
+     "regular": "italiadeli.glyphs.npz",
+     "heavy": "italiadeli.glyphs.npz"
+    },
+    "condense": 1.0218,
+    "pitch_ratio": 0.7173,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.685,
+    "mixed_layout": true,
+    "bitmap_glyph_vscale": 1.056
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   }
  }
 }

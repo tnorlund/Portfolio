@@ -1,0 +1,133 @@
+{
+ "version": 1,
+ "char": "/",
+ "codepoint": 47,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "italiadeli.refined.npz",
+  "samples": 5,
+  "consensusHash": "fa5a8ad52e77",
+  "date": "2026-07-19"
+ },
+ "width": 469.9,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 182.9,
+     "y": 655.6,
+     "type": "corner"
+    },
+    {
+     "x": 262.5,
+     "y": 553.7,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 305.1,
+     "y": 655.6,
+     "type": "corner"
+    },
+    {
+     "x": 291.2,
+     "y": 558.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 421.0,
+     "y": 955.6,
+     "type": "corner"
+    },
+    {
+     "x": 421.0,
+     "y": 865.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 255.1,
+     "y": 655.6,
+     "type": "corner"
+    },
+    {
+     "x": 345.3,
+     "y": 655.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 345.3,
+     "y": 655.6,
+     "type": "corner"
+    },
+    {
+     "x": 391.2,
+     "y": 858.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 31.4,
+     "y": 44.4,
+     "type": "corner"
+    },
+    {
+     "x": 46.75177982642105,
+     "y": 109.92549368236388,
+     "type": "corner",
+     "hOut": {
+      "x": 54.2479555381182,
+      "y": 128.49854959706528
+     }
+    },
+    {
+     "x": 92.48405784154627,
+     "y": 139.98516458974433,
+     "type": "smooth",
+     "hIn": {
+      "x": 82.08932965224206,
+      "y": 121.52620242486894
+     },
+     "hOut": {
+      "x": 126.60606366530129,
+      "y": 204.666988816093
+     }
+    },
+    {
+     "x": 262.5,
+     "y": 553.7,
+     "type": "corner",
+     "hIn": {
+      "x": 255.31560790370222,
+      "y": 495.91249835586785
+     }
+    }
+   ]
+  }
+ ]
+}
