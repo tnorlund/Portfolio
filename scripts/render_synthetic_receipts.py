@@ -2346,10 +2346,20 @@ def _overlay_qr_and_barcode(
         else:
             merged.append([s, e])
     # Blank vertical bands between printed content.
+    #
+    # Skip the LEADING gap (paper_top -> first printed content). Real
+    # receipts print the wordmark/logo at the very top and never a QR or
+    # barcode above it, but that band reads as blank here because the
+    # wordmark OCR tokens are dropped and depicted by the pasted logo
+    # instead. On a receipt whose tallest blank band is this header
+    # whitespace (e.g. Costco 0324604e), a blind "tallest band" stamp drops
+    # a phantom QR+barcode ABOVE the wordmark. Footer codes belong
+    # between/after printed content, so only interior and trailing
+    # whitespace are eligible.
     gaps: list[tuple[float, float]] = []
     prev = paper_top
     for s, e in merged:
-        if s - prev > 0:
+        if s - prev > 0 and prev > paper_top:
             gaps.append((prev, s))
         prev = max(prev, e)
     if paper_bottom - prev > 0:
