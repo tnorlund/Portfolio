@@ -48,7 +48,7 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 12,
-     "tool_git_sha": "099bddd72680"
+     "tool_git_sha": "8ec633838d41"
     },
     "columns": {
      "footer": [
@@ -365,7 +365,7 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 6,
-     "tool_git_sha": "099bddd72680"
+     "tool_git_sha": "8ec633838d41"
     },
     "columns": {
      "barcode": [
@@ -455,8 +455,8 @@
      "storefront",
      "payment",
      "section_header",
-     "barcode",
      "items",
+     "barcode",
      "total_line",
      "summary",
      "footer"
@@ -465,14 +465,16 @@
      {
       "char": "*",
       "after_section": "summary",
+      "ordinal": 0,
       "support": 4,
-      "pos_frac_med": 0.87
+      "pos_frac_med": 0.872
      },
      {
       "char": "*",
       "after_section": "footer",
+      "ordinal": 0,
       "support": 5,
-      "pos_frac_med": 0.929
+      "pos_frac_med": 0.939
      }
     ]
    }
@@ -626,7 +628,7 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 8,
-     "tool_git_sha": "099bddd72680"
+     "tool_git_sha": "8ec633838d41"
     },
     "columns": {
      "address": [
@@ -659,13 +661,6 @@
        "x": 0.2051,
        "spread": 0.0084,
        "support": 4
-      },
-      {
-       "role": "desc",
-       "anchor": "left",
-       "x": 0.3291,
-       "spread": 0.0083,
-       "support": 5
       },
       {
        "role": "amount",
@@ -731,30 +726,16 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 5,
-     "tool_git_sha": "099bddd72680"
+     "tool_git_sha": "8ec633838d41"
     },
     "columns": {
      "items": [
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.0,
-       "spread": 0.0,
-       "support": 3
-      },
-      {
-       "role": "desc",
-       "anchor": "left",
        "x": 0.4126,
        "spread": 0.0128,
        "support": 4
-      },
-      {
-       "role": "amount",
-       "anchor": "right",
-       "x": 0.8045,
-       "spread": 0.0,
-       "support": 2
       },
       {
        "role": "amount",

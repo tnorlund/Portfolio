@@ -402,3 +402,94 @@ def test_arithmetic_untestable_without_amounts():
     words = [_wordline("HELLO", 500, left=100)]
     out = ffe.arithmetic_check(words)
     assert out["verdict"] == "UNTESTED"
+
+
+# ---------------------------------------------------------------------------
+# codex-review hardening (round 1)
+# ---------------------------------------------------------------------------
+def test_column_metric_fails_on_uniform_lane_shift():
+    # a straight lane translated bodily by 2 cells with no second lane:
+    # the abs-drift backstop must catch what residuals/gaps cannot
+    rows = _amount_rows([300] * 8)
+    cols = ffe.derive_columns_bootstrap(rows, W)
+    real = blank()
+    _ink_for_rows(real, rows, jitter=[0])
+    shifted = blank()
+    _ink_for_rows(shifted, rows, jitter=[16])  # 2 cells at cell_w=8
+    out = ffe.metric_columns(real, shifted, rows, rows, cols, 8.0)
+    assert out["verdict"] == "FAIL"
+    entry = out["columns"][0]
+    assert "abs_drift" in entry["failed_on"]
+
+
+def test_column_metric_fails_on_missing_synth_lane():
+    rows = _amount_rows([300] * 8)
+    cols = ffe.derive_columns_bootstrap(rows, W)
+    real = blank()
+    _ink_for_rows(real, rows, jitter=[0])
+    empty = blank()  # synth never draws the lane at all
+    out = ffe.metric_columns(real, empty, rows, rows, cols, 8.0)
+    assert out["verdict"] == "FAIL"
+    assert any(
+        "missing_lane" in e.get("failed_on", ()) for e in out["columns"]
+    )
+
+
+def test_token_precision_fails_fabrication_on_faithful():
+    man = _manifest()
+    drawn = man + [
+        {
+            "text": t,
+            "bbox": [500, 500 - i * 40, 560, 520 - i * 40],
+            "labels": [],
+        }
+        for i, t in enumerate(["PHANTOM", "INVENTED", "EXTRA"])
+    ]
+    out = ffe.metric_tokens(man, drawn, None, composed=False)
+    assert out["verdict"] == "FAIL"
+    # composed layouts re-emit repaired tokens: WARN, not FAIL
+    out2 = ffe.metric_tokens(man, drawn, None, composed=True)
+    assert out2["verdict"] == "PASS"
+
+
+def test_style_metric_fails_on_synth_only_styling():
+    # real side unstyled, synth side bold headers: invented styling fails
+    _, syn_unstyled, rows, classes = _style_fixture(header_bold_in_syn=False)
+    _, syn_styled, _, _ = _style_fixture(header_bold_in_syn=True)
+    out = ffe.metric_style(
+        syn_unstyled, syn_styled, rows, rows, classes, classes
+    )
+    entry = next(e for e in out["classes"] if e["class"] == "section_header")
+    assert entry["verdict"] == "FAIL" and "bold" in entry.get(
+        "extra_style", ()
+    )
+
+
+def test_amount_of_signs():
+    assert ffe._amount_of("-4.00") == -4.0
+    assert ffe._amount_of("-$4.00") == -4.0
+    assert ffe._amount_of("4.00-") == -4.0
+    assert ffe._amount_of("$1,299.00") == 1299.0
+    assert ffe._amount_of("1299.00") == 1299.0
+    assert ffe._amount_of("3.49T") == 3.49
+
+
+def test_overall_reports_coverage_gaps(monkeypatch, tmp_path):
+    # graphics SKIPPED (no detector) + everything else PASS must not read
+    # as an unqualified PASS
+    monkeypatch.setattr(ffe, "_BARCODE_BIN", str(tmp_path / "missing"))
+    out = ffe.metric_graphics("/none/a.png", "/none/b.png")
+    assert out["verdict"] == "SKIPPED"
+
+
+def test_render_path_call_sites_reference_shared_patterns():
+    import compose_dollartree as cdt
+    import render_synthetic_receipts as rsr
+
+    from receipt_agent.agents.label_evaluator.rendering.price_tokens import (
+        DOLLARTREE_PRICE_TOKEN,
+        SYNTH_PRICE_TOKEN,
+    )
+
+    assert rsr._PRICE_TOKEN_RE is SYNTH_PRICE_TOKEN
+    assert cdt._PRICE_RE is DOLLARTREE_PRICE_TOKEN

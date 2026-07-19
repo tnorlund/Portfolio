@@ -107,14 +107,26 @@ _FLAG_TOKEN_RE = re.compile(r"^[A-Z]$")
 _LABEL_SECTIONS = {"summary", "total_line", "payment"}
 
 
-def _token_role(word_text: str, *, after_amount: bool, label_row: bool) -> str:
-    """Column role of one token: amount / qty / flag / label / desc."""
+def _token_role(
+    word_text: str,
+    *,
+    after_amount: bool,
+    label_row: bool,
+    standalone: bool = True,
+) -> str:
+    """Column role of one token: amount / qty / flag / label / desc.
+
+    ``standalone`` gates the qty role: a bare small int glued to the
+    description ("SIZE 9", "NO 12") is description text, not a quantity
+    column; only a first token or one separated by a real column gap
+    counts.
+    """
     t = str(word_text or "").strip()
     if _amount_token(t):
         return "amount"
     if _FLAG_TOKEN_RE.match(t) and after_amount:
         return "flag"
-    if _QTY_TOKEN_RE.match(t) and not after_amount:
+    if _QTY_TOKEN_RE.match(t) and not after_amount and standalone:
         return "qty"
     return "label" if label_row else "desc"
 
@@ -148,9 +160,23 @@ def line_token_records(
     label_row = section_canonical in _LABEL_SECTIONS
     tokens = []
     seen_amount = False
-    for w in sorted(line, key=lambda w: w["l"]):
+    ordered = sorted(line, key=lambda w: w["l"])
+    for idx, w in enumerate(ordered):
+        # a qty candidate must stand APART from the text before it (first
+        # token, or a gap of at least 1.5x its own height) -- "SIZE 9" is
+        # description, "  1  CHEESEBURGER" is a quantity column.
+        if idx == 0:
+            standalone = True
+        else:
+            prev = ordered[idx - 1]
+            gap = w["l"] - prev["r"]
+            height = max(1.0, float(w.get("h") or (w["b"] - w["t"])))
+            standalone = gap >= 1.5 * height
         role = _token_role(
-            w.get("text"), after_amount=seen_amount, label_row=label_row
+            w.get("text"),
+            after_amount=seen_amount,
+            label_row=label_row,
+            standalone=standalone,
         )
         if role == "amount":
             seen_amount = True
@@ -626,6 +652,7 @@ def _load_receipt_letters(table: str, image_id: str):
     those, skipping any individual letter that fails to parse.
     """
     import boto3
+
     from receipt_dynamo.entities.receipt_letter import item_to_receipt_letter
 
     dynamo = boto3.client("dynamodb")
@@ -659,8 +686,9 @@ def _load_receipt_letters(table: str, image_id: str):
 
 
 def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
-    from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_line_scorecard import _load_words_and_real
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient
 
     # _load_words_and_real ignores its merchant arg (loads purely by
     # image/receipt id); pass the caller's merchant through for clarity.
@@ -719,7 +747,9 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         # ("MILK 4.29 F") is still an item row. Only checking the last word
         # dropped every flagged Gelson's item to 'other', which starved the
         # columnscan aggregation of the items section entirely (#1188 P2).
-        has_price = any(price_re.search(str(w["text"])) for w in line)
+        # Word-ANCHORED via the canonical token test, so a substring match
+        # inside a URL / product code can't promote a row to 'item'.
+        has_price = any(_amount_token(str(w["text"]).strip()) for w in line)
         section = _classify(text, has_price, merchant)
         # OCR line_ids covered by this visual line (words carry line_id). Lets a
         # caller join each measured row to a QA'd ReceiptSection (which stores

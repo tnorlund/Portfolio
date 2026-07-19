@@ -63,10 +63,25 @@ def _load_scans(scan_dir: str) -> list[dict]:
     return scans
 
 
+def _support_need(n_scans: int) -> int:
+    """At least half the receipts, CEILING (3 of 5), floored at 2."""
+    return max(2, -(-n_scans // 2))
+
+
+def _line_y_frac(line: dict, scan: dict, i: int, n_lines: int) -> float:
+    """Paper-position fraction of a line: pixel bbox center over image
+    height when the scan carries it, else the line-index fraction."""
+    bbox = line.get("bbox")
+    size = scan.get("image_size")
+    if bbox and size and len(bbox) == 4 and size[1]:
+        return ((bbox[1] + bbox[3]) / 2.0) / float(size[1])
+    return i / n_lines
+
+
 def measure_section_sequence(scans: list[dict]) -> list[str]:
-    """Canonical sections ordered by median first-appearance fraction."""
+    """Canonical sections ordered by median first-appearance position."""
     firsts: dict[str, list[float]] = defaultdict(list)
-    need = max(2, len(scans) // 2)
+    need = _support_need(len(scans))
     for scan in scans:
         lines = scan["lines"]
         n = max(1, len(lines))
@@ -77,7 +92,7 @@ def measure_section_sequence(scans: list[dict]) -> list[str]:
             )
             if sec and sec not in seen:
                 seen.add(sec)
-                firsts[sec].append(i / n)
+                firsts[sec].append(_line_y_frac(line, scan, i, n))
     ordered = [
         (median(pos), sec) for sec, pos in firsts.items() if len(pos) >= need
     ]
@@ -92,14 +107,20 @@ def _separator_char(text: str) -> str | None:
 
 
 def measure_separators(scans: list[dict]) -> list[dict]:
-    """Rule-row inventory: (char, after_section) pairs with receipt support,
-    ordered by their median position on the paper."""
-    obs: dict[tuple[str, str | None], list[float]] = defaultdict(list)
-    need = max(2, len(scans) // 2)
+    """Rule-row inventory: (char, after_section, ordinal) observations with
+    receipt support, ordered by their median position on the paper.
+
+    ``ordinal`` distinguishes REPEATED rules after one section (two ``*``
+    rows following the summary are two entries, ordinal 0 and 1), so the
+    template can represent the real inventory, and support still counts
+    receipts (each receipt contributes one observation per ordinal).
+    """
+    obs: dict[tuple[str, str | None, int], list[float]] = defaultdict(list)
+    need = _support_need(len(scans))
     for scan in scans:
         lines = scan["lines"]
         n = max(1, len(lines))
-        seen_this: set[tuple[str, str | None]] = set()
+        ordinals: Counter = Counter()
         prev_section: str | None = None
         for i, line in enumerate(lines):
             sec_raw = line.get("section")
@@ -116,22 +137,23 @@ def measure_separators(scans: list[dict]) -> list[dict]:
             ):
                 char = _separator_char(str(line.get("text") or ""))
                 if char:
-                    key = (char, prev_section)
-                    if key not in seen_this:
-                        seen_this.add(key)
-                        obs[key].append(i / n)
+                    base = (char, prev_section)
+                    key = (char, prev_section, ordinals[base])
+                    ordinals[base] += 1
+                    obs[key].append(_line_y_frac(line, scan, i, n))
                 continue
             if canonical:
                 prev_section = canonical
         # a separator observed before any classified section anchors to None
     out = []
-    for (char, after), positions in obs.items():
+    for (char, after, ordinal), positions in obs.items():
         if len(positions) < need:
             continue
         out.append(
             {
                 "char": char,
                 "after_section": after,
+                "ordinal": ordinal,
                 "support": len(positions),
                 "pos_frac_med": round(median(positions), 3),
             }

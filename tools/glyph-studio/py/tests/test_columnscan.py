@@ -173,3 +173,29 @@ def test_build_layout_template_shape():
     assert "items" in t["columns"]
     assert isinstance(t["sections"], list)
     assert isinstance(t["separators"], list)
+
+
+def test_pool_columns_ceils_half_and_counts_receipts():
+    lane = {
+        "role": "amount",
+        "anchor": "right",
+        "x": 0.86,
+        "spread": 0.0,
+        "support": 5,
+    }
+    # 2 of 5 receipts is NOT "at least half": ceil(5/2)=3 required
+    per_receipt = [
+        {"items": [dict(lane)]},
+        {"items": [dict(lane)]},
+        {},
+        {},
+        {},
+    ]
+    assert pool_columns(per_receipt) == {}
+    per_receipt[2] = {"items": [dict(lane, x=0.874)]}
+    pooled = pool_columns(per_receipt)
+    assert pooled["items"][0]["support"] == 3
+    # one receipt with TWO same-role lanes near one pool counts ONCE
+    double = {"items": [dict(lane, x=0.858), dict(lane, x=0.9)]}
+    per_receipt = [double, {}, {}]
+    assert pool_columns(per_receipt) == {}  # 1 receipt < need

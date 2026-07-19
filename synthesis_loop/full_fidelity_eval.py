@@ -146,9 +146,19 @@ STYLE_BOLD_RATIO = 1.4
 STYLE_REAL_STYLED_MIN = 0.5
 STYLE_SYN_STYLED_MIN = 0.25
 STYLE_MIN_ROWS = 2
+# columns: backstop against a whole lane translating while staying straight
+# (residuals + lane gaps can't see it when only one lane is measurable).
+# Generous because OCR-box-vs-ink offsets on ALIGNED receipts measure up to
+# ~0.9 cells (real boxes pad past ink; synth snaps to boxes); 1.5 cells only
+# catches gross whole-lane shifts.
+COLUMN_ABS_DRIFT_LIMIT_CELLS = 1.5
 # tokens
 TOKEN_INK_RECALL_MIN = 0.98
 TOKEN_TEXT_RECALL_MIN = 0.98
+# faithful renders draw only manifest content; fabricated tokens fail.
+# Composed layouts legitimately re-emit repaired/normalized tokens, so they
+# only WARN below the warn bar.
+TOKEN_TEXT_PRECISION_MIN = 0.95
 TOKEN_TEXT_PRECISION_WARN = 0.85
 # separators: y agreement tolerance (fraction of height); count must match.
 SEPARATOR_Y_TOL = 0.025
@@ -504,12 +514,20 @@ def metric_columns(
         real_m = measure_column(real_gray, rows_real, col, cell_w, neighbors)
         syn_m = measure_column(syn_gray, rows_syn, col, cell_w, neighbors)
         entry = {"column": col, "real": real_m, "synth": syn_m}
-        n = min(real_m.get("n_rows", 0), syn_m.get("n_rows", 0))
-        if n < COLUMN_MIN_ROWS:
+        if real_m.get("n_rows", 0) < COLUMN_MIN_ROWS:
             entry["verdict"] = "UNTESTED"
             results.append(entry)
             continue
         tested += 1
+        if syn_m.get("n_rows", 0) < COLUMN_MIN_ROWS:
+            # the real lane is well-attested but the synth lane's ink is
+            # absent or scattered -- that IS a column defect, not missing
+            # evidence.
+            entry["verdict"] = "FAIL"
+            entry["failed_on"] = ["missing_lane"]
+            verdict = "FAIL"
+            results.append(entry)
+            continue
         wobble_limit = (
             real_m["wobble_iqr_px"] * COLUMN_WOBBLE_FACTOR
             + COLUMN_WOBBLE_MARGIN_PX
@@ -517,13 +535,25 @@ def metric_columns(
         fail_wobble = syn_m["wobble_iqr_px"] > wobble_limit
         outlier_limit = real_m["outlier_frac"] + COLUMN_OUTLIER_FRAC_MARGIN
         fail_outliers = syn_m["outlier_frac"] > outlier_limit
+        # Whole-lane translation backstop: residuals + lane gaps cannot see
+        # a straight lane that moved bodily when it is the only measurable
+        # lane. Generous limit (benign OCR-box-vs-ink offsets measure up to
+        # ~0.9 cells on aligned receipts).
+        abs_drift = abs(syn_m["median_dev_px"] - real_m["median_dev_px"])
+        fail_abs_drift = abs_drift > COLUMN_ABS_DRIFT_LIMIT_CELLS * cell_w
         entry["wobble_limit_px"] = round(wobble_limit, 2)
         entry["outlier_limit"] = round(outlier_limit, 3)
+        entry["abs_drift_px"] = round(abs_drift, 2)
+        entry["abs_drift_limit_px"] = round(
+            COLUMN_ABS_DRIFT_LIMIT_CELLS * cell_w, 2
+        )
         fails = []
         if fail_wobble:
             fails.append("wobble")
         if fail_outliers:
             fails.append("outliers")
+        if fail_abs_drift:
+            fails.append("abs_drift")
         entry["verdict"] = "FAIL" if fails else "PASS"
         if fails:
             entry["failed_on"] = fails
@@ -732,6 +762,7 @@ def metric_style(
             entries.append(entry)
             continue
         fails = []
+        extra = []
         for attr in ("bold", "underline"):
             real_rate = r[attr] / r["n"]
             syn_rate = s[attr] / s["n"]
@@ -740,9 +771,19 @@ def metric_style(
                 and syn_rate < STYLE_SYN_STYLED_MIN
             ):
                 fails.append(attr)
-        entry["verdict"] = "FAIL" if fails else "PASS"
+            # agreement is BIDIRECTIONAL: styling the synth invents is as
+            # wrong as styling it drops.
+            elif (
+                syn_rate >= STYLE_REAL_STYLED_MIN
+                and real_rate < STYLE_SYN_STYLED_MIN
+            ):
+                extra.append(attr)
+        entry["verdict"] = "FAIL" if (fails or extra) else "PASS"
         if fails:
             entry["missing_style"] = fails
+        if extra:
+            entry["extra_style"] = extra
+        if fails or extra:
             verdict = "FAIL"
         entries.append(entry)
     return {
@@ -824,8 +865,12 @@ def metric_tokens(
                 ink_missing.append(t)
         ink_recall = n_hit / n_checked if n_checked else 1.0
 
-    fail = text_recall < TOKEN_TEXT_RECALL_MIN or (
-        ink_recall is not None and ink_recall < TOKEN_INK_RECALL_MIN
+    fail = (
+        text_recall < TOKEN_TEXT_RECALL_MIN
+        or (ink_recall is not None and ink_recall < TOKEN_INK_RECALL_MIN)
+        # faithful renders draw only manifest content -- fabricated tokens
+        # FAIL; composed layouts re-emit repaired tokens, so they only WARN.
+        or (not composed and text_precision < TOKEN_TEXT_PRECISION_MIN)
     )
     return {
         "verdict": "FAIL" if fail else "PASS",
@@ -948,6 +993,14 @@ def metric_separators(
     rows_real: list[list[dict]] | None = None,
     rows_syn: list[list[dict]] | None = None,
 ) -> dict:
+    """Count/order/y agreement of full-width rules.
+
+    ``kind`` (dash/double/solid) is reported but deliberately NOT gated: at
+    eval resolution a real dotted rule blurs between "dash" and "double"
+    (the current Gelson's matched pairs already read dash-vs-double at the
+    same y), so gating on kind would fail approved renders on a resolution
+    artifact. Count + order + y is the P1 contract.
+    """
     real_seps = _drop_text_bands(
         detect_separators(real_gray), rows_real, real_gray.shape[0]
     )
@@ -1184,9 +1237,19 @@ _DISCOUNT_LABELS = {"DISCOUNT", "COUPON", "REFUND", "SAVINGS"}
 
 
 def _amount_of(text: str) -> float | None:
-    t = str(text or "").strip().lstrip("$").replace(",", "")
-    m = re.match(r"^(\d+\.\d{2})[A-Z]?[-+]?$", t)
-    return float(m.group(1)) if m else None
+    """Signed amount value, honoring BOTH sign conventions.
+
+    Receipts print negatives leading ("-4.00") or trailing ("4.00-", the
+    register-tape convention); either reads as negative.
+    """
+    t = str(text or "").strip().replace(",", "")
+    m = re.match(r"^([-+]?)\$?(\d+\.\d{2})[A-Z]?([-+]?)$", t)
+    if not m:
+        return None
+    value = float(m.group(2))
+    if "-" in (m.group(1), m.group(3)):
+        value = -value
+    return value
 
 
 def arithmetic_check(words: list[dict]) -> dict:
@@ -1377,6 +1440,7 @@ def _load_real(merchant: str, image_id: str, receipt_id: int):
 
     import boto3
     from PIL import Image
+
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
     region = os.environ.get("AWS_REGION", "us-east-1")
@@ -1542,7 +1606,21 @@ def evaluate_pair(
         "arithmetic": arithmetic,
     }
     verdicts = [m["verdict"] for m in checks.values()]
-    checks["overall"] = "FAIL" if "FAIL" in verdicts else "PASS"
+    # A PASS with untested/skipped metrics is not the same claim as a full
+    # pass -- name the coverage gaps so incomplete coverage can never be
+    # silently read as "all seven metrics green".
+    gaps = sorted(
+        name
+        for name, m in checks.items()
+        if m["verdict"] in ("UNTESTED", "SKIPPED")
+    )
+    checks["coverage_gaps"] = gaps
+    if "FAIL" in verdicts:
+        checks["overall"] = "FAIL"
+    elif gaps:
+        checks["overall"] = "PASS_WITH_GAPS"
+    else:
+        checks["overall"] = "PASS"
     return checks
 
 
@@ -1675,7 +1753,10 @@ def run(args) -> int:
         "arithmetic",
     ):
         print(f"  {name:11s} {checks[name]['verdict']}")
-    return 0 if checks["overall"] == "PASS" else 1
+    if checks["overall"] == "PASS":
+        return 0
+    # 2 = no metric failed but coverage was incomplete; 1 = a metric failed
+    return 2 if checks["overall"] == "PASS_WITH_GAPS" else 1
 
 
 def run_real_real(args) -> int:
@@ -1761,10 +1842,18 @@ def run_real_real(args) -> int:
         "style": style,
         "graphics": graphics,
     }
-    verdicts = [
-        m["verdict"] for m in checks.values() if m["verdict"] != "SKIPPED"
-    ]
-    checks["overall"] = "FAIL" if "FAIL" in verdicts else "PASS"
+    gaps = sorted(
+        name
+        for name, m in checks.items()
+        if m["verdict"] in ("UNTESTED", "SKIPPED")
+    )
+    checks["coverage_gaps"] = gaps
+    if any(m["verdict"] == "FAIL" for m in checks.values() if "verdict" in m):
+        checks["overall"] = "FAIL"
+    elif gaps:
+        checks["overall"] = "PASS_WITH_GAPS"
+    else:
+        checks["overall"] = "PASS"
     doc = {
         "mode": "real-vs-real",
         "slug": args.slug,
@@ -1783,7 +1872,9 @@ def run_real_real(args) -> int:
     )
     for name in ("columns", "style", "graphics"):
         print(f"  {name:11s} {checks[name]['verdict']}")
-    return 0 if checks["overall"] == "PASS" else 1
+    if checks["overall"] == "PASS":
+        return 0
+    return 2 if checks["overall"] == "PASS_WITH_GAPS" else 1
 
 
 def main(argv=None) -> int:

@@ -120,34 +120,48 @@ def pool_columns(
     ``spread`` is the IQR of the receipt-level lane positions.
     """
     n = len(per_receipt)
-    need = max(2, n // 2)
+    # "at least half the receipts" means CEILING division: 3 of 5, not 2.
+    need = max(2, -(-n // 2))
     pooled: dict[str, list[dict]] = {}
     sections = {s for cols in per_receipt for s in cols}
     for section in sorted(sections):
-        lanes: list[dict] = []  # {"role", "xs": [receipt lane x...]}
-        for cols in per_receipt:
+        # {"role", "xs": [...], "receipts": {idx...}} -- support counts
+        # DISTINCT receipts, and one receipt contributes at most one lane to
+        # a pool (two same-role lanes from one receipt are different columns
+        # by construction: they were > RECEIPT_CLUSTER_TOL apart there).
+        lanes: list[dict] = []
+        for ridx, cols in enumerate(per_receipt):
             for col in cols.get(section, []):
                 best = None
                 for lane in lanes:
                     if lane["role"] != col["role"]:
+                        continue
+                    if ridx in lane["receipts"]:
                         continue
                     d = abs(median(lane["xs"]) - col["x"])
                     if d <= tol and (best is None or d < best[0]):
                         best = (d, lane)
                 if best:
                     best[1]["xs"].append(col["x"])
+                    best[1]["receipts"].add(ridx)
                 else:
-                    lanes.append({"role": col["role"], "xs": [col["x"]]})
+                    lanes.append(
+                        {
+                            "role": col["role"],
+                            "xs": [col["x"]],
+                            "receipts": {ridx},
+                        }
+                    )
         kept = [
             {
                 "role": lane["role"],
                 "anchor": _ROLE_ANCHOR[lane["role"]],
                 "x": round(median(lane["xs"]), 4),
                 "spread": round(_iqr(lane["xs"]), 4),
-                "support": len(lane["xs"]),
+                "support": len(lane["receipts"]),
             }
             for lane in lanes
-            if len(lane["xs"]) >= need
+            if len(lane["receipts"]) >= need
         ]
         if kept:
             kept.sort(key=lambda c: c["x"])
