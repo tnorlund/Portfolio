@@ -296,3 +296,22 @@ def test_generated_tax_uses_half_up_cent_rounding():
     )
     texts = [w["text"] for w in words]
     assert "$0.02" in texts  # 0.015 rounds half-up, not banker's 0.01
+
+
+def test_pinned_receipt_recovers_all_eleven_items():
+    # refactor-p1 metric finding: only 8/11 items composed (sum 10.00 vs the
+    # printed Sub Total 13.75). All 11 item rows exist in the source OCR
+    # (fixture captured from d10ba8bf) -- recovery must be complete and the
+    # item sum must equal the Sub Total.
+    import json
+
+    import compose_dollartree as cd
+
+    raw = json.load(open("tests/fixtures_dollartree_pinned_words.json"))
+    out = cd.canonical_words(raw)
+    texts = [w["text"] for w in out]
+    totals = [t for t in texts if t.endswith("T") and t[0].isdigit()]
+    assert len(totals) == 11, f"item rows: {len(totals)} != 11"
+    assert abs(sum(float(t[:-1]) for t in totals) - 13.75) < 0.001
+    # text canonicalization: every clipped suffix inherits the clean form
+    assert texts.count("11X10.5") == 10 and "11X10." not in texts

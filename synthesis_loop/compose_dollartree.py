@@ -429,6 +429,36 @@ def canonical_words(raw_words):
                 it["total"] = _money(float(it["price"]) * qty)
         except ValueError:
             pass
+
+    # Amount fill for SAME-PRODUCT siblings: an item row whose amount
+    # fragment strayed beyond the attachment window is still a real row --
+    # when >=2 clean siblings of the SAME product (leading-token identity)
+    # share one modal (price, total, flag), the missing amounts are that
+    # modal (evidence-based; a lone unmatched fragment never invents one).
+    def _prod_key(it):
+        return " ".join(it["desc"].split()[:2]).upper()
+
+    by_prod = {}
+    for it in items:
+        by_prod.setdefault(_prod_key(it), []).append(it)
+    for group in by_prod.values():
+        with_amounts = [
+            (g["price"], g["total"], g["flag"])
+            for g in group
+            if g["price"] and g["total"]
+        ]
+        if len(with_amounts) < 2:
+            continue
+        modal_amt = (
+            __import__("collections").Counter(with_amounts).most_common(1)[0]
+        )
+        if modal_amt[1] < 2:
+            continue
+        price, total, flag = modal_amt[0]
+        for g in group:
+            if not g["price"] and not g["total"]:
+                g["price"], g["total"], g["flag"] = price, total, flag
+
     # a fragment with no amounts continues the item above it
     kept = []
     for it in items:
@@ -469,16 +499,22 @@ def canonical_words(raw_words):
                     for o in group
                     if len(o["desc"].split()) > pos
                 ]
-                cnt = _Counter(candidates)
-                best = max(cnt.items(), key=lambda kv: (kv[1], len(kv[0])))[0]
                 cur = toks[pos]
-                # override ONLY a clip-variant (prefix relation): a clipped
-                # "11X10." inherits "11X10.5"; a genuinely different token
-                # ("SOAP" vs "TOOTHBRUSH") keeps its own row identity.
-                if best != cur and (
-                    best.startswith(cur) or cur.startswith(best)
-                ):
-                    out_toks[pos] = best
+                # override ONLY within the clip-variant family (prefix
+                # relation): clipping can only LOSE characters, so the
+                # LONGEST variant is the least-clipped truth even when the
+                # clipped form is the majority (7x "11X10." vs 3x
+                # "11X10.5"). Genuinely different tokens ("SOAP" vs
+                # "TOOTHBRUSH") keep their own row identity.
+                family = [
+                    t
+                    for t in candidates
+                    if t == cur or t.startswith(cur) or cur.startswith(t)
+                ]
+                if family:
+                    best = max(family, key=len)
+                    if best != cur:
+                        out_toks[pos] = best
             # a shorter clip also inherits missing TRAILING tokens when
             # every longer sibling agrees on them
             if len(toks) < maxlen:
