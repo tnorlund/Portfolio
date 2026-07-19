@@ -139,6 +139,10 @@ class RenderConfig:
     # condensed than off-the-shelf monospace); ``stroke`` thickens them (a
     # double-strike to match heavy thermal print). 1.0 / 0 = no shaping.
     condense: float = 1.0
+    # Uniform multiplier on the profile-driven body size (default 1.0 = no-op).
+    # For merchants whose measured OCR-box height mis-states the real cap height,
+    # so the whole-receipt text renders too large/small (Gelson's body).
+    font_scale: float = 1.0
     stroke: int = 0
     # Render in a real glyph atlas (the merchant's actual letterforms) instead of
     # a TTF. Maps {"regular": atlas.npz, "heavy": atlas.npz}; heavy is used for

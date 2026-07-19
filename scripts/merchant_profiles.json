@@ -251,16 +251,23 @@
       "logo": "smiths_logo.png"
     },
     "Gelson's Westlake Village": {
-      "_comment": "not on receiptfont.com (small grocer) -> clean condensed B612 Mono.",
+      "_comment": "not on receiptfont.com (small grocer) -> clean condensed B612 Mono. font_scale trims body to real cap (measured 46->41px). Per-item UPC lines print as plain HRI digits (no in-body barcode) -> inbody_barcode.max_count 0.",
       "section_scale": {
         "HEADER": 0.8
       },
       "typography": {
         "font": "B612",
-        "condense": 0.82,
-        "stroke": 0
+        "condense": 0.9,
+        "stroke": 0,
+        "font_scale": 0.89
       },
-      "logo": "gelsons_logo.png"
+      "logo": "gelsons_logo.png",
+      "graphics": {
+        "inbody_barcode": {
+          "max_count": 0
+        },
+        "footer_codes": false
+      }
     },
     "Trader Joe's": {
       "_comment": "Studio-minted from 20 pooled receipts (refined corpus). All-caps body, single style fleet-wide; wordmark header replaced by logo overlay.",
@@ -303,7 +310,7 @@
       "aliases": [
         "CVS pharmacy",
         "CVS Pharmacy",
-        "CVS pharmacy®"
+        "CVS pharmacy\u00ae"
       ],
       "logo": "cvs_logo.png",
       "typography": {
@@ -324,13 +331,13 @@
       "logo_anchor": {
         "phrases": [
           "CVS pharmacy",
-          "•CVS pharmacy",
-          "CVS pharmacy®",
+          "\u2022CVS pharmacy",
+          "CVS pharmacy\u00ae",
           "pharmacy",
-          "pharmacy®",
-          "• CVS",
-          "•CVS",
-          "• CVS pharmacy"
+          "pharmacy\u00ae",
+          "\u2022 CVS",
+          "\u2022CVS",
+          "\u2022 CVS pharmacy"
         ],
         "extend_left": false,
         "center": true
@@ -372,6 +379,30 @@
         "inbody_barcode": {
           "max_count": 0
         }
+      }
+    },
+    "Dollar Tree": {
+      "_comment": "New-merchant polish: fabricated bold-italic wordmark + circular tree emblem (5 real receipts are curled photos -> logo_master vote too noisy). logo_anchor drops the top DOLLAR TREE OCR line; the footer dollartree.com mentions sit below the y>=780 header guard so they are untouched.",
+      "logo": "dollartree_logo.png",
+      "logo_anchor": {
+        "phrases": [
+          "DOLLAR",
+          "TREE"
+        ],
+        "extend_left": false,
+        "center": true
+      }
+    },
+    "The Stand - American Classics Redefined": {
+      "_comment": "New-merchant polish: circular 'THE Stand' script badge extracted from 8 real receipts (logo_master, 3 aligned). The distressed badge interior mis-OCRs as junk tokens (12 CE/FINS/AIML) inside the wordmark band -> dropped by the phrase-placement band sweep. Footer references a real QR ('Or scan this QR Code'), so footer_codes stays on.",
+      "logo": "thestand_logo.png",
+      "logo_anchor": {
+        "phrases": [
+          "STAND",
+          "THE STAND"
+        ],
+        "extend_left": false,
+        "center": true
       }
     }
   }

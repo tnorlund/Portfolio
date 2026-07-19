@@ -1128,6 +1128,19 @@ def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
     local = os.path.join(_BITMATRIX_DIR, filename)
     if os.path.exists(local):
         return local
+    # Committed-asset fallback: new-merchant logos checked into the repo (not yet
+    # published to S3 with a MerchantFont pointer) resolve from the tracked
+    # synthesis_loop/logo_assets dir so a fresh checkout / CI renders them with no
+    # manual publish step. Only the new assets live there; existing merchants miss
+    # and fall through to the S3 pointer below (behavior unchanged).
+    repo_asset = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "synthesis_loop",
+        "logo_assets",
+        filename,
+    )
+    if os.path.exists(repo_asset):
+        return repo_asset
     try:
         import hashlib
 
@@ -1465,6 +1478,7 @@ def _render_cached_hybrid(
     section_scale: dict | None = None,
     section_font: dict | None = None,
     condense: float = 1.0,
+    font_scale: float = 1.0,
     stroke: int = 0,
     bitmap_font: dict | None = None,
     display_headings: tuple = (),
@@ -1506,6 +1520,7 @@ def _render_cached_hybrid(
         section_scale=section_scale,
         section_font=section_font,
         condense=condense,
+        font_scale=font_scale,
         stroke=stroke,
         display_headings=display_headings,
         heading_scale=heading_scale,
@@ -1691,6 +1706,7 @@ def _render_cached_hybrid(
         config=config,
         coord_max=1000.0,
         reserved=stamped_bands,
+        logo_bbox=logo_bbox,
     )
     # Content-derived seed so a given receipt renders the SAME paper texture
     # regardless of the output path. Keying on the filename made scorecard
@@ -2292,6 +2308,7 @@ def _overlay_qr_and_barcode(
     config: RenderConfig,
     coord_max: float,
     reserved: list[tuple[float, float]] | None = None,
+    logo_bbox: list[float] | None = None,
 ) -> None:
     """Stamp a REAL QR symbol and a REAL 1D barcode in the blank footer region.
 
@@ -2334,6 +2351,20 @@ def _overlay_qr_and_barcode(
             inner_h=inner_h,
         )
         intervals.append((min(t, b), max(t, b)))
+    # Treat the pasted logo footprint as occupied. Its wordmark/badge OCR tokens
+    # were dropped so the logo could depict them, which leaves that band looking
+    # blank here -- a blind "tallest band" stamp would drop a phantom QR/barcode
+    # right where the logo is (The Stand's header badge). The logo is real
+    # content; exclude its band.
+    if logo_bbox is not None:
+        _, lt, _, lb = _to_pixel_box(
+            logo_bbox,
+            coord_max=coord_max,
+            margin=config.margin,
+            inner_w=inner_w,
+            inner_h=inner_h,
+        )
+        intervals.append((min(lt, lb), max(lt, lb)))
     # Treat already-stamped in-body barcode bands as occupied so we don't stack a
     # redundant second barcode in the same gap.
     for r0, r1 in reserved or []:
@@ -2356,10 +2387,22 @@ def _overlay_qr_and_barcode(
     # a phantom QR+barcode ABOVE the wordmark. Footer codes belong
     # between/after printed content, so only interior and trailing
     # whitespace are eligible.
+    # Real receipts never print a QR/barcode in the header/upper region (that is
+    # the wordmark, date and first items); footer codes live in interior-payment
+    # or trailing whitespace. A tall header gap -- e.g. the whitespace between a
+    # "Dine-In" line and a pasted header badge (The Stand) -- must not win the
+    # "tallest band" pick, so drop any gap whose center sits in the top third of
+    # the paper. Costco's legitimate interior barcode (~0.80 of paper) is well
+    # below this cutoff and unaffected.
+    header_cutoff = paper_top + 0.33 * (paper_bottom - paper_top)
     gaps: list[tuple[float, float]] = []
     prev = paper_top
     for s, e in merged:
-        if s - prev > 0 and prev > paper_top:
+        if (
+            s - prev > 0
+            and prev > paper_top
+            and (prev + s) / 2.0 >= header_cutoff
+        ):
             gaps.append((prev, s))
         prev = max(prev, e)
     if paper_bottom - prev > 0:
@@ -2512,10 +2555,14 @@ def _phrase_logo_placement(
         return None
     drop, boxes = [], []
     for words in _receipt_lines(receipt):
-        text = _normalize_phrase(
-            " ".join(str(w.get("text") or "") for w in words)
-        )
-        if not text or not any(p in text for p in norm):
+        # Match a phrase only when it spans a CONTIGUOUS run of whole word
+        # tokens on the line -- so multi-word slogans still match
+        # ("HOWDOERS" = "HOW"+"DOERS") but a short brand phrase never fires on
+        # an unrelated word that merely contains it ("TREE" must not match
+        # "STREET"). A whole-line substring test conflates the two.
+        toks = [_normalize_phrase(w.get("text") or "") for w in words]
+        toks = [t for t in toks if t]
+        if not toks or not _phrase_run_match(toks, norm):
             continue
         # This anchors a TOP-of-receipt lockup; short brand phrases ("VONS")
         # also match footer URLs / body mentions, which unions a bogus
@@ -2535,6 +2582,43 @@ def _phrase_logo_placement(
         return None
     bx0, bx1 = min(band[0], band[2]), max(band[0], band[2])
     by0, by1 = min(band[1], band[3]), max(band[1], band[3])
+    # Sweep OCR noise that a graphic emblem/badge sheds around the wordmark,
+    # which would otherwise print as floating garbage beside/under the pasted
+    # logo. Two gated cases, both header-only (y>=780) and both no-ops for a
+    # thin single-line wordmark band (Costco/Vons stay byte-identical):
+    #   A) a lone glyph beside the wordmark -- an emblem or registered-mark that
+    #      mis-OCRs as a single "N"/"O"/"R" on its own line (Dollar Tree's tree).
+    #   B) any short token that sits INSIDE the wordmark band rectangle -- the
+    #      distressed interior of a circular badge mis-OCRs as junk like
+    #      "12 CE"/"FINS"/"AIML" (The Stand), which the pasted badge depicts.
+    band_h = max(1.0, by1 - by0)
+    drop_ids = {id(w) for w in drop}
+    for word in _flatten_receipt_words(receipt):
+        if id(word) in drop_ids:
+            continue
+        bb = word.get("bbox")
+        if not bb:
+            continue
+        glyphs = _normalize_phrase(word.get("text") or "")
+        if not glyphs:
+            continue
+        wx = (bb[0] + bb[2]) / 2.0
+        wy = (bb[1] + bb[3]) / 2.0
+        if wy < 780.0:
+            continue
+        # Case A: lone glyph just left of / on the wordmark, within a band
+        # height on all sides (an emblem hugs the wordmark; a far-left glyph is
+        # unrelated and must not be swept).
+        case_a = (
+            len(glyphs) == 1
+            and (bx0 - band_h) <= wx <= bx1
+            and (by0 - 0.1 * band_h) <= wy <= (by1 + 0.1 * band_h)
+        )
+        # Case B: short token strictly inside the wordmark band rectangle.
+        case_b = len(glyphs) <= 4 and bx0 <= wx <= bx1 and by0 <= wy <= by1
+        if case_a or case_b:
+            drop.append(word)
+            drop_ids.add(id(word))
     if extend_left:
         bx0 = 0.0
     if expand_x:
@@ -2560,6 +2644,31 @@ def _phrase_logo_placement(
 
 def _normalize_phrase(text: str) -> str:
     return "".join(ch for ch in str(text).upper() if ch.isalnum())
+
+
+def _phrase_run_match(tokens: list[str], norm_phrases: list[str]) -> bool:
+    """True when a normalized phrase equals a contiguous run of word tokens.
+
+    A phrase matches only if it can be assembled from whole, adjacent tokens
+    (``"HOWDOERS"`` == ``"HOW"`` + ``"DOERS"``); a phrase that is merely a
+    substring of one token (``"TREE"`` inside ``"STREET"``) does NOT match.
+    This keeps multi-word slogan anchors working while stopping short brand
+    phrases from firing on unrelated words.
+    """
+    n = len(tokens)
+    # Stop each run once it can no longer equal any phrase (longest phrase + one
+    # token's slack), so a configured phrase longer than any fixed cap still
+    # matches while runaway concatenation is still bounded.
+    max_len = max((len(p) for p in norm_phrases), default=0)
+    for i in range(n):
+        acc = ""
+        for j in range(i, n):
+            acc += tokens[j]
+            if acc in norm_phrases:
+                return True
+            if len(acc) > max_len:
+                break
+    return False
 
 
 def _flatten_receipt_words(receipt: dict) -> list[dict]:

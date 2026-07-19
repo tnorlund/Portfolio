@@ -131,7 +131,12 @@ def build_grid_spec(
     )
     if hi < lo:
         hi = lo
-    font_px = int(round(font_height_n * inner_h))
+    # ``font_scale`` (default 1.0) trims/grows the profile-driven body size for
+    # merchants whose measured OCR-box height over-/under-states the real cap
+    # height (thermal fonts vary in cap-to-box ratio). Applied before the sanity
+    # clamps so it can only move within the readable band.
+    font_scale = float(getattr(config, "font_scale", 1.0) or 1.0)
+    font_px = int(round(font_height_n * inner_h * font_scale))
     font_px = max(lo, min(hi, font_px))
 
     if char_advance_px and char_advance_px > 0:

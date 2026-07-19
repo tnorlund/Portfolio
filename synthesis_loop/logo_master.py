@@ -47,6 +47,8 @@ _WORDMARK = {
     "Target": ("TARGET",),
     "Amazon Fresh": ("AMAZON", "FRESH"),
     "Gelson's Westlake Village": ("GELSON'S", "GELSONS"),
+    "Dollar Tree": ("DOLLAR", "TREE", "TREE."),
+    "The Stand - American Classics Redefined": ("STAND", "THE"),
 }
 
 
