@@ -254,6 +254,82 @@ def canonical_words(raw_words):
         if best:
             r["amt"] = best[1]
 
+    # Arithmetic summary reconciliation: Sub Total and the tender amount
+    # anchor the block (both parse clean on every dev receipt). A damaged
+    # summary amount that lost its leading digit keeps its cents, and the
+    # identities TAX = tender - subtotal / Total = tender pin the true
+    # value -- repair only when BOTH the cents match and the damaged value
+    # is smaller (a lost leading digit can only shrink the number).
+    def _cents(v):
+        return v.split(".")[-1] if v and "." in v else None
+
+    sub_amt = next(
+        (
+            r["amt"]
+            for r in summary_rows
+            if re.match(r"^SUB ?TOTAL", r["label"].upper()) and r["amt"]
+        ),
+        None,
+    )
+    tender_amt = next(
+        (
+            r["amt"]
+            for r in summary_rows
+            if re.match(
+                r"^(AMERICAN|EXPRES|VISA|MASTERCARD|DEBIT|CASH)",
+                r["label"].upper(),
+            )
+            and r["amt"]
+        ),
+        None,
+    )
+    if sub_amt and tender_amt:
+        try:
+            expected = {
+                r"^(SALES( TAX)?|TAX)\b": _money(
+                    float(tender_amt) - float(sub_amt)
+                ),
+                r"^TOTAL\b": tender_amt,
+            }
+            for r in summary_rows:
+                for pat, want in expected.items():
+                    if (
+                        re.match(pat, r["label"].upper())
+                        and r["amt"]
+                        and _cents(r["amt"]) == _cents(want)
+                        and float(r["amt"]) < float(want)
+                    ):
+                        r["amt"] = want
+        except ValueError:
+            pass
+
+    # Modal-price reconciliation: a shattered fragment that LOST its leading
+    # digit ("​.25" from "1.25") keeps the true cents. When the receipt has a
+    # modal CLEAN price and a damaged amount is smaller but shares its cents,
+    # the damaged value is that modal price (evidence-based repair, bounded
+    # to non-clean fragments; distinct-cents amounts are never touched).
+    clean_vals = [it["price"] for it in items if it["_pr_clean"]] + [
+        it["total"] for it in items if it["_tot_clean"]
+    ]
+    if clean_vals:
+        from collections import Counter
+
+        modal = Counter(clean_vals).most_common(1)[0][0]
+        modal_cents = modal.split(".")[1]
+        for it in items:
+            for key, clean_key in (
+                ("price", "_pr_clean"),
+                ("total", "_tot_clean"),
+            ):
+                val = it.get(key)
+                if (
+                    val
+                    and not it.get(clean_key)
+                    and val.split(".")[-1] == modal_cents
+                    and float(val) < float(modal)
+                ):
+                    it[key] = modal
+
     # repair with quantity arithmetic, never bare copies
     for it in items:
         qty = int(it["qty"]) if it["qty"] else 1

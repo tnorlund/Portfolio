@@ -104,3 +104,42 @@ def test_sixty_item_receipts_never_emit_below_canvas():
         words.append(_word("1.25", 720, y + 1, line_id=100 + i))
     out = canonical_words(words)
     assert out and min(w["bbox"][1] for w in out) >= 0.0
+
+
+def test_modal_price_reconciles_fragments_that_lost_their_leading_digit():
+    words = [
+        _word("DESCRIPTION", 0, 800, line_id=1),
+        _word("ITEM ONE THING", 10, 700, line_id=2),
+        _word("1.25T", 920, 701, line_id=3),  # clean total
+        _word("ITEM TWO THING", 10, 660, line_id=4),
+        _word(".25T", 920, 661, line_id=5),  # lost leading digit
+        _word("ITEM SIX THING", 10, 620, line_id=6),
+        _word("9.99T", 920, 621, line_id=7),  # distinct cents: untouched
+    ]
+    out = canonical_words(words)
+    totals = [w["text"] for w in out if w["text"].endswith("T")]
+    assert totals.count("1.25T") == 2  # damaged .25T repaired to modal
+    assert "9.99T" in totals  # different cents never touched
+
+
+def test_summary_arithmetic_reconciles_damaged_tax_and_total():
+    words = [
+        _word("DESCRIPTION", 0, 800, line_id=1),
+        _word("ITEM ONE THING", 10, 700, line_id=2),
+        _word("1.25T", 920, 701, line_id=3),
+        _word("Sub", 400, 500, line_id=4),
+        _word("Total", 440, 500, line_id=4),
+        _word("13.75", 830, 500, line_id=5),
+        _word("SALES", 400, 460, line_id=6),
+        _word("TAX", 460, 460, line_id=6),
+        _word(".15", 830, 460, line_id=7),  # lost the leading 1 (true 1.15)
+        _word("Total", 400, 420, line_id=8),
+        _word(".90", 830, 420, line_id=9),  # lost 14. (true 14.90)
+        _word("American", 400, 380, line_id=10),
+        _word("Expres", 470, 380, line_id=10),
+        _word("14.90", 830, 380, line_id=11),
+    ]
+    out = canonical_words(words)
+    texts = [w["text"] for w in out]
+    assert "1.15" in texts  # tender - subtotal, cents preserved
+    assert texts.count("14.90") == 2  # Total repaired to the tender amount
