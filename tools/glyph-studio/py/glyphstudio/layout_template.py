@@ -223,9 +223,18 @@ def build_layout_template(scans: list[dict]) -> dict:
             text=True,
             check=True,
         ).stdout.strip()[:12]
+        # the profiles file is this tool's own OUTPUT: writing merchant A's
+        # template must not stamp merchant B's as measured-by-dirty-code
         dirty = bool(
             subprocess.run(
-                ["git", "status", "--porcelain"],
+                [
+                    "git",
+                    "status",
+                    "--porcelain",
+                    "--",
+                    ".",
+                    ":(exclude)scripts/merchant_profiles.json",
+                ],
                 cwd=_REPO,
                 capture_output=True,
                 text=True,
