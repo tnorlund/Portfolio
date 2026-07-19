@@ -4,6 +4,10 @@
 This script identifies and updates ReceiptMetadata records in DynamoDB that have
 NULL or missing place_id values, setting them to empty strings to comply with
 the ReceiptMetadata validation requirements.
+
+This repair tool intentionally targets legacy rows so migration and backfill
+readers can still deserialize them. It does not make metadata authoritative;
+current merchant/place state lives in ReceiptPlace.
 """
 
 import logging

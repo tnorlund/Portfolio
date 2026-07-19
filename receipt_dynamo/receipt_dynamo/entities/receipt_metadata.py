@@ -1,4 +1,9 @@
-"""DynamoDB entity for validated receipt merchant metadata."""
+"""Legacy receipt metadata entity retained for migration compatibility.
+
+``ReceiptPlace`` is the merchant/location source of truth. This entity remains
+readable so historical reconciliation, repair, and place-backfill tools can
+process rows created before that migration.
+"""
 
 import os
 from dataclasses import dataclass
@@ -551,14 +556,15 @@ class ReceiptMetadata(  # pylint: disable=too-many-instance-attributes
             },
             custom_extractors=custom_extractors,
         )
-        for key_name, expected_value in {
-            **result.key,
-            **result.gsi1_key(),
-            **result.gsi2_key(),
-            **result.gsi3_key(),
-        }.items():
-            if key_name in item and item[key_name] != expected_value:
-                raise ValueError(f"{key_name} does not match entity keys")
+
+        # Secondary indexes are projections, not identity, for this legacy
+        # entity. Historical rows can retain GSI values derived from an older
+        # merchant name, place ID, or validation status after their scalar
+        # fields were repaired. ReceiptPlace owns current merchant reads, while
+        # migration/backfill readers need to consume these old rows without a
+        # stale projection crashing the entire page. PK, SK, TYPE, and field
+        # shapes remain validated above; only regenerated GSI equality is
+        # deliberately not enforced.
         return result
 
 
