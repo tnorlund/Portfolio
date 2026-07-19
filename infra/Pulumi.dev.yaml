@@ -3,6 +3,15 @@ config:
   portfolio:OPENAI_API_KEY:
     secure: AAABANhLu9Xk4cxD7v1K8q1IRD5Lwtnr3cQTcuUOPWIBM80amq3juqBmrNtIUlWWoQAfIi3U8Pwht4vkU7kTzOryw13iDQUdHiB2D2LJl2Y8ZXMN97lftEASOScKZihcaiNWXSm9YAgDhLbR0HtRewr1XfRt6FlohCAzFu/KuphaJd4zy+PU0t1thvj8OAErHIxU4fUQL8rkwDcqqm+bnR1J4ag2UGz075zRbEfPJAWUnen0zsN34xUDlM/JXVRMBR4dhw==
   portfolio:environment: dev
+  portfolio:mcpOAuthCallbackUrls:
+    - https://claude.ai/api/mcp/auth_callback
+    - https://claude.com/api/mcp/auth_callback
+    - http://localhost:8765/callback
+    - http://127.0.0.1:8765/callback
+    - http://localhost:6274/oauth/callback
+    - http://127.0.0.1:8765/callback/rzKPyJle2jYU
+  portfolio:mcpOAuthRefreshTokenValidityDays: "365"
+  portfolio:mcpOAuthAccessTokenValidityHours: "24"
   portfolio:cloudFrontLogRetentionDays: "30"
   portfolio:GOOGLE_PLACES_API_KEY:
     secure: AAABAMdOnUV9nUeit+P9YPMiDy4umwO9lKpzqcDkePvg0IpPsRmthwzeAeWvjVqq6QGr2TWt1gbYn67zGP6a1pfq2o6HL0o=
