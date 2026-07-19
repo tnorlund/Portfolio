@@ -298,6 +298,25 @@ def effective_row_sections(
         for i in range(first_item):
             if base[i] is None:
                 base[i] = "HEADER"
+
+    # Trailing FOOTER narration: the bottom legal / return-policy text
+    # ("Electronics Return", "Policy Information", survey blurbs) prints in
+    # a small condensed face on real receipts but renders at body size
+    # here. Mark that tail so a profile can size it down (section_scale
+    # FOOTER). Walk bottom-up over UNLABELED rows whose text is
+    # predominantly ALPHABETIC, stopping at the first labeled / price /
+    # digit-heavy row -- this captures the narration tail while never
+    # touching the prominent digit rows just above it (the boxed reverse
+    # date, the transaction line), which must stay at full size.
+    for i in range(len(rows) - 1, -1, -1):
+        if base[i] is not None or is_item_row(i):
+            break
+        text = "".join(w.text for w in rows[i])
+        letters = sum(ch.isalpha() for ch in text)
+        digits = sum(ch.isdigit() for ch in text)
+        if letters < 3 or letters <= digits:
+            break
+        base[i] = "FOOTER"
     return base
 
 

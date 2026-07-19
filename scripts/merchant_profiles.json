@@ -1,10 +1,12 @@
 {
   "_comment": "Per-merchant synthetic-receipt render profile, keyed by exact merchant_name. Every field is optional; an absent field falls back to a generic default that reproduces pre-registry behavior. See docs/synthetic-receipt-rendering-generalization.md. typography.font is a token resolved to a bundled font path (PTMONO/VT323/B612); typography.bitmap_font and logo filenames resolve under $BITMATRIX_DIR. _comment keys are ignored by the loader.",
-  "_section_scale_note": "Per-merchant header size relative to body, from a measured + dual-reviewed (Claude pixel-measurement + codex) study of the real receipts. Real thermal printers shrink the header block (Epson Font A vs Font B); warehouse / natural-grocer formats print the header at body size. NONE use a different per-section typeface (size only). {} means uniform (no shrink). Default when unset: {\"HEADER\": 0.80}.",
+  "_section_scale_note": "Per-merchant header size relative to body, from a measured + dual-reviewed (Claude pixel-measurement + codex) study of the real receipts. Real thermal printers shrink the header block (Epson Font A vs Font B); warehouse / natural-grocer formats print the header at body size. NONE use a different per-section typeface (size only). {} means uniform (no shrink). Default when unset: {\"HEADER\": 0.80}. Keys map to the renderer's row sections (HEADER / BODY / TOTALS / PAYMENT / FOOTER); FOOTER targets the trailing alphabetic return-policy / legal narration.",
   "profiles": {
     "Costco Wholesale": {
-      "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform).",
-      "section_scale": {},
+      "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform). FOOTER 0.5: the bottom return-policy / legal narration (cap ~15.5px) prints at ~half body height (cap ~33px); STOREFRONT wordmark is the pasted logo, ADDRESS measures ~= body height.",
+      "section_scale": {
+        "FOOTER": 0.5
+      },
       "typography": {
         "bitmap_thin": 0.0,
         "bitmap_font": {
@@ -34,6 +36,7 @@
       "logo": "bitMatrix-C2_logo.png",
       "logo_anchor": {
         "phrases": [
+          "COSTCO",
           "EWHOLESALE",
           "WHOLESALE"
         ],
