@@ -212,7 +212,9 @@ def atlas_hash(merchant: str) -> str:
     bitdir = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
     names = sorted(
         set(
-            list((block.get("typography") or {}).get("bitmap_font", {}).values())
+            list(
+                (block.get("typography") or {}).get("bitmap_font", {}).values()
+            )
             + ([block["logo"]] if block.get("logo") else [])
         )
     )
@@ -439,8 +441,10 @@ def measure_column(
             ]
         else:
             carriers = row
-        edge_of = (lambda w: w["r"]) if column["anchor"] == "right" else (
-            lambda w: w["l"]
+        edge_of = (
+            (lambda w: w["r"])
+            if column["anchor"] == "right"
+            else (lambda w: w["l"])
         )
         carriers = [
             w
@@ -458,7 +462,8 @@ def measure_column(
         if not ink_cols.size:
             continue
         edge = (
-            float(ink_cols.max()) if column["anchor"] == "right"
+            float(ink_cols.max())
+            if column["anchor"] == "right"
             else float(ink_cols.min())
         )
         points.append(((t + b) / 2.0, edge + lo))
@@ -510,9 +515,7 @@ def metric_columns(
             + COLUMN_WOBBLE_MARGIN_PX
         )
         fail_wobble = syn_m["wobble_iqr_px"] > wobble_limit
-        outlier_limit = (
-            real_m["outlier_frac"] + COLUMN_OUTLIER_FRAC_MARGIN
-        )
+        outlier_limit = real_m["outlier_frac"] + COLUMN_OUTLIER_FRAC_MARGIN
         fail_outliers = syn_m["outlier_frac"] > outlier_limit
         entry["wobble_limit_px"] = round(wobble_limit, 2)
         entry["outlier_limit"] = round(outlier_limit, 3)
@@ -795,9 +798,7 @@ def metric_tokens(
     extra = sum(max(0, drawn[t] - man.get(t, 0)) for t in drawn)
     drawn_total = sum(drawn.values())
     text_precision = 1.0 - (extra / drawn_total) if drawn_total else 1.0
-    missing = sorted(
-        t for t in man if drawn[t] < man[t]
-    )
+    missing = sorted(t for t in man if drawn[t] < man[t])
 
     ink_recall = None
     ink_missing: list[str] = []
@@ -894,7 +895,11 @@ def detect_separators(gray: np.ndarray) -> list[dict]:
         # high-coverage stripes
         internal = coverage[a : b + 1]
         kind = "dash"
-        if h >= 4 and internal.size >= 3 and internal.min() < 0.5 * internal.max():
+        if (
+            h >= 4
+            and internal.size >= 3
+            and internal.min() < 0.5 * internal.max()
+        ):
             kind = "double"
         else:
             duty = float(ink[a : b + 1].mean())
@@ -927,9 +932,7 @@ def _drop_text_bands(
         text = "".join(w["text"] for w in row)
         alnum = sum(ch.isalnum() for ch in text)
         if alnum >= 4 and not _SEPARATOR_TEXT_RE.match(text):
-            spans.append(
-                (min(w["t"] for w in row), max(w["b"] for w in row))
-            )
+            spans.append((min(w["t"] for w in row), max(w["b"] for w in row)))
     kept = []
     for sep in seps:
         y = sep["y_frac"] * H
@@ -961,7 +964,9 @@ def metric_separators(
             if dy <= SEPARATOR_Y_TOL and (best is None or dy < best[0]):
                 best = (dy, ss)
         if best:
-            matched.append({"real": rs, "synth": best[1], "dy": round(best[0], 4)})
+            matched.append(
+                {"real": rs, "synth": best[1], "dy": round(best[0], 4)}
+            )
             unmatched_real.remove(rs)
             unmatched_syn.remove(best[1])
     fail = bool(unmatched_real or unmatched_syn)
@@ -997,7 +1002,13 @@ def detect_graphics(png_path: str) -> list[dict] | None:
         return None
     with tempfile.TemporaryDirectory() as td:
         result = subprocess.run(
-            [_BARCODE_BIN, "--detect-barcodes-only", png_path, "--output-dir", td],
+            [
+                _BARCODE_BIN,
+                "--detect-barcodes-only",
+                png_path,
+                "--output-dir",
+                td,
+            ],
             capture_output=True,
             timeout=120,
             check=False,
@@ -1047,7 +1058,9 @@ def metric_graphics(real_png: str, syn_png: str) -> dict:
             if dy <= GRAPHIC_Y_TOL and (best is None or dy < best[0]):
                 best = (dy, sc)
         if best:
-            matched.append({"real": rc, "synth": best[1], "dy": round(best[0], 4)})
+            matched.append(
+                {"real": rc, "synth": best[1], "dy": round(best[0], 4)}
+            )
             unmatched_real.remove(rc)
             unmatched_syn.remove(best[1])
     fail = bool(unmatched_real or unmatched_syn)
@@ -1199,9 +1212,7 @@ def arithmetic_check(words: list[dict]) -> dict:
             for w in row
             if _amount_of(w["text"]) is not None
         ]
-        label_of = {
-            lbl for w in row for lbl in (w.get("labels") or [])
-        }
+        label_of = {lbl for w in row for lbl in (w.get("labels") or [])}
         if _SUBTOTAL_RE.match(text) and amounts:
             summary.setdefault("subtotal", amounts[-1][1])
         elif _TAX_RE.match(text) and amounts:
@@ -1325,9 +1336,11 @@ def arithmetic_check(words: list[dict]) -> dict:
         # unprinted gratuity -- only testable when a tip/change row anchors it.
         tender_net = summary["tender"] - summary.get("change", 0.0)
         expected_tender = summary["total"] + summary.get("tip", 0.0)
-        if "tip" in summary or "change" in summary or abs(
-            tender_net - summary["total"]
-        ) <= CENTS_TOL:
+        if (
+            "tip" in summary
+            or "change" in summary
+            or abs(tender_net - summary["total"]) <= CENTS_TOL
+        ):
             check("total_eq_tender", expected_tender, tender_net, "")
         else:
             identities.append(
@@ -1364,7 +1377,6 @@ def _load_real(merchant: str, image_id: str, receipt_id: int):
 
     import boto3
     from PIL import Image
-
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
     region = os.environ.get("AWS_REGION", "us-east-1")
@@ -1469,11 +1481,7 @@ def evaluate_pair(
 
     def rows_in(rows, band):
         y0, y1 = band[0] * H, band[1] * H
-        return [
-            r
-            for r in rows
-            if y0 <= median(w["cy"] for w in r) < y1
-        ]
+        return [r for r in rows if y0 <= median(w["cy"] for w in r) < y1]
 
     # columns: per band with amount evidence (items + summary)
     per_band_columns = {}
@@ -1513,9 +1521,7 @@ def evaluate_pair(
     style = metric_style(
         real_gray, syn_gray, rows_real, rows_syn, classes_real, classes_syn
     )
-    tokens = metric_tokens(
-        words_real, words_syn, syn_gray, composed=composed
-    )
+    tokens = metric_tokens(words_real, words_syn, syn_gray, composed=composed)
     separators = metric_separators(real_gray, syn_gray, rows_real, rows_syn)
     graphics = metric_graphics(real_png, syn_png)
     logo = metric_logo(
@@ -1755,7 +1761,9 @@ def run_real_real(args) -> int:
         "style": style,
         "graphics": graphics,
     }
-    verdicts = [m["verdict"] for m in checks.values() if m["verdict"] != "SKIPPED"]
+    verdicts = [
+        m["verdict"] for m in checks.values() if m["verdict"] != "SKIPPED"
+    ]
     checks["overall"] = "FAIL" if "FAIL" in verdicts else "PASS"
     doc = {
         "mode": "real-vs-real",
@@ -1770,7 +1778,9 @@ def run_real_real(args) -> int:
     with open(stem + ".realreal.checks.json", "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=1, sort_keys=True)
         fh.write("\n")
-    print(f"REAL-REAL OVERALL {checks['overall']} -> {stem}.realreal.checks.json")
+    print(
+        f"REAL-REAL OVERALL {checks['overall']} -> {stem}.realreal.checks.json"
+    )
     for name in ("columns", "style", "graphics"):
         print(f"  {name:11s} {checks[name]['verdict']}")
     return 0 if checks["overall"] == "PASS" else 1

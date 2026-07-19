@@ -9,7 +9,6 @@ import os
 import sys
 
 import numpy as np
-import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -171,7 +170,9 @@ def _style_fixture(header_bold_in_syn):
     for i in range(6):
         y = 30 + i * 30
         is_header = i < 2
-        row = [word("GROCERY" if is_header else "ITEM ROW", 40, y, 240, y + 14)]
+        row = [
+            word("GROCERY" if is_header else "ITEM ROW", 40, y, 240, y + 14)
+        ]
         rows.append(row)
         classes.append("section_header" if is_header else "item")
         for img, bold in (
@@ -223,7 +224,11 @@ def test_style_metric_passes_when_both_styled():
 # ---------------------------------------------------------------------------
 def _manifest():
     return [
-        {"text": t, "bbox": [50, 900 - i * 40, 300, 920 - i * 40], "labels": []}
+        {
+            "text": t,
+            "bbox": [50, 900 - i * 40, 300, 920 - i * 40],
+            "labels": [],
+        }
         for i, t in enumerate(
             ["GELSONS", "TOWNSGATE", "WESTLAKE", "MILK", "2.99"]
         )
@@ -357,14 +362,12 @@ def _receipt_words(item_price):
     words = []
     y = 900
     for i in range(3):
-        words.append(_wordline(f"THING{i}", y, left=20, labels=["PRODUCT_NAME"]))
+        words.append(
+            _wordline(f"THING{i}", y, left=20, labels=["PRODUCT_NAME"])
+        )
         words.append(_wordline("1", y, left=560, labels=["QUANTITY"]))
-        words.append(
-            _wordline(item_price, y, left=650, labels=["UNIT_PRICE"])
-        )
-        words.append(
-            _wordline(item_price, y, left=800, labels=["LINE_TOTAL"])
-        )
+        words.append(_wordline(item_price, y, left=650, labels=["UNIT_PRICE"]))
+        words.append(_wordline(item_price, y, left=800, labels=["LINE_TOTAL"]))
         y -= 40
     words.append(_wordline("SUB TOTAL", y, left=300))
     words.append(_wordline("3.75", y, left=800, labels=["SUBTOTAL"]))
@@ -391,9 +394,7 @@ def test_arithmetic_fails_on_stale_dollar_tree_prices():
     # still says 3.75/0.31/4.06 -- sum(lines) and qty x unit break
     out = ffe.arithmetic_check(_receipt_words("0.25"))
     assert out["verdict"] == "FAIL"
-    names = {
-        i["name"] for i in out["identities"] if i["status"] == "VIOLATED"
-    }
+    names = {i["name"] for i in out["identities"] if i["status"] == "VIOLATED"}
     assert "sum_lines_eq_subtotal" in names
 
 

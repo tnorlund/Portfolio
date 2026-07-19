@@ -42,6 +42,90 @@
     ],
     "extend_left": false,
     "center": true
+   },
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 12,
+     "tool_git_sha": "099bddd72680"
+    },
+    "columns": {
+     "footer": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0171,
+       "spread": 0.0186,
+       "support": 8
+      }
+     ],
+     "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.007,
+       "spread": 0.0078,
+       "support": 6
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9439,
+       "spread": 0.0096,
+       "support": 8
+      }
+     ],
+     "payment": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0063,
+       "spread": 0.0124,
+       "support": 8
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.2229,
+       "spread": 0.0037,
+       "support": 11
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9417,
+       "spread": 0.0124,
+       "support": 8
+      }
+     ],
+     "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.2218,
+       "spread": 0.0085,
+       "support": 11
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9377,
+       "spread": 0.0133,
+       "support": 9
+      }
+     ]
+    },
+    "sections": [
+     "storefront",
+     "items",
+     "summary",
+     "total_line",
+     "payment",
+     "barcode",
+     "footer"
+    ],
+    "separators": []
    }
   },
   "Amazon Fresh": {
@@ -275,6 +359,122 @@
     "inbody_barcode": {
      "max_count": 0
     }
+   },
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 6,
+     "tool_git_sha": "099bddd72680"
+    },
+    "columns": {
+     "barcode": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0288,
+       "spread": 0.0139,
+       "support": 4
+      }
+     ],
+     "footer": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0226,
+       "spread": 0.0158,
+       "support": 3
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1829,
+       "spread": 0.0132,
+       "support": 5
+      }
+     ],
+     "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0416,
+       "spread": 0.019,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8083,
+       "spread": 0.0,
+       "support": 3
+      },
+      {
+       "role": "flag",
+       "anchor": "left",
+       "x": 0.8177,
+       "spread": 0.001,
+       "support": 3
+      }
+     ],
+     "payment": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0258,
+       "spread": 0.0094,
+       "support": 6
+      }
+     ],
+     "section_header": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0135,
+       "spread": 0.0073,
+       "support": 3
+      }
+     ],
+     "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1181,
+       "spread": 0.0126,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8861,
+       "spread": 0.0045,
+       "support": 4
+      }
+     ]
+    },
+    "sections": [
+     "storefront",
+     "payment",
+     "section_header",
+     "barcode",
+     "items",
+     "total_line",
+     "summary",
+     "footer"
+    ],
+    "separators": [
+     {
+      "char": "*",
+      "after_section": "summary",
+      "support": 4,
+      "pos_frac_med": 0.87
+     },
+     {
+      "char": "*",
+      "after_section": "footer",
+      "support": 5,
+      "pos_frac_med": 0.929
+     }
+    ]
    }
   },
   "Trader Joe's": {
@@ -420,6 +620,78 @@
     "inbody_barcode": {
      "max_count": 0
     }
+   },
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 8,
+     "tool_git_sha": "099bddd72680"
+    },
+    "columns": {
+     "address": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1875,
+       "spread": 0.0004,
+       "support": 6
+      }
+     ],
+     "items": [
+      {
+       "role": "qty",
+       "anchor": "right",
+       "x": 0.0375,
+       "spread": 0.0,
+       "support": 6
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0958,
+       "spread": 0.0084,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2051,
+       "spread": 0.0084,
+       "support": 4
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3291,
+       "spread": 0.0083,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9949,
+       "spread": 0.0103,
+       "support": 4
+      }
+     ],
+     "survey": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1458,
+       "spread": 0.0127,
+       "support": 5
+      }
+     ]
+    },
+    "sections": [
+     "address",
+     "items",
+     "summary",
+     "survey"
+    ],
+    "separators": []
    }
   },
   "Dollar Tree": {
@@ -453,7 +725,72 @@
      "max_count": 0
     }
    },
-   "compose": "dollartree"
+   "compose": "dollartree",
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 5,
+     "tool_git_sha": "099bddd72680"
+    },
+    "columns": {
+     "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0,
+       "spread": 0.0,
+       "support": 3
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.4126,
+       "spread": 0.0128,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8045,
+       "spread": 0.0,
+       "support": 2
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9322,
+       "spread": 0.0021,
+       "support": 4
+      }
+     ],
+     "payment": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.4159,
+       "spread": 0.0048,
+       "support": 5
+      }
+     ],
+     "survey": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2194,
+       "spread": 0.011,
+       "support": 4
+      }
+     ]
+    },
+    "sections": [
+     "address",
+     "items",
+     "payment",
+     "survey"
+    ],
+    "separators": []
+   }
   },
   "Italia Deli & Bakery": {
    "_comment": "Minted atlas (fonts/italiadeli, 2026-07-19), 8 scan receipts.",

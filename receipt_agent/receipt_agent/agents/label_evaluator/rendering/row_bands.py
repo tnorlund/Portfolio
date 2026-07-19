@@ -71,9 +71,8 @@ def group_rows_greedy(
             ref = prev_c
         else:
             ref = median(center(x) for x in current) if current else None
-        near = (
-            ref is not None
-            and (abs(c - ref) < limit if strict else abs(c - ref) <= limit)
+        near = ref is not None and (
+            abs(c - ref) < limit if strict else abs(c - ref) <= limit
         )
         if not current or near:
             current.append(item)
@@ -106,6 +105,4 @@ def group_rows_quantized(
     for item in items:
         key = int(round(edge_sum(item) / step) * step)
         grouped.setdefault(key, []).append(item)
-    return [
-        grouped[key] for key in sorted(grouped, reverse=descending)
-    ]
+    return [grouped[key] for key in sorted(grouped, reverse=descending)]

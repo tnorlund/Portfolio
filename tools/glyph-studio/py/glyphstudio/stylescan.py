@@ -626,7 +626,6 @@ def _load_receipt_letters(table: str, image_id: str):
     those, skipping any individual letter that fails to parse.
     """
     import boto3
-
     from receipt_dynamo.entities.receipt_letter import item_to_receipt_letter
 
     dynamo = boto3.client("dynamodb")
@@ -660,9 +659,8 @@ def _load_receipt_letters(table: str, image_id: str):
 
 
 def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
-    from receipt_line_scorecard import _load_words_and_real
-
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_line_scorecard import _load_words_and_real
 
     # _load_words_and_real ignores its merchant arg (loads purely by
     # image/receipt id); pass the caller's merchant through for clarity.
@@ -717,7 +715,11 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     for line in lines:
         line.sort(key=lambda w: w["l"])
         text = " ".join(w["text"] for w in line)
-        has_price = bool(price_re.search(line[-1]["text"]))
+        # ANY word can carry the price: a row ending in a detached tax flag
+        # ("MILK 4.29 F") is still an item row. Only checking the last word
+        # dropped every flagged Gelson's item to 'other', which starved the
+        # columnscan aggregation of the items section entirely (#1188 P2).
+        has_price = any(price_re.search(str(w["text"])) for w in line)
         section = _classify(text, has_price, merchant)
         # OCR line_ids covered by this visual line (words carry line_id). Lets a
         # caller join each measured row to a QA'd ReceiptSection (which stores

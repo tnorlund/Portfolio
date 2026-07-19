@@ -63,7 +63,7 @@ def parse_section_label(label: Optional[str]) -> Optional[str]:
     not a section label / not canonical."""
     if not label or not label.upper().startswith(SECTION_LABEL_PREFIX):
         return None
-    section = label[len(SECTION_LABEL_PREFIX):].lower()
+    section = label[len(SECTION_LABEL_PREFIX) :].lower()
     return section if is_canonical_section(section) else None
 
 
