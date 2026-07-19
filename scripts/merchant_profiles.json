@@ -419,6 +419,37 @@
      "max_count": 0
     }
    }
+  },
+  "Dollar Tree": {
+   "_comment": "bitMatrix-B2 ROM atlas per receiptfont.com attribution, validated on 2736 real letters across the 5 dev receipts (B2 median IoU 0.5283 vs F1 0.5133 - B2 wins). Logo from the flattest store-5304 crop (4bdefa9e). All dev sources are sheared photos: renders use compose_dollartree.py canonical composition, not faithful OCR.",
+   "logo": "dollartree_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "DOLLARTREE",
+     "DOLLAR",
+     "TREE."
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "typography": {
+    "bitmap_font": {
+     "regular": "dollartree.glyphs.npz",
+     "heavy": "dollartree.glyphs.npz"
+    },
+    "condense": 1.0,
+    "pitch_ratio": 0.5,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.649,
+    "mixed_layout": true
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   }
  }
 }
