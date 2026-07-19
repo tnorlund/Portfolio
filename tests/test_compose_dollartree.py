@@ -93,7 +93,7 @@ def test_same_line_tax_summary_survives():
     out = canonical_words(words)
     texts = [w["text"] for w in out]
     assert "SALES" in texts and "TAX" in texts
-    assert "0.52" in texts
+    assert "$0.52" in texts  # summary amounts carry the template $ prefix
 
 
 def test_sixty_item_receipts_never_emit_below_canvas():
@@ -141,5 +141,34 @@ def test_summary_arithmetic_reconciles_damaged_tax_and_total():
     ]
     out = canonical_words(words)
     texts = [w["text"] for w in out]
-    assert "1.15" in texts  # tender - subtotal, cents preserved
-    assert texts.count("14.90") == 2  # Total repaired to the tender amount
+    assert "$1.15" in texts  # tender - subtotal, cents preserved ($ prefix)
+    assert texts.count("$14.90") == 2  # Total repaired to the tender amount
+
+
+def test_emit_never_exceeds_canvas_top_or_bottom():
+    words = [
+        _word("DESCRIPTION", 0, 800, line_id=1),
+        _word("ITEM ONE THING", 10, 700, line_id=2),
+        _word("1.25T", 920, 701, line_id=3),
+    ]
+    out = canonical_words(words)
+    assert max(w["bbox"][3] for w in out) <= 1000.0
+    assert min(w["bbox"][1] for w in out) >= 0.0
+
+
+def test_merge_dedupe_only_at_seam():
+    words = [
+        _word("DESCRIPTION", 0, 800, line_id=1),
+        # same visual row split at the seam with an overlap token
+        _word("STORAGE GREY", 10, 700, line_id=2),
+        _word("GREY CLLPSB 11X10", 300, 703, line_id=3),
+        _word("1.25T", 920, 701, line_id=4),
+        # legitimate repetition elsewhere must survive
+        _word("DOG FOOD", 10, 660, line_id=5),
+        _word("DOG BOWL", 250, 662, line_id=6),
+        _word("1.25T", 920, 661, line_id=7),
+    ]
+    out = canonical_words(words)
+    texts = [w["text"] for w in out]
+    assert texts.count("GREY") == 1  # seam overlap deduped
+    assert texts.count("DOG") == 2  # non-seam repetition preserved
