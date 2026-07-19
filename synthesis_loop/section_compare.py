@@ -280,11 +280,14 @@ def band_checks(real, syn, words, slug):
         # placement rather than token-vs-flag differences.
         rx, sx = [], []
         for x1, yt, yb in price_right_r:
+            # constrain to the right half so unrelated left-column ink can
+            # never win the "rightmost pixel" scan
+            xoff = W // 2
             for arr, acc in ((ra, rx), (sa, sx)):
-                rows = arr[int(yt) : int(yb), :]
+                rows = arr[int(yt) : int(yb), xoff:]
                 cols = np.nonzero((rows < 128).any(axis=0))[0]
                 if cols.size:
-                    acc.append(float(cols.max()))
+                    acc.append(float(cols.max() + xoff))
         report["price_column"] = {
             "real_right_x_med": round(_med(rx), 1) if rx else None,
             "synth_right_x_med": round(_med(sx), 1) if sx else None,

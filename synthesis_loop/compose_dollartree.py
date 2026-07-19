@@ -57,7 +57,7 @@ _PRICE_RE = re.compile(r"^\$?\d*\.?\d+T?$")
 
 def _norm_price(text: str) -> str | None:
     t = text.strip().lstrip("$")
-    m = re.match(r"^(\d*)\.?(\d{2})(T|1)?$", t)
+    m = re.match(r"^(\d*?)\.?(\d{2})(T|1)?$", t)
     if not m:
         return None
     whole = m.group(1) or "0"
