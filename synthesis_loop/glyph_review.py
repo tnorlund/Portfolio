@@ -148,6 +148,9 @@ def receipt(
         (l.line_id, l.word_id): l.label
         for l in d.receipt_word_labels
         if l.receipt_id == receipt_id
+        # INVALID labels are not on the printed receipt; keep unreviewed ones
+        # (same policy as _real_receipt_dict in render_synthetic_receipts).
+        and str(getattr(l, "validation_status", "") or "").upper() != "INVALID"
     }
     words = [
         {
@@ -302,7 +305,9 @@ def _maybe_glyphscore(syn, words) -> dict | None:
             f"{doc['n_words_segmented']}/{doc['n_words']} words)"
         )
         return doc
-    except Exception as e:  # noqa: BLE001 - opt-in axis must never break review
+    except (
+        Exception
+    ) as e:  # noqa: BLE001 - opt-in axis must never break review
         print(f"glyphscore skipped: {e}", file=sys.stderr)
         return None
 

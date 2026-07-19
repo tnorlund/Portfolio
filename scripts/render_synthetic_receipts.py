@@ -70,6 +70,13 @@ def _real_receipt_dict(export: dict, receipt_id: int) -> dict:
     for lbl in export.get("receipt_word_labels", []) or []:
         if lbl.get("receipt_id") != receipt_id:
             continue
+        # A label judged INVALID is not on the printed receipt; feeding it to
+        # the renderer mis-sections real words (an INVALID MERCHANT_NAME on an
+        # address word lets the logo wordmark absorb the address line, whose
+        # band the logo overlay then background-erases). Unreviewed labels
+        # (no status / PENDING / NEEDS_REVIEW) stay.
+        if str(lbl.get("validation_status") or "").upper() == "INVALID":
+            continue
         key = (lbl.get("line_id"), lbl.get("word_id"))
         label_index.setdefault(key, []).append(str(lbl.get("label") or ""))
 
@@ -1691,6 +1698,7 @@ def _render_cached_hybrid(
         config=config,
         coord_max=1000.0,
         reserved=stamped_bands,
+        logo_bbox=logo_bbox,
     )
     # Content-derived seed so a given receipt renders the SAME paper texture
     # regardless of the output path. Keying on the filename made scorecard
@@ -2292,6 +2300,7 @@ def _overlay_qr_and_barcode(
     config: RenderConfig,
     coord_max: float,
     reserved: list[tuple[float, float]] | None = None,
+    logo_bbox: list[float] | None = None,
 ) -> None:
     """Stamp a REAL QR symbol and a REAL 1D barcode in the blank footer region.
 
@@ -2334,6 +2343,20 @@ def _overlay_qr_and_barcode(
             inner_h=inner_h,
         )
         intervals.append((min(t, b), max(t, b)))
+    # Treat the pasted logo footprint as occupied. Its wordmark/badge OCR
+    # tokens were dropped so the logo could depict them, which leaves that band
+    # looking blank here -- a blind "tallest band" stamp would drop a phantom
+    # QR/barcode right where the logo is (The Stand's header badge). The logo
+    # is real content; exclude its band.
+    if logo_bbox is not None:
+        _, lt, _, lb = _to_pixel_box(
+            logo_bbox,
+            coord_max=coord_max,
+            margin=config.margin,
+            inner_w=inner_w,
+            inner_h=inner_h,
+        )
+        intervals.append((min(lt, lb), max(lt, lb)))
     # Treat already-stamped in-body barcode bands as occupied so we don't stack a
     # redundant second barcode in the same gap.
     for r0, r1 in reserved or []:
@@ -2356,10 +2379,22 @@ def _overlay_qr_and_barcode(
     # a phantom QR+barcode ABOVE the wordmark. Footer codes belong
     # between/after printed content, so only interior and trailing
     # whitespace are eligible.
+    # Real receipts never print a QR/barcode in the header/upper region (that
+    # is the wordmark, date and first items); footer codes live in
+    # interior-payment or trailing whitespace. A tall header gap -- e.g. the
+    # whitespace between a "Dine-In" line and a pasted header badge (The
+    # Stand) -- must not win the "tallest band" pick, so drop any gap whose
+    # center sits in the top third of the paper. Costco's legitimate interior
+    # barcode (~0.80 of paper) is well below this cutoff and unaffected.
+    header_cutoff = paper_top + 0.33 * (paper_bottom - paper_top)
     gaps: list[tuple[float, float]] = []
     prev = paper_top
     for s, e in merged:
-        if s - prev > 0 and prev > paper_top:
+        if (
+            s - prev > 0
+            and prev > paper_top
+            and (prev + s) / 2.0 >= header_cutoff
+        ):
             gaps.append((prev, s))
         prev = max(prev, e)
     if paper_bottom - prev > 0:
@@ -2512,10 +2547,14 @@ def _phrase_logo_placement(
         return None
     drop, boxes = [], []
     for words in _receipt_lines(receipt):
-        text = _normalize_phrase(
-            " ".join(str(w.get("text") or "") for w in words)
-        )
-        if not text or not any(p in text for p in norm):
+        # Match a phrase only when it spans a CONTIGUOUS run of whole word
+        # tokens on the line -- so multi-word slogans still match
+        # ("HOWDOERS" = "HOW"+"DOERS") but a short brand phrase never fires on
+        # an unrelated word that merely contains it ("TREE" must not match
+        # "STREET"). A whole-line substring test conflates the two.
+        toks = [_normalize_phrase(w.get("text") or "") for w in words]
+        toks = [t for t in toks if t]
+        if not toks or not _phrase_run_match(toks, norm):
             continue
         # This anchors a TOP-of-receipt lockup; short brand phrases ("VONS")
         # also match footer URLs / body mentions, which unions a bogus
@@ -2562,6 +2601,31 @@ def _normalize_phrase(text: str) -> str:
     return "".join(ch for ch in str(text).upper() if ch.isalnum())
 
 
+def _phrase_run_match(tokens: list[str], norm_phrases: list[str]) -> bool:
+    """True when a normalized phrase equals a contiguous run of word tokens.
+
+    A phrase matches only if it can be assembled from whole, adjacent tokens
+    (``"HOWDOERS"`` == ``"HOW"`` + ``"DOERS"``); a phrase that is merely a
+    substring of one token (``"TREE"`` inside ``"STREET"``) does NOT match.
+    This keeps multi-word slogan anchors working while stopping short brand
+    phrases from firing on unrelated words.
+    """
+    n = len(tokens)
+    # Stop each run once it can no longer equal any phrase (longest phrase's
+    # length), so a configured phrase longer than any fixed cap still matches
+    # while runaway concatenation is still bounded.
+    max_len = max((len(p) for p in norm_phrases), default=0)
+    for i in range(n):
+        acc = ""
+        for j in range(i, n):
+            acc += tokens[j]
+            if acc in norm_phrases:
+                return True
+            if len(acc) > max_len:
+                break
+    return False
+
+
 def _flatten_receipt_words(receipt: dict) -> list[dict]:
     """Return the receipt's word dicts (originals, for identity matching)."""
     words = receipt.get("words")
@@ -2593,12 +2657,26 @@ def _logo_wordmark_words(
     logo_line = _cached_logo_line(receipt)
     if not logo_line:
         return None
-    band = _union_bbox(
-        [word["bbox"] for word in logo_line if word.get("bbox")]
-    )
+
+    def _foreign(word: dict) -> bool:
+        """True when the word carries any non-MERCHANT_NAME label.
+
+        Such a word is real printed content (an address line the OCR banded
+        onto the brand row, a phone number under it) -- suppressing it and
+        folding it into the logo bbox lets the logo overlay background-erase
+        it (the Gelson's address-eraser). Better to under-absorb than to
+        erase. Unlabeled words stay eligible: the brand-line detector matches
+        wordmark text without labels (e.g. Sprouts).
+        """
+        labels = {_label_name(label) for label in (word.get("labels") or [])}
+        return bool(labels - {"MERCHANT_NAME"})
+
+    # Seed only with the brand line's own wordmark words -- a foreign-labeled
+    # word sharing the detected line must keep rendering as text.
+    cluster = [word for word in logo_line if not _foreign(word)]
+    band = _union_bbox([word["bbox"] for word in cluster if word.get("bbox")])
     if band is None:
         return None
-    cluster = list(logo_line)
     cluster_ids = {id(word) for word in cluster}
 
     # OCR bboxes may be bottom-origin (y0 > y1), so read spans via min/max rather
@@ -2618,11 +2696,15 @@ def _logo_wordmark_words(
     # count as the logo's subtitle, so far-away MERCHANT_NAME tokens (e.g. a
     # footer ".com" wordmark) are not absorbed.
     gap = line_h
+
     candidates = [
         word
         for word in _flatten_receipt_words(receipt)
-        if id(word) not in cluster_ids
-        and word.get("bbox")
+        if id(word) not in cluster_ids and word.get("bbox")
+        # Off-line absorption additionally requires a MERCHANT_NAME label
+        # (subtitle words like WHOLESALE); pure-unlabeled words elsewhere on
+        # the receipt are unrelated.
+        and not _foreign(word)
         and any(
             _label_name(label) == "MERCHANT_NAME"
             for label in (word.get("labels") or [])

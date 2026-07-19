@@ -245,14 +245,32 @@ SECTION_LABELS: dict[str, frozenset[str]] = {
 }
 
 
-def section_for_labels(labels: Sequence[str] | None) -> str | None:
-    """The receipt section for a word's labels (strips B-/I- NER prefixes)."""
+# HEADER labels that are POSITIONAL: a date/time is only header typography
+# when it sits in the top of the paper -- the same tokens reprint in the
+# payment/transaction block low on the receipt at body size, and letting them
+# vote HEADER there mis-scales whole payment rows (Vons' "Credit Purchase
+# 02/03/25 18:20" row shrank to header scale once an invalid label stopped
+# out-voting them).
+_POSITIONAL_HEADER_LABELS = frozenset({"DATE", "TIME"})
+
+
+def section_for_labels(
+    labels: Sequence[str] | None, *, in_header_zone: bool = True
+) -> str | None:
+    """The receipt section for a word's labels (strips B-/I- NER prefixes).
+
+    ``in_header_zone=False`` (word known to sit low on the paper) ignores the
+    positional HEADER labels; the default keeps the legacy label-only
+    behavior for callers without geometry.
+    """
     if not labels:
         return None
     clean = {
         str(lbl)[2:] if str(lbl)[:2] in ("B-", "I-") else str(lbl)
         for lbl in labels
     }
+    if not in_header_zone:
+        clean -= _POSITIONAL_HEADER_LABELS
     for section, names in SECTION_LABELS.items():
         if clean & names:
             return section
