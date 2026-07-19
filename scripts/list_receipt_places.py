@@ -12,7 +12,6 @@ import os
 import sys
 from typing import Any, Optional
 
-import boto3
 from boto3.dynamodb.types import TypeDeserializer
 
 # Add parent directories to path for imports
@@ -22,6 +21,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
+from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 
 logging.basicConfig(
@@ -40,8 +40,7 @@ def _deserialize_item(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_all_places(
-    dynamodb_client: Any,
-    table_name: str,
+    client: DynamoClient,
     limit: Optional[int] = None,
     output_file: Optional[str] = None,
 ) -> list[dict[str, Any]]:
@@ -72,24 +71,13 @@ def list_all_places(
             logger.info(f"Fetching page {page_count}...")
 
             remaining = None if limit is None else limit - len(all_places)
-            query: dict[str, Any] = {
-                "TableName": table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#entity_type = :entity_type",
-                "ExpressionAttributeNames": {"#entity_type": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":entity_type": {"S": "RECEIPT_PLACE"}
-                },
-                "Limit": min(remaining, 1000) if remaining else 1000,
-            }
-            if last_evaluated_key is not None:
-                query["ExclusiveStartKey"] = last_evaluated_key
-
-            response = dynamodb_client.query(**query)
-            places = [
-                _deserialize_item(item) for item in response.get("Items", [])
-            ]
-            last_evaluated_key = response.get("LastEvaluatedKey")
+            # the data layer's raw census read: low-level items, no strict
+            # entity conversion (drifted projections stay readable)
+            items, last_evaluated_key = client.list_receipt_places_raw(
+                limit=remaining,
+                last_evaluated_key=last_evaluated_key,
+            )
+            places = [_deserialize_item(item) for item in items]
 
             all_places.extend(places)
             logger.info(
@@ -254,10 +242,13 @@ def main():
 
     logger.info(f"Using DynamoDB table: {table_name}")
 
-    # Create a low-level client so drifted index projections do not go through
-    # strict entity conversion during this read-only census.
+    # Standard client resolution: DynamoClient defaults the region
+    # (us-east-1) and honors DYNAMODB_ENDPOINT_URL, so the census works
+    # without AWS_REGION in the environment and against local endpoints.
+    # Raw reads still bypass strict entity conversion via
+    # list_receipt_places_raw (drifted index projections stay readable).
     try:
-        dynamodb_client = boto3.client("dynamodb")
+        client = DynamoClient(table_name)
     except Exception as e:
         logger.error(f"Failed to create DynamoDB client: {e}", exc_info=True)
         sys.exit(1)
@@ -265,8 +256,7 @@ def main():
     # List all receipt places
     try:
         places = list_all_places(
-            dynamodb_client,
-            table_name,
+            client,
             limit=args.limit,
             output_file=args.output,
         )

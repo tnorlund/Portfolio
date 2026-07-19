@@ -11,7 +11,6 @@ from __future__ import annotations
 from collections import defaultdict
 
 from receipt_dynamo import DynamoClient
-
 from receipt_upload.dedup.context import LabelObs
 
 ENV_TABLE = {"dev": "ReceiptsTable-dc5be22", "prod": "ReceiptsTable-d7ff76a"}
@@ -30,20 +29,14 @@ def _receipt_place_merchants(
     last_evaluated_key = None
 
     while True:
-        query = {
-            "TableName": dc.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#entity_type = :entity_type",
-            "ExpressionAttributeNames": {"#entity_type": "TYPE"},
-            "ExpressionAttributeValues": {
-                ":entity_type": {"S": "RECEIPT_PLACE"}
-            },
-        }
-        if last_evaluated_key is not None:
-            query["ExclusiveStartKey"] = last_evaluated_key
-
-        response = dc._client.query(**query)
-        for item in response.get("Items", []):
+        # All DynamoDB operations live in receipt_dynamo: the data layer's
+        # raw census read returns low-level items without entity conversion
+        # (drifted projections stay readable) while keeping this module off
+        # the private _client.
+        items, last_evaluated_key = dc.list_receipt_places_raw(
+            last_evaluated_key=last_evaluated_key
+        )
+        for item in items:
             image_id = item.get("image_id", {}).get("S")
             if not image_id:
                 image_id = (
@@ -71,7 +64,6 @@ def _receipt_place_merchants(
                 "merchant_name", {}
             ).get("S")
 
-        last_evaluated_key = response.get("LastEvaluatedKey")
         if last_evaluated_key is None:
             return merchants
 
