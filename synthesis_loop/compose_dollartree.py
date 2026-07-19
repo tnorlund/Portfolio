@@ -127,8 +127,8 @@ def canonical_words(raw_words):
             header_rows.append(text)
             continue
         if re.match(
-            r"^SUB ?TOTAL|^SALES( TAX)?$|^TAX$|^TOTAL$|^TOTAL |^CHANGE|"
-            r"^AMERICAN|^EXPRES|^VISA|^MASTERCARD|^DEBIT|^CASH",
+            r"^SUB ?TOTAL\b|^SALES TAX\b|^SALES$|^TAX\b|^TOTAL\b|"
+            r"^CHANGE\b|^AMERICAN|^EXPRES|^VISA|^MASTERCARD|^DEBIT|^CASH\b",
             T,
         ):
             summary_frags.append((yc, xc0, text, ws))
@@ -147,12 +147,24 @@ def canonical_words(raw_words):
             for w in ws:
                 price_frags.append((yc, w["text"], w["bbox"][0] / 1000.0))
             continue
-        letters = sum(ch.isalpha() for ch in text)
-        digits = sum(ch.isdigit() for ch in text)
+        # An INTACT row carries description AND amounts on one line
+        # ("SCRUB BRUSH 2 1.25 2.50T"): split the numeric tail off and feed
+        # it through the same fragment attachment as sheared lines (dy = 0,
+        # so the amounts bind to this very item).
+        num_ws = [
+            w
+            for w in ws
+            if is_price(str(w["text"])) or _QTY_RE.match(str(w["text"]))
+        ]
+        desc_text = " ".join(str(w["text"]) for w in ws if w not in num_ws)
+        for w in num_ws:
+            price_frags.append((yc, str(w["text"]), w["bbox"][0] / 1000.0))
+        letters = sum(ch.isalpha() for ch in desc_text)
+        digits = sum(ch.isdigit() for ch in desc_text)
         if (colhdr_seen or yc < 0.8) and letters >= 4 and letters > digits:
             items.append(
                 {
-                    "desc": text,
+                    "desc": desc_text,
                     "y": yc,
                     "x0": xc0,
                     "qty": None,
@@ -274,7 +286,9 @@ def canonical_words(raw_words):
         + len(footer_rows)
         + 3
     )
-    pitch = min(ROW_PITCH, max(20.0, 900.0 / max(1, n_rows)))
+    # No floor: a long receipt gets proportionally smaller rows
+    # rather than rows past the bottom of the canvas.
+    pitch = min(ROW_PITCH, 900.0 / max(1, n_rows))
     cap = CAP_H * (pitch / ROW_PITCH)
     max_desc_chars = int((DESC_MAX_X - DESC_X) / CHAR_W)
 
@@ -373,10 +387,12 @@ def main(argv=None):
         None,
     )
     merchant_name = getattr(place, "merchant_name", "") or ""
-    if place is not None and "DOLLAR TREE" not in merchant_name.upper():
+    canonical_key = rsr.get_merchant_profile_key(merchant_name)[0]
+    if place is None or canonical_key != MERCHANT:
         raise SystemExit(
-            f"refusing: receipt {image_id}#{receipt_id} merchant is "
-            f"{merchant_name!r}, not Dollar Tree"
+            f"refusing: receipt {image_id}#{receipt_id} has "
+            f"{'no RECEIPT_PLACE' if place is None else f'merchant {merchant_name!r} (profile {canonical_key!r})'}"
+            f" -- a verified Dollar Tree place is required"
         )
 
     rec = next(r for r in d.receipts if r.receipt_id == receipt_id)

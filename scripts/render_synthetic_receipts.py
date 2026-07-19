@@ -883,8 +883,16 @@ def _text_section(text: str, hp: dict) -> str:
 
 def _cached_receipt_dict(example: dict) -> dict:
     if example.get("tokens") and example.get("bboxes"):
-        return _cached_token_receipt_dict(example)
-    return _cached_line_receipt_dict(example)
+        receipt = _cached_token_receipt_dict(example)
+    else:
+        receipt = _cached_line_receipt_dict(example)
+    # Propagate the batch merchant into the RECEIPT dict: downstream profile
+    # hooks (graphics selection, canonical composition) key off
+    # receipt["merchant_name"], and a cached render that loses it silently
+    # bypasses them all.
+    if example.get("merchant_name") and not receipt.get("merchant_name"):
+        receipt["merchant_name"] = example["merchant_name"]
+    return receipt
 
 
 # Cached-example canvas sizes (W, H), selected from the example's own metadata
@@ -1511,9 +1519,16 @@ def _render_cached_hybrid(
             sys.path.insert(0, synth_dir)
         from compose_dollartree import canonical_words  # noqa: E402
 
-        receipt = dict(
-            receipt, words=canonical_words(receipt.get("words") or [])
-        )
+        # Composition exists to canonicalize SHEARED REAL OCR, which only
+        # word-form receipts carry. LINE-form cached examples are already a
+        # synthetic canonical layout with no real x-geometry to re-derive
+        # columns from -- composing them erases their items -- so they pass
+        # through untouched. An empty word list likewise never composes
+        # (replacing a receipt we could not read with just the wordmark and
+        # column headings would erase it).
+        raw_words = receipt.get("words")
+        if raw_words and receipt.get("lines") is None:
+            receipt = dict(receipt, words=canonical_words(raw_words))
     receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
