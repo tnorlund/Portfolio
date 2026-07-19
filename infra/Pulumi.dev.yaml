@@ -60,10 +60,3 @@ config:
   portfolio:CHROMA_CLOUD_DATABASE: receipt_dev
   portfolio:CHROMA_CLOUD_ENABLED: "true"
   portfolio:LLM_VALIDATION_ASYNC: "true"
-  portfolio:mcpOAuthCallbackUrls:
-    - https://claude.ai/api/mcp/auth_callback
-    - https://claude.com/api/mcp/auth_callback
-    - http://localhost:8765/callback
-    - http://127.0.0.1:8765/callback
-    - http://localhost:6274/oauth/callback
-    - http://127.0.0.1:8765/callback/rzKPyJle2jYU
