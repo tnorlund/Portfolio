@@ -1,0 +1,100 @@
+{
+ "version": 1,
+ "char": "-",
+ "codepoint": 45,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "neighborly.refined.npz",
+  "samples": 5,
+  "consensusHash": "ca605c068b13",
+  "date": "2026-07-19"
+ },
+ "width": 610.7,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 66.5,
+     "y": 661.0,
+     "type": "corner"
+    },
+    {
+     "x": 74.8,
+     "y": 555.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 383.1,
+     "y": 494.4,
+     "type": "corner"
+    },
+    {
+     "x": 427.6,
+     "y": 438.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 430.4,
+     "y": 494.4,
+     "type": "corner"
+    },
+    {
+     "x": 430.4,
+     "y": 438.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 310.9,
+     "y": 436.1,
+     "type": "corner"
+    },
+    {
+     "x": 571.9999999999999,
+     "y": 436.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 66.5,
+     "y": 39.0,
+     "type": "corner",
+     "hOut": {
+      "x": 62.7095225507736,
+      "y": 111.8
+     }
+    },
+    {
+     "x": 55.4,
+     "y": 250.0,
+     "type": "corner",
+     "hIn": {
+      "x": 52.724389921883215,
+      "y": 170.40060017602588
+     }
+    }
+   ]
+  }
+ ]
+}

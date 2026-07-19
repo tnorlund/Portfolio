@@ -1,0 +1,55 @@
+{
+ "version": 1,
+ "char": "T",
+ "codepoint": 84,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "moody.refined.npz",
+  "samples": 38,
+  "consensusHash": "d5e739ecab6a",
+  "date": "2026-07-19"
+ },
+ "width": 501.6,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 264.7,
+     "y": 959.2,
+     "type": "corner"
+    },
+    {
+     "x": 264.7,
+     "y": 40.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 461.9,
+     "y": 959.2,
+     "type": "corner",
+     "hOut": {
+      "x": 367.42402839911574,
+      "y": 913.1
+     }
+    },
+    {
+     "x": 39.7,
+     "y": 959.2,
+     "type": "corner",
+     "hIn": {
+      "x": 150.5027606832069,
+      "y": 955.6
+     }
+    }
+   ]
+  }
+ ]
+}

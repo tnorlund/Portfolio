@@ -477,6 +477,23 @@
      "max_count": 0
     }
    }
+  },
+  "Neighborly": {
+   "_comment": "Minted atlas (fonts/neighborly, 2026-07-19).",
+   "typography": {
+    "bitmap_font": {
+     "regular": "neighborly.glyphs.npz",
+     "heavy": "neighborly.glyphs.npz"
+    },
+    "condense": 0.9861,
+    "pitch_ratio": 0.427,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.825,
+    "mixed_layout": true,
+    "bitmap_thin": 0.0,
+    "bitmap_glyph_vscale": 1.015
+   }
   }
  }
 }
