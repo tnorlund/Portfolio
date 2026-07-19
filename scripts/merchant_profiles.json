@@ -48,15 +48,39 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 12,
-     "tool_git_sha": "8ec633838d41"
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
     },
     "columns": {
+     "barcode": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2479,
+       "spread": 0.007,
+       "support": 7
+      }
+     ],
      "footer": [
       {
        "role": "desc",
        "anchor": "left",
        "x": 0.0171,
        "spread": 0.0186,
+       "support": 8
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1788,
+       "spread": 0.0071,
+       "support": 6
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2713,
+       "spread": 0.0086,
        "support": 8
       }
      ],
@@ -94,12 +118,63 @@
       {
        "role": "amount",
        "anchor": "right",
+       "x": 0.394,
+       "spread": 0.0285,
+       "support": 12
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
        "x": 0.9417,
        "spread": 0.0124,
+       "support": 9
+      }
+     ],
+     "storefront": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0,
+       "spread": 0.0083,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1035,
+       "spread": 0.0131,
+       "support": 9
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2229,
+       "spread": 0.0187,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3396,
+       "spread": 0.0151,
        "support": 8
       }
      ],
      "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0101,
+       "spread": 0.0036,
+       "support": 6
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0935,
+       "spread": 0.0166,
+       "support": 8
+      },
       {
        "role": "label",
        "anchor": "left",
@@ -108,22 +183,66 @@
        "support": 11
       },
       {
+       "role": "qty",
+       "anchor": "right",
+       "x": 0.8863,
+       "spread": 0.0167,
+       "support": 8
+      },
+      {
        "role": "amount",
        "anchor": "right",
-       "x": 0.9377,
-       "spread": 0.0133,
-       "support": 9
+       "x": 0.9376,
+       "spread": 0.0026,
+       "support": 10
+      }
+     ],
+     "total_line": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0874,
+       "spread": 0.0156,
+       "support": 7
       }
      ]
     },
     "sections": [
-     "storefront",
-     "items",
-     "summary",
-     "total_line",
-     "payment",
-     "barcode",
-     "footer"
+     {
+      "name": "storefront",
+      "pos_frac_med": 0.05,
+      "support": 12
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.255,
+      "support": 11
+     },
+     {
+      "name": "summary",
+      "pos_frac_med": 0.351,
+      "support": 12
+     },
+     {
+      "name": "total_line",
+      "pos_frac_med": 0.392,
+      "support": 9
+     },
+     {
+      "name": "payment",
+      "pos_frac_med": 0.427,
+      "support": 12
+     },
+     {
+      "name": "barcode",
+      "pos_frac_med": 0.805,
+      "support": 9
+     },
+     {
+      "name": "footer",
+      "pos_frac_med": 0.819,
+      "support": 10
+     }
     ],
     "separators": []
    }
@@ -365,41 +484,49 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 6,
-     "tool_git_sha": "8ec633838d41"
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
     },
     "columns": {
      "barcode": [
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.0288,
-       "spread": 0.0139,
-       "support": 4
+       "x": 0.025,
+       "spread": 0.0101,
+       "support": 5
       }
      ],
      "footer": [
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.0226,
+       "x": 0.0215,
        "spread": 0.0158,
-       "support": 3
+       "support": 4
       },
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.1829,
-       "spread": 0.0132,
+       "x": 0.1743,
+       "spread": 0.0145,
        "support": 5
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2779,
+       "spread": 0.0125,
+       "support": 4
       }
      ],
      "items": [
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.0416,
-       "spread": 0.019,
-       "support": 5
+       "x": 0.0343,
+       "spread": 0.0155,
+       "support": 6
       },
       {
        "role": "amount",
@@ -411,9 +538,16 @@
       {
        "role": "flag",
        "anchor": "left",
-       "x": 0.8177,
-       "spread": 0.001,
-       "support": 3
+       "x": 0.8182,
+       "spread": 0.002,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9835,
+       "spread": 0.0133,
+       "support": 6
       }
      ],
      "payment": [
@@ -423,15 +557,45 @@
        "x": 0.0258,
        "spread": 0.0094,
        "support": 6
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1375,
+       "spread": 0.0073,
+       "support": 5
+      },
+      {
+       "role": "qty",
+       "anchor": "right",
+       "x": 0.9882,
+       "spread": 0.0182,
+       "support": 5
       }
      ],
      "section_header": [
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.0135,
-       "spread": 0.0073,
+       "x": 0.0098,
+       "spread": 0.0137,
+       "support": 4
+      }
+     ],
+     "storefront": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2157,
+       "spread": 0.0095,
        "support": 3
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.5532,
+       "spread": 0.0272,
+       "support": 4
       }
      ],
      "summary": [
@@ -445,21 +609,69 @@
       {
        "role": "amount",
        "anchor": "right",
-       "x": 0.8861,
+       "x": 0.8854,
        "spread": 0.0045,
-       "support": 4
+       "support": 5
+      }
+     ],
+     "total_line": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1162,
+       "spread": 0.0054,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8875,
+       "spread": 0.0032,
+       "support": 5
       }
      ]
     },
     "sections": [
-     "storefront",
-     "payment",
-     "section_header",
-     "items",
-     "barcode",
-     "total_line",
-     "summary",
-     "footer"
+     {
+      "name": "storefront",
+      "pos_frac_med": 0.05,
+      "support": 5
+     },
+     {
+      "name": "payment",
+      "pos_frac_med": 0.206,
+      "support": 6
+     },
+     {
+      "name": "section_header",
+      "pos_frac_med": 0.369,
+      "support": 4
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.404,
+      "support": 6
+     },
+     {
+      "name": "barcode",
+      "pos_frac_med": 0.409,
+      "support": 5
+     },
+     {
+      "name": "total_line",
+      "pos_frac_med": 0.793,
+      "support": 5
+     },
+     {
+      "name": "summary",
+      "pos_frac_med": 0.807,
+      "support": 5
+     },
+     {
+      "name": "footer",
+      "pos_frac_med": 0.867,
+      "support": 5
+     }
     ],
     "separators": [
      {
@@ -628,7 +840,8 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 8,
-     "tool_git_sha": "8ec633838d41"
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
     },
     "columns": {
      "address": [
@@ -636,8 +849,15 @@
        "role": "desc",
        "anchor": "left",
        "x": 0.1875,
-       "spread": 0.0004,
-       "support": 6
+       "spread": 0.0087,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3113,
+       "spread": 0.0042,
+       "support": 7
       }
      ],
      "items": [
@@ -659,8 +879,22 @@
        "role": "desc",
        "anchor": "left",
        "x": 0.2051,
-       "spread": 0.0084,
-       "support": 4
+       "spread": 0.0069,
+       "support": 6
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3208,
+       "spread": 0.0042,
+       "support": 5
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3917,
+       "spread": 0.0041,
+       "support": 5
       },
       {
        "role": "amount",
@@ -670,7 +904,37 @@
        "support": 4
       }
      ],
+     "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1729,
+       "spread": 0.0042,
+       "support": 6
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.329,
+       "spread": 0.0002,
+       "support": 6
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9938,
+       "spread": 0.0082,
+       "support": 4
+      }
+     ],
      "survey": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0688,
+       "spread": 0.0125,
+       "support": 6
+      },
       {
        "role": "desc",
        "anchor": "left",
@@ -681,10 +945,26 @@
      ]
     },
     "sections": [
-     "address",
-     "items",
-     "summary",
-     "survey"
+     {
+      "name": "address",
+      "pos_frac_med": 0.184,
+      "support": 8
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.34,
+      "support": 8
+     },
+     {
+      "name": "summary",
+      "pos_frac_med": 0.466,
+      "support": 6
+     },
+     {
+      "name": "survey",
+      "pos_frac_med": 0.943,
+      "support": 6
+     }
     ],
     "separators": []
    }
@@ -726,10 +1006,27 @@
     "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
     "measured": {
      "receipts": 5,
-     "tool_git_sha": "8ec633838d41"
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
     },
     "columns": {
+     "address": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0149,
+       "spread": 0.0057,
+       "support": 5
+      }
+     ],
      "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.002,
+       "spread": 0.004,
+       "support": 4
+      },
       {
        "role": "desc",
        "anchor": "left",
@@ -740,8 +1037,22 @@
       {
        "role": "amount",
        "anchor": "right",
+       "x": 0.8055,
+       "spread": 0.012,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
        "x": 0.9322,
        "spread": 0.0021,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.998,
+       "spread": 0.0123,
        "support": 4
       }
      ],
@@ -758,17 +1069,33 @@
       {
        "role": "desc",
        "anchor": "left",
-       "x": 0.2194,
+       "x": 0.2148,
        "spread": 0.011,
-       "support": 4
+       "support": 5
       }
      ]
     },
     "sections": [
-     "address",
-     "items",
-     "payment",
-     "survey"
+     {
+      "name": "address",
+      "pos_frac_med": 0.107,
+      "support": 5
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.325,
+      "support": 5
+     },
+     {
+      "name": "payment",
+      "pos_frac_med": 0.679,
+      "support": 5
+     },
+     {
+      "name": "survey",
+      "pos_frac_med": 0.828,
+      "support": 5
+     }
     ],
     "separators": []
    }

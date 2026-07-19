@@ -914,22 +914,32 @@ TOKEN_INK_HEIGHT_SPAN_MIN = 0.25
 
 
 def _box_has_glyph_ink(gray: np.ndarray, w: dict, thresh: float) -> bool:
-    """True when a word box contains PLAUSIBLE glyph ink (see constants)."""
+    """True when PLAUSIBLE glyph ink exists for a word (see constants).
+
+    The search window is the word box expanded horizontally by 3/4 of its
+    own width per side: the renderer legitimately re-centers display rows
+    (headers, footers), so requiring ink strictly inside the source box
+    reads an intended reposition as an erasure. Position fidelity is the
+    COLUMNS metric's jurisdiction; this check's jurisdiction is existence.
+    The ink-extent requirements stay sized to the ORIGINAL box, so a dot
+    or a blank window fails regardless of the wider search.
+    """
     H, W = gray.shape
-    l = max(0, int(w["l"]) - 2)
-    r = min(W, int(w["r"]) + 3)
+    box_w = max(1.0, w["r"] - w["l"])
+    box_h = max(1.0, w["b"] - w["t"])
+    l = max(0, int(w["l"] - 0.75 * box_w) - 2)
+    r = min(W, int(w["r"] + 0.75 * box_w) + 3)
     tt = max(0, int(w["t"]) - 2)
     bb = min(H, int(w["b"]) + 3)
     if r - l < 2 or bb - tt < 2:
         return True  # degenerate box: not evidence either way
     crop = gray[tt:bb, l:r] < thresh
     n_ink = int(crop.sum())
-    area = crop.shape[0] * crop.shape[1]
-    if n_ink < max(8, TOKEN_INK_FRAC_MIN * area):
+    if n_ink < max(8, TOKEN_INK_FRAC_MIN * box_w * box_h):
         return False
     ys, xs = np.nonzero(crop)
-    width_span = (xs.max() - xs.min() + 1) / crop.shape[1]
-    height_span = (ys.max() - ys.min() + 1) / crop.shape[0]
+    width_span = (xs.max() - xs.min() + 1) / box_w
+    height_span = (ys.max() - ys.min() + 1) / box_h
     return (
         width_span >= TOKEN_INK_WIDTH_SPAN_MIN
         and height_span >= TOKEN_INK_HEIGHT_SPAN_MIN
@@ -1126,14 +1136,22 @@ def metric_separators(
     syn_gray: np.ndarray,
     rows_real: list[list[dict]] | None = None,
     rows_syn: list[list[dict]] | None = None,
+    *,
+    composed: bool = False,
 ) -> dict:
     """Count/order/y agreement of full-width rules.
 
-    ``kind`` (dash/double/solid) is reported but deliberately NOT gated: at
-    eval resolution a real dotted rule blurs between "dash" and "double"
-    (the current Gelson's matched pairs already read dash-vs-double at the
-    same y), so gating on kind would fail approved renders on a resolution
-    artifact. Count + order + y is the P1 contract.
+    ``kind`` (dash/double/solid) is reported; only the SOLID-vs-patterned
+    substitution is gated -- at eval resolution a real dotted rule blurs
+    between "dash" and "double" (the approved Gelson's matched pairs read
+    dash-vs-double at identical y), so gating that pair would fail
+    approved renders on a resolution artifact.
+
+    ``composed=True`` (canonical re-layouts of curled photos): rules the
+    SYNTH draws but detection cannot find on the warped real photo are
+    reported, not gated -- the template legitimately draws separators the
+    photo carries but the detector's span/coverage bars cannot see through
+    the curl. Rules the real side has that the synth DROPPED always gate.
     """
     real_seps = _drop_text_bands(
         detect_separators(real_gray), rows_real, real_gray.shape[0]
@@ -1162,7 +1180,9 @@ def metric_separators(
             matched.append(entry)
             unmatched_real.remove(rs)
             unmatched_syn.remove(best[1])
-    fail = bool(unmatched_real or unmatched_syn or kind_fails)
+    fail = bool(
+        unmatched_real or (unmatched_syn and not composed) or kind_fails
+    )
     return {
         "verdict": "FAIL" if fail else "PASS",
         "real_count": len(real_seps),
@@ -1802,7 +1822,9 @@ def evaluate_pair(
         real_gray, syn_gray, rows_real, rows_syn, classes_real, classes_syn
     )
     tokens = metric_tokens(words_real, words_syn, syn_gray, composed=composed)
-    separators = metric_separators(real_gray, syn_gray, rows_real, rows_syn)
+    separators = metric_separators(
+        real_gray, syn_gray, rows_real, rows_syn, composed=composed
+    )
     graphics = metric_graphics(real_png, syn_png)
     logo = metric_logo(
         real_gray,
