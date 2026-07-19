@@ -2665,15 +2665,45 @@ def _logo_wordmark_words(
         onto the brand row, a phone number under it) -- suppressing it and
         folding it into the logo bbox lets the logo overlay background-erase
         it (the Gelson's address-eraser). Better to under-absorb than to
-        erase. Unlabeled words stay eligible: the brand-line detector matches
-        wordmark text without labels (e.g. Sprouts).
+        erase.
         """
         labels = {_label_name(label) for label in (word.get("labels") or [])}
         return bool(labels - {"MERCHANT_NAME"})
 
-    # Seed only with the brand line's own wordmark words -- a foreign-labeled
-    # word sharing the detected line must keep rendering as text.
-    cluster = [word for word in logo_line if not _foreign(word)]
+    def _merchant_labeled(word: dict) -> bool:
+        return any(
+            _label_name(label) == "MERCHANT_NAME"
+            for label in (word.get("labels") or [])
+        )
+
+    # Seed only with the brand line's own WORDMARK words. An unlabeled word on
+    # the detected line is NOT automatically wordmark content: filtering an
+    # INVALID label turns an address token into exactly such an unlabeled
+    # word (GELSONS[MERCHANT_NAME] WESTLAKE[] on one OCR row), and seeding it
+    # re-opens the address-eraser the label filter closed. So: when the line
+    # carries MERCHANT_NAME labels, trust exactly those words; when it was
+    # detected purely by brand TEXT (no labels anywhere -- Sprouts), keep the
+    # words whose normalized text is part of the merchant name; only with no
+    # merchant name to check does the whole non-foreign line count.
+    labeled_seed = [
+        word
+        for word in logo_line
+        if _merchant_labeled(word) and not _foreign(word)
+    ]
+    if labeled_seed:
+        cluster = labeled_seed
+    else:
+        brand = _normalize_phrase(receipt.get("merchant_name") or "")
+        nonforeign = [word for word in logo_line if not _foreign(word)]
+        if brand:
+            cluster = [
+                word
+                for word in nonforeign
+                if _normalize_phrase(word.get("text") or "")
+                and _normalize_phrase(word.get("text") or "") in brand
+            ]
+        else:
+            cluster = nonforeign
     band = _union_bbox([word["bbox"] for word in cluster if word.get("bbox")])
     if band is None:
         return None

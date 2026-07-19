@@ -165,3 +165,10 @@ def test_qualified_header_never_fires_on_item_rows():
     assert classify_row("RED WINE") != "section_header"
     assert classify_row("GROUND MEAT") != "section_header"
     assert classify_row("ORGANIC BODY") != "section_header"
+
+
+def test_qualified_multiword_department_tokens_match():
+    assert classify_row("FRESH HEALTH AND BEAUTY") == "section_header"
+    assert classify_row("DEPT PATIO & OUTDOOR DECOR") == "section_header"
+    # A non-token remainder still never matches.
+    assert classify_row("FRESH HEALTH AND WELLNESS") != "section_header"

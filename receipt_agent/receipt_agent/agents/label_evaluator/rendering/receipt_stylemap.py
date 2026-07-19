@@ -196,10 +196,12 @@ def _is_section_header(compact: str) -> bool:
     if text in SECTION_TOKENS:
         return True
     words = text.split()
+    # Multi-word departments keep working under a qualifier
+    # ("FRESH HEALTH AND BEAUTY"): compare the full remainder, not word[1].
     return (
-        len(words) == 2
+        len(words) >= 2
         and words[0] in _SECTION_QUALIFIERS
-        and words[1] in SECTION_TOKENS
+        and " ".join(words[1:]) in SECTION_TOKENS
     )
 
 

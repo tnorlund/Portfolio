@@ -118,3 +118,50 @@ class TestPhraseRunMatch:
 
     def test_non_adjacent_tokens_do_not_match(self):
         assert not rsr._phrase_run_match(["HOW", "X", "DOERS"], ["HOWDOERS"])
+
+
+class TestWordmarkSeedFilter:
+    """P1 review finding: an UNLABELED word on the brand line (e.g. its label
+    was INVALID-filtered) must not be seeded into the wordmark cluster."""
+
+    def test_unlabeled_same_row_address_word_is_not_seeded(self):
+        receipt = {
+            "merchant_name": "Gelson's Westlake Village",
+            "words": [
+                {
+                    "text": "GELSONS",
+                    "bbox": [100.0, 950.0, 400.0, 990.0],
+                    "labels": ["MERCHANT_NAME"],
+                },
+                # Same OCR row; its INVALID MERCHANT_NAME label was filtered.
+                {
+                    "text": "WESTLAKE",
+                    "bbox": [420.0, 950.0, 700.0, 990.0],
+                    "labels": [],
+                },
+            ],
+        }
+        cluster, bbox = rsr._logo_wordmark_words(receipt)
+        assert [w["text"] for w in cluster] == ["GELSONS"]
+        assert bbox[2] == 400.0
+
+    def test_text_detected_brand_line_still_seeds_brand_words(self):
+        # No labels at all: the Sprouts-style text-detected wordmark keeps
+        # words whose text is part of the merchant name.
+        receipt = {
+            "merchant_name": "Sprouts Farmers Market",
+            "words": [
+                {
+                    "text": "SPROUTS",
+                    "bbox": [100.0, 950.0, 400.0, 990.0],
+                    "labels": [],
+                },
+                {
+                    "text": "FARMERS",
+                    "bbox": [420.0, 950.0, 700.0, 990.0],
+                    "labels": [],
+                },
+            ],
+        }
+        cluster, _ = rsr._logo_wordmark_words(receipt)
+        assert {w["text"] for w in cluster} == {"SPROUTS", "FARMERS"}

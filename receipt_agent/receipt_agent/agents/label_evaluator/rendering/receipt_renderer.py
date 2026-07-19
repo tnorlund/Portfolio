@@ -222,19 +222,33 @@ class RenderConfig:
     row_faces: Mapping[str, Any] | None = None
 
 
+def _clamped_scale(value: Any, lo: float, hi: float) -> float:
+    """Profile values are an external boundary: clamp to finite, sane range."""
+    try:
+        scale = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(scale):
+        return 1.0
+    return max(lo, min(hi, scale))
+
+
 def section_style(value: Any) -> tuple[float, float]:
     """``(height_scale, condense)`` from one ``section_scale`` entry.
 
     A bare number is the legacy height-only scale (condense 1.0, so every
     existing profile renders byte-identically); a mapping may add a
     per-section ``condense`` that multiplies the global glyph condense.
+    Values are clamped to finite, positive ranges -- a zero/NaN condense
+    from a hand-edited profile must degrade to a no-op, not a
+    ZeroDivisionError deep in token placement.
     """
     if isinstance(value, Mapping):
         return (
-            float(value.get("height_scale", 1.0)),
-            float(value.get("condense", 1.0)),
+            _clamped_scale(value.get("height_scale", 1.0), 0.25, 4.0),
+            _clamped_scale(value.get("condense", 1.0), 0.2, 2.0),
         )
-    return float(value), 1.0
+    return _clamped_scale(value, 0.25, 4.0), 1.0
 
 
 def render_receipt(
@@ -775,14 +789,18 @@ def _render_grid(
         prev_text = row_text
         center_to = _center_target(line)
         fpath = section_font.get(sect) if sect else None
+        # A row's section condense applies whether or not the row is an
+        # enlarged display heading -- the heading scale overrides HEIGHT
+        # only, the section's face width stays in force.
+        sect_cond = (
+            section_style(section_scale.get(sect, 1.0))[1] if sect else 1.0
+        )
         if is_heading:
-            sc, sect_cond = float(hscale), 1.0
+            sc = float(hscale)
             bf_row = bmf_heavy if bmf else None
         else:
-            sc, sect_cond = (
-                section_style(section_scale.get(sect, 1.0))
-                if sect
-                else (1.0, 1.0)
+            sc = (
+                section_style(section_scale.get(sect, 1.0))[0] if sect else 1.0
             )
             bf_row = bmf
         # Measured stylemap pass (no-op when config.stylemap is None): size

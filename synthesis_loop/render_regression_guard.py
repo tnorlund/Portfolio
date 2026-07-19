@@ -17,6 +17,13 @@ renderer regressed.
 Usage:
   render_regression_guard.py capture <out_dir>
   render_regression_guard.py compare <baseline_dir> <out_dir>
+  render_regression_guard.py check <out_dir>
+
+``check`` compares against the COMMITTED baseline manifest
+(``render_regression_baseline.json`` beside this script) so a fresh checkout
+verifies the pinned hashes without first trusting a locally-captured
+baseline. Re-capture (and commit) that manifest only for an intended,
+reviewed render change.
 
 Env: same as glyph_review receipt mode (DYNAMODB_TABLE_NAME, AWS_REGION,
 BITMATRIX_DIR, AWS creds with read access to the dev table).
@@ -131,11 +138,36 @@ def compare(baseline_dir: str, out_dir: str) -> int:
     return 0
 
 
+COMMITTED_BASELINE = os.path.join(HERE, "render_regression_baseline.json")
+
+
+def check(out_dir: str) -> int:
+    """Compare fresh renders against the COMMITTED baseline hashes."""
+    with open(COMMITTED_BASELINE, encoding="utf-8") as fh:
+        baseline = json.load(fh)
+    manifest = _render_all(out_dir)
+    failures = [
+        slug
+        for slug, sha in sorted(manifest.items())
+        if baseline.get(slug) != sha
+    ]
+    for slug in sorted(manifest):
+        state = "CHANGED" if slug in failures else "byte-identical"
+        print(f"{slug}: {state}")
+    if failures:
+        print(f"REGRESSION vs committed baseline: {failures}")
+        return 1
+    print("all pinned renders match the committed baseline")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) >= 3 and sys.argv[1] == "capture":
         return capture(sys.argv[2])
     if len(sys.argv) >= 4 and sys.argv[1] == "compare":
         return compare(sys.argv[2], sys.argv[3])
+    if len(sys.argv) >= 3 and sys.argv[1] == "check":
+        return check(sys.argv[2])
     print(__doc__)
     return 2
 
