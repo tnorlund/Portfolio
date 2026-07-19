@@ -1527,7 +1527,11 @@ def _render_cached_hybrid(
         # (replacing a receipt we could not read with just the wordmark and
         # column headings would erase it).
         raw_words = receipt.get("words")
-        if raw_words and receipt.get("lines") is None:
+        if (
+            raw_words
+            and receipt.get("lines") is None
+            and not receipt.get("_composed")
+        ):
             receipt = dict(receipt, words=canonical_words(raw_words))
     receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic

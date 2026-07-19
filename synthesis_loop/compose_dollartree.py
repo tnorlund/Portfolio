@@ -8,7 +8,7 @@ faithfully reproduces the shear. So Dollar Tree renders are COMPOSED: the
 real receipt's CONTENT is re-laid onto the canonical column grid measured
 from the one clean-OCR store-5304 receipt (4bdefa9e):
 
-  DESCRIPTION left x=0.01, item text capped at the 0.53 column
+  DESCRIPTION left x=0.01, item text capped at the 0.58 column boundary
   QTY right-anchored at 0.655; PRICE right-anchored at 0.80
   TOTAL right-anchored at 0.995 with the OBSERVED tax flag (never invented)
   summary/payment labels left x=0.40, amounts right-anchored at 0.93
@@ -39,7 +39,7 @@ for _p in (HERE, os.path.join(os.path.dirname(HERE), "scripts")):
 MERCHANT = "Dollar Tree"
 
 DESC_X = 0.01
-DESC_MAX_X = 0.53
+DESC_MAX_X = 0.58  # column boundary: template descs run 30 chars (QTY at 0.60)
 QTY_RIGHT = 0.655
 PRICE_RIGHT = 0.80
 TOTAL_RIGHT = 0.995
@@ -69,7 +69,11 @@ def _norm_price(text):
 
 
 def _money(value):
-    return f"{value:.2f}"
+    from decimal import ROUND_HALF_UP, Decimal
+
+    return str(
+        Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    )
 
 
 def canonical_words(raw_words):
@@ -106,6 +110,7 @@ def canonical_words(raw_words):
     wordmark_row = "DOLLAR TREE"
     price_frags = []
     register_frags = []
+    suffix_frags = []
 
     for yc, xc0, lid, text, ws in ordered:
         T = text.upper().strip()
@@ -122,9 +127,10 @@ def canonical_words(raw_words):
         if re.search(r"STORE#?|STORE:", T) or T.startswith("("):
             header_rows.append(text)
             continue
-        if re.match(r"^\d{3,5} |^HENDERSON|^\d{3} STREET|SUITE|^\d{5}", T) or (
-            "NV" in T.split() or "NU" in T.split()
-        ):
+        if (
+            re.match(r"^\d{3,5} |^HENDERSON|^\d{3} STREET|SUITE|^\d{5}", T)
+            and yc > 0.6
+        ) or ("NV" in T.split() or "NU" in T.split()):
             header_rows.append(text)
             continue
         if re.match(
@@ -138,7 +144,7 @@ def canonical_words(raw_words):
             payment_rows.append(text)
             continue
         if re.search(
-            r"FEEDBACK|CAREERS|PLEASE|GROW YOUR|HTTPS|WWW\.|ASSOCIATE|"
+            r"FEEDBACK|CAREERS|PLEASE|GROW YOUR|HTTPS|WWW\.|SOCIATE|"
             r"^\d{4} \d{5}|^SOLAS",
             T,
         ):
@@ -157,6 +163,13 @@ def canonical_words(raw_words):
             # bottom-zone date/time fields join the register line too
             register_frags.append((yc, xc0, text))
             continue
+        if yc < 0.15 and sum(ch.isdigit() for ch in T) >= sum(
+            ch.isalpha() for ch in T
+        ):
+            # register ids can be ALNUM ('501454B6'); digit-majority
+            # bottom-zone lines are register fields, not items
+            register_frags.append((yc, xc0, text))
+            continue
         # An INTACT row carries description AND amounts on one line
         # ("SCRUB BRUSH 2 1.25 2.50T"): split the numeric tail off and feed
         # it through the same fragment attachment as sheared lines (dy = 0,
@@ -171,6 +184,16 @@ def canonical_words(raw_words):
             price_frags.append((yc, str(w["text"]), w["bbox"][0] / 1000.0))
         letters = sum(ch.isalpha() for ch in desc_text)
         digits = sum(ch.isdigit() for ch in desc_text)
+        if (
+            (colhdr_seen or yc < 0.8)
+            and desc_text
+            and letters < 4
+            and 0.2 < xc0 < 0.55
+        ):
+            # a size/variant SUFFIX shed from its item row ("11X10." at the
+            # description-tail x) -- attach to the nearest row later
+            suffix_frags.append((yc, xc0, desc_text))
+            continue
         if (colhdr_seen or yc < 0.8) and letters >= 4 and letters > digits:
             items.append(
                 {
@@ -246,9 +269,21 @@ def canonical_words(raw_words):
         return " ".join(out)
 
     items.sort(key=lambda it: -it["y"])
+    # the fragment-merge window is the MEASURED row pitch (photo shear can
+    # push a fragment past a fixed 0.008), capped so distinct rows never fuse
+    gaps = [
+        abs(items[i]["y"] - items[i + 1]["y"]) for i in range(len(items) - 1)
+    ]
+    gaps = [g for g in gaps if g > 0.002]
+    if gaps:
+        gaps.sort()
+        pitch_est = gaps[len(gaps) // 2]
+        merge_win = max(0.008, min(0.018, 0.55 * pitch_est))
+    else:
+        merge_win = 0.008
     merged = []
     for it in items:
-        if merged and abs(merged[-1]["y"] - it["y"]) < 0.008:
+        if merged and abs(merged[-1]["y"] - it["y"]) < merge_win:
             frags = sorted(
                 [
                     (merged[-1]["x0"], merged[-1]["desc"]),
@@ -261,6 +296,15 @@ def canonical_words(raw_words):
         else:
             merged.append(it)
     items = merged
+
+    # attach shed size suffixes to their rows (same window, x-affinity was
+    # established at classification)
+    for yc, x0, sfx in suffix_frags:
+        if not items:
+            break
+        row = min(items, key=lambda it: abs(it["y"] - yc))
+        if abs(row["y"] - yc) <= max(merge_win, 0.012):
+            row["desc"] = _merge_desc(row["desc"], sfx)
 
     # attach price/qty fragments (nearest item by y)
     leftover_amounts = []
@@ -395,6 +439,62 @@ def canonical_words(raw_words):
         # else: isolated junk fragment, dropped
     items = kept
 
+    # Duplicate-item TEXT canonicalization (extends the modal-cents price
+    # reconciler to text): rows already matched as the SAME product -- same
+    # amounts and shared leading tokens -- vote per token position, so a
+    # clipped "11X10." inherits "11X10.5" from the clean instances.
+    # Receipt-derived truth only; ties prefer the longer token (clipping
+    # loses characters, never adds them).
+    from collections import Counter as _Counter
+
+    groups = {}
+    for it in items:
+        toks = it["desc"].split()
+        key = (
+            it["price"],
+            it["total"],
+            " ".join(toks[:2]).upper(),
+        )
+        groups.setdefault(key, []).append(it)
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        maxlen = max(len(g["desc"].split()) for g in group)
+        for g in group:
+            toks = g["desc"].split()
+            out_toks = list(toks)
+            for pos in range(min(len(toks), maxlen)):
+                candidates = [
+                    o["desc"].split()[pos]
+                    for o in group
+                    if len(o["desc"].split()) > pos
+                ]
+                cnt = _Counter(candidates)
+                best = max(cnt.items(), key=lambda kv: (kv[1], len(kv[0])))[0]
+                cur = toks[pos]
+                # override ONLY a clip-variant (prefix relation): a clipped
+                # "11X10." inherits "11X10.5"; a genuinely different token
+                # ("SOAP" vs "TOOTHBRUSH") keeps its own row identity.
+                if best != cur and (
+                    best.startswith(cur) or cur.startswith(best)
+                ):
+                    out_toks[pos] = best
+            # a shorter clip also inherits missing TRAILING tokens when
+            # every longer sibling agrees on them
+            if len(toks) < maxlen:
+                tails = {
+                    " ".join(o["desc"].split()[len(toks) :])
+                    for o in group
+                    if len(o["desc"].split()) == maxlen
+                }
+                if len(tails) == 1:
+                    tail = tails.pop()
+                    last = toks[-1] if toks else ""
+                    first_tail = tail.split()[0] if tail else ""
+                    if first_tail.startswith(last):
+                        out_toks = out_toks[:-1] + tail.split()
+            g["desc"] = " ".join(out_toks)
+
     # ---- emit (structure per the receiptfont canonical template) -----------
     # Split the footer: the register line (digits + date/time) and the Sales
     # Associate line print at the BOTTOM, after the policy box; everything
@@ -416,9 +516,34 @@ def canonical_words(raw_words):
     register_rows += [
         t
         for t in footer_rows
-        if re.match(r"^\d{2,4} \d{3,5}", t.strip()) or "ASSOCIATE" in t.upper()
+        if re.match(r"^\d{2,4} \d{3,5}", t.strip()) or "SOCIATE" in t.upper()
     ]
     narration_rows = [t for t in footer_rows if t not in register_rows]
+    return _emit_layout(
+        wordmark_row,
+        header_rows,
+        items,
+        summary_rows,
+        payment_rows,
+        narration_rows,
+        register_rows,
+    )
+
+
+def _emit_layout(
+    wordmark_row,
+    header_rows,
+    items,
+    summary_rows,
+    payment_rows,
+    narration_rows,
+    register_rows,
+):
+    """Emit the measured canonical Dollar Tree layout for given content.
+
+    Shared by the OCR-repair path (canonical_words) and the GENERATIVE
+    path (generate_receipt): every layout rule lives here once.
+    """
     POLICY_LINES = (
         "We will gladly exchange any unopened item",
         "with original receipt. We do not offer refunds.",
@@ -435,10 +560,11 @@ def canonical_words(raw_words):
         + len(POLICY_LINES)
         + 9  # separator rules + policy borders + block gaps
     )
-    # No floor: a long receipt gets proportionally smaller rows
-    # rather than rows past the bottom of the canvas.
-    pitch = min(ROW_PITCH, 900.0 / max(1, n_rows))
-    cap = CAP_H * (pitch / ROW_PITCH)
+    # FIXED pitch: real receipts keep constant line height and grow the
+    # paper. Content is later mapped linearly into the canvas, preserving
+    # proportions; the CALLER picks a canvas aspect that matches.
+    pitch = ROW_PITCH
+    cap = CAP_H
     max_desc_chars = int((DESC_MAX_X - DESC_X) / CHAR_W)
 
     words = []
@@ -563,15 +689,146 @@ def canonical_words(raw_words):
     # the paper band (heights scale with it, keeping proportions).
     ys = [w["bbox"][1] for w in words] + [w["bbox"][3] for w in words]
     ymin, ymax = min(ys), max(ys)
-    # fit BOTH bounds: the wordmark band tops out above 1000 at normal
-    # pitch, and long receipts run past the bottom
-    if ymin < 30.0 or ymax > 985.0:
-        scale_y = (985.0 - 30.0) / max(1.0, ymax - ymin)
-        for w in words:
-            b = w["bbox"]
-            b[1] = 30.0 + (b[1] - ymin) * scale_y
-            b[3] = 30.0 + (b[3] - ymin) * scale_y
+    # ALWAYS map content linearly into the canvas band: proportions are
+    # invariant, and the canvas aspect (chosen by the caller) sets the
+    # physical pitch -- exactly how a fixed-pitch printer + variable paper
+    # length behave.
+    scale_y = (985.0 - 15.0) / max(1.0, ymax - ymin)
+    for w in words:
+        b = w["bbox"]
+        b[1] = 15.0 + (b[1] - ymin) * scale_y
+        b[3] = 15.0 + (b[3] - ymin) * scale_y
     return words
+
+
+FIXTURE_PATH = os.path.join(HERE, "fixtures", "dollartree_template.json")
+
+
+def load_fixture():
+    import json
+
+    with open(FIXTURE_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def generate_receipt(
+    items,
+    *,
+    store_lines=None,
+    tax_rate=0.06,
+    tender_label="FIFTHTHIRD DEBIT",
+    payment_lines=None,
+    narration_lines=None,
+    register_line=None,
+    associate_line=None,
+):
+    """GENERATIVE path: canonical DT receipt words for an arbitrary item list.
+
+    ``items``: [{"name", "qty", "price", "taxable"}...]. Each unit prints its
+    own qty-1 line (the template convention); arithmetic is correct by
+    construction (subtotal = sum, tax = rate x taxable subtotal, total =
+    tender). Layout comes from the SAME measured _emit_layout the OCR-repair
+    path uses, so every rule is shared.
+    """
+    fx = load_fixture()
+    if store_lines is None:
+        store_lines = fx["store"]["lines"]
+    if payment_lines is None:
+        payment_lines = fx["payment_lines"]
+    if narration_lines is None:
+        narration_lines = fx["narration_lines"]
+    if register_line is None:
+        register_line = fx["register_line"]
+    if associate_line is None:
+        associate_line = fx["associate_line"]
+
+    emit_items = []
+    subtotal = 0.0
+    taxable_subtotal = 0.0
+    for spec in items:
+        qty = int(spec.get("qty", 1))
+        price = float(spec["price"])
+        taxable = bool(spec.get("taxable", True))
+        for _ in range(qty):
+            emit_items.append(
+                {
+                    "desc": str(spec["name"]),
+                    "qty": "1",
+                    "price": _money(price),
+                    "total": _money(price),
+                    "flag": taxable,
+                }
+            )
+            subtotal += price
+            if taxable:
+                taxable_subtotal += price
+    from decimal import ROUND_HALF_UP, Decimal
+
+    tax = float(
+        (Decimal(str(taxable_subtotal)) * Decimal(str(tax_rate))).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
+    total = float(
+        (Decimal(str(subtotal)) + Decimal(str(tax))).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
+    summary_rows = [
+        {"label": "Sub Total", "amt": _money(subtotal), "y": 0.0},
+        {"label": "SALES TAX", "amt": _money(tax), "y": 0.0},
+        {"label": "Total", "amt": _money(total), "y": 0.0},
+        {"label": tender_label, "amt": _money(total), "y": 0.0},
+    ]
+    words = _emit_layout(
+        "DOLLAR TREE",
+        store_lines,
+        emit_items,
+        summary_rows,
+        payment_lines,
+        narration_lines,
+        [register_line, associate_line],
+    )
+    return words
+
+
+def render_generated(items, out_png, **kwargs):
+    """Render a generated DT receipt through the production hybrid path."""
+    import render_synthetic_receipts as rsr
+
+    table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    words = generate_receipt(items, **kwargs)
+    receipt = {
+        "words": words,
+        "merchant_name": MERCHANT,
+        "_composed": True,  # already canonical; the render hook must not re-parse
+    }
+    prof = rsr.cached_font_profile(
+        table, MERCHANT, region=region, max_receipts=12
+    )
+    ss = rsr.section_scale_for_merchant(MERCHANT)
+    typ = rsr.merchant_typography(MERCHANT)
+    wt = 576
+    # normalized pitch between consecutive item rows -> canvas height that
+    # reproduces the template's measured pitch (17.4px/row at 426px wide)
+    row_ys = sorted({round(w["bbox"][1], 1) for w in words}, reverse=True)
+    gaps = [row_ys[i] - row_ys[i + 1] for i in range(len(row_ys) - 1)]
+    gaps = sorted(g for g in gaps if g > 4)
+    d_norm = gaps[len(gaps) // 2] if gaps else 25.0
+    ht = int(round(0.0408 * wt * 1000.0 / d_norm))
+    ht = max(700, min(3200, ht))
+    rsr._render_cached_hybrid(
+        receipt,
+        None,
+        profile=prof,
+        width=wt,
+        height=ht,
+        path=out_png,
+        section_scale=ss,
+        **typ,
+    )
+    return out_png
 
 
 def main(argv=None):

@@ -1,0 +1,43 @@
+{
+  "_source": "receiptfont.com canonical Dollar Tree template (template-dollartree-1-screenshot-fit.png), owner-designated executable ground truth for the DT layout rules (DT_TRUTH_ROUND).",
+  "store": {
+    "lines": [
+      "Store# 156                (517) 993-0356",
+      "1941 W Grand River Ave.",
+      "Suite 101",
+      "Okemos MI 56252-5601"
+    ]
+  },
+  "tax_rate": 0.06,
+  "items": [
+    {"name": "BAMBOO CHARCOAL TOOTHBRUSH", "qty": 1, "price": 1.00, "taxable": true},
+    {"name": "COLGATE TOTAL WHTNING TPST 1.4", "qty": 7, "price": 1.00, "taxable": true},
+    {"name": "SP STICK ACTIVE DEO 1.8Z", "qty": 5, "price": 1.00, "taxable": true},
+    {"name": "SPEED STCK A/P ULT SPRT 1.82", "qty": 3, "price": 1.00, "taxable": true},
+    {"name": "BAMBOO CHARCOAL TOOTHBRUSH", "qty": 8, "price": 1.00, "taxable": true}
+  ],
+  "summary": {
+    "sub_total": 24.00,
+    "sales_tax": 1.44,
+    "total": 25.44,
+    "tender_label": "FIFTHTHIRD DEBIT",
+    "tender": 25.44
+  },
+  "payment_lines": [
+    "************2074      Approved",
+    "Purchase              Chip",
+    "Auth/Trace Number: 503800/049059",
+    "Chip Card AID: A00000020"
+  ],
+  "narration_lines": ["NOW SHOP ON-LINE AT DOLLARTREE.COM"],
+  "register_line": "7534 00185 04 004 21435062    9/17/22 17:08",
+  "associate_line": "Sales Associate:Tommya",
+  "catalog": [
+    {"name": "BAMBOO CHARCOAL TOOTHBRUSH", "price": 1.00, "taxable": true, "source": "template"},
+    {"name": "COLGATE TOTAL WHTNING TPST 1.4", "price": 1.00, "taxable": true, "source": "template"},
+    {"name": "SP STICK ACTIVE DEO 1.8Z", "price": 1.00, "taxable": true, "source": "template"},
+    {"name": "SPEED STCK A/P ULT SPRT 1.82", "price": 1.00, "taxable": true, "source": "template"},
+    {"name": "CLP STRO FLORAL PRNT GRHMT 9X8", "price": 1.25, "taxable": true, "source": "pinned receipt d10ba8bf"},
+    {"name": "CLLPSBLE STORAGE GREY 11X10.5", "price": 1.25, "taxable": true, "source": "pinned receipt d10ba8bf"}
+  ]
+}
