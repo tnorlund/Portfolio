@@ -69,7 +69,9 @@ _RULES = [
     ("total_line", re.compile(r"^Total:", re.I)),
     (
         "summary",
-        re.compile(r"BALANCE DUE|CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I),
+        re.compile(
+            r"BALANCE DUE|CHANGE\b|CREDIT\b|SUBTOTAL|^TAX\b|DEBIT\s*$", re.I
+        ),
     ),
     (
         "payment",
@@ -117,14 +119,18 @@ _COSTCO_RULES = [
     ),
     (
         "footer",
-        re.compile(r"OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again", re.I),
+        re.compile(
+            r"OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again", re.I
+        ),
     ),
 ]
 _VONS_RULES = [
     ("store_header", re.compile(r"VONS|Safeway|Store\s?#|Main Street", re.I)),
     (
         "savings",
-        re.compile(r"SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings", re.I),
+        re.compile(
+            r"SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings", re.I
+        ),
     ),
     (
         "section_header",
@@ -220,7 +226,9 @@ _INNOUT_RULES = [
     ),
     (
         "transaction",
-        re.compile(r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I),
+        re.compile(
+            r"Cashier|ORDERTAKER|Check\s*:|TRANS\s*#|Ticket|Station", re.I
+        ),
     ),
     ("note", re.compile(r"^NOTE\b|^tes$", re.I)),
     (
@@ -295,14 +303,17 @@ _WILDFORK_RULES = [
     (
         "address",
         re.compile(
-            r"(Westlake|Blvd\.?|,\s*CA\s+\d{5}|^\d{3}\s*S\.|" r"1-833-300-9453)",
+            r"(Westlake|Blvd\.?|,\s*CA\s+\d{5}|^\d{3}\s*S\.|"
+            r"1-833-300-9453)",
             re.I,
         ),
     ),
     ("policy", re.compile(r"FEFO|returns|refunds|exchanges", re.I)),
     (
         "transaction",
-        re.compile(r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I),
+        re.compile(
+            r"Ticket\s?#|Station:|Sales Rep|User:|^\d{1,2}/\d{1,2}/\d{4}", re.I
+        ),
     ),
     # Column header row (Item/Description/Qty/Price). "Total" dropped: it
     # also matched standalone "Total"/"Total Tax" lines, which then folded to
@@ -386,8 +397,45 @@ _HOMEDEPOT_RULES = [
 ]
 
 
+_GELSONS_RULES = [
+    (
+        "store_header",
+        re.compile(r"Gelson'?s$|TOWNSGATE|WESTLAKE VILLAGE|\(805\)", re.I),
+    ),
+    (
+        "section_header",
+        re.compile(
+            r"^(GROCERY|PRODUCE|MEAT|SEAFOOD|REG DELI|SERVICE DELI|DELI|"
+            r"BAKERY|DAIRY|FROZEN|LIQUOR|FLORAL|SUSHI)\b",
+            re.I,
+        ),
+    ),
+    ("total_line", re.compile(r"^BALANCE DUE|^USD\$", re.I)),
+    (
+        "summary",
+        re.compile(r"CREDIT CARD|CHANGE\b|Auth#|Ref#", re.I),
+    ),
+    (
+        "payment",
+        re.compile(
+            r"MASTERCARD|VISA|CARD #|AUTH CODE|Mode:|AID:|TVR:|IAD:|TSI:|"
+            r"TC:|MID:|TID:|ARC:|RRN:|Entry Method|XXXX|APPROVED|Issuer|"
+            r"^PURCHASE$",
+            re.I,
+        ),
+    ),
+    (
+        "footer",
+        re.compile(
+            r"Save up to|Rewards program|gelsons\.com|Cashier:|POS:|"
+            r"Transaction:|^\*{5,}$",
+            re.I,
+        ),
+    ),
+]
 _MERCHANT_RULES = {
     "sprouts": _RULES,
+    "gelsons": _GELSONS_RULES,
     "costco": _COSTCO_RULES,
     "vons": _VONS_RULES,
     "traderjoes": _TJ_RULES,
@@ -429,7 +477,9 @@ def _run_widths(mask: np.ndarray) -> list[int]:
         padded = np.concatenate([[0], row.view(np.uint8), [0]])
         starts = np.where(np.diff(padded) == 1)[0]
         ends = np.where(np.diff(padded) == -1)[0]
-        out.extend(int(e - s) for s, e in zip(starts, ends) if 1 <= e - s <= 20)
+        out.extend(
+            int(e - s) for s, e in zip(starts, ends) if 1 <= e - s <= 20
+        )
     return out
 
 
@@ -530,7 +580,9 @@ def _load_receipt_letters(table: str, image_id: str):
         for it in resp["Items"]:
             try:
                 letters.append(item_to_receipt_letter(it))
-            except Exception:  # noqa: BLE001 - skip a drifted row, not the receipt
+            except (
+                Exception
+            ):  # noqa: BLE001 - skip a drifted row, not the receipt
                 continue
         lek = resp.get("LastEvaluatedKey")
         if not lek:
@@ -640,7 +692,9 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
                     {
                         "ch": ch,
                         "density": round(float(mask.mean()), 4),
-                        "stroke": (round(float(np.mean(runs)), 2) if runs else None),
+                        "stroke": (
+                            round(float(np.mean(runs)), 2) if runs else None
+                        ),
                         "h": int(yi1 - yi0),
                     }
                 )
@@ -683,12 +737,14 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     body_caps = [
         l["cap_px"]
         for l in out_lines
-        if l["section"] in ("item", "other", "footer", "survey") and l["cap_px"]
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["cap_px"]
     ]
     body_strokes = [
         l["stroke_med"]
         for l in out_lines
-        if l["section"] in ("item", "other", "footer", "survey") and l["stroke_med"]
+        if l["section"] in ("item", "other", "footer", "survey")
+        and l["stroke_med"]
     ]
     body_cap = median(body_caps) if body_caps else None
     body_stroke = median(body_strokes) if body_strokes else None
@@ -703,7 +759,11 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
         tier = "normal"
         if body_cap and l["cap_px"] and l["cap_px"] >= 1.45 * body_cap:
             tier = "large"
-        elif body_stroke and l["stroke_med"] and l["stroke_med"] >= 1.30 * body_stroke:
+        elif (
+            body_stroke
+            and l["stroke_med"]
+            and l["stroke_med"] >= 1.30 * body_stroke
+        ):
             tier = "bold"
         l["tier"] = tier
 
