@@ -51,6 +51,12 @@ from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
 from receipt_agent.agents.label_evaluator.rendering.content_clean import (  # noqa: E402
     clean_for_render,
 )
+from receipt_agent.agents.label_evaluator.rendering.price_tokens import (  # noqa: E402
+    SYNTH_PRICE_TOKEN,
+)
+from receipt_agent.agents.label_evaluator.rendering.row_bands import (  # noqa: E402
+    group_rows_quantized as _group_rows_quantized,
+)
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -212,7 +218,8 @@ _LINE_LOGO_MIN_WIDTH = 220.0  # floor width for a single-token logo line
 _LINE_MAX_WIDTH = 900.0  # content width the row is scaled to fit within
 # Trailing price/amount tokens: optional leading currency / sign, a decimal
 # amount with two fractional digits, optional trailing sign (e.g. "1.99-").
-_PRICE_TOKEN_RE = re.compile(r"^[-+]?\$?\d{1,3}(?:,\d{3})*\.\d{2}[-+]?$")
+# Defined once in price_tokens (the cached-line variant: no tax flag).
+_PRICE_TOKEN_RE = SYNTH_PRICE_TOKEN
 
 
 def _is_price_token(token: str) -> bool:
@@ -780,16 +787,16 @@ def _line_text_from_cached_words(line: list[dict]) -> str:
 
 
 def _group_cached_words_by_line(words: list[dict]) -> list[list[dict]]:
-    grouped: dict[int, list[dict]] = {}
-    for word in words:
-        bbox = word.get("bbox")
-        if not bbox:
-            continue
-        y = round((float(bbox[1]) + float(bbox[3])) / 16) * 16
-        grouped.setdefault(int(y), []).append(word)
+    # Quantized bucketing lives in row_bands (shared with the other render-path
+    # row groupers, P1b); each returned row is left-to-right ordered here.
     return [
         sorted(line_words, key=lambda word: float(word["bbox"][0]))
-        for _, line_words in sorted(grouped.items(), reverse=True)
+        for line_words in _group_rows_quantized(
+            [word for word in words if word.get("bbox")],
+            lambda word: float(word["bbox"][1]) + float(word["bbox"][3]),
+            step=16,
+            descending=True,
+        )
     ]
 
 

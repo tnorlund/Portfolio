@@ -42,11 +42,8 @@ from receipt_agent.agents.label_evaluator.rendering.number_format import (
 from receipt_agent.agents.label_evaluator.rendering.number_format import (
     date_core as _date_core,
 )
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    fraction as _fraction,
-)
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    integer_part as _integer_part,
+from receipt_agent.agents.label_evaluator.rendering.price_tokens import (
+    PRICE_TOKEN as _CANONICAL_PRICE_TOKEN,
 )
 
 # A right-aligned amount token (optional currency/sign, 2-decimal tail, optional
@@ -55,10 +52,8 @@ from receipt_agent.agents.label_evaluator.rendering.number_format import (
 # The integer part accepts EITHER comma-grouped digits (``1,234``) OR a plain run
 # of digits (``1000``, ``1234``); without the bare-``\d+`` alternative an
 # uncommaed large amount falls through to left-snap and breaks the column.
-_PRICE_TOKEN = re.compile(
-    f"^[-+]?{_NF.currency}?{_integer_part(_NF, allow_bare=True)}"
-    f"{_fraction(_NF)}[-+]?{_NF.tax_flag}?$"
-)
+# Defined once in price_tokens (this grid form IS the canonical pattern).
+_PRICE_TOKEN = _CANONICAL_PRICE_TOKEN
 
 # Hard floor/ceiling on the body font, independent of any per-merchant noise.
 # The realism control is the profile geometry; these only stop a degenerate

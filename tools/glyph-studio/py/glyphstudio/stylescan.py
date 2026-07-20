@@ -94,6 +94,111 @@ _RULES = [
 ]
 _BARCODE_RE = re.compile(r"^\d{10,}$")
 
+# --- columnscan rider (#1188 P2): typed token edges per visual line --------
+#
+# A weight subline ("1.06 lb @ 8.99/lb", "2 @ $1.99") prints its numbers at
+# arbitrary x, not in the receipt's columns; the columns design excludes
+# those rows from column evidence.
+_WEIGHT_SUBLINE_RE = re.compile(r"@\s*\$?\d|\d\s*(lb|kg|oz)\b\s*@", re.I)
+_QTY_TOKEN_RE = re.compile(r"^\d{1,2}$")
+_FLAG_TOKEN_RE = re.compile(r"^[A-Z]$")
+# Sections whose alpha tokens are LABELS ("SUB TOTAL", "BALANCE DUE"), not
+# item descriptions -- keyed on the canonical section.
+_LABEL_SECTIONS = {"summary", "total_line", "payment"}
+
+
+def _token_role(
+    word_text: str,
+    *,
+    after_amount: bool,
+    label_row: bool,
+    standalone: bool = True,
+) -> str:
+    """Column role of one token: amount / qty / flag / label / desc.
+
+    ``standalone`` gates the qty role: a bare small int glued to the
+    description ("SIZE 9", "NO 12") is description text, not a quantity
+    column; only a first token or one separated by a real column gap
+    counts.
+    """
+    t = str(word_text or "").strip()
+    if _amount_token(t):
+        return "amount"
+    if _FLAG_TOKEN_RE.match(t) and after_amount:
+        return "flag"
+    if _QTY_TOKEN_RE.match(t) and not after_amount and standalone:
+        return "qty"
+    return "label" if label_row else "desc"
+
+
+def line_has_price(texts) -> bool:
+    """True when ANY token of a line is a canonical price token.
+
+    The single line-level price predicate for every classification entry
+    point (stylescan.measure, section_seeds) -- a row ending in a detached
+    tax flag ("MILK 4.29 F") must classify identically everywhere.
+    """
+    return any(_amount_token(str(t or "").strip()) for t in texts)
+
+
+def _amount_token(text: str) -> bool:
+    """Canonical price-token test (lazy import: pure-glyphstudio envs load
+    this module without receipt_agent installed)."""
+    try:
+        from receipt_agent.agents.label_evaluator.rendering.price_tokens import (
+            is_price_token,
+        )
+
+        return is_price_token(text)
+    except ImportError:
+        return bool(
+            re.match(r"^[-+]?\$?\d+(?:,\d{3})*\.\d{2}[-+]?[A-Z]?$", text)
+        )
+
+
+def line_token_records(
+    line: list[dict], section_canonical, width: float
+) -> tuple[list[dict], bool]:
+    """Typed token edge records for one visual line (x normalized 0-1).
+
+    Returns ``(tokens, is_weight_subline)``; weight sublines return their
+    flag with NO tokens so downstream column aggregation never sees them.
+    """
+    text = " ".join(str(w.get("text") or "") for w in line)
+    if _WEIGHT_SUBLINE_RE.search(text):
+        return [], True
+    label_row = section_canonical in _LABEL_SECTIONS
+    tokens = []
+    seen_amount = False
+    ordered = sorted(line, key=lambda w: w["l"])
+    for idx, w in enumerate(ordered):
+        # a qty candidate must stand APART from the text before it (first
+        # token, or a gap of at least 1.5x its own height) -- "SIZE 9" is
+        # description, "  1  CHEESEBURGER" is a quantity column.
+        if idx == 0:
+            standalone = True
+        else:
+            prev = ordered[idx - 1]
+            gap = w["l"] - prev["r"]
+            height = max(1.0, float(w.get("h") or (w["b"] - w["t"])))
+            standalone = gap >= 1.5 * height
+        role = _token_role(
+            w.get("text"),
+            after_amount=seen_amount,
+            label_row=label_row,
+            standalone=standalone,
+        )
+        if role == "amount":
+            seen_amount = True
+        tokens.append(
+            {
+                "role": role,
+                "l": round(w["l"] / width, 4),
+                "r": round(w["r"] / width, 4),
+            }
+        )
+    return tokens, False
+
 
 _COSTCO_RULES = [
     # Just the lane header. "THANK YOU"/"Please Come Again" are the footer
@@ -648,7 +753,13 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
     for line in lines:
         line.sort(key=lambda w: w["l"])
         text = " ".join(w["text"] for w in line)
-        has_price = bool(price_re.search(line[-1]["text"]))
+        # ANY word can carry the price: a row ending in a detached tax flag
+        # ("MILK 4.29 F") is still an item row. Only checking the last word
+        # dropped every flagged Gelson's item to 'other', which starved the
+        # columnscan aggregation of the items section entirely (#1188 P2).
+        # Word-ANCHORED via the canonical token test, so a substring match
+        # inside a URL / product code can't promote a row to 'item'.
+        has_price = line_has_price(w["text"] for w in line)
         section = _classify(text, has_price, merchant)
         # OCR line_ids covered by this visual line (words carry line_id). Lets a
         # caller join each measured row to a QA'd ReceiptSection (which stores
@@ -701,9 +812,18 @@ def measure(image_id: str, receipt_id: int, merchant: str = "sprouts") -> dict:
 
         underline = underline_probe(gray, lt, lb, ll, lr)
 
+        section_canonical = normalize_stylescan_section(section)
+        tokens, is_weight_subline = line_token_records(
+            line, section_canonical, W
+        )
+
         out_lines.append(
             {
                 "reverse_video": reverse_video,
+                # columnscan rider (#1188 P2): typed token edges (normalized
+                # x) for column aggregation; weight sublines carry no tokens.
+                "tokens": tokens,
+                "is_weight_subline": is_weight_subline,
                 # OCR line ids feeding this visual line -- the join key to
                 # ReceiptSection.line_ids (face-map v2).
                 "line_ids": sorted(
