@@ -1,4 +1,9 @@
-# infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
+"""Legacy metadata operations retained for migration and repair workflows.
+
+New merchant lookup and census code must use ``ReceiptPlace`` operations.
+These methods remain functional because the dev-to-prod mirror, historical
+cleanup, and place backfill still need to read or preserve old rows.
+"""
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
@@ -20,9 +25,10 @@ class _ReceiptMetadata(
     FlattenedStandardMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptMetadata" entities in
-    DynamoDB. This class is typically used within a DynamoClient to access and
-    manage receipt metadata records.
+    Compatibility operations for legacy ``ReceiptMetadata`` rows in DynamoDB.
+
+    ``ReceiptPlace`` is authoritative for active merchant reads. This mixin is
+    retained for migrations, reconciliation, repair, and cleanup only.
 
     Attributes
     ----------
@@ -354,7 +360,11 @@ class _ReceiptMetadata(
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
-        Lists ReceiptMetadata records from DynamoDB with optional pagination.
+        Lists legacy ReceiptMetadata records with optional pagination.
+
+        Deprecated for census work: query ``RECEIPT_PLACE`` through
+        ``list_receipt_places`` or the raw ``GSITYPE`` index. This API remains
+        available for migration, repair, and backfill tools.
 
         Parameters
         ----------
@@ -391,7 +401,11 @@ class _ReceiptMetadata(
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
-        Retrieves ReceiptMetadata records from DynamoDB by merchant name.
+        Retrieves legacy ReceiptMetadata records by merchant name.
+
+        Deprecated for merchant lookup: use
+        ``get_receipt_places_by_merchant``. This API remains available only for
+        migration and repair workflows.
 
         Parameters
         ----------

@@ -36,6 +36,14 @@ EXPECTED_SECTION_TOOLS = {
 }
 
 
+EXPECTED_RESEGMENT_TOOLS = {
+    "plan_receipt_resegmentation",
+    "get_receipt_resegmentation_plan",
+    "revise_receipt_resegmentation_plan",
+    "apply_receipt_resegmentation",
+}
+
+
 class _FakeTool:
     """Stand-in for mcp.types.Tool that just records its fields."""
 
@@ -43,6 +51,12 @@ class _FakeTool:
         self.name = name
         self.description = description
         self.inputSchema = inputSchema
+
+
+class _FakeContent:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
 
 def _install_mcp_stubs():
@@ -74,7 +88,8 @@ def _install_mcp_stubs():
     server_mod.Server = _FakeServer
     stdio_mod.stdio_server = _fake_stdio_server
     types_mod.Tool = _FakeTool
-    types_mod.TextContent = object
+    types_mod.TextContent = _FakeContent
+    types_mod.ImageContent = _FakeContent
 
     sys.modules["mcp"] = mcp_mod
     sys.modules["mcp.server"] = server_mod
@@ -84,9 +99,7 @@ def _install_mcp_stubs():
 
 def _load_module(label, path):
     _install_mcp_stubs()
-    spec = importlib.util.spec_from_file_location(
-        f"receipt_mcp_server_{label}", path
-    )
+    spec = importlib.util.spec_from_file_location(f"receipt_mcp_server_{label}", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -156,6 +169,117 @@ def test_both_servers_expose_identical_section_tool_shape():
     assert shape(stdio) == shape(lam)
 
 
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_resegment_tools_present_with_valid_schema(label):
+    module = _load_module(label, SERVER_FILES[label])
+    tools = asyncio.run(module.list_tools())
+    by_name = {tool.name: tool for tool in tools}
+
+    assert EXPECTED_RESEGMENT_TOOLS <= set(by_name)
+    plan_schema = by_name["plan_receipt_resegmentation"].inputSchema
+    assert set(plan_schema["required"]) == {
+        "image_id",
+        "source_receipt_id",
+        "segments",
+    }
+    segment_schema = plan_schema["properties"]["segments"]["items"]
+    assert "include_word_refs" in segment_schema["properties"]
+    word_ref_schema = segment_schema["properties"]["include_word_refs"]["items"]
+    assert word_ref_schema["oneOf"] == [
+        {"required": ["word_id"]},
+        {"required": ["word_ids"]},
+    ]
+    assert plan_schema["properties"]["schema_version"]["enum"] == [1, 2]
+    assert "assignments" in plan_schema["properties"]
+    assert "visualization" in plan_schema["properties"]
+    assert "visible_regions" in segment_schema["properties"]
+    revise_schema = by_name["revise_receipt_resegmentation_plan"].inputSchema
+    assert set(revise_schema["required"]) == {
+        "plan_id",
+        "base_revision",
+        "base_plan_hash",
+        "segments",
+        "assignments",
+        "revision_reason",
+    }
+    get_schema = by_name["get_receipt_resegmentation_plan"].inputSchema
+    assert get_schema["required"] == ["plan_id"]
+    apply_schema = by_name["apply_receipt_resegmentation"].inputSchema
+    assert set(apply_schema["required"]) == {"plan_id", "plan_hash"}
+
+
+def test_both_servers_expose_identical_resegment_tool_shape():
+    stdio = _load_module("stdio-resegment", SERVER_FILES["stdio"])
+    lam = _load_module("lambda-resegment", SERVER_FILES["lambda"])
+
+    def shape(module):
+        tools = asyncio.run(module.list_tools())
+        return {
+            tool.name: (tool.description, tool.inputSchema)
+            for tool in tools
+            if tool.name in EXPECTED_RESEGMENT_TOOLS
+        }
+
+    assert shape(stdio) == shape(lam)
+    for module in (stdio, lam):
+        for name in EXPECTED_RESEGMENT_TOOLS:
+            assert callable(getattr(module, f"{name}_impl"))
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_resegment_proxies_force_lambda_mode(label, monkeypatch):
+    """A caller-supplied `mode` key must never override the proxy's mode.
+
+    Otherwise the read-only-looking plan/revise tools could be smuggled
+    into invoking the destructive apply operation.
+    """
+    module = _load_module(label, SERVER_FILES[label])
+    calls = []
+
+    async def fake_invoke(function_name, payload):
+        calls.append((function_name, payload))
+        return {"ok": True}
+
+    monkeypatch.setattr(module, "_invoke_lambda", fake_invoke)
+
+    asyncio.run(
+        module.plan_receipt_resegmentation_impl(
+            {"image_id": "img", "mode": "apply", "plan_hash": "h"}
+        )
+    )
+    asyncio.run(
+        module.revise_receipt_resegmentation_plan_impl(
+            {"plan_id": "p", "mode": "apply"}
+        )
+    )
+
+    assert [payload["mode"] for _, payload in calls] == ["plan", "revise"]
+    for function_name, _ in calls:
+        assert function_name.endswith("-resegment-receipt")
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_resegment_plan_attaches_contact_sheet_as_image_content(label, monkeypatch):
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setattr(module, "get_clients", lambda: (object(), object(), object()))
+
+    async def fake_plan(_arguments):
+        return {
+            "plan_id": "plan-1",
+            "preview_urls": {"contact_sheet": "https://example.test/sheet.jpg"},
+            "visualizations": {"contact_sheet": {"mime_type": "image/jpeg"}},
+        }
+
+    monkeypatch.setattr(module, "plan_receipt_resegmentation_impl", fake_plan)
+    monkeypatch.setattr(module, "_fetch_mcp_preview", lambda _url: b"jpeg-bytes")
+
+    content = asyncio.run(module.call_tool("plan_receipt_resegmentation", {}))
+
+    assert [item.type for item in content] == ["text", "image"]
+    assert content[1].mimeType == "image/jpeg"
+    assert content[1].data == "anBlZy1ieXRlcw=="
+
+
 # ---------------------------------------------------------------------------
 # Corruption-path tests: the impls must refuse writes that would persist bad
 # rows (noncanonical section_type SKs, orphan sections, invalid line refs).
@@ -204,9 +328,7 @@ def test_create_rejects_invalid_section_type(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient()
     result = asyncio.run(
-        module.create_receipt_section_impl(
-            client, VALID_IMAGE_ID, 1, "ITMES", [1, 2]
-        )
+        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, "ITMES", [1, 2])
     )
     assert "error" in result
     assert "Invalid section_type" in result["error"]
@@ -220,9 +342,7 @@ def test_create_rejects_line_ids_not_on_receipt(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(line_ids=(1, 2, 3))
     result = asyncio.run(
-        module.create_receipt_section_impl(
-            client, VALID_IMAGE_ID, 1, "ITEMS", [2, 99]
-        )
+        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, "ITEMS", [2, 99])
     )
     assert "error" in result
     assert "99" in result["error"]
@@ -236,9 +356,7 @@ def test_create_rejects_nonexistent_receipt(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(receipt_exists=False)
     result = asyncio.run(
-        module.create_receipt_section_impl(
-            client, VALID_IMAGE_ID, 42, "ITEMS", [1]
-        )
+        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 42, "ITEMS", [1])
     )
     assert "error" in result
     assert "not found" in result["error"]
@@ -251,9 +369,7 @@ def test_create_succeeds_for_valid_input(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(line_ids=(1, 2, 3))
     result = asyncio.run(
-        module.create_receipt_section_impl(
-            client, VALID_IMAGE_ID, 1, " items ", [1, 2]
-        )
+        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, " items ", [1, 2])
     )
     assert result.get("success") is True
     assert result["section_type"] == "ITEMS"  # stripped + uppercased
@@ -287,17 +403,13 @@ def test_update_and_delete_reject_invalid_section_type(label, impl_name, args):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-@pytest.mark.parametrize(
-    "legacy_type", ["HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"]
-)
+@pytest.mark.parametrize("legacy_type", ["HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"])
 def test_create_rejects_deprecated_section_types(label, legacy_type):
     pytest.importorskip("receipt_dynamo")
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(line_ids=(1, 2, 3))
     result = asyncio.run(
-        module.create_receipt_section_impl(
-            client, VALID_IMAGE_ID, 1, legacy_type, [1]
-        )
+        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, legacy_type, [1])
     )
     assert "error" in result
     assert "deprecated" in result["error"]
@@ -318,9 +430,7 @@ def test_delete_still_accepts_deprecated_section_types(label):
             deleted.append((receipt_id, image_id, section_type))
 
     result = asyncio.run(
-        module.delete_receipt_section_impl(
-            _DeleteClient(), VALID_IMAGE_ID, 1, "HEADER"
-        )
+        module.delete_receipt_section_impl(_DeleteClient(), VALID_IMAGE_ID, 1, "HEADER")
     )
     assert result.get("success") is True
     assert deleted == [(1, VALID_IMAGE_ID, "HEADER")]
