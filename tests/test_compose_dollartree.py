@@ -287,6 +287,31 @@ def test_vote_never_creates_chimeras_across_distinct_products():
     assert texts.count("TOOTHBRUSH") == 2
 
 
+def test_amount_fill_never_crosses_distinct_full_descriptions():
+    words = [_word("DESCRIPTION", 0, 900, line_id=1)]
+    for i, y in enumerate((780, 680)):
+        words.append(
+            _word(
+                "BAMBOO CHARCOAL TOOTHBRUSH",
+                10,
+                y,
+                line_id=2 + i,
+            )
+        )
+        words.append(_word("1.00T", 920, y + 1, line_id=20 + i))
+
+    # This separate, evidence-free product shares the old two-token key but
+    # has no observed amount. It may be dropped as an isolated fragment, but
+    # it must never receive the toothbrush price, total, or tax flag.
+    words.append(_word("BAMBOO CHARCOAL SOAP", 10, 580, line_id=4))
+
+    out = canonical_words(words)
+    texts = [word["text"] for word in out]
+    assert texts.count("TOOTHBRUSH") == 2
+    assert texts.count("1.00T") == 2
+    assert "SOAP" not in texts
+
+
 def test_generated_tax_uses_half_up_cent_rounding():
     import compose_dollartree as cd
 
