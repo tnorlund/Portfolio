@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "char": "-",
+ "codepoint": 45,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "gelsons.refined.npz",
+  "samples": 20,
+  "consensusHash": "7d687f2a777f",
+  "date": "2026-07-19"
+ },
+ "width": 499.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 55.1,
+     "y": 513.9,
+     "type": "corner"
+    },
+    {
+     "x": 444.0,
+     "y": 505.6,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

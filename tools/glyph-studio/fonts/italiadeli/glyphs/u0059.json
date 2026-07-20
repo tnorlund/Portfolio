@@ -1,0 +1,143 @@
+{
+ "version": 1,
+ "char": "Y",
+ "codepoint": 89,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "italiadeli.refined.npz",
+  "samples": 13,
+  "consensusHash": "404705dbc606",
+  "date": "2026-07-19"
+ },
+ "width": 568.0,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 340.8,
+     "y": 655.6,
+     "type": "corner"
+    },
+    {
+     "x": 306.2,
+     "y": 558.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 494.4,
+     "y": 955.6,
+     "type": "corner"
+    },
+    {
+     "x": 494.4,
+     "y": 955.6,
+     "type": "corner"
+    },
+    {
+     "x": 514.5,
+     "y": 955.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 228.4,
+     "y": 178.7,
+     "type": "corner"
+    },
+    {
+     "x": 293.2,
+     "y": 178.7,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 397.9,
+     "y": 655.6,
+     "type": "corner"
+    },
+    {
+     "x": 340.8,
+     "y": 655.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 514.5,
+     "y": 955.6,
+     "type": "corner"
+    },
+    {
+     "x": 407.1,
+     "y": 655.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 300.7,
+     "y": 44.4,
+     "type": "corner"
+    },
+    {
+     "x": 278.2670093335346,
+     "y": 546.1663524456299,
+     "type": "corner",
+     "hOut": {
+      "x": 234.94680430163294,
+      "y": 589.583410795089
+     }
+    },
+    {
+     "x": 166.68698412848786,
+     "y": 728.6,
+     "type": "corner",
+     "hIn": {
+      "x": 148.83608832143534,
+      "y": 643.9566886925868
+     }
+    },
+    {
+     "x": 146.72041465704666,
+     "y": 728.6,
+     "type": "corner",
+     "hOut": {
+      "x": 118.93020978320646,
+      "y": 741.3448313316981
+     }
+    },
+    {
+     "x": 56.2,
+     "y": 955.6,
+     "type": "corner",
+     "hIn": {
+      "x": 51.340802591989124,
+      "y": 922.0
+     }
+    }
+   ]
+  }
+ ]
+}

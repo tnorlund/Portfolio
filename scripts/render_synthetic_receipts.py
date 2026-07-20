@@ -883,8 +883,16 @@ def _text_section(text: str, hp: dict) -> str:
 
 def _cached_receipt_dict(example: dict) -> dict:
     if example.get("tokens") and example.get("bboxes"):
-        return _cached_token_receipt_dict(example)
-    return _cached_line_receipt_dict(example)
+        receipt = _cached_token_receipt_dict(example)
+    else:
+        receipt = _cached_line_receipt_dict(example)
+    # Propagate the batch merchant into the RECEIPT dict: downstream profile
+    # hooks (graphics selection, canonical composition) key off
+    # receipt["merchant_name"], and a cached render that loses it silently
+    # bypasses them all.
+    if example.get("merchant_name") and not receipt.get("merchant_name"):
+        receipt["merchant_name"] = example["merchant_name"]
+    return receipt
 
 
 # Cached-example canvas sizes (W, H), selected from the example's own metadata
@@ -1497,6 +1505,34 @@ def _render_cached_hybrid(
     face_source: str = "stylemap",
     row_faces: dict | None = None,
 ) -> str:
+    # Canonical composition: a profile may declare that this merchant's OCR
+    # is not renderable as-is (Dollar Tree: every dev source is a sheared
+    # photo) and route the words through a composer BEFORE any layout. This
+    # is the production hook -- glyph_review, section_compare and normal
+    # renders all pass through here, so the composed layout IS the render.
+    compose_kind = get_merchant_profile(receipt.get("merchant_name")).get(
+        "compose"
+    )
+    if compose_kind == "dollartree":
+        synth_dir = os.path.join(REPO_ROOT, "synthesis_loop")
+        if synth_dir not in sys.path:
+            sys.path.insert(0, synth_dir)
+        from compose_dollartree import canonical_words  # noqa: E402
+
+        # Composition exists to canonicalize SHEARED REAL OCR, which only
+        # word-form receipts carry. LINE-form cached examples are already a
+        # synthetic canonical layout with no real x-geometry to re-derive
+        # columns from -- composing them erases their items -- so they pass
+        # through untouched. An empty word list likewise never composes
+        # (replacing a receipt we could not read with just the wordmark and
+        # column headings would erase it).
+        raw_words = receipt.get("words")
+        if (
+            raw_words
+            and receipt.get("lines") is None
+            and not receipt.get("_composed")
+        ):
+            receipt = dict(receipt, words=canonical_words(raw_words))
     receipt = _repair_missing_top_header_lines(receipt)
     # Render-time content repair (EMV/auth strings, totals) on the synthetic
     # tokens just before drawing -- fixes the dominant remaining realism tell
@@ -2421,6 +2457,17 @@ def _overlay_qr_and_barcode(
     block_full = qr_size + gap + bar_h
 
     gfx = graphics_for_merchant(receipt.get("merchant_name"))
+    # A merchant whose real footer references ONLY a QR ("Or scan this QR
+    # Code" -- The Stand) must not get a fabricated Code128 stacked under it.
+    if gfx.get("footer_qr_only", False):
+        if avail_h >= 64:
+            qs = min(qr_size, int(avail_h))
+            y0 = int(gtop + (avail_h - qs) / 2)
+            qr_tile = receipt_graphics.render_qr_tile(
+                _qr_payload(receipt, seed), qs, seed
+            )
+            _paste_graphic_tile(image, qr_tile, int(cx - qs / 2), y0)
+        return
     kind = gfx["barcode_kind"]
     with_hri = gfx["barcode_with_hri"]
     barcode_tile = receipt_graphics.render_barcode_tile(
@@ -2545,7 +2592,7 @@ def _phrase_logo_placement(
     norm = [_normalize_phrase(p) for p in phrases if p]
     if not norm:
         return None
-    drop, boxes = [], []
+    matched: list[tuple[float, float, list[dict]]] = []
     for words in _receipt_lines(receipt):
         # Match a phrase only when it spans a CONTIGUOUS run of whole word
         # tokens on the line -- so multi-word slogans still match
@@ -2567,8 +2614,33 @@ def _phrase_logo_placement(
         ]
         if ys and (sum(ys) / len(ys)) < 780.0:
             continue
+        if ys:
+            matched.append((max(ys), max(ys) - min(ys), words))
+    # Absorb only the TOP cluster of matched lines (contiguous within ~one
+    # line height). A graphic badge's shed tokens sit adjacent to each other;
+    # a REAL text line printed further below (The Stand's "THE STAND" under
+    # its badge) also matches a brand phrase but must keep rendering as text,
+    # not be unioned into the logo band and painted over. Single-matched-line
+    # merchants (and adjacent multi-line wordmarks like DOLLAR/TREE) are
+    # unaffected.
+    matched.sort(key=lambda m: -m[0])  # y-up: top of paper first
+    drop, boxes = [], []
+    cluster_bottom = None
+    for top_y, line_h, words in matched:
+        if cluster_bottom is not None and (
+            cluster_bottom - top_y > 1.0 * max(line_h, 1.0)
+        ):
+            break
         drop.extend(words)
         boxes.extend(w["bbox"] for w in words if w.get("bbox"))
+        line_bottom = min(
+            min(w["bbox"][1], w["bbox"][3]) for w in words if w.get("bbox")
+        )
+        cluster_bottom = (
+            line_bottom
+            if cluster_bottom is None
+            else min(cluster_bottom, line_bottom)
+        )
     band = _union_bbox(boxes)
     if band is None:
         return None

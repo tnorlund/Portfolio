@@ -1,0 +1,62 @@
+{
+ "version": 1,
+ "char": ":",
+ "codepoint": 58,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "neighborly.refined.npz",
+  "samples": 37,
+  "consensusHash": "d7e30177dd96",
+  "date": "2026-07-19"
+ },
+ "width": 183.4,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 125.1,
+     "y": 141.7,
+     "type": "corner"
+    },
+    {
+     "x": 125.1,
+     "y": 39.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 48.7,
+     "y": 143.1,
+     "type": "corner"
+    },
+    {
+     "x": 126.5,
+     "y": 143.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 130.7,
+     "y": 466.7,
+     "type": "corner"
+    },
+    {
+     "x": 130.7,
+     "y": 661.0,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}
