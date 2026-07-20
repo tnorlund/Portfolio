@@ -23,6 +23,7 @@ from receipt_dynamo.data._label_count_cache import _LabelCountCache
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
 from receipt_dynamo.data._merchant_font import _MerchantFont
+from receipt_dynamo.data._merchant_truth import _MerchantTruth
 from receipt_dynamo.data._ocr_job import _OCRJob
 from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
@@ -115,6 +116,7 @@ class DynamoClient(
     _ReceiptPlace,
     _CompletionBatchResult,
     _MerchantFont,
+    _MerchantTruth,
     _OCRJob,
     _ReceiptRow,
     _ReceiptSection,
