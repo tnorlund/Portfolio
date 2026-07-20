@@ -97,3 +97,7 @@ class MerchantTruthIntegrityError(MerchantTruthError, ValueError):
 
 class MerchantTruthTableMismatchError(MerchantTruthError, ValueError):
     """Raised before a write targets an unexpected table."""
+
+
+class MerchantTruthPromotionError(MerchantTruthError):
+    """Raised when fail-closed promotion cannot preserve the truth closure."""

@@ -463,3 +463,19 @@ class MerchantTruthLoader:
             json.dump(value, handle, sort_keys=True, separators=(",", ":"))
             handle.write("\n")
         temporary.replace(path)
+
+
+def verify_merchant_truth_bundle_items(
+    items: list[dict[str, Any]],
+    *,
+    slug: str,
+    version: int,
+    expected_bundle_hash: str,
+) -> tuple[MerchantTruthManifest, list[MerchantTruthComponent]]:
+    """Public fail-closed verifier shared by loaders and promotion."""
+    return MerchantTruthLoader._parse_and_verify(  # pylint: disable=protected-access
+        items,
+        slug=slug,
+        version=version,
+        expected_bundle_hash=expected_bundle_hash,
+    )

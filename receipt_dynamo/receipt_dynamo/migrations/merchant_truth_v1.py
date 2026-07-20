@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 
 DEV_TABLE_NAME = "ReceiptsTable-dc5be22"
+ARTIFACT_BUCKET_ALIAS = "merchant-font-artifacts"
 EXPECTED_MERCHANT_COUNT = 16
 EXPECTED_MISSING_FONT_SLUGS = frozenset(
     {"amazon_fresh", "smith_s", "dollar_tree"}
@@ -318,7 +319,7 @@ def _catalog_record(item: dict[str, Any]) -> dict[str, Any]:
 
 def _font_payload(font: MerchantFont) -> dict[str, Any]:
     return {
-        "s3_bucket": font.s3_bucket,
+        "bucket_alias": ARTIFACT_BUCKET_ALIAS,
         "s3_key": font.s3_key,
         "content_hash": font.content_hash,
         "source_commit": font.source_commit,
@@ -354,12 +355,11 @@ def _find_local_stylemap(
 
 def _artifact_document(
     *,
-    bucket: str,
     key: str,
     content: bytes,
 ) -> dict[str, Any]:
     return {
-        "s3_bucket": bucket,
+        "bucket_alias": ARTIFACT_BUCKET_ALIAS,
         "s3_key": key,
         "content_hash": _sha256_bytes(content),
         "size": len(content),
@@ -608,7 +608,6 @@ def _build_assets_and_stylemap(
             regular.s3_bucket, regular.stylemap_s3_key
         )
         artifact = _artifact_document(
-            bucket=regular.s3_bucket,
             key=regular.stylemap_s3_key,
             content=content,
         )
@@ -644,7 +643,6 @@ def _build_assets_and_stylemap(
             regular.s3_bucket, regular.logo_s3_key
         )
         assets["logo"] = _artifact_document(
-            bucket=regular.s3_bucket,
             key=regular.logo_s3_key,
             content=logo_content,
         )
