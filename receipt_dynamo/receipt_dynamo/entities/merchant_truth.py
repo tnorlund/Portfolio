@@ -27,7 +27,7 @@ COMPONENT_NAMES = frozenset(
 )
 MANIFEST_STATUSES = frozenset({"OPEN", "SEALED"})
 PROPOSAL_STATUSES = frozenset({"OPEN", "MEASURED_IN_CANDIDATE", "EFFECTIVE"})
-_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$")
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -50,8 +50,7 @@ def hash_payload(value: Any) -> str:
 def compute_bundle_hash(component_hashes: Mapping[str, str]) -> str:
     """Hash the sorted ``component:hash`` manifest lines."""
     lines = "".join(
-        f"{name}:{component_hashes[name]}\n"
-        for name in sorted(component_hashes)
+        f"{name}:{component_hashes[name]}\n" for name in sorted(component_hashes)
     )
     return hashlib.sha256(lines.encode("utf-8")).hexdigest()
 
@@ -64,11 +63,7 @@ def merchant_truth_pk(slug: str) -> str:
 
 def version_prefix(version: int) -> str:
     """Return the fixed-width sort-key prefix for a version."""
-    if (
-        isinstance(version, bool)
-        or not isinstance(version, int)
-        or version < 1
-    ):
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise ValueError("version must be a positive integer")
     if version > 9_999_999_999:
         raise ValueError("version exceeds the 10-digit key grammar")
@@ -313,9 +308,7 @@ class MerchantTruthProposal(DynamoDBEntity):
     def __post_init__(self) -> None:
         _validate_slug(self.slug)
         if not self.created_at or not self.claim_slug or not self.claim:
-            raise ValueError(
-                "proposal timestamp, claim slug, and claim required"
-            )
+            raise ValueError("proposal timestamp, claim slug, and claim required")
         if self.status not in PROPOSAL_STATUSES:
             raise ValueError(f"invalid proposal status: {self.status}")
 
