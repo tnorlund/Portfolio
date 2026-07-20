@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
+from receipt_agent.agents.label_evaluator.rendering import glyph_atlas
 from receipt_agent.agents.label_evaluator.rendering.glyph_atlas import (
     GlyphAtlas,
     _is_promo_text,
     _logo_match_score,
     build_glyph_atlas,
+    build_glyph_atlas_from_dynamo,
     extract_glyph_image,
     load_atlas,
     save_atlas,
@@ -402,3 +404,56 @@ def test_build_returns_none_without_usable_receipts():
         )
         is None
     )
+
+
+def test_dynamo_atlas_resolves_receipts_through_receipt_place(monkeypatch):
+    source = _build_inputs()[0]
+
+    class PlaceOnlyClient:
+        def __init__(self):
+            self.merchant_queries = []
+
+        def get_receipt_places_by_merchant(self, merchant_name):
+            self.merchant_queries.append(merchant_name)
+            place = type("Place", (), {"image_id": "img-1", "receipt_id": 1})()
+            return [place, place], None
+
+        def get_image_details(self, image_id):
+            assert image_id == "img-1"
+            receipt = type("Receipt", (), {"receipt_id": 1})()
+            letters = [
+                type("Letter", (), {**letter, "receipt_id": 1})()
+                for letter in source["letters"]
+            ]
+            return type(
+                "Details",
+                (),
+                {"receipt_letters": letters, "receipts": [receipt]},
+            )()
+
+    client = PlaceOnlyClient()
+    monkeypatch.setattr(
+        "receipt_dynamo.data.dynamo_client.DynamoClient",
+        lambda **_kwargs: client,
+    )
+    monkeypatch.setattr(
+        "receipt_upload.font_analysis.load_raw_image_from_s3",
+        lambda _receipt: source["raw_image"],
+    )
+    captured = {}
+    expected = object()
+
+    def capture_build(receipts, merchant_name, **kwargs):
+        captured["receipts"] = receipts
+        captured["merchant_name"] = merchant_name
+        captured["kwargs"] = kwargs
+        return expected
+
+    monkeypatch.setattr(glyph_atlas, "build_glyph_atlas", capture_build)
+
+    result = build_glyph_atlas_from_dynamo("ReceiptsTable-dc5be22", "TestMart")
+
+    assert result is expected
+    assert client.merchant_queries == ["TestMart"]
+    assert len(captured["receipts"]) == 1
+    assert captured["merchant_name"] == "TestMart"
