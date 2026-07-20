@@ -706,7 +706,8 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
             description="""Batch-update existing ReceiptWordLabel validation statuses.
 
 This operation is dev-table-only and permits only whitelisted status
-transitions. Every live write is preceded by a JSONL audit record.
+transitions. Every live batch gets a durable DynamoDB audit partition;
+each successful label mutation and its UPDATED audit outcome commit atomically.
 dry_run defaults to true, and each batch is capped at 500 rows.
 
 This capability is motivated by the 2026-07-18 triage campaign, which
@@ -770,11 +771,6 @@ processed 1,369 rows with zero bad writes.""",
                         "minLength": 1,
                         "description": "Required audit identity for the reviewer",
                     },
-                    "audit_path": {
-                        "type": "string",
-                        "minLength": 1,
-                        "description": "JSONL path written before each live update",
-                    },
                     "expected_old_status": {
                         "type": "string",
                         "enum": [
@@ -794,7 +790,6 @@ processed 1,369 rows with zero bad writes.""",
                 "required": [
                     "updates",
                     "label_proposed_by",
-                    "audit_path",
                 ],
             },
         ),
@@ -1907,7 +1902,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
                 dynamo_client,
                 updates=arguments["updates"],
                 label_proposed_by=arguments["label_proposed_by"],
-                audit_path=arguments["audit_path"],
                 expected_old_status=arguments.get(
                     "expected_old_status", "VALID"
                 ),
@@ -3252,7 +3246,6 @@ async def batch_update_word_labels_impl(
     dynamo_client,
     updates: list[dict[str, Any]],
     label_proposed_by: str,
-    audit_path: str,
     expected_old_status: str = "VALID",
     dry_run: bool = True,
 ) -> dict:
@@ -3266,7 +3259,6 @@ async def batch_update_word_labels_impl(
             dynamo_client,
             updates,
             label_proposed_by=label_proposed_by,
-            audit_path=audit_path,
             expected_old_status=expected_old_status,
             dry_run=dry_run,
         )

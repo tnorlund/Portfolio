@@ -140,6 +140,7 @@ class McpServerLambda(ComponentResource):
                                     "dynamodb:GetItem",
                                     "dynamodb:PutItem",
                                     "dynamodb:UpdateItem",
+                                    "dynamodb:TransactWriteItems",
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
                                     "dynamodb:BatchWriteItem",

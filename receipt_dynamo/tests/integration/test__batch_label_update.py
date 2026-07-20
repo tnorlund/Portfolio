@@ -1,19 +1,20 @@
 """Integration tests for guarded receipt-word-label batch updates."""
 
-import json
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from receipt_dynamo import DynamoClient, ReceiptWordLabel
 from receipt_dynamo.data.batch_label_update import (
+    AUDIT_PK_PREFIX,
     DEV_TABLE,
     MAX_BATCH,
+    AuditStoreError,
     batch_update_word_labels,
 )
 
@@ -53,14 +54,8 @@ def batch_dynamo_client(monkeypatch: pytest.MonkeyPatch):
                 {
                     "IndexName": "GSI3",
                     "KeySchema": [
-                        {
-                            "AttributeName": "GSI3PK",
-                            "KeyType": "HASH",
-                        },
-                        {
-                            "AttributeName": "GSI3SK",
-                            "KeyType": "RANGE",
-                        },
+                        {"AttributeName": "GSI3PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI3SK", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                 }
@@ -109,8 +104,33 @@ def _get_item(
     response = dynamo_client._client.get_item(
         TableName=DEV_TABLE,
         Key=label.key,
+        ConsistentRead=True,
     )
     return response["Item"]
+
+
+def _audit_items(
+    dynamo_client: DynamoClient,
+    batch_id: str,
+) -> dict[str, dict[str, Any]]:
+    """Fetch one durable audit partition keyed by its sort keys."""
+    response = dynamo_client._client.query(
+        TableName=DEV_TABLE,
+        KeyConditionExpression="PK = :pk",
+        ExpressionAttributeValues={
+            ":pk": {"S": f"{AUDIT_PK_PREFIX}{batch_id}"}
+        },
+        ConsistentRead=True,
+    )
+    return {item["SK"]["S"]: item for item in response["Items"]}
+
+
+def _client_error(code: str) -> ClientError:
+    """Build a low-level DynamoDB error with a stable AWS code."""
+    return ClientError(
+        {"Error": {"Code": code, "Message": "adversarial failure"}},
+        "TransactWriteItems",
+    )
 
 
 @pytest.mark.parametrize(
@@ -122,7 +142,6 @@ def _get_item(
 )
 def test_rejects_disallowed_or_invalid_transition(
     batch_dynamo_client: DynamoClient,
-    tmp_path: Path,
     new_status: str,
     error_match: str,
 ) -> None:
@@ -132,7 +151,6 @@ def test_rejects_disallowed_or_invalid_transition(
             batch_dynamo_client,
             [_update(new_status=new_status)],
             label_proposed_by="test-reviewer",
-            audit_path=tmp_path / "audit.jsonl",
         )
 
     with pytest.raises(
@@ -143,7 +161,6 @@ def test_rejects_disallowed_or_invalid_transition(
             batch_dynamo_client,
             [_update()],
             label_proposed_by="test-reviewer",
-            audit_path=tmp_path / "audit.jsonl",
             expected_old_status="BOGUS",
         )
 
@@ -151,7 +168,6 @@ def test_rejects_disallowed_or_invalid_transition(
 def test_rejects_missing_or_mismatched_table_environment(
     batch_dynamo_client: DynamoClient,
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     """Require the environment guard to match the client and dev table."""
     monkeypatch.delenv("DYNAMODB_TABLE_NAME")
@@ -161,7 +177,6 @@ def test_rejects_missing_or_mismatched_table_environment(
             batch_dynamo_client,
             [],
             label_proposed_by="test-reviewer",
-            audit_path=tmp_path / "audit.jsonl",
         )
 
     monkeypatch.setenv("DYNAMODB_TABLE_NAME", "SomeOtherTable")
@@ -173,13 +188,11 @@ def test_rejects_missing_or_mismatched_table_environment(
             batch_dynamo_client,
             [],
             label_proposed_by="test-reviewer",
-            audit_path=tmp_path / "audit.jsonl",
         )
 
 
 def test_rejects_batches_over_cap(
     batch_dynamo_client: DynamoClient,
-    tmp_path: Path,
 ) -> None:
     """Reject oversized batches rather than truncating them."""
     updates = [_update() for _ in range(MAX_BATCH + 1)]
@@ -189,142 +202,125 @@ def test_rejects_batches_over_cap(
             batch_dynamo_client,
             updates,
             label_proposed_by="test-reviewer",
-            audit_path=tmp_path / "audit.jsonl",
         )
 
 
 def test_dry_run_makes_no_write_or_audit(
     batch_dynamo_client: DynamoClient,
-    tmp_path: Path,
 ) -> None:
-    """Dry runs pre-check rows without writing DynamoDB or audit files."""
+    """Dry runs pre-check rows without writing DynamoDB or audit items."""
     label = _seed_label(batch_dynamo_client)
-    audit_path = tmp_path / "audit.jsonl"
 
     result = batch_update_word_labels(
         batch_dynamo_client,
         [_update()],
         label_proposed_by="test-reviewer",
-        audit_path=audit_path,
     )
 
     item = _get_item(batch_dynamo_client, label)
+    all_items = batch_dynamo_client._client.scan(TableName=DEV_TABLE)["Items"]
     assert result["dry_run"] is True
+    assert result["batch_id"] is None
+    assert result["audit_uri"] is None
+    assert result["audit_sha256"] is None
+    assert result["audit_manifest_status"] == "not_run"
     assert result["counts"]["WOULD_UPDATE"] == 1
     assert result["rows"][0]["outcome"] == "WOULD_UPDATE"
     assert result["spot_check"] == "not_run"
     assert item["validation_status"]["S"] == "VALID"
-    assert item["GSI3PK"]["S"] == "VALIDATION_STATUS#VALID"
-    assert not audit_path.exists()
+    assert all(
+        not candidate["PK"]["S"].startswith(AUDIT_PK_PREFIX)
+        for candidate in all_items
+    )
 
 
-def test_live_update_audits_before_write_and_spot_checks(
+def test_live_update_audit_and_label_commit_atomically(
     batch_dynamo_client: DynamoClient,
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
-    """Apply a live update with ordered audit, truncation, and GSI3 verify."""
+    """Persist the full plan first, then atomically commit row plus outcome."""
     label = _seed_label(batch_dynamo_client)
-    audit_path = tmp_path / "audit.jsonl"
     long_reasoning = "r" * 650
-    original_update_item = batch_dynamo_client._client.update_item
+    original_transaction = batch_dynamo_client._client.transact_write_items
+    saw_complete_plan = False
 
-    def update_item_after_audit(*args: Any, **kwargs: Any) -> Any:
-        assert audit_path.exists()
-        audit_lines = audit_path.read_text(encoding="utf-8").splitlines()
-        assert len(audit_lines) == 1
-        assert json.loads(audit_lines[0])["word_id"] == 3
-        return original_update_item(*args, **kwargs)
+    def transact_after_plan(*args: Any, **kwargs: Any) -> Any:
+        nonlocal saw_complete_plan
+        scan = batch_dynamo_client._client.scan(TableName=DEV_TABLE)["Items"]
+        audits = [
+            item
+            for item in scan
+            if item["PK"]["S"].startswith(AUDIT_PK_PREFIX)
+        ]
+        assert len(audits) == 2
+        assert {item["outcome"]["S"] for item in audits} == {"PLANNED"}
+        saw_complete_plan = True
+        return original_transaction(*args, **kwargs)
 
     monkeypatch.setattr(
         batch_dynamo_client._client,
-        "update_item",
-        update_item_after_audit,
+        "transact_write_items",
+        transact_after_plan,
     )
 
     result = batch_update_word_labels(
         batch_dynamo_client,
         [_update(reasoning=long_reasoning)],
         label_proposed_by="test-reviewer",
-        audit_path=audit_path,
         dry_run=False,
     )
 
     item = _get_item(batch_dynamo_client, label)
-    audit_lines = audit_path.read_text(encoding="utf-8").splitlines()
-    audit_record = json.loads(audit_lines[0])
+    audit = _audit_items(batch_dynamo_client, result["batch_id"])
+    manifest = audit["MANIFEST"]
+    row_audit = audit["ROW#00000"]
 
+    assert saw_complete_plan is True
     assert result["dry_run"] is False
     assert result["counts"]["UPDATED"] == 1
     assert result["rows"][0]["outcome"] == "UPDATED"
+    assert result["rows"][0]["reconciliation"] == "ATOMIC_COMMIT"
     assert result["spot_check"] == "passed"
+    assert result["audit_uri"].startswith(f"dynamodb://{DEV_TABLE}/")
+    assert len(result["audit_sha256"]) == 64
+    assert result["audit_manifest_status"] == "complete"
     assert item["validation_status"]["S"] == "INVALID"
     assert item["GSI3PK"]["S"] == "VALIDATION_STATUS#INVALID"
     assert item["label_proposed_by"]["S"] == "test-reviewer"
     assert item["reasoning"]["S"] == long_reasoning[:500]
-    assert len(item["reasoning"]["S"]) == 500
-    assert len(audit_lines) == 1
-    assert audit_record["old_status"] == "VALID"
-    assert audit_record["new_status"] == "INVALID"
-    assert audit_record["reasoning"] == long_reasoning
-    assert audit_record["label_proposed_by"] == "test-reviewer"
+    assert manifest["outcome"]["S"] == "COMPLETED"
+    assert row_audit["outcome"]["S"] == "UPDATED"
+    assert row_audit["reconciliation"]["S"] == "ATOMIC_COMMIT"
+    assert row_audit["reasoning"]["S"] == long_reasoning
+    assert row_audit["label_proposed_by"]["S"] == "test-reviewer"
 
 
-def test_skips_row_when_status_already_changed(
+def test_status_changed_and_missing_rows_have_durable_outcomes(
     batch_dynamo_client: DynamoClient,
-    tmp_path: Path,
 ) -> None:
-    """Skip a row whose current status no longer matches the expectation."""
-    label = _seed_label(
-        batch_dynamo_client,
-        validation_status="INVALID",
-    )
-    audit_path = tmp_path / "audit.jsonl"
+    """Make pre-check skips explicit in the durable outcome ledger."""
+    _seed_label(batch_dynamo_client, validation_status="INVALID")
+    missing = _update(word_id=999)
 
     result = batch_update_word_labels(
         batch_dynamo_client,
-        [_update()],
+        [_update(), missing],
         label_proposed_by="test-reviewer",
-        audit_path=audit_path,
         dry_run=False,
     )
 
-    item = _get_item(batch_dynamo_client, label)
-    row = result["rows"][0]
-
+    audit = _audit_items(batch_dynamo_client, result["batch_id"])
     assert result["counts"]["SKIPPED_STATUS_CHANGED"] == 1
-    assert row["outcome"] == "SKIPPED_STATUS_CHANGED"
-    assert row["old_status"] == "INVALID"
-    assert item["validation_status"]["S"] == "INVALID"
-    assert not audit_path.exists()
-
-
-def test_skips_missing_row(
-    batch_dynamo_client: DynamoClient,
-    tmp_path: Path,
-) -> None:
-    """Report a missing label without auditing or creating it."""
-    audit_path = tmp_path / "audit.jsonl"
-
-    result = batch_update_word_labels(
-        batch_dynamo_client,
-        [_update()],
-        label_proposed_by="test-reviewer",
-        audit_path=audit_path,
-        dry_run=False,
-    )
-
-    row = result["rows"][0]
     assert result["counts"]["SKIPPED_NOT_FOUND"] == 1
-    assert row["outcome"] == "SKIPPED_NOT_FOUND"
-    assert row["old_status"] is None
-    assert not audit_path.exists()
+    assert audit["ROW#00000"]["outcome"]["S"] == ("SKIPPED_STATUS_CHANGED")
+    assert audit["ROW#00000"]["observed_status"]["S"] == "INVALID"
+    assert audit["ROW#00001"]["outcome"]["S"] == "SKIPPED_NOT_FOUND"
+    assert audit["ROW#00001"]["observed_status"]["NULL"] is True
 
 
 @pytest.mark.parametrize("label_proposed_by", ["", "   ", None])
 def test_requires_non_empty_label_proposed_by(
     batch_dynamo_client: DynamoClient,
-    tmp_path: Path,
     label_proposed_by: Any,
 ) -> None:
     """Reject missing, empty, or whitespace-only audit identities."""
@@ -336,5 +332,121 @@ def test_requires_non_empty_label_proposed_by(
             batch_dynamo_client,
             [],
             label_proposed_by=label_proposed_by,
-            audit_path=tmp_path / "audit.jsonl",
         )
+
+
+def test_durable_audit_plan_failure_blocks_every_mutation(
+    batch_dynamo_client: DynamoClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail closed when the durable sink rejects the plan."""
+    label = _seed_label(batch_dynamo_client)
+    transaction_called = False
+
+    def deny_audit(*args: Any, **kwargs: Any) -> Any:
+        raise _client_error("AccessDeniedException")
+
+    def observe_transaction(*args: Any, **kwargs: Any) -> Any:
+        nonlocal transaction_called
+        transaction_called = True
+
+    monkeypatch.setattr(batch_dynamo_client._client, "put_item", deny_audit)
+    monkeypatch.setattr(
+        batch_dynamo_client._client,
+        "transact_write_items",
+        observe_transaction,
+    )
+
+    with pytest.raises(
+        AuditStoreError,
+        match="failed before mutation.*AccessDeniedException",
+    ):
+        batch_update_word_labels(
+            batch_dynamo_client,
+            [_update()],
+            label_proposed_by="test-reviewer",
+            dry_run=False,
+        )
+
+    assert transaction_called is False
+    assert _get_item(batch_dynamo_client, label)["validation_status"]["S"] == (
+        "VALID"
+    )
+
+
+def test_nonconditional_dynamo_error_is_durably_unambiguous(
+    batch_dynamo_client: DynamoClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Persist the AWS code and prove a throughput failure did not apply."""
+    label = _seed_label(batch_dynamo_client)
+
+    def throttle(*args: Any, **kwargs: Any) -> Any:
+        raise _client_error("ProvisionedThroughputExceededException")
+
+    monkeypatch.setattr(
+        batch_dynamo_client._client,
+        "transact_write_items",
+        throttle,
+    )
+
+    result = batch_update_word_labels(
+        batch_dynamo_client,
+        [_update()],
+        label_proposed_by="test-reviewer",
+        dry_run=False,
+    )
+
+    item = _get_item(batch_dynamo_client, label)
+    row = result["rows"][0]
+    audit = _audit_items(batch_dynamo_client, result["batch_id"])["ROW#00000"]
+    assert result["counts"]["ERROR"] == 1
+    assert row["outcome"] == "ERROR"
+    assert row["error_code"] == "ProvisionedThroughputExceededException"
+    assert row["reconciliation"] == "NOT_APPLIED"
+    assert item["validation_status"]["S"] == "VALID"
+    assert audit["outcome"]["S"] == "ERROR"
+    assert audit["aws_error_code"]["S"] == (
+        "ProvisionedThroughputExceededException"
+    )
+    assert audit["reconciliation"]["S"] == "NOT_APPLIED"
+    assert audit["observed_status"]["S"] == "VALID"
+
+
+def test_ambiguous_transport_error_reconciles_atomic_commit(
+    batch_dynamo_client: DynamoClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recognize a committed transaction even when its response is lost."""
+    label = _seed_label(batch_dynamo_client)
+    original_transaction = batch_dynamo_client._client.transact_write_items
+
+    def commit_then_lose_response(*args: Any, **kwargs: Any) -> Any:
+        original_transaction(*args, **kwargs)
+        raise _client_error("InternalServerError")
+
+    monkeypatch.setattr(
+        batch_dynamo_client._client,
+        "transact_write_items",
+        commit_then_lose_response,
+    )
+
+    result = batch_update_word_labels(
+        batch_dynamo_client,
+        [_update()],
+        label_proposed_by="test-reviewer",
+        dry_run=False,
+    )
+
+    item = _get_item(batch_dynamo_client, label)
+    row = result["rows"][0]
+    audit = _audit_items(batch_dynamo_client, result["batch_id"])["ROW#00000"]
+    assert result["counts"]["UPDATED"] == 1
+    assert row["outcome"] == "UPDATED"
+    assert row["old_status"] == "VALID"
+    assert row["error_code"] == "InternalServerError"
+    assert row["reconciliation"] == "COMMITTED_AFTER_ERROR"
+    assert item["validation_status"]["S"] == "INVALID"
+    assert audit["outcome"]["S"] == "UPDATED"
+    assert audit["aws_error_code"]["S"] == "InternalServerError"
+    assert audit["reconciliation"]["S"] == "COMMITTED_AFTER_ERROR"
