@@ -242,8 +242,12 @@ to avoid a schema break.
 ## 5. Risks / what stays out of Dynamo
 
 Out: npz atlases, logo PNGs, eval sheets/reports → S3 + `{s3_key,
-content_hash}` pointers; glyph stroke sources and skeletons → git; engine
-flag source files → git (snapshotted only).
+content_hash}` pointers (also: binaries are paid-font-derived and
+deliberately out of git); glyph stroke sources, skeletons, and vendored TTF
+faces → git; engine flag source files → git (snapshotted only). Stylemap
+gets no double-master: once its published form is a Dynamo truth item, the
+git copy in `fonts/<m>/stylemap.json` is strictly a build input (like glyph
+sources), never read at render time.
 
 Risks:
 
@@ -278,3 +282,7 @@ promotion discipline.
 2. Proposals under the merchant PK (current choice — merchant-scoped and
    cheap) vs a global `PROPOSAL#` partition.
 3. `MerchantFont` retirement timing (proposed: after P5 re-baseline).
+4. Alias resolution: the loader builds an in-memory alias→slug map from
+   `C#identity` records (fine at 16 merchants). If alias point-reads ever
+   matter, promote aliases to their own `ALIAS#<name>` records — deferred
+   until a consumer needs it.
