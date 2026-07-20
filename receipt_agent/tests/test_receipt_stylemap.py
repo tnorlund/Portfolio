@@ -7,7 +7,9 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
 
 
 def test_innout_row_classification_sections():
-    assert classify_row("IN-N-OUT WESTLAKE VILLAGE", "innout") == "store_header"
+    assert (
+        classify_row("IN-N-OUT WESTLAKE VILLAGE", "innout") == "store_header"
+    )
     assert classify_row("Cashier: ORDERTAKER 1", "innout") == "transaction"
     assert classify_row("Amount Due $27.71", "innout") == "total_line"
     assert classify_row("AUTH AMT: $27.71", "innout") == "total_line"
@@ -141,3 +143,32 @@ def test_measured_row_style_clamps_malformed_scale():
             "ROW",
         )
         assert style["scale"] == expect
+
+
+def test_multiword_category_headers_classify_as_section_header():
+    # Real prints qualify a department ("REG DELI", "SERVICE DELI") and style
+    # the row exactly like any other category header.
+    assert classify_row("REG DELI") == "section_header"
+    assert classify_row("SERVICE DELI") == "section_header"
+    assert classify_row("REG DELI:") == "section_header"
+    assert classify_row("  reg   deli  ") == "section_header"
+
+
+def test_qualified_header_never_fires_on_item_rows():
+    # Only an allowlisted qualifier + department token is a header; product
+    # descriptions ending in a department word must never pick up header
+    # styling, with or without a price on the row.
+    assert classify_row("TURKEY DELI SANDWICH") != "section_header"
+    assert classify_row("HOT DELI ITEM 2.99") != "section_header"
+    assert classify_row("DELI SLICED HAM 1LB") != "section_header"
+    assert classify_row("THE VERY BEST REG DELI") != "section_header"
+    assert classify_row("RED WINE") != "section_header"
+    assert classify_row("GROUND MEAT") != "section_header"
+    assert classify_row("ORGANIC BODY") != "section_header"
+
+
+def test_qualified_multiword_department_tokens_match():
+    assert classify_row("FRESH HEALTH AND BEAUTY") == "section_header"
+    assert classify_row("DEPT PATIO & OUTDOOR DECOR") == "section_header"
+    # A non-token remainder still never matches.
+    assert classify_row("FRESH HEALTH AND WELLNESS") != "section_header"

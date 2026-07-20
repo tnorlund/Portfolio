@@ -245,17 +245,43 @@ SECTION_LABELS: dict[str, frozenset[str]] = {
 }
 
 
-def section_for_labels(labels: Sequence[str] | None) -> str | None:
-    """The receipt section for a word's labels (strips B-/I- NER prefixes)."""
+# HEADER labels that are POSITIONAL: a date/time is only header typography
+# when it sits in the top of the paper -- the same tokens reprint in the
+# payment/transaction block low on the receipt at body size, and letting them
+# vote HEADER there mis-scales whole payment rows (Vons' "Credit Purchase
+# 02/03/25 18:20" row shrank to header scale once an invalid label stopped
+# out-voting them).
+_POSITIONAL_HEADER_LABELS = frozenset({"DATE", "TIME"})
+
+
+def section_for_labels(
+    labels: Sequence[str] | None, *, in_header_zone: bool = True
+) -> str | None:
+    """The receipt section for a word's labels (strips B-/I- NER prefixes).
+
+    ``in_header_zone=False`` (word known to sit low on the paper) ignores the
+    positional HEADER labels; the default keeps the legacy label-only
+    behavior for callers without geometry.
+    """
     if not labels:
         return None
     clean = {
         str(lbl)[2:] if str(lbl)[:2] in ("B-", "I-") else str(lbl)
         for lbl in labels
     }
+    # A word carrying both DATE/TIME and another section's label is that
+    # OTHER section's word wherever it sits (a payment-block "Credit
+    # Purchase 02/03/25" row must not be header-scaled by its date token):
+    # match with the positional labels excluded first, and only fall back to
+    # them inside the header zone.
+    non_positional = clean - _POSITIONAL_HEADER_LABELS
     for section, names in SECTION_LABELS.items():
-        if clean & names:
+        if non_positional & names:
             return section
+    if in_header_zone:
+        for section, names in SECTION_LABELS.items():
+            if clean & names:
+                return section
     return None
 
 
@@ -308,6 +334,13 @@ def effective_row_sections(
     # digit-heavy row -- this captures the narration tail while never
     # touching the prominent digit rows just above it (the boxed reverse
     # date, the transaction line), which must stay at full size.
+    #
+    # Only when a body boundary exists: on a receipt with no labels and no
+    # price rows (every label INVALID-filtered), the walk would otherwise
+    # consume EVERY alphabetic row -- header included -- and shrink the
+    # whole receipt to footer scale.
+    if first_item is None:
+        return base
     for i in range(len(rows) - 1, -1, -1):
         if base[i] is not None or is_item_row(i):
             break
