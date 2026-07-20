@@ -91,6 +91,14 @@ class _MerchantTruth(FlattenedStandardMixin):
             and self._transaction_size(actions) <= MAX_TRANSACTION_BYTES
         )
 
+    def _transact_write(
+        self, actions: Sequence[dict[str, Any]], token_seed: str
+    ) -> None:
+        self._client.transact_write_items(
+            TransactItems=actions,  # type: ignore[arg-type]
+            ClientRequestToken=_request_token(token_seed),
+        )
+
     @staticmethod
     def _audit(
         slug: str,
@@ -179,11 +187,9 @@ class _MerchantTruth(FlattenedStandardMixin):
         actions.append(self._bound_put_action(audit.to_item()))
         if self._fits_atomic_mint(actions):
             try:
-                self._client.transact_write_items(
-                    TransactItems=actions,
-                    ClientRequestToken=_request_token(
-                        f"mint:{slug}:{version}:{run_id}:{timestamp}"
-                    ),
+                self._transact_write(
+                    actions,
+                    f"mint:{slug}:{version}:{run_id}:{timestamp}",
                 )
             except ClientError as error:
                 if not _is_transaction_conflict(error):
@@ -220,24 +226,22 @@ class _MerchantTruth(FlattenedStandardMixin):
             self._bound_put_action(audit.to_item()),
         ]
         try:
-            self._client.transact_write_items(
-                TransactItems=initial_actions,
-                ClientRequestToken=_request_token(
-                    f"overflow-open:{manifest.slug}:{manifest.version}:"
-                    f"{manifest.mint_run_id}"
-                ),
+            self._transact_write(
+                initial_actions,
+                f"overflow-open:{manifest.slug}:{manifest.version}:"
+                f"{manifest.mint_run_id}",
             )
         except ClientError as error:
             if not _is_transaction_conflict(error):
                 raise
-            existing = self.get_merchant_truth_manifest(
+            existing_manifest = self.get_merchant_truth_manifest(
                 manifest.slug, manifest.version, consistent_read=True
             )
             if (
-                existing is None
-                or existing.mint_run_id != manifest.mint_run_id
-                or existing.bundle_hash != manifest.bundle_hash
-                or existing.status != "OPEN"
+                existing_manifest is None
+                or existing_manifest.mint_run_id != manifest.mint_run_id
+                or existing_manifest.bundle_hash != manifest.bundle_hash
+                or existing_manifest.status != "OPEN"
             ):
                 raise MerchantTruthConflictError(
                     "overflow manifest conflicts with the requested mint"
@@ -249,9 +253,9 @@ class _MerchantTruth(FlattenedStandardMixin):
                 manifest.slug, manifest.version, consistent_read=True
             )
         }
-        for name, existing in existing_components.items():
+        for name, existing_component in existing_components.items():
             expected_hash = manifest.component_hashes.get(name)
-            if expected_hash != existing.content_hash:
+            if expected_hash != existing_component.content_hash:
                 raise MerchantTruthIntegrityError(
                     f"overflow component {name} has a conflicting hash"
                 )
@@ -284,12 +288,10 @@ class _MerchantTruth(FlattenedStandardMixin):
                 self._bound_put_action(component.to_item())
                 for component in chunk
             )
-            self._client.transact_write_items(
-                TransactItems=chunk_actions,
-                ClientRequestToken=_request_token(
-                    f"overflow:{manifest.slug}:{manifest.version}:"
-                    f"{manifest.mint_run_id}:{chunk_number}"
-                ),
+            self._transact_write(
+                chunk_actions,
+                f"overflow:{manifest.slug}:{manifest.version}:"
+                f"{manifest.mint_run_id}:{chunk_number}",
             )
 
     def _overflow_chunks(
@@ -388,11 +390,9 @@ class _MerchantTruth(FlattenedStandardMixin):
                 },
             }
         }
-        self._client.transact_write_items(
-            TransactItems=[update, self._bound_put_action(audit.to_item())],
-            ClientRequestToken=_request_token(
-                f"seal:{slug}:{version}:{manifest.bundle_hash}"
-            ),
+        self._transact_write(
+            [update, self._bound_put_action(audit.to_item())],
+            f"seal:{slug}:{version}:{manifest.bundle_hash}",
         )
         manifest.status = "SEALED"
         manifest.sealed_at = timestamp
@@ -426,13 +426,11 @@ class _MerchantTruth(FlattenedStandardMixin):
             self._bound_put_action(audit.to_item()),
         ]
         try:
-            self._client.transact_write_items(
-                TransactItems=actions,
-                ClientRequestToken=_request_token(
-                    f"initial:{active.slug}:{active.version}:"
-                    f"{active.bundle_hash}:{active.activated_at}:"
-                    f"{active.activated_by}"
-                ),
+            self._transact_write(
+                actions,
+                f"initial:{active.slug}:{active.version}:"
+                f"{active.bundle_hash}:{active.activated_at}:"
+                f"{active.activated_by}",
             )
             return active
         except ClientError as error:
@@ -535,18 +533,16 @@ class _MerchantTruth(FlattenedStandardMixin):
             }
         }
         try:
-            self._client.transact_write_items(
-                TransactItems=[
+            self._transact_write(
+                [
                     self._sealed_manifest_check(active),
                     update,
                     self._bound_put_action(audit.to_item()),
                 ],
-                ClientRequestToken=_request_token(
-                    f"flip:{active.slug}:{active.version}:"
-                    f"{active.bundle_hash}:{expected_version}:"
-                    f"{expected_bundle_hash}:{active.activated_at}:"
-                    f"{active.activated_by}"
-                ),
+                f"flip:{active.slug}:{active.version}:"
+                f"{active.bundle_hash}:{expected_version}:"
+                f"{expected_bundle_hash}:{active.activated_at}:"
+                f"{active.activated_by}",
             )
             return active
         except ClientError as error:

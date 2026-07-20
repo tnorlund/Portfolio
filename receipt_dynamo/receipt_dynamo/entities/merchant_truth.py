@@ -50,7 +50,8 @@ def hash_payload(value: Any) -> str:
 def compute_bundle_hash(component_hashes: Mapping[str, str]) -> str:
     """Hash the sorted ``component:hash`` manifest lines."""
     lines = "".join(
-        f"{name}:{component_hashes[name]}\n" for name in sorted(component_hashes)
+        f"{name}:{component_hashes[name]}\n"
+        for name in sorted(component_hashes)
     )
     return hashlib.sha256(lines.encode("utf-8")).hexdigest()
 
@@ -63,7 +64,11 @@ def merchant_truth_pk(slug: str) -> str:
 
 def version_prefix(version: int) -> str:
     """Return the fixed-width sort-key prefix for a version."""
-    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version < 1
+    ):
         raise ValueError("version must be a positive integer")
     if version > 9_999_999_999:
         raise ValueError("version exceeds the 10-digit key grammar")
@@ -93,7 +98,7 @@ class MerchantTruthComponent(DynamoDBEntity):
     name: str
     payload: Any
     provenance: dict[str, Any]
-    content_hash: str | None = None
+    content_hash: str = ""
     payload_s3_key: str | None = None
     payload_size: int | None = None
 
@@ -105,7 +110,7 @@ class MerchantTruthComponent(DynamoDBEntity):
         if not isinstance(self.provenance, dict) or not self.provenance:
             raise ValueError("component provenance must be a non-empty map")
         calculated_hash = hash_payload(self.payload)
-        if self.content_hash is None:
+        if not self.content_hash:
             self.content_hash = calculated_hash
         _validate_hash(self.content_hash, "content_hash")
         if self.content_hash != calculated_hash:
@@ -308,7 +313,9 @@ class MerchantTruthProposal(DynamoDBEntity):
     def __post_init__(self) -> None:
         _validate_slug(self.slug)
         if not self.created_at or not self.claim_slug or not self.claim:
-            raise ValueError("proposal timestamp, claim slug, and claim required")
+            raise ValueError(
+                "proposal timestamp, claim slug, and claim required"
+            )
         if self.status not in PROPOSAL_STATUSES:
             raise ValueError(f"invalid proposal status: {self.status}")
 

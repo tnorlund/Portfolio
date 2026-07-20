@@ -164,7 +164,7 @@ class MerchantTruthPromoter:
             )
         try:
             self._prod_dynamodb.transact_write_items(
-                TransactItems=actions,
+                TransactItems=actions,  # type: ignore[arg-type]
                 ClientRequestToken=self._request_token(plan, audit),
             )
         except ClientError as error:
