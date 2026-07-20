@@ -35,7 +35,7 @@ Enumerated from the actual consumers (audited on main + the mini worktrees):
 | Measurement writers (glyphstudio stylescan/styleagg/layout_template) | put new version with provenance; today `layout_template.py` writes into `merchant_profiles.json` with a git dirty-stamp guard as its only "versioning" | `mint_version`/`seal_version`; dirty-stamp guard becomes the conditional create |
 | Eval (`full_fidelity_eval.py`) | get active layout template by merchant, schema-validated | ACTIVE → `C#layout` |
 | Fleet status | list all merchants with truth + active summary — **does not exist as a tool today** (enumeration = profiles keys + `env.mjs FONT_MERCHANTS`); this design creates it | one GSITYPE query on `MERCHANT_TRUTH_ACTIVE` |
-| Compose engine | list catalog by merchant (+category `begins_with`) — today re-derives the catalog per run | `MerchantCatalogItem` partition query (unchanged) |
+| Compose engine | pinned catalog for the active version — today re-derives the catalog per run | `C#catalog_snapshot` (full inlined catalog); `MerchantCatalogItem` stays the mutable authoring/staging partition |
 | dev→prod mirror (`reconcile_dev_to_prod.py`) | copy truth to prod | new reconcile leg (§5 risk 1) |
 | Agent sessions (owner observations) | propose / review / resolve | `PROPOSED#` records + `resolve_proposal`; TTL usable for expiring drafts |
 
@@ -87,17 +87,29 @@ of KB). The writer enforces: serialized payload > 300KB → store
 `payload_s3_key` + `payload_size` instead of inline `payload`;
 `content_hash` is always inline so gates and diffs never need S3.
 
-**The item catalog does NOT inline.** It stays item-per-product as
-`MerchantCatalogItem` (PK=`MERCHANT_CATALOG#{slug}`) — a proven shape with
-hundreds of items, queryable by category. The bundle's `C#catalog_snapshot`
-is a snapshot descriptor: `{item_count, catalog_hash (sha256 of sorted item
-keys+prices), as_of}` — a version pins what the catalog looked like without
-duplicating it.
+**The catalog inlines into the version** (revised per #1193 review finding
+1). `C#catalog_snapshot` carries the full sorted, normalized product records
+plus `{item_count, catalog_hash, as_of}` — catalogs are tiny relative to
+400KB, and a descriptor-only snapshot would be detection-only: it could
+notice drift in the mutable catalog rows but never reproduce the catalog
+that was active when the version sealed, breaking "render reproducible from
+`{version}` alone". `MerchantCatalogItem` (PK=`MERCHANT_CATALOG#{slug}`)
+remains as the mutable measurement/authoring staging partition; mint copies
+its complete state into the immutable bundle, and compose reads the
+versioned snapshot, not the live rows. The >300KB S3 spillover valve applies
+if a catalog ever outgrows one item; spilled payloads stay content-hashed
+inside the versioned closure.
 
 **Content hashing:** per-component sha256 of canonical JSON (sorted keys,
 compact separators); `bundle_hash` = sha256 of the sorted
-`"{component}:{hash}"` lines. Asset entries hash the S3 object bytes
-(already the `MerchantFont` convention: `content_hash` + `source_commit`).
+`"{component}:{hash}"` lines. Every external S3 object is independently
+hash-addressed — fonts, stylemap, AND logo. Caution (#1193 review finding
+2): today's `MerchantFont` rows hash only the NPZ bytes; `stylemap_s3_key`
+and `logo_s3_key` are bare pointers. The migration writer must therefore
+fetch the current stylemap/logo bytes, compute sha256, and verify them
+before sealing — never reuse the NPZ hash — and the loader verifies every
+download against its hash. A missing or mismatched hash fails
+seal/promotion; it never silently downgrades.
 Renders and evals record `{slug, version, bundle_hash}` into the recipe hash,
 so the #1188 freshness gate ("recipe-hash asserted, stale sheets
 structurally impossible") extends to merchant truth for free.
@@ -152,13 +164,18 @@ write paths and reviewers differ.
 first item) and writes manifest v(max+1) with the conditional create; a race
 loses the condition and retries. No counter item needed.
 
-**Transact limits:** `TransactWriteItems` caps at 25 items (the data layer
-already chunks at 25, `flattened_mixin.py`). Mint therefore writes immutable
-components first (chunked, each conditional), then seals with a small
-transaction on the manifest alone; the flip is its own 3-item transaction
-(ConditionCheck manifest + Update pointer + audit put). Component writes
-outside the seal transaction are safe precisely because unsealed versions
-are invisible to readers — only SEALED versions can become ACTIVE.
+**Atomic mint** (revised per #1193 review finding 3): the normal bundle —
+OPEN manifest + seven components + mint audit = nine writes — fits one
+25-item `TransactWriteItems`, so mint is a **single transaction** (all puts
+conditional; assert assembled count ≤25 before sending). No partial OPEN
+versions exist on the normal path. Chunked minting (the data layer's
+25-item chunk helper creates independent transactions, not one atomic set)
+is reserved for a >25-item overflow protocol that must be explicitly
+resumable: the OPEN manifest records expected component names/hashes/count
+and a mint run ID; chunks use idempotent conditional puts; seal verifies the
+complete expected set; a retry resumes the same version rather than
+allocating a new one. The flip stays its own 3-item transaction
+(ConditionCheck manifest + Update pointer + audit put).
 
 **One TYPE per record class** is load-bearing, not cosmetic: the fleet query
 sweeps `MERCHANT_TRUTH_ACTIVE` only because pointers carry their own TYPE —
@@ -205,7 +222,7 @@ procedural.
 | Published stylemap JSONs (today S3 via `MerchantFont.stylemap_s3_key`) | `C#stylemap` (inline if <300KB else S3 pointer) | `receipt_agent/.../rendering/receipt_stylemap.py`, `render_synthetic_receipts.py` |
 | `layout_template` blocks (columns/sections/separators + measured provenance; 4 merchants so far) | `C#layout` — schema lifted verbatim from `glyphstudio/layout_template.py` output; its `measured` block becomes manifest provenance | `full_fidelity_eval --columns-source profile`; P3 `resolve_columns` |
 | `MerchantFont` pointers + logo (s3_key, content_hash, cap_h, advance_ratio, logo_s3_key, logo_anchor) | `C#assets`: `{fonts: {face → {s3_key, content_hash, cap_h, advance_ratio, cache_filename}}, logo: {s3_key, content_hash, anchor}}` | `render_synthetic_receipts.py` font cache; `MerchantFont` kept during migration as the compile-output staging record the next mint reads — retire after P5 re-baseline |
-| `MerchantCatalogItem` items | stay put; `C#catalog_snapshot` descriptor only | add-line-item augmentation unchanged |
+| `MerchantCatalogItem` items | stay put as authoring/staging; mint copies full state into `C#catalog_snapshot` | add-line-item augmentation unchanged; compose switches to the versioned snapshot |
 | identity (exact merchant_name ↔ slug ↔ Places aliases) | `C#identity` | fixes MerchantFont-name vs catalog-slug split |
 
 **Loader shim:** one `MerchantTruthLoader` (read ACTIVE → manifest →
@@ -255,10 +272,20 @@ Risks:
    partitions, so `MERCHANT_TRUTH#` is invisible to it — safely outside the
    `RESTORABLE_TYPES` deletion gate (good: truth stays out of image
    partitions), but also **never mirrored**. Today merchant fonts reach prod
-   only by re-running the publish against the prod table. A merchant-truth
-   reconcile leg keyed on content_hash/version (trivial given GSITYPE
-   enumeration) must land before the first prod mint, or dev/prod drift is
-   guaranteed.
+   only by re-running the publish against the prod table. Per the #1193
+   review: implement a **separate, additive, fail-closed promotion leg** (do
+   NOT add truth TYPEs to the image-scoped `RESTORABLE_TYPES`). For each
+   explicitly selected merchant/version it (a) reads the SEALED dev manifest
+   and its complete immutable closure (components, inlined catalog, S3
+   assets); (b) verifies component hashes, `bundle_hash`, gate PASS, and S3
+   bytes before any prod write; (c) imports the same slug+version into prod
+   with conditional creates — one transaction for the normal 9-item bundle,
+   failing on version conflict rather than renumbering — with a prod
+   promotion audit; (d) verifies the prod closure, then stops. **It never
+   mirrors `TRUTH#ACTIVE` automatically** — the owner runs the reviewed prod
+   `flip_active` after inspecting the diff. OPEN versions, proposals, and
+   dev audit history are excluded from the default leg. Must land before the
+   first prod mint.
 2. **Hand-edit temptation:** single-owner project, so enforcement is
    code-path + conditional-create + audit, not IAM — acceptable; the audit
    trail makes cheating visible.
@@ -274,15 +301,21 @@ GSI1/type-constant), GSITYPE fleet enumeration (`infra/dynamo_db.py`),
 `base_operations` default conditional create, `reconcile_dev_to_prod`
 promotion discipline.
 
-## 6. Open questions
+## 6. Decisions (resolved per #1193 design review)
 
-1. Should `C#flags` instead stay entirely in git with the manifest only
-   recording its git SHA + hash? Purer separation, but breaks "render
-   reproducible from Dynamo alone". Current lean: snapshot into Dynamo.
-2. Proposals under the merchant PK (current choice — merchant-scoped and
-   cheap) vs a global `PROPOSAL#` partition.
-3. `MerchantFont` retirement timing (proposed: after P5 re-baseline).
-4. Alias resolution: the loader builds an in-memory alias→slug map from
-   `C#identity` records (fine at 16 merchants). If alias point-reads ever
-   matter, promote aliases to their own `ALIAS#<name>` records — deferred
-   until a consumer needs it.
+1. **`C#flags` snapshots into Dynamo.** Git stays the reviewed source of
+   authority; the snapshot records source path, git SHA, a `dirty=false`
+   requirement, and content hash. The immutable snapshot is what makes a
+   pinned version reproducible without checking out a second repo state.
+2. **Proposals live under the merchant PK.** Merchant-scoped review is a
+   plain Query; GSITYPE covers the small global OPEN queue. A global
+   partition would add a shared namespace with no current consumer.
+3. **`MerchantFont` retires after P5 re-baseline, gated on exit criteria,
+   not the milestone date:** every merchant has a sealed+active truth
+   version with distinct NPZ/stylemap/logo hashes, dual-read parity passes,
+   full-fidelity re-baseline done, rollback window tested, and all
+   consumers on `MerchantTruthLoader` before the compat reader is removed.
+4. **Alias resolution stays an in-memory map** built from `C#identity`
+   (16 merchants). Mint/fleet validation rejects aliases that are ambiguous
+   across merchants. Promote to `ALIAS#<normalized-name>` records only when
+   scale or an actual point-read consumer requires it.
