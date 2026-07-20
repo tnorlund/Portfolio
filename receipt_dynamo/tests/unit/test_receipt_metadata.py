@@ -557,3 +557,15 @@ def test_receipt_metadata_from_item_rejects_type_but_tolerates_gsi_drift(
     assert restored.merchant_name == example_receipt_metadata.merchant_name
     assert restored.place_id == example_receipt_metadata.place_id
     assert restored.validation_status == MerchantValidationStatus.MATCHED
+
+
+@pytest.mark.unit
+def test_receipt_metadata_from_item_rejects_noncanonical_primary_key(
+    example_receipt_metadata,
+):
+    item = example_receipt_metadata.to_item()
+    item["SK"] = {
+        "S": f"RECEIPT#{example_receipt_metadata.receipt_id}#METADATA"
+    }
+    with pytest.raises(ValueError, match="SK does not match entity keys"):
+        item_to_receipt_metadata(item)

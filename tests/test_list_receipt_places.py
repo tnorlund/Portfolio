@@ -29,30 +29,24 @@ def test_list_all_places_uses_canonical_place_pages():
         def __init__(self):
             self.calls = []
 
-        def query(self, **kwargs):
-            self.calls.append(kwargs)
-            if "ExclusiveStartKey" not in kwargs:
-                return {
-                    "Items": [first],
-                    "LastEvaluatedKey": {"PK": {"S": "next"}},
-                }
-            return {"Items": [second]}
+        def list_receipt_places_raw(self, limit=None, last_evaluated_key=None):
+            self.calls.append((limit, last_evaluated_key))
+            if last_evaluated_key is None:
+                return [first], {"PK": {"S": "next"}}
+            return [second], None
 
     client = PlaceOnlyClient()
 
-    places = list_all_places(client, "ReceiptsTable-dc5be22")
+    places = list_all_places(client)
 
     assert [place["merchant_name"] for place in places] == [
         "First Merchant",
         "Second Merchant",
     ]
-    assert all(call["IndexName"] == "GSITYPE" for call in client.calls)
-    assert all(
-        call["ExpressionAttributeValues"][":entity_type"]
-        == {"S": "RECEIPT_PLACE"}
-        for call in client.calls
-    )
-    assert client.calls[1]["ExclusiveStartKey"] == {"PK": {"S": "next"}}
+    assert client.calls == [
+        (None, None),
+        (None, {"PK": {"S": "next"}}),
+    ]
 
 
 def test_list_all_places_applies_limit_across_pages():
@@ -65,15 +59,15 @@ def test_list_all_places_applies_limit_across_pages():
     ]
 
     class PlaceOnlyClient:
-        def query(self, **kwargs):
-            assert kwargs["Limit"] == 2
-            return {
-                "Items": items,
-                "LastEvaluatedKey": {"PK": {"S": "unused"}},
-            }
+        def __init__(self):
+            self.calls = []
 
-    places = list_all_places(
-        PlaceOnlyClient(), "ReceiptsTable-dc5be22", limit=2
-    )
+        def list_receipt_places_raw(self, limit=None, last_evaluated_key=None):
+            self.calls.append((limit, last_evaluated_key))
+            return items, {"PK": {"S": "unused"}}
+
+    client = PlaceOnlyClient()
+    places = list_all_places(client, limit=2)
 
     assert [place["image_id"] for place in places] == ["image-0", "image-1"]
+    assert client.calls == [(2, None)]

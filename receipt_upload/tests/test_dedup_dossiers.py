@@ -4,38 +4,41 @@ from receipt_upload.dedup import dossiers
 
 
 def test_load_inputs_reads_merchants_from_raw_receipt_places(monkeypatch):
-    class RawClient:
-        def __init__(self):
-            self.calls = []
+    class PlaceOnlyDynamo:
+        table_name = "ReceiptsTable-dc5be22"
 
-        def query(self, **kwargs):
-            self.calls.append(kwargs)
-            if "ExclusiveStartKey" not in kwargs:
-                return {
-                    "Items": [
+        def __init__(self):
+            self.place_calls = []
+
+        def list_receipt_places_raw(self, limit=None, last_evaluated_key=None):
+            self.place_calls.append((limit, last_evaluated_key))
+            if last_evaluated_key is None:
+                return (
+                    [
                         {
                             "image_id": {"S": "image-1"},
                             "receipt_id": {"N": "1"},
                             "merchant_name": {"S": "First Merchant"},
                         }
                     ],
-                    "LastEvaluatedKey": {"PK": {"S": "next"}},
-                }
-            return {
-                "Items": [
+                    {"PK": {"S": "next"}},
+                )
+            return (
+                [
                     {
                         "PK": {"S": "IMAGE#image-2"},
                         "SK": {"S": "RECEIPT#00002#PLACE"},
                         "merchant_name": {"S": "Second Merchant"},
-                    }
-                ]
-            }
-
-    class PlaceOnlyDynamo:
-        table_name = "ReceiptsTable-dc5be22"
-
-        def __init__(self):
-            self._client = RawClient()
+                    },
+                    {
+                        # A malformed primary key must not become an image ID.
+                        "PK": {"S": "image-3"},
+                        "SK": {"S": "RECEIPT#00003#PLACE"},
+                        "merchant_name": {"S": "Ignored Merchant"},
+                    },
+                ],
+                None,
+            )
 
         def list_receipts(self):
             return ["receipt"], None
@@ -62,9 +65,7 @@ def test_load_inputs_reads_merchants_from_raw_receipt_places(monkeypatch):
         ("image-1", 1): "First Merchant",
         ("image-2", 2): "Second Merchant",
     }
-    assert all(call["IndexName"] == "GSITYPE" for call in dc._client.calls)
-    assert all(
-        call["ExpressionAttributeValues"][":entity_type"]
-        == {"S": "RECEIPT_PLACE"}
-        for call in dc._client.calls
-    )
+    assert dc.place_calls == [
+        (None, None),
+        (None, {"PK": {"S": "next"}}),
+    ]

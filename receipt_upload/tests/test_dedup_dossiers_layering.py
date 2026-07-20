@@ -36,7 +36,13 @@ class _FakeClient:
                     "PK": {"S": "IMAGE#img-2"},
                     "SK": {"S": "RECEIPT#00002#PLACE"},
                     "merchant_name": {"S": "Mart Two"},
-                }
+                },
+                {
+                    # malformed fallback keys are ignored, not reinterpreted
+                    "PK": {"S": "img-3"},
+                    "SK": {"S": "RECEIPT#00003#PLACE"},
+                    "merchant_name": {"S": "Ignored Mart"},
+                },
             ],
             None,
         )

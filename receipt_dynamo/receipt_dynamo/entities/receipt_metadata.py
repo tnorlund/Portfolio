@@ -37,14 +37,12 @@ MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 class ReceiptMetadata(  # pylint: disable=too-many-instance-attributes
     SerializationMixin
 ):
-    """
-    Represents validated metadata for a receipt, specifically merchant-related
-    information derived from Google Places API and optionally validated by GPT.
+    """Legacy merchant metadata retained for migration compatibility.
 
-    This entity is used to:
-    - Anchor a receipt to a verified merchant (name, address, phone)
-    - Support merchant-specific labeling strategies
-    - Enable clustering and quality control across receipts
+    ``ReceiptPlace`` is the canonical merchant/location source of truth.
+    ``ReceiptMetadata`` remains readable for historical reconciliation,
+    repair, cleanup, and place-backfill workflows; active merchant lookup,
+    clustering, and quality-control paths must use ``ReceiptPlace`` instead.
 
     Each ReceiptMetadata record is stored in DynamoDB using the image_id and
     receipt_id, and indexed by merchant name via GSIs.
@@ -557,14 +555,16 @@ class ReceiptMetadata(  # pylint: disable=too-many-instance-attributes
             custom_extractors=custom_extractors,
         )
 
-        # Secondary indexes are projections, not identity, for this legacy
-        # entity. Historical rows can retain GSI values derived from an older
+        # PK and SK are identity, so preserve their canonical encoding after
+        # parsing. Secondary indexes are only projections for this legacy
+        # entity: historical rows can retain GSI values derived from an older
         # merchant name, place ID, or validation status after their scalar
         # fields were repaired. ReceiptPlace owns current merchant reads, while
         # migration/backfill readers need to consume these old rows without a
-        # stale projection crashing the entire page. PK, SK, TYPE, and field
-        # shapes remain validated above; only regenerated GSI equality is
-        # deliberately not enforced.
+        # stale projection crashing the page.
+        for key_name, expected_value in result.key.items():
+            if item[key_name] != expected_value:
+                raise ValueError(f"{key_name} does not match entity keys")
         return result
 
 

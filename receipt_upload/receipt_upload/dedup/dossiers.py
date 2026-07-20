@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from receipt_dynamo import DynamoClient
+
 from receipt_upload.dedup.context import LabelObs
 
 ENV_TABLE = {"dev": "ReceiptsTable-dc5be22", "prod": "ReceiptsTable-d7ff76a"}
@@ -39,8 +40,13 @@ def _receipt_place_merchants(
         for item in items:
             image_id = item.get("image_id", {}).get("S")
             if not image_id:
+                raw_pk = item.get("PK", {}).get("S")
                 image_id = (
-                    item.get("PK", {}).get("S", "").removeprefix("IMAGE#")
+                    raw_pk.removeprefix("IMAGE#")
+                    if isinstance(raw_pk, str)
+                    and raw_pk.startswith("IMAGE#")
+                    and raw_pk != "IMAGE#"
+                    else None
                 )
 
             raw_receipt_id = item.get("receipt_id", {}).get("N")

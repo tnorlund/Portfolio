@@ -21,8 +21,8 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo import DynamoClient  # noqa: E402
+from receipt_dynamo.data._pulumi import load_env  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,8 +52,7 @@ def list_all_places(
     census work.
 
     Args:
-        dynamodb_client: Low-level boto3 DynamoDB client.
-        table_name: DynamoDB table to query.
+        client: Public DynamoDB client exposing the raw ReceiptPlace census.
         limit: Maximum number of records to retrieve (None for all)
         output_file: Optional file path to save results as JSON
 
@@ -128,7 +127,7 @@ def print_summary(places: list[dict[str, Any]]) -> None:
         return
 
     print(f"\n{'='*60}")
-    print(f"SUMMARY")
+    print("SUMMARY")
     print(f"{'='*60}")
     print(f"Total records: {len(places)}")
 
@@ -138,7 +137,7 @@ def print_summary(places: list[dict[str, Any]]) -> None:
         status = place.get("validation_status") or "UNKNOWN"
         status_counts[status] = status_counts.get(status, 0) + 1
 
-    print(f"\nBy validation status:")
+    print("\nBy validation status:")
     for status, count in sorted(status_counts.items()):
         print(f"  {status}: {count}")
 
@@ -164,7 +163,7 @@ def print_summary(places: list[dict[str, Any]]) -> None:
 
     # Show some examples
     print(f"\n{'='*60}")
-    print(f"SAMPLE RECORDS (first 5)")
+    print("SAMPLE RECORDS (first 5)")
     print(f"{'='*60}")
     for i, place in enumerate(places[:5], 1):
         print(
@@ -269,7 +268,7 @@ def main():
 
     if not args.summary_only:
         print(f"\n{'='*60}")
-        print(f"ALL RECORDS")
+        print("ALL RECORDS")
         print(f"{'='*60}")
         for i, place in enumerate(places, 1):
             print(
