@@ -221,7 +221,7 @@ class MetricsCollector:
         print("\nDual-Write Metrics:")
         dw = summary["dual_write"]
         print(
-            f"  ReceiptMetadata: {dw['metadata_writes']} writes, "
+            f"  Legacy metadata: {dw['metadata_writes']} writes, "
             f"{dw['metadata_errors']} errors "
             f"({dw['metadata_success_rate']:.1%} success)"
         )
