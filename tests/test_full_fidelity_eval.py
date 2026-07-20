@@ -324,6 +324,31 @@ def test_graphics_skips_without_detector(monkeypatch, tmp_path):
     assert out["verdict"] == "SKIPPED"
 
 
+def test_adversarial_qr_to_aztec_swap_fails_graphics(monkeypatch):
+    qr = {
+        "symbology": "qr",
+        "kind": "qr",
+        "y_frac": 0.75,
+        "x_frac": 0.5,
+        "payload": "same-payload",
+    }
+    aztec = {
+        **qr,
+        "symbology": "aztec",
+    }
+
+    def fake_detect(path):
+        return [qr] if path == "real.png" else [aztec]
+
+    monkeypatch.setattr(ffe, "detect_graphics", fake_detect)
+    out = ffe.metric_graphics("real.png", "synth.png")
+
+    assert out["verdict"] == "FAIL"
+    assert out["matched"] == []
+    assert out["missing_in_synth"] == [qr]
+    assert out["phantom_in_synth"] == [aztec]
+
+
 # ---------------------------------------------------------------------------
 # logo
 # ---------------------------------------------------------------------------
@@ -513,6 +538,37 @@ def test_adversarial_blank_composed_image_fails_tokens():
     out = ffe.metric_tokens(man, man, blank_img, composed=True)
     assert out["verdict"] == "FAIL"
     assert out["ink_recall"] == 0.0
+
+
+def test_adversarial_blank_single_character_tokens_fail():
+    man = [
+        {"text": "A", "bbox": [80, 800, 180, 900], "labels": []},
+        {"text": "1", "bbox": [220, 800, 320, 900], "labels": []},
+    ]
+    blank_img = blank()
+
+    for composed in (False, True):
+        out = ffe.metric_tokens(man, man, blank_img, composed=composed)
+        assert out["verdict"] == "FAIL"
+        assert out["ink_checked"] == 2
+        assert out["ink_recall"] == 0.0
+        assert set(out["ink_missing_tokens"]) == {"A", "1"}
+
+
+def test_token_metric_never_passes_without_checkable_ink_evidence():
+    punctuation_only = [
+        {"text": "---", "bbox": [80, 800, 180, 900], "labels": []}
+    ]
+    out = ffe.metric_tokens(
+        punctuation_only,
+        punctuation_only,
+        blank(),
+        composed=False,
+    )
+    assert out["verdict"] == "FAIL"
+    assert out["ink_checked"] == 0
+    assert out["ink_recall"] is None
+    assert out["ink_evidence_missing"] is True
 
 
 def test_adversarial_dot_tokens_fail_ink_check():

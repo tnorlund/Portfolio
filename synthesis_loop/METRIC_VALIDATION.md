@@ -32,12 +32,14 @@ permanent tests:
 | fixture | metric | test |
 |---|---|---|
 | blank composed canvas | tokens | `test_adversarial_blank_composed_image_fails_tokens` |
+| blank single-character tokens (`A`, `1`) | tokens | `test_adversarial_blank_single_character_tokens_fail` |
 | every token a 2×2 dot | tokens | `test_adversarial_dot_tokens_fail_ink_check` |
 | linearly sheared lane (±10px) | columns | `test_adversarial_sheared_synth_lane_fails` |
 | typed lane over decoy ink | columns | `test_adversarial_typed_lane_needs_typed_carriers` |
 | uniformly doubled strokes | style | `test_adversarial_doubled_stroke_fails_style` |
 | dash→solid separator substitute | separators | `test_adversarial_solid_separator_substitute_fails` |
 | 1px-line logo of correct height | logo | `test_adversarial_thin_line_logo_fails` |
+| QR→Aztec at the same x/y and payload | graphics | `test_adversarial_qr_to_aztec_swap_fails_graphics` |
 | whole-lane 2-cell translation | columns | `test_column_metric_fails_on_uniform_lane_shift` |
 | synth lane ink absent | columns | `test_column_metric_fails_on_missing_synth_lane` |
 | singleton total_line lane | columnscan | `test_singleton_total_line_lane_survives_pooling` |

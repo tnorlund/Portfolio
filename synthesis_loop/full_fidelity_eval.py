@@ -1000,6 +1000,7 @@ def metric_tokens(
     missing = sorted(t for t in man if drawn[t] < man[t])
 
     ink_recall = None
+    ink_checked = 0
     ink_missing: list[str] = []
     if syn_gray is not None:
         H, W = syn_gray.shape
@@ -1009,7 +1010,7 @@ def metric_tokens(
         # words; faithful renders share the manifest geometry)
         for w in words_to_px(drawn_words, W, H):
             t = _norm_token(w["text"])
-            if len(t) < 2 or not any(ch.isalnum() for ch in t):
+            if not t or not any(ch.isalnum() for ch in t):
                 continue
             n_checked += 1
             if _box_has_glyph_ink(syn_gray, w, thresh):
@@ -1017,11 +1018,14 @@ def metric_tokens(
             else:
                 ink_missing.append(t)
         # zero checkable words is absent evidence, not a pass
+        ink_checked = n_checked
         ink_recall = n_hit / n_checked if n_checked else None
 
+    ink_evidence_missing = syn_gray is not None and ink_checked == 0
     fail = (
         text_recall < TOKEN_TEXT_RECALL_MIN
         or (ink_recall is not None and ink_recall < TOKEN_INK_RECALL_MIN)
+        or ink_evidence_missing
         # faithful renders draw only manifest content -- fabricated tokens
         # FAIL; composed layouts re-emit repaired tokens, so they only WARN.
         or (not composed and text_precision < TOKEN_TEXT_PRECISION_MIN)
@@ -1034,6 +1038,8 @@ def metric_tokens(
         "ink_recall": (
             round(ink_recall, 4) if ink_recall is not None else None
         ),
+        "ink_checked": ink_checked,
+        "ink_evidence_missing": ink_evidence_missing,
         "composed": composed,
         "missing_tokens": missing[:25],
         "ink_missing_tokens": ink_missing[:25],
