@@ -8,7 +8,7 @@
 
 > **euclideanDistance**(`a`, `b`): `number`
 
-Defined in: [utils/geometry/dbscan.ts:14](https://github.com/tnorlund/Portfolio/blob/a3850d9f0759f50ef52d4a719bb8907956dcbb0c/portfolio/utils/geometry/dbscan.ts#L14)
+Defined in: [utils/geometry/dbscan.ts:14](https://github.com/tnorlund/Portfolio/blob/3fe07b7df4b25cd37607dd70613a803b03461715/portfolio/utils/geometry/dbscan.ts#L14)
 
 ## Parameters
 

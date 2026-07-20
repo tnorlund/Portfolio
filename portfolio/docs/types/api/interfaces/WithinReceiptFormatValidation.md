@@ -6,7 +6,7 @@
 
 # Interface: WithinReceiptFormatValidation
 
-Defined in: [types/api.ts:933](https://github.com/tnorlund/Portfolio/blob/a3850d9f0759f50ef52d4a719bb8907956dcbb0c/portfolio/types/api.ts#L933)
+Defined in: [types/api.ts:933](https://github.com/tnorlund/Portfolio/blob/3fe07b7df4b25cd37607dd70613a803b03461715/portfolio/types/api.ts#L933)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:933](https://github.com/tnorlund/Portfolio/blob/a3850d
 
 > **decisions**: [`WithinReceiptWordDecision`](WithinReceiptWordDecision.md)[]
 
-Defined in: [types/api.ts:934](https://github.com/tnorlund/Portfolio/blob/a3850d9f0759f50ef52d4a719bb8907956dcbb0c/portfolio/types/api.ts#L934)
+Defined in: [types/api.ts:934](https://github.com/tnorlund/Portfolio/blob/3fe07b7df4b25cd37607dd70613a803b03461715/portfolio/types/api.ts#L934)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:934](https://github.com/tnorlund/Portfolio/blob/a3850d
 
 > **duration\_seconds**: `number` \| `null`
 
-Defined in: [types/api.ts:941](https://github.com/tnorlund/Portfolio/blob/a3850d9f0759f50ef52d4a719bb8907956dcbb0c/portfolio/types/api.ts#L941)
+Defined in: [types/api.ts:941](https://github.com/tnorlund/Portfolio/blob/3fe07b7df4b25cd37607dd70613a803b03461715/portfolio/types/api.ts#L941)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:941](https://github.com/tnorlund/Portfolio/blob/a3850d
 
 > **is\_llm**: `boolean`
 
-Defined in: [types/api.ts:942](https://github.com/tnorlund/Portfolio/blob/a3850d9f0759f50ef52d4a719bb8907956dcbb0c/portfolio/types/api.ts#L942)
+Defined in: [types/api.ts:942](https://github.com/tnorlund/Portfolio/blob/3fe07b7df4b25cd37607dd70613a803b03461715/portfolio/types/api.ts#L942)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:942](https://github.com/tnorlund/Portfolio/blob/a3850d
 
 > **summary**: `object`
 
-Defined in: [types/api.ts:935](https://github.com/tnorlund/Portfolio/blob/a3850d9f0759f50ef52d4a719bb8907956dcbb0c/portfolio/types/api.ts#L935)
+Defined in: [types/api.ts:935](https://github.com/tnorlund/Portfolio/blob/3fe07b7df4b25cd37607dd70613a803b03461715/portfolio/types/api.ts#L935)
 
 #### invalid
 
