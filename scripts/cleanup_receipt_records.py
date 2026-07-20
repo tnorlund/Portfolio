@@ -7,7 +7,7 @@ This removes, per receipt ID:
 - ReceiptWords
 - ReceiptLines
 - ReceiptLetters (best effort)
-- ReceiptMetadata (best effort)
+- ReceiptMetadata (intentional legacy cleanup, best effort, to avoid orphans)
 - CompactionRuns (best effort)
 - The Receipt itself (last)
 

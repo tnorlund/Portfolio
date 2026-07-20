@@ -113,12 +113,33 @@ def capture(out_dir: str) -> int:
     return 0
 
 
+def _manifest_keys_match(
+    baseline: dict[str, str], manifest: dict[str, str]
+) -> bool:
+    """Report whether the rendered and baseline slug sets are identical."""
+    baseline_slugs = set(baseline)
+    rendered_slugs = set(manifest)
+    missing = sorted(baseline_slugs - rendered_slugs)
+    extra = sorted(rendered_slugs - baseline_slugs)
+    if not missing and not extra:
+        return True
+
+    print("render manifest key-set mismatch")
+    print(f"missing slugs: {missing}")
+    print(f"extra slugs: {extra}")
+    return False
+
+
 def compare(baseline_dir: str, out_dir: str) -> int:
     with open(
         os.path.join(baseline_dir, "manifest.json"), encoding="utf-8"
     ) as fh:
         baseline = json.load(fh)
     manifest = _render_all(out_dir)
+    if not _manifest_keys_match(baseline, manifest):
+        print("REGRESSION: rendered slug set differs from baseline")
+        return 1
+
     failures = []
     for slug, sha in sorted(manifest.items()):
         base_sha = baseline.get(slug)
@@ -146,6 +167,10 @@ def check(out_dir: str) -> int:
     with open(COMMITTED_BASELINE, encoding="utf-8") as fh:
         baseline = json.load(fh)
     manifest = _render_all(out_dir)
+    if not _manifest_keys_match(baseline, manifest):
+        print("REGRESSION: rendered slug set differs from committed baseline")
+        return 1
+
     failures = [
         slug
         for slug, sha in sorted(manifest.items())

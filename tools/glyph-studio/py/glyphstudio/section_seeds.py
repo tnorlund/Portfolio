@@ -26,7 +26,7 @@ from typing import Iterable, Optional, Sequence
 
 from .sections import normalize_stylescan_section, section_for_core_label
 
-# Canonical merchant name (ReceiptMetadata) -> stylescan rule slug. Convenience
+# Canonical ReceiptPlace merchant name -> stylescan rule slug. Convenience
 # defaults for the nine calibrated merchants; the CLI can override.
 MERCHANT_SLUGS: dict[str, str] = {
     "sprouts farmers market": "sprouts",

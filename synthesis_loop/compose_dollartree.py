@@ -441,20 +441,37 @@ def canonical_words(raw_words):
 
     # Amount fill for SAME-PRODUCT siblings: an item row whose amount
     # fragment strayed beyond the attachment window is still a real row --
-    # when >=2 clean siblings of the SAME product (leading-token identity)
+    # when >=2 clean siblings with the SAME complete normalized description
     # share one modal (price, total, flag), the missing amounts are that
-    # modal (evidence-based; a lone unmatched fragment never invents one).
+    # modal. A whole-description final-token clipping relation is also valid
+    # (for example, ``... 11X10`` versus ``... 11X10.5``). Leading tokens can
+    # nominate possible matches elsewhere, but are never sufficient evidence
+    # for propagating financial values.
     def _prod_key(it):
-        return " ".join(it["desc"].split()[:2]).upper()
+        return " ".join(it["desc"].split()).upper()
 
-    by_prod = {}
-    for it in items:
-        by_prod.setdefault(_prod_key(it), []).append(it)
-    for group in by_prod.values():
+    def _same_product(left, right):
+        left_tokens = _prod_key(left).split()
+        right_tokens = _prod_key(right).split()
+        if not left_tokens or not right_tokens:
+            return False
+        if left_tokens == right_tokens:
+            return True
+        if (
+            len(left_tokens) != len(right_tokens)
+            or left_tokens[:-1] != right_tokens[:-1]
+        ):
+            return False
+        shorter, longer = sorted((left_tokens[-1], right_tokens[-1]), key=len)
+        return len(shorter) >= 5 and longer.startswith(shorter)
+
+    for target in items:
+        if target["price"] or target["total"]:
+            continue
         with_amounts = [
             (g["price"], g["total"], g["flag"])
-            for g in group
-            if g["price"] and g["total"]
+            for g in items
+            if g["price"] and g["total"] and _same_product(target, g)
         ]
         if len(with_amounts) < 2:
             continue
@@ -464,9 +481,11 @@ def canonical_words(raw_words):
         if modal_amt[1] < 2:
             continue
         price, total, flag = modal_amt[0]
-        for g in group:
-            if not g["price"] and not g["total"]:
-                g["price"], g["total"], g["flag"] = price, total, flag
+        target["price"], target["total"], target["flag"] = (
+            price,
+            total,
+            flag,
+        )
 
     # a fragment with no amounts continues the item above it
     kept = []

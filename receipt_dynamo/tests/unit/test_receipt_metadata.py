@@ -539,7 +539,7 @@ def test_receipt_metadata_revalidates_mutated_state(example_receipt_metadata):
 
 
 @pytest.mark.unit
-def test_receipt_metadata_from_item_rejects_type_and_gsi_mismatches(
+def test_receipt_metadata_from_item_rejects_type_but_tolerates_gsi_drift(
     example_receipt_metadata,
 ):
     item = example_receipt_metadata.to_item()
@@ -548,6 +548,24 @@ def test_receipt_metadata_from_item_rejects_type_and_gsi_mismatches(
         item_to_receipt_metadata(item)
 
     item = example_receipt_metadata.to_item()
+    item["GSI1PK"] = {"S": "MERCHANT#OLD_NAME"}
     item["GSI2PK"] = {"S": "PLACE#wrong"}
-    with pytest.raises(ValueError, match="GSI2PK does not match"):
+    item["GSI3SK"] = {"S": "STATUS#NO_MATCH"}
+
+    restored = item_to_receipt_metadata(item)
+
+    assert restored.merchant_name == example_receipt_metadata.merchant_name
+    assert restored.place_id == example_receipt_metadata.place_id
+    assert restored.validation_status == MerchantValidationStatus.MATCHED
+
+
+@pytest.mark.unit
+def test_receipt_metadata_from_item_rejects_noncanonical_primary_key(
+    example_receipt_metadata,
+):
+    item = example_receipt_metadata.to_item()
+    item["SK"] = {
+        "S": f"RECEIPT#{example_receipt_metadata.receipt_id}#METADATA"
+    }
+    with pytest.raises(ValueError, match="SK does not match entity keys"):
         item_to_receipt_metadata(item)
