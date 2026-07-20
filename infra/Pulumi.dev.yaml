@@ -58,3 +58,4 @@ config:
     - http://127.0.0.1:8765/callback
     - http://localhost:6274/oauth/callback
     - http://127.0.0.1:8765/callback/rzKPyJle2jYU
+  portfolio:email_receipt_inbox_enabled: "true"

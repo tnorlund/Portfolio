@@ -328,11 +328,11 @@ def build_merchant_font_profile_from_dynamo(
 ) -> MerchantFontProfile | None:
     """Build a merchant profile from real receipts in Dynamo/S3.
 
-    Resolves the merchant's receipts via :class:`ReceiptPlace`
-    (``get_receipt_places_by_merchant`` — ``ReceiptMetadata`` is deprecated),
-    loads each receipt's OCR lines/words/letters, and builds a per-receipt
-    profile with :func:`extract_receipt_font_profile` (which runs #994's
-    clustering on the letters). Profiles are then aggregated.
+    Resolves the merchant's receipts from the canonical ``RECEIPT_PLACE`` rows
+    via ``get_receipt_places_by_merchant``, loads each receipt's OCR
+    lines/words/letters, and builds a per-receipt profile with
+    :func:`extract_receipt_font_profile` (which runs #994's clustering on the
+    letters). Profiles are then aggregated.
 
     ``eps=3.0`` matches the receipt-level recommendation from the font pilot
     (``docs/receipt-font-analysis-pilot.md``). When ``use_raw_image`` is set the

@@ -83,6 +83,8 @@ RESTORABLE_TYPES = {
     # restored by copy_image_entities
     "IMAGE", "RECEIPT", "LINE", "WORD", "LETTER",
     "RECEIPT_LINE", "RECEIPT_WORD", "RECEIPT_LETTER", "RECEIPT_WORD_LABEL",
+    # Legacy metadata is replayed by copy_image_entities after a whole-image
+    # REPLACE; keeping it restorable prevents the mirror from dropping dev rows.
     "RECEIPT_METADATA", "RECEIPT_PLACE", "RECEIPT_BARCODE",
     "OCR_ROUTING_DECISION",
     # restored by the filtered sync_ocr_jobs step
