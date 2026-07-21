@@ -49,6 +49,11 @@ from receipt_dynamo.entities import (
     Line,
     LineIdentifierMixin,
     MerchantFont,
+    MerchantTruthActive,
+    MerchantTruthAudit,
+    MerchantTruthComponent,
+    MerchantTruthManifest,
+    MerchantTruthProposal,
     OCRJob,
     OCRRoutingDecision,
     PlacesCache,
@@ -154,6 +159,12 @@ except ModuleNotFoundError:
     InstanceService = _ServicePlaceholder  # type: ignore
     JobService = _ServicePlaceholder  # type: ignore
     QueueService = _ServicePlaceholder  # type: ignore
+
+from receipt_dynamo.merchant_truth_loader import (
+    MerchantTruthArtifact,
+    MerchantTruthLoader,
+    TruthResolutionMode,
+)
 
 # =============================================================================
 # Utility imports (explicit, no star imports)
@@ -269,6 +280,11 @@ __all__ = [
     "Letter",
     "Line",
     "MerchantFont",
+    "MerchantTruthActive",
+    "MerchantTruthAudit",
+    "MerchantTruthComponent",
+    "MerchantTruthManifest",
+    "MerchantTruthProposal",
     "OCRJob",
     "OCRRoutingDecision",
     "PlacesCache",
@@ -359,6 +375,9 @@ __all__ = [
     "CircuitBreakerOpenError",
     "RetryManager",
     "retry_with_backoff",
+    "MerchantTruthArtifact",
+    "MerchantTruthLoader",
+    "TruthResolutionMode",
     # DynamoDB clients
     "DynamoClient",
     "ResilientDynamoClient",

@@ -81,3 +81,23 @@ class BatchOperationError(OperationError):
 
 class TransactionError(OperationError):
     """Raised when a transaction operation fails."""
+
+
+class MerchantTruthError(ReceiptDynamoError):
+    """Base exception for merchant-truth contract violations."""
+
+
+class MerchantTruthConflictError(MerchantTruthError):
+    """Raised when an optimistic or immutable write loses a race."""
+
+
+class MerchantTruthIntegrityError(MerchantTruthError, ValueError):
+    """Raised when a bundle does not match its sealed manifest."""
+
+
+class MerchantTruthTableMismatchError(MerchantTruthError, ValueError):
+    """Raised before a write targets an unexpected table."""
+
+
+class MerchantTruthPromotionError(MerchantTruthError):
+    """Raised when fail-closed promotion cannot preserve the truth closure."""

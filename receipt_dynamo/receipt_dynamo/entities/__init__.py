@@ -79,6 +79,19 @@ from receipt_dynamo.entities.merchant_font import (  # noqa: F401
     MerchantFont,
     item_to_merchant_font,
 )
+from receipt_dynamo.entities.merchant_truth import (  # noqa: F401
+    COMPONENT_NAMES,
+    MerchantTruthActive,
+    MerchantTruthAudit,
+    MerchantTruthComponent,
+    MerchantTruthManifest,
+    MerchantTruthProposal,
+    canonical_json_bytes,
+    compute_bundle_hash,
+    hash_payload,
+    merchant_truth_pk,
+    version_prefix,
+)
 from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: F401
 from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
@@ -255,6 +268,11 @@ __all__ = [
     "Letter",
     "Line",
     "MerchantFont",
+    "MerchantTruthActive",
+    "MerchantTruthAudit",
+    "MerchantTruthComponent",
+    "MerchantTruthManifest",
+    "MerchantTruthProposal",
     "OCRJob",
     "OCRRoutingDecision",
     "PlacesCache",
@@ -343,6 +361,12 @@ __all__ = [
     "assert_valid_uuid",
     "extract_amount",
     "parse_date",
+    "COMPONENT_NAMES",
+    "canonical_json_bytes",
+    "compute_bundle_hash",
+    "hash_payload",
+    "merchant_truth_pk",
+    "version_prefix",
     # Additional exports from receipt_structure_analysis
     "ContentPattern",
     "SpatialPattern",
