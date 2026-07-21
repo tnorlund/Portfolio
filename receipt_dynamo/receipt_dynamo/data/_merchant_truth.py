@@ -36,6 +36,14 @@ CREATE_ONLY = "attribute_not_exists(PK) AND attribute_not_exists(SK)"
 MAX_TRANSACTION_ACTIONS = 100
 MAX_TRANSACTION_BYTES = 4 * 1024 * 1024
 
+FLAGS_COMPONENT = "flags"
+# Measured components carry truth; only ``flags`` carries decided config.
+MEASURED_COMPONENTS = COMPONENT_NAMES - {FLAGS_COMPONENT}
+WRITTEN_BY_KINDS = frozenset(
+    {"measurement_pipeline", "engine_config_sync", "migration"}
+)
+SOURCE_KINDS = frozenset({"measurement", "engine_config", "migration"})
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -167,6 +175,84 @@ class _MerchantTruth(FlattenedStandardMixin):
             details=details,
         )
 
+    @staticmethod
+    def _validate_component_governance(
+        component: MerchantTruthComponent,
+    ) -> None:
+        """Enforce written_by.kind (finding: fix 3) and required provenance
+        fields (finding 6, fix 4) for one component at mint time.
+
+        ``written_by.kind`` must fit the component: ``flags`` carries decided
+        config (``engine_config_sync``), measured components carry truth
+        (``measurement_pipeline``). ``migration`` is the one-shot bootstrap
+        writer and is accepted for every component. Provenance must carry the
+        contract fields unless a migration writer sets the explicit
+        ``provenance_completeness=legacy`` escape.
+        """
+        provenance = component.provenance
+        written_by = provenance.get("written_by")
+        if not isinstance(written_by, dict):
+            raise MerchantTruthIntegrityError(
+                f"component {component.name} provenance must carry a "
+                "written_by identity"
+            )
+        kind = written_by.get("kind")
+        if kind not in WRITTEN_BY_KINDS:
+            raise MerchantTruthIntegrityError(
+                f"component {component.name} has invalid written_by.kind "
+                f"{kind!r}"
+            )
+        if kind != "migration":
+            if component.name == FLAGS_COMPONENT and (
+                kind != "engine_config_sync"
+            ):
+                raise MerchantTruthIntegrityError(
+                    "flags component accepts only engine_config_sync or "
+                    f"migration, not {kind!r}"
+                )
+            if component.name in MEASURED_COMPONENTS and (
+                kind != "measurement_pipeline"
+            ):
+                raise MerchantTruthIntegrityError(
+                    f"measured component {component.name} accepts only "
+                    f"measurement_pipeline or migration, not {kind!r}"
+                )
+        source_kind = provenance.get("source_kind")
+        if source_kind not in SOURCE_KINDS:
+            raise MerchantTruthIntegrityError(
+                f"component {component.name} has invalid source_kind "
+                f"{source_kind!r}"
+            )
+        if (
+            source_kind == "migration"
+            and provenance.get("provenance_completeness") == "legacy"
+        ):
+            return
+        missing: list[str] = []
+        if not (
+            provenance.get("source_path") or provenance.get("source_object")
+        ):
+            missing.append("source_path/source_object")
+        if not (
+            provenance.get("source_hash") or provenance.get("git_sha")
+        ):
+            missing.append("source_hash/git_sha")
+        if not provenance.get("pipeline"):
+            missing.append("pipeline")
+        if not provenance.get("pipeline_version"):
+            missing.append("pipeline_version")
+        if not provenance.get("measured_at"):
+            missing.append("measured_at")
+        if source_kind == "measurement" and not provenance.get(
+            "source_receipt_keys"
+        ):
+            missing.append("source_receipt_keys")
+        if missing:
+            raise MerchantTruthIntegrityError(
+                f"component {component.name} provenance missing required "
+                f"fields: {', '.join(missing)}"
+            )
+
     def mint_version(
         self,
         slug: str,
@@ -192,6 +278,8 @@ class _MerchantTruth(FlattenedStandardMixin):
             raise MerchantTruthIntegrityError(
                 "all components must match the mint slug and version"
             )
+        for component in components:
+            self._validate_component_governance(component)
         component_hashes = {
             name: by_name[name].content_hash for name in sorted(by_name)
         }

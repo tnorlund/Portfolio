@@ -64,6 +64,17 @@ def accessor(client: RecordingClient | None = None) -> _MerchantTruth:
     return value
 
 
+LEGACY_PROVENANCE = {
+    "source_kind": "migration",
+    "provenance_completeness": "legacy",
+    "written_by": {
+        "kind": "migration",
+        "name": "merchant_truth_v1",
+        "version": "1",
+    },
+}
+
+
 def components(version: int = 1) -> list[MerchantTruthComponent]:
     return [
         MerchantTruthComponent(
@@ -71,10 +82,7 @@ def components(version: int = 1) -> list[MerchantTruthComponent]:
             version=version,
             name=name,
             payload={"component": name, "value": version},
-            provenance={
-                "source_kind": "migration",
-                "provenance_completeness": "legacy",
-            },
+            provenance=dict(LEGACY_PROVENANCE),
         )
         for name in sorted(COMPONENT_NAMES)
     ]
@@ -308,6 +316,148 @@ def test_proposal_create_and_resolution_pass_explicit_conditions() -> None:
     assert client.updates[0]["ExpressionAttributeValues"][":candidate"] == {
         "S": "MEASURED_IN_CANDIDATE"
     }
+
+
+def full_provenance(name: str) -> dict[str, Any]:
+    """A complete, non-legacy provenance block for one component."""
+    is_flags = name == "flags"
+    provenance: dict[str, Any] = {
+        "source_kind": "engine_config" if is_flags else "measurement",
+        "written_by": {
+            "kind": "engine_config_sync" if is_flags else "measurement_pipeline",
+            "name": "pipeline",
+            "version": "1",
+        },
+        "source_path": f"s3://truth/{name}.json",
+        "git_sha": "a" * 40,
+        "pipeline": f"glyphstudio.{name}",
+        "pipeline_version": "1",
+        "measured_at": NOW,
+    }
+    if not is_flags:
+        provenance["source_receipt_keys"] = ["IMAGE#1#RECEIPT#1"]
+    return provenance
+
+
+def components_with(prov_for_name: Any) -> list[MerchantTruthComponent]:
+    return [
+        MerchantTruthComponent(
+            slug=SLUG,
+            version=1,
+            name=name,
+            payload={"component": name},
+            provenance=prov_for_name(name),
+        )
+        for name in sorted(COMPONENT_NAMES)
+    ]
+
+
+def test_mint_accepts_complete_non_legacy_provenance() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+
+    result = truth.mint_version(
+        SLUG,
+        1,
+        components_with(full_provenance),
+        {"written_by": "pipeline"},
+        "run-1",
+        TABLE,
+        created_at=NOW,
+    )
+
+    assert result.status == "OPEN"
+    assert len(client.transactions) == 1
+
+
+def test_mint_rejects_flags_written_by_measurement_kind() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+
+    def prov(name: str) -> dict[str, Any]:
+        block = full_provenance(name)
+        if name == "flags":
+            block["written_by"]["kind"] = "measurement_pipeline"
+        return block
+
+    with pytest.raises(MerchantTruthIntegrityError, match="flags"):
+        truth.mint_version(
+            SLUG,
+            1,
+            components_with(prov),
+            {"written_by": "pipeline"},
+            "run-1",
+            TABLE,
+            created_at=NOW,
+        )
+
+    assert client.transactions == []
+
+
+def test_mint_rejects_measured_written_by_engine_config_kind() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+
+    def prov(name: str) -> dict[str, Any]:
+        block = full_provenance(name)
+        if name == "typography":
+            block["written_by"]["kind"] = "engine_config_sync"
+        return block
+
+    with pytest.raises(MerchantTruthIntegrityError, match="typography"):
+        truth.mint_version(
+            SLUG,
+            1,
+            components_with(prov),
+            {"written_by": "pipeline"},
+            "run-1",
+            TABLE,
+            created_at=NOW,
+        )
+
+    assert client.transactions == []
+
+
+def test_mint_rejects_non_legacy_provenance_missing_a_field() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+
+    def prov(name: str) -> dict[str, Any]:
+        block = full_provenance(name)
+        if name == "layout":
+            block.pop("measured_at")
+        return block
+
+    with pytest.raises(MerchantTruthIntegrityError, match="measured_at"):
+        truth.mint_version(
+            SLUG,
+            1,
+            components_with(prov),
+            {"written_by": "pipeline"},
+            "run-1",
+            TABLE,
+            created_at=NOW,
+        )
+
+    assert client.transactions == []
+
+
+def test_mint_accepts_migration_legacy_provenance_escape() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+
+    result = truth.mint_version(
+        SLUG,
+        1,
+        components(),
+        {"written_by": "migration"},
+        "run-1",
+        TABLE,
+        created_at=NOW,
+    )
+
+    assert result.status == "OPEN"
+    assert len(client.transactions) == 1
 
 
 def test_dev_table_guard_fails_before_any_write() -> None:
