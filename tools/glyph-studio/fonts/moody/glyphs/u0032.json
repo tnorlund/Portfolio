@@ -1,0 +1,141 @@
+{
+ "version": 1,
+ "char": "2",
+ "codepoint": 50,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "moody.refined.npz",
+  "samples": 52,
+  "consensusHash": "0a206f601392",
+  "date": "2026-07-19"
+ },
+ "width": 489.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 367.4,
+     "y": 959.2,
+     "type": "corner",
+     "hOut": {
+      "x": 412.1051414414238,
+      "y": 859.0
+     }
+    },
+    {
+     "x": 410.2,
+     "y": 659.2,
+     "type": "corner",
+     "hIn": {
+      "x": 439.43224999059834,
+      "y": 768.0
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 404.6,
+     "y": 40.8,
+     "type": "corner",
+     "hOut": {
+      "x": 321.6063003236568,
+      "y": 77.5
+     }
+    },
+    {
+     "x": 118.0,
+     "y": 40.8,
+     "type": "corner",
+     "hIn": {
+      "x": 191.18357045212525,
+      "y": 115.4
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 165.7,
+     "y": 40.8,
+     "type": "corner"
+    },
+    {
+     "x": 142.72342254145468,
+     "y": 40.8,
+     "type": "corner"
+    },
+    {
+     "x": 101.8,
+     "y": 40.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 367.4,
+     "y": 959.2,
+     "type": "corner"
+    },
+    {
+     "x": 164.46607699356798,
+     "y": 959.2,
+     "type": "corner"
+    },
+    {
+     "x": 85.2,
+     "y": 959.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 85.2,
+     "y": 959.2,
+     "type": "corner"
+    },
+    {
+     "x": 65.7,
+     "y": 766.6999999999999,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 101.8,
+     "y": 40.8,
+     "type": "corner",
+     "hOut": {
+      "x": 101.8,
+      "y": 296.0
+     }
+    },
+    {
+     "x": 375.9,
+     "y": 659.2,
+     "type": "corner",
+     "hIn": {
+      "x": 326.19898180753046,
+      "y": 420.1
+     }
+    }
+   ]
+  }
+ ]
+}

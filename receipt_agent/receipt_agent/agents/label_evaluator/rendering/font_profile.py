@@ -26,21 +26,14 @@ multiplies by 1000 to land in the synthesis pixel space
 from __future__ import annotations
 
 import os
-import re
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from statistics import median
 from typing import Any, Mapping, Sequence
 
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    US as _NF,
-)
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    fraction as _fraction,
-)
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    integer_part as _integer_part,
+from receipt_agent.agents.label_evaluator.rendering.price_tokens import (
+    PROFILE_PRICE_TOKEN,
 )
 
 
@@ -85,11 +78,9 @@ _EPSILON = 1e-9
 # A price/amount token: optional currency sign, digits with a 2-decimal tail,
 # optional thousands separators, and an optional trailing single-letter tax flag
 # (e.g. "1.99", "$12.00", "1,299.00", "3.49 T"). Receipts right-align these in a
-# dedicated column, which is what we want to measure.
-_PRICE_TOKEN = re.compile(
-    f"^{_NF.currency}?{_integer_part(_NF)}(?:{_fraction(_NF)})"
-    f"{_NF.currency}?{_NF.tax_flag}?$"
-)
+# dedicated column, which is what we want to measure. Defined once in
+# price_tokens (the measurement variant: no signs, no bare integer part).
+_PRICE_TOKEN = PROFILE_PRICE_TOKEN
 
 
 @dataclass(frozen=True)
@@ -328,11 +319,11 @@ def build_merchant_font_profile_from_dynamo(
 ) -> MerchantFontProfile | None:
     """Build a merchant profile from real receipts in Dynamo/S3.
 
-    Resolves the merchant's receipts via :class:`ReceiptPlace`
-    (``get_receipt_places_by_merchant`` — ``ReceiptMetadata`` is deprecated),
-    loads each receipt's OCR lines/words/letters, and builds a per-receipt
-    profile with :func:`extract_receipt_font_profile` (which runs #994's
-    clustering on the letters). Profiles are then aggregated.
+    Resolves the merchant's receipts from the canonical ``RECEIPT_PLACE`` rows
+    via ``get_receipt_places_by_merchant``, loads each receipt's OCR
+    lines/words/letters, and builds a per-receipt profile with
+    :func:`extract_receipt_font_profile` (which runs #994's clustering on the
+    letters). Profiles are then aggregated.
 
     ``eps=3.0`` matches the receipt-level recommendation from the font pilot
     (``docs/receipt-font-analysis-pilot.md``). When ``use_raw_image`` is set the

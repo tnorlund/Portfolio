@@ -1,0 +1,123 @@
+{
+ "version": 1,
+ "char": "I",
+ "codepoint": 73,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "italiadeli.refined.npz",
+  "samples": 37,
+  "consensusHash": "f057a706176c",
+  "date": "2026-07-19"
+ },
+ "width": 371.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 230.0,
+     "y": 427.8,
+     "type": "corner"
+    },
+    {
+     "x": 170.2,
+     "y": 427.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 230.0,
+     "y": 377.8,
+     "type": "corner"
+    },
+    {
+     "x": 170.2,
+     "y": 377.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 174.4,
+     "y": 955.6,
+     "type": "corner",
+     "hOut": {
+      "x": 147.04946817261984,
+      "y": 655.3
+     }
+    },
+    {
+     "x": 171.6,
+     "y": 44.4,
+     "type": "corner",
+     "hIn": {
+      "x": 170.33349050924357,
+      "y": 349.0
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 330.0,
+     "y": 44.4,
+     "type": "corner"
+    },
+    {
+     "x": 284.10944963737757,
+     "y": 44.4,
+     "type": "corner"
+    },
+    {
+     "x": 41.1,
+     "y": 44.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 313.3,
+     "y": 955.6,
+     "type": "corner"
+    },
+    {
+     "x": 292.21723507205434,
+     "y": 955.6,
+     "type": "corner",
+     "hOut": {
+      "x": 253.27911305219703,
+      "y": 937.0
+     }
+    },
+    {
+     "x": 142.26560138417847,
+     "y": 955.6,
+     "type": "corner",
+     "hIn": {
+      "x": 194.66574297637857,
+      "y": 977.4
+     }
+    },
+    {
+     "x": 80.00000000000006,
+     "y": 955.6,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

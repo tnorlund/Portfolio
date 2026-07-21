@@ -3,6 +3,8 @@
 Executable wrapper for ReceiptPlace backfill.
 
 Initializes clients from Pulumi stack and runs the backfill operation.
+This is an intentional legacy exception: it must read ReceiptMetadata as the
+source material for receipts that still need a ReceiptPlace row.
 
 Usage:
     python scripts/backfill_receipt_place.py --stack main --dry-run

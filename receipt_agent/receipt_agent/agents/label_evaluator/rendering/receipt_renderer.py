@@ -123,11 +123,14 @@ class RenderConfig:
     # per-token box-fitting path is used (see ``render_receipt``).
     grid_mode: bool = False
     # Per-section typography (real thermal receipts switch Font A / Font B per
-    # region). ``section_scale`` multiplies the body font size for a section
-    # (e.g. {"HEADER": 0.8}); ``section_font`` overrides the face for a section.
-    # BODY/TOTALS stay at scale 1.0 so they share the amount column. None = the
-    # whole receipt uses one size/font.
-    section_scale: Mapping[str, float] | None = None
+    # region). A ``section_scale`` entry is either a bare float that multiplies
+    # the body font size (e.g. {"HEADER": 0.8}) or a mapping
+    # ``{"height_scale": float, "condense": float}`` whose condense multiplies
+    # the global glyph condense for that section only (real prints switch to a
+    # narrower face per region, not just a smaller one). ``section_font``
+    # overrides the face for a section. BODY/TOTALS stay at scale 1.0 so they
+    # share the amount column. None = the whole receipt uses one size/font.
+    section_scale: Mapping[str, Any] | None = None
     # Measured per-section style rules (Glyph Studio stylemap); None = off.
     stylemap: Mapping[str, Any] | None = None
     # When a list is supplied, every drawn word appends its EXACT placement
@@ -217,6 +220,35 @@ class RenderConfig:
     # without a measured entry fall back to the stylemap rules.
     face_source: str = "stylemap"
     row_faces: Mapping[str, Any] | None = None
+
+
+def _clamped_scale(value: Any, lo: float, hi: float) -> float:
+    """Profile values are an external boundary: clamp to finite, sane range."""
+    try:
+        scale = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(scale):
+        return 1.0
+    return max(lo, min(hi, scale))
+
+
+def section_style(value: Any) -> tuple[float, float]:
+    """``(height_scale, condense)`` from one ``section_scale`` entry.
+
+    A bare number is the legacy height-only scale (condense 1.0, so every
+    existing profile renders byte-identically); a mapping may add a
+    per-section ``condense`` that multiplies the global glyph condense.
+    Values are clamped to finite, positive ranges -- a zero/NaN condense
+    from a hand-edited profile must degrade to a no-op, not a
+    ZeroDivisionError deep in token placement.
+    """
+    if isinstance(value, Mapping):
+        return (
+            _clamped_scale(value.get("height_scale", 1.0), 0.25, 4.0),
+            _clamped_scale(value.get("condense", 1.0), 0.2, 2.0),
+        )
+    return _clamped_scale(value, 0.25, 4.0), 1.0
 
 
 def render_receipt(
@@ -480,6 +512,12 @@ def _render_grid(
         if px is None:
             continue
         left, top, right, bottom = px
+        # The top ~third of the paper is the only place DATE/TIME mean header
+        # typography; lower on the paper they are transaction-block reprints
+        # at body size (see _POSITIONAL_HEADER_LABELS).
+        in_header_zone = (top + bottom) / 2.0 < (
+            config.margin + 0.35 * inner_h
+        )
         grid_words.append(
             GridWord(
                 left=left,
@@ -490,7 +528,9 @@ def _render_grid(
                 ink=_ink_for(word, config),
                 word_index=word.get("_box_index"),
                 source_line=_source_line_id(word),
-                section=section_for_labels(word.get("labels")),
+                section=section_for_labels(
+                    word.get("labels"), in_header_zone=in_header_zone
+                ),
             )
         )
     # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
@@ -749,11 +789,19 @@ def _render_grid(
         prev_text = row_text
         center_to = _center_target(line)
         fpath = section_font.get(sect) if sect else None
+        # A row's section condense applies whether or not the row is an
+        # enlarged display heading -- the heading scale overrides HEIGHT
+        # only, the section's face width stays in force.
+        sect_cond = (
+            section_style(section_scale.get(sect, 1.0))[1] if sect else 1.0
+        )
         if is_heading:
             sc = float(hscale)
             bf_row = bmf_heavy if bmf else None
         else:
-            sc = float(section_scale.get(sect, 1.0)) if sect else 1.0
+            sc = (
+                section_style(section_scale.get(sect, 1.0))[0] if sect else 1.0
+            )
             bf_row = bmf
         # Measured stylemap pass (no-op when config.stylemap is None): size
         # scale multiplies the row cap; bold double-strikes; underline draws
@@ -792,7 +840,7 @@ def _render_grid(
         sm_extra = bool(
             sm_style and (sm_style["bold"] or sm_style["underline"])
         )
-        if sc == 1.0 and not fpath and not sm_extra:
+        if sc == 1.0 and sect_cond == 1.0 and not fpath and not sm_extra:
             run = _run_layout(line, center_to)
             if run is not None:
                 text, anchor, x, target_w = run
@@ -837,7 +885,11 @@ def _render_grid(
                 box_sink=config.box_sink,
             )
             continue
-        key = (fpath, sc, bf_row is bmf_heavy)
+        # Per-section condense multiplies the global condense for this row
+        # only (sect_cond is 1.0 everywhere a profile uses the legacy float
+        # schema, so the effective condense equals config.condense exactly).
+        eff_cond = float(config.condense) * sect_cond
+        key = (fpath, sc, sect_cond, bf_row is bmf_heavy)
         cached = row_cache.get(key)
         if cached is None:
             row_font_px = max(6, int(round(sizing.font_px * sc)))
@@ -847,12 +899,10 @@ def _render_grid(
                 # Bitmap pitch comes from the atlas advance at the scaled cap, NOT
                 # the TTF advance (the two differ -> mis-spaced enlarged rows).
                 row_cap = max(6, int(round((cap_px or row_font_px) * sc)))
-                row_adv = bf_row.advance(row_cap) * float(config.condense)
+                row_adv = bf_row.advance(row_cap) * eff_cond
             else:
                 row_cap = None
-                row_adv = glyph_advance(draw, row_font) * float(
-                    config.condense
-                )
+                row_adv = glyph_advance(draw, row_font) * eff_cond
             row_spec = GridSpec(
                 cell_w=row_adv,
                 cell_h=spec.cell_h,
@@ -862,8 +912,9 @@ def _render_grid(
             row_cache[key] = (row_spec, row_font, row_cap)
             cached = row_cache[key]
         row_spec, row_font, row_cap = cached
-        # Lane only applies when the row shares the base cell grid (scale 1.0).
-        lane = amount_lane if sc == 1.0 else None
+        # Lane only applies when the row shares the base cell grid (scale 1.0
+        # AND base condense -- a per-section condense changes the cell width).
+        lane = amount_lane if sc == 1.0 and sect_cond == 1.0 else None
         cp = (
             row_cap
             if row_cap
@@ -895,7 +946,7 @@ def _render_grid(
                     line[0].ink,
                     anchor=anchor,
                     stroke=config.stroke,
-                    condense=config.condense,
+                    condense=eff_cond,
                     condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cp,
@@ -914,7 +965,7 @@ def _render_grid(
                     row_font,
                     amount_lane=lane,
                     stroke=config.stroke,
-                    condense=config.condense,
+                    condense=eff_cond,
                     condense_glyphs=config.condense_glyphs,
                     bitmap_font=bf_row,
                     cap_px=cp,

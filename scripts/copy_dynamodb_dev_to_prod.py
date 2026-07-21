@@ -10,6 +10,11 @@ This script:
 5. Copies all related entities (lines, words, labels, metadata, OCR jobs, etc.)
 6. Uses batch writes for efficiency
 
+Legacy ReceiptMetadata rows are intentionally replayed when present. A mirror
+REPLACE deletes the complete image partition, so omitting exported legacy rows
+would silently make prod differ from dev even though ReceiptPlace is the active
+merchant source of truth.
+
 Usage:
     # Dry run first
     python scripts/copy_dynamodb_dev_to_prod.py --dry-run
@@ -296,7 +301,8 @@ def copy_image_entities(
                     prod_client.add_receipt_word_labels(batch)
             stats["receipt_word_labels"] = len(receipt_word_labels)
 
-        # Process ReceiptMetadatas
+        # Preserve legacy ReceiptMetadata rows during whole-image mirroring.
+        # Active merchant reads use ReceiptPlace, processed immediately below.
         if export_data.get("receipt_metadatas"):
             receipt_metadatas = [
                 ReceiptMetadata(**metadata)

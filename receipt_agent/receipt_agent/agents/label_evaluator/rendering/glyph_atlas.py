@@ -743,9 +743,9 @@ def build_glyph_atlas_from_dynamo(
 ) -> GlyphAtlas | None:
     """Build a merchant glyph atlas from real receipts in Dynamo/S3.
 
-    Resolves receipts via :class:`ReceiptPlace` (``ReceiptMetadata`` is
-    deprecated), loads letters + the raw receipt crop per receipt, and delegates
-    to :func:`build_glyph_atlas`. ``max_receipts`` bounds the S3 image pulls.
+    Resolves receipts from the canonical ``RECEIPT_PLACE`` rows, loads letters
+    plus the raw receipt crop per receipt, and delegates to
+    :func:`build_glyph_atlas`. ``max_receipts`` bounds the S3 image pulls.
     """
     from receipt_dynamo.data.dynamo_client import DynamoClient
     from receipt_upload.font_analysis import load_raw_image_from_s3
