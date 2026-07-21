@@ -274,6 +274,40 @@ def test_dry_run_writer_outputs_payload_crosswalk_and_summary(
     )
 
 
+DRY_RUN_GOLDEN_SHA256 = (
+    "0264778995a007e9f362800e9e971d881df748f9492cfcf04b4c43d96a9e4dc4"
+)
+
+
+def test_dry_run_payload_bytes_are_stable_for_fixture_input(
+    tmp_path: Path,
+) -> None:
+    """Pin the exact dry-run output bytes for a fixed fixture input.
+
+    The --live mode must never change what the default dry run writes; this
+    golden digest was captured from the pre-live implementation and any
+    byte-level drift in the payload files fails here.
+    """
+    payloads, crosswalk = build_v1_payloads(
+        profile_document(),
+        FakeSource(),  # type: ignore[arg-type]
+        profiles_source_path="scripts/merchant_profiles.json",
+        git_sha=GIT_SHA,
+        generated_at=NOW,
+    )
+    write_dry_run_payloads(
+        tmp_path, payloads, crosswalk, generated_at=NOW, git_sha=GIT_SHA
+    )
+
+    digest = hashlib.sha256()
+    for path in sorted(tmp_path.glob("*.json")):
+        digest.update(path.name.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(path.read_bytes())
+        digest.update(b"\x00")
+    assert digest.hexdigest() == DRY_RUN_GOLDEN_SHA256
+
+
 class QueryOnlyDynamo:
     def query(self, **_kwargs: Any) -> dict[str, Any]:
         return {"Items": []}
