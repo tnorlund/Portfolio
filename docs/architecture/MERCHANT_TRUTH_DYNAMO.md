@@ -98,6 +98,16 @@ of KB). The writer enforces: serialized payload > 300KB → store
 `payload_s3_key` + `payload_size` instead of inline `payload`;
 `content_hash` is always inline so gates and diffs never need S3.
 
+**Payload representation (hash stability, learned live in G1):** the inline
+`payload` attribute stores the component's **canonical JSON string** — the
+exact bytes `content_hash` was computed over — never a native
+AttributeValue tree. DynamoDB normalizes number representations (`0.0` is
+stored and returned as `0`), which silently changes the canonical JSON of a
+round-tripped native map and breaks read-back hash verification (the G1
+costco mint failed its seal on exactly this, via `bitmap_thin: 0.0`).
+Strings round-trip verbatim; readers `json.loads` the string and re-verify
+the hash, and reject legacy AttributeValue-encoded payloads outright.
+
 **The catalog inlines into the version** (revised in #1193 round-1 review).
 `C#catalog_snapshot` carries the full sorted, normalized product records
 plus `{item_count, catalog_hash, as_of}` — catalogs are tiny relative to

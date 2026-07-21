@@ -274,8 +274,11 @@ def test_dry_run_writer_outputs_payload_crosswalk_and_summary(
     )
 
 
+# Re-captured for the G1 round-trip fix: component payloads are now stored
+# as their canonical JSON string (hash-stable through DynamoDB number
+# normalization), which intentionally changed the payload-file bytes.
 DRY_RUN_GOLDEN_SHA256 = (
-    "0264778995a007e9f362800e9e971d881df748f9492cfcf04b4c43d96a9e4dc4"
+    "8d4fec8ca60deb16361391bfd499d4698cc6b49fe239c6e4c2eb2a3bb982c94f"
 )
 
 
