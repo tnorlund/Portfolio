@@ -91,8 +91,9 @@ def main(argv: list[str] | None = None) -> int:
 
     explicit_table = args.table_name is not None
     table_name = args.table_name or DEV_TABLE_NAME
-    if args.live or args.verify:
-        validate_live_table(table_name, explicit=explicit_table)
+    # Unconditional on every path (including the plain dry run): prod
+    # refusal must precede profile reads and boto3 client construction.
+    validate_live_table(table_name, explicit=explicit_table)
 
     repo_root = Path(__file__).resolve().parents[1]
     generated_at = args.generated_at or datetime.now(timezone.utc).isoformat()

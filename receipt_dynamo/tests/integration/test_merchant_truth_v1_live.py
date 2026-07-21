@@ -454,9 +454,23 @@ def test_script_default_stays_dry_run_and_write_free(
     assert truth_rows["Items"] == []
 
 
+@pytest.mark.parametrize(
+    "mode_flags",
+    [
+        pytest.param([], id="dry-run-default"),
+        pytest.param(["--live"], id="live"),
+        pytest.param(["--verify"], id="verify"),
+    ],
+)
 def test_script_refuses_prod_table_before_reading_anything(
-    tmp_path: Path,
+    tmp_path: Path, mode_flags: list[str]
 ) -> None:
+    """Prod refusal precedes profile reads on every path.
+
+    The profiles path does not exist, so reaching json.load (or boto3
+    client construction) would raise FileNotFoundError instead of the
+    table-mismatch error asserted here.
+    """
     with pytest.raises(MerchantTruthTableMismatchError, match="prod table"):
         _script_main(
             [
@@ -466,6 +480,6 @@ def test_script_refuses_prod_table_before_reading_anything(
                 str(tmp_path / "payloads"),
                 "--table",
                 PROD_TABLE_NAME,
-                "--live",
+                *mode_flags,
             ]
         )
