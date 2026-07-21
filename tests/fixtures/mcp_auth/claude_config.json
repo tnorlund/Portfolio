@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "receipt-tools": {
+      "type": "http",
+      "url": "https://global.example.lambda-url.us-east-1.on.aws"
+    },
+    "glyph-studio": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/somewhere/tools/glyph-studio/server/mcp.mjs"]
+    }
+  },
+  "projects": {
+    "/repo/root": {
+      "mcpServers": {
+        "receipt-tools": {
+          "type": "stdio",
+          "command": "python3",
+          "args": ["scripts/receipt_mcp_server.py"]
+        }
+      }
+    },
+    "/other/project": {
+      "mcpServers": {
+        "receipt-tools": {
+          "type": "http",
+          "url": "https://other.example.on.aws"
+        }
+      }
+    }
+  }
+}
