@@ -23,6 +23,7 @@ from typing import Any
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from receipt_dynamo import DynamoClient
@@ -671,6 +672,46 @@ def test_all_sealed_flip_all_success_exits_zero(
     ]
     output = capsys.readouterr().out
     assert "| alpha | 1 | ACTIVATED |" in output
+    assert "| beta | 1 | ACTIVATED |" in output
+
+
+class ThrottledInitialClient(StubClient):
+    """A writer whose initial activation hits a transient AWS fault."""
+
+    def initial_activate(self, active, expected_table_name):
+        if active.slug == "alpha":
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "ThrottlingException",
+                        "Message": "Rate exceeded",
+                    }
+                },
+                "TransactWriteItems",
+            )
+        return super().initial_activate(active, expected_table_name)
+
+
+def test_all_sealed_flip_continues_past_transient_client_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    alpha, alpha_components = build_sealed("alpha", 1)
+    beta, beta_components = build_sealed("beta", 1)
+    client = ThrottledInitialClient(
+        [(alpha, alpha_components), (beta, beta_components)],
+        allow_writes=True,
+    )
+
+    exit_code = amt.main(["--all-sealed", "--flip"], client=client)
+
+    # alpha's throttle is recorded as an ERROR, beta still activates,
+    # and the summary table renders (the sweep never aborts mid-fleet).
+    assert exit_code == 1
+    assert client.write_calls == [("initial", "beta", "1")]
+    output = capsys.readouterr().out
+    assert "## Sweep summary" in output
+    assert "| alpha | 1 | ERROR: ClientError:" in output
+    assert "ThrottlingException" in output
     assert "| beta | 1 | ACTIVATED |" in output
 
 

@@ -151,7 +151,10 @@ def build_plan(
             f"{slug} v{version} gate_status is {manifest.gate_status!r}; "
             "only gate-PASS bundles are activatable"
         )
-    current = client.get_active_merchant_truth(slug)
+    # Consistent read: the accessor's expected-prev condition already
+    # guarantees safety, but planning from a lagging replica could either
+    # raise a spurious conflict or report a stale "already converged".
+    current = client.get_active_merchant_truth(slug, consistent_read=True)
     if current is None:
         action = "initial"
     elif (
@@ -393,6 +396,20 @@ def _run_all_sealed(
             print(f"ERROR: {slug} v{version}: {error}", file=sys.stderr)
             results.append((slug, version, f"ERROR: {error}"))
             continue
+        except Exception as error:  # noqa: BLE001 — sweep must not abort
+            # Unexpected per-merchant faults (e.g. botocore ClientError
+            # throttling) are recorded and the sweep continues, so one
+            # transient failure cannot skip the remaining merchants or
+            # the summary table.
+            print(
+                f"ERROR: {slug} v{version}: "
+                f"{type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
+            results.append(
+                (slug, version, f"ERROR: {type(error).__name__}: {error}")
+            )
+            continue
         print("\n".join(render_plan(plan, table=table)))
         if not flip:
             results.append((slug, version, "DRY-RUN"))
@@ -404,6 +421,16 @@ def _run_all_sealed(
         except MerchantTruthConflictError as error:
             print("\n".join(render_conflict(error, client, slug)))
             results.append((slug, version, f"CONFLICT: {error}"))
+            continue
+        except Exception as error:  # noqa: BLE001 — sweep must not abort
+            print(
+                f"ERROR: {slug} v{version}: "
+                f"{type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
+            results.append(
+                (slug, version, f"ERROR: {type(error).__name__}: {error}")
+            )
             continue
         print("\n".join(render_result(verb, active)))
         results.append((slug, version, verb))
