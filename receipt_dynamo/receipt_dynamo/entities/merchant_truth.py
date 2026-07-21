@@ -128,6 +128,13 @@ class MerchantTruthComponent(DynamoDBEntity):
         }
 
     def to_item(self) -> dict[str, Any]:
+        # The payload is stored as its canonical JSON STRING — the exact
+        # bytes ``content_hash`` was computed over — never as a native
+        # AttributeValue tree. DynamoDB normalizes number representations
+        # (``0.0`` is stored and returned as ``0``), which silently changes
+        # the canonical JSON of a round-tripped native map and makes the
+        # read-back hash verification fail (observed live during the G1
+        # v1 mint on ``bitmap_thin: 0.0``). A string round-trips verbatim.
         item = {
             **self.key,
             "TYPE": {"S": "MERCHANT_TRUTH_COMPONENT"},
@@ -136,7 +143,9 @@ class MerchantTruthComponent(DynamoDBEntity):
             "component": {"S": self.name},
             "content_hash": {"S": self.content_hash},
             "provenance": to_dynamodb_value(self.provenance),
-            "payload": to_dynamodb_value(self.payload),
+            "payload": {
+                "S": canonical_json_bytes(self.payload).decode("utf-8")
+            },
         }
         if self.payload_s3_key is not None:
             item["payload_s3_key"] = {"S": self.payload_s3_key}
@@ -147,11 +156,20 @@ class MerchantTruthComponent(DynamoDBEntity):
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "MerchantTruthComponent":
         data = _item_to_python(item)
+        raw_payload = data["payload"]
+        if not isinstance(raw_payload, str):
+            raise ValueError(
+                "component payload must be stored as its canonical JSON "
+                "string; found a legacy AttributeValue-encoded payload, "
+                "whose number forms are not round-trip stable through "
+                "DynamoDB (numbers normalize, e.g. 0.0 -> 0) and can "
+                "never re-verify against content_hash"
+            )
         return cls(
             slug=data["slug"],
             version=int(data["version"]),
             name=data["component"],
-            payload=data["payload"],
+            payload=json.loads(raw_payload),
             provenance=data["provenance"],
             content_hash=data["content_hash"],
             payload_s3_key=data.get("payload_s3_key"),

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Protocol, Sequence
 
 from receipt_dynamo.data.shared_exceptions import (
+    MerchantTruthConflictError,
     MerchantTruthIntegrityError,
     MerchantTruthTableMismatchError,
 )
@@ -35,6 +36,8 @@ from receipt_dynamo.entities.merchant_truth import (
     MerchantTruthComponent,
     MerchantTruthManifest,
     canonical_json_bytes,
+    merchant_truth_pk,
+    version_prefix,
 )
 from receipt_dynamo.merchant_truth_loader import (
     MerchantTruthLoader,
@@ -379,3 +382,121 @@ def _verify_one_bundle(
         bundle_hash=artifact.bundle_hash,
         mismatches=tuple(mismatches),
     )
+
+
+@dataclass(frozen=True)
+class OpenVersionCleanupResult:
+    """Outcome of an owner-gated unsealed-OPEN-version cleanup."""
+
+    slug: str
+    version: int
+    found_keys: tuple[str, ...]
+    deleted: bool
+
+    @property
+    def report_lines(self) -> list[str]:
+        verb = "DELETED" if self.deleted else "WOULD DELETE (dry run)"
+        lines = [
+            f"cleanup {self.slug} v{self.version}: {verb} "
+            f"{len(self.found_keys)} rows (AUDIT rows are preserved)"
+        ]
+        lines.extend(f"  {key}" for key in self.found_keys)
+        return lines
+
+
+def cleanup_unsealed_open_version(
+    dynamodb_client: Any,
+    *,
+    table_name: str,
+    slug: str,
+    version: int,
+    explicit_table: bool = False,
+    delete: bool = False,
+) -> OpenVersionCleanupResult:
+    """Owner-gated recovery: remove the rows of a FAILED, never-sealed mint.
+
+    This exists for exactly one situation: a migration mint wrote its OPEN
+    manifest + components but the seal failed (e.g. the G1 costco mint,
+    whose legacy AttributeValue-encoded payloads lost number-form fidelity
+    and can never re-verify). ``mint_version`` is create-only, so a re-mint
+    cannot proceed while those rows exist; the resume protocol cannot help
+    because the stored representation itself is unverifiable.
+
+    Guardrails: table pinning identical to the live mint (prod refused
+    unconditionally); refuses to touch anything unless the manifest exists
+    and is ``OPEN`` (a SEALED version is immutable truth and is never
+    deleted); deletion is a single conditional transaction; append-only
+    ``AUDIT#`` rows are outside the version key range and are always
+    preserved as the historical record of the failed attempt. Default is a
+    dry run that only lists the rows.
+    """
+    validate_live_table(table_name, explicit=explicit_table)
+    partition_key = merchant_truth_pk(slug)
+    sort_prefix = f"{version_prefix(version)}#"
+    items: list[dict[str, Any]] = []
+    exclusive_start_key = None
+    while True:
+        request: dict[str, Any] = {
+            "TableName": table_name,
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ExpressionAttributeValues": {
+                ":pk": {"S": partition_key},
+                ":sk": {"S": sort_prefix},
+            },
+            "ConsistentRead": True,
+        }
+        if exclusive_start_key is not None:
+            request["ExclusiveStartKey"] = exclusive_start_key
+        response = dynamodb_client.query(**request)
+        items.extend(response.get("Items", []))
+        exclusive_start_key = response.get("LastEvaluatedKey")
+        if not exclusive_start_key:
+            break
+    found_keys = tuple(item["SK"]["S"] for item in items)
+    if not items:
+        return OpenVersionCleanupResult(slug, version, (), deleted=False)
+    manifest_items = [
+        item
+        for item in items
+        if item["SK"]["S"] == f"{version_prefix(version)}#MANIFEST"
+    ]
+    if len(manifest_items) != 1:
+        raise MerchantTruthIntegrityError(
+            f"{slug} v{version} has {len(manifest_items)} manifest rows; "
+            "refusing cleanup of an unrecognized state"
+        )
+    status = manifest_items[0].get("status", {}).get("S")
+    if status != "OPEN":
+        raise MerchantTruthConflictError(
+            f"refusing cleanup: {slug} v{version} manifest status is "
+            f"{status!r}; only a never-sealed OPEN version may be removed"
+        )
+    if not delete:
+        return OpenVersionCleanupResult(slug, version, found_keys, False)
+    actions: list[dict[str, Any]] = []
+    for item in items:
+        key = {"PK": item["PK"], "SK": item["SK"]}
+        if item["SK"]["S"].endswith("#MANIFEST"):
+            actions.append(
+                {
+                    "Delete": {
+                        "TableName": table_name,
+                        "Key": key,
+                        "ConditionExpression": "#status = :open",
+                        "ExpressionAttributeNames": {"#status": "status"},
+                        "ExpressionAttributeValues": {":open": {"S": "OPEN"}},
+                    }
+                }
+            )
+        else:
+            actions.append(
+                {
+                    "Delete": {
+                        "TableName": table_name,
+                        "Key": key,
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+            )
+    dynamodb_client.transact_write_items(TransactItems=actions)
+    return OpenVersionCleanupResult(slug, version, found_keys, True)
