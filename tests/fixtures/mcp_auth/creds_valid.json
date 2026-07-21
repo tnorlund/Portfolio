@@ -1,0 +1,8 @@
+{
+  "claudeAiOauth": {
+    "accessToken": "fixture-not-a-real-token",
+    "expiresAt": 1810363482067,
+    "scopes": ["user:inference", "user:profile"],
+    "subscriptionType": "max"
+  }
+}

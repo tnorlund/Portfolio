@@ -1,0 +1,15 @@
+{
+  "claudeAiOauth": {
+    "accessToken": "fixture-not-a-real-token",
+    "expiresAt": 1810363482067,
+    "scopes": ["user:inference", "user:profile"],
+    "subscriptionType": "max"
+  },
+  "mcpOAuth": {
+    "receipt-tools|https://example.execute-api.us-east-1.amazonaws.com/receipt/mcp": {
+      "accessToken": "fixture-mcp-access-token",
+      "refreshToken": "fixture-mcp-refresh-token",
+      "expiresAt": 1810363482067
+    }
+  }
+}

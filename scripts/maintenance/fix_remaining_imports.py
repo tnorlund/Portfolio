@@ -49,6 +49,7 @@ def fix_imports_in_file(filepath: Path) -> int:
         "itemToQueue": "item_to_queue",
         "itemToJobResource": "item_to_job_resource",
         "itemToReceiptField": "item_to_receipt_field",
+        # Historical symbol migration only; active reads use receipt places.
         "itemToReceiptMetadata": "item_to_receipt_metadata",
         "itemToImage": "item_to_image",
         "itemToEmbeddingBatchResult": "item_to_embedding_batch_result",

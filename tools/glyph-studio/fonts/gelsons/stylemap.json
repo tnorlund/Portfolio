@@ -1,0 +1,18 @@
+{
+ "version": 1,
+ "source": {
+  "merchant": "gelsons",
+  "receipts": 6,
+  "date": "2026-07-19",
+  "notes": "All 6 dev Gelson's Westlake Village receipts. Department headers (GROCERY/PRODUCE/REG DELI/BAKERY) measured bold (header ink density med 0.193 vs body 0.114, ~1.7x) and underlined 13/13 (dot-matrix dashed rule just below the baseline; stylescan's box-interior detector misses it -- measured with a below-box band detector). Cap height equals body. Payment/summary/footer measured body-normal, so only section_header is styled."
+ },
+ "sections": {
+  "section_header": {
+   "sizeScale": 1.0,
+   "weight": "bold",
+   "underline": true,
+   "underlineRate": 1.0,
+   "notes": "13/13 department headers underlined + bold across the fleet."
+  }
+ }
+}

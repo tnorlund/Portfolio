@@ -1,0 +1,39 @@
+{
+ "version": 1,
+ "name": "moody",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350,
+  "pitchRatioTarget": 0.5249,
+  "pitchRatioNote": "median OCR letter pitch / cap across the dev Moody Market & Provisions receipts"
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 81.6,
+   "pitch": 0.4
+  },
+  "weight": 1.15,
+  "trackingScale": 1.0,
+  "slant": 0.0,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 1.0153,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {
+  "merchant": "Moody Market & Provisions",
+  "imageId": "cd456f8c-111e-4d7c-83ae-9552ad7004a7",
+  "receiptId": 1
+ },
+ "_status": "PENDING - atlas minted + per-glyph QA complete, but the review height gate quantizes bimodally (synth cap snaps to 34 or 48px around the 44-45px real target) on every candidate receipt; density 0.94-0.96 and wpc near-band. NOT profiled/published until the row-scale quantization is understood. See PHASE3_RESULT.md."
+}

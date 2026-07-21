@@ -1,375 +1,1144 @@
 {
-  "_comment": "Per-merchant synthetic-receipt render profile, keyed by exact merchant_name. Every field is optional; an absent field falls back to a generic default that reproduces pre-registry behavior. See docs/synthetic-receipt-rendering-generalization.md. typography.font is a token resolved to a bundled font path (PTMONO/VT323/B612); typography.bitmap_font and logo filenames resolve under $BITMATRIX_DIR. _comment keys are ignored by the loader.",
-  "_section_scale_note": "Per-merchant header size relative to body, from a measured + dual-reviewed (Claude pixel-measurement + codex) study of the real receipts. Real thermal printers shrink the header block (Epson Font A vs Font B); warehouse / natural-grocer formats print the header at body size. NONE use a different per-section typeface (size only). {} means uniform (no shrink). Default when unset: {\"HEADER\": 0.80}.",
-  "profiles": {
-    "Costco Wholesale": {
-      "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform).",
-      "section_scale": {},
-      "typography": {
-        "bitmap_thin": 0.0,
-        "bitmap_font": {
-          "regular": "bitMatrix-C2.glyphs.npz",
-          "heavy": "bitMatrix-C2-heavy.glyphs.npz"
-        },
-        "display_headings": {
-          "SELF-CHECKOUT": 1.7,
-          "SELF CHECKOUT": 1.7,
-          "THANK YOU": 1.4,
-          "PLEASE COME AGAIN": 1.4,
-          "ITEMS SOLD:": 1.8
-        },
-        "reverse_total": true,
-        "reverse_date_after_items": true,
-        "dashed_separators": true,
-        "heading_bleed_phrase": "ITEMS SOLD:",
-        "reverse_date_anchor": "NUMBER OF ITEMS SOLD",
-        "dash_after_amount_date": true,
-        "condense": 0.93,
-        "dash_around_phrases": [
-          "SHOP CARD"
-        ],
-        "_face_source_comment": "M4 pilot flag. 'stylemap' (default, no-op) = display_headings text rules + logo overlay; 'measured' consumes a per-row row_faces map built by glyphstudio.face_select from stylescan measurements of the mimicked receipt.",
-        "face_source": "stylemap"
-      },
-      "logo": "bitMatrix-C2_logo.png",
-      "logo_anchor": {
-        "phrases": [
-          "EWHOLESALE",
-          "WHOLESALE"
-        ],
-        "extend_left": false,
-        "center": true
+ "_comment": "Per-merchant synthetic-receipt render profile, keyed by exact merchant_name. Every field is optional; an absent field falls back to a generic default that reproduces pre-registry behavior. See docs/synthetic-receipt-rendering-generalization.md. typography.font is a token resolved to a bundled font path (PTMONO/VT323/B612); typography.bitmap_font and logo filenames resolve under $BITMATRIX_DIR. _comment keys are ignored by the loader.",
+ "_section_scale_note": "Per-merchant header size relative to body, from a measured + dual-reviewed (Claude pixel-measurement + codex) study of the real receipts. Real thermal printers shrink the header block (Epson Font A vs Font B); warehouse / natural-grocer formats print the header at body size. NONE use a different per-section typeface (size only). {} means uniform (no shrink). Default when unset: {\"HEADER\": 0.80}. Keys map to the renderer's row sections (HEADER / BODY / TOTALS / PAYMENT / FOOTER); FOOTER targets the trailing alphabetic return-policy / legal narration.",
+ "profiles": {
+  "Costco Wholesale": {
+   "_comment": "Real font extracted from the bitMatrix-C2 chart: bitMatrix-C2 body + bitMatrix-C2-heavy heading. SELF-CHECKOUT prints as a large bold heading; the grand TOTAL prints reverse-video. condense 0.93: bitMatrix's widest-letter advance reads ~6% too airy vs the real char pitch (cell aspect 0.61 vs 0.57). Header measured ~= body (uniform). FOOTER 0.5: the bottom return-policy / legal narration (cap ~15.5px) prints at ~half body height (cap ~33px); STOREFRONT wordmark is the pasted logo, ADDRESS measures ~= body height.",
+   "section_scale": {
+    "FOOTER": 0.5
+   },
+   "typography": {
+    "bitmap_thin": 0.0,
+    "bitmap_font": {
+     "regular": "bitMatrix-C2.glyphs.npz",
+     "heavy": "bitMatrix-C2-heavy.glyphs.npz"
+    },
+    "display_headings": {
+     "SELF-CHECKOUT": 1.7,
+     "SELF CHECKOUT": 1.7,
+     "THANK YOU": 1.4,
+     "PLEASE COME AGAIN": 1.4,
+     "ITEMS SOLD:": 1.8
+    },
+    "reverse_total": true,
+    "reverse_date_after_items": true,
+    "dashed_separators": true,
+    "heading_bleed_phrase": "ITEMS SOLD:",
+    "reverse_date_anchor": "NUMBER OF ITEMS SOLD",
+    "dash_after_amount_date": true,
+    "condense": 0.93,
+    "dash_around_phrases": [
+     "SHOP CARD"
+    ],
+    "_face_source_comment": "M4 pilot flag. 'stylemap' (default, no-op) = display_headings text rules + logo overlay; 'measured' consumes a per-row row_faces map built by glyphstudio.face_select from stylescan measurements of the mimicked receipt.",
+    "face_source": "stylemap"
+   },
+   "logo": "bitMatrix-C2_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "COSTCO",
+     "EWHOLESALE",
+     "WHOLESALE"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 12,
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
+    },
+    "columns": {
+     "barcode": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2479,
+       "spread": 0.007,
+       "support": 7
       }
-    },
-    "Amazon Fresh": {
-      "_comment": "receiptfont.com bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.",
-      "section_scale": {
-        "HEADER": 0.78
+     ],
+     "footer": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0171,
+       "spread": 0.0186,
+       "support": 8
       },
-      "typography": {
-        "font": "PTMONO",
-        "condense": 0.8,
-        "stroke": 0
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1788,
+       "spread": 0.0071,
+       "support": 6
       },
-      "logo": "amazon_fresh_logo.png"
-    },
-    "Target": {
-      "_comment": "Studio-native Target synthesis pooled from Target, Target Grocery, and Target Summerlin South receipts. Parent Image scans usually include the bullseye; many processed Receipt crops start at the address/barcode, so synthetic rendering reserves a top graphic band and leaves real Dynamo crop/word records untouched.",
-      "aliases": [
-        "Target Grocery",
-        "Target Summerlin South"
-      ],
-      "section_scale": {
-        "HEADER": 0.8
-      },
-      "typography": {
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "target.glyphs.npz",
-          "heavy": "target-heavy.glyphs.npz"
-        },
-        "condense": 0.893,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "bitmap_thin": 0.0,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.95,
-        "stylemap": "target.stylemap.json",
-        "pitch_ratio": 0.526,
-        "dash_around_phrases": [
-          "REC#"
-        ]
-      },
-      "logo": "target_logo.png",
-      "logo_anchor": {
-        "top_band": 110,
-        "reserve_threshold": 0.7,
-        "width_frac": 0.2,
-        "top_margin": 8,
-        "bottom_margin": 12
-      },
-      "graphics": {
-        "footer_codes": false,
-        "inbody_barcode": {
-          "symbology": "code128",
-          "max_count": 1,
-          "bar_h_px": 72,
-          "bar_w_frac": 0.68
-        }
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2713,
+       "spread": 0.0086,
+       "support": 8
       }
-    },
-    "The Home Depot": {
-      "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH (build_homedepot_logo.py from a clean brand asset). Body font studio-minted from 18 verified HD receipts (excluded a doubled two-receipt photo). condense/pitch_ratio measured real-vs-synth; the HD thermal face is bold and wider than Vons/CVS (pitch_ratio 0.637).",
-      "aliases": [
-        "Home Depot"
-      ],
-      "logo": "homedepot_logo.png",
-      "typography": {
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "homedepot.glyphs.npz",
-          "heavy": "homedepot-heavy.glyphs.npz"
-        },
-        "condense": 1.152,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.86,
-        "stylemap": "homedepot.stylemap.json",
-        "pitch_ratio": 0.66,
-        "bitmap_thin": 0.6
+     ],
+     "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.007,
+       "spread": 0.0078,
+       "support": 6
       },
-      "logo_anchor": {
-        "phrases": [
-          "HOWDOERS",
-          "GETMOREDONE"
-        ],
-        "extend_left": true
-      },
-      "graphics": {
-        "footer_codes": true,
-        "inbody_barcode": {
-          "max_count": 0
-        }
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9439,
+       "spread": 0.0096,
+       "support": 8
       }
-    },
-    "In-N-Out Burger": {
-      "_comment": "Studio-minted from 15 real receipts. Scans print a thermal text header such as 'IN-N-OUT WESTLAKE VILLAGE', not the full red/yellow restaurant-logo lockup; keep the downloaded brand SVG out of receipt-body rendering so boxes and receipt-level records stay scan-faithful.",
-      "aliases": [
-        "IN-N-OUT",
-        "IN-N-OUT BURGER",
-        "IN-N-OUT WESTLAKE VILLAGE"
-      ],
-      "section_scale": {},
-      "typography": {
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "innout.glyphs.npz",
-          "heavy": "innout-heavy.glyphs.npz"
-        },
-        "condense": 0.7,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "bitmap_thin": 0.0,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.769,
-        "stylemap": "innout.stylemap.json",
-        "pitch_ratio": 0.508,
-        "condense_glyphs": true
+     ],
+     "payment": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0063,
+       "spread": 0.0124,
+       "support": 8
       },
-      "graphics": {
-        "footer_codes": false,
-        "inbody_barcode": {
-          "max_count": 0
-        }
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.2229,
+       "spread": 0.0037,
+       "support": 11
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.394,
+       "spread": 0.0285,
+       "support": 12
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9417,
+       "spread": 0.0124,
+       "support": 9
       }
-    },
-    "Vons": {
-      "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
-      "logo": "vons_logo.png",
-      "typography": {
-        "bitmap_thin": 0.3,
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "vons.glyphs.npz",
-          "heavy": "vons-heavy.glyphs.npz"
-        },
-        "condense": 0.895,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.649,
-        "stylemap": "vons.stylemap.json",
-        "pitch_ratio": 0.538
+     ],
+     "storefront": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0,
+       "spread": 0.0083,
+       "support": 7
       },
-      "logo_anchor": {
-        "phrases": [
-          "VONS.",
-          "VONS"
-        ],
-        "extend_left": false,
-        "center": true
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1035,
+       "spread": 0.0131,
+       "support": 9
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2229,
+       "spread": 0.0187,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3396,
+       "spread": 0.0151,
+       "support": 8
       }
-    },
-    "Sprouts Farmers Market": {
-      "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
-      "section_scale": {},
-      "typography": {
-        "bitmap_thin": 0.225,
-        "font": "PTMONO",
-        "stylemap": "sprouts.stylemap.json",
-        "bitmap_font": {
-          "regular": "sprouts.glyphs.npz",
-          "heavy": "sprouts-heavy.glyphs.npz"
-        },
-        "condense": 0.895,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.795,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.76,
-        "ink": [
-          38,
-          36,
-          34
-        ],
-        "stroke": 0
+     ],
+     "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0101,
+       "spread": 0.0036,
+       "support": 6
       },
-      "logo": "sprouts_logo.png",
-      "logo_reserve_subtitle": true,
-      "logo_subtitle": "FARMERS MARKET",
-      "header": {
-        "reflow_sections": true,
-        "header_dedup": true,
-        "header_exact": [
-          "FARMERSMARKET",
-          "8059174200",
-          "STOREHOURSMONSUN7AM10PM"
-        ],
-        "header_contains": [
-          "WESTLAKE"
-        ],
-        "body_section_anchors": [
-          "PRODUCE",
-          "DAIRY",
-          "GROCERY"
-        ]
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0935,
+       "spread": 0.0166,
+       "support": 8
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.2218,
+       "spread": 0.0085,
+       "support": 11
+      },
+      {
+       "role": "qty",
+       "anchor": "right",
+       "x": 0.8863,
+       "spread": 0.0167,
+       "support": 8
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9376,
+       "spread": 0.0026,
+       "support": 10
       }
-    },
-    "Smith's": {
-      "_comment": "receiptfont.com pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print (stroke 1).",
-      "section_scale": {
-        "HEADER": 0.8
-      },
-      "typography": {
-        "font": "VT323",
-        "condense": 0.92,
-        "stroke": 1
-      },
-      "logo": "smiths_logo.png"
-    },
-    "Gelson's Westlake Village": {
-      "_comment": "not on receiptfont.com (small grocer) -> clean condensed B612 Mono.",
-      "section_scale": {
-        "HEADER": 0.8
-      },
-      "typography": {
-        "font": "B612",
-        "condense": 0.82,
-        "stroke": 0
-      },
-      "logo": "gelsons_logo.png"
-    },
-    "Trader Joe's": {
-      "_comment": "Studio-minted from 20 pooled receipts (refined corpus). All-caps body, single style fleet-wide; wordmark header replaced by logo overlay.",
-      "aliases": [
-        "TRADER JOE'S",
-        "Trader Joe's Store #0058"
-      ],
-      "logo": "traderjoes_logo.png",
-      "typography": {
-        "bitmap_thin": 0.0,
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "traderjoes.glyphs.npz",
-          "heavy": "traderjoes-heavy.glyphs.npz"
-        },
-        "condense": 1.033,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.72,
-        "stylemap": "traderjoes.stylemap.json",
-        "pitch_ratio": 0.499
-      },
-      "logo_anchor": {
-        "phrases": [
-          "TRADER JOE'S"
-        ],
-        "extend_left": false,
-        "center": true
-      },
-      "graphics": {
-        "footer_codes": false,
-        "inbody_barcode": {
-          "max_count": 0
-        }
+     ],
+     "total_line": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0874,
+       "spread": 0.0156,
+       "support": 7
       }
+     ]
     },
-    "CVS": {
-      "_comment": "Studio-minted from 20 pooled receipts (refined corpus). Mixed-case body; bold ExtraCare/FSA rows via stylemap; CVSpharmacy wordmark replaced by logo overlay.",
-      "aliases": [
-        "CVS pharmacy",
-        "CVS Pharmacy",
-        "CVS pharmacy®"
-      ],
-      "logo": "cvs_logo.png",
-      "typography": {
-        "bitmap_thin": 0.15,
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "cvs.glyphs.npz",
-          "heavy": "cvs-heavy.glyphs.npz"
-        },
-        "condense": 0.962,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.858,
-        "stylemap": "cvs.stylemap.json",
-        "pitch_ratio": 0.551
-      },
-      "logo_anchor": {
-        "phrases": [
-          "CVS pharmacy",
-          "•CVS pharmacy",
-          "CVS pharmacy®",
-          "pharmacy",
-          "pharmacy®",
-          "• CVS",
-          "•CVS",
-          "• CVS pharmacy"
-        ],
-        "extend_left": false,
-        "center": true
-      },
-      "graphics": {
-        "footer_codes": false
-      }
+    "sections": [
+     {
+      "name": "storefront",
+      "pos_frac_med": 0.05,
+      "support": 12
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.255,
+      "support": 11
+     },
+     {
+      "name": "summary",
+      "pos_frac_med": 0.351,
+      "support": 12
+     },
+     {
+      "name": "total_line",
+      "pos_frac_med": 0.392,
+      "support": 9
+     },
+     {
+      "name": "payment",
+      "pos_frac_med": 0.427,
+      "support": 12
+     },
+     {
+      "name": "barcode",
+      "pos_frac_med": 0.805,
+      "support": 9
+     },
+     {
+      "name": "footer",
+      "pos_frac_med": 0.819,
+      "support": 10
+     }
+    ],
+    "separators": []
+   }
+  },
+  "Amazon Fresh": {
+   "_comment": "receiptfont.com bitMatrix-A2 (Epson/Whole Foods family) -> PT Mono, condensed+light.",
+   "section_scale": {
+    "HEADER": 0.78
+   },
+   "typography": {
+    "font": "PTMONO",
+    "condense": 0.8,
+    "stroke": 0
+   },
+   "logo": "amazon_fresh_logo.png"
+  },
+  "Target": {
+   "_comment": "Studio-native Target synthesis pooled from Target, Target Grocery, and Target Summerlin South receipts. Parent Image scans usually include the bullseye; many processed Receipt crops start at the address/barcode, so synthetic rendering reserves a top graphic band and leaves real Dynamo crop/word records untouched.",
+   "aliases": [
+    "Target Grocery",
+    "Target Summerlin South"
+   ],
+   "section_scale": {
+    "HEADER": 0.8
+   },
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "target.glyphs.npz",
+     "heavy": "target-heavy.glyphs.npz"
     },
-    "Wild Fork": {
-      "_comment": "Studio-minted from 12 merchant-index receipts / 11 production-loadable receipts. Mixed old/new POS structures share the same Wild Fork thermal body font; newer receipts may crop off the logo and include a footer barcode. Logo is the black/white outline WF mark derived from receipt scans, not the filled color web asset.",
-      "logo": "wildfork_logo.png",
-      "typography": {
-        "bitmap_thin": 0.6,
-        "font": "PTMONO",
-        "bitmap_font": {
-          "regular": "wildfork.glyphs.npz",
-          "heavy": "wildfork-heavy.glyphs.npz"
-        },
-        "condense": 0.89,
-        "mixed_layout": true,
-        "bitmap_cap_ratio": 0.66,
-        "ocr_font_sizing": true,
-        "ocr_cap_height_ratio": 0.79,
-        "stylemap": "wildfork.stylemap.json",
-        "pitch_ratio": 0.538,
-        "_face_source_comment": "M4 pilot flag. 'stylemap' (default, no-op) = text-rule faces; 'measured' consumes a per-row row_faces map built by glyphstudio.face_select from stylescan measurements of the mimicked receipt.",
-        "face_source": "stylemap"
-      },
-      "logo_anchor": {
-        "phrases": [
-          "WF"
-        ],
-        "extend_left": false,
-        "center": true,
-        "expand_x": 0.26
-      },
-      "graphics": {
-        "footer_codes": false,
-        "inbody_barcode": {
-          "max_count": 0
-        }
-      }
+    "condense": 0.893,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.95,
+    "stylemap": "target.stylemap.json",
+    "pitch_ratio": 0.526,
+    "dash_around_phrases": [
+     "REC#"
+    ]
+   },
+   "logo": "target_logo.png",
+   "logo_anchor": {
+    "top_band": 110,
+    "reserve_threshold": 0.7,
+    "width_frac": 0.2,
+    "top_margin": 8,
+    "bottom_margin": 12
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "symbology": "code128",
+     "max_count": 1,
+     "bar_h_px": 72,
+     "bar_w_frac": 0.68
     }
+   }
+  },
+  "The Home Depot": {
+   "_comment": "Home-improvement thermal format. Header lockup = the tilted-square 'THE HOME DEPOT' wordmark (white knockout letters) + slogan 'How doers get more done.(TM)' in Helvetica Neue Bold, printed solid black; the logo PNG depicts BOTH (build_homedepot_logo.py from a clean brand asset). Body font studio-minted from 18 verified HD receipts (excluded a doubled two-receipt photo). condense/pitch_ratio measured real-vs-synth; the HD thermal face is bold and wider than Vons/CVS (pitch_ratio 0.637).",
+   "aliases": [
+    "Home Depot"
+   ],
+   "logo": "homedepot_logo.png",
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "homedepot.glyphs.npz",
+     "heavy": "homedepot-heavy.glyphs.npz"
+    },
+    "condense": 1.152,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.86,
+    "stylemap": "homedepot.stylemap.json",
+    "pitch_ratio": 0.66,
+    "bitmap_thin": 0.6
+   },
+   "logo_anchor": {
+    "phrases": [
+     "HOWDOERS",
+     "GETMOREDONE"
+    ],
+    "extend_left": true
+   },
+   "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
+  },
+  "In-N-Out Burger": {
+   "_comment": "Studio-minted from 15 real receipts. Scans print a thermal text header such as 'IN-N-OUT WESTLAKE VILLAGE', not the full red/yellow restaurant-logo lockup; keep the downloaded brand SVG out of receipt-body rendering so boxes and receipt-level records stay scan-faithful.",
+   "aliases": [
+    "IN-N-OUT",
+    "IN-N-OUT BURGER",
+    "IN-N-OUT WESTLAKE VILLAGE"
+   ],
+   "section_scale": {},
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "innout.glyphs.npz",
+     "heavy": "innout-heavy.glyphs.npz"
+    },
+    "condense": 0.7,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.769,
+    "stylemap": "innout.stylemap.json",
+    "pitch_ratio": 0.508,
+    "condense_glyphs": true
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
+  },
+  "Vons": {
+   "_comment": "First studio-native merchant: font+logo mined entirely from its 31 receipts (no chart, no pre-existing atlas). Pointers in Dynamo (MerchantFont).",
+   "logo": "vons_logo.png",
+   "typography": {
+    "bitmap_thin": 0.3,
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "vons.glyphs.npz",
+     "heavy": "vons-heavy.glyphs.npz"
+    },
+    "condense": 0.895,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.649,
+    "stylemap": "vons.stylemap.json",
+    "pitch_ratio": 0.538
+   },
+   "logo_anchor": {
+    "phrases": [
+     "VONS.",
+     "VONS"
+    ],
+    "extend_left": false,
+    "center": true
+   }
+  },
+  "Sprouts Farmers Market": {
+   "_comment": "Dense natural-grocer format: the cached OCR repeats the store header/address block and interleaves department sections, so the line renderer de-dups the header and reflows lines into header/body/payment/footer order. header_markers are the non-brand header lines (address city, phone, hours); body_section_anchors mark where the item body starts.",
+   "section_scale": {},
+   "typography": {
+    "bitmap_thin": 0.225,
+    "font": "PTMONO",
+    "stylemap": "sprouts.stylemap.json",
+    "bitmap_font": {
+     "regular": "sprouts.glyphs.npz",
+     "heavy": "sprouts-heavy.glyphs.npz"
+    },
+    "condense": 0.895,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.795,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.76,
+    "ink": [
+     38,
+     36,
+     34
+    ],
+    "stroke": 0
+   },
+   "logo": "sprouts_logo.png",
+   "logo_reserve_subtitle": true,
+   "logo_subtitle": "FARMERS MARKET",
+   "header": {
+    "reflow_sections": true,
+    "header_dedup": true,
+    "header_exact": [
+     "FARMERSMARKET",
+     "8059174200",
+     "STOREHOURSMONSUN7AM10PM"
+    ],
+    "header_contains": [
+     "WESTLAKE"
+    ],
+    "body_section_anchors": [
+     "PRODUCE",
+     "DAIRY",
+     "GROCERY"
+    ]
+   }
+  },
+  "Smith's": {
+   "_comment": "receiptfont.com pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print (stroke 1).",
+   "section_scale": {
+    "HEADER": 0.8
+   },
+   "typography": {
+    "font": "VT323",
+    "condense": 0.92,
+    "stroke": 1
+   },
+   "logo": "smiths_logo.png"
+  },
+  "Gelson's Westlake Village": {
+   "_comment": "Minted atlas (fonts/gelsons, 2026-07-19) replaces the B612 TTF fallback; pitch/cap 0.5255 measured over the 6 dev receipts.",
+   "section_scale": {
+    "HEADER": 0.8
+   },
+   "typography": {
+    "bitmap_font": {
+     "regular": "gelsons.glyphs.npz",
+     "heavy": "gelsons-heavy.glyphs.npz"
+    },
+    "condense": 0.9139,
+    "pitch_ratio": 0.5255,
+    "stylemap": "gelsons.stylemap.json",
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.649,
+    "mixed_layout": true,
+    "bitmap_thin": 0.0
+   },
+   "logo": "gelsons_logo.png",
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   },
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 6,
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
+    },
+    "columns": {
+     "barcode": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.025,
+       "spread": 0.0101,
+       "support": 5
+      }
+     ],
+     "footer": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0215,
+       "spread": 0.0158,
+       "support": 4
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1743,
+       "spread": 0.0145,
+       "support": 5
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2779,
+       "spread": 0.0125,
+       "support": 4
+      }
+     ],
+     "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0343,
+       "spread": 0.0155,
+       "support": 6
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8083,
+       "spread": 0.0,
+       "support": 3
+      },
+      {
+       "role": "flag",
+       "anchor": "left",
+       "x": 0.8182,
+       "spread": 0.002,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9835,
+       "spread": 0.0133,
+       "support": 6
+      }
+     ],
+     "payment": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.0258,
+       "spread": 0.0094,
+       "support": 6
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1375,
+       "spread": 0.0073,
+       "support": 5
+      },
+      {
+       "role": "qty",
+       "anchor": "right",
+       "x": 0.9882,
+       "spread": 0.0182,
+       "support": 5
+      }
+     ],
+     "section_header": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0098,
+       "spread": 0.0137,
+       "support": 4
+      }
+     ],
+     "storefront": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2157,
+       "spread": 0.0095,
+       "support": 3
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.5532,
+       "spread": 0.0272,
+       "support": 4
+      }
+     ],
+     "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1181,
+       "spread": 0.0126,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8854,
+       "spread": 0.0045,
+       "support": 5
+      }
+     ],
+     "total_line": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1162,
+       "spread": 0.0054,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8875,
+       "spread": 0.0032,
+       "support": 5
+      }
+     ]
+    },
+    "sections": [
+     {
+      "name": "storefront",
+      "pos_frac_med": 0.05,
+      "support": 5
+     },
+     {
+      "name": "payment",
+      "pos_frac_med": 0.206,
+      "support": 6
+     },
+     {
+      "name": "section_header",
+      "pos_frac_med": 0.369,
+      "support": 4
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.404,
+      "support": 6
+     },
+     {
+      "name": "barcode",
+      "pos_frac_med": 0.409,
+      "support": 5
+     },
+     {
+      "name": "total_line",
+      "pos_frac_med": 0.793,
+      "support": 5
+     },
+     {
+      "name": "summary",
+      "pos_frac_med": 0.807,
+      "support": 5
+     },
+     {
+      "name": "footer",
+      "pos_frac_med": 0.867,
+      "support": 5
+     }
+    ],
+    "separators": [
+     {
+      "char": "*",
+      "after_section": "summary",
+      "ordinal": 0,
+      "support": 4,
+      "pos_frac_med": 0.872
+     },
+     {
+      "char": "*",
+      "after_section": "footer",
+      "ordinal": 0,
+      "support": 5,
+      "pos_frac_med": 0.939
+     }
+    ]
+   }
+  },
+  "Trader Joe's": {
+   "_comment": "Studio-minted from 20 pooled receipts (refined corpus). All-caps body, single style fleet-wide; wordmark header replaced by logo overlay.",
+   "aliases": [
+    "TRADER JOE'S",
+    "Trader Joe's Store #0058"
+   ],
+   "logo": "traderjoes_logo.png",
+   "typography": {
+    "bitmap_thin": 0.0,
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "traderjoes.glyphs.npz",
+     "heavy": "traderjoes-heavy.glyphs.npz"
+    },
+    "condense": 1.033,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.72,
+    "stylemap": "traderjoes.stylemap.json",
+    "pitch_ratio": 0.499
+   },
+   "logo_anchor": {
+    "phrases": [
+     "TRADER JOE'S"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
+  },
+  "CVS": {
+   "_comment": "Studio-minted from 20 pooled receipts (refined corpus). Mixed-case body; bold ExtraCare/FSA rows via stylemap; CVSpharmacy wordmark replaced by logo overlay.",
+   "aliases": [
+    "CVS pharmacy",
+    "CVS Pharmacy",
+    "CVS pharmacy\u00ae"
+   ],
+   "logo": "cvs_logo.png",
+   "typography": {
+    "bitmap_thin": 0.15,
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "cvs.glyphs.npz",
+     "heavy": "cvs-heavy.glyphs.npz"
+    },
+    "condense": 0.962,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.858,
+    "stylemap": "cvs.stylemap.json",
+    "pitch_ratio": 0.551
+   },
+   "logo_anchor": {
+    "phrases": [
+     "CVS pharmacy",
+     "\u2022CVS pharmacy",
+     "CVS pharmacy\u00ae",
+     "pharmacy",
+     "pharmacy\u00ae",
+     "\u2022 CVS",
+     "\u2022CVS",
+     "\u2022 CVS pharmacy"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "graphics": {
+    "footer_codes": false
+   }
+  },
+  "Wild Fork": {
+   "_comment": "Studio-minted from 12 merchant-index receipts / 11 production-loadable receipts. Mixed old/new POS structures share the same Wild Fork thermal body font; newer receipts may crop off the logo and include a footer barcode. Logo is the black/white outline WF mark derived from receipt scans, not the filled color web asset.",
+   "logo": "wildfork_logo.png",
+   "typography": {
+    "bitmap_thin": 0.6,
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "wildfork.glyphs.npz",
+     "heavy": "wildfork-heavy.glyphs.npz"
+    },
+    "condense": 0.89,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.79,
+    "stylemap": "wildfork.stylemap.json",
+    "pitch_ratio": 0.538,
+    "_face_source_comment": "M4 pilot flag. 'stylemap' (default, no-op) = text-rule faces; 'measured' consumes a per-row row_faces map built by glyphstudio.face_select from stylescan measurements of the mimicked receipt.",
+    "face_source": "stylemap"
+   },
+   "logo_anchor": {
+    "phrases": [
+     "WF"
+    ],
+    "extend_left": false,
+    "center": true,
+    "expand_x": 0.26
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
+  },
+  "The Stand - American Classics Redefined": {
+   "_comment": "Minted atlas (fonts/thestand, 2026-07-19); badge logo vectorized from the best single crop (dc09ed13, ring + ALWAYS THE FINEST arc preserved - the logo_master median vote destroyed the thin ring). Real footer references a QR only, and per-item barcodes do not exist on the printed ticket.",
+   "aliases": [
+    "THE STAND"
+   ],
+   "logo": "thestand_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "STAND"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "typography": {
+    "bitmap_font": {
+     "regular": "thestand.glyphs.npz",
+     "heavy": "thestand-heavy.glyphs.npz"
+    },
+    "condense": 0.9376,
+    "pitch_ratio": 0.647,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.745,
+    "mixed_layout": true,
+    "bitmap_thin": 0.4
+   },
+   "graphics": {
+    "footer_qr_only": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   },
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 8,
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
+    },
+    "columns": {
+     "address": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1875,
+       "spread": 0.0087,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3113,
+       "spread": 0.0042,
+       "support": 7
+      }
+     ],
+     "items": [
+      {
+       "role": "qty",
+       "anchor": "right",
+       "x": 0.0375,
+       "spread": 0.0,
+       "support": 6
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0958,
+       "spread": 0.0084,
+       "support": 7
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2051,
+       "spread": 0.0069,
+       "support": 6
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3208,
+       "spread": 0.0042,
+       "support": 5
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.3917,
+       "spread": 0.0041,
+       "support": 5
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9949,
+       "spread": 0.0103,
+       "support": 4
+      }
+     ],
+     "summary": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.1729,
+       "spread": 0.0042,
+       "support": 6
+      },
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.329,
+       "spread": 0.0002,
+       "support": 6
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9938,
+       "spread": 0.0082,
+       "support": 4
+      }
+     ],
+     "survey": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0688,
+       "spread": 0.0125,
+       "support": 6
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.1458,
+       "spread": 0.0127,
+       "support": 5
+      }
+     ]
+    },
+    "sections": [
+     {
+      "name": "address",
+      "pos_frac_med": 0.184,
+      "support": 8
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.34,
+      "support": 8
+     },
+     {
+      "name": "summary",
+      "pos_frac_med": 0.466,
+      "support": 6
+     },
+     {
+      "name": "survey",
+      "pos_frac_med": 0.943,
+      "support": 6
+     }
+    ],
+    "separators": []
+   }
+  },
+  "Dollar Tree": {
+   "_comment": "bitMatrix-B2 ROM atlas per receiptfont.com attribution, validated on 2736 real letters across the 5 dev receipts (B2 median IoU 0.5283 vs F1 0.5133 - B2 wins). Logo from the flattest store-5304 crop (4bdefa9e). All dev sources are sheared photos: renders use compose_dollartree.py canonical composition, not faithful OCR. Atlas staged via build_dollartree_font.py (B2 + 1px double-strike).",
+   "logo": "dollartree_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "DOLLARTREE",
+     "DOLLAR",
+     "TREE."
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "typography": {
+    "bitmap_font": {
+     "regular": "dollartree.glyphs.npz",
+     "heavy": "dollartree.glyphs.npz"
+    },
+    "condense": 1.0,
+    "pitch_ratio": 0.5,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.649,
+    "mixed_layout": true,
+    "bitmap_thin": 0.0
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   },
+   "compose": "dollartree",
+   "layout_template": {
+    "version": 1,
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "measured": {
+     "receipts": 5,
+     "tool_git_sha": "d9ce9cb82ecf",
+     "tool_dirty": false
+    },
+    "columns": {
+     "address": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.0149,
+       "spread": 0.0057,
+       "support": 5
+      }
+     ],
+     "items": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.002,
+       "spread": 0.004,
+       "support": 4
+      },
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.4126,
+       "spread": 0.0128,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.8055,
+       "spread": 0.012,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.9322,
+       "spread": 0.0021,
+       "support": 4
+      },
+      {
+       "role": "amount",
+       "anchor": "right",
+       "x": 0.998,
+       "spread": 0.0123,
+       "support": 4
+      }
+     ],
+     "payment": [
+      {
+       "role": "label",
+       "anchor": "left",
+       "x": 0.4159,
+       "spread": 0.0048,
+       "support": 5
+      }
+     ],
+     "survey": [
+      {
+       "role": "desc",
+       "anchor": "left",
+       "x": 0.2148,
+       "spread": 0.011,
+       "support": 5
+      }
+     ]
+    },
+    "sections": [
+     {
+      "name": "address",
+      "pos_frac_med": 0.107,
+      "support": 5
+     },
+     {
+      "name": "items",
+      "pos_frac_med": 0.325,
+      "support": 5
+     },
+     {
+      "name": "payment",
+      "pos_frac_med": 0.679,
+      "support": 5
+     },
+     {
+      "name": "survey",
+      "pos_frac_med": 0.828,
+      "support": 5
+     }
+    ],
+    "separators": []
+   }
+  },
+  "Italia Deli & Bakery": {
+   "_comment": "Minted atlas (fonts/italiadeli, 2026-07-19), 8 scan receipts.",
+   "typography": {
+    "bitmap_font": {
+     "regular": "italiadeli.glyphs.npz",
+     "heavy": "italiadeli.glyphs.npz"
+    },
+    "condense": 1.0218,
+    "pitch_ratio": 0.7173,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.685,
+    "mixed_layout": true,
+    "bitmap_glyph_vscale": 1.0,
+    "bitmap_thin": 0.1
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
+  },
+  "Neighborly": {
+   "_comment": "Minted atlas (fonts/neighborly, 2026-07-19).",
+   "typography": {
+    "bitmap_font": {
+     "regular": "neighborly.glyphs.npz",
+     "heavy": "neighborly.glyphs.npz"
+    },
+    "condense": 0.9861,
+    "pitch_ratio": 0.427,
+    "bitmap_cap_ratio": 0.66,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.825,
+    "mixed_layout": true,
+    "bitmap_thin": 0.0,
+    "bitmap_glyph_vscale": 1.015
+   }
   }
+ }
 }

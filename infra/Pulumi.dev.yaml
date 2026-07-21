@@ -60,3 +60,4 @@ config:
   portfolio:CHROMA_CLOUD_DATABASE: receipt_dev
   portfolio:CHROMA_CLOUD_ENABLED: "true"
   portfolio:LLM_VALIDATION_ASYNC: "true"
+  portfolio:email_receipt_inbox_enabled: "true"

@@ -63,7 +63,7 @@ def parse_section_label(label: Optional[str]) -> Optional[str]:
     not a section label / not canonical."""
     if not label or not label.upper().startswith(SECTION_LABEL_PREFIX):
         return None
-    section = label[len(SECTION_LABEL_PREFIX):].lower()
+    section = label[len(SECTION_LABEL_PREFIX) :].lower()
     return section if is_canonical_section(section) else None
 
 
@@ -184,3 +184,33 @@ def normalize_stylescan_section(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
     return STYLESCAN_TO_SECTION.get(raw.lower())
+
+
+# --- section-compare / eval band names -> canonical section ----------------
+#
+# section_compare.SECTION_BANDS (and full_fidelity_eval's fixed bands) name
+# vertical crop bands with display-style uppercase names. Fold those into the
+# canonical vocabulary so every eval artifact speaks the same section
+# language (#1188 P2: one canonical section-name mapping).
+
+BAND_TO_SECTION: dict[str, Optional[str]] = {
+    "STOREFRONT": "storefront",
+    "ADDRESS": "address",
+    "ITEMS": "items",
+    "SUMMARY": "summary",
+    "PAYMENT": "payment",
+    # Gelson's prints the card/auth block ABOVE the items; the band is still
+    # the payment section.
+    "PAYMENT_HDR": "payment",
+    "FOOTER": "footer",
+    "TOTALS": "total_line",
+    "HEADER": "storefront",
+    "BODY": "items",
+}
+
+
+def normalize_band_name(band: Optional[str]) -> Optional[str]:
+    """Eval band name (``ITEMS``, ``PAYMENT_HDR``...) -> canonical section."""
+    if not band:
+        return None
+    return BAND_TO_SECTION.get(band.upper())

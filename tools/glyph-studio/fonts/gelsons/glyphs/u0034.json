@@ -1,0 +1,136 @@
+{
+ "version": 1,
+ "char": "4",
+ "codepoint": 52,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "gelsons.refined.npz",
+  "samples": 65,
+  "consensusHash": "bc4e39714e8e",
+  "date": "2026-07-19"
+ },
+ "width": 558.4,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 241.9,
+     "y": 758.3,
+     "type": "corner"
+    },
+    {
+     "x": 228.0,
+     "y": 660.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 483.6,
+     "y": 660.9,
+     "type": "corner"
+    },
+    {
+     "x": 429.4,
+     "y": 660.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 41.4,
+     "y": 313.9,
+     "type": "corner"
+    },
+    {
+     "x": 516.8999999999999,
+     "y": 313.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 414.1,
+     "y": 960.9,
+     "type": "corner"
+    },
+    {
+     "x": 414.1,
+     "y": 855.0998012456455,
+     "type": "corner",
+     "hOut": {
+      "x": 467.3039653155966,
+      "y": 602.3588144873936
+     }
+    },
+    {
+     "x": 422.5,
+     "y": 39.1,
+     "type": "corner",
+     "hIn": {
+      "x": 407.03681470113867,
+      "y": 300.0
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 41.4,
+     "y": 316.7,
+     "type": "corner",
+     "hOut": {
+      "x": 42.50389700823459,
+      "y": 463.7390814968586
+     }
+    },
+    {
+     "x": 180.80000000000004,
+     "y": 660.9,
+     "type": "corner",
+     "hIn": {
+      "x": 146.93255148581997,
+      "y": 533.8
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 415.1,
+     "y": 851.9,
+     "type": "corner",
+     "hOut": {
+      "x": 339.2116853613655,
+      "y": 832.5559197979956
+     }
+    },
+    {
+     "x": 241.9,
+     "y": 758.3,
+     "type": "corner",
+     "hIn": {
+      "x": 306.1124235995262,
+      "y": 798.619428771796
+     }
+    }
+   ]
+  }
+ ]
+}

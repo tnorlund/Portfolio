@@ -1,9 +1,10 @@
 """
 Backfill script: Migrate ReceiptMetadata to ReceiptPlace entities.
 
-DEPRECATED: This migration script has been run and the backfill is complete.
-The ReceiptMetadata entity is being removed. This file is retained for
-historical reference only.
+DEPRECATED FOR NORMAL READS: The broad migration has run, but this operational
+backfill remains functional for targeted or resumed repairs. It intentionally
+reads legacy ReceiptMetadata only as source material for missing ReceiptPlace
+rows; all current merchant reads use ReceiptPlace.
 
 This script creates ReceiptPlace records for all existing ReceiptMetadata
 records in DynamoDB, enriching them with data from Google Places API v1.

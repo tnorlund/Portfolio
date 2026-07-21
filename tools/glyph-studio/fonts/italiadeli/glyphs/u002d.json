@@ -1,0 +1,87 @@
+{
+ "version": 1,
+ "char": "-",
+ "codepoint": 45,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "italiadeli.refined.npz",
+  "samples": 5,
+  "consensusHash": "7a25b337230d",
+  "date": "2026-07-19"
+ },
+ "width": 402.7,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 190.7,
+     "y": 466.7,
+     "type": "corner"
+    },
+    {
+     "x": 190.7,
+     "y": 412.5,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 35.1,
+     "y": 461.1,
+     "type": "corner"
+    },
+    {
+     "x": 48.1,
+     "y": 413.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 340.7,
+     "y": 411.4,
+     "type": "corner"
+    },
+    {
+     "x": 48.1,
+     "y": 411.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 368.4,
+     "y": 477.8,
+     "type": "corner"
+    },
+    {
+     "x": 368.4,
+     "y": 428.66763766899453,
+     "type": "corner"
+    },
+    {
+     "x": 343.3,
+     "y": 409.91394198883006,
+     "type": "corner"
+    },
+    {
+     "x": 343.3,
+     "y": 355.6,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

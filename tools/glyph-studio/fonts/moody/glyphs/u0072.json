@@ -1,0 +1,73 @@
+{
+ "version": 1,
+ "char": "r",
+ "codepoint": 114,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "moody.refined.npz",
+  "samples": 18,
+  "consensusHash": "8efb1492ae16",
+  "date": "2026-07-19"
+ },
+ "width": 379.4,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 72.3,
+     "y": 40.8,
+     "type": "corner",
+     "hOut": {
+      "x": 69.37906314866511,
+      "y": 245.2
+     }
+    },
+    {
+     "x": 86.7874587780746,
+     "y": 659.2,
+     "type": "corner",
+     "hIn": {
+      "x": 77.76439802781816,
+      "y": 456.2
+     }
+    },
+    {
+     "x": 66.8,
+     "y": 744.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 333.4,
+     "y": 659.2,
+     "type": "corner"
+    },
+    {
+     "x": 323.257435260594,
+     "y": 659.2,
+     "type": "corner",
+     "hOut": {
+      "x": 296.68338913797965,
+      "y": 686.7
+     }
+    },
+    {
+     "x": 88.2,
+     "y": 659.2,
+     "type": "corner",
+     "hIn": {
+      "x": 139.74849276716355,
+      "y": 659.2
+     }
+    }
+   ]
+  }
+ ]
+}

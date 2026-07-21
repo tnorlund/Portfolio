@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "name": "gelsons",
+ "refCap": 60,
+ "metrics": {
+  "capHeight": 1000,
+  "xHeight": 700,
+  "ascender": 1080,
+  "descender": -350,
+  "pitchRatioTarget": 0.5255,
+  "pitchRatioNote": "median OCR letter pitch / cap across the 6 dev Gelson's receipts (242 uppercase/digit words); small fleet, re-measure when more scans land"
+ },
+ "params": {
+  "dot": {
+   "shape": "round",
+   "size": 78.2,
+   "pitch": 0.4
+  },
+  "weight": 1.25,
+  "trackingScale": 1.0,
+  "slant": 0.0,
+  "corner": {
+   "mode": "round",
+   "tension": 0.5
+  },
+  "supersample": 4
+ },
+ "preview": {
+  "condense": 0.9139,
+  "capPx": 22,
+  "thin": "auto"
+ },
+ "review": {
+  "merchant": "Gelson's Westlake Village",
+  "imageId": "223c03e2-9f7e-481d-bc33-2b0631fbaaf9",
+  "receiptId": 1
+ }
+}

@@ -405,6 +405,53 @@ class _ReceiptPlace(FlattenedStandardMixin):
             last_evaluated_key=last_evaluated_key,
         )
 
+    @handle_dynamodb_errors("list_receipt_places_raw")
+    def list_receipt_places_raw(
+        self,
+        limit: int | None = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[dict], dict | None]:
+        """Census read: raw ``RECEIPT_PLACE`` rows WITHOUT entity conversion.
+
+        Table-wide census work (dedup dossiers, place-census scripts) cannot
+        rely on strict entity conversion because historical place rows may
+        carry drifted secondary-index projections while their scalar
+        identity/merchant fields remain authoritative. This is the ONLY
+        sanctioned raw read; callers must never reach into ``_client``.
+
+        Parameters
+        ----------
+        limit : int, optional
+            Maximum number of items for this page (defaults to the query's
+            natural page size, capped at 1000).
+        last_evaluated_key : dict, optional
+            The key to start pagination from.
+
+        Returns
+        -------
+        tuple[list[dict], dict | None]
+            Low-level DynamoDB items (attribute-value maps) and the last
+            evaluated key for pagination.
+        """
+        self._validate_pagination_params(limit, last_evaluated_key)
+        query: dict = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#entity_type = :entity_type",
+            "ExpressionAttributeNames": {"#entity_type": "TYPE"},
+            "ExpressionAttributeValues": {
+                ":entity_type": {"S": "RECEIPT_PLACE"}
+            },
+            "Limit": min(limit, 1000) if limit is not None else 1000,
+        }
+        if last_evaluated_key is not None:
+            query["ExclusiveStartKey"] = last_evaluated_key
+        response = self._client.query(**query)
+        return (
+            list(response.get("Items", [])),
+            response.get("LastEvaluatedKey"),
+        )
+
     @handle_dynamodb_errors("get_receipt_places_by_merchant")
     def get_receipt_places_by_merchant(
         self,

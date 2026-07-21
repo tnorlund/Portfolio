@@ -177,11 +177,39 @@ def _merchant_key(stylemap: Mapping[str, Any] | None) -> str | None:
     return None
 
 
+# Department qualifiers that prefix a section token on real category headers
+# ("REG DELI", "SERVICE DELI", "HOT BAKERY"). Kept to an explicit allowlist so
+# a product description that happens to END in a department word ("RED WINE",
+# "GROUND MEAT") never picks up header styling.
+_SECTION_QUALIFIERS = {"REG", "SERVICE", "SVC", "HOT", "FRESH", "DEPT"}
+
+
+def _is_section_header(compact: str) -> bool:
+    """True for a department/category header row.
+
+    Exact token match first ("GROCERY", "HEALTH AND BEAUTY"); then a
+    QUALIFIED header -- an allowlisted qualifier followed by a department
+    token ("REG DELI"), which real prints style like any other category
+    header.
+    """
+    text = " ".join(compact.upper().strip(" :").split())
+    if text in SECTION_TOKENS:
+        return True
+    words = text.split()
+    # Multi-word departments keep working under a qualifier
+    # ("FRESH HEALTH AND BEAUTY"): compare the full remainder, not word[1].
+    return (
+        len(words) >= 2
+        and words[0] in _SECTION_QUALIFIERS
+        and " ".join(words[1:]) in SECTION_TOKENS
+    )
+
+
 def classify_row(text: str, merchant: str | None = None) -> str:
     compact = text.strip()
     if _BARCODE_RE.match(compact.replace(" ", "")):
         return "barcode_caption"
-    if compact.upper().strip(":") in SECTION_TOKENS:
+    if _is_section_header(compact):
         return "section_header"
     rules = _MERCHANT_RULES.get((merchant or "").lower(), _RULES)
     for name, rx in rules:
