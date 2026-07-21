@@ -220,7 +220,7 @@ class CodeBuildDockerImage(ComponentResource):
         # those functions can be created before the asynchronous build ends.
         bootstrap_cmd = None
         if self.lambda_config or self.lambda_function_names:
-            bootstrap_cmd = self._push_bootstrap_image()
+            bootstrap_cmd = self._push_bootstrap_image(pipeline_trigger_cmd)
 
         # Create a Lambda directly only for the legacy single-function mode.
         if self.lambda_config:
@@ -800,7 +800,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         )
 
         # Pipeline policies
-        RolePolicy(
+        pl_s3_policy = RolePolicy(
             f"{self.name}-pl-s3",
             role=pipeline_role.id,
             policy=build_bucket.arn.apply(
@@ -829,7 +829,10 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             opts=ResourceOptions(parent=self),
         )
 
-        RolePolicy(
+        # StartBuild permission is derived from the SAME Project resource the
+        # pipeline's BuildAndPush stage references, so the policy can never
+        # point at a stale builder generation.
+        pl_cb_policy = RolePolicy(
             f"{self.name}-pl-cb",
             role=pipeline_role.id,
             policy=codebuild_project.arn.apply(
@@ -853,7 +856,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         )
 
         # Allow CodePipeline to pass the CodeBuild service role
-        RolePolicy(
+        pl_passrole_policy = RolePolicy(
             f"{self.name}-pl-passrole",
             role=pipeline_role.id,
             policy=codebuild_role.arn.apply(
@@ -874,7 +877,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         )
 
         # ECR permissions for CodePipeline to access ECR images
-        RolePolicy(
+        pl_ecr_policy = RolePolicy(
             f"{self.name}-pl-ecr",
             role=pipeline_role.id,
             policy=json.dumps(
@@ -950,9 +953,25 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=(
-                    [r for r in [bucket_versioning, encryption] if r] or None
-                ),
+                # The pipeline (and anything that triggers it) must never
+                # exist before the role it assumes is authorized to start the
+                # builder it references. Without these edges a partially
+                # applied `pulumi up` (e.g. aborted on a later Lambda create)
+                # can leave a live pipeline whose role has no
+                # codebuild:StartBuild policy — the "not authorized to
+                # perform codebuild:StartBuild" wedge.
+                depends_on=[
+                    r
+                    for r in [
+                        bucket_versioning,
+                        encryption,
+                        pl_s3_policy,
+                        pl_cb_policy,
+                        pl_passrole_policy,
+                        pl_ecr_policy,
+                    ]
+                    if r
+                ],
             ),
         )
 
@@ -1032,37 +1051,66 @@ done
             pipeline_trigger_cmd,
         )
 
-    def _push_bootstrap_image(self):
-        """Push a minimal bootstrap image to ECR so Lambda can be created."""
+    def _push_bootstrap_image(self, pipeline_trigger_cmd=None):
+        """Ensure a ``latest`` tag exists in ECR so Lambda can be created.
+
+        Prefers a local Docker push of a minimal base image. When Docker is
+        unavailable (common on deploy hosts), waits for the just-triggered
+        CodeBuild pipeline to push ``latest`` instead of silently returning:
+        exiting early used to guarantee the subsequent Lambda create failed
+        on an empty repository, aborting the whole ``pulumi up`` and leaving
+        pending IAM steps and old-generation deletes unexecuted.
+        """
         bootstrap_script = self.ecr_repo.repository_url.apply(
             lambda repo_url: f"""#!/usr/bin/env bash
 set -e
 
 REPO_URL="{repo_url}"
 REGION=$(echo "$REPO_URL" | cut -d'.' -f4)
+REPO_NAME=$(echo "$REPO_URL" | cut -d'/' -f2)
 
-# Check if Docker is available first (fast check)
-if ! command -v docker &> /dev/null; then
-  echo "⚠️  Docker not found locally. Skipping bootstrap image push."
-  echo "   The Lambda function will be created after CodeBuild completes the first build."
-  echo "   This is safe - CodeBuild will build and push the image automatically."
+image_exists() {{
+  aws ecr describe-images --repository-name "$REPO_NAME" \
+    --region $REGION --image-ids imageTag=latest >/dev/null 2>&1
+}}
+
+# Fallback when we cannot push a bootstrap image locally: wait for the
+# just-triggered CodeBuild pipeline to push 'latest'. Exiting 0 with an
+# empty repository would only defer the failure to the Lambda create,
+# aborting the deployment mid-plan.
+wait_for_pipeline_image() {{
+  echo "⏳ Waiting for the CodeBuild pipeline to push the first image"
+  echo "   (up to 20 minutes)..."
+  for _ in $(seq 1 80); do
+    if image_exists; then
+      echo "✅ Pipeline pushed $REPO_URL:latest"
+      exit 0
+    fi
+    sleep 15
+  done
+  echo "❌ Timed out waiting for $REPO_URL:latest."
+  echo "   Check the {self.name}-pipeline execution in the CodePipeline"
+  echo "   console; the Lambda cannot be created from an empty repository."
+  exit 1
+}}
+
+echo "🔄 Checking if 'latest' image exists in ECR..."
+if image_exists; then
+  echo "✅ Image already exists, skipping bootstrap"
   exit 0
 fi
 
-# Only check ECR if Docker is available
-echo "🔄 Checking if bootstrap image exists in ECR..."
-if aws ecr describe-images --repository-name $(echo "$REPO_URL" | cut -d'/' -f2) \
-  --region $REGION --image-ids imageTag=latest >/dev/null 2>&1; then
-  echo "✅ Bootstrap image already exists, skipping"
-  exit 0
+# Check if Docker is available (fast check)
+if ! command -v docker &> /dev/null; then
+  echo "⚠️  Docker not found locally."
+  wait_for_pipeline_image
 fi
 
 echo "📦 Pushing minimal bootstrap image to ECR..."
 # Pull public Lambda base image (with error handling)
 if ! docker pull public.ecr.aws/lambda/python:3.12-arm64; then
-  echo "⚠️  Failed to pull base image. Skipping bootstrap image push."
-  echo "   The Lambda function will be created after CodeBuild completes the first build."
-  exit 0
+  echo "⚠️  Failed to pull base image."
+  wait_for_pipeline_image
 fi
 
 # Tag it for our ECR repo
@@ -1083,23 +1131,26 @@ fi
 
 # Push to our ECR (with error handling)
 if ! docker push "$REPO_URL:latest"; then
-  echo "⚠️  Failed to push bootstrap image. Skipping."
-  echo "   The Lambda function will be created after CodeBuild completes the first build."
-  exit 0
+  echo "⚠️  Failed to push bootstrap image."
+  wait_for_pipeline_image
 fi
 
 echo "✅ Bootstrap image pushed to $REPO_URL:latest"
 """
         )
 
+        # Run after the pipeline trigger so the wait-for-image fallback is
+        # actually waiting on a build that has been started.
+        bootstrap_deps = [self.ecr_repo]
+        if pipeline_trigger_cmd is not None:
+            bootstrap_deps.append(pipeline_trigger_cmd)
+
         return command.local.Command(
             f"{self.name}-bootstrap-image",
             create=bootstrap_script,
-            # Don't fail if Docker isn't available - bootstrap is optional
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.ecr_repo],
-                # Allow the command to exit successfully even if Docker isn't available
+                depends_on=bootstrap_deps,
             ),
         )
 

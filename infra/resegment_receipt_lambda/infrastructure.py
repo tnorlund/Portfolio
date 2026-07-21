@@ -13,6 +13,19 @@ config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 
 
+# Pulumi type token for the component. Pinned to the value f"{__name__}-{name}"
+# historically produced when this module is imported as
+# ``resegment_receipt_lambda.infrastructure`` (the Pulumi program's import
+# path), so existing stack URNs are unchanged. Deriving the token from
+# ``__name__`` made every child URN depend on the Python import layout: a
+# deploy that imported this module under a different path (e.g. as
+# ``infra.resegment_receipt_lambda.infrastructure``) re-keyed the entire
+# subtree and minted a second physical generation of pipeline/repo/builder.
+_COMPONENT_TYPE_TOKEN = (
+    "resegment_receipt_lambda.infrastructure-resegment-receipt"
+)
+
+
 class ResegmentReceiptLambda(ComponentResource):
     """Container Lambda for planning and applying receipt splits."""
 
@@ -29,7 +42,7 @@ class ResegmentReceiptLambda(ComponentResource):
         chromadb_bucket_arn: pulumi.Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
-        super().__init__(f"{__name__}-{name}", name, None, opts)
+        super().__init__(_COMPONENT_TYPE_TOKEN, name, None, opts)
         stack = pulumi.get_stack()
 
         role = Role(
