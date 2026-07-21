@@ -1,6 +1,5 @@
 """Integration coverage for MerchantTruth activation races."""
 
-
 import pytest
 
 from receipt_dynamo import DynamoClient
