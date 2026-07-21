@@ -100,6 +100,41 @@ class _MerchantTruth(FlattenedStandardMixin):
         )
 
     @staticmethod
+    def _derive_gate_status(gate_results: dict[str, Any]) -> str:
+        """Derive PASS/FAIL from gate_results, failing closed on ambiguity.
+
+        The contract requires that no fidelity fix ships without a metric:
+        seal must carry the *derived* gate status, never a hardcoded PASS.
+        A passing eval is signalled explicitly by ``status == "PASS"`` or
+        ``passed is True``; an explicit fail is ``status in {FAIL, FAILED}``
+        or ``passed is False``. Absent or contradictory signals are ambiguous
+        and fail closed rather than sealing an unverified bundle.
+        """
+        if not isinstance(gate_results, dict) or not gate_results:
+            raise MerchantTruthIntegrityError(
+                "seal requires gate_results carrying an explicit pass signal"
+            )
+        status = gate_results.get("status")
+        passed = gate_results.get("passed")
+        status_norm = status.upper() if isinstance(status, str) else None
+        pass_signals = {status_norm == "PASS", passed is True}
+        fail_signals = {
+            status_norm in {"FAIL", "FAILED"},
+            passed is False,
+        }
+        if True in pass_signals and True in fail_signals:
+            raise MerchantTruthIntegrityError(
+                "gate_results carry contradictory pass/fail signals"
+            )
+        if True in pass_signals:
+            return "PASS"
+        if True in fail_signals:
+            return "FAIL"
+        raise MerchantTruthIntegrityError(
+            "gate_results lack an explicit pass/fail signal"
+        )
+
+    @staticmethod
     def _audit(
         slug: str,
         version: int,
@@ -350,6 +385,11 @@ class _MerchantTruth(FlattenedStandardMixin):
             )
         if compute_bundle_hash(actual) != manifest.bundle_hash:
             raise MerchantTruthIntegrityError("bundle hash mismatch")
+        gate_status = self._derive_gate_status(gate_results)
+        if gate_status != "PASS":
+            raise MerchantTruthConflictError(
+                f"cannot seal a bundle whose gate did not pass: {gate_status}"
+            )
         timestamp = sealed_at or _utc_now()
         audit = self._audit(
             slug,
@@ -357,7 +397,7 @@ class _MerchantTruth(FlattenedStandardMixin):
             manifest.bundle_hash,
             "SEAL",
             timestamp,
-            {"actor": actor, "gate_status": "PASS"},
+            {"actor": actor, "gate_status": gate_status},
         )
         update = {
             "Update": {
@@ -365,7 +405,7 @@ class _MerchantTruth(FlattenedStandardMixin):
                 "Key": manifest.key,
                 "UpdateExpression": (
                     "SET #status = :sealed, sealed_at = :sealed_at, "
-                    "gate_status = :pass, gate_results = :gate_results, "
+                    "gate_status = :gate_status, gate_results = :gate_results, "
                     "confirmed_proposals = :proposals"
                 ),
                 "ConditionExpression": (
@@ -376,7 +416,7 @@ class _MerchantTruth(FlattenedStandardMixin):
                     ":open": {"S": "OPEN"},
                     ":sealed": {"S": "SEALED"},
                     ":sealed_at": {"S": timestamp},
-                    ":pass": {"S": "PASS"},
+                    ":gate_status": {"S": gate_status},
                     ":gate_results": {
                         "M": {
                             key: self._to_dynamo(value)
@@ -396,7 +436,7 @@ class _MerchantTruth(FlattenedStandardMixin):
         )
         manifest.status = "SEALED"
         manifest.sealed_at = timestamp
-        manifest.gate_status = "PASS"
+        manifest.gate_status = gate_status
         manifest.gate_results = gate_results
         manifest.confirmed_proposals = confirmed_proposals
         return manifest

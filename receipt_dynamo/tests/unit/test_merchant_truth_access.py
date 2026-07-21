@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._merchant_truth import CREATE_ONLY, _MerchantTruth
 from receipt_dynamo.data.shared_exceptions import (
     MerchantTruthConflictError,
+    MerchantTruthIntegrityError,
     MerchantTruthTableMismatchError,
 )
 from receipt_dynamo.entities.merchant_truth import (
@@ -188,13 +189,14 @@ def test_seal_verifies_open_bundle_and_conditions_the_update() -> None:
     sealed = truth.seal_version(
         SLUG,
         1,
-        {"report": "s3://eval/pass.json"},
+        {"status": "PASS", "report": "s3://eval/pass.json"},
         ["PROPOSED#one"],
         TABLE,
         sealed_at=NOW,
     )
 
     assert sealed.status == "SEALED"
+    assert sealed.gate_status == "PASS"
     actions = client.transactions[0]["TransactItems"]
     assert len(actions) == 2
     update = actions[0]["Update"]
@@ -202,7 +204,41 @@ def test_seal_verifies_open_bundle_and_conditions_the_update() -> None:
         "#status = :open AND bundle_hash = :bundle_hash"
     )
     assert update["ExpressionAttributeValues"][":open"] == {"S": "OPEN"}
+    assert update["ExpressionAttributeValues"][":gate_status"] == {"S": "PASS"}
     assert actions[1]["Put"]["ConditionExpression"] == CREATE_ONLY
+
+
+@pytest.mark.parametrize(
+    "gate_results",
+    [
+        pytest.param({"status": "FAIL", "report": "s3://eval/x"}, id="fail"),
+        pytest.param({"passed": False}, id="passed-false"),
+        pytest.param({"report": "s3://eval/ambiguous.json"}, id="ambiguous"),
+        pytest.param({}, id="empty"),
+        pytest.param(
+            {"status": "PASS", "passed": False}, id="contradictory"
+        ),
+    ],
+)
+def test_seal_fails_closed_when_gate_did_not_pass(
+    gate_results: dict[str, Any],
+) -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+    expected = manifest()
+    client.get_responses.append({"Item": expected.to_item()})
+    client.query_responses.append(
+        {"Items": [item.to_item() for item in components()]}
+    )
+
+    with pytest.raises(
+        (MerchantTruthConflictError, MerchantTruthIntegrityError)
+    ):
+        truth.seal_version(
+            SLUG, 1, gate_results, [], TABLE, sealed_at=NOW
+        )
+
+    assert client.transactions == []
 
 
 def test_seal_rejects_a_non_open_manifest_before_writing() -> None:
