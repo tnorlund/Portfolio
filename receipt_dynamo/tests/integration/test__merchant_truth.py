@@ -11,12 +11,29 @@ from receipt_dynamo.entities.merchant_truth import (
     MerchantTruthActive,
     MerchantTruthComponent,
     MerchantTruthManifest,
+    MerchantTruthProposal,
     compute_bundle_hash,
 )
 
 pytestmark = pytest.mark.integration
 SLUG = "sprouts-farmers-market"
 NOW = "2026-07-20T16:00:00+00:00"
+LEGACY_PROVENANCE = {
+    "source_kind": "migration",
+    "provenance_completeness": "legacy",
+    "written_by": {
+        "kind": "migration",
+        "name": "merchant_truth_v1",
+        "version": "1",
+    },
+}
+MINT_PROVENANCE = {
+    "written_by": {
+        "kind": "migration",
+        "name": "merchant_truth_v1",
+        "version": "1",
+    }
+}
 
 
 def manifest() -> MerchantTruthManifest:
@@ -43,15 +60,86 @@ def manifest() -> MerchantTruthManifest:
     )
 
 
-def active(actor: str, digest: str) -> MerchantTruthActive:
+def active(actor: str, digest: str, version: int = 1) -> MerchantTruthActive:
     return MerchantTruthActive(
         slug=SLUG,
-        version=1,
+        version=version,
         bundle_hash=digest,
         normalized_aliases=["sprouts", "sprouts farmers market"],
         activated_at=NOW,
         activated_by=actor,
     )
+
+
+def sealed_version(client: DynamoClient, table: str, version: int) -> str:
+    """Mint + seal one version and return its bundle hash."""
+    components = [
+        MerchantTruthComponent(
+            slug=SLUG,
+            version=version,
+            name=name,
+            payload={"component": name, "v": version},
+            provenance=LEGACY_PROVENANCE,
+        )
+        for name in sorted(COMPONENT_NAMES)
+    ]
+    client.mint_version(
+        SLUG,
+        version,
+        components,
+        MINT_PROVENANCE,
+        f"run-{version}",
+        table,
+        created_at=NOW,
+    )
+    manifest = client.seal_version(
+        SLUG,
+        version,
+        {"status": "PASS", "report": f"s3://eval/v{version}.json"},
+        [],
+        table,
+        sealed_at=NOW,
+    )
+    return manifest.bundle_hash
+
+
+def proposal_status(client: DynamoClient, claim_slug: str) -> str:
+    proposals = client.list_merchant_truth_proposals(SLUG)
+    return next(p for p in proposals if p.claim_slug == claim_slug).status
+
+
+def test_flip_and_rollback_reconcile_proposal_effectivity(
+    dynamodb_table: str,
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    hash_v1 = sealed_version(client, dynamodb_table, 1)
+    hash_v2 = sealed_version(client, dynamodb_table, 2)
+
+    client.initial_activate(active("owner", hash_v1, version=1), dynamodb_table)
+
+    proposal = MerchantTruthProposal(
+        slug=SLUG,
+        created_at=NOW,
+        claim_slug="bold-headers",
+        claim="headers are bold",
+    )
+    client.add_proposal(proposal, dynamodb_table)
+    client.resolve_proposal(proposal, 2, "confirmed", dynamodb_table)
+    assert proposal_status(client, "bold-headers") == "MEASURED_IN_CANDIDATE"
+
+    # Forward flip to the version that measured the proposal makes it
+    # EFFECTIVE (derived, never written directly).
+    client.flip_active(
+        active("owner", hash_v2, version=2), 1, hash_v1, dynamodb_table
+    )
+    assert proposal_status(client, "bold-headers") == "EFFECTIVE"
+
+    # Rollback to the prior version reverts the proposal out of EFFECTIVE
+    # because its measuring version is no longer ACTIVE.
+    client.flip_active(
+        active("owner", hash_v1, version=1), 2, hash_v2, dynamodb_table
+    )
+    assert proposal_status(client, "bold-headers") == "MEASURED_IN_CANDIDATE"
 
 
 def test_two_concurrent_first_activations_converge_on_one_pointer(

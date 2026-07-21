@@ -472,6 +472,7 @@ class _MerchantTruth(FlattenedStandardMixin):
                 f"{active.bundle_hash}:{active.activated_at}:"
                 f"{active.activated_by}",
             )
+            self._reconcile_proposal_effectivity(active.slug, active.version)
             return active
         except ClientError as error:
             if not _is_transaction_conflict(error):
@@ -483,6 +484,9 @@ class _MerchantTruth(FlattenedStandardMixin):
                 current.version == active.version
                 and current.bundle_hash == active.bundle_hash
             ):
+                self._reconcile_proposal_effectivity(
+                    active.slug, active.version
+                )
                 return current
             raise MerchantTruthConflictError(
                 "another initial activation won the ACTIVE pointer"
@@ -527,6 +531,7 @@ class _MerchantTruth(FlattenedStandardMixin):
             current.version == active.version
             and current.bundle_hash == active.bundle_hash
         ):
+            self._reconcile_proposal_effectivity(active.slug, active.version)
             return current
         audit = self._audit(
             active.slug,
@@ -584,6 +589,7 @@ class _MerchantTruth(FlattenedStandardMixin):
                 f"{expected_bundle_hash}:{active.activated_at}:"
                 f"{active.activated_by}",
             )
+            self._reconcile_proposal_effectivity(active.slug, active.version)
             return active
         except ClientError as error:
             if not _is_transaction_conflict(error):
@@ -595,10 +601,80 @@ class _MerchantTruth(FlattenedStandardMixin):
                 converged.version == active.version
                 and converged.bundle_hash == active.bundle_hash
             ):
+                self._reconcile_proposal_effectivity(
+                    active.slug, active.version
+                )
                 return converged
             raise MerchantTruthConflictError(
                 "ACTIVE no longer matches the expected prior state"
             ) from error
+
+    def _reconcile_proposal_effectivity(
+        self, slug: str, active_version: int
+    ) -> None:
+        """Derive proposal EFFECTIVE state from the now-ACTIVE version.
+
+        A proposal is EFFECTIVE exactly when its ``resolved_by_version`` is
+        the currently ACTIVE version (finding 7). After the pointer moves,
+        candidates measured by the active version become EFFECTIVE and any
+        proposal still EFFECTIVE under a no-longer-active version reverts to
+        MEASURED_IN_CANDIDATE. The same rule covers rollback: flipping back to
+        a prior version reverts proposals tied to the version left behind. All
+        updates are idempotent conditional writes, so repeated or converged
+        flips reconcile to the same state without spurious failures.
+        """
+        for proposal in self.list_merchant_truth_proposals(slug):
+            if (
+                proposal.status == "MEASURED_IN_CANDIDATE"
+                and proposal.resolved_by_version == active_version
+            ):
+                self._transition_proposal_status(
+                    proposal,
+                    from_status="MEASURED_IN_CANDIDATE",
+                    to_status="EFFECTIVE",
+                    expected_version=active_version,
+                )
+            elif (
+                proposal.status == "EFFECTIVE"
+                and proposal.resolved_by_version != active_version
+            ):
+                self._transition_proposal_status(
+                    proposal,
+                    from_status="EFFECTIVE",
+                    to_status="MEASURED_IN_CANDIDATE",
+                    expected_version=None,
+                )
+
+    def _transition_proposal_status(
+        self,
+        proposal: MerchantTruthProposal,
+        *,
+        from_status: str,
+        to_status: str,
+        expected_version: int | None,
+    ) -> None:
+        names = {"#status": "status"}
+        values: dict[str, Any] = {
+            ":from": {"S": from_status},
+            ":to": {"S": to_status},
+        }
+        condition = "#status = :from"
+        if expected_version is not None:
+            condition += " AND resolved_by_version = :version"
+            values[":version"] = {"N": str(expected_version)}
+        try:
+            self._client.update_item(
+                TableName=self.table_name,
+                Key=proposal.key,
+                UpdateExpression="SET #status = :to",
+                ConditionExpression=condition,
+                ExpressionAttributeNames=names,
+                ExpressionAttributeValues=values,
+            )
+        except ClientError as error:
+            # Idempotent: a concurrent/duplicate reconcile already moved it.
+            if not _is_transaction_conflict(error):
+                raise
 
     def add_proposal(
         self,
