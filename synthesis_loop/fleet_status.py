@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Fleet status v1: ACTIVE merchant-truth rows vs legacy enumerations.
 
-One GSITYPE query (TYPE=MERCHANT_TRUTH_ACTIVE) through the DynamoClient
-``_MerchantTruth`` reader surface (``list_active_merchant_truth``), then a
+Two GSITYPE queries through the DynamoClient ``_MerchantTruth`` reader
+surface: TYPE=MERCHANT_TRUTH_ACTIVE (``list_active_merchant_truth``) for
+the fleet table, and TYPE=MERCHANT_TRUTH_MANIFEST
+(``list_merchant_truth_manifests``) for the "SEALED (pending activation)"
+section — sealed versions with no (or an older) ACTIVE pointer. Then a
 cross-check against the two legacy merchant enumerations:
 
   * ``scripts/merchant_profiles.json`` profile keys
@@ -44,7 +47,10 @@ from receipt_dynamo.migrations.merchant_truth_v1 import (  # noqa: E402
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.entities.merchant_truth import MerchantTruthActive
+    from receipt_dynamo.entities.merchant_truth import (
+        MerchantTruthActive,
+        MerchantTruthManifest,
+    )
     from receipt_dynamo.merchant_truth_loader import MerchantTruthReader
 
 DEV_TABLE_NAME = "ReceiptsTable-dc5be22"
@@ -118,12 +124,40 @@ def _staleness_days(activated_at: str, now: datetime) -> int:
     return int((now - activated).total_seconds() // 86400)
 
 
+def build_sealed_pending(
+    manifests: list["MerchantTruthManifest"],
+    active_records: list["MerchantTruthActive"],
+) -> list[dict[str, Any]]:
+    """SEALED versions not (or no longer) covered by an ACTIVE pointer.
+
+    A version is pending activation when its manifest is SEALED and the
+    merchant either has no ACTIVE pointer at all or the ACTIVE pointer
+    names an older version. This is the G1 evidence gap: 13 sealed
+    bundles were invisible behind a "0 ACTIVE" fleet view.
+    """
+    active_version = {record.slug: record.version for record in active_records}
+    pending = [
+        {
+            "slug": manifest.slug,
+            "version": manifest.version,
+            "gate_status": manifest.gate_status,
+            "sealed_at": manifest.sealed_at,
+            "bundle_hash_short": manifest.bundle_hash[:SHORT_HASH_LEN],
+        }
+        for manifest in manifests
+        if manifest.status == "SEALED"
+        and manifest.version > active_version.get(manifest.slug, 0)
+    ]
+    return sorted(pending, key=lambda row: (row["slug"], row["version"]))
+
+
 def build_report(
     active_records: list["MerchantTruthActive"],
     legacy: dict[str, dict[str, Any]],
     *,
     table: str,
     now: datetime,
+    manifests: list["MerchantTruthManifest"] | None = None,
 ) -> dict[str, Any]:
     """Assemble the full status document (source of both outputs)."""
     active_rows = [
@@ -148,14 +182,17 @@ def build_report(
         for slug, entry in sorted(legacy.items())
         if slug not in active_slugs
     ]
+    sealed_pending = build_sealed_pending(manifests or [], active_records)
     return {
         "table": table,
         "generated_at": now.isoformat(),
         "active_count": len(active_rows),
         "legacy_count": len(legacy),
         "missing_count": len(missing),
+        "sealed_pending_count": len(sealed_pending),
         "active": active_rows,
         "missing": missing,
+        "sealed_pending": sealed_pending,
         "unlisted_in_legacy": sorted(active_slugs - set(legacy)),
         "check_failures": [
             row["slug"] for row in active_rows if row["gate_status"] != "PASS"
@@ -171,6 +208,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Table: `{report['table']}` | Generated: {report['generated_at']}",
         "",
         f"**{report['active_count']} ACTIVE / "
+        f"{report['sealed_pending_count']} SEALED pending activation / "
         f"{report['missing_count']} missing** "
         f"(legacy enumerations: {report['legacy_count']} merchants)",
         "",
@@ -187,6 +225,29 @@ def render_markdown(report: dict[str, Any]) -> str:
             )
     else:
         lines.append("| (no ACTIVE merchant-truth rows) | | | | | |")
+    lines += [
+        "",
+        "## SEALED (pending activation)",
+        "",
+    ]
+    if report["sealed_pending"]:
+        lines += [
+            "| merchant | version | gate | sealed_at | bundle_hash |",
+            "|---|---|---|---|---|",
+        ]
+        for row in report["sealed_pending"]:
+            lines.append(
+                f"| {row['slug']} | {row['version']} "
+                f"| {row['gate_status']} | {row['sealed_at']} "
+                f"| `{row['bundle_hash_short']}` |"
+            )
+        lines += [
+            "",
+            "Review each with scripts/merchant_truth_diff.py before "
+            "flipping ACTIVE (owner gate G2).",
+        ]
+    else:
+        lines.append("None: no sealed version is waiting on an ACTIVE flip.")
     lines += [
         "",
         "## Missing from truth store (present in legacy enumerations)",
@@ -252,12 +313,14 @@ def main(
         region = os.environ.get("AWS_REGION", "us-east-1")
         reader = DynamoClient(table_name=table, region=region)
     active_records = reader.list_active_merchant_truth()
+    manifests = reader.list_merchant_truth_manifests()
 
     report = build_report(
         active_records,
         legacy,
         table=table,
         now=now or datetime.now(timezone.utc),
+        manifests=manifests,
     )
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

@@ -887,6 +887,26 @@ class _MerchantTruth(FlattenedStandardMixin):
         )
         return [MerchantTruthActive.from_item(item) for item in items]
 
+    def list_merchant_truth_manifests(self) -> list[MerchantTruthManifest]:
+        """Read every version manifest fleet-wide through GSITYPE.
+
+        One query on ``TYPE = MERCHANT_TRUTH_MANIFEST`` (projection ALL),
+        mirroring ``list_active_merchant_truth``. This is the read that
+        makes SEALED-but-not-ACTIVE versions visible to fleet tooling —
+        during G1 the fleet view showed "0 ACTIVE" while 13 sealed bundles
+        existed invisibly.
+        """
+        items = self._query_all(
+            TableName=self.table_name,
+            IndexName="GSITYPE",
+            KeyConditionExpression="#type = :type",
+            ExpressionAttributeNames={"#type": "TYPE"},
+            ExpressionAttributeValues={
+                ":type": {"S": "MERCHANT_TRUTH_MANIFEST"}
+            },
+        )
+        return [MerchantTruthManifest.from_item(item) for item in items]
+
     def list_merchant_truth_proposals(
         self, slug: str
     ) -> list[MerchantTruthProposal]:
