@@ -25,6 +25,12 @@ the claude.ai / Claude desktop connector callbacks
 local callbacks on ports 8765 and 6274. Cognito does not provide dynamic
 client registration, so the exported client ID is required.
 
+Codex appends a stable, server-specific callback ID to its configured base
+callback URL. Register that complete derived URL in the development stack
+(for example, `http://127.0.0.1:8765/callback/<id>`). Keep personal Codex
+MCP access pointed at the development gateway rather than the production
+gateway.
+
 For a claude.ai custom connector: add the connector with the gateway URL
 (`mcp_server_url` or `glyph_mcp_server_url`), open Advanced settings, and
 paste `mcp_oauth_interactive_client_id` as the OAuth client ID (no secret —
@@ -62,6 +68,16 @@ Override interactive callback URLs when needed:
 pulumi config set --path \
   'portfolio:mcpOAuthCallbackUrls[0]' \
   'http://localhost:8765/callback'
+```
+
+Token lifetimes are stack-configurable. The defaults remain one hour for
+access and ID tokens and 30 days for refresh tokens. The development stack
+uses the Cognito maximum of 24 hours for access and ID tokens plus a 365-day
+refresh token to reduce local-tool reconnect friction:
+
+```bash
+pulumi config set portfolio:mcpOAuthAccessTokenValidityHours 24
+pulumi config set portfolio:mcpOAuthRefreshTokenValidityDays 365
 ```
 
 Review infrastructure without applying it:

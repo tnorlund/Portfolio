@@ -32,6 +32,9 @@ _DEFAULT_CALLBACK_URLS = [
     "http://localhost:6274/oauth/callback",
 ]
 
+_DEFAULT_REFRESH_TOKEN_VALIDITY_DAYS = 30
+_DEFAULT_ACCESS_TOKEN_VALIDITY_HOURS = 1
+
 # Serves the RFC 9728 protected-resource metadata documents. HTTP APIs
 # have no mock integrations, so a minimal Lambda answers the well-known
 # routes from an env-var lookup table.
@@ -73,6 +76,35 @@ def _callback_urls(config: Config) -> List[str]:
     if not value:
         raise ValueError("portfolio:mcpOAuthCallbackUrls must contain at least one URL")
     return value
+
+
+def _token_validity(config: Config) -> tuple[int, int]:
+    """Return validated refresh-day and access-hour lifetimes."""
+    configured_refresh_days = config.get_int(
+        "mcpOAuthRefreshTokenValidityDays"
+    )
+    configured_access_hours = config.get_int(
+        "mcpOAuthAccessTokenValidityHours"
+    )
+    refresh_days = configured_refresh_days
+    if refresh_days is None:
+        refresh_days = _DEFAULT_REFRESH_TOKEN_VALIDITY_DAYS
+    access_hours = configured_access_hours
+    if access_hours is None:
+        access_hours = _DEFAULT_ACCESS_TOKEN_VALIDITY_HOURS
+
+    if not 1 <= refresh_days <= 3650:
+        raise ValueError(
+            "portfolio:mcpOAuthRefreshTokenValidityDays must be between "
+            "1 and 3650"
+        )
+    if not 1 <= access_hours <= 24:
+        raise ValueError(
+            "portfolio:mcpOAuthAccessTokenValidityHours must be between "
+            "1 and 24"
+        )
+
+    return refresh_days, access_hours
 
 
 class McpAuthGateway(ComponentResource):
@@ -136,6 +168,16 @@ class McpAuthGateway(ComponentResource):
         )
 
         callbacks = _callback_urls(config)
+        refresh_token_validity_days, access_token_validity_hours = (
+            _token_validity(config)
+        )
+        token_validity_units = (
+            aws.cognito.UserPoolClientTokenValidityUnitsArgs(
+                access_token="hours",
+                id_token="hours",
+                refresh_token="days",
+            )
+        )
         self.interactive_client = aws.cognito.UserPoolClient(
             f"{name}-interactive-client",
             name=f"{name}-{stack}-interactive",
@@ -151,6 +193,10 @@ class McpAuthGateway(ComponentResource):
             ],
             callback_urls=callbacks,
             default_redirect_uri=callbacks[0],
+            access_token_validity=access_token_validity_hours,
+            id_token_validity=access_token_validity_hours,
+            refresh_token_validity=refresh_token_validity_days,
+            token_validity_units=token_validity_units,
             supported_identity_providers=["COGNITO"],
             enable_token_revocation=True,
             prevent_user_existence_errors="ENABLED",
