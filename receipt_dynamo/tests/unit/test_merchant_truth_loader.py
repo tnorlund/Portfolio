@@ -131,6 +131,9 @@ class FakeReader:
             (item for item in self.active_records if item.slug == slug), None
         )
 
+    def list_merchant_truth_manifests(self) -> list[MerchantTruthManifest]:
+        raise AssertionError("the loader never lists fleet manifests")
+
     def read_merchant_truth_bundle_items(
         self,
         slug: str,

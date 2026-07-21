@@ -34,6 +34,26 @@ class MerchantTruthReader(Protocol):
 
     def list_active_merchant_truth(self) -> list[MerchantTruthActive]: ...
 
+    def list_merchant_truth_manifests(
+        self,
+    ) -> list["MerchantTruthManifest"]: ...
+
+    def get_merchant_truth_manifest(
+        self,
+        slug: str,
+        version: int,
+        *,
+        consistent_read: bool = False,
+    ) -> "MerchantTruthManifest | None": ...
+
+    def list_merchant_truth_components(
+        self,
+        slug: str,
+        version: int,
+        *,
+        consistent_read: bool = False,
+    ) -> list[MerchantTruthComponent]: ...
+
     def get_active_merchant_truth(
         self, slug: str, *, consistent_read: bool = False
     ) -> MerchantTruthActive | None: ...
