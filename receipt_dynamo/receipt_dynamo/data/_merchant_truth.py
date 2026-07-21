@@ -233,9 +233,7 @@ class _MerchantTruth(FlattenedStandardMixin):
             provenance.get("source_path") or provenance.get("source_object")
         ):
             missing.append("source_path/source_object")
-        if not (
-            provenance.get("source_hash") or provenance.get("git_sha")
-        ):
+        if not (provenance.get("source_hash") or provenance.get("git_sha")):
             missing.append("source_hash/git_sha")
         if not provenance.get("pipeline"):
             missing.append("pipeline")
@@ -493,7 +491,8 @@ class _MerchantTruth(FlattenedStandardMixin):
                 "Key": manifest.key,
                 "UpdateExpression": (
                     "SET #status = :sealed, sealed_at = :sealed_at, "
-                    "gate_status = :gate_status, gate_results = :gate_results, "
+                    "gate_status = :gate_status, "
+                    "gate_results = :gate_results, "
                     "confirmed_proposals = :proposals"
                 ),
                 "ConditionExpression": (

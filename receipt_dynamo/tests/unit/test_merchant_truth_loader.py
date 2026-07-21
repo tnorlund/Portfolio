@@ -319,9 +319,11 @@ def test_loader_rejects_self_consistent_swapped_component(
         provenance={"source_kind": "migration"},
     )
     swapped_items = [
-        swapped.to_item()
-        if item.get("component", {}).get("S") == "layout"
-        else item
+        (
+            swapped.to_item()
+            if item.get("component", {}).get("S") == "layout"
+            else item
+        )
         for item in items
     ]
     loader = MerchantTruthLoader(FakeReader([active], swapped_items), tmp_path)

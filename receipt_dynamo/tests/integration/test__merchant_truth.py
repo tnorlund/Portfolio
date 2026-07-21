@@ -93,7 +93,7 @@ def sealed_version(client: DynamoClient, table: str, version: int) -> str:
         table,
         created_at=NOW,
     )
-    manifest = client.seal_version(
+    sealed = client.seal_version(
         SLUG,
         version,
         {"status": "PASS", "report": f"s3://eval/v{version}.json"},
@@ -101,7 +101,7 @@ def sealed_version(client: DynamoClient, table: str, version: int) -> str:
         table,
         sealed_at=NOW,
     )
-    return manifest.bundle_hash
+    return sealed.bundle_hash
 
 
 def proposal_status(client: DynamoClient, claim_slug: str) -> str:
@@ -116,7 +116,9 @@ def test_flip_and_rollback_reconcile_proposal_effectivity(
     hash_v1 = sealed_version(client, dynamodb_table, 1)
     hash_v2 = sealed_version(client, dynamodb_table, 2)
 
-    client.initial_activate(active("owner", hash_v1, version=1), dynamodb_table)
+    client.initial_activate(
+        active("owner", hash_v1, version=1), dynamodb_table
+    )
 
     proposal = MerchantTruthProposal(
         slug=SLUG,
@@ -207,9 +209,7 @@ def test_two_concurrent_flips_from_same_prev_yield_one_winner(
         outcomes = list(pool.map(flip, (2, 3)))
 
     assert sorted(outcome[0] for outcome in outcomes) == ["conflict", "ok"]
-    winner = next(
-        outcome[1] for outcome in outcomes if outcome[0] == "ok"
-    )
+    winner = next(outcome[1] for outcome in outcomes if outcome[0] == "ok")
     current = client.get_active_merchant_truth(SLUG, consistent_read=True)
     assert current is not None
     assert current.version == winner

@@ -223,9 +223,7 @@ def test_seal_verifies_open_bundle_and_conditions_the_update() -> None:
         pytest.param({"passed": False}, id="passed-false"),
         pytest.param({"report": "s3://eval/ambiguous.json"}, id="ambiguous"),
         pytest.param({}, id="empty"),
-        pytest.param(
-            {"status": "PASS", "passed": False}, id="contradictory"
-        ),
+        pytest.param({"status": "PASS", "passed": False}, id="contradictory"),
     ],
 )
 def test_seal_fails_closed_when_gate_did_not_pass(
@@ -242,9 +240,7 @@ def test_seal_fails_closed_when_gate_did_not_pass(
     with pytest.raises(
         (MerchantTruthConflictError, MerchantTruthIntegrityError)
     ):
-        truth.seal_version(
-            SLUG, 1, gate_results, [], TABLE, sealed_at=NOW
-        )
+        truth.seal_version(SLUG, 1, gate_results, [], TABLE, sealed_at=NOW)
 
     assert client.transactions == []
 
@@ -324,7 +320,9 @@ def full_provenance(name: str) -> dict[str, Any]:
     provenance: dict[str, Any] = {
         "source_kind": "engine_config" if is_flags else "measurement",
         "written_by": {
-            "kind": "engine_config_sync" if is_flags else "measurement_pipeline",
+            "kind": (
+                "engine_config_sync" if is_flags else "measurement_pipeline"
+            ),
             "name": "pipeline",
             "version": "1",
         },
