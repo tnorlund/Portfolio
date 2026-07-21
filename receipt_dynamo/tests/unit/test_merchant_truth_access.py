@@ -460,6 +460,50 @@ def test_mint_accepts_migration_legacy_provenance_escape() -> None:
     assert len(client.transactions) == 1
 
 
+def test_mint_rejects_missing_component_and_writes_nothing() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+
+    with pytest.raises(MerchantTruthIntegrityError, match="exactly one"):
+        truth.mint_version(
+            SLUG,
+            1,
+            components()[:-1],
+            {"written_by": "migration"},
+            "run-1",
+            TABLE,
+            created_at=NOW,
+        )
+
+    assert client.transactions == []
+
+
+def test_mint_rejects_duplicate_component_and_writes_nothing() -> None:
+    client = RecordingClient()
+    truth = accessor(client)
+    with_duplicate = components()
+    with_duplicate[-1] = MerchantTruthComponent(
+        slug=SLUG,
+        version=1,
+        name=with_duplicate[0].name,
+        payload={"component": "duplicate"},
+        provenance=dict(LEGACY_PROVENANCE),
+    )
+
+    with pytest.raises(MerchantTruthIntegrityError, match="exactly one"):
+        truth.mint_version(
+            SLUG,
+            1,
+            with_duplicate,
+            {"written_by": "migration"},
+            "run-1",
+            TABLE,
+            created_at=NOW,
+        )
+
+    assert client.transactions == []
+
+
 def test_dev_table_guard_fails_before_any_write() -> None:
     client = RecordingClient()
     truth = accessor(client)

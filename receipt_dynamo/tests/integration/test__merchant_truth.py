@@ -6,6 +6,7 @@ from threading import Barrier
 import pytest
 
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.shared_exceptions import MerchantTruthConflictError
 from receipt_dynamo.entities.merchant_truth import (
     COMPONENT_NAMES,
     MerchantTruthActive,
@@ -177,3 +178,39 @@ def test_two_concurrent_first_activations_converge_on_one_pointer(
         },
     )
     assert len(response["Items"]) == 1
+
+
+def test_two_concurrent_flips_from_same_prev_yield_one_winner(
+    dynamodb_table: str,
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    hash_v1 = sealed_version(client, dynamodb_table, 1)
+    targets = {
+        2: sealed_version(client, dynamodb_table, 2),
+        3: sealed_version(client, dynamodb_table, 3),
+    }
+    client.initial_activate(
+        active("owner", hash_v1, version=1), dynamodb_table
+    )
+    barrier = Barrier(2)
+
+    def flip(version: int) -> tuple[str, int | None]:
+        barrier.wait()
+        target = active(f"owner-{version}", targets[version], version=version)
+        try:
+            result = client.flip_active(target, 1, hash_v1, dynamodb_table)
+            return ("ok", result.version)
+        except MerchantTruthConflictError:
+            return ("conflict", None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(flip, (2, 3)))
+
+    assert sorted(outcome[0] for outcome in outcomes) == ["conflict", "ok"]
+    winner = next(
+        outcome[1] for outcome in outcomes if outcome[0] == "ok"
+    )
+    current = client.get_active_merchant_truth(SLUG, consistent_read=True)
+    assert current is not None
+    assert current.version == winner
+    assert current.version in (2, 3)

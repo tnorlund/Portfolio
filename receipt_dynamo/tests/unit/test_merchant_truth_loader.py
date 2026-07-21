@@ -66,6 +66,46 @@ def build_bundle(
     ]
 
 
+def build_unsealed_bundle(
+    slug: str = SLUG, version: int = 1
+) -> tuple[MerchantTruthActive, list[dict[str, Any]]]:
+    """A structurally valid bundle whose manifest is OPEN / not gate-passed."""
+    components = [
+        MerchantTruthComponent(
+            slug=slug,
+            version=version,
+            name=name,
+            payload={"name": name, "version": version},
+            provenance={"source_kind": "migration"},
+        )
+        for name in sorted(COMPONENT_NAMES)
+    ]
+    hashes = {item.name: item.content_hash for item in components}
+    bundle_hash = compute_bundle_hash(hashes)
+    manifest = MerchantTruthManifest(
+        slug=slug,
+        version=version,
+        component_hashes=hashes,
+        bundle_hash=bundle_hash,
+        status="OPEN",
+        provenance={"written_by": "test"},
+        mint_run_id=f"run-{version}",
+        gate_status="PENDING",
+    )
+    active = MerchantTruthActive(
+        slug=slug,
+        version=version,
+        bundle_hash=bundle_hash,
+        normalized_aliases=["sprouts", "sprouts farmers market"],
+        activated_at=NOW,
+        activated_by="owner",
+    )
+    return active, [
+        manifest.to_item(),
+        *[item.to_item() for item in components],
+    ]
+
+
 class FakeReader:
     def __init__(
         self,
@@ -234,6 +274,60 @@ def test_fixture_mode_never_needs_a_reader(tmp_path: Path) -> None:
     assert artifact.mode is TruthResolutionMode.FIXTURE
     assert artifact.bundle_hash == active.bundle_hash
     assert artifact.gate_eligible
+
+
+def test_fixture_mode_rejects_unsealed_manifest(tmp_path: Path) -> None:
+    _, items = build_unsealed_bundle()
+    fixture_path = tmp_path / "fixture.json"
+    fixture_path.write_text(json.dumps({"items": items}), encoding="utf-8")
+
+    with pytest.raises(MerchantTruthIntegrityError, match="SEALED/PASS"):
+        MerchantTruthLoader(None, tmp_path / "cache").load(
+            "ignored",
+            TruthResolutionMode.FIXTURE,
+            fixture_path=fixture_path,
+        )
+
+
+def test_pinned_mode_rejects_unsealed_manifest(tmp_path: Path) -> None:
+    active, items = build_unsealed_bundle()
+    loader = MerchantTruthLoader(FakeReader([active], items), tmp_path)
+
+    with pytest.raises(MerchantTruthIntegrityError, match="SEALED/PASS"):
+        loader.load(
+            "sprouts",
+            TruthResolutionMode.PINNED,
+            pin_version=1,
+            pin_bundle_hash=active.bundle_hash,
+        )
+
+
+def test_loader_rejects_self_consistent_swapped_component(
+    tmp_path: Path,
+) -> None:
+    # A valid SEALED bundle, then one component's item is replaced by a
+    # different but internally self-consistent component (its own content_hash
+    # matches its payload) that the manifest never declared. Both the
+    # per-component hash check and the recomputed bundle-hash check must
+    # reject it, so removing either single check still fails closed.
+    active, items = build_bundle()
+    swapped = MerchantTruthComponent(
+        slug=SLUG,
+        version=1,
+        name="layout",
+        payload={"name": "layout", "version": 1, "tampered": True},
+        provenance={"source_kind": "migration"},
+    )
+    swapped_items = [
+        swapped.to_item()
+        if item.get("component", {}).get("S") == "layout"
+        else item
+        for item in items
+    ]
+    loader = MerchantTruthLoader(FakeReader([active], swapped_items), tmp_path)
+
+    with pytest.raises(MerchantTruthIntegrityError, match="hash"):
+        loader.load("sprouts", TruthResolutionMode.ONLINE_ACTIVE)
 
 
 class PagedLowLevelClient:
