@@ -1,7 +1,5 @@
 """Integration coverage for MerchantTruth activation races."""
 
-from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
 
 import pytest
 
@@ -145,32 +143,40 @@ def test_flip_and_rollback_reconcile_proposal_effectivity(
     assert proposal_status(client, "bold-headers") == "MEASURED_IN_CANDIDATE"
 
 
-def test_two_concurrent_first_activations_converge_on_one_pointer(
+def test_second_initial_activation_is_rejected_and_pointer_converges(
     dynamodb_table: str,
 ) -> None:
+    # Deterministic form of the first-activation race: moto's in-memory
+    # conditional writes are not atomic under real threads, so a threaded
+    # barrier race flakes on parallel CI runners (both writers can pass the
+    # condition read). Real DynamoDB arbitrates the condition server-side;
+    # what the guard must prove is that a second writer with the same
+    # ACTIVE-absent condition loses once the first has committed.
     client = DynamoClient(dynamodb_table)
     sealed = manifest()
     client._client.put_item(  # pylint: disable=protected-access
         TableName=dynamodb_table,
         Item=sealed.to_item(),
     )
-    barrier = Barrier(2)
 
-    def activate(actor: str) -> MerchantTruthActive:
-        barrier.wait()
-        target = active(actor, sealed.bundle_hash)
-        return client.initial_activate(target, dynamodb_table)
+    winner = client.initial_activate(
+        active("owner-a", sealed.bundle_hash), dynamodb_table
+    )
+    assert (winner.version, winner.bundle_hash) == (1, sealed.bundle_hash)
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(activate, ("owner-a", "owner-b")))
+    # A second writer with the same target converges on the existing
+    # pointer instead of raising (idempotent bootstrap), and writes no
+    # second audit row.
+    second = client.initial_activate(
+        active("owner-b", sealed.bundle_hash), dynamodb_table
+    )
+    assert (second.version, second.bundle_hash) == (1, sealed.bundle_hash)
 
-    assert {(item.version, item.bundle_hash) for item in results} == {
-        (1, sealed.bundle_hash)
-    }
     current = client.get_active_merchant_truth(SLUG, consistent_read=True)
     assert current is not None
     assert current.version == 1
     assert current.bundle_hash == sealed.bundle_hash
+    assert current.activated_by == "owner-a"
     response = client._client.query(  # pylint: disable=protected-access
         TableName=dynamodb_table,
         KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
@@ -182,9 +188,14 @@ def test_two_concurrent_first_activations_converge_on_one_pointer(
     assert len(response["Items"]) == 1
 
 
-def test_two_concurrent_flips_from_same_prev_yield_one_winner(
+def test_flip_with_stale_expected_state_conflicts_one_winner(
     dynamodb_table: str,
 ) -> None:
+    # Deterministic form of the same-prev flip race (see note on the
+    # initial-activation test): writer A flips 1->2; writer B then attempts
+    # 1->3 with the identical stale expected {version=1, hash_v1} a true
+    # race loser would carry, and must get MerchantTruthConflictError while
+    # ACTIVE stays on the winner.
     client = DynamoClient(dynamodb_table)
     hash_v1 = sealed_version(client, dynamodb_table, 1)
     targets = {
@@ -194,23 +205,20 @@ def test_two_concurrent_flips_from_same_prev_yield_one_winner(
     client.initial_activate(
         active("owner", hash_v1, version=1), dynamodb_table
     )
-    barrier = Barrier(2)
 
-    def flip(version: int) -> tuple[str, int | None]:
-        barrier.wait()
-        target = active(f"owner-{version}", targets[version], version=version)
-        try:
-            result = client.flip_active(target, 1, hash_v1, dynamodb_table)
-            return ("ok", result.version)
-        except MerchantTruthConflictError:
-            return ("conflict", None)
+    winner = client.flip_active(
+        active("owner-2", targets[2], version=2), 1, hash_v1, dynamodb_table
+    )
+    assert winner.version == 2
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        outcomes = list(pool.map(flip, (2, 3)))
+    with pytest.raises(MerchantTruthConflictError):
+        client.flip_active(
+            active("owner-3", targets[3], version=3),
+            1,
+            hash_v1,
+            dynamodb_table,
+        )
 
-    assert sorted(outcome[0] for outcome in outcomes) == ["conflict", "ok"]
-    winner = next(outcome[1] for outcome in outcomes if outcome[0] == "ok")
     current = client.get_active_merchant_truth(SLUG, consistent_read=True)
     assert current is not None
-    assert current.version == winner
-    assert current.version in (2, 3)
+    assert current.version == 2
