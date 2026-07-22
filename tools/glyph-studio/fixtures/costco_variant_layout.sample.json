@@ -1,0 +1,438 @@
+{
+ "template": {
+  "version": 1,
+  "_comment": "Measured layout, cluster-before-pool (W-G): receipts clustered by layout signature, columns/sections/separators pooled per cluster via glyphstudio.variant_cluster. Top level = dominant cluster; other clusters in `variants`.",
+  "measured": {
+   "receipts": 24,
+   "tool_git_sha": "f030a417a0bd",
+   "tool_dirty": true,
+   "receipts_total": 31,
+   "clustering": {
+    "algorithm": "average-linkage-agglomerative",
+    "deterministic": true,
+    "threshold": 0.18,
+    "weights": {
+     "sequence": 0.3,
+     "markers": 0.2,
+     "columns": 0.35,
+     "positions": 0.15
+    },
+    "column_x_scale": 0.25,
+    "min_variant_support": 2,
+    "required_variant_sections": [
+     "items"
+    ],
+    "clusters": 1,
+    "degenerate_clusters": 1,
+    "outliers": 5
+   }
+  },
+  "columns": {
+   "barcode": [
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.2459,
+     "spread": 0.0042,
+     "support": 21
+    }
+   ],
+   "footer": [
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.0125,
+     "spread": 0.0166,
+     "support": 23
+    },
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.2667,
+     "spread": 0.0044,
+     "support": 21
+    }
+   ],
+   "items": [
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.0125,
+     "spread": 0.0125,
+     "support": 21
+    },
+    {
+     "role": "amount",
+     "anchor": "right",
+     "x": 0.9357,
+     "spread": 0.0095,
+     "support": 24
+    }
+   ],
+   "payment": [
+    {
+     "role": "label",
+     "anchor": "left",
+     "x": 0.0124,
+     "spread": 0.0125,
+     "support": 23
+    },
+    {
+     "role": "label",
+     "anchor": "left",
+     "x": 0.2228,
+     "spread": 0.0044,
+     "support": 23
+    },
+    {
+     "role": "amount",
+     "anchor": "right",
+     "x": 0.3875,
+     "spread": 0.0089,
+     "support": 24
+    },
+    {
+     "role": "amount",
+     "anchor": "right",
+     "x": 0.9399,
+     "spread": 0.0084,
+     "support": 23
+    }
+   ],
+   "storefront": [
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.0125,
+     "spread": 0.0125,
+     "support": 23
+    },
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.1039,
+     "spread": 0.0088,
+     "support": 24
+    },
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.2261,
+     "spread": 0.0084,
+     "support": 24
+    },
+    {
+     "role": "desc",
+     "anchor": "left",
+     "x": 0.3417,
+     "spread": 0.0167,
+     "support": 17
+    }
+   ],
+   "summary": [
+    {
+     "role": "label",
+     "anchor": "left",
+     "x": 0.0167,
+     "spread": 0.0104,
+     "support": 23
+    },
+    {
+     "role": "label",
+     "anchor": "left",
+     "x": 0.0833,
+     "spread": 0.0083,
+     "support": 22
+    },
+    {
+     "role": "label",
+     "anchor": "left",
+     "x": 0.2228,
+     "spread": 0.0063,
+     "support": 24
+    },
+    {
+     "role": "qty",
+     "anchor": "right",
+     "x": 0.8852,
+     "spread": 0.0042,
+     "support": 21
+    },
+    {
+     "role": "amount",
+     "anchor": "right",
+     "x": 0.9354,
+     "spread": 0.0125,
+     "support": 24
+    }
+   ],
+   "total_line": [
+    {
+     "role": "label",
+     "anchor": "left",
+     "x": 0.0915,
+     "spread": 0.0084,
+     "support": 19
+    }
+   ]
+  },
+  "sections": [
+   {
+    "name": "storefront",
+    "pos_frac_med": 0.039,
+    "support": 24
+   },
+   {
+    "name": "items",
+    "pos_frac_med": 0.303,
+    "support": 24
+   },
+   {
+    "name": "summary",
+    "pos_frac_med": 0.353,
+    "support": 24
+   },
+   {
+    "name": "total_line",
+    "pos_frac_med": 0.39,
+    "support": 22
+   },
+   {
+    "name": "payment",
+    "pos_frac_med": 0.428,
+    "support": 24
+   },
+   {
+    "name": "barcode",
+    "pos_frac_med": 0.788,
+    "support": 23
+   },
+   {
+    "name": "footer",
+    "pos_frac_med": 0.807,
+    "support": 24
+   }
+  ],
+  "separators": [],
+  "variant_id": "default",
+  "support": 24,
+  "source_receipt_keys": [
+   "IMAGE#04b16930-7baf-4539-866f-b77d8e73cff8#RECEIPT#00001",
+   "IMAGE#20576ddd-8a2c-4aea-841e-da553b8a7ff1#RECEIPT#00001",
+   "IMAGE#25c91d78-ed11-4c68-8051-e1d364762bcb#RECEIPT#00001",
+   "IMAGE#471788b6-a210-4570-b5c4-47de5ac4518d#RECEIPT#00001",
+   "IMAGE#5cef2e7e-baad-4c29-9e5f-6a3d5ec20885#RECEIPT#00001",
+   "IMAGE#71d1d906-9bdb-4965-9c62-2fb388b5d5fa#RECEIPT#00001",
+   "IMAGE#750e0675-f318-4d1d-994c-c330ff6cb3f3#RECEIPT#00001",
+   "IMAGE#758cbedf-f1dd-4466-98ec-faf86e82d422#RECEIPT#00001",
+   "IMAGE#75ec2ac9-e043-4270-b7ec-67e4f225dae9#RECEIPT#00002",
+   "IMAGE#7ee15df8-703f-46c1-83c7-22a463c923c4#RECEIPT#00001",
+   "IMAGE#8388d1f1-b5d6-4560-b7dc-db273815dda1#RECEIPT#00001",
+   "IMAGE#84efc4e9-87e8-4bda-beb9-1668328c6801#RECEIPT#00002",
+   "IMAGE#909a2b84-0b9d-496a-adf9-16588602a055#RECEIPT#00001",
+   "IMAGE#909a2b84-0b9d-496a-adf9-16588602a055#RECEIPT#00002",
+   "IMAGE#a861f6a6-8d6d-42bc-907c-3330d8bd2022#RECEIPT#00001",
+   "IMAGE#ac5fd741-29f2-4e05-bf69-9c216ec8a56a#RECEIPT#00002",
+   "IMAGE#b44d58bc-cdad-443b-bea3-958a2fbb76e6#RECEIPT#00001",
+   "IMAGE#c1672313-25b9-4d14-9951-691a2003dacf#RECEIPT#00001",
+   "IMAGE#d67ee0e3-6f30-4142-8209-cebbf309f40e#RECEIPT#00002",
+   "IMAGE#d84d4101-8a2f-4b6f-9c4e-4d89af1850f5#RECEIPT#00002",
+   "IMAGE#e8b658b6-e731-4aab-8c9b-cd9df55efc57#RECEIPT#00001",
+   "IMAGE#ed28a4ce-2258-4745-87ba-2fc662c94abf#RECEIPT#00001",
+   "IMAGE#ed28a4ce-2258-4745-87ba-2fc662c94abf#RECEIPT#00002",
+   "IMAGE#fa0fe8e6-5270-4b37-9149-113de515f436#RECEIPT#00001"
+  ],
+  "variants": []
+ },
+ "verdict": {
+  "proposal": "self-checkout-layout-variant",
+  "status": "REFUTE",
+  "reason": "single stable cluster at threshold 0.18; no second usable layout format found (1 degenerate cluster(s) demoted: pooled template unusable as a layout)",
+  "clusters": [
+   {
+    "variant_id": "default",
+    "support": 24,
+    "receipt_refs": [
+     "IMAGE#04b16930-7baf-4539-866f-b77d8e73cff8#RECEIPT#00001",
+     "IMAGE#20576ddd-8a2c-4aea-841e-da553b8a7ff1#RECEIPT#00001",
+     "IMAGE#25c91d78-ed11-4c68-8051-e1d364762bcb#RECEIPT#00001",
+     "IMAGE#471788b6-a210-4570-b5c4-47de5ac4518d#RECEIPT#00001",
+     "IMAGE#5cef2e7e-baad-4c29-9e5f-6a3d5ec20885#RECEIPT#00001",
+     "IMAGE#71d1d906-9bdb-4965-9c62-2fb388b5d5fa#RECEIPT#00001",
+     "IMAGE#750e0675-f318-4d1d-994c-c330ff6cb3f3#RECEIPT#00001",
+     "IMAGE#758cbedf-f1dd-4466-98ec-faf86e82d422#RECEIPT#00001",
+     "IMAGE#75ec2ac9-e043-4270-b7ec-67e4f225dae9#RECEIPT#00002",
+     "IMAGE#7ee15df8-703f-46c1-83c7-22a463c923c4#RECEIPT#00001",
+     "IMAGE#8388d1f1-b5d6-4560-b7dc-db273815dda1#RECEIPT#00001",
+     "IMAGE#84efc4e9-87e8-4bda-beb9-1668328c6801#RECEIPT#00002",
+     "IMAGE#909a2b84-0b9d-496a-adf9-16588602a055#RECEIPT#00001",
+     "IMAGE#909a2b84-0b9d-496a-adf9-16588602a055#RECEIPT#00002",
+     "IMAGE#a861f6a6-8d6d-42bc-907c-3330d8bd2022#RECEIPT#00001",
+     "IMAGE#ac5fd741-29f2-4e05-bf69-9c216ec8a56a#RECEIPT#00002",
+     "IMAGE#b44d58bc-cdad-443b-bea3-958a2fbb76e6#RECEIPT#00001",
+     "IMAGE#c1672313-25b9-4d14-9951-691a2003dacf#RECEIPT#00001",
+     "IMAGE#d67ee0e3-6f30-4142-8209-cebbf309f40e#RECEIPT#00002",
+     "IMAGE#d84d4101-8a2f-4b6f-9c4e-4d89af1850f5#RECEIPT#00002",
+     "IMAGE#e8b658b6-e731-4aab-8c9b-cd9df55efc57#RECEIPT#00001",
+     "IMAGE#ed28a4ce-2258-4745-87ba-2fc662c94abf#RECEIPT#00001",
+     "IMAGE#ed28a4ce-2258-4745-87ba-2fc662c94abf#RECEIPT#00002",
+     "IMAGE#fa0fe8e6-5270-4b37-9149-113de515f436#RECEIPT#00001"
+    ],
+    "markers_common": [
+     "footer",
+     "items_sold",
+     "payment",
+     "summary",
+     "warehouse_header"
+    ],
+    "marker_prevalence": {
+     "footer": 24,
+     "items_sold": 24,
+     "payment": 24,
+     "savings": 2,
+     "self_checkout": 22,
+     "summary": 24,
+     "total_line": 22,
+     "warehouse_header": 24
+    }
+   }
+  ],
+  "degenerate_clusters": [
+   {
+    "receipt_refs": [
+     "IMAGE#314ac65b-2b97-45d6-81c2-e48fb0b8cef4#RECEIPT#00001",
+     "IMAGE#3ea1b045-48f9-425e-a9e6-10a347a71113#RECEIPT#00001"
+    ],
+    "reason": "pooled template missing required section(s): items",
+    "markers_common": [
+     "footer",
+     "items_sold",
+     "payment",
+     "savings",
+     "self_checkout",
+     "summary",
+     "total_line",
+     "warehouse_header"
+    ]
+   }
+  ],
+  "outliers": [
+   {
+    "receipt_refs": [
+     "IMAGE#0324604e-e1f7-4021-b887-7ef7e012c563#RECEIPT#00001"
+    ]
+   },
+   {
+    "receipt_refs": [
+     "IMAGE#165b9d15-9fa1-4a3c-a568-1b4e98170ab5#RECEIPT#00001"
+    ]
+   },
+   {
+    "receipt_refs": [
+     "IMAGE#41885f70-0a10-4897-8840-8f7373d150cd#RECEIPT#00001"
+    ]
+   },
+   {
+    "receipt_refs": [
+     "IMAGE#57cb7f2c-7dcc-4974-9ef8-a460232f3b1d#RECEIPT#00001"
+    ]
+   },
+   {
+    "receipt_refs": [
+     "IMAGE#6cd1f7f5-d988-4e11-9209-cb6535fc3b04#RECEIPT#00001"
+    ]
+   }
+  ],
+  "distinguishing_features": []
+ },
+ "provenance": {
+  "source_kind": "measurement",
+  "pipeline": "build_variant_layout",
+  "pipeline_version": "1",
+  "git_sha": "f030a417a0bd",
+  "measured_at": "2026-07-22T07:12:36.566890+00:00",
+  "source_receipt_keys": [
+   "IMAGE#0324604e-e1f7-4021-b887-7ef7e012c563#RECEIPT#00001",
+   "IMAGE#04b16930-7baf-4539-866f-b77d8e73cff8#RECEIPT#00001",
+   "IMAGE#165b9d15-9fa1-4a3c-a568-1b4e98170ab5#RECEIPT#00001",
+   "IMAGE#20576ddd-8a2c-4aea-841e-da553b8a7ff1#RECEIPT#00001",
+   "IMAGE#25c91d78-ed11-4c68-8051-e1d364762bcb#RECEIPT#00001",
+   "IMAGE#314ac65b-2b97-45d6-81c2-e48fb0b8cef4#RECEIPT#00001",
+   "IMAGE#3ea1b045-48f9-425e-a9e6-10a347a71113#RECEIPT#00001",
+   "IMAGE#41885f70-0a10-4897-8840-8f7373d150cd#RECEIPT#00001",
+   "IMAGE#471788b6-a210-4570-b5c4-47de5ac4518d#RECEIPT#00001",
+   "IMAGE#57cb7f2c-7dcc-4974-9ef8-a460232f3b1d#RECEIPT#00001",
+   "IMAGE#5cef2e7e-baad-4c29-9e5f-6a3d5ec20885#RECEIPT#00001",
+   "IMAGE#6cd1f7f5-d988-4e11-9209-cb6535fc3b04#RECEIPT#00001",
+   "IMAGE#71d1d906-9bdb-4965-9c62-2fb388b5d5fa#RECEIPT#00001",
+   "IMAGE#750e0675-f318-4d1d-994c-c330ff6cb3f3#RECEIPT#00001",
+   "IMAGE#758cbedf-f1dd-4466-98ec-faf86e82d422#RECEIPT#00001",
+   "IMAGE#75ec2ac9-e043-4270-b7ec-67e4f225dae9#RECEIPT#00002",
+   "IMAGE#7ee15df8-703f-46c1-83c7-22a463c923c4#RECEIPT#00001",
+   "IMAGE#8388d1f1-b5d6-4560-b7dc-db273815dda1#RECEIPT#00001",
+   "IMAGE#84efc4e9-87e8-4bda-beb9-1668328c6801#RECEIPT#00002",
+   "IMAGE#909a2b84-0b9d-496a-adf9-16588602a055#RECEIPT#00001",
+   "IMAGE#909a2b84-0b9d-496a-adf9-16588602a055#RECEIPT#00002",
+   "IMAGE#a861f6a6-8d6d-42bc-907c-3330d8bd2022#RECEIPT#00001",
+   "IMAGE#ac5fd741-29f2-4e05-bf69-9c216ec8a56a#RECEIPT#00002",
+   "IMAGE#b44d58bc-cdad-443b-bea3-958a2fbb76e6#RECEIPT#00001",
+   "IMAGE#c1672313-25b9-4d14-9951-691a2003dacf#RECEIPT#00001",
+   "IMAGE#d67ee0e3-6f30-4142-8209-cebbf309f40e#RECEIPT#00002",
+   "IMAGE#d84d4101-8a2f-4b6f-9c4e-4d89af1850f5#RECEIPT#00002",
+   "IMAGE#e8b658b6-e731-4aab-8c9b-cd9df55efc57#RECEIPT#00001",
+   "IMAGE#ed28a4ce-2258-4745-87ba-2fc662c94abf#RECEIPT#00001",
+   "IMAGE#ed28a4ce-2258-4745-87ba-2fc662c94abf#RECEIPT#00002",
+   "IMAGE#fa0fe8e6-5270-4b37-9149-113de515f436#RECEIPT#00001"
+  ],
+  "excluded_receipt_keys": [
+   {
+    "receipt_key": "IMAGE#01c0bc98-4fdc-4f7d-baf6-72c2e3a9564d#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#3885af9f-8f97-4cf3-9b6c-8d838e133a2d#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#5e75a5a5-eefc-4451-8729-13ec76bb5d38#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#60a24649-c5c8-4c5b-8dd6-ba5d90e8b96b#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#85fceeb9-11ba-4308-8791-9da6dc548162#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#9cca4a13-d159-4150-92a3-0ecd34f8c4f8#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#d655ab48-2205-4287-b4f8-0762588f20d5#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   },
+   {
+    "receipt_key": "IMAGE#f2446845-6bb0-416c-bfa3-cad9cb4ad80e#RECEIPT#00001",
+    "reason": "image_type=PHOTO"
+   }
+  ],
+  "params": {
+   "threshold": 0.18,
+   "weights": {
+    "sequence": 0.3,
+    "markers": 0.2,
+    "columns": 0.35,
+    "positions": 0.15
+   },
+   "column_x_scale": 0.25,
+   "min_variant_support": 2
+  },
+  "failed_receipt_keys": [],
+  "scan_manifest": {
+   "path": "tools/glyph-studio/.out/stylescan/costco_wholesale/manifest.json",
+   "sha256": "3052e1672c611f2e8d35b45d7bacf8b54d61fe45cd829b9fca82c7890bfce306"
+  }
+ }
+}
