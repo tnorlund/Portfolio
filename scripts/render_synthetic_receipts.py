@@ -1071,8 +1071,10 @@ _BITMATRIX_DIR = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
 # silently renders without verified truth.
 _MERCHANT_TRUTH_MODES = ("online-active", "offline-fallback", "fixture")
 _DEGRADED_TRUTH_MODES = ("offline-fallback", "fixture")
+# Shared with the eval's --truth-fixture bundles (W8): loader low-level
+# {"items": [...]} files, one SEALED/PASS bundle per file.
 _MERCHANT_TRUTH_FIXTURE_DIR = os.path.join(
-    os.path.dirname(__file__), "fixtures", "merchant_truth"
+    REPO_ROOT, "tests", "fixtures", "merchant_truth"
 )
 # C#assets pointers carry an environment-neutral bucket alias, not a raw
 # bucket name (dev/prod promotion is a bucket swap; the content hashes are

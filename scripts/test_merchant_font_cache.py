@@ -34,7 +34,8 @@ from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
 )
 
 FIXTURE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
+    os.path.dirname(HERE),
+    "tests",
     "fixtures",
     "merchant_truth",
     "fixture_mart.v1.json",
