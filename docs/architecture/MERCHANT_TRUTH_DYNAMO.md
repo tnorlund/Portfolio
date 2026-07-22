@@ -276,6 +276,24 @@ precise.
    condition failure. A test drives **two concurrent first flips** and
    asserts exactly one wins and the other converges without a second ACTIVE.
 
+**Global alias uniqueness is an activation precondition.** The fleet alias
+map (`MerchantTruthLoader`) requires every normalized alias — the slug
+itself included — to resolve to exactly one ACTIVE merchant, so both
+activation operations run an alias-uniqueness guard in the accessor before
+writing: the candidate's `normalized_aliases` are checked against every
+other ACTIVE pointer (the same GSITYPE fleet sweep `fleet_status` uses),
+and a collision refuses the activation naming the alias and its owner. The
+guard lives in the accessor precisely so no caller can bypass it; the CLI
+additionally pre-checks in its DRY-RUN plan so the refusal appears in the
+review, not at write time. Because the GSITYPE read is eventually
+consistent the guard is best-effort against a same-instant race, so the
+loader's map builder degrades defensively rather than hard-failing: a
+collision that reaches the fleet resolves to a deterministic winner (the
+slug owning the alias as its own normalized identity, else the
+lexicographically smallest) with a loud `MerchantTruthAliasCollisionWarning`
+naming the losers — one bad activation must never take down every
+map-building consumer.
+
 A single-item pointer update means readers atomically see the old or new
 bundle, never a mix; rollback is the same subsequent-activation flip with
 `prev_version` as the target. Flip and rollback also **reconcile proposal

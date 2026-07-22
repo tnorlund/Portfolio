@@ -18,8 +18,10 @@ from receipt_dynamo.entities.merchant_truth import (
     compute_bundle_hash,
 )
 from receipt_dynamo.merchant_truth_loader import (
+    MerchantTruthAliasCollisionWarning,
     MerchantTruthLoader,
     TruthResolutionMode,
+    build_fleet_alias_map,
 )
 
 pytestmark = pytest.mark.unit
@@ -164,12 +166,18 @@ def test_online_active_builds_alias_map_from_one_fleet_query(
     assert reader.bundle_calls == 1
 
 
-def test_fleet_alias_collision_fails_before_bundle_read(
+def test_fleet_alias_collision_degrades_to_deterministic_winner(
     tmp_path: Path,
 ) -> None:
+    """One bad activation must not take down every fleet-map consumer.
+
+    Activation-time uniqueness (the accessor guard) is the real fix;
+    this is defense in depth: a collision that reaches the fleet warns
+    loudly and resolves to a deterministic winner instead of raising.
+    """
     first, items = build_bundle()
     second = MerchantTruthActive(
-        slug="other-market",
+        slug="zz-market",
         version=1,
         bundle_hash=first.bundle_hash,
         normalized_aliases=["sprouts"],
@@ -178,13 +186,75 @@ def test_fleet_alias_collision_fails_before_bundle_read(
     )
     reader = FakeReader([first, second], items)
 
-    with pytest.raises(MerchantTruthIntegrityError, match="ambiguous"):
-        MerchantTruthLoader(reader, tmp_path).load(
+    with pytest.warns(
+        MerchantTruthAliasCollisionWarning, match="'sprouts'.*zz-market"
+    ):
+        artifact = MerchantTruthLoader(reader, tmp_path).load(
             "sprouts", TruthResolutionMode.ONLINE_ACTIVE
         )
 
+    # Neither slug owns 'sprouts' as its own normalized identity, so the
+    # lexicographically smallest slug wins deterministically.
+    assert artifact.slug == SLUG
+    assert artifact.gate_eligible
     assert reader.fleet_calls == 1
-    assert reader.bundle_calls == 0
+
+
+def test_alias_collision_winner_prefers_identity_owner() -> None:
+    """The slug whose own normalized form IS the alias wins the alias."""
+    digest = "a" * 64
+    contenders = [
+        MerchantTruthActive(
+            slug="aaa-market",
+            version=1,
+            bundle_hash=digest,
+            normalized_aliases=["other market"],
+            activated_at=NOW,
+            activated_by="owner",
+        ),
+        MerchantTruthActive(
+            slug="other-market",
+            version=1,
+            bundle_hash=digest,
+            normalized_aliases=["other market"],
+            activated_at=NOW,
+            activated_by="owner",
+        ),
+    ]
+
+    with pytest.warns(
+        MerchantTruthAliasCollisionWarning, match="'other market'"
+    ) as caught:
+        alias_map = build_fleet_alias_map(contenders)
+
+    # 'other-market' owns the alias as its own identity, so it beats the
+    # lexicographically smaller 'aaa-market'; every loser is named.
+    assert alias_map["other market"] == "other-market"
+    assert alias_map["aaa market"] == "aaa-market"
+    assert any("aaa-market" in str(w.message) for w in caught)
+
+
+def test_alias_collision_winner_is_input_order_independent() -> None:
+    digest = "b" * 64
+    records = [
+        MerchantTruthActive(
+            slug=slug,
+            version=1,
+            bundle_hash=digest,
+            normalized_aliases=["shared mart"],
+            activated_at=NOW,
+            activated_by="owner",
+        )
+        for slug in ("m-two", "m-one")
+    ]
+
+    with pytest.warns(MerchantTruthAliasCollisionWarning):
+        forward = build_fleet_alias_map(records)
+    with pytest.warns(MerchantTruthAliasCollisionWarning):
+        reverse = build_fleet_alias_map(list(reversed(records)))
+
+    assert forward == reverse
+    assert forward["shared mart"] == "m-one"
 
 
 def test_pinned_mode_requires_and_verifies_exact_tuple(tmp_path: Path) -> None:

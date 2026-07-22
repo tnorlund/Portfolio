@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+import warnings
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -120,6 +121,57 @@ def normalize_merchant_alias(value: str) -> str:
     return " ".join(normalized.split())
 
 
+class MerchantTruthAliasCollisionWarning(RuntimeWarning):
+    """A fleet alias is claimed by more than one ACTIVE merchant."""
+
+
+def build_fleet_alias_map(
+    active_records: list[MerchantTruthActive],
+) -> dict[str, str]:
+    """Build the fleet alias -> slug map, degrading loudly on collisions.
+
+    Global alias uniqueness is enforced at activation time (the accessor
+    refuses to activate a bundle whose aliases collide with a different
+    ACTIVE merchant). This builder is defense in depth: if a collision
+    reaches the fleet anyway, one bad activation must not take down every
+    consumer that builds the alias map. Each colliding alias resolves to
+    a deterministic winner — the slug whose own normalized form equals
+    the alias (it owns the alias as its identity), else the
+    lexicographically smallest slug — and a loud
+    ``MerchantTruthAliasCollisionWarning`` lists the losers.
+    """
+    claims: dict[str, set[str]] = {}
+    for active in sorted(active_records, key=lambda item: item.slug):
+        for alias in [active.slug, *active.normalized_aliases]:
+            claims.setdefault(normalize_merchant_alias(alias), set()).add(
+                active.slug
+            )
+    alias_map: dict[str, str] = {}
+    for alias, slugs in claims.items():
+        if len(slugs) == 1:
+            (alias_map[alias],) = slugs
+            continue
+        winner = next(
+            (
+                slug
+                for slug in sorted(slugs)
+                if normalize_merchant_alias(slug) == alias
+            ),
+            min(slugs),
+        )
+        losers = sorted(slugs - {winner})
+        warnings.warn(
+            f"fleet alias collision: {alias!r} is claimed by "
+            f"{sorted(slugs)}; resolving to {winner!r} (deterministic "
+            f"winner), ignoring {losers}. Fix the losing activation(s) — "
+            "activation-time uniqueness should have refused this.",
+            MerchantTruthAliasCollisionWarning,
+            stacklevel=2,
+        )
+        alias_map[alias] = winner
+    return alias_map
+
+
 class MerchantTruthLoader:
     """Resolve aliases, load complete bundles, and manage immutable caches."""
 
@@ -197,7 +249,6 @@ class MerchantTruthLoader:
     ) -> tuple[dict[str, str], dict[str, MerchantTruthActive]]:
         assert self._reader is not None
         active_records = self._reader.list_active_merchant_truth()
-        alias_map: dict[str, str] = {}
         active_by_slug: dict[str, MerchantTruthActive] = {}
         for active in active_records:
             if active.slug in active_by_slug:
@@ -205,16 +256,7 @@ class MerchantTruthLoader:
                     f"duplicate ACTIVE pointer for {active.slug}"
                 )
             active_by_slug[active.slug] = active
-            aliases = [active.slug, *active.normalized_aliases]
-            for alias in aliases:
-                normalized = normalize_merchant_alias(alias)
-                owner = alias_map.get(normalized)
-                if owner is not None and owner != active.slug:
-                    raise MerchantTruthIntegrityError(
-                        f"ambiguous merchant alias {normalized!r}: "
-                        f"{owner} vs {active.slug}"
-                    )
-                alias_map[normalized] = active.slug
+        alias_map = build_fleet_alias_map(active_records)
         self._write_json(
             self._cache_dir / "fleet-active.json",
             {"items": [record.to_item() for record in active_records]},
@@ -401,17 +443,10 @@ class MerchantTruthLoader:
     def _alias_map_from_records(
         active_records: list[MerchantTruthActive],
     ) -> dict[str, str]:
-        result: dict[str, str] = {}
-        for active in active_records:
-            for alias in [active.slug, *active.normalized_aliases]:
-                normalized = normalize_merchant_alias(alias)
-                owner = result.get(normalized)
-                if owner and owner != active.slug:
-                    raise MerchantTruthIntegrityError(
-                        f"ambiguous cached alias {normalized!r}"
-                    )
-                result[normalized] = active.slug
-        return result
+        # Same degradation as the online map: a collision in the cached
+        # fleet warns and resolves deterministically instead of hard-
+        # failing every offline consumer.
+        return build_fleet_alias_map(active_records)
 
     def _cache_active(self, active: MerchantTruthActive) -> None:
         self._write_json(
