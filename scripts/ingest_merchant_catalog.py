@@ -9,6 +9,13 @@ category comes from the nearest section-header row; a NON_PRODUCT stoplist
 keeps tax/totals/tender/coupon rows out. Every mined item records the
 receipt keys it was observed on (``source_receipt_keys``).
 
+LABEL HYGIENE: only labels whose validation_status is in
+ACCEPTED_LABEL_STATUSES (= VALID) are minable, and duplicate labels on the
+same word resolve deterministically (VALID first, then newest
+timestamp_added, then label text — never dict last-write-wins). Taxability
+is derived from an explicit tax-flag letter on the price line when present
+and is None otherwise — never hardcoded.
+
 ATTRIBUTION SPOT-CHECK (before any mining): each receipt's merchant
 attribution (the ReceiptPlace merchant) is cross-checked against brand
 signals in its OCR text and label-reasoning text. A receipt whose signals
@@ -252,6 +259,11 @@ def check_attribution(
     reasoning text. Any foreign-brand evidence quarantines the receipt —
     with or without supporting evidence for the attributed brand — because
     a conflicted receipt must never be silently mined.
+
+    Deliberately scans ALL labels' reasoning, ignoring validation_status:
+    quarantine wants the widest evidence net (the known BJ's evidence lives
+    in reasoning attached to a word whose labels were later revised), and
+    unlike mining, a false hit here only holds a receipt for review.
     """
     ocr_corpus = " ".join(
         str(word.text) for word in details.words if word.text
@@ -338,8 +350,87 @@ def check_attribution(
 
 
 # ---------------------------------------------------------------------------
+# Label hygiene: validation-status filter + deterministic duplicate resolution
+# ---------------------------------------------------------------------------
+
+# Only VALID labels are minable. The catalog feeds the truth system's
+# catalog_snapshot, so mining trusts exactly the labels the rest of the
+# pipeline treats as confirmed: the section evaluator counts VALID only
+# (scripts/evaluate_section_assignment.py), llm_review protects/emits VALID
+# as the reviewed state, and the MCP server documents PENDING as
+# machine-propagated rows that "need review before they count". INVALID is
+# a rejection and must never mine; PENDING/NONE/NEEDS_REVIEW are unreviewed
+# proposals and are excluded too (measured on the 39 dev Costco receipts:
+# name/price labels split VALID=344 / INVALID=481 / PENDING=1 — the
+# unfiltered miner was eating rejected labels).
+ACCEPTED_LABEL_STATUSES = frozenset({"VALID"})
+
+_STATUS_RANK = {"VALID": 0}  # anything else ranks after VALID
+
+
+def _label_timestamp(label: Any) -> str:
+    """ISO timestamp string for deterministic newest-first ordering."""
+    value = getattr(label, "timestamp_added", "") or ""
+    return str(value)
+
+
+def resolve_word_labels(labels: Iterable[Any]) -> dict[tuple[int, int], Any]:
+    """(line_id, word_id) -> the single authoritative label for that word.
+
+    Words routinely carry multiple label rows (measured: 673/2099 labeled
+    dev Costco words) — typically an older rejected proposal plus a newer
+    confirmed label (e.g. AMOUNT/INVALID superseded by LINE_TOTAL/VALID).
+    Resolution is deterministic, never dict-insertion last-write-wins:
+
+    1. only ACCEPTED_LABEL_STATUSES survive the hygiene filter;
+    2. VALID ranks before any other accepted status (future-proofing if the
+       accepted set is ever widened);
+    3. newest ``timestamp_added`` wins;
+    4. lexicographically smallest label string as the final total-order
+       tie-break.
+    """
+    by_word: dict[tuple[int, int], list[Any]] = {}
+    for label in labels:
+        if label.validation_status not in ACCEPTED_LABEL_STATUSES:
+            continue
+        by_word.setdefault((label.line_id, label.word_id), []).append(label)
+    resolved: dict[tuple[int, int], Any] = {}
+    for word_key, candidates in by_word.items():
+        # Three stable sorts compose into one deterministic total order
+        # (last sort is the primary key): label asc, then newest timestamp,
+        # then status rank.
+        candidates.sort(key=lambda label: str(label.label))
+        candidates.sort(key=_label_timestamp, reverse=True)
+        candidates.sort(
+            key=lambda label: _STATUS_RANK.get(label.validation_status, 1)
+        )
+        resolved[word_key] = candidates[0]
+    return resolved
+
+
+# ---------------------------------------------------------------------------
 # Observed miner
 # ---------------------------------------------------------------------------
+
+# Taxability comes only from an explicit tax-flag letter on the price line —
+# either attached to the amount ("1.25T", the Sprouts/Dollar Tree form the
+# historical _line_is_taxable/compose_dollartree read) or a detached
+# single-letter word to the right of the price in the same y-band ("9.99 A",
+# the Costco form: 27 detached "A" flags measured on the dev corpus; the
+# render pipeline's PRICE_TOKEN grammar reserves the same trailing-letter
+# slot). Letters not in this map — and rows with no flag at all — yield
+# taxable=None (unknown), NEVER a hardcoded False.
+TAX_FLAG_MEANING: dict[str, bool] = {
+    "T": True,  # taxable (Sprouts / Dollar Tree)
+    "A": True,  # tax A applied (Costco)
+    "B": True,  # tax B applied
+    "X": True,  # taxed (Walmart-style)
+    "F": False,  # food / non-taxable (e.g. "MILK 4.29 F")
+    "N": False,  # non-taxable
+    "O": False,  # non-taxable (Walmart-style)
+    "E": False,  # tax-exempt
+}
+_ATTACHED_FLAG_RE = re.compile(r"\d[.,]\d{2}([A-Z])$")
 
 
 def _is_non_product(text: str) -> bool:
@@ -376,13 +467,21 @@ def mine_receipt(receipt_key: str, details: "ReceiptDetails") -> list[dict]:
     the name word(s) (PRODUCT_NAME/ITEM_NAME) in the same y-band to its
     LEFT. Category = nearest section-header row by y-distance
     (orientation-free: items cluster right under their header).
+
+    Labels pass through the hygiene layer first: only
+    ACCEPTED_LABEL_STATUSES mine, and duplicate labels on a word resolve
+    deterministically (see resolve_word_labels). Taxability is derived
+    per-row from an explicit tax-flag letter (attached to the amount or a
+    detached single letter right of the price); no flag -> None.
     """
     label_by_word = {
-        (label.line_id, label.word_id): label.label for label in details.labels
+        word_key: label.label
+        for word_key, label in resolve_word_labels(details.labels).items()
     }
     names: list[tuple[float, float, str]] = []
-    prices: list[tuple[float, float, float, str]] = []
+    prices: list[tuple[float, float, float, str, str | None]] = []
     sections: list[tuple[float, str]] = []
+    flags: list[tuple[float, float, str]] = []
     for word in details.words:
         word_label = label_by_word.get((word.line_id, word.word_id))
         y_center, x_center, height = _ycx(word)
@@ -393,12 +492,42 @@ def mine_receipt(receipt_key: str, details: "ReceiptDetails") -> list[dict]:
             price = _price_str(text)
             # negative line totals are markdowns/credits, not products
             if price is not None and not price.startswith("-"):
-                prices.append((y_center, x_center, height, price))
+                attached = _ATTACHED_FLAG_RE.search(
+                    text.replace("$", "").strip().upper()
+                )
+                prices.append(
+                    (
+                        y_center,
+                        x_center,
+                        height,
+                        price,
+                        attached.group(1) if attached else None,
+                    )
+                )
         elif text.upper().strip(":") in SECTION_KEYWORDS:
             sections.append((y_center, text.upper().strip(":")))
+        else:
+            stripped = text.strip()
+            if len(stripped) == 1 and stripped.isalpha():
+                flags.append((y_center, x_center, stripped.upper()))
 
     rows: list[dict] = []
-    for price_y, price_x, price_h, price in prices:
+    for price_y, price_x, price_h, price, attached_flag in prices:
+        flag = attached_flag
+        if flag is None:
+            # nearest detached single-letter word right of the price,
+            # same y-band ("9.99 A")
+            detached = [
+                candidate
+                for candidate in flags
+                if abs(candidate[0] - price_y) < max(0.006, price_h * 0.8)
+                and candidate[1] > price_x
+            ]
+            if detached:
+                flag = min(
+                    detached, key=lambda candidate: candidate[1] - price_x
+                )[2]
+        taxable = TAX_FLAG_MEANING.get(flag) if flag else None
         band = [
             name
             for name in names
@@ -424,6 +553,7 @@ def mine_receipt(receipt_key: str, details: "ReceiptDetails") -> list[dict]:
                 "price": price,
                 "category": category,
                 "receipt_key": receipt_key,
+                "taxable": taxable,
             }
         )
     return rows
@@ -432,7 +562,8 @@ def mine_receipt(receipt_key: str, details: "ReceiptDetails") -> list[dict]:
 def aggregate_observations(
     mined_rows: Iterable[dict],
 ) -> dict[str, dict]:
-    """normalized_name -> {product_text, prices[], count, keys[], category}."""
+    """normalized_name -> {product_text, prices[], count, keys[], category,
+    tax_signals[]}."""
     observations: dict[str, dict] = {}
     for row in mined_rows:
         norm = normalize_product_text(row["product_text"])
@@ -444,10 +575,13 @@ def aggregate_observations(
                 "count": 0,
                 "keys": [],
                 "category": row["category"],
+                "tax_signals": [],
             },
         )
         record["prices"].append(row["price"])
         record["count"] += 1
+        if row.get("taxable") is not None:
+            record["tax_signals"].append(row["taxable"])
         if row["receipt_key"] not in record["keys"]:
             record["keys"].append(row["receipt_key"])
         if (
@@ -461,17 +595,25 @@ def aggregate_observations(
 def build_catalog(
     merchant_name: str, observations: dict[str, dict]
 ) -> list[MerchantCatalogItem]:
-    """Aggregated observations -> MerchantCatalogItem rows (mined-only)."""
+    """Aggregated observations -> MerchantCatalogItem rows (mined-only).
+
+    ``taxable`` is unanimous-signal only: True when at least one observed
+    row carried a taxable flag and none carried a non-taxable flag, False
+    for the inverse, None when there was no flag at all or the flags
+    disagree — never a hardcoded default.
+    """
     items: list[MerchantCatalogItem] = []
     for record in observations.values():
         mode_price = collections.Counter(record["prices"]).most_common(1)[0][0]
+        signals = set(record.get("tax_signals") or [])
+        taxable = signals.pop() if len(signals) == 1 else None
         items.append(
             MerchantCatalogItem(
                 merchant_name=merchant_name,
                 product_text=record["product_text"],
                 price=mode_price,
                 category=record["category"],
-                taxable=False,
+                taxable=taxable,
                 source="observed",
                 observed_count=record["count"],
                 source_receipt_keys=list(record["keys"]),
@@ -657,6 +799,15 @@ def main(
     print(
         "  by_category="
         + json.dumps(dict(sorted(by_category.items())), sort_keys=True)
+    )
+    by_taxable = collections.Counter(
+        {True: "true", False: "false", None: "unknown"}[item.taxable]
+        for item in items
+    )
+    print(
+        "  taxable="
+        + json.dumps(dict(sorted(by_taxable.items())), sort_keys=True)
+        + "  (from explicit tax-flag letters only; unknown = no signal)"
     )
     for item in sorted(items, key=lambda x: -x.observed_count)[:10]:
         keys_preview = ",".join(item.source_receipt_keys[:2])

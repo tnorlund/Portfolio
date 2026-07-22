@@ -58,6 +58,42 @@ def test_roundtrip(catalog_item):
 
 
 @pytest.mark.unit
+def test_taxable_none_roundtrip():
+    """taxable=None (no taxability signal observed) serializes as NULL and
+    survives the roundtrip — never coerced to False."""
+    item = MerchantCatalogItem(
+        merchant_name="Costco Wholesale",
+        product_text="KS WATER 40PK",
+        price="3.99",
+        category="GROCERY",
+        taxable=None,
+        source="observed",
+        observed_count=1,
+        source_receipt_keys=["abc#00001"],
+    )
+    assert item.to_item()["taxable"] == {"NULL": True}
+    restored = item_to_merchant_catalog_item(item.to_item())
+    assert restored.taxable is None
+    assert restored == item
+
+
+@pytest.mark.unit
+def test_taxable_true_roundtrip():
+    item = MerchantCatalogItem(
+        merchant_name="Costco Wholesale",
+        product_text="PAPER TOWELS",
+        price="12.99",
+        category="HOUSEHOLD",
+        taxable=True,
+        source="observed",
+        observed_count=1,
+        source_receipt_keys=["abc#00001"],
+    )
+    assert item.to_item()["taxable"] == {"BOOL": True}
+    assert item_to_merchant_catalog_item(item.to_item()).taxable is True
+
+
+@pytest.mark.unit
 def test_null_upc_roundtrip():
     item = MerchantCatalogItem(
         merchant_name="Costco Wholesale",

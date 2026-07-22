@@ -50,7 +50,10 @@ class MerchantCatalogItem(DynamoDBEntity):
         product_text: Product text exactly as observed on the receipt row.
         price: Decimal-as-string, e.g. ``"1.99"`` (mode across observations).
         category: Section category (PRODUCE / DAIRY / ... / UNCATEGORIZED).
-        taxable: Whether the item is taxable.
+        taxable: Whether the item is taxable — ``True``/``False`` only when
+            the receipt carried an explicit taxability signal (tax-flag
+            letter on the price line); ``None`` when no signal was observed.
+            Never defaulted/hardcoded.
         source: Always ``"observed"`` — the catalog is mined-only.
         observed_count: How many times the item was observed (>= 1).
         upc: Optional UPC when a barcode was decoded for the item.
@@ -78,7 +81,7 @@ class MerchantCatalogItem(DynamoDBEntity):
     product_text: str
     price: str
     category: str
-    taxable: bool
+    taxable: bool | None = None
     source: str = "observed"
     observed_count: int = 1
     upc: str | None = None
@@ -99,8 +102,8 @@ class MerchantCatalogItem(DynamoDBEntity):
         self.price = str(self.price)
         if not isinstance(self.category, str) or not self.category:
             self.category = "UNCATEGORIZED"
-        if not isinstance(self.taxable, bool):
-            raise ValueError("taxable must be a bool")
+        if self.taxable is not None and not isinstance(self.taxable, bool):
+            raise ValueError("taxable must be a bool or None (no signal)")
         if self.source != "observed":
             raise ValueError(
                 "source must be 'observed' — the catalog is mined-only "
@@ -162,7 +165,11 @@ class MerchantCatalogItem(DynamoDBEntity):
             "product_text": {"S": self.product_text},
             "price": {"S": self.price},
             "category": {"S": self.category},
-            "taxable": {"BOOL": self.taxable},
+            "taxable": (
+                {"BOOL": self.taxable}
+                if self.taxable is not None
+                else {"NULL": True}
+            ),
             "source": {"S": self.source},
             "observed_count": {"N": str(self.observed_count)},
             "source_receipt_keys": {
@@ -194,6 +201,10 @@ class MerchantCatalogItem(DynamoDBEntity):
         try:
             upc_attr = item.get("upc", {})
             upc = None if upc_attr.get("NULL") else upc_attr.get("S")
+            taxable_attr = item["taxable"]
+            taxable = (
+                None if taxable_attr.get("NULL") else taxable_attr["BOOL"]
+            )
             source_keys = [
                 entry["S"]
                 for entry in item["source_receipt_keys"].get("L", [])
@@ -203,7 +214,7 @@ class MerchantCatalogItem(DynamoDBEntity):
                 product_text=item["product_text"]["S"],
                 price=item["price"]["S"],
                 category=item["category"]["S"],
-                taxable=item["taxable"]["BOOL"],
+                taxable=taxable,
                 source=item["source"]["S"],
                 observed_count=int(item["observed_count"]["N"]),
                 upc=upc,
