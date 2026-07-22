@@ -610,7 +610,8 @@ optional key is added:
   canonical section sequence.
 - `text_marker` — args `{"tokens": [...normalized tokens...]}`; matches when
   every token is present in the receipt's **normalized OCR word set**
-  (upper-cased, punctuation-stripped).
+  (upper-cased, punctuation-tokenized — split on non-alphanumerics, matching
+  the shipped selector).
 
 Readers match hints against exactly those two inputs — the canonical
 section sequence for the `section_*` types, the normalized OCR word set for
@@ -638,6 +639,15 @@ This sanctions W-J minting the distinction into Costco v2 and W-K making
 the renderer shim **version-conditional**: the shim stays for v1 bundles
 and is dropped for v2+ bundles, which are trusted to mean exactly what they
 say.
+
+**Provenance of a re-encoding.** A §7.3 representation migration of a
+v1-measured component is minted `source_kind=measurement` with a `pipeline`
+naming the migration (e.g. `v1-representation-migration`), a `derived_from`
+block recording the v1 payload hash, and `measured_at` = the migration time;
+it is **neither the legacy escape nor a carry** (§7.7). Re-encoding
+`section_scale` changes the payload hash, so the carry rule (hash-match
+required) cannot apply, and the re-encoded values are still measurement-derived
+truth — the `provenance_completeness=legacy` escape is forbidden here (§7.7).
 
 ### 7.4 Version-number readers
 
@@ -710,7 +720,11 @@ the merchant partition:
   `{metric, verdict, detail}` entries — exactly the non-PASS subset of the
   `per_metric` verdicts (which remain the full picture); this is the same
   gap list §7.5 requires verbatim, so the §7.5 invariant applies: `overall
-  == "PASS_WITH_GAPS"` iff `gaps` is non-empty.
+  == "PASS_WITH_GAPS"` iff `gaps` is non-empty. A record MAY also carry an
+  optional `coverage` field — the sub-metric coverage paths (`checks
+  ["coverage_gaps"]`) that flagged incomplete coverage; these are **kept out
+  of `gaps`** (they are not per-metric verdicts) and never perturb the §7.5
+  invariant.
 - **Append-only:** conditional create
   (`attribute_not_exists(PK) AND attribute_not_exists(SK)`); no
   update/delete accessor, same discipline as components.
