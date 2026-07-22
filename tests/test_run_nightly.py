@@ -2,8 +2,9 @@
 humble-skipping-quilt): --dry-run must produce a contract-passing report,
 and a preflight RED must produce the RED stub without ever launching the
 agent. No claude call, no network push: preflight is faked, dry-run skips
-git, and the RED test publishes inside a throwaway git repo with no
-remote.
+git, and the RED test publishes inside a throwaway git repo whose origin
+is a local bare repo (exercising commit + --force-with-lease push and the
+same-date re-run).
 """
 
 from __future__ import annotations
@@ -61,8 +62,18 @@ def run_wrapper(
 
 
 def test_dry_run_produces_contract_passing_report(nightly_env, tmp_path):
+    # Seed a stale per-date run dir; the retention sweep must remove it.
+    import time as _time
+
+    stale = tmp_path / "logs" / "1998-12-01"
+    stale.mkdir(parents=True)
+    old = _time.time() - 20 * 86400
+    os.utime(stale, (old, old))
+
     proc = run_wrapper(nightly_env, "--dry-run")
     assert proc.returncode == 0, proc.stderr
+
+    assert not stale.exists(), "14-day log retention sweep did not run"
 
     report = tmp_path / "reports" / "1999-01-01.md"
     assert report.exists(), "wrapper must always produce a report"
@@ -93,8 +104,10 @@ def test_preflight_red_produces_red_stub(nightly_env, tmp_path):
         tmp_path / "fake_claude.sh",
         f'#!/bin/bash\ntouch "{sentinel}"\nexit 0\n',
     )
-    # Publish runs for real (no --dry-run) inside a throwaway repo with no
-    # origin remote: the commit leg is exercised, the push fails safely.
+    # Publish runs for real (no --dry-run) inside a throwaway repo whose
+    # origin is a local bare repo: the commit AND push legs are exercised.
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
     stub_repo = tmp_path / "stub_repo"
     stub_repo.mkdir()
     for cmd in (
@@ -111,6 +124,7 @@ def test_preflight_red_produces_red_stub(nightly_env, tmp_path):
             "-m",
             "root",
         ],
+        ["git", "remote", "add", "origin", str(origin)],
     ):
         subprocess.run(cmd, cwd=stub_repo, check=True)
 
@@ -139,18 +153,34 @@ def test_preflight_red_produces_red_stub(nightly_env, tmp_path):
     assert result["verdict"] == "RED"
     assert "preflight RED" in text
 
-    # The stub was committed on the nightly/ branch in the throwaway repo.
-    branches = subprocess.run(
-        ["git", "branch", "--list", "nightly/1999-01-02"],
-        cwd=stub_repo,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    assert "nightly/1999-01-02" in branches
+    # The stub was committed on the nightly/ branch AND pushed to origin.
+    def origin_sha() -> str:
+        return subprocess.run(
+            ["git", "rev-parse", "refs/heads/nightly/1999-01-02"],
+            cwd=origin,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    first_sha = origin_sha()
+    assert first_sha
 
     campaign = (tmp_path / "CAMPAIGN_LOG.md").read_text()
     assert "nightly-v0 1999-01-02 verdict=RED" in campaign
+
+    # Same-date re-run: --force-with-lease must land the new commit on
+    # origin (last-run-wins; the branch is never merged). Distinct commit
+    # timestamps make the SHAs comparable (stub content is deterministic).
+    import time as _time
+
+    _time.sleep(1.1)
+    env["GIT_COMMITTER_DATE"] = "2000-01-01T00:00:00Z"
+    env["GIT_AUTHOR_DATE"] = "2000-01-01T00:00:00Z"
+    proc2 = run_wrapper(env)
+    assert proc2.returncode == 0, proc2.stderr
+    second_sha = origin_sha()
+    assert second_sha != first_sha, "re-run did not reach origin"
 
 
 def test_invalid_agent_report_replaced_by_red_stub(nightly_env, tmp_path):

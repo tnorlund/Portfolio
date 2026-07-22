@@ -66,24 +66,37 @@ done
 mkdir -p "$REPORT_DIR" "$RUN_DIR"
 START_EPOCH="$(date +%s)"
 
+# ---- Log retention ---------------------------------------------------------
+# Per-date run dirs older than 14 days are swept; the launchd stdout/stderr
+# logs are truncated IN PLACE (cat >, preserving the inode launchd holds
+# open) to their last 5MB when they exceed it.
+LOG_BASE="$(dirname "$RUN_DIR")"
+find "$LOG_BASE" -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null
+LAUNCHD_LOG_CAP=5242880
+for launchd_log in "$HOME/Library/Logs/receipt-nightly.out.log" \
+                   "$HOME/Library/Logs/receipt-nightly.err.log"; do
+  if [ -f "$launchd_log" ]; then
+    log_size="$(stat -f%z "$launchd_log" 2>/dev/null || stat -c%s "$launchd_log" 2>/dev/null || echo 0)"
+    if [ "${log_size:-0}" -gt "$LAUNCHD_LOG_CAP" ]; then
+      tail -c "$LAUNCHD_LOG_CAP" "$launchd_log" > "$launchd_log.trunc.$$" \
+        && cat "$launchd_log.trunc.$$" > "$launchd_log"
+      rm -f "$launchd_log.trunc.$$"
+    fi
+  fi
+done
+
 log() {
   printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$RUN_DIR/wrapper.log" >&2
 }
 
 elapsed() { echo "$(( $(date +%s) - START_EPOCH ))"; }
 
-# Portable 4h watchdog: coreutils timeout, gtimeout, else the perl
-# alarm+exec idiom (the alarm survives exec; SIGALRM kills the child).
-run_with_timeout() {
-  local secs="$1"; shift
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$secs" "$@"
-  elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$secs" "$@"
-  else
-    perl -e 'alarm shift @ARGV; exec @ARGV or die "exec: $!"' "$secs" "$@"
-  fi
-}
+# 4h watchdog: scripts/nightly/watchdog.py owns setsid + group-kill
+# (SIGTERM to -PGID, 30s grace, then SIGKILL to -PGID) on every path. The
+# old timeout/gtimeout/perl-alarm chain is gone: the perl leg killed only
+# the direct child, leaving grandchildren (stdio MCP servers, subagents)
+# alive past the deadline.
+WATCHDOG="$SCRIPT_DIR/watchdog.py"
 
 PREFLIGHT_SUMMARY="not run"
 
@@ -138,6 +151,10 @@ publish_report() {
     if git -C "$REPO_ROOT" worktree add --detach "$wt" HEAD >/dev/null 2>&1; then
       mkdir -p "$wt/docs/reports/nightly"
       cp "$REPORT_PATH" "$wt/docs/reports/nightly/$RUN_DATE.md"
+      # Same-date re-run: refresh the remote-tracking ref, then push with
+      # --force-with-lease so the re-run's report wins (the branch is never
+      # merged; last-run-wins is the intended semantics) without blind force.
+      git -C "$wt" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null || true
       git -C "$wt" checkout -q -B "$branch" \
         && git -C "$wt" add "docs/reports/nightly/$RUN_DATE.md" \
         && git -C "$wt" commit -q -m "nightly: morning report $RUN_DATE ($verdict)
@@ -145,7 +162,7 @@ publish_report() {
 Automated nightly loop v0 report. Not for merge to main; read the file.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" \
-        && git -C "$wt" push origin "$branch" \
+        && git -C "$wt" push --force-with-lease origin "$branch" \
         && log "published $branch to origin" \
         || log "WARNING: git publish failed; report remains at $REPORT_PATH"
       git -C "$REPO_ROOT" worktree remove --force "$wt" >/dev/null 2>&1 || true
@@ -210,8 +227,17 @@ else
     finish
     exit 0
   fi
+  # Preflight extension: prove group-kill works on THIS host before a real
+  # launch; otherwise a hung agent would outlive its 4h deadline via
+  # surviving grandchildren. Dry-run never launches, so it skips the probe.
+  if ! python3 "$WATCHDOG" --self-test >> "$RUN_DIR/wrapper.log" 2>&1; then
+    write_red_stub "watchdog group-kill self-test failed on this host; refusing real agent launch"
+    finish
+    exit 0
+  fi
+  log "watchdog self-test OK (setsid + group-kill)"
   log "launching headless claude ($CLAUDE_BIN), timeout=${TIMEOUT_SECS}s max_turns=$MAX_TURNS"
-  ( cd "$REPO_ROOT" && run_with_timeout "$TIMEOUT_SECS" \
+  ( cd "$REPO_ROOT" && python3 "$WATCHDOG" --grace 30 "$TIMEOUT_SECS" -- \
       "$CLAUDE_BIN" -p "$(cat "$BRIEF")" \
       --permission-mode bypassPermissions \
       --model claude-fable-5 \

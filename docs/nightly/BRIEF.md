@@ -76,6 +76,8 @@ AWS/scripts access.
    ~30 minutes for that merchant, or requires anything non-read-only,
    record `SKIPPED` with a one-line reason instead. A failing eval is a
    finding, not an error — record the per-metric verdicts.
+   `full_fidelity_eval` must be invoked read-only; if any invocation
+   would write to DynamoDB or S3, SKIP that merchant and record why.
 
 4. **Write the morning report** to `$NIGHTLY_REPORT_PATH`, following
    `docs/nightly/REPORT_CONTRACT.md` section by section (all seven `##`

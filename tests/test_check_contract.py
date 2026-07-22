@@ -98,6 +98,39 @@ def test_verdict_grammar_rejects(line: str):
     assert result["valid"] is False
 
 
+def test_verdict_inside_code_fence_not_counted():
+    result = check_contract.check_report_text(load("verdict_in_fence.md"))
+    assert result["valid"] is False
+    assert result["verdict"] is None
+    assert any("no parseable verdict" in p for p in result["problems"])
+
+
+def test_heading_inside_code_fence_not_counted():
+    text = load("valid_report.md").replace(
+        "## Awaiting Owner\nNone.\n",
+        "```\n## Awaiting Owner\n```\nNone.\n",
+    )
+    result = check_contract.check_report_text(text)
+    assert result["valid"] is False
+    assert "missing section: ## Awaiting Owner" in result["problems"]
+
+
+def test_empty_section_body_fails():
+    result = check_contract.check_report_text(load("empty_section.md"))
+    assert result["valid"] is False
+    assert "empty section: ## Awaiting Owner" in result["problems"]
+
+
+def test_section_body_of_only_a_fence_counts_as_empty():
+    text = load("valid_report.md").replace(
+        "## Awaiting Owner\nNone.\n",
+        "## Awaiting Owner\n```\nquoted stuff\n```\n",
+    )
+    result = check_contract.check_report_text(text)
+    assert result["valid"] is False
+    assert "empty section: ## Awaiting Owner" in result["problems"]
+
+
 def test_multiple_verdict_lines_rejected():
     text = load("valid_report.md") + "\n**Verdict: RED** - second verdict.\n"
     result = check_contract.check_report_text(text)

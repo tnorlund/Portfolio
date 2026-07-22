@@ -14,6 +14,14 @@ is case-insensitive on the title text but must be a level-2 markdown heading
 (`## `). Extra sections are allowed after the required ones; extra prose
 inside sections is allowed.
 
+Two hardening rules:
+
+- Fenced code blocks (``` or ~~~) are stripped before scanning: a heading
+  or verdict line quoted inside a fence does not count.
+- Every required section needs a non-empty body: at least one
+  non-whitespace line (outside fences) before the next `#`/`##` heading.
+  Write `None.` rather than leaving a section blank.
+
 ### 1. `## Verdict`
 
 Must contain exactly one verdict line matching this grammar (first match

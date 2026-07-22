@@ -2,10 +2,12 @@
 """Morning-report contract checker (plan humble-skipping-quilt W2).
 
 Validates a nightly morning report against docs/nightly/REPORT_CONTRACT.md:
-all seven required ``##`` sections present in order, plus exactly one
-parseable verdict line. The nightly wrapper runs this on the agent's
-report; a nonzero exit makes the wrapper replace the report with a RED
-stub (which itself satisfies this contract).
+all seven required ``##`` sections present in order with non-empty bodies,
+plus exactly one parseable verdict line. Fenced code blocks (``` or ~~~)
+are stripped before scanning, so quoted headings/verdicts don't count.
+The nightly wrapper runs this on the agent's report; a nonzero exit makes
+the wrapper replace the report with a RED stub (which itself satisfies
+this contract).
 
 Usage:
     check_contract.py REPORT.md [--json] [--verdict]
@@ -41,19 +43,60 @@ VERDICT_RE = re.compile(
 )
 
 HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
+ANY_HEADING_RE = re.compile(r"^#{1,2}\s+\S")
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 def _normalize_heading(title: str) -> str:
     return title.strip().lower()
 
 
+def _strip_fences(text: str) -> list[str]:
+    """Drop fenced code blocks: headings/verdicts inside them don't count."""
+    lines: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            lines.append(line)
+    return lines
+
+
+def _section_bodies(lines: list[str]) -> dict[str, list[str]]:
+    """Map each ## heading (first occurrence) to its body lines.
+
+    A body runs to the next level-1/2 heading; deeper headings count as
+    body content. Fenced blocks are already stripped, so a section whose
+    only content was a code fence counts as empty.
+    """
+    bodies: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in lines:
+        match = HEADING_RE.match(line)
+        if match:
+            key = _normalize_heading(match.group(1))
+            current = key if key not in bodies else None
+            if current is not None:
+                bodies[current] = []
+            continue
+        if ANY_HEADING_RE.match(line):
+            current = None
+            continue
+        if current is not None:
+            bodies[current].append(line)
+    return bodies
+
+
 def check_report_text(text: str) -> dict[str, Any]:
     """Pure contract check; returns {valid, verdict, problems, sections}."""
     problems: list[str] = []
+    lines = _strip_fences(text)
 
     headings: list[str] = [
         _normalize_heading(m.group(1))
-        for line in text.splitlines()
+        for line in lines
         if (m := HEADING_RE.match(line))
     ]
 
@@ -74,9 +117,13 @@ def check_report_text(text: str) -> dict[str, Any]:
     for section in out_of_order:
         problems.append(f"section out of order: ## {section}")
 
-    verdict_matches = [
-        m for line in text.splitlines() if (m := VERDICT_RE.match(line))
-    ]
+    bodies = _section_bodies(lines)
+    for section in REQUIRED_SECTIONS:
+        want = _normalize_heading(section)
+        if want in bodies and not any(line.strip() for line in bodies[want]):
+            problems.append(f"empty section: ## {section}")
+
+    verdict_matches = [m for line in lines if (m := VERDICT_RE.match(line))]
     verdict: str | None = None
     if not verdict_matches:
         problems.append(
