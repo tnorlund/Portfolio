@@ -75,6 +75,10 @@ from receipt_dynamo.entities.label_metadata import (  # noqa: F401
 )
 from receipt_dynamo.entities.letter import Letter, item_to_letter  # noqa: F401
 from receipt_dynamo.entities.line import Line, item_to_line  # noqa: F401
+from receipt_dynamo.entities.merchant_catalog_item import (  # noqa: F401
+    MerchantCatalogItem,
+    item_to_merchant_catalog_item,
+)
 from receipt_dynamo.entities.merchant_font import (  # noqa: F401
     MerchantFont,
     item_to_merchant_font,
@@ -267,6 +271,7 @@ __all__ = [
     "LabelMetadata",
     "Letter",
     "Line",
+    "MerchantCatalogItem",
     "MerchantFont",
     "MerchantTruthActive",
     "MerchantTruthAudit",
@@ -329,6 +334,7 @@ __all__ = [
     "item_to_label_metadata",
     "item_to_letter",
     "item_to_line",
+    "item_to_merchant_catalog_item",
     "item_to_merchant_font",
     "item_to_ocr_job",
     "item_to_ocr_routing_decision",
