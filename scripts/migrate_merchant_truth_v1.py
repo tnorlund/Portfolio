@@ -75,6 +75,16 @@ def main(argv: list[str] | None = None) -> int:
             "--live, and --verify alike."
         ),
     )
+    parser.add_argument(
+        "--expected-missing-slugs",
+        default=None,
+        help=(
+            "Comma-separated slugs expected to have NO MerchantFont row "
+            "(default: the historical asset-blocked trio). Pass an empty "
+            'string ("") once all fonts are published. Coverage differing '
+            "from this expectation hard-fails before anything is written."
+        ),
+    )
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--git-sha")
     parser.add_argument("--generated-at")
@@ -114,6 +124,13 @@ def main(argv: list[str] | None = None) -> int:
         boto3.client("s3", region_name=args.region),
         table_name,
     )
+    expected_missing = None
+    if args.expected_missing_slugs is not None:
+        expected_missing = frozenset(
+            slug.strip()
+            for slug in args.expected_missing_slugs.split(",")
+            if slug.strip()
+        )
     payloads, crosswalk = build_v1_payloads(
         document,
         source,
@@ -121,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         git_sha=git_sha,
         generated_at=generated_at,
         stylemap_root=args.stylemap_root,
+        expected_missing_slugs=expected_missing,
     )
     if args.merchants:
         payloads = filter_payloads(payloads, args.merchants.split(","))

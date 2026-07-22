@@ -439,14 +439,14 @@ def _create_dev_named_table() -> None:
     )
 
 
-def _seed_dev_sources() -> None:
+def _seed_dev_sources(publish_all: bool = False) -> None:
     dynamodb = boto3.client("dynamodb", region_name="us-east-1")
     s3 = boto3.client("s3", region_name="us-east-1")
     s3.create_bucket(Bucket="font-bucket")
     for merchant in MERCHANTS:
         slug = slugify_merchant(merchant)
         dynamodb.put_item(TableName=DEV_TABLE_NAME, Item=catalog_item(slug))
-        if slug in EXPECTED_MISSING_FONT_SLUGS:
+        if not publish_all and slug in EXPECTED_MISSING_FONT_SLUGS:
             continue
         font = merchant_font(merchant)
         dynamodb.put_item(TableName=DEV_TABLE_NAME, Item=font.to_item())
@@ -465,6 +465,19 @@ def seeded_dev_environment(tmp_path: Path):
     with mock_aws():
         _create_dev_named_table()
         _seed_dev_sources()
+        profiles_path = tmp_path / "profiles.json"
+        profiles_path.write_text(
+            json.dumps(profile_document()), encoding="utf-8"
+        )
+        yield profiles_path
+
+
+@pytest.fixture
+def published_dev_environment(tmp_path: Path):
+    """Publish-day state: all 16 merchants have MerchantFont rows."""
+    with mock_aws():
+        _create_dev_named_table()
+        _seed_dev_sources(publish_all=True)
         profiles_path = tmp_path / "profiles.json"
         profiles_path.write_text(
             json.dumps(profile_document()), encoding="utf-8"
@@ -660,6 +673,87 @@ def test_script_replay_after_partial_mint_skips_and_verifies(
     assert "CONFLICT" not in captured
     assert "skipped 2 already-sealed" in captured
     assert "VERIFY OK: 13 live bundles byte-match" in captured
+
+
+def test_default_expectation_fails_once_all_fonts_are_published(
+    published_dev_environment: Path, tmp_path: Path
+) -> None:
+    """Coverage differing from the (default) expectation still hard-fails."""
+    with pytest.raises(ValueError, match="MerchantFont coverage changed"):
+        _script_main(
+            [
+                "--profiles",
+                str(published_dev_environment),
+                "--output-dir",
+                str(tmp_path / "payloads"),
+                "--git-sha",
+                GIT_SHA,
+                "--generated-at",
+                NOW,
+            ]
+        )
+
+
+def test_empty_expected_missing_slugs_covers_publish_day(
+    published_dev_environment: Path, tmp_path: Path, capsys
+) -> None:
+    """The staged owner command: post-publish mint of the trio with an
+    explicitly empty missing-font expectation and zero code changes."""
+    output_dir = tmp_path / "payloads"
+
+    exit_code = _script_main(
+        [
+            "--profiles",
+            str(published_dev_environment),
+            "--output-dir",
+            str(output_dir),
+            "--git-sha",
+            GIT_SHA,
+            "--generated-at",
+            NOW,
+            "--merchants",
+            "amazon_fresh,dollar_tree,smith_s",
+            "--expected-missing-slugs",
+            "",
+            "--live",
+            "--verify",
+        ]
+    )
+
+    captured = capsys.readouterr().out
+    assert exit_code == 0
+    assert "merchants: 3" in captured
+    assert captured.count("MINTED+SEALED v1") == 3
+    assert "EXCLUDED" not in captured
+    assert "VERIFY OK: 3 live bundles byte-match" in captured
+    client = DynamoClient(DEV_TABLE_NAME)
+    for slug in ("amazon_fresh", "dollar_tree", "smith_s"):
+        manifest = client.get_merchant_truth_manifest(
+            slug, 1, consistent_read=True
+        )
+        assert manifest is not None and manifest.status == "SEALED"
+
+
+def test_wrong_declared_expectation_still_hard_fails(
+    published_dev_environment: Path, tmp_path: Path
+) -> None:
+    """The flag is declarative, not a bypass: a stated expectation that
+    does not match reality fails identically."""
+    with pytest.raises(ValueError, match="MerchantFont coverage changed"):
+        _script_main(
+            [
+                "--profiles",
+                str(published_dev_environment),
+                "--output-dir",
+                str(tmp_path / "payloads"),
+                "--git-sha",
+                GIT_SHA,
+                "--generated-at",
+                NOW,
+                "--expected-missing-slugs",
+                "amazon_fresh",
+            ]
+        )
 
 
 @pytest.mark.parametrize(
