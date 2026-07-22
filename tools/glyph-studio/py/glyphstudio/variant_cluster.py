@@ -54,6 +54,13 @@ except ImportError:  # bare-script invocation
     from sections import normalize_stylescan_section
     from styleagg import receipt_section_columns
 
+# §7.2 classifier_hint shape + builders live in receipt_dynamo so the W-H
+# readers (eval / diff) and this generator share one definition of the rule.
+from receipt_dynamo.merchant_truth_variants import (  # noqa: E402
+    make_section_presence_hint,
+    make_text_marker_hint,
+)
+
 # --- signature space --------------------------------------------------------
 
 # Raw stylescan section names that describe CONTENT of a single row, not the
@@ -300,19 +307,21 @@ def _missing_variant_sections(template: dict) -> list[str]:
     ]
 
 
-def _classifier_hint(
+def _hint_features(
     signatures: list[dict],
     members: list[int],
     default_members: list[int],
     template: dict,
     default_template: dict,
 ) -> dict:
-    """Machine-usable features separating a variant from the default.
+    """Raw distinctive signals separating a variant from the default.
 
     ``markers_any``/``markers_absent`` are raw stylescan section names common
     to every receipt of one cluster and rare (<= MARKER_DISTINCTIVE_MAX_
-    OTHER_FRAC) in the other -- a variant-aware reader (W-H) can classify a
-    receipt by probing its lines against the same stylescan rules.
+    OTHER_FRAC) in the other; ``sections_added``/``sections_missing`` are the
+    canonical section-name deltas. These feed the verdict's human-readable
+    ``distinguishing_features`` and the variant id, and are reconciled into a
+    §7.2 structured ``classifier_hint`` by ``_structured_hint``.
     """
     return {
         "markers_any": _distinctive_markers(
@@ -332,8 +341,41 @@ def _classifier_hint(
     }
 
 
-def _variant_id(hint: dict, ordinal: int) -> str:
-    for marker in hint.get("markers_any", []):
+def _structured_hint(features: dict) -> dict | None:
+    """Reconcile raw distinctive features into a §7.2 ``classifier_hint``.
+
+    The W-H readers match a hint against exactly two inputs -- the receipt's
+    canonical section sequence and its normalized OCR word set -- so only
+    *positive* signals a reader can observe translate:
+
+    * ``markers_any`` (distinctive printed lane markers, e.g. ``self_checkout``
+      for the self-checkout header) -> a ``text_marker`` hint whose tokens are
+      the markers' normalized words; a receipt printing that text matches.
+    * ``sections_added`` (canonical sections the variant has and the default
+      lacks) -> a ``section_presence`` hint over those section names.
+
+    ``text_marker`` is preferred because a distinctive printed marker is the
+    crispest classifier (it is exactly why raw markers survive canonicalization
+    in the signature). ``markers_absent``/``sections_missing`` describe what a
+    variant *lacks*; §7.2 has no absence primitive, so they inform the verdict
+    but never a hint (a receipt that lacks them simply falls to the DEFAULT).
+    Returns ``None`` when no positive signal exists -- the variant is still
+    emitted with provenance, but is only reachable once a positive classifier
+    is found.
+    """
+    markers_any = features.get("markers_any") or []
+    if markers_any:
+        hint = make_text_marker_hint(markers_any)
+        if hint["tokens"]:
+            return hint
+    sections_added = features.get("sections_added") or []
+    if sections_added:
+        return make_section_presence_hint(sections_added)
+    return None
+
+
+def _variant_id(features: dict, ordinal: int) -> str:
+    for marker in features.get("markers_any", []):
         return marker
     return f"variant-{ordinal}"
 
@@ -432,14 +474,14 @@ def build_variant_payload(
                 }
             )
             continue
-        hint = _classifier_hint(
+        features = _hint_features(
             signatures, members, default_members, tpl, default_template
         )
-        vid = _variant_id(hint, len(variants) + 1)
+        vid = _variant_id(features, len(variants) + 1)
         variants.append(
             {
                 "variant_id": vid,
-                "classifier_hint": hint,
+                "classifier_hint": _structured_hint(features),
                 **_strip_template(tpl),
                 "support": len(members),
                 "source_receipt_keys": [keys[i] for i in members],
@@ -452,7 +494,7 @@ def build_variant_payload(
             ("sections_added", "adds section"),
             ("sections_missing", "drops section"),
         ):
-            for name in hint[feat_key]:
+            for name in features[feat_key]:
                 distinguishing.append(f"{vid}: {label} {name!r}")
         distinguishing.extend(
             _column_shift_features(vid, tpl, default_template)
