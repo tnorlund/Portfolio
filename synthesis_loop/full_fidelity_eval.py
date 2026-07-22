@@ -67,6 +67,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -2166,6 +2167,128 @@ def _write_sheet(out_stem: str, real_img, syn_img, doc: dict) -> None:
     cv.save(out_stem + ".sheet.png")
 
 
+# Gate-record write governance (contract section 7.6): dev-pinned, prod
+# refused unconditionally. Gate records are per-run evidence, NOT part of the
+# promoted bundle closure, so they are never written to prod here.
+_GATE_DEV_TABLE = "ReceiptsTable-dc5be22"
+_GATE_PROD_TABLE = "ReceiptsTable-d7ff76a"
+_GATE_PROD_MARKER = "d7ff76a"
+
+# The 7 real-vs-synth metrics, in report order.
+_GATE_METRICS = (
+    "columns",
+    "style",
+    "tokens",
+    "separators",
+    "graphics",
+    "logo",
+    "arithmetic",
+)
+
+
+def _resolve_gate_table() -> str:
+    """Resolve the gate-record target table, refusing prod unconditionally."""
+    table = os.environ.get("DYNAMODB_TABLE_NAME", _GATE_DEV_TABLE)
+    if table == _GATE_PROD_TABLE or _GATE_PROD_MARKER in table:
+        raise SystemExit(
+            "--write-gate-record never touches prod; refusing table "
+            f"{table!r} (prod = {_GATE_PROD_TABLE!r}). Gate records are "
+            "dev-pinned per contract section 7.6."
+        )
+    return table
+
+
+def _build_gate_gaps(checks: dict) -> list[dict]:
+    """Derive the gate-record gap list from an eval's checks.
+
+    The gaps are the non-PASS subset of the per-metric verdicts plus the
+    sub-metric coverage gaps the eval surfaces (untested lanes/classes).
+    Because the eval sets ``overall == PASS_WITH_GAPS`` iff ``coverage_gaps``
+    is non-empty, and a FAIL adds its failing metric here, this list satisfies
+    the section 7.6 invariant (PASS carries no gaps; PASS_WITH_GAPS carries
+    at least one) while giving a FAIL run its work list.
+    """
+    gaps: list[dict] = []
+    seen: set[str] = set()
+    for name in _GATE_METRICS:
+        metric = checks.get(name)
+        if not isinstance(metric, dict):
+            continue
+        verdict = metric.get("verdict")
+        if verdict and verdict != "PASS":
+            gaps.append(
+                {
+                    "metric": name,
+                    "verdict": verdict,
+                    "detail": f"metric {name!r} returned {verdict}",
+                }
+            )
+            seen.add(name)
+    for entry in checks.get("coverage_gaps", []):
+        # Top-level metric gaps are already captured above; keep the
+        # sub-metric coverage paths (e.g. "columns:top:price", "style:HEADER").
+        if entry in seen:
+            continue
+        gaps.append(
+            {
+                "metric": entry,
+                "verdict": "COVERAGE_GAP",
+                "detail": f"incomplete coverage: {entry}",
+            }
+        )
+    return gaps
+
+
+def _write_gate_record(args, truth, stamp: dict, checks: dict, stem: str):
+    """Write one MERCHANT_TRUTH_GATE record from this run's actual results.
+
+    Dev-pinned with unconditional prod refusal. Called only when
+    ``--write-gate-record`` is passed (default off) so ad-hoc evals stay
+    side-effect-free.
+    """
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_dynamo.entities.merchant_truth_gate import (
+        MerchantTruthGateRecord,
+    )
+
+    table = _resolve_gate_table()
+    per_metric = {
+        name: checks[name]["verdict"]
+        for name in _GATE_METRICS
+        if isinstance(checks.get(name), dict) and checks[name].get("verdict")
+    }
+    record = MerchantTruthGateRecord(
+        slug=args.slug,
+        run_at=datetime.now(timezone.utc).isoformat(),
+        version=truth.version,
+        bundle_hash=truth.bundle_hash,
+        eval_git_sha=stamp["git_sha"],
+        overall=checks["overall"],
+        per_metric=per_metric,
+        gaps=_build_gate_gaps(checks),
+        evidence_refs=[
+            stem + ".checks.json",
+            stem + ".report.md",
+            stem + ".sheet.png",
+            stem + ".real.png",
+            stem + ".syn.png",
+        ],
+        receipt_tested={
+            "merchant": args.merchant,
+            "image_id": args.image_id,
+            "receipt_id": args.receipt_id,
+        },
+    )
+    client = DynamoClient(table)
+    client.add_gate_record(record, table)
+    print(
+        f"GATE RECORD -> {table} PK={record.key['PK']['S']} "
+        f"SK={record.key['SK']['S']} overall={record.overall} "
+        f"gaps={len(record.gaps)}"
+    )
+    return record
+
+
 def run(args) -> int:
     import section_compare
 
@@ -2224,6 +2347,10 @@ def run(args) -> int:
     }
     _write_report(stem, doc)
     _write_sheet(stem, real, syn, doc)
+    # The gate-record write is OFF by default so ad-hoc evals stay
+    # side-effect-free; only --write-gate-record persists the run.
+    if getattr(args, "write_gate_record", False):
+        _write_gate_record(args, truth, stamp, checks, stem)
     print(
         f"OVERALL {checks['overall']} -> {stem}.checks.json "
         f"{stem}.report.md {stem}.sheet.png"
@@ -2353,6 +2480,14 @@ def main(argv=None) -> int:
         "--columns-source",
         choices=("bootstrap", "profile"),
         default="bootstrap",
+    )
+    p_run.add_argument(
+        "--write-gate-record",
+        action="store_true",
+        help=(
+            "persist one MERCHANT_TRUTH_GATE record from this run "
+            "(dev-pinned, prod refused; default off)"
+        ),
     )
     p_rr = sub.add_parser("real-real")
     p_rr.add_argument("merchant")
