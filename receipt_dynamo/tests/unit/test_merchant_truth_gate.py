@@ -100,6 +100,28 @@ def test_fail_run_may_carry_gaps_as_work_list():
     assert len(record.gaps) == 1
 
 
+def test_from_item_normalizes_legacy_per_metric_map():
+    # A pre-bridge record stored per_metric as a {metric: verdict} MAP. The
+    # reader normalizes it to the canonical sorted list so one legacy record
+    # can never break list_gate_records; the write path never emits a map.
+    item = make(
+        overall="FAIL",
+        per_metric=[{"metric": "columns", "verdict": "FAIL"}],
+        gaps=[{"metric": "columns", "verdict": "FAIL", "detail": {}}],
+    ).to_item()
+    item["per_metric"] = {
+        "M": {
+            "logo": {"S": "PASS"},
+            "columns": {"S": "FAIL"},
+        }
+    }
+    restored = MerchantTruthGateRecord.from_item(item)
+    assert restored.per_metric == [
+        {"metric": "columns", "verdict": "FAIL"},
+        {"metric": "logo", "verdict": "PASS"},
+    ]
+
+
 def test_coverage_paths_live_outside_gaps():
     # A PASS run may still carry coverage paths (sub-metric untested lanes);
     # they are not gaps, so the PASS-carries-no-gaps rule is not tripped.

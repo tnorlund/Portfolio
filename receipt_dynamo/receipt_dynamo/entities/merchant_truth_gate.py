@@ -177,9 +177,26 @@ class MerchantTruthGateRecord(DynamoDBEntity):
             bundle_hash=bundle.get("hash", data.get("bundle_hash")),
             eval_git_sha=data["eval_git_sha"],
             overall=data["overall"],
-            per_metric=data.get("per_metric", []),
+            per_metric=_normalize_per_metric(data.get("per_metric", [])),
             gaps=data.get("gaps", []),
             coverage=data.get("coverage", []),
             evidence_refs=data.get("evidence_refs", []),
             receipt_tested=data.get("receipt_tested"),
         )
+
+
+def _normalize_per_metric(value: Any) -> Any:
+    """Read append-only history across the per_metric shape change.
+
+    The write path only ever emits the eval->seal bridge shape
+    (``list[{metric, verdict}]``). A record written before that bridge was
+    adopted stored ``per_metric`` as a ``{metric: verdict}`` map; normalize it
+    to the canonical sorted list on read so a single pre-bridge record can
+    never break ``list_gate_records`` for the whole merchant. Any other type
+    is returned untouched for the constructor to validate.
+    """
+    if isinstance(value, dict):
+        return [
+            {"metric": name, "verdict": value[name]} for name in sorted(value)
+        ]
+    return value

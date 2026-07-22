@@ -2,7 +2,7 @@
 
 - merchant: COSTCO WHOLESALE
 - receipt: 01c0bc98-4fdc-4f7d-baf6-72c2e3a9564d#1
-- git: `f137a174ee41`
+- git: `986b9fe8a47f`
 - truth: `costco_wholesale` v1 `c5cd31202f7a52cee5f5b492c675ae4ed1d94241529bdc3d16d85b18bf7fd064` (online-active)
 - atlas: `3d0a24ac0ba6e9bb`
 
