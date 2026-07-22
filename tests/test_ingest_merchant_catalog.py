@@ -56,6 +56,8 @@ class FakeLabel:
     word_id: int
     label: str
     reasoning: str | None = None
+    validation_status: str = "VALID"
+    timestamp_added: str = "2026-07-01T00:00:00+00:00"
 
 
 @dataclass
@@ -76,6 +78,7 @@ def _receipt(
     header: list[str],
     sections: list[tuple[str, float]] = (),
     reasonings: dict[int, str] | None = None,
+    statuses: dict[int, str] | None = None,
 ) -> FakeDetails:
     """Build a fake receipt.
 
@@ -83,6 +86,8 @@ def _receipt(
     go at x ~0.1.., the price at x=0.80. header: unlabeled words at the top.
     sections: (keyword, y) unlabeled section-header words.
     reasonings: row index -> reasoning text attached to that row's label.
+    statuses: row index -> validation_status for that row's labels
+    (default VALID).
     """
     words: list[FakeWord] = []
     labels: list[FakeLabel] = []
@@ -106,12 +111,21 @@ def _receipt(
                     word_index,
                     "PRODUCT_NAME",
                     (reasonings or {}).get(index),
+                    (statuses or {}).get(index, "VALID"),
                 )
             )
         line_id += 1
         words.append(FakeWord(line_id, 0, price_text, 0.80, y))
         if price_label:
-            labels.append(FakeLabel(line_id, 0, price_label))
+            labels.append(
+                FakeLabel(
+                    line_id,
+                    0,
+                    price_label,
+                    None,
+                    (statuses or {}).get(index, "VALID"),
+                )
+            )
     return FakeDetails(words=words, labels=labels)
 
 
@@ -273,6 +287,197 @@ def test_every_mined_item_records_provenance() -> None:
     water = next(i for i in items if i.product_text == "KS WATER")
     assert water.observed_count == 2
     assert water.source_receipt_keys == ["img-a#00001", "img-b#00001"]
+
+
+# ---------------------------------------------------------------------------
+# Label hygiene: validation-status filter + duplicate resolution
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_labeled_rows_never_mine() -> None:
+    details = _receipt(
+        rows=[
+            ("KS WATER", "3.99", 0.30, "LINE_TOTAL"),
+            ("REJECTED THING", "9.99", 0.40, "LINE_TOTAL"),
+        ],
+        header=["COSTCO"],
+        statuses={1: "INVALID"},
+    )
+    rows = imc.mine_receipt("img#00001", details)
+    assert {row["product_text"] for row in rows} == {"KS WATER"}
+
+
+@pytest.mark.parametrize("status", ["PENDING", "NONE", "NEEDS_REVIEW"])
+def test_unreviewed_statuses_do_not_mine(status: str) -> None:
+    """Only VALID mines: PENDING/NONE/NEEDS_REVIEW are unreviewed
+    proposals (the section evaluator and MCP review flow count VALID
+    only), and INVALID is a rejection."""
+    details = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+        statuses={0: status},
+    )
+    assert imc.mine_receipt("img#00001", details) == []
+
+
+def test_status_filter_is_the_deciding_factor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In-suite mutation check on ACCEPTED_LABEL_STATUSES: the same
+    INVALID-labeled fixture mines once the filter is widened, proving the
+    status filter (not some other fixture property) is what excludes it —
+    this test goes red if the filter constant stops being consulted."""
+    details = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+        statuses={0: "INVALID"},
+    )
+    assert imc.mine_receipt("img#00001", details) == []
+    monkeypatch.setattr(
+        imc, "ACCEPTED_LABEL_STATUSES", frozenset({"VALID", "INVALID"})
+    )
+    rows = imc.mine_receipt("img#00001", details)
+    assert {row["product_text"] for row in rows} == {"KS WATER"}
+
+
+def test_duplicate_resolution_prefers_valid_over_others(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The measured dev pattern: an older rejected proposal plus a newer
+    confirmed label on the same word. VALID outranks even when the
+    accepted set is widened; input ordering never changes the result."""
+    monkeypatch.setattr(
+        imc, "ACCEPTED_LABEL_STATUSES", frozenset({"VALID", "PENDING"})
+    )
+    valid_old = FakeLabel(
+        14, 1, "LINE_TOTAL", None, "VALID", "2026-06-15T19:37:00+00:00"
+    )
+    pending_new = FakeLabel(
+        14, 1, "AMOUNT", None, "PENDING", "2026-06-15T19:38:09+00:00"
+    )
+    for ordering in ([valid_old, pending_new], [pending_new, valid_old]):
+        assert imc.resolve_word_labels(ordering)[(14, 1)] is valid_old
+
+
+def test_duplicate_resolution_newest_wins_deterministically() -> None:
+    older = FakeLabel(
+        1, 1, "ITEM_NAME", None, "VALID", "2026-06-01T00:00:00+00:00"
+    )
+    newer = FakeLabel(
+        1, 1, "PRODUCT_NAME", None, "VALID", "2026-06-02T00:00:00+00:00"
+    )
+    for ordering in ([older, newer], [newer, older]):
+        assert imc.resolve_word_labels(ordering)[(1, 1)] is newer
+
+
+def test_duplicate_resolution_total_order_tiebreak() -> None:
+    """Same status, same timestamp: lexicographically smallest label wins
+    regardless of input order — never dict last-write-wins."""
+    timestamp = "2026-06-02T00:00:00+00:00"
+    item_name = FakeLabel(1, 1, "ITEM_NAME", None, "VALID", timestamp)
+    product = FakeLabel(1, 1, "PRODUCT_NAME", None, "VALID", timestamp)
+    for ordering in ([item_name, product], [product, item_name]):
+        assert imc.resolve_word_labels(ordering)[(1, 1)] is item_name
+
+
+def test_invalid_labels_are_filtered_before_resolution() -> None:
+    invalid_new = FakeLabel(
+        1, 1, "AMOUNT", None, "INVALID", "2026-06-15T19:38:09+00:00"
+    )
+    valid_old = FakeLabel(
+        1, 1, "LINE_TOTAL", None, "VALID", "2026-06-15T19:37:00+00:00"
+    )
+    resolved = imc.resolve_word_labels([invalid_new, valid_old])
+    assert resolved[(1, 1)] is valid_old
+    assert imc.resolve_word_labels([invalid_new]) == {}
+
+
+# ---------------------------------------------------------------------------
+# Taxability: derived from explicit tax flags, never hardcoded
+# ---------------------------------------------------------------------------
+
+
+def test_taxable_from_detached_costco_flag() -> None:
+    details = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+    )
+    details.words.append(FakeWord(99, 0, "A", 0.90, 0.30))
+    [row] = imc.mine_receipt("img#00001", details)
+    assert row["taxable"] is True
+
+
+def test_taxable_from_attached_flag() -> None:
+    details = _receipt(
+        rows=[("SCRUB BRUSH", "1.25T", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+    )
+    [row] = imc.mine_receipt("img#00001", details)
+    assert row["price"] == "1.25"
+    assert row["taxable"] is True
+
+
+def test_nontaxable_food_flag() -> None:
+    details = _receipt(
+        rows=[("MILK", "4.29", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+    )
+    details.words.append(FakeWord(99, 0, "F", 0.90, 0.30))
+    [row] = imc.mine_receipt("img#00001", details)
+    assert row["taxable"] is False
+
+
+def test_no_flag_means_unknown_never_false() -> None:
+    details = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+    )
+    [row] = imc.mine_receipt("img#00001", details)
+    assert row["taxable"] is None
+    items = imc.build_catalog(
+        "Costco Wholesale", imc.aggregate_observations([row])
+    )
+    assert items[0].taxable is None
+
+
+def test_flag_in_another_band_or_left_of_price_is_ignored() -> None:
+    details = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+    )
+    details.words.append(FakeWord(99, 0, "A", 0.90, 0.50))  # other band
+    details.words.append(FakeWord(98, 0, "A", 0.50, 0.30))  # left of price
+    [row] = imc.mine_receipt("img#00001", details)
+    assert row["taxable"] is None
+
+
+def test_conflicting_tax_signals_yield_unknown() -> None:
+    taxed = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")], header=["COSTCO"]
+    )
+    taxed.words.append(FakeWord(99, 0, "A", 0.90, 0.30))
+    exempt = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")], header=["COSTCO"]
+    )
+    exempt.words.append(FakeWord(99, 0, "F", 0.90, 0.30))
+    mined = [
+        *imc.mine_receipt("img-a#00001", taxed),
+        *imc.mine_receipt("img-b#00001", exempt),
+    ]
+    items = imc.build_catalog(
+        "Costco Wholesale", imc.aggregate_observations(mined)
+    )
+    assert items[0].taxable is None
+
+
+def test_unknown_flag_letter_is_no_signal() -> None:
+    details = _receipt(
+        rows=[("KS WATER", "3.99", 0.30, "LINE_TOTAL")],
+        header=["COSTCO"],
+    )
+    details.words.append(FakeWord(99, 0, "Q", 0.90, 0.30))
+    [row] = imc.mine_receipt("img#00001", details)
+    assert row["taxable"] is None
 
 
 # ---------------------------------------------------------------------------

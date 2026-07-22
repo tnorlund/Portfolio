@@ -56,6 +56,25 @@ class TestMerchantCatalogItemOperations:
         assert fetched == item
         assert fetched.source_receipt_keys == ["img-1#00001", "img-2#00002"]
 
+    def test_taxable_none_roundtrips_through_dynamo(
+        self, client: DynamoClient
+    ) -> None:
+        item = MerchantCatalogItem(
+            merchant_name="Costco Wholesale",
+            product_text="NO SIGNAL ITEM",
+            price="2.49",
+            category="GROCERY",
+            taxable=None,
+            source="observed",
+            observed_count=1,
+            source_receipt_keys=["img-1#00001"],
+        )
+        client.add_merchant_catalog_item(item)
+        fetched = client.get_merchant_catalog_item(
+            "Costco Wholesale", "GROCERY", "NO SIGNAL ITEM"
+        )
+        assert fetched.taxable is None
+
     def test_add_duplicate_raises(self, client: DynamoClient) -> None:
         item = make_item()
         client.add_merchant_catalog_item(item)
