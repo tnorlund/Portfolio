@@ -1,0 +1,19 @@
+{
+ "version": 1,
+ "entries": [
+  {
+   "name": "costco_wholesale_v1",
+   "merchant": "Costco Wholesale",
+   "truth_fixture": "tests/fixtures/merchant_truth/costco_wholesale_v1.json",
+   "eval_inputs": "tests/fixtures/corpus_gate/costco_wholesale_v1.inputs.json",
+   "columns_source": "bootstrap"
+  },
+  {
+   "name": "fixture_mart_v1",
+   "merchant": "Fixture Mart",
+   "truth_fixture": "tests/fixtures/merchant_truth/fixture_mart.v1.json",
+   "eval_inputs": "tests/fixtures/corpus_gate/fixture_mart_v1.inputs.json",
+   "columns_source": "bootstrap"
+  }
+ ]
+}

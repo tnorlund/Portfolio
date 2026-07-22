@@ -1,0 +1,128 @@
+{
+  "entries": {
+    "costco_wholesale_v1": {
+      "merchant": "Costco Wholesale",
+      "metrics": {
+        "arithmetic": {
+          "n_items": 5,
+          "testable": 3,
+          "verdict": "PASS",
+          "violated": 0
+        },
+        "columns": {
+          "bands": {
+            "ITEMS": "PASS",
+            "PAYMENT": "UNTESTED",
+            "SUMMARY": "UNTESTED"
+          },
+          "verdict": "PASS_WITH_GAPS"
+        },
+        "coverage_gaps": [
+          "columns",
+          "columns:PAYMENT:amount",
+          "columns:SUMMARY:amount",
+          "graphics"
+        ],
+        "graphics": {
+          "verdict": "SKIPPED"
+        },
+        "logo": {
+          "area_ratio": 1.0,
+          "center_offset_frac": 0.0,
+          "size_ratio": 1.0,
+          "verdict": "PASS"
+        },
+        "overall": "PASS_WITH_GAPS",
+        "separators": {
+          "kind_mismatches": 0,
+          "real_count": 0,
+          "synth_count": 0,
+          "verdict": "PASS"
+        },
+        "style": {
+          "body_stroke_rel_real": 0.0427,
+          "body_stroke_rel_synth": 0.0427,
+          "verdict": "PASS"
+        },
+        "tokens": {
+          "ink_recall": 1.0,
+          "text_precision": 1.0,
+          "text_recall": 1.0,
+          "verdict": "PASS"
+        }
+      },
+      "name": "costco_wholesale_v1",
+      "render_hashes": {
+        "real": "b94210d9a3c15edf27c135568bcb975198e0ce4a037d17aa1eafb4c511931d8e",
+        "syn": "b94210d9a3c15edf27c135568bcb975198e0ce4a037d17aa1eafb4c511931d8e"
+      },
+      "slug": "costco",
+      "truth": {
+        "bundle_hash": "c5cd31202f7a52cee5f5b492c675ae4ed1d94241529bdc3d16d85b18bf7fd064",
+        "slug": "costco_wholesale",
+        "version": 1
+      }
+    },
+    "fixture_mart_v1": {
+      "merchant": "Fixture Mart",
+      "metrics": {
+        "arithmetic": {
+          "n_items": 4,
+          "testable": 3,
+          "verdict": "PASS",
+          "violated": 0
+        },
+        "columns": {
+          "bands": {
+            "ALL": "PASS"
+          },
+          "verdict": "PASS"
+        },
+        "coverage_gaps": [
+          "graphics",
+          "style",
+          "style:summary"
+        ],
+        "graphics": {
+          "verdict": "SKIPPED"
+        },
+        "logo": {
+          "area_ratio": 1.0,
+          "center_offset_frac": 0.0,
+          "size_ratio": 1.0,
+          "verdict": "PASS"
+        },
+        "overall": "PASS_WITH_GAPS",
+        "separators": {
+          "kind_mismatches": 0,
+          "real_count": 0,
+          "synth_count": 0,
+          "verdict": "PASS"
+        },
+        "style": {
+          "body_stroke_rel_real": 0.0549,
+          "body_stroke_rel_synth": 0.0549,
+          "verdict": "PASS_WITH_GAPS"
+        },
+        "tokens": {
+          "ink_recall": 1.0,
+          "text_precision": 1.0,
+          "text_recall": 1.0,
+          "verdict": "PASS"
+        }
+      },
+      "name": "fixture_mart_v1",
+      "render_hashes": {
+        "real": "2908e4329a6dc30dda137560a01b9c7fedf150bd68f65d79ad465d5006f5534c",
+        "syn": "2908e4329a6dc30dda137560a01b9c7fedf150bd68f65d79ad465d5006f5534c"
+      },
+      "slug": "fixture_mart",
+      "truth": {
+        "bundle_hash": "4010db5d5de3b0da8889df9c233ac86d92e54f15df8e7b7aa164c654154663be",
+        "slug": "fixture_mart",
+        "version": 1
+      }
+    }
+  },
+  "version": 1
+}
