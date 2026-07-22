@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Nightly receipt-synthesis loop v0 (plan humble-skipping-quilt W2).
+       Committed to the repo; installation is an OWNER OP (see
+       infra/ops/README.md). RunAtLoad is false: the loop only fires on
+       its 02:00 schedule, never on login/bootstrap. caffeinate -ims keeps
+       the mini awake for the run without lighting the display. -->
+  <key>Label</key>
+  <string>com.tnorlund.receipt-nightly</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-ims</string>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>exec /Users/tnorlund/Portfolio/scripts/nightly/run_nightly.sh</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/tnorlund/Portfolio</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/tnorlund/Library/Logs/receipt-nightly.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tnorlund/Library/Logs/receipt-nightly.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/tnorlund/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>CLAUDE_BIN</key>
+    <string>/Users/tnorlund/.local/bin/claude</string>
+  </dict>
+</dict>
+</plist>
