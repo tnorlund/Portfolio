@@ -27,7 +27,10 @@ from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.data.shared_exceptions import MerchantTruthConflictError
+from receipt_dynamo.data.shared_exceptions import (
+    MerchantTruthConflictError,
+    MerchantTruthIntegrityError,
+)
 from receipt_dynamo.entities.merchant_truth import (
     COMPONENT_NAMES,
     MerchantTruthActive,
@@ -70,23 +73,32 @@ def mock_aws_services():
 # ---------------------------------------------------------------------------
 
 
-def component_payload(slug: str, name: str, version: int) -> Any:
+def component_payload(
+    slug: str,
+    name: str,
+    version: int,
+    aliases: list[str] | None = None,
+) -> Any:
     if name == "identity":
         return {
             "merchant_name": slug.title(),
             "slug": slug,
-            "normalized_aliases": [slug, f"{slug} store"],
+            "normalized_aliases": aliases or [slug, f"{slug} store"],
         }
     return {"component": name, "v": version}
 
 
-def build_components(slug: str, version: int) -> list[MerchantTruthComponent]:
+def build_components(
+    slug: str,
+    version: int,
+    aliases: list[str] | None = None,
+) -> list[MerchantTruthComponent]:
     return [
         MerchantTruthComponent(
             slug=slug,
             version=version,
             name=name,
-            payload=component_payload(slug, name, version),
+            payload=component_payload(slug, name, version, aliases),
             provenance=LEGACY_PROVENANCE,
         )
         for name in sorted(COMPONENT_NAMES)
@@ -409,13 +421,17 @@ def dynamodb_table():
 
 
 def seal_live(
-    client: DynamoClient, table: str, slug: str, version: int
+    client: DynamoClient,
+    table: str,
+    slug: str,
+    version: int,
+    aliases: list[str] | None = None,
 ) -> str:
     """Mint + seal one version through the real accessor; return its hash."""
     client.mint_version(
         slug,
         version,
-        build_components(slug, version),
+        build_components(slug, version, aliases),
         MINT_PROVENANCE,
         f"run-{slug}-{version}",
         table,
@@ -734,3 +750,196 @@ def test_single_conflict_exits_three_with_current_active(
     output = capsys.readouterr().out
     assert "CONFLICT" in output
     assert "Current ACTIVE for vons: v1" in output
+
+
+# ---------------------------------------------------------------------------
+# Global alias uniqueness (codex review finding: a colliding activation
+# used to succeed and only surface when the loader built the fleet map)
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_refuses_alias_collision_with_other_merchant(
+    dynamodb_table: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    seal_live(client, dynamodb_table, "vons", 1, aliases=["vons", "vons club"])
+    assert (
+        amt.main(
+            [
+                "--slug",
+                "vons",
+                "--version",
+                "1",
+                "--flip",
+                "--table",
+                dynamodb_table,
+            ],
+            client=client,
+        )
+        == 0
+    )
+    capsys.readouterr()
+    seal_live(
+        client,
+        dynamodb_table,
+        "vons_market",
+        1,
+        aliases=["vons market", "vons club"],
+    )
+
+    # The DRY-RUN already refuses: the collision must surface at review
+    # time, not only at write time.
+    exit_code = amt.main(
+        [
+            "--slug",
+            "vons_market",
+            "--version",
+            "1",
+            "--table",
+            dynamodb_table,
+        ],
+        client=client,
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "alias collision" in captured.err
+    assert "'vons club'" in captured.err
+    assert "'vons'" in captured.err
+    assert (
+        client.get_active_merchant_truth("vons_market", consistent_read=True)
+        is None
+    )
+    assert activation_audits(dynamodb_table, "vons_market") == []
+
+
+def test_accessor_refuses_colliding_initial_activation(
+    dynamodb_table: str,
+) -> None:
+    """The guard lives in the accessor: no caller can bypass it."""
+    client = DynamoClient(dynamodb_table)
+    hash_vons = seal_live(
+        client, dynamodb_table, "vons", 1, aliases=["vons", "vons club"]
+    )
+    client.initial_activate(
+        MerchantTruthActive(
+            slug="vons",
+            version=1,
+            bundle_hash=hash_vons,
+            normalized_aliases=["vons", "vons club"],
+            activated_at=NOW,
+            activated_by="owner",
+        ),
+        dynamodb_table,
+    )
+    hash_other = seal_live(
+        client,
+        dynamodb_table,
+        "vons_market",
+        1,
+        aliases=["vons market", "vons club"],
+    )
+
+    with pytest.raises(MerchantTruthIntegrityError, match="vons club"):
+        client.initial_activate(
+            MerchantTruthActive(
+                slug="vons_market",
+                version=1,
+                bundle_hash=hash_other,
+                normalized_aliases=["vons market", "vons club"],
+                activated_at=NOW,
+                activated_by="rogue-caller",
+            ),
+            dynamodb_table,
+        )
+
+    assert (
+        client.get_active_merchant_truth("vons_market", consistent_read=True)
+        is None
+    )
+    assert activation_audits(dynamodb_table, "vons_market") == []
+
+
+def test_accessor_refuses_colliding_flip(dynamodb_table: str) -> None:
+    client = DynamoClient(dynamodb_table)
+    hash_vons = seal_live(
+        client, dynamodb_table, "vons", 1, aliases=["vons", "vons club"]
+    )
+    client.initial_activate(
+        MerchantTruthActive(
+            slug="vons",
+            version=1,
+            bundle_hash=hash_vons,
+            normalized_aliases=["vons", "vons club"],
+            activated_at=NOW,
+            activated_by="owner",
+        ),
+        dynamodb_table,
+    )
+    hash_b1 = seal_live(client, dynamodb_table, "beta", 1)
+    client.initial_activate(make_active("beta", 1, hash_b1), dynamodb_table)
+    hash_b2 = seal_live(client, dynamodb_table, "beta", 2)
+
+    with pytest.raises(MerchantTruthIntegrityError, match="vons club"):
+        client.flip_active(
+            MerchantTruthActive(
+                slug="beta",
+                version=2,
+                bundle_hash=hash_b2,
+                normalized_aliases=["beta", "vons club"],
+                activated_at=NOW,
+                activated_by="rogue-caller",
+            ),
+            1,
+            hash_b1,
+            dynamodb_table,
+        )
+
+    active = client.get_active_merchant_truth("beta", consistent_read=True)
+    assert active is not None
+    assert (active.version, active.bundle_hash) == (1, hash_b1)
+
+
+def test_non_colliding_aliases_still_activate(dynamodb_table: str) -> None:
+    """The guard refuses collisions only — disjoint fleets are untouched."""
+    client = DynamoClient(dynamodb_table)
+    hash_vons = seal_live(client, dynamodb_table, "vons", 1)
+    client.initial_activate(make_active("vons", 1, hash_vons), dynamodb_table)
+    hash_beta = seal_live(client, dynamodb_table, "beta", 1)
+
+    result = client.initial_activate(
+        make_active("beta", 1, hash_beta), dynamodb_table
+    )
+
+    assert (result.version, result.bundle_hash) == (1, hash_beta)
+
+
+def test_all_sealed_flip_continues_past_alias_collision(
+    dynamodb_table: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    seal_live(
+        client, dynamodb_table, "alpha", 1, aliases=["alpha", "shared mart"]
+    )
+    seal_live(
+        client, dynamodb_table, "beta", 1, aliases=["beta", "shared mart"]
+    )
+    seal_live(client, dynamodb_table, "gamma", 1)
+
+    exit_code = amt.main(
+        ["--all-sealed", "--flip", "--table", dynamodb_table], client=client
+    )
+
+    # alpha wins 'shared mart' (activates first, alphabetical sweep),
+    # beta is refused as a per-merchant ERROR, gamma still activates.
+    assert exit_code == 1
+    output = capsys.readouterr().out
+    assert "| alpha | 1 | ACTIVATED |" in output
+    assert "| beta | 1 | ERROR: alias collision" in output
+    assert "| gamma | 1 | ACTIVATED |" in output
+    assert (
+        client.get_active_merchant_truth("beta", consistent_read=True) is None
+    )
+    for slug in ("alpha", "gamma"):
+        active = client.get_active_merchant_truth(slug, consistent_read=True)
+        assert active is not None and active.version == 1

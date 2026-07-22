@@ -57,9 +57,13 @@ for _p in (REPO, os.path.join(REPO, "receipt_dynamo")):
 
 from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
     MerchantTruthConflictError,
+    MerchantTruthIntegrityError,
 )
 from receipt_dynamo.entities.merchant_truth import (  # noqa: E402
     MerchantTruthActive,
+)
+from receipt_dynamo.merchant_truth_loader import (  # noqa: E402
+    normalize_merchant_alias,
 )
 
 # The loading/verification helpers are the diff tool's: import, don't copy.
@@ -173,8 +177,37 @@ def build_plan(
     )
     # Fail closed on a malformed identity component before any write plan
     # is shown, not at flip time.
-    plan.normalized_aliases  # noqa: B018  (validation side effect)
+    aliases = plan.normalized_aliases
+    _check_alias_uniqueness(client, slug, aliases)
     return plan
+
+
+def _check_alias_uniqueness(
+    client: "DynamoClient", slug: str, aliases: list[str]
+) -> None:
+    """Refuse a plan whose aliases collide with another ACTIVE merchant.
+
+    Mirrors the accessor's activation-time guard (which no caller can
+    bypass) so the collision surfaces in the DRY-RUN decision summary,
+    not only at write time. A collision would otherwise poison the fleet
+    alias map that MerchantTruthLoader builds for every consumer.
+    """
+    candidate = {normalize_merchant_alias(alias) for alias in [slug, *aliases]}
+    for record in client.list_active_merchant_truth():
+        if record.slug == slug:
+            continue
+        theirs = {
+            normalize_merchant_alias(alias)
+            for alias in [record.slug, *record.normalized_aliases]
+        }
+        collisions = sorted(candidate & theirs)
+        if collisions:
+            raise ActivationError(
+                f"alias collision: {collisions[0]!r} already belongs to "
+                f"ACTIVE merchant {record.slug!r}; activating {slug} "
+                f"would make the fleet alias map ambiguous "
+                f"(all collisions: {collisions})"
+            )
 
 
 def _mutation_lines(plan: ActivationPlan) -> list[str]:
@@ -363,6 +396,11 @@ def _run_single(
     except MerchantTruthConflictError as error:
         print("\n".join(render_conflict(error, client, slug)))
         return 3
+    except MerchantTruthIntegrityError as error:
+        # The accessor's own alias-uniqueness guard (or another
+        # integrity refusal) fired between plan and write.
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
     print("\n".join(render_result(verb, active)))
     return 0
 

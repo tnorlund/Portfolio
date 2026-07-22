@@ -27,6 +27,7 @@ from receipt_dynamo.entities.merchant_truth import (
     merchant_truth_pk,
     version_prefix,
 )
+from receipt_dynamo.merchant_truth_loader import normalize_merchant_alias
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb.type_defs import TransactWriteItemTypeDef
@@ -532,6 +533,39 @@ class _MerchantTruth(FlattenedStandardMixin):
     def _to_dynamo(value: Any) -> dict[str, Any]:
         return to_dynamodb_value(value)
 
+    def _assert_alias_uniqueness(self, active: MerchantTruthActive) -> None:
+        """Refuse activation when an alias collides with another merchant.
+
+        The fleet alias map (``MerchantTruthLoader``) requires every
+        normalized alias — including the slug itself — to resolve to
+        exactly one ACTIVE merchant. Enforcing that here, on both
+        activation operations, means no caller can activate a bundle
+        whose identity would poison the fleet map for every consumer.
+        The read is the same GSITYPE fleet sweep the loader uses; it is
+        eventually consistent, so this guard is best-effort against a
+        same-instant race — the loader's deterministic-winner
+        degradation is the backstop for that window.
+        """
+        candidate = {
+            normalize_merchant_alias(alias)
+            for alias in [active.slug, *active.normalized_aliases]
+        }
+        for record in self.list_active_merchant_truth():
+            if record.slug == active.slug:
+                continue
+            theirs = {
+                normalize_merchant_alias(alias)
+                for alias in [record.slug, *record.normalized_aliases]
+            }
+            collisions = sorted(candidate & theirs)
+            if collisions:
+                raise MerchantTruthIntegrityError(
+                    f"cannot activate {active.slug} v{active.version}: "
+                    f"alias {collisions[0]!r} already belongs to ACTIVE "
+                    f"merchant {record.slug!r} "
+                    f"(all collisions: {collisions})"
+                )
+
     def initial_activate(
         self,
         active: MerchantTruthActive,
@@ -539,6 +573,7 @@ class _MerchantTruth(FlattenedStandardMixin):
     ) -> MerchantTruthActive:
         """Conditionally create the first ACTIVE pointer."""
         self._assert_expected_table(expected_table_name)
+        self._assert_alias_uniqueness(active)
         audit = self._audit(
             active.slug,
             active.version,
@@ -611,6 +646,7 @@ class _MerchantTruth(FlattenedStandardMixin):
     ) -> MerchantTruthActive:
         """Move ACTIVE under an exact previous version/hash condition."""
         self._assert_expected_table(expected_table_name)
+        self._assert_alias_uniqueness(active)
         current = self.get_active_merchant_truth(
             active.slug, consistent_read=True
         )
