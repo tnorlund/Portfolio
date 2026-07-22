@@ -391,6 +391,17 @@ def test_carry_mutation_rejected():
     with pytest.raises(mint.MintError, match="hash-preserving"):
         mint.assert_carry_faithful(edited, src)
 
+    # The marker must name the EXACT source version, not merely be v-prefixed.
+    wrong_version = MerchantTruthComponent(
+        slug=SLUG,
+        version=2,
+        name="identity",
+        payload={"slug": SLUG},
+        provenance={**dict(LEGACY_PROVENANCE), "carried_forward_from": "v2"},
+    )
+    with pytest.raises(mint.MintError, match="exact source version"):
+        mint.assert_carry_faithful(wrong_version, src)
+
 
 def test_typography_section_scale_both_cases():
     v1typ = MerchantTruthComponent(
@@ -491,6 +502,40 @@ def test_empty_catalog_dry_run_warns_no_writes(
     )
 
 
+def test_empty_catalog_live_refused_by_governance(dynamodb_table, layout_file):
+    """--live with an empty catalog partition is refused (governance-correct).
+
+    An empty ``catalog_snapshot`` is ``source_kind=measurement`` with no
+    ``source_receipt_keys``; ``mint_version`` validates every component BEFORE
+    any write, so the mint is rejected with zero writes. The owner must run
+    ``ingest_merchant_catalog --apply`` first (the dry-run warns loudly).
+    """
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+
+    client = DynamoClient(dynamodb_table)
+    _seal_v1(client, dynamodb_table)
+    # No catalog seeded -> empty partition.
+    args = _args(
+        dynamodb_table,
+        layout_payload=layout_file,
+        live=True,
+        eval_image_id="IMG",
+        eval_receipt_id=1,
+    )
+    with pytest.raises(
+        MerchantTruthIntegrityError, match="source_receipt_keys"
+    ):
+        mint.run(args, eval_runner=_pass_eval)
+
+    # Zero writes: no OPEN v2 manifest landed.
+    assert (
+        client.get_merchant_truth_manifest(SLUG, 2, consistent_read=True)
+        is None
+    )
+
+
 def test_fail_gate_leaves_open(dynamodb_table, layout_file, capsys):
     client = DynamoClient(dynamodb_table)
     _seal_v1(client, dynamodb_table)
@@ -539,14 +584,11 @@ def test_pass_with_gaps_seals(dynamodb_table, layout_file):
 
 
 def test_live_banner_and_prod_refusal(dynamodb_table, layout_file, capsys):
-    from receipt_dynamo.data.shared_exceptions import (
-        MerchantTruthTableMismatchError,
-    )
     from receipt_dynamo.migrations.merchant_truth_v1_live import (
         PROD_TABLE_NAME,
     )
 
-    # Prod table is refused unconditionally in live mode.
+    # Prod is refused unconditionally by marker substring on EVERY path.
     prod_args = _args(
         PROD_TABLE_NAME,
         layout_payload=layout_file,
@@ -554,8 +596,13 @@ def test_live_banner_and_prod_refusal(dynamodb_table, layout_file, capsys):
         eval_image_id="IMG",
         eval_receipt_id=1,
     )
-    with pytest.raises(MerchantTruthTableMismatchError):
+    with pytest.raises(SystemExit, match="prod table"):
         mint.run(prod_args, eval_runner=_pass_eval)
+
+    # ... including the dry-run read path, and a prod-suffixed variant.
+    prod_dry = _args(f"ReceiptsTable-{mint._PROD_MARKER}-shadow", live=False)
+    with pytest.raises(SystemExit, match="prod table"):
+        mint.run(prod_dry, eval_runner=_pass_eval)
 
     # The live banner is printed on the real ceremony.
     client = DynamoClient(dynamodb_table)

@@ -111,6 +111,11 @@ DEFAULT_LAYOUT_PAYLOAD = os.path.join(
     "costco_variant_layout.sample.json",
 )
 DEFAULT_PROPOSAL = "self-checkout-layout-variant"
+# The prod-table marker: the same substring the eval's gate-write refusal uses
+# (``full_fidelity_eval._GATE_PROD_MARKER``), so the prod refusal is a
+# marker-substring check on EVERY path here (dry-run read and live write), not
+# an exact-name match that a prod-suffixed variant could slip past.
+_PROD_MARKER = PROD_TABLE_NAME.rsplit("-", 1)[-1]
 DRIVER_NAME = "mint_merchant_truth_v2"
 DRIVER_VERSION = "2"
 
@@ -127,6 +132,23 @@ class MintError(RuntimeError):
 # --------------------------------------------------------------------------
 # Small helpers
 # --------------------------------------------------------------------------
+
+
+def _refuse_prod(table: str) -> None:
+    """Refuse the prod table on EVERY path by a marker-substring check.
+
+    Prod promotion is a separate owner-gated step; the driver never reads or
+    writes prod. This mirrors ``validate_live_table`` (exact prod name) but
+    uses the same marker substring the eval's gate-write refusal does, so a
+    prod-suffixed table variant is refused too -- identical semantics on the
+    dry-run read path and the live write path.
+    """
+    if table == PROD_TABLE_NAME or _PROD_MARKER in table:
+        raise SystemExit(
+            f"refusing to target the prod table {table!r} (marker "
+            f"{_PROD_MARKER!r}); prod is a separate owner-gated step and this "
+            "refusal is unconditional on every path"
+        )
 
 
 def _git_sha(explicit: str | None) -> str:
@@ -191,10 +213,12 @@ def assert_carry_faithful(
             "a carry must be hash-preserving (section 7.7)"
         )
     marker = candidate.provenance.get("carried_forward_from")
-    if not (isinstance(marker, str) and marker.startswith("v")):
+    expected_marker = f"v{source.version}"
+    if marker != expected_marker:
         raise MintError(
-            f"carry of {candidate.name!r} is missing a valid "
-            "carried_forward_from marker (section 7.7)"
+            f"carry of {candidate.name!r} must name its exact source version "
+            f"with carried_forward_from == {expected_marker!r}, not "
+            f"{marker!r} (section 7.7)"
         )
     stripped = {
         key: value
@@ -902,10 +926,10 @@ def run(args, *, client_factory=None, eval_runner=None) -> int:
     generated_at = _now(args.generated_at)
     run_id = f"merchant-truth-v2-{slug}-{git_sha[:12]}"
 
+    # Prod is refused identically on every path (dry-run read + live write).
+    _refuse_prod(table)
     if args.live:
         validate_live_table(table, explicit=args.table_name is not None)
-    elif table == PROD_TABLE_NAME:
-        raise SystemExit("refusing to read against the prod table")
 
     make_client = client_factory or (lambda: DynamoClient(table))
     client = make_client()
