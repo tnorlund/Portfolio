@@ -1,0 +1,666 @@
+{
+ "items": [
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#assets"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "assets"
+   },
+   "content_hash": {
+    "S": "f7e32df3005b76f01c7e4b959a4b89dd1417431f2aa9ef036ae4bb45fb27e525"
+   },
+   "payload": {
+    "S": "{\"fonts\":{\"heavy\":{\"advance_ratio\":0.6451612903225806,\"bucket_alias\":\"merchant-font-artifacts\",\"cache_filename\":\"bitMatrix-C2-heavy.glyphs.npz\",\"cap_h\":31.0,\"compiled_at\":\"2026-07-06T23:36:27+00:00\",\"content_hash\":\"2672820ca5969b2aabf3d99e7e255ce3f5f37fea76a4ff1259f06cb8188ae66c\",\"glyph_count\":94,\"pitch_check\":\"prebuilt (no source pitch target)\",\"s3_key\":\"merchant_fonts/costco_wholesale/heavy-2672820ca596.npz\",\"source_commit\":\"e35720ee9a64\"},\"regular\":{\"advance_ratio\":0.6129032258064516,\"bucket_alias\":\"merchant-font-artifacts\",\"cache_filename\":\"bitMatrix-C2.glyphs.npz\",\"cap_h\":31.0,\"compiled_at\":\"2026-07-06T23:36:27+00:00\",\"content_hash\":\"bc14ace8711abf952ec870be16b16d6041a82991d53f92283f7666751dd5d282\",\"glyph_count\":94,\"pitch_check\":\"prebuilt (no source pitch target)\",\"s3_key\":\"merchant_fonts/costco_wholesale/regular-bc14ace8711a.npz\",\"source_commit\":\"e35720ee9a64\"}},\"logo\":{\"bucket_alias\":\"merchant-font-artifacts\",\"content_hash\":\"105ad5310b941eb231a731ff346f4ac7ec853bcb24ce04ca2a8ce3ed9b56810a\",\"s3_key\":\"merchant_fonts/costco_wholesale/logo-105ad531.png\",\"size\":3935},\"missing_merchant_font\":false,\"profile\":{\"logo\":\"bitMatrix-C2_logo.png\",\"logo_anchor\":{\"center\":true,\"extend_left\":false,\"phrases\":[\"COSTCO\",\"EWHOLESALE\",\"WHOLESALE\"]}}}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": [
+       {
+        "S": "s3://raw-image-bucket-c779c32/merchant_fonts/costco_wholesale/stylemap-a56efa58.json"
+       },
+       {
+        "S": "s3://raw-image-bucket-c779c32/merchant_fonts/costco_wholesale/logo-105ad531.png"
+       }
+      ]
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#catalog_snapshot"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "catalog_snapshot"
+   },
+   "content_hash": {
+    "S": "835af79b29ea3d7f438dc4aa38802935d18a7e56711576c66001d32730c56914"
+   },
+   "payload": {
+    "S": "{\"as_of\":\"2026-07-21T17:06:49.844567+00:00\",\"catalog_hash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\",\"item_count\":0,\"items\":[]}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": []
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#flags"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "flags"
+   },
+   "content_hash": {
+    "S": "4359b2e0a16bb8d784963f461a99f576abd17a221444cbe6097d8f290ae06208"
+   },
+   "payload": {
+    "S": "{\"typography\":{\"dash_after_amount_date\":true,\"dash_around_phrases\":[\"SHOP CARD\"],\"dashed_separators\":true,\"display_headings\":{\"ITEMS SOLD:\":1.8,\"PLEASE COME AGAIN\":1.4,\"SELF CHECKOUT\":1.7,\"SELF-CHECKOUT\":1.7,\"THANK YOU\":1.4},\"face_source\":\"stylemap\",\"heading_bleed_phrase\":\"ITEMS SOLD:\",\"reverse_date_after_items\":true,\"reverse_date_anchor\":\"NUMBER OF ITEMS SOLD\",\"reverse_total\":true}}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": []
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#identity"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "identity"
+   },
+   "content_hash": {
+    "S": "175c84d2a749719eed5f1da4154406f1874b087ee2066783bfaaf120d1d41e7b"
+   },
+   "payload": {
+    "S": "{\"aliases\":[],\"merchant_name\":\"Costco Wholesale\",\"normalized_aliases\":[\"costco wholesale\"],\"slug\":\"costco_wholesale\",\"upper_slug\":\"COSTCO_WHOLESALE\"}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": []
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#layout"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "layout"
+   },
+   "content_hash": {
+    "S": "7e6a7a3232a157e633099f10a6f92a05510bb74266e99af3454cb5f30f29c685"
+   },
+   "payload": {
+    "S": "{\"available\":true,\"template\":{\"columns\":{\"barcode\":[{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.007,\"support\":7,\"x\":0.2479}],\"footer\":[{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0186,\"support\":8,\"x\":0.0171},{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0071,\"support\":6,\"x\":0.1788},{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0086,\"support\":8,\"x\":0.2713}],\"items\":[{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0078,\"support\":6,\"x\":0.007},{\"anchor\":\"right\",\"role\":\"amount\",\"spread\":0.0096,\"support\":8,\"x\":0.9439}],\"payment\":[{\"anchor\":\"left\",\"role\":\"label\",\"spread\":0.0124,\"support\":8,\"x\":0.0063},{\"anchor\":\"left\",\"role\":\"label\",\"spread\":0.0037,\"support\":11,\"x\":0.2229},{\"anchor\":\"right\",\"role\":\"amount\",\"spread\":0.0285,\"support\":12,\"x\":0.394},{\"anchor\":\"right\",\"role\":\"amount\",\"spread\":0.0124,\"support\":9,\"x\":0.9417}],\"storefront\":[{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0083,\"support\":7,\"x\":0.0},{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0131,\"support\":9,\"x\":0.1035},{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0187,\"support\":7,\"x\":0.2229},{\"anchor\":\"left\",\"role\":\"desc\",\"spread\":0.0151,\"support\":8,\"x\":0.3396}],\"summary\":[{\"anchor\":\"left\",\"role\":\"label\",\"spread\":0.0036,\"support\":6,\"x\":0.0101},{\"anchor\":\"left\",\"role\":\"label\",\"spread\":0.0166,\"support\":8,\"x\":0.0935},{\"anchor\":\"left\",\"role\":\"label\",\"spread\":0.0085,\"support\":11,\"x\":0.2218},{\"anchor\":\"right\",\"role\":\"qty\",\"spread\":0.0167,\"support\":8,\"x\":0.8863},{\"anchor\":\"right\",\"role\":\"amount\",\"spread\":0.0026,\"support\":10,\"x\":0.9376}],\"total_line\":[{\"anchor\":\"left\",\"role\":\"label\",\"spread\":0.0156,\"support\":7,\"x\":0.0874}]},\"measured\":{\"receipts\":12,\"tool_dirty\":false,\"tool_git_sha\":\"d9ce9cb82ecf\"},\"sections\":[{\"name\":\"storefront\",\"pos_frac_med\":0.05,\"support\":12},{\"name\":\"items\",\"pos_frac_med\":0.255,\"support\":11},{\"name\":\"summary\",\"pos_frac_med\":0.351,\"support\":12},{\"name\":\"total_line\",\"pos_frac_med\":0.392,\"support\":9},{\"name\":\"payment\",\"pos_frac_med\":0.427,\"support\":12},{\"name\":\"barcode\",\"pos_frac_med\":0.805,\"support\":9},{\"name\":\"footer\",\"pos_frac_med\":0.819,\"support\":10}],\"separators\":[],\"version\":1}}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": []
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#stylemap"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "stylemap"
+   },
+   "content_hash": {
+    "S": "86e085f273272b4c00d5fbd23b910b4b0302cd372419cc813e98f5856f00428e"
+   },
+   "payload": {
+    "S": "{\"available\":true,\"document\":{\"audit\":{\"ITEMS SOLD:=1.8\":\"PARTIAL: measured ~1.5-1.6x (coded 1.8 high)\",\"MISSED: barcode_caption\":\"Barcode digits print 0.83x body, stroke_rel 0.88, n=34 - smaller+lighter, no rule exists\",\"MISSED: thank-you sub-body size\":\"Thank You / Please Come Again actually print ~0.84x body; rules render them 1.4x\",\"SELF-CHECKOUT=1.7\":\"PARTIAL: real and heavy, but measured 1.5-1.65x (coded 1.7 slightly high)\",\"THANK YOU=1.4\":\"WRONG (pixel-confirmed): prints 0.84x body, normal weight -- rule should be removed or ~0.85\",\"condense=0.93\":\"UNMEASURED: no char-pitch data in scans\",\"dashed_separators=true\":\"UNMEASURED: scanner does not measure dash runs (separator section n=3)\",\"display_headings.ITEMS SOLD:=1.8\":\"PARTIAL: large+heavy CONFIRMED (stroke_rel 1.26) but scale overstated - measured cap_rel med 1.48 (IQR 1.36-1.50, n=31); use ~1.5\",\"display_headings.PLEASE COME AGAIN=1.4\":\"WRONG: cap_rel med 0.84 (IQR 0.80-0.88, n=12), stroke_rel 1.11 - smaller than body, not 1.4x\",\"display_headings.SELF-CHECKOUT=1.7\":\"PARTIAL: large+heavy CONFIRMED (stroke_rel 1.32) but scale overstated - measured cap_rel med 1.51 (IQR 1.47-1.53, n=23); use ~1.5\",\"display_headings.THANK YOU=1.4\":\"WRONG: 'Thank You!' measures cap_rel med 0.84 (IQR 0.79-0.87, n=30), stroke_rel 1.03 - SMALLER than body at normal weight, not a 1.4x heading\",\"reverse_date_after_items=true\":\"CONFIRMED as a boxed/reversed field by raw pixels (verifiers) -- same OCR blindness. Treatment varies: full reverse or outline box.\",\"reverse_total=true\":\"CONFIRMED by raw pixels (verifiers, 4/4 receipts) -- fleet 'WRONG' verdict was a detection failure (OCR-blind to knockout text). Nuance: reversal covers the amount field only.\",\"section_scale={} (header=body)\":\"CONFIRMED: warehouse_header address lines cap_rel med 0.955, stroke_rel 0.945 (n=67) - uniform with body\",\"underline (no rule)\":\"CONFIRMED absent: 15/~1380 lines (1.1%) underline flags, all scattered coupon/OCR noise; no systematic underlines (unlike Sprouts)\"},\"letterOverrides\":{\"$\":{\"capRel\":1.065,\"n\":65,\"strokeRel\":1.165},\"(\":{\"capRel\":0.911,\"n\":53,\"strokeRel\":0.812},\")\":{\"capRel\":0.909,\"n\":59,\"strokeRel\":0.818},\"-\":{\"capRel\":0.945,\"n\":274,\"strokeRel\":1.32},\"=\":{\"capRel\":1.0,\"n\":99,\"strokeRel\":1.636},\"L\":{\"capRel\":1.0,\"n\":721,\"strokeRel\":0.818},\"M\":{\"capRel\":1.0,\"n\":650,\"strokeRel\":0.81},\"N\":{\"capRel\":1.0,\"n\":773,\"strokeRel\":0.841},\"S\":{\"capRel\":1.0,\"n\":969,\"strokeRel\":1.159},\"U\":{\"capRel\":1.022,\"n\":371,\"strokeRel\":0.82},\"V\":{\"capRel\":0.977,\"n\":572,\"strokeRel\":0.79},\"W\":{\"capRel\":1.0,\"n\":404,\"strokeRel\":0.761},\"Z\":{\"capRel\":0.935,\"n\":22,\"strokeRel\":1.378},\"d\":{\"capRel\":0.956,\"n\":245,\"strokeRel\":0.783},\"h\":{\"capRel\":0.957,\"n\":364,\"strokeRel\":0.82},\"i\":{\"capRel\":1.0,\"n\":502,\"strokeRel\":0.763},\"k\":{\"capRel\":1.0,\"n\":251,\"strokeRel\":0.813},\"l\":{\"capRel\":1.0,\"n\":708,\"strokeRel\":0.761},\"u\":{\"capRel\":0.932,\"n\":206,\"strokeRel\":0.843},\"v\":{\"capRel\":1.038,\"n\":9,\"strokeRel\":0.826},\"w\":{\"capRel\":0.928,\"n\":39,\"strokeRel\":0.82},\"y\":{\"capRel\":0.945,\"n\":124,\"strokeRel\":0.746}},\"limitations\":[\"stylescan iterates OCR words/lines; reverse-video and boxed fields produce no/garbled OCR and are invisible to it. Reverse-video measurement must come from raw-pixel scanning (band darkness independent of words) -- future stylescan fix.\"],\"sections\":{\"barcode_caption\":{\"notes\":\"n=34. Digits under barcode print smaller AND lighter than body: cap_rel med 0.83 (IQR 0.77-0.84), stroke_rel med 0.88. Rule set misses this entirely.\",\"reverseVideo\":false,\"reverseVideoRate\":0.029,\"sizeScale\":0.828,\"strokeRel\":0.881,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"date_box\":{\"match\":\"date after TOTAL NUMBER OF ITEMS SOLD\",\"notes\":\"CORRECTED BY ADVERSARIAL VERIFICATION: date after ITEMS SOLD is boxed on 2/2 raw scans (one verifier read full reverse video, the other a printed outline box with dark digits -- treatment may vary by register). Fleet missed it: OCR garbles/drops boxed digits.\",\"reverseVideo\":\"boxed_field\",\"reverseVideoRate\":1.0,\"sizeScale\":1.0,\"underline\":false,\"weight\":\"normal\"},\"footer\":{\"notes\":\"n=70. OP#/Whse/Trm lines slightly smaller than body (cap_rel med 0.98, p25 0.91), stroke_rel 1.00. No styling.\",\"reverseVideo\":false,\"reverseVideoRate\":0.0,\"sizeScale\":0.977,\"strokeRel\":1.0,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"item\":{\"notes\":\"n=159. Body baseline by construction: cap_rel med 1.01, stroke_rel med 1.01. No underline/reverse (1 OCR-noise hit each).\",\"reverseVideo\":false,\"reverseVideoRate\":0.006,\"sizeScale\":1.014,\"strokeRel\":1.01,\"underline\":false,\"underlineRate\":0.006,\"weight\":\"normal\"},\"items_sold\":{\"notes\":\"n=70. Mixed: 'ITEMS SOLD:' display heading cap_rel med 1.48 (IQR 1.36-1.50, n=31) stroke_rel 1.26; plain 'TOTAL NUMBER OF ITEMS SOLD = N' lines print near body size (section p25 cap_rel 1.00).\",\"reverseVideo\":false,\"reverseVideoRate\":0.0,\"sizeScale\":1.149,\"strokeRel\":1.025,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"member\":{\"notes\":\"n=5 only; stroke_rel med 1.19 hints slightly heavy Member line, but n too small to trust.\",\"reverseVideo\":false,\"reverseVideoRate\":0.0,\"sizeScale\":1.227,\"strokeRel\":1.195,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"heavy\"},\"other\":{\"notes\":\"n=395 unclassified (addresses, dates, marketing/coupon blocks). ~body size. Underline/reverse hits are coupon-graphic OCR noise.\",\"reverseVideo\":false,\"reverseVideoRate\":0.023,\"sizeScale\":1.0,\"strokeRel\":0.995,\"underline\":false,\"underlineRate\":0.033,\"weight\":\"normal\"},\"payment\":{\"notes\":\"n=266. Body size (cap_rel med 1.00, stroke_rel 0.99). Reverse 2/266 = OCR noise.\",\"reverseVideo\":false,\"reverseVideoRate\":0.008,\"sizeScale\":1.0,\"strokeRel\":0.987,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"savings\":{\"notes\":\"n=6. INSTANT SAVINGS ~body size; 1/6 underline hit (single receipt, likely noise). n too small for a rule.\",\"reverseVideo\":false,\"reverseVideoRate\":0.0,\"sizeScale\":1.027,\"strokeRel\":1.009,\"underline\":false,\"underlineRate\":0.167,\"weight\":\"normal\"},\"self_checkout\":{\"notes\":\"n=66. Bimodal: SELF-CHECKOUT heading cap_rel med 1.51 (IQR 1.47-1.53, n=23) stroke_rel 1.32 = large+heavy. 'Thank You!' lines in this section cap_rel med 0.84, stroke_rel 1.03 = SMALLER than body, normal weight.\",\"reverseVideo\":false,\"reverseVideoRate\":0.0,\"sizeScale\":0.886,\"strokeRel\":1.129,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"summary\":{\"notes\":\"n=64. SUBTOTAL/TAX at ~body size (cap_rel med 1.05, stroke_rel 1.05). No reverse, no underline.\",\"reverseVideo\":false,\"reverseVideoRate\":0.0,\"sizeScale\":1.045,\"strokeRel\":1.051,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"total_line\":{\"notes\":\"CORRECTED BY ADVERSARIAL VERIFICATION: the fleet measured 0/43 reverse because OCR cannot read white-on-black digits -- reversed regions produce NO words, so line-based scanning is structurally blind to them. Raw pixels on 2/2 held-out receipts show the TOTAL AMOUNT as white knockout digits in a solid black band; the '**** TOTAL' label prints normal-video. Field-level reversal, not whole-line.\",\"reverseVideo\":\"amount_field\",\"reverseVideoRate\":1.0,\"sizeScale\":0.932,\"strokeRel\":1.055,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"},\"warehouse_header\":{\"notes\":\"n=137. Bimodal: COSTCO/WHOLESALE logo lines cap_rel med 2.30, stroke_rel 1.32, reverse-video 49% (WHOLESALE band; render via logo image). Address/store lines cap_rel med 0.955, stroke_rel 0.945 (n=67) -> header text prints at ~body size.\",\"reverseVideo\":false,\"reverseVideoRate\":0.139,\"sizeScale\":1.233,\"strokeRel\":1.027,\"underline\":false,\"underlineRate\":0.0,\"weight\":\"normal\"}},\"source\":{\"date\":\"2026-07-06\",\"normalization\":\"per-receipt: cap_px/body_cap_px, stroke_med/body_stroke_px; medians reported\",\"receipts\":38,\"scan_dir\":\"tools/glyph-studio/.out/stylescan-costco\"},\"version\":1},\"source\":{\"bucket_alias\":\"merchant-font-artifacts\",\"content_hash\":\"a56efa587a6d7e8ffc3f56dbd258aba55ee1b624915db86024189ab011c4d88c\",\"s3_key\":\"merchant_fonts/costco_wholesale/stylemap-a56efa58.json\",\"size\":8972}}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": [
+       {
+        "S": "s3://raw-image-bucket-c779c32/merchant_fonts/costco_wholesale/stylemap-a56efa58.json"
+       },
+       {
+        "S": "s3://raw-image-bucket-c779c32/merchant_fonts/costco_wholesale/logo-105ad531.png"
+       }
+      ]
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#typography"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "typography"
+   },
+   "content_hash": {
+    "S": "70947f1d6ca65a1d9ac57441b115b5eb30d8f08d4522259caba7311c42e80647"
+   },
+   "payload": {
+    "S": "{\"section_scale\":{\"FOOTER\":0.5},\"typography\":{\"bitmap_font\":{\"heavy\":\"bitMatrix-C2-heavy.glyphs.npz\",\"regular\":\"bitMatrix-C2.glyphs.npz\"},\"bitmap_thin\":0.0,\"condense\":0.93}}"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "measured_at": {
+      "NULL": true
+     },
+     "migrated_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "pipeline": {
+      "S": "merchant_truth_v1"
+     },
+     "pipeline_version": {
+      "S": "1"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "source_objects": {
+      "L": []
+     },
+     "source_path": {
+      "S": "scripts/merchant_profiles.json"
+     },
+     "source_receipt_keys": {
+      "L": []
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#costco_wholesale"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#MANIFEST"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_MANIFEST"
+   },
+   "bundle_hash": {
+    "S": "c5cd31202f7a52cee5f5b492c675ae4ed1d94241529bdc3d16d85b18bf7fd064"
+   },
+   "component_count": {
+    "N": "7"
+   },
+   "component_hashes": {
+    "M": {
+     "assets": {
+      "S": "f7e32df3005b76f01c7e4b959a4b89dd1417431f2aa9ef036ae4bb45fb27e525"
+     },
+     "catalog_snapshot": {
+      "S": "835af79b29ea3d7f438dc4aa38802935d18a7e56711576c66001d32730c56914"
+     },
+     "flags": {
+      "S": "4359b2e0a16bb8d784963f461a99f576abd17a221444cbe6097d8f290ae06208"
+     },
+     "identity": {
+      "S": "175c84d2a749719eed5f1da4154406f1874b087ee2066783bfaaf120d1d41e7b"
+     },
+     "layout": {
+      "S": "7e6a7a3232a157e633099f10a6f92a05510bb74266e99af3454cb5f30f29c685"
+     },
+     "stylemap": {
+      "S": "86e085f273272b4c00d5fbd23b910b4b0302cd372419cc813e98f5856f00428e"
+     },
+     "typography": {
+      "S": "70947f1d6ca65a1d9ac57441b115b5eb30d8f08d4522259caba7311c42e80647"
+     }
+    }
+   },
+   "confirmed_proposals": {
+    "L": []
+   },
+   "gate_results": {
+    "M": {
+     "evidence": {
+      "M": {
+       "dry_run_payload_dir": {
+        "S": "/Users/tnorlund/section_label_kickoff/truth_v1_payloads"
+       },
+       "generated_at": {
+        "S": "2026-07-21T17:06:49.844567+00:00"
+       },
+       "git_sha": {
+        "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+       }
+      }
+     },
+     "gate": {
+      "S": "merchant_truth_v1_bootstrap"
+     },
+     "kind": {
+      "S": "migration-bootstrap-seal"
+     },
+     "note": {
+      "S": "bootstrap seal: gate passes on dry-run<->live source parity only; no fidelity eval has run against truth-loaded renders yet"
+     },
+     "passed": {
+      "BOOL": true
+     },
+     "status": {
+      "S": "PASS"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "gate_status": {
+    "S": "PASS"
+   },
+   "mint_run_id": {
+    "S": "merchant-truth-v1-costco_wholesale-eb9d3617122b"
+   },
+   "provenance": {
+    "M": {
+     "git_sha": {
+      "S": "eb9d3617122be21d0e0e956e04f3208aec701c29"
+     },
+     "migration_blockers": {
+      "L": []
+     },
+     "minted_at": {
+      "S": "2026-07-21T17:06:49.844567+00:00"
+     },
+     "run_id": {
+      "S": "merchant-truth-v1-costco_wholesale-eb9d3617122b"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "merchant_truth_v1"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "sealed_at": {
+    "S": "2026-07-21T17:06:49.844567+00:00"
+   },
+   "slug": {
+    "S": "costco_wholesale"
+   },
+   "status": {
+    "S": "SEALED"
+   },
+   "version": {
+    "N": "1"
+   }
+  }
+ ]
+}
