@@ -13,8 +13,16 @@ Usage:
     uv run scripts/receipt_mcp_server.py
 
 Environment:
-    Requires Pulumi config for DynamoDB and ChromaDB credentials.
+    Requires Pulumi config for DynamoDB credentials.
     Set PORTFOLIO_ENV=dev or PORTFOLIO_ENV=prod
+
+    Chroma Cloud credentials are OPTIONAL: without them the server still
+    starts and serves every Dynamo-backed tool; only the vector-search
+    tools (search_receipts, list_all_receipts, search_product_lines,
+    validate_word_similarity) return a structured error at call time.
+    CHROMA_CLOUD_ENABLED / CHROMA_CLOUD_API_KEY / CHROMA_CLOUD_TENANT /
+    CHROMA_CLOUD_DATABASE environment variables override Pulumi config
+    (e.g. CHROMA_CLOUD_ENABLED=false runs Dynamo-only).
 """
 
 import asyncio
@@ -43,24 +51,41 @@ from mcp.types import ImageContent, TextContent, Tool
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global clients (initialized on startup)
+# Global clients (initialized lazily on first use)
 _dynamo_client = None
 _chroma_client = None
 _embed_fn = None
+_config = None
+
+# Tools that require Chroma Cloud (vector/embedding search). Every other
+# tool is served from DynamoDB / Lambda / Athena and must keep working
+# when Chroma Cloud is not configured.
+CHROMA_TOOLS = frozenset(
+    {
+        "search_receipts",
+        "list_all_receipts",
+        "search_product_lines",
+        "validate_word_similarity",
+    }
+)
+
+CHROMA_NOT_CONFIGURED_MESSAGE = (
+    "Chroma Cloud not configured: set CHROMA_CLOUD_ENABLED=true and "
+    "CHROMA_CLOUD_API_KEY (plus CHROMA_CLOUD_TENANT / "
+    "CHROMA_CLOUD_DATABASE) in Pulumi config or the environment to "
+    "enable semantic search."
+)
 
 
-def get_clients():
-    """Get or initialize database clients."""
-    global _dynamo_client, _chroma_client, _embed_fn
+class ChromaNotConfiguredError(RuntimeError):
+    """Raised when a Chroma-backed tool is called without Chroma Cloud creds."""
 
-    if _dynamo_client is None:
-        from receipt_agent.clients.factory import (
-            create_chroma_client,
-            create_dynamo_client,
-            create_embed_fn,
-        )
-        from receipt_chroma import ChromaClient
 
+def _load_config():
+    """Load and cache config (Lambda env vars first, Pulumi fallback)."""
+    global _config
+
+    if _config is None:
         env = os.environ.get("PORTFOLIO_ENV", "dev")
         logger.info("Loading %s environment...", env)
 
@@ -88,36 +113,85 @@ def get_clients():
                 normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
                 config[normalized_key] = value
 
+        # Environment variables override the merged config for the Chroma
+        # keys, so the server can run Dynamo-only (CHROMA_CLOUD_ENABLED=false)
+        # or be pointed at Chroma without Pulumi.
+        for env_key in (
+            "CHROMA_CLOUD_ENABLED",
+            "CHROMA_CLOUD_API_KEY",
+            "CHROMA_CLOUD_TENANT",
+            "CHROMA_CLOUD_DATABASE",
+        ):
+            if os.environ.get(env_key) is not None:
+                config[env_key.lower()] = os.environ[env_key]
+
         # Set up API keys
         if config.get("openai_api_key"):
             os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
 
-        # Create DynamoDB client
+        _config = config
+
+    return _config
+
+
+def chroma_is_configured(config) -> bool:
+    """True when Chroma Cloud is enabled and an API key is present."""
+    enabled = str(config.get("chroma_cloud_enabled", "false")).lower() == "true"
+    return enabled and bool(config.get("chroma_cloud_api_key"))
+
+
+def get_dynamo_client():
+    """Get or initialize the DynamoDB client (no Chroma required)."""
+    global _dynamo_client
+
+    if _dynamo_client is None:
+        from receipt_agent.clients.factory import create_dynamo_client
+
+        config = _load_config()
         _dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
+        logger.info("DynamoDB client initialized")
 
-        # Create ChromaDB client
-        chroma_cloud_api_key = config.get("chroma_cloud_api_key")
-        chroma_cloud_enabled = (
-            config.get("chroma_cloud_enabled", "false").lower() == "true"
-        )
+    return _dynamo_client
 
-        if not chroma_cloud_enabled or not chroma_cloud_api_key:
-            raise ValueError(
-                "Chroma Cloud is required. Set chroma_cloud_enabled=true and "
-                "chroma_cloud_api_key in Pulumi config."
-            )
+
+def get_chroma_clients():
+    """Get or initialize the Chroma Cloud client and embedding function.
+
+    Raises ChromaNotConfiguredError when Chroma Cloud credentials are
+    absent, so Chroma-backed tools fail cleanly at call time instead of
+    the server crashing at startup.
+    """
+    global _chroma_client, _embed_fn
+
+    if _chroma_client is None:
+        from receipt_agent.clients.factory import create_embed_fn
+        from receipt_chroma import ChromaClient
+
+        config = _load_config()
+        if not chroma_is_configured(config):
+            raise ChromaNotConfiguredError(CHROMA_NOT_CONFIGURED_MESSAGE)
 
         _chroma_client = ChromaClient(
-            cloud_api_key=chroma_cloud_api_key,
+            cloud_api_key=config.get("chroma_cloud_api_key"),
             cloud_tenant=config.get("chroma_cloud_tenant"),
             cloud_database=config.get("chroma_cloud_database"),
             mode="read",
         )
-
         _embed_fn = create_embed_fn()
-        logger.info("Clients initialized successfully")
+        logger.info("Chroma clients initialized")
 
-    return _dynamo_client, _chroma_client, _embed_fn
+    return _chroma_client, _embed_fn
+
+
+def get_clients():
+    """Get or initialize all database clients (requires Chroma Cloud).
+
+    Backwards-compatible wrapper; prefer get_dynamo_client() /
+    get_chroma_clients() so Dynamo-only tools work without Chroma creds.
+    """
+    dynamo_client = get_dynamo_client()
+    chroma_client, embed_fn = get_chroma_clients()
+    return dynamo_client, chroma_client, embed_fn
 
 
 # Create MCP server
@@ -1821,7 +1895,11 @@ def _fetch_mcp_preview(url: str) -> bytes:
 async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageContent]:
     """Handle tool calls."""
     try:
-        dynamo_client, chroma_client, embed_fn = get_clients()
+        dynamo_client = get_dynamo_client()
+        if name in CHROMA_TOOLS:
+            chroma_client, embed_fn = get_chroma_clients()
+        else:
+            chroma_client = embed_fn = None
 
         if name == "search_receipts":
             result = await search_receipts_impl(
@@ -2122,6 +2200,20 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
                     )
         return content
 
+    except ChromaNotConfiguredError as e:
+        logger.warning("Chroma tool %r unavailable: %s", name, e)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "error": str(e),
+                        "error_type": "chroma_not_configured",
+                        "tool": name,
+                    }
+                ),
+            )
+        ]
     except Exception as e:
         logger.exception("Tool error")
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
@@ -4926,11 +5018,23 @@ async def main():
     """Run the MCP server."""
     logger.info("Starting Receipt MCP Server...")
 
-    # Pre-initialize clients
+    # Pre-initialize clients (Chroma is optional: Dynamo-only is fine)
     try:
-        get_clients()
+        get_dynamo_client()
     except Exception as e:
-        logger.error("Failed to initialize clients: %s", e)
+        logger.error("Failed to initialize DynamoDB client: %s", e)
+        # Continue anyway - will retry on first tool call
+    try:
+        get_chroma_clients()
+    except ChromaNotConfiguredError as e:
+        logger.warning(
+            "%s Chroma-backed tools (%s) are disabled; Dynamo-backed "
+            "tools remain available.",
+            e,
+            ", ".join(sorted(CHROMA_TOOLS)),
+        )
+    except Exception as e:
+        logger.error("Failed to initialize Chroma clients: %s", e)
         # Continue anyway - will retry on first tool call
 
     async with stdio_server() as (read_stream, write_stream):
