@@ -101,3 +101,31 @@ class MerchantTruthTableMismatchError(MerchantTruthError, ValueError):
 
 class MerchantTruthPromotionError(MerchantTruthError):
     """Raised when fail-closed promotion cannot preserve the truth closure."""
+
+
+class GateBridgeError(MerchantTruthError, ValueError):
+    """Raised when eval output cannot be adapted into a seal gate signal.
+
+    The eval->seal bridge (contract §7.5) fails closed on structurally
+    inconsistent input: an unknown ``overall`` verdict, an
+    ``overall == PASS_WITH_GAPS`` carrying an empty gap list, or a non-empty
+    gap list masquerading as a plain ``PASS``.
+    """
+
+
+class GateBlockedError(MerchantTruthError):
+    """Raised when a failing eval blocks a seal (contract §7.5).
+
+    A ``FAIL`` overall leaves the version OPEN. The gate record written for
+    the failing run is the work list for closing it, so the derived
+    ``gate_results`` (with the failing gaps) ride along on the exception.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        gate_results: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.gate_results = gate_results or {}
