@@ -65,6 +65,27 @@ changes. To publish for real, back up and copy the npz into `$BITMATRIX_DIR`
   auto-derived). Generated npz/PNGs live in `.out/` (gitignored); the JSON
   sources are the committable truth.
 
+## Layout variant clustering (W-G)
+
+`scripts/build_variant_layout.py` (repo root) measures a merchant's SCAN
+receipts with `glyphstudio.stylescan`, clusters the per-receipt layout
+signatures BEFORE pooling (`glyphstudio.variant_cluster`), then pools each
+cluster through `layout_template.build_layout_template`. Persisted-artifact
+convention (artifacts gitignored via `.out/`; this layout is the contract):
+
+```
+tools/glyph-studio/.out/stylescan/<merchant_slug>/
+    <image_id>_<receipt_id>.json   # one stylescan.measure record
+    manifest.json                  # sha256 per record + run provenance
+tools/glyph-studio/.out/variant_layout/
+    <merchant_slug>_variant_layout.json  # template + verdict + provenance
+```
+
+The emitted `template` keeps `version: 1` (dominant cluster at the top
+level, other clusters in `template.variants[]`) and must pass
+`layout_template.validate_layout_template` unchanged. A committed sample of
+the real Costco run lives at `fixtures/costco_variant_layout.sample.json`.
+
 ## MCP server
 
 `server/mcp.mjs` is a stdio Model Context Protocol server — a sibling entry
