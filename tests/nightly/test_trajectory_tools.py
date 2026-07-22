@@ -79,7 +79,19 @@ def test_metrics_numbers():
     assert m["truncated"] is False
     assert m["parse_errors"] == 0
     assert m["usage_event_count"] == 2  # two distinct assistant messages
+    # Completed run: token_totals is the AUTHORITATIVE terminal aggregate,
+    # with correct output_tokens (234). Sourcing output from the streamed
+    # per-message sum (7) instead reds this assertion — the mutation guard.
+    assert m["token_totals_source"] == "result_aggregate"
     assert m["token_totals"] == {
+        "input": 16,
+        "output": 234,
+        "cache_creation": 9618,
+        "cache_read": 39344,
+    }
+    # The per-message streamed sums are still recorded as the live-path
+    # estimate; here output under-reports (7 vs 234), input/cache are exact.
+    assert m["streamed_token_totals"] == {
         "input": 16,
         "output": 7,
         "cache_creation": 9618,
@@ -155,14 +167,19 @@ def test_truncated_metrics_reports_partial_with_flag():
     assert m["total_cost_usd"] is None
     assert m["num_turns"] is None
     assert m["duration_ms"] is None
+    # No result event: token_totals IS the streamed estimate, explicitly
+    # flagged so downstream readers know output under-reports.
+    assert m["token_totals_source"] == "streamed_estimate"
     # Only the first assistant message's usage is present pre-cut.
     assert m["usage_event_count"] == 1
-    assert m["token_totals"] == {
+    expected_estimate = {
         "input": 10,
         "output": 3,
         "cache_creation": 6922,
         "cache_read": 17589,
     }
+    assert m["token_totals"] == expected_estimate
+    assert m["streamed_token_totals"] == expected_estimate
 
 
 def test_truncated_extract_result_falls_back_without_crashing():

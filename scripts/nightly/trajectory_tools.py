@@ -32,8 +32,31 @@ Token summing note: in stream-json a single assistant message is emitted as
 several ``assistant`` lines (one per streamed content block) that repeat one
 ``message.id``; usage is therefore summed per distinct message id. The streamed
 ``output_tokens`` are early snapshots and under-report vs. the terminal
-aggregate — input/cache totals match the aggregate exactly, which is what makes
-this the incrementally-computable number the H2 token breaker will also use.
+aggregate: on the recorded fixture the streamed output sum is 7 while the
+terminal aggregate is 234 (a 33x undercount). input/cache_creation/cache_read
+totals DO match the aggregate exactly.
+
+Because of that, ``metrics`` reports authoritative ``token_totals`` sourced
+from the terminal ``result`` event's usage on a completed run
+(``token_totals_source == "result_aggregate"``), and additionally records the
+per-message ``streamed_token_totals`` (the live-path estimate). On a
+truncated/live trace with no result event, ``token_totals`` IS the streamed
+estimate and ``token_totals_source == "streamed_estimate"`` — a signal to
+downstream readers that ``output`` under-reports.
+
+H2 HAND-OFF DECISION (read this before wiring the live token breaker): the
+watchdog will poll the growing trajectory.jsonl and can only compute the
+per-message streamed sums, where ``output`` is known-undercounted. This does
+NOT defeat the breaker's "trip early, never late" guarantee. In any multi-turn
+runaway the input + cache_read side is counted EXACTLY and dominates: on this
+fixture input+cache_creation+cache_read = 48,978 of 49,212 total tokens
+(99.5%), and that side grows every turn as context re-reads accumulate, so the
+2M ceiling is reached on the exactly-counted, monotonically-growing majority
+well before the ~0.5% output undercount could matter. The only shape the
+streamed undercount could hide is a single-turn output-heavy runaway (few input
+tokens, enormous generation); that is bounded by the wall-clock watchdog
+(H3/exit 124), not the token breaker. Counting streamed output at face value is
+therefore the correct conservative choice for the live path.
 
 Usage:
     trajectory_tools.py extract-result FILE
@@ -160,6 +183,22 @@ def _session_id(parsed: Parsed) -> str | None:
     return None
 
 
+def _result_usage_totals(usage: Any) -> dict[str, int] | None:
+    """Map the terminal ``result`` event's usage to the four token keys.
+
+    This is the authoritative aggregate (correct ``output_tokens``). Returns
+    ``None`` when no usable usage dict is present (e.g. a truncated trace with
+    no result event), so the caller falls back to the streamed estimate.
+    """
+    if not isinstance(usage, dict):
+        return None
+    totals: dict[str, int] = {}
+    for name, api_key in TOKEN_FIELDS.items():
+        val = usage.get(api_key)
+        totals[name] = val if isinstance(val, int) else 0
+    return totals
+
+
 def compute_metrics(
     path: str | Path,
     *,
@@ -169,17 +208,35 @@ def compute_metrics(
     """Compute run_metrics.json contents from a trajectory."""
     parsed = parse(path)
 
-    totals = {name: 0 for name in TOKEN_FIELDS}
-    for msg in _assistant_messages(parsed):
+    # Per-message streamed sums. These are what the H2 live token breaker can
+    # compute incrementally as trajectory.jsonl grows, but streamed
+    # ``output_tokens`` are frozen early snapshots: on the recorded fixture the
+    # streamed output sum is 7 vs the terminal aggregate's 234 (a 33x
+    # undercount). input/cache_creation/cache_read ARE exact.
+    messages = _assistant_messages(parsed)
+    streamed_totals = {name: 0 for name in TOKEN_FIELDS}
+    for msg in messages:
         usage = msg.get("usage")
         if not isinstance(usage, dict):
             continue
         for name, api_key in TOKEN_FIELDS.items():
             val = usage.get(api_key)
             if isinstance(val, int):
-                totals[name] += val
+                streamed_totals[name] += val
 
     result = parsed.result or {}
+    # Prefer the terminal result event's usage — the authoritative aggregate
+    # (correct output_tokens) — when the run completed. On a truncated/live
+    # trace there is no result event, so fall back to the streamed estimate and
+    # flag it as such (output under-reports).
+    authoritative = _result_usage_totals(result.get("usage"))
+    if authoritative is not None:
+        token_totals = authoritative
+        token_totals_source = "result_aggregate"
+    else:
+        token_totals = dict(streamed_totals)
+        token_totals_source = "streamed_estimate"
+
     return {
         "session_id": _session_id(parsed),
         "claude_version": claude_version,
@@ -187,8 +244,11 @@ def compute_metrics(
         "num_turns": result.get("num_turns"),
         "duration_ms": result.get("duration_ms"),
         "wrapper_duration_secs": duration_secs,
-        "token_totals": totals,
-        "usage_event_count": len(_assistant_messages(parsed)),
+        "token_totals": token_totals,
+        "token_totals_source": token_totals_source,
+        # Live-path estimate (per-message streamed sums); output under-reports.
+        "streamed_token_totals": streamed_totals,
+        "usage_event_count": len(messages),
         "parse_errors": parsed.parse_errors,
         "truncated": parsed.truncated,
     }
