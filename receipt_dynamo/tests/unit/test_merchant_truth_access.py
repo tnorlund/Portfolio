@@ -37,6 +37,7 @@ class RecordingClient:
         self.updates: list[dict[str, Any]] = []
         self.get_responses: list[dict[str, Any]] = []
         self.query_responses: list[dict[str, Any]] = []
+        self.query_calls: list[dict[str, Any]] = []
         self.transaction_errors: list[ClientError] = []
 
     def transact_write_items(self, **kwargs: Any) -> None:
@@ -53,7 +54,8 @@ class RecordingClient:
     def get_item(self, **_kwargs: Any) -> dict[str, Any]:
         return self.get_responses.pop(0) if self.get_responses else {}
 
-    def query(self, **_kwargs: Any) -> dict[str, Any]:
+    def query(self, **kwargs: Any) -> dict[str, Any]:
+        self.query_calls.append(kwargs)
         return self.query_responses.pop(0) if self.query_responses else {}
 
 
@@ -500,6 +502,79 @@ def test_mint_rejects_duplicate_component_and_writes_nothing() -> None:
         )
 
     assert client.transactions == []
+
+
+def test_latest_version_over_empty_partition_is_none() -> None:
+    client = RecordingClient()
+    client.query_responses.append({})
+    truth = accessor(client)
+
+    assert (
+        truth.get_latest_merchant_truth_version(SLUG, sealed_only=False)
+        is None
+    )
+
+
+def test_next_mint_version_starts_at_one_for_empty_partition() -> None:
+    client = RecordingClient()
+    client.query_responses.append({})
+    truth = accessor(client)
+
+    assert truth.next_mint_version(SLUG) == 1
+
+
+def test_latest_version_reads_first_descending_manifest() -> None:
+    client = RecordingClient()
+    client.query_responses.append({"Items": [manifest(3).to_item()]})
+    truth = accessor(client)
+
+    assert (
+        truth.get_latest_merchant_truth_version(SLUG, sealed_only=False) == 3
+    )
+    request = client.query_calls[0]
+    assert request["ScanIndexForward"] is False
+    assert request["ExpressionAttributeValues"][":sk"] == {"S": "TRUTH#v"}
+    # Without sealed_only, the filter keeps manifests but not the SEALED
+    # status, so open in-flight versions are visible to mint allocation.
+    assert ":sealed" not in request["ExpressionAttributeValues"]
+
+
+def test_next_mint_version_is_latest_plus_one() -> None:
+    client = RecordingClient()
+    client.query_responses.append({"Items": [manifest(4).to_item()]})
+    truth = accessor(client)
+
+    assert truth.next_mint_version(SLUG) == 5
+
+
+def test_latest_version_paginates_past_filtered_empty_pages() -> None:
+    client = RecordingClient()
+    # A FilterExpression can empty a page while more pages remain; the reader
+    # must follow LastEvaluatedKey rather than stop at the first empty page.
+    client.query_responses.append(
+        {"Items": [], "LastEvaluatedKey": {"PK": {"S": "x"}}}
+    )
+    client.query_responses.append({"Items": [manifest(7).to_item()]})
+    truth = accessor(client)
+
+    assert (
+        truth.get_latest_merchant_truth_version(SLUG, sealed_only=False) == 7
+    )
+    assert len(client.query_calls) == 2
+    assert "ExclusiveStartKey" in client.query_calls[1]
+
+
+def test_latest_sealed_only_carries_the_status_filter() -> None:
+    client = RecordingClient()
+    client.query_responses.append(
+        {"Items": [manifest(2, status="SEALED").to_item()]}
+    )
+    truth = accessor(client)
+
+    assert truth.get_latest_merchant_truth_version(SLUG, sealed_only=True) == 2
+    request = client.query_calls[0]
+    assert request["ExpressionAttributeValues"][":sealed"] == {"S": "SEALED"}
+    assert "#status = :sealed" in request["FilterExpression"]
 
 
 def test_dev_table_guard_fails_before_any_write() -> None:

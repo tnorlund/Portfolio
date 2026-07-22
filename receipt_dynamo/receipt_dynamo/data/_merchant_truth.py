@@ -920,6 +920,81 @@ class _MerchantTruth(FlattenedStandardMixin):
         )
         return [MerchantTruthProposal.from_item(item) for item in items]
 
+    def _highest_manifest_item(
+        self, slug: str, *, sealed_only: bool
+    ) -> dict[str, Any] | None:
+        """Return the highest-version manifest item via a descending Query.
+
+        Contract §7.4: descending Query on ``begins_with(SK, "TRUTH#v")``,
+        first manifest. A ``FilterExpression`` keeps only manifest rows (so
+        components never win the "first" slot) and, when ``sealed_only``,
+        only SEALED manifests. With ``ScanIndexForward=False`` DynamoDB
+        returns matches in descending SK order, so the first item of the
+        first non-empty page is the highest matching version. Pagination is
+        honored because a FilterExpression can empty a page while more pages
+        remain. Gaps in the version sequence (from an OPEN-version cleanup)
+        are irrelevant: "latest" is whatever the Query returns, never a count.
+        """
+        names: dict[str, str] = {"#type": "TYPE"}
+        values: dict[str, Any] = {
+            ":pk": {"S": merchant_truth_pk(slug)},
+            ":sk": {"S": "TRUTH#v"},
+            ":manifest": {"S": "MERCHANT_TRUTH_MANIFEST"},
+        }
+        filter_expression = "#type = :manifest"
+        if sealed_only:
+            names["#status"] = "status"
+            values[":sealed"] = {"S": "SEALED"}
+            filter_expression += " AND #status = :sealed"
+        exclusive_start_key = None
+        while True:
+            request: dict[str, Any] = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": (
+                    "PK = :pk AND begins_with(SK, :sk)"
+                ),
+                "FilterExpression": filter_expression,
+                "ExpressionAttributeNames": names,
+                "ExpressionAttributeValues": values,
+                "ScanIndexForward": False,
+            }
+            if exclusive_start_key is not None:
+                request["ExclusiveStartKey"] = exclusive_start_key
+            response = self._client.query(**request)
+            items = response.get("Items", [])
+            if items:
+                return items[0]
+            exclusive_start_key = response.get("LastEvaluatedKey")
+            if not exclusive_start_key:
+                return None
+
+    def get_latest_merchant_truth_version(
+        self, slug: str, *, sealed_only: bool
+    ) -> int | None:
+        """Return the highest existing version for ``slug`` (contract §7.4).
+
+        ``sealed_only=True`` returns the highest SEALED version (what
+        promotion/diff/mint-from want); otherwise the highest version of any
+        status, OPEN included (what mint allocation must see so it never
+        collides with an in-flight OPEN version). ``None`` when the partition
+        holds no matching manifest.
+        """
+        item = self._highest_manifest_item(slug, sealed_only=sealed_only)
+        return int(item["version"]["N"]) if item else None
+
+    def next_mint_version(self, slug: str) -> int:
+        """Return the next version to allocate for ``slug`` (contract §7.4).
+
+        ``get_latest_merchant_truth_version(sealed_only=False) + 1`` (1 when
+        no versions exist). Sees OPEN versions so a fresh mint never collides
+        with an in-flight one; version numbers are never reused, and gaps
+        left by an OPEN-version cleanup are legal and expected.
+        """
+        latest = self.get_latest_merchant_truth_version(
+            slug, sealed_only=False
+        )
+        return 1 if latest is None else latest + 1
+
     def _query_all(self, **params: Any) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         exclusive_start_key = None
