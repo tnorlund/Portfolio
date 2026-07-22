@@ -14,22 +14,27 @@ it to a live ``git show`` read and the governed ``add_proposal`` accessor.
 
 Design notes
 ------------
+* **Every extracted leaf is written.** Zero-text-loss means every leaf's
+  verbatim text persists in a written record, so preservation never depends
+  on a dedupe heuristic. A multi-topic note (e.g. the Costco ``_comment``,
+  which spans font, condense, footer *and* the self-checkout observation) is
+  never dropped because it happens to touch a topic another proposal covers.
+* **Relatedness is a non-suppressing annotation.** When an existing proposal
+  is textually related to a leaf, the written record carries a ``related_to``
+  field in its claim envelope naming that proposal's ``claim_slug`` - a
+  cross-reference, not a substitute. The relatedness signal is deliberately
+  conservative (a shared distinctive hyphenated compound like
+  ``self-checkout``, or a shared contiguous >=``MIN_COVERAGE_NGRAM`` token
+  phrase) so common bigrams such as ``font size`` do not trip it; but even a
+  false relatedness link is low-harm now, because it only adds a reference.
 * **Provenance lives in the claim body.** ``MerchantTruthProposal`` has no
   provenance field, so each imported claim is a canonical JSON envelope
-  ``{"provenance": {...}, "text": <verbatim>}``. ``text`` is the byte-exact
-  curator note; the zero-text-loss check verifies it round-trips identically
-  against a fresh ``git show``.
+  ``{"provenance": {...}, "text": <verbatim>}`` (plus ``related_to`` when
+  set). ``text`` is the byte-exact curator note.
 * **claim_slug is derived from the leaf path** (stable + deduplicatable), so
-  an idempotent re-run recognises an already-imported leaf and skips it.
-* **Textual dedupe is anchored on the *existing* proposal's claim_slug.** A
-  leaf is "covered by" a prior proposal when the leaf text contains, as a
-  contiguous token phrase, some >=2-token contiguous n-gram of that
-  proposal's claim_slug. The curator-authored claim_slug is the semantic key
-  of the observation, so this is a conservative, false-positive-resistant
-  signal: the Costco ``_comment`` (which mentions ``SELF-CHECKOUT``) is
-  covered by ``self-checkout-layout-variant`` and referenced rather than
-  duplicated, while the neighbouring ``layout_template._comment`` /
-  ``_face_source_comment`` notes are NOT falsely suppressed.
+  an idempotent re-run recognises an already-imported leaf and skips it - the
+  only non-writing disposition, and only because the text already persists in
+  the prior record.
 """
 
 from __future__ import annotations
@@ -48,8 +53,14 @@ COMMENT_FIELDS = frozenset({"_comment", "_face_source_comment"})
 # The system-of-record that authored these claims (contract §7.8 provenance).
 PROVENANCE_SOURCE = "profile-comment"
 
-# Minimum contiguous claim_slug n-gram length that counts as textual coverage.
-MIN_COVERAGE_NGRAM = 2
+# Minimum contiguous shared token phrase length that signals relatedness.
+# Bigrams over-trigger on boilerplate (e.g. "font size"); require three.
+MIN_COVERAGE_NGRAM = 3
+
+# A distinctive hyphenated compound: two or more alphabetic sub-words joined
+# by hyphens (e.g. "self-checkout", "variant-aware"). These are specific
+# enough to signal relatedness on their own.
+_HYPHEN_COMPOUND = re.compile(r"[a-z]+(?:-[a-z]+)+")
 
 
 @dataclass(frozen=True)
@@ -58,28 +69,32 @@ class ExtractedLeaf:
 
     merchant_name: str
     slug: str
-    leaf_path: (
-        str  # full source path, e.g. "profiles.Costco Wholesale._comment"
-    )
-    rel_path: str  # merchant-relative path, e.g. "layout_template._comment"
+    leaf_path: str  # full source path, e.g. profiles.Costco Wholesale._comment
+    rel_path: str  # merchant-relative path, e.g. layout_template._comment
     text: str
     claim_slug: str
 
 
 @dataclass(frozen=True)
 class LeafDecision:
-    """Per-leaf disposition in an import plan."""
+    """Per-leaf disposition in an import plan.
+
+    ``WRITE`` persists a new PROPOSED record (optionally annotated with
+    ``related_to``); ``SKIP_EXISTS`` is the idempotent no-op for a leaf whose
+    ``claim_slug`` is already present (its text already persists). There is no
+    suppressing disposition - a related leaf still writes.
+    """
 
     leaf: ExtractedLeaf
-    action: str  # WRITE | COVERED_BY | SKIP_EXISTS
-    covered_by: str | None = None  # existing claim_slug when COVERED_BY
-    matched_phrase: str | None = None  # the shared claim_slug phrase
+    action: str  # WRITE | SKIP_EXISTS
+    related_to: str | None = None  # existing claim_slug this leaf references
+    matched_phrase: str | None = None  # the shared compound / phrase
     proposal: MerchantTruthProposal | None = None  # set when action == WRITE
 
 
 @dataclass(frozen=True)
 class LeafVerification:
-    """Byte-identical text-loss result for one leaf."""
+    """Persistence result for one extracted leaf."""
 
     leaf_path: str
     ok: bool
@@ -97,8 +112,8 @@ class ImportPlan:
         return [d for d in self.decisions if d.action == "WRITE"]
 
     @property
-    def covered(self) -> list[LeafDecision]:
-        return [d for d in self.decisions if d.action == "COVERED_BY"]
+    def related(self) -> list[LeafDecision]:
+        return [d for d in self.decisions if d.related_to is not None]
 
     @property
     def skipped(self) -> list[LeafDecision]:
@@ -169,9 +184,19 @@ def extract_comment_leaves(document: dict[str, Any]) -> list[ExtractedLeaf]:
     return leaves
 
 
-def build_claim(text: str, leaf_path: str, git_sha: str) -> str:
-    """Build the canonical JSON claim envelope carrying text + provenance."""
-    envelope = {
+def build_claim(
+    text: str,
+    leaf_path: str,
+    git_sha: str,
+    *,
+    related_to: str | None = None,
+) -> str:
+    """Build the canonical JSON claim envelope carrying text + provenance.
+
+    ``related_to`` (when set) cross-references an existing proposal's
+    ``claim_slug``; it never replaces ``text``, which stays byte-exact.
+    """
+    envelope: dict[str, Any] = {
         "provenance": {
             "source": PROVENANCE_SOURCE,
             "leaf_path": leaf_path,
@@ -179,6 +204,8 @@ def build_claim(text: str, leaf_path: str, git_sha: str) -> str:
         },
         "text": text,
     }
+    if related_to is not None:
+        envelope["related_to"] = related_to
     return json.dumps(envelope, ensure_ascii=False, sort_keys=True)
 
 
@@ -187,51 +214,78 @@ def extract_text_from_claim(claim: str) -> str:
     return json.loads(claim)["text"]
 
 
+def _proposal_text(proposal: MerchantTruthProposal) -> str:
+    """Return an existing proposal's human text.
+
+    Crosswalk imports store a JSON envelope; owner proposals store plain
+    prose. Compare against the envelope's ``text`` when present.
+    """
+    claim = proposal.claim
+    try:
+        data = json.loads(claim)
+    except (ValueError, TypeError):
+        return claim
+    if isinstance(data, dict) and isinstance(data.get("text"), str):
+        return data["text"]
+    return claim
+
+
 def _normalize_tokens(text: str) -> list[str]:
     """Lowercase and split on non-alphanumerics into content tokens."""
     return [tok for tok in re.split(r"[^a-z0-9]+", text.lower()) if tok]
 
 
-def _claim_slug_ngrams(claim_slug: str) -> list[list[str]]:
-    """Return every contiguous >=MIN_COVERAGE_NGRAM token run of a slug."""
-    tokens = [tok for tok in claim_slug.split("-") if tok]
-    ngrams: list[list[str]] = []
-    for size in range(MIN_COVERAGE_NGRAM, len(tokens) + 1):
-        for start in range(0, len(tokens) - size + 1):
-            ngrams.append(tokens[start : start + size])
-    return ngrams
+def _compounds(text: str) -> set[str]:
+    """Distinctive hyphenated compound terms present in ``text``."""
+    return set(_HYPHEN_COMPOUND.findall(text.lower()))
 
 
-def _contiguous_sublist(needle: list[str], haystack: list[str]) -> bool:
-    if not needle or len(needle) > len(haystack):
-        return False
-    for start in range(0, len(haystack) - len(needle) + 1):
-        if haystack[start : start + len(needle)] == needle:
-            return True
-    return False
+def _longest_shared_phrase(left: str, right: str, min_len: int) -> str | None:
+    """Longest contiguous shared token run of >= ``min_len`` tokens, or None."""
+    left_tokens = _normalize_tokens(left)
+    right_tokens = _normalize_tokens(right)
+    upper = min(len(left_tokens), len(right_tokens))
+    for size in range(upper, min_len - 1, -1):
+        right_grams = {
+            tuple(right_tokens[i : i + size])
+            for i in range(len(right_tokens) - size + 1)
+        }
+        for start in range(len(left_tokens) - size + 1):
+            candidate = tuple(left_tokens[start : start + size])
+            if candidate in right_grams:
+                return " ".join(candidate)
+    return None
 
 
-def find_coverage(
+def find_related(
     leaf: ExtractedLeaf,
     existing: list[MerchantTruthProposal],
 ) -> tuple[str, str] | None:
-    """Return (existing_claim_slug, matched_phrase) if a proposal covers leaf.
+    """Return (existing_claim_slug, matched_term) if a proposal relates to leaf.
 
-    Coverage is anchored on the existing proposal's *claim_slug*: the leaf is
-    covered when its text contains a contiguous >=2-token n-gram of that slug
-    as a contiguous token phrase. Longer n-grams are preferred so the report
-    cites the most specific shared phrase.
+    Relatedness is a conservative textual signal against the existing
+    proposal's text: a shared distinctive hyphenated compound (preferred, e.g.
+    ``self-checkout``) or, failing that, a shared contiguous
+    >=``MIN_COVERAGE_NGRAM`` token phrase. It only annotates the written
+    record; it never suppresses a write.
     """
-    leaf_tokens = _normalize_tokens(leaf.text)
+    leaf_compounds = _compounds(leaf.text)
     best: tuple[str, str] | None = None
-    best_len = 0
+    best_score = 0
     for proposal in existing:
-        for ngram in _claim_slug_ngrams(proposal.claim_slug):
-            if len(ngram) > best_len and _contiguous_sublist(
-                ngram, leaf_tokens
-            ):
-                best = (proposal.claim_slug, " ".join(ngram))
-                best_len = len(ngram)
+        ptext = _proposal_text(proposal)
+        shared = leaf_compounds & _compounds(ptext)
+        if shared:
+            term = max(sorted(shared), key=len)
+            score = 1000 + len(term)  # compounds beat any phrase
+            if score > best_score:
+                best, best_score = (proposal.claim_slug, term), score
+            continue
+        phrase = _longest_shared_phrase(leaf.text, ptext, MIN_COVERAGE_NGRAM)
+        if phrase:
+            score = len(phrase.split())
+            if score > best_score:
+                best, best_score = (proposal.claim_slug, phrase), score
     return best
 
 
@@ -242,82 +296,110 @@ def plan_import(
     git_sha: str,
     created_at: str,
 ) -> ImportPlan:
-    """Decide per leaf: WRITE a new proposal, SKIP an idempotent re-run, or
-    reference a prior proposal that already covers the observation."""
+    """Decide per leaf: WRITE a new proposal (annotated with ``related_to``
+    when an existing proposal is related), or SKIP an idempotent re-run.
+
+    Every extracted leaf gets a persisting disposition - a related leaf still
+    writes its full record - so no curator note is ever dropped.
+    """
     decisions: list[LeafDecision] = []
     for leaf in leaves:
         existing = existing_by_slug.get(leaf.slug, [])
-        existing_slugs = {p.claim_slug for p in existing}
-        if leaf.claim_slug in existing_slugs:
+        if leaf.claim_slug in {p.claim_slug for p in existing}:
             decisions.append(LeafDecision(leaf=leaf, action="SKIP_EXISTS"))
             continue
-        coverage = find_coverage(leaf, existing)
-        if coverage is not None:
-            decisions.append(
-                LeafDecision(
-                    leaf=leaf,
-                    action="COVERED_BY",
-                    covered_by=coverage[0],
-                    matched_phrase=coverage[1],
-                )
-            )
-            continue
+        related = find_related(leaf, existing)
+        related_to = related[0] if related else None
         proposal = MerchantTruthProposal(
             slug=leaf.slug,
             created_at=created_at,
             claim_slug=leaf.claim_slug,
-            claim=build_claim(leaf.text, leaf.leaf_path, git_sha),
+            claim=build_claim(
+                leaf.text, leaf.leaf_path, git_sha, related_to=related_to
+            ),
         )
         decisions.append(
-            LeafDecision(leaf=leaf, action="WRITE", proposal=proposal)
+            LeafDecision(
+                leaf=leaf,
+                action="WRITE",
+                related_to=related_to,
+                matched_phrase=related[1] if related else None,
+                proposal=proposal,
+            )
         )
     return ImportPlan(decisions=decisions)
 
 
-def verify_no_text_loss(
+def verify_persistence(
     plan: ImportPlan,
     reference_document: dict[str, Any],
+    *,
+    scope: set[str] | None = None,
 ) -> list[LeafVerification]:
-    """Diff every extracted leaf against an independent re-read of the source.
+    """Assert every in-scope extracted leaf's text persists in a record.
 
-    ``reference_document`` is a fresh parse of ``git show <sha>:...`` obtained
-    separately from the extraction read. For each leaf we re-walk the
-    reference document to the same path and require the value to be
-    byte-identical to the captured text (and, for WRITE decisions, to the text
-    embedded in the built claim envelope). Any drift is reported red.
+    Extraction-driven (not write-driven): re-extract the leaves from a fresh
+    ``git show`` parse of the source and require, for each, a plan decision
+    whose persisted text is byte-identical. A leaf with no decision is
+    ``planless`` and fails - which makes the old "covered-but-unwritten"
+    suppression class structurally impossible: a dropped leaf is a red row,
+    not a silent omission.
+
+    ``scope`` (a set of ``leaf_path``) restricts the assertion to the leaves
+    the run intended to handle - e.g. when ``--merchants`` narrowed the plan.
+    Leaves outside scope were never in play and are not treated as planless.
+
+    Honesty note: this checks *extraction-faithfulness + envelope round-trip*,
+    not an OCR-of-the-database read-back. Extraction here re-uses the same
+    walker as the import path, so a walker bug would affect both reads; what it
+    proves is that the text captured for each source leaf survives verbatim
+    into the record scheduled to persist it (or into the prior record an
+    idempotent skip points at).
     """
-    reference = {
-        leaf.leaf_path: leaf.text
-        for leaf in extract_comment_leaves(reference_document)
-    }
+    decisions = {d.leaf.leaf_path: d for d in plan.decisions}
     results: list[LeafVerification] = []
-    for decision in plan.decisions:
-        leaf = decision.leaf
-        ref_text = reference.get(leaf.leaf_path)
-        if ref_text is None:
+    for leaf in extract_comment_leaves(reference_document):
+        if scope is not None and leaf.leaf_path not in scope:
+            continue
+        decision = decisions.get(leaf.leaf_path)
+        if decision is None:
             results.append(
                 LeafVerification(
                     leaf.leaf_path,
                     False,
-                    "leaf absent from independent re-read",
+                    "planless: no record scheduled to persist this leaf",
                 )
             )
             continue
-        captured = leaf.text
-        # For a WRITE, also confirm the claim envelope round-trips the text.
-        if decision.proposal is not None:
-            captured = extract_text_from_claim(decision.proposal.claim)
-        if ref_text == leaf.text == captured:
+        if decision.action == "SKIP_EXISTS":
+            ok = decision.leaf.text == leaf.text
             results.append(
-                LeafVerification(leaf.leaf_path, True, "byte-identical")
+                LeafVerification(
+                    leaf.leaf_path,
+                    ok,
+                    (
+                        "already persisted (idempotent skip)"
+                        if ok
+                        else "text drift vs source on an already-imported leaf"
+                    ),
+                )
+            )
+            continue
+        assert decision.proposal is not None
+        persisted = extract_text_from_claim(decision.proposal.claim)
+        if leaf.text == decision.leaf.text == persisted:
+            results.append(
+                LeafVerification(
+                    leaf.leaf_path, True, "persists byte-identical"
+                )
             )
         else:
             results.append(
                 LeafVerification(
                     leaf.leaf_path,
                     False,
-                    f"text drift: {len(ref_text)}B ref vs "
-                    f"{len(captured)}B captured",
+                    f"text drift: {len(leaf.text)}B source vs "
+                    f"{len(persisted)}B persisted",
                 )
             )
     return results

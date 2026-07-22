@@ -8,6 +8,7 @@ AWS or git access is required.
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +23,9 @@ from receipt_dynamo.migrations.crosswalk_notes import (
     derive_claim_slug,
     extract_comment_leaves,
     extract_text_from_claim,
-    find_coverage,
+    find_related,
     plan_import,
-    verify_no_text_loss,
+    verify_persistence,
 )
 from receipt_dynamo.migrations.merchant_truth_v1_live import PROD_TABLE_NAME
 
@@ -40,6 +41,15 @@ COSTCO_COMMENT = (
 LAYOUT_COMMENT = (
     "Measured layout data (#1188 P2): columns/sections/separators from real "
     "receipts via glyphstudio.layout_template."
+)
+# The real Costco owner proposal - carries the hyphenated compound
+# "self-checkout" that links it to the Costco _comment.
+SELF_CHECKOUT_CLAIM = (
+    "Costco receipts have distinct formatting variants: warehouse register "
+    "receipts differ from self-checkout receipts. v1 layout_template pools "
+    "all 12 measured receipts into one template; measurement should cluster "
+    "by variant and either confirm bimodal layout (variant-aware truth in "
+    "v2) or refute. Owner observation, 2026-07-21."
 )
 
 
@@ -122,8 +132,6 @@ def test_build_claim_envelope_roundtrips_text_and_carries_provenance() -> None:
     claim = build_claim(
         COSTCO_COMMENT, "profiles.Costco Wholesale._comment", SHA
     )
-    import json
-
     envelope = json.loads(claim)
     assert extract_text_from_claim(claim) == COSTCO_COMMENT  # byte-identical
     assert envelope["provenance"] == {
@@ -131,22 +139,37 @@ def test_build_claim_envelope_roundtrips_text_and_carries_provenance() -> None:
         "leaf_path": "profiles.Costco Wholesale._comment",
         "git_sha": SHA,
     }
+    assert "related_to" not in envelope
+
+
+def test_build_claim_envelope_carries_related_to_without_touching_text() -> (
+    None
+):
+    claim = build_claim(
+        COSTCO_COMMENT,
+        "profiles.Costco Wholesale._comment",
+        SHA,
+        related_to="self-checkout-layout-variant",
+    )
+    envelope = json.loads(claim)
+    assert envelope["related_to"] == "self-checkout-layout-variant"
+    assert envelope["text"] == COSTCO_COMMENT  # byte-identical, untouched
 
 
 # --------------------------------------------------------------------------
-# dedupe (mutation-check: coverage must be selective)
+# relatedness is a NON-suppressing annotation (mutation-checked)
 # --------------------------------------------------------------------------
 
 
-def test_dedupe_covers_self_checkout_leaf_only() -> None:
-    """The self-checkout proposal covers the Costco _comment (which mentions
-    SELF-CHECKOUT) but NOT the sibling layout/face comments - proving coverage
-    is anchored on the proposal's claim_slug, not a blanket match."""
+def test_related_leaf_still_writes_full_record_with_reference() -> None:
+    """The multi-topic Costco _comment is NOT dropped: it writes its own full
+    record, annotated with related_to referencing the self-checkout proposal.
+    The neighbouring notes are not falsely annotated."""
     existing = [
         _seeded_proposal(
             "costco_wholesale",
             "self-checkout-layout-variant",
-            "Costco receipts have distinct formatting variants ...",
+            SELF_CHECKOUT_CLAIM,
         )
     ]
     leaves = extract_comment_leaves(_document())
@@ -158,33 +181,50 @@ def test_dedupe_covers_self_checkout_leaf_only() -> None:
     )
     actions = {d.leaf.leaf_path: d for d in plan.decisions}
 
-    covered = actions["profiles.Costco Wholesale._comment"]
-    assert covered.action == "COVERED_BY"
-    assert covered.covered_by == "self-checkout-layout-variant"
-    assert covered.matched_phrase == "self checkout"
+    costco = actions["profiles.Costco Wholesale._comment"]
+    assert costco.action == "WRITE"  # written, never suppressed
+    assert costco.related_to == "self-checkout-layout-variant"
+    assert costco.matched_phrase == "self-checkout"
+    # The full note persists verbatim, plus the cross-reference.
+    assert costco.proposal is not None
+    envelope = json.loads(costco.proposal.claim)
+    assert envelope["text"] == COSTCO_COMMENT
+    assert envelope["related_to"] == "self-checkout-layout-variant"
 
-    # The neighbouring notes are NOT falsely suppressed.
-    assert (
-        actions["profiles.Costco Wholesale.layout_template._comment"].action
-        == "WRITE"
-    )
-    assert (
-        actions[
-            "profiles.Costco Wholesale.typography._face_source_comment"
-        ].action
-        == "WRITE"
-    )
-    # An unrelated merchant is untouched by Costco's proposal.
-    assert actions["profiles.Vons._comment"].action == "WRITE"
+    # Neighbours: written, and NOT falsely related.
+    for path in (
+        "profiles.Costco Wholesale.layout_template._comment",
+        "profiles.Costco Wholesale.typography._face_source_comment",
+        "profiles.Vons._comment",
+    ):
+        assert actions[path].action == "WRITE"
+        assert actions[path].related_to is None
+
+    # Nothing suppressed: every leaf is a WRITE here.
+    assert len(plan.to_write) == 4
+    assert len(plan.related) == 1
 
 
-def test_find_coverage_returns_none_without_shared_phrase() -> None:
+def test_common_bigram_does_not_trigger_relatedness() -> None:
+    """A shared common bigram (e.g. 'font size') must NOT relate leaves - the
+    threshold is three contiguous tokens (or a distinctive hyphenated
+    compound), which guards against the reviewer's false-positive class."""
+    leaf = extract_comment_leaves(
+        {"profiles": {"Vons": {"_comment": "the font size is small"}}}
+    )[0]
+    existing = [
+        _seeded_proposal("vons", "type-scale", "increase font size slightly")
+    ]
+    assert find_related(leaf, existing) is None
+
+
+def test_find_related_returns_none_without_shared_signal() -> None:
     existing = [
         _seeded_proposal("vons", "self-checkout-layout-variant", "irrelevant")
     ]
     leaves = extract_comment_leaves(_document())
     vons = next(leaf for leaf in leaves if leaf.slug == "vons")
-    assert find_coverage(vons, existing) is None
+    assert find_related(vons, existing) is None
 
 
 # --------------------------------------------------------------------------
@@ -213,22 +253,47 @@ def test_idempotent_rerun_skips_already_imported_claim_slug() -> None:
 
 
 # --------------------------------------------------------------------------
-# zero-text-loss (red on a mutated leaf)
+# persistence / extraction-faithfulness (planless + mutated leaf go red)
 # --------------------------------------------------------------------------
 
 
-def test_verify_no_text_loss_clean_then_red_on_mutation() -> None:
+def test_verify_persistence_clean_when_every_leaf_writes() -> None:
     document = _document()
-    leaves = extract_comment_leaves(document)
-    plan = plan_import(leaves, {}, git_sha=SHA, created_at=NOW)
+    plan = plan_import(
+        extract_comment_leaves(document), {}, git_sha=SHA, created_at=NOW
+    )
+    assert all(result.ok for result in verify_persistence(plan, document))
 
-    clean = verify_no_text_loss(plan, document)
-    assert all(result.ok for result in clean)
 
-    # Mutate one leaf in the independent re-read: that leaf must go red.
+def test_verify_persistence_flags_a_planless_leaf() -> None:
+    """Dropping a leaf's decision (a suppression) is structurally caught: the
+    extraction-driven check reports the missing leaf as planless."""
+    from receipt_dynamo.migrations.crosswalk_notes import ImportPlan
+
+    document = _document()
+    full = plan_import(
+        extract_comment_leaves(document), {}, git_sha=SHA, created_at=NOW
+    )
+    dropped = ImportPlan(
+        decisions=[
+            d
+            for d in full.decisions
+            if d.leaf.leaf_path != "profiles.Costco Wholesale._comment"
+        ]
+    )
+    results = {r.leaf_path: r for r in verify_persistence(dropped, document)}
+    assert results["profiles.Costco Wholesale._comment"].ok is False
+    assert "planless" in results["profiles.Costco Wholesale._comment"].detail
+
+
+def test_verify_persistence_red_on_mutated_source_leaf() -> None:
+    document = _document()
+    plan = plan_import(
+        extract_comment_leaves(document), {}, git_sha=SHA, created_at=NOW
+    )
     mutated = _document()
     mutated["profiles"]["Costco Wholesale"]["_comment"] = COSTCO_COMMENT + " X"
-    reds = verify_no_text_loss(plan, mutated)
+    reds = verify_persistence(plan, mutated)
     failed = {r.leaf_path for r in reds if not r.ok}
     assert failed == {"profiles.Costco Wholesale._comment"}
 
@@ -311,17 +376,20 @@ def test_cli_prod_refusal_precedes_client(monkeypatch) -> None:
         module.main(["--table", PROD_TABLE_NAME])
 
 
-def test_cli_apply_writes_then_idempotent(monkeypatch) -> None:
+def test_cli_apply_writes_every_leaf_then_idempotent(monkeypatch) -> None:
     module = _load_cli()
     client = _FakeClient()
     _patch_cli(module, monkeypatch, client)
 
     rc = module.main(["--git-sha", SHA, "--apply"])
     assert rc == 0
-    # 4 leaves, none pre-existing, none covered -> 4 writes.
+    # 4 leaves, none pre-existing -> 4 writes.
     assert len(client.writes) == 4
-    written_slugs = {p.claim_slug for p in client.writes}
-    assert "profile-comment" in written_slugs
+    assert {p.claim_slug for p in client.writes} == {
+        "profile-comment",
+        "layout-template-comment",
+        "typography-face-source-comment",
+    }
 
     # Second apply against the now-populated store writes nothing new.
     client.writes.clear()
@@ -330,14 +398,14 @@ def test_cli_apply_writes_then_idempotent(monkeypatch) -> None:
     assert client.writes == []
 
 
-def test_cli_apply_references_existing_self_checkout(monkeypatch) -> None:
+def test_cli_apply_writes_related_leaf_with_reference(monkeypatch) -> None:
     module = _load_cli()
     seeded = {
         "costco_wholesale": [
             _seeded_proposal(
                 "costco_wholesale",
                 "self-checkout-layout-variant",
-                "Costco receipts have distinct formatting variants ...",
+                SELF_CHECKOUT_CLAIM,
             )
         ]
     }
@@ -348,9 +416,16 @@ def test_cli_apply_references_existing_self_checkout(monkeypatch) -> None:
         ["--git-sha", SHA, "--apply", "--merchants", "costco_wholesale"]
     )
     assert rc == 0
-    # _comment covered-by, so only layout + face comments are written.
+    # ALL three Costco leaves write (the _comment is annotated, not dropped).
     written = {p.claim_slug for p in client.writes}
     assert written == {
+        "profile-comment",
         "layout-template-comment",
         "typography-face-source-comment",
     }
+    profile = next(
+        p for p in client.writes if p.claim_slug == "profile-comment"
+    )
+    envelope = json.loads(profile.claim)
+    assert envelope["related_to"] == "self-checkout-layout-variant"
+    assert envelope["text"] == COSTCO_COMMENT  # full note preserved verbatim

@@ -13,11 +13,16 @@ Safety:
 * **Dry-run by default.** Nothing is written without ``--apply`` (owner-gated).
 * **Dev-pinned, prod refused unconditionally** *before* any boto3 client is
   built (the sibling ``migrate_merchant_truth_v1`` pattern).
-* **Idempotent.** A leaf whose claim_slug already exists is skipped; a leaf an
-  existing proposal already covers textually is referenced, not duplicated.
-* **Zero text loss.** The report diffs every extracted leaf against a fresh,
-  independent ``git show`` and requires byte-identical text before ``--apply``
-  writes anything.
+* **Every leaf persists.** Preservation never depends on a heuristic: each
+  extracted leaf writes its own full record. A leaf that is textually related
+  to an existing proposal is *annotated* with a ``related_to`` cross-reference,
+  not suppressed. The only non-writing disposition is an idempotent skip when
+  the leaf's claim_slug was already imported (its text already persists).
+* **Zero text loss = persistence.** The report re-extracts every leaf from a
+  fresh ``git show`` and asserts each maps to a record whose text is
+  byte-identical (a planless leaf fails), before ``--apply`` writes anything.
+  This proves extraction-faithfulness + envelope round-trip; the re-extract
+  shares the import walker, so it is not a database read-back.
 
 Examples::
 
@@ -43,7 +48,7 @@ from receipt_dynamo.migrations.crosswalk_notes import (
     ImportPlan,
     extract_comment_leaves,
     plan_import,
-    verify_no_text_loss,
+    verify_persistence,
 )
 from receipt_dynamo.migrations.merchant_truth_v1 import DEV_TABLE_NAME
 from receipt_dynamo.migrations.merchant_truth_v1_live import (
@@ -95,7 +100,8 @@ def _print_report(
     git_sha: str,
     apply: bool,
 ) -> bool:
-    """Print the full per-merchant report. Return True when text-loss is clean."""
+    """Print the full per-merchant report. Return True when every leaf's text
+    is verified to persist byte-identical."""
     mode = "APPLY" if apply else "DRY-RUN"
     print("=" * 72)
     print(f"import_crosswalk_notes  [{mode}]  table={table_name}")
@@ -116,11 +122,11 @@ def _print_report(
             leaf = decision.leaf
             if decision.action == "WRITE":
                 head = f"  [WOULD-WRITE] claim_slug={leaf.claim_slug}"
-            elif decision.action == "COVERED_BY":
-                head = (
-                    f"  [COVERED-BY]  {decision.covered_by} "
-                    f"(shared phrase: {decision.matched_phrase!r})"
-                )
+                if decision.related_to is not None:
+                    head += (
+                        f"  (related to: {decision.related_to}; "
+                        f"shared: {decision.matched_phrase!r})"
+                    )
             else:
                 head = f"  [SKIP-EXISTS] claim_slug={leaf.claim_slug}"
             print(head)
@@ -128,7 +134,15 @@ def _print_report(
             print(f"     text: {leaf.text!r}")
 
     print("\n" + "-" * 72)
-    print("ZERO-TEXT-LOSS VERIFICATION (vs independent git show)")
+    print("PERSISTENCE / EXTRACTION-FAITHFULNESS CHECK")
+    print(
+        "  (every extracted leaf must map to a record that persists its text "
+        "byte-identical;"
+    )
+    print(
+        "   extraction re-uses the import walker, so this proves round-trip "
+        "faithfulness, not a DB read-back)"
+    )
     print("-" * 72)
     clean = True
     for result in verifications:
@@ -141,9 +155,9 @@ def _print_report(
     print(
         f"SUMMARY: {len(plan.decisions)} leaves | "
         f"{len(plan.to_write)} to write | "
-        f"{len(plan.covered)} covered-by-existing | "
-        f"{len(plan.skipped)} already-imported | "
-        f"text-loss={'CLEAN' if clean else 'DIRTY'}"
+        f"{len(plan.related)} related-to-existing (annotated, not suppressed) "
+        f"| {len(plan.skipped)} already-imported | "
+        f"persistence={'CLEAN' if clean else 'DIRTY'}"
     )
     print("-" * 72)
     return clean
@@ -213,9 +227,12 @@ def main(argv: list[str] | None = None) -> int:
         leaves, existing_by_slug, git_sha=git_sha, created_at=created_at
     )
 
-    # Independent second read of the exact same source for the text-loss diff.
+    # Second read of the exact same source: re-extract the leaves and assert
+    # every one persists byte-identical in a scheduled record (no planless
+    # leaf), so preservation never depends on the relatedness heuristic.
     reference_document = _git_show_document(repo_root, git_sha)
-    verifications = verify_no_text_loss(plan, reference_document)
+    scope = {leaf.leaf_path for leaf in leaves}
+    verifications = verify_persistence(plan, reference_document, scope=scope)
 
     clean = _print_report(
         plan,
@@ -231,7 +248,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not clean:
         raise SystemExit(
-            "refusing to --apply: zero-text-loss verification failed"
+            "refusing to --apply: persistence verification failed "
+            "(a leaf's text would not persist byte-identical)"
         )
 
     written = 0

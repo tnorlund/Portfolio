@@ -31,6 +31,10 @@ COSTCO_COMMENT = (
     "Real font extracted from the bitMatrix-C2 chart. SELF-CHECKOUT prints "
     "as a large bold heading."
 )
+SELF_CHECKOUT_CLAIM = (
+    "Costco receipts differ from self-checkout receipts; measurement should "
+    "cluster by variant. Owner observation."
+)
 
 
 def _document() -> dict[str, Any]:
@@ -87,13 +91,13 @@ def test_apply_resolves_git_sha_dedupes_and_is_idempotent(
 ) -> None:
     client = DynamoClient(dynamodb_table)
     _seed_v1_manifest(client, dynamodb_table)
-    # A prior owner proposal that already covers the SELF-CHECKOUT observation.
+    # A prior owner proposal touching the self-checkout observation.
     client.add_proposal(
         MerchantTruthProposal(
             slug="costco_wholesale",
             created_at="2026-07-21T23:18:30.430210+00:00",
             claim_slug="self-checkout-layout-variant",
-            claim="Costco receipts have distinct formatting variants ...",
+            claim=SELF_CHECKOUT_CLAIM,
         ),
         dynamodb_table,
     )
@@ -108,23 +112,28 @@ def test_apply_resolves_git_sha_dedupes_and_is_idempotent(
     assert rc == 0
 
     costco = _claim_slugs(client, "costco_wholesale")
-    # _comment is covered-by the seeded proposal, so it is NOT duplicated.
+    # Every Costco leaf persists: the _comment is annotated, NOT suppressed.
     assert costco == {
         "self-checkout-layout-variant",
+        "profile-comment",
         "layout-template-comment",
         "typography-face-source-comment",
     }
     assert _claim_slugs(client, "vons") == {"profile-comment"}
 
-    # The written Costco layout note carries the resolved git_sha in its claim.
     import json
 
+    proposals = client.list_merchant_truth_proposals("costco_wholesale")
+    # The written Costco layout note carries the resolved git_sha in its claim.
     layout = next(
-        p
-        for p in client.list_merchant_truth_proposals("costco_wholesale")
-        if p.claim_slug == "layout-template-comment"
+        p for p in proposals if p.claim_slug == "layout-template-comment"
     )
     assert json.loads(layout.claim)["provenance"]["git_sha"] == SHA
+    # The full _comment persists verbatim, cross-referencing the owner proposal.
+    profile = next(p for p in proposals if p.claim_slug == "profile-comment")
+    profile_env = json.loads(profile.claim)
+    assert profile_env["text"] == COSTCO_COMMENT
+    assert profile_env["related_to"] == "self-checkout-layout-variant"
 
     # Second apply writes nothing new (idempotent).
     rc2 = module.main(["--table", dynamodb_table, "--apply"])
