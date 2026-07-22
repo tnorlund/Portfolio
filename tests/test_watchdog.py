@@ -12,10 +12,19 @@ must trip the breaker (exit 123) and kill the WHOLE group (the grandchild
 writer stops), while an under-budget run passes the child's exit through, a
 pure-garbage trajectory fails OPEN (no kill), and the absence of the budget
 flag leaves wall-clock-only behavior unchanged.
+
+The stall tests (plan humble-skipping-quilt H3) reuse the same group-kill
+probe for a different silence: a child that writes progress briefly then
+sleeps forever must be killed at ~stall+grace (exit 122), a continuous writer
+survives to its own exit, a never-created progress file trips at stall_secs
+after launch (the watchdog's start time is the baseline), and a stat error in
+the poll fails OPEN. A combined test arms wall + budget + stall together and
+shows each fires independently with its own exit code.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -221,6 +230,239 @@ def test_cli_token_flags_parse_and_passthrough(tmp_path):
         check=False,
     )
     assert proc.returncode == 4
+
+
+# --- H3: stall watchdog (exit 122) -----------------------------------------
+
+
+def test_stall_write_then_sleep_group_kills_and_exits_122(tmp_path):
+    """Write-then-sleep probe: the child touches the progress file a few times
+    then sleeps forever. The stall watchdog must kill the WHOLE group at
+    ~stall+grace (exit 122); the backgrounded grandchild writer is the
+    group-death proof (it must FREEZE after the kill)."""
+    progress = tmp_path / "trajectory.jsonl"
+    probe = tmp_path / "probe.out"
+    # Grandchild writer -> probe (NOT a progress file: it keeps writing until
+    # the group dies). Main proc touches progress 3x (~0.3s) then sleeps 300s,
+    # so the progress signal goes quiet and the stall trips.
+    script = (
+        f'(while :; do echo alive >> "{probe}"; sleep 0.1; done) &\n'
+        f'for i in 1 2 3; do echo tick >> "{progress}"; sleep 0.1; done\n'
+        "sleep 300\n"
+    )
+    started = time.time()
+    rc = watchdog.run(
+        timeout=30,  # generous wall clock: STALL must fire, not the wall
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script],
+        stall_secs=1.0,
+        progress_files=[str(progress)],
+        poll_interval=0.2,
+    )
+    assert rc == watchdog.STALL_EXIT, rc
+    assert time.time() - started < 15  # stall fired fast, not the 30s wall
+
+    # Group-death proof: the backgrounded grandchild writer must have stopped.
+    assert probe.exists(), "writer grandchild never started"
+    time.sleep(0.4)
+    size_a = probe.stat().st_size
+    assert size_a > 0
+    time.sleep(0.8)
+    size_b = probe.stat().st_size
+    assert size_a == size_b, (
+        "grandchild survived the stall kill "
+        f"({size_a} -> {size_b} bytes still growing)"
+    )
+
+
+def test_stall_continuous_writer_survives_to_its_own_exit(tmp_path):
+    """A child that keeps touching the progress file faster than stall_secs
+    never trips the stall watchdog and reaches its own exit code."""
+    progress = tmp_path / "trajectory.jsonl"
+    # Touch progress every 0.1s for ~2s (well under stall_secs=1.0), then exit.
+    script = (
+        f'for i in $(seq 1 20); do echo tick >> "{progress}"; sleep 0.1; '
+        "done\n"
+        "exit 6\n"
+    )
+    rc = watchdog.run(
+        timeout=30,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script],
+        stall_secs=1.0,
+        progress_files=[str(progress)],
+        poll_interval=0.2,
+    )
+    assert rc == 6
+
+
+def test_stall_never_created_progress_trips_at_stall_secs(tmp_path):
+    """A progress file that NEVER appears must still trip: the watchdog's own
+    start time is the baseline, so a never-created file trips at stall_secs
+    after launch (not immediately, and not never)."""
+    progress = tmp_path / "never_created.jsonl"  # nothing ever writes it
+    started = time.time()
+    rc = watchdog.run(
+        timeout=30,
+        grace=0.5,
+        cmd=["/bin/sh", "-c", "sleep 300"],  # idle: never writes anything
+        stall_secs=1.0,
+        progress_files=[str(progress)],
+        poll_interval=0.2,
+    )
+    assert rc == watchdog.STALL_EXIT, rc
+    elapsed = time.time() - started
+    assert elapsed >= 0.9, elapsed  # did NOT trip before stall_secs
+    assert elapsed < 10, elapsed  # DID trip (baseline is the clock)
+
+
+def test_stall_stat_error_fails_open_child_completes(tmp_path, monkeypatch):
+    """Safety-critical: if os.stat itself RAISES (a non-missing error), the
+    swallow layer must fail open — the armed watchdog's child completes
+    normally, no kill. Mirrors the token breaker's poll-error test. The tiny
+    stall_secs would trip instantly if the error were not swallowed."""
+    progress = tmp_path / "trajectory.jsonl"
+    progress.write_text("tick\n")  # exists, but stat will blow up on it
+    real_stat = os.stat
+
+    def _boom(path, *args, **kwargs):
+        if str(path) == str(progress):
+            raise RuntimeError("simulated stat failure")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", _boom)
+
+    rc = watchdog.run(
+        timeout=10,
+        grace=0.5,
+        cmd=["/bin/sh", "-c", "sleep 0.6; exit 5"],
+        stall_secs=0.1,  # tiny: would trip at once if the error weren't swallowed
+        progress_files=[str(progress)],
+        poll_interval=0.2,
+    )
+    assert rc == 5  # failed open despite the raising stat; child's code kept
+
+
+def test_combined_wall_budget_stall_each_trips_independently(tmp_path):
+    """Arm wall + budget + stall together and prove each fires on its own in
+    three scenarios, each with its distinct exit code."""
+    # --- Scenario 1: WALL trips (124). No usage events (token can't fire),
+    # progress kept fresh (stall can't fire), short 1s wall wins.
+    progress1 = tmp_path / "s1_progress.jsonl"
+    traj1 = tmp_path / "s1_traj.jsonl"
+    traj1.write_text("")  # stays empty -> 0 tokens
+    script1 = f'while :; do echo tick >> "{progress1}"; sleep 0.1; done\n'
+    started = time.time()
+    rc1 = watchdog.run(
+        timeout=1.0,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script1],
+        token_budget=1_000_000,
+        trajectory=str(traj1),
+        stall_secs=30.0,
+        progress_files=[str(progress1)],
+        poll_interval=0.2,
+    )
+    assert rc1 == watchdog.TIMEOUT_EXIT, rc1  # 124
+    assert time.time() - started < 10
+
+    # --- Scenario 2: TOKEN trips (123). Fast burn past a tiny budget; the burn
+    # keeps its own trajectory fresh (stall can't fire), 30s wall is generous.
+    traj2 = tmp_path / "s2_traj.jsonl"
+    probe2 = tmp_path / "s2_probe.out"
+    script2 = _burn_trajectory_script(traj2, probe2, tokens_per_event=1000)
+    rc2 = watchdog.run(
+        timeout=30,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script2],
+        token_budget=2500,
+        trajectory=str(traj2),
+        stall_secs=30.0,
+        progress_files=[str(traj2)],  # fresh -> stall silent
+        poll_interval=0.2,
+    )
+    assert rc2 == watchdog.TOKEN_EXIT, rc2  # 123
+
+    # --- Scenario 3: STALL trips (122). Progress goes quiet, no usage events
+    # (token silent), 30s wall is generous.
+    progress3 = tmp_path / "s3_progress.jsonl"
+    traj3 = tmp_path / "s3_traj.jsonl"
+    traj3.write_text("")  # empty -> 0 tokens, token can't fire
+    script3 = (
+        f'for i in 1 2 3; do echo tick >> "{progress3}"; sleep 0.1; done\n'
+        "sleep 300\n"
+    )
+    rc3 = watchdog.run(
+        timeout=30,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script3],
+        token_budget=1_000_000,
+        trajectory=str(traj3),
+        stall_secs=1.0,
+        progress_files=[str(progress3)],
+        poll_interval=0.2,
+    )
+    assert rc3 == watchdog.STALL_EXIT, rc3  # 122
+
+
+def test_no_stall_flag_is_wall_clock_only(tmp_path):
+    """Stall (and token) flags absent -> byte-identical wall-clock-only path:
+    normal exit passes through, and a wall-clock timeout still exits 124."""
+    assert (
+        watchdog.run(timeout=10, grace=1, cmd=["/bin/sh", "-c", "exit 8"]) == 8
+    )
+    out = tmp_path / "probe.out"
+    script = f'(while :; do echo x >> "{out}"; sleep 0.1; done) & sleep 30'
+    rc = watchdog.run(timeout=1.0, grace=1.0, cmd=["/bin/sh", "-c", script])
+    assert rc == watchdog.TIMEOUT_EXIT
+
+
+def test_cli_stall_flags_parse_and_passthrough(tmp_path):
+    """CLI wiring: --stall-secs parses and --progress is REPEATABLE; under the
+    threshold (fresh files) the child's exit passes through."""
+    progress = tmp_path / "trajectory.jsonl"
+    progress.write_text("")
+    report = tmp_path / "report.md"
+    report.write_text("")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG_CLI),
+            "--grace",
+            "1",
+            "--stall-secs",
+            "30",
+            "--progress",
+            str(progress),
+            "--progress",
+            str(report),
+            "10",
+            "--",
+            "/bin/sh",
+            "-c",
+            "exit 4",
+        ],
+        check=False,
+    )
+    assert proc.returncode == 4
+
+
+def test_cli_stall_requires_progress():
+    """--stall-secs without any --progress is a usage error (both-or-neither)."""
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG_CLI),
+            "--stall-secs",
+            "30",
+            "10",
+            "--",
+            "/bin/true",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == watchdog.USAGE_EXIT
 
 
 def test_normal_exit_passes_through_exit_code():

@@ -26,8 +26,29 @@ malformed/partial trajectory lines. ``trajectory_tools`` parses tolerantly
 poll is swallowed and treated as "no signal, keep running" so a parse bug can
 never kill a healthy night.
 
+Stall watchdog (plan humble-skipping-quilt H3): with ``--stall-secs N`` and one
+or more ``--progress FILE`` the SAME poll loop also watches for a wedged-but-
+idle run — the zero-token-wedge boundary the token breaker explicitly leaves to
+this item. The progress signal is the NEWEST mtime across all ``--progress``
+files (primary: trajectory.jsonl, which any agent activity touches; secondary:
+the report path). If ``now - newest_mtime > stall_secs`` the whole group is
+killed on the same path and the watchdog returns exit 122. A progress file that
+does not exist YET contributes nothing (the trajectory appears within seconds
+of launch); but so a run where NO progress file EVER appears still trips, the
+watchdog's own START TIME is the baseline mtime, so a never-created file trips
+at stall_secs after launch. Fails OPEN on any stat error (same swallow
+discipline as the token breaker): a stat glitch must never kill a healthy
+night.
+
+Precedence when multiple limits are coincident in one poll slice: token (123) >
+stall (122) > wall (124). The token and stall breaches are tested between wait
+slices, in that order, before the loop re-tests the wall-clock deadline at the
+top — so an earlier limit deterministically wins the tie (this extends the
+token-vs-wall tie-break note below).
+
 Usage:
     watchdog.py [--grace SECS] [--token-budget N --trajectory FILE]
+                [--stall-secs N --progress FILE [--progress FILE ...]]
                 [--poll-secs SECS] TIMEOUT_SECS -- COMMAND [ARGS...]
     watchdog.py --self-test
 
@@ -35,6 +56,7 @@ Exit codes:
     child's exit code on normal completion
     124  timeout (group killed)
     123  token budget exceeded (group killed)
+    122  stalled: no progress within --stall-secs (group killed)
     127  command not found
     64   usage error
     --self-test: 0 iff setsid + group-kill provably work on this host
@@ -54,6 +76,7 @@ DEFAULT_GRACE = 30.0
 DEFAULT_POLL_SECS = 15.0
 TIMEOUT_EXIT = 124
 TOKEN_EXIT = 123
+STALL_EXIT = 122
 NOT_FOUND_EXIT = 127
 USAGE_EXIT = 64
 
@@ -115,6 +138,39 @@ def _token_usage(trajectory: str) -> int | None:
         return None
 
 
+def _stall_tripped(
+    progress_files: list[str], baseline: float, stall_secs: float
+) -> bool:
+    """True iff no --progress file has been touched within ``stall_secs``.
+
+    The progress signal is the NEWEST mtime across all ``progress_files``. A
+    file that does not exist YET contributes nothing (``FileNotFoundError`` is
+    skipped) — the trajectory appears within seconds of launch, so a briefly-
+    absent file is normal. If NO file has ever appeared, ``baseline`` (the
+    watchdog's own start time) is the clock, so a never-created progress file
+    trips at ``stall_secs`` after launch rather than never.
+
+    Fails OPEN (returns False) on ANY unexpected stat error — the same swallow
+    discipline as the token breaker's ``_token_usage``: a stat glitch must
+    never kill a healthy night. Only a genuinely missing file (skipped) is
+    distinguished from a stat failure (swallowed -> no trip).
+    """
+    try:
+        newest = baseline
+        seen = False
+        for path in progress_files:
+            try:
+                mtime = os.stat(path).st_mtime
+            except FileNotFoundError:
+                continue  # not created yet: contributes nothing
+            if not seen or mtime > newest:
+                newest = mtime
+                seen = True
+        return (time.time() - newest) > stall_secs
+    except Exception:  # fail open on any stat error (never kill a healthy run)
+        return False
+
+
 def run(
     timeout: float,
     grace: float,
@@ -123,18 +179,27 @@ def run(
     token_budget: int | None = None,
     trajectory: str | None = None,
     poll_interval: float = DEFAULT_POLL_SECS,
+    stall_secs: float | None = None,
+    progress_files: list[str] | None = None,
 ) -> int:
     """Run cmd in its own process group under a group-kill watchdog.
 
     With ``token_budget`` + ``trajectory`` set, the trajectory file is polled
     every ``poll_interval`` seconds and a breach group-kills with exit 123.
-    Without them, behavior is wall-clock-only and unchanged.
+    With ``stall_secs`` + ``progress_files`` set, the SAME poll loop watches the
+    newest progress-file mtime and group-kills with exit 122 when no progress
+    has been made within ``stall_secs``. With NEITHER armed, behavior is
+    wall-clock-only and unchanged.
     """
+    progress_files = progress_files or []
     try:
         proc = subprocess.Popen(cmd, start_new_session=True)
     except FileNotFoundError:
         print(f"watchdog: command not found: {cmd[0]}", file=sys.stderr)
         return NOT_FOUND_EXIT
+    launch_time = (
+        time.time()
+    )  # stall baseline: a never-created file trips here
     pgid = proc.pid  # start_new_session makes the child its own group leader
 
     def _forward(signum: int, _frame: object) -> None:
@@ -145,8 +210,9 @@ def run(
     signal.signal(signal.SIGINT, _forward)
 
     breaker_armed = token_budget is not None and trajectory is not None
+    stall_armed = stall_secs is not None and len(progress_files) > 0
 
-    if not breaker_armed:
+    if not (breaker_armed or stall_armed):
         # Wall-clock-only fast path (byte-for-byte the original behavior).
         try:
             return proc.wait(timeout=timeout)
@@ -158,8 +224,11 @@ def run(
             _terminate_group(proc, pgid, grace)
             return TIMEOUT_EXIT
 
-    # Token-breaker path: wait in poll_interval slices, checking the budget
-    # between slices while still honoring the wall-clock deadline.
+    # Monitor path: wait in poll_interval slices, checking each armed limit
+    # between slices while still honoring the wall-clock deadline. Precedence
+    # when coincident: token (123) > stall (122) > wall (124) — the first two
+    # are tested here, in that order, before the loop re-tests the wall-clock
+    # deadline at the top, so an earlier limit deterministically wins the tie.
     deadline = time.monotonic() + timeout
     while True:
         remaining = deadline - time.monotonic()
@@ -174,18 +243,28 @@ def run(
             return proc.wait(timeout=min(poll_interval, remaining))
         except subprocess.TimeoutExpired:
             pass
-        # Tie-break: token (123) wins deterministically over timeout (124) when
-        # a breach is detected in the deadline-expiring poll slice — the budget
-        # is checked here, before the loop re-tests the wall-clock deadline.
-        used = _token_usage(trajectory)  # None on any error -> fail open
-        if used is not None and used > token_budget:
+        # 1) Token (123): wins over stall and over the deadline-expiring slice.
+        if breaker_armed:
+            used = _token_usage(trajectory)  # None on any error -> fail open
+            if used is not None and used > token_budget:
+                print(
+                    f"watchdog: token budget exceeded ({used} of "
+                    f"{token_budget}); SIGTERM to group {pgid}",
+                    file=sys.stderr,
+                )
+                _terminate_group(proc, pgid, grace)
+                return TOKEN_EXIT
+        # 2) Stall (122): wins over the wall-clock re-test at the loop top.
+        if stall_armed and _stall_tripped(
+            progress_files, launch_time, stall_secs
+        ):
             print(
-                f"watchdog: token budget exceeded ({used} of {token_budget}); "
+                f"watchdog: no progress for >{stall_secs}s; "
                 f"SIGTERM to group {pgid}",
                 file=sys.stderr,
             )
             _terminate_group(proc, pgid, grace)
-            return TOKEN_EXIT
+            return STALL_EXIT
 
 
 def self_test() -> int:
@@ -238,9 +317,11 @@ def main(argv: list[str]) -> int:
     poll_interval = DEFAULT_POLL_SECS
     token_budget: int | None = None
     trajectory: str | None = None
+    stall_secs: float | None = None
+    progress_files: list[str] = []
 
-    # Consume optional leading "--flag VALUE" pairs (any order) before the
-    # positional TIMEOUT and the "--" command separator.
+    # Consume optional leading "--flag VALUE" pairs (any order, --progress
+    # REPEATABLE) before the positional TIMEOUT and the "--" command separator.
     i = 0
     while i < len(args) and args[i].startswith("--") and args[i] != "--":
         flag = args[i]
@@ -262,6 +343,14 @@ def main(argv: list[str]) -> int:
                 return USAGE_EXIT
         elif flag == "--trajectory":
             trajectory = val
+        elif flag == "--stall-secs":
+            try:
+                stall_secs = float(val)
+            except ValueError:
+                print(f"watchdog: bad --stall-secs {val!r}", file=sys.stderr)
+                return USAGE_EXIT
+        elif flag == "--progress":
+            progress_files.append(val)
         elif flag == "--poll-secs":
             try:
                 poll_interval = float(val)
@@ -295,6 +384,13 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return USAGE_EXIT
+    # --stall-secs and --progress arm the stall watchdog together or not at all.
+    if (stall_secs is None) != (len(progress_files) == 0):
+        print(
+            "watchdog: --stall-secs and --progress must be given together",
+            file=sys.stderr,
+        )
+        return USAGE_EXIT
     return run(
         timeout=timeout,
         grace=grace,
@@ -302,6 +398,8 @@ def main(argv: list[str]) -> int:
         token_budget=token_budget,
         trajectory=trajectory,
         poll_interval=poll_interval,
+        stall_secs=stall_secs,
+        progress_files=progress_files,
     )
 
 

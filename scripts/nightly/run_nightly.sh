@@ -25,6 +25,9 @@
 #   NIGHTLY_MAX_TURNS       default 80
 #   NIGHTLY_TOKEN_BUDGET    default 2000000 (H2 token circuit breaker ceiling;
 #                           breach -> watchdog exit 123 -> RED stub)
+#   NIGHTLY_STALL_SECS      default 1200 (H3 stall watchdog; no progress on the
+#                           trajectory/report for this many seconds -> watchdog
+#                           exit 122 -> RED stub)
 #
 # Exit: 0 report produced and published (any verdict); 1 only when even the
 # stub/publish path failed.
@@ -46,6 +49,11 @@ MAX_TURNS="${NIGHTLY_MAX_TURNS:-80}"
 export NIGHTLY_TOKEN_BUDGET="${NIGHTLY_TOKEN_BUDGET:-2000000}"
 # Must match watchdog.py TOKEN_EXIT (exit code on a token-budget group-kill).
 TOKEN_EXIT_CODE=123
+# H3 stall watchdog: kill the run if no progress (trajectory/report mtime) for
+# this many seconds. Default 20min. Exported so it is visible to the loop.
+export NIGHTLY_STALL_SECS="${NIGHTLY_STALL_SECS:-1200}"
+# Must match watchdog.py STALL_EXIT (exit code on a no-progress group-kill).
+STALL_EXIT_CODE=122
 BRIEF="$REPO_ROOT/docs/nightly/BRIEF.md"
 CANNED_REPORT="$SCRIPT_DIR/fixtures/canned_agent_report.md"
 CHECKER="$SCRIPT_DIR/check_contract.py"
@@ -114,6 +122,26 @@ try:
 except Exception:
     pass
 PY
+}
+
+# H3: name which progress signal went quiet for the stall RED stub. Echoes
+# "<basename>, <age>s ago" for the newest existing progress file, or a note if
+# none ever appeared. Fails quiet (never breaks the report on a stat error).
+stall_last_activity() {
+  local now newest_m="" newest_f="" f m
+  now="$(date +%s)"
+  for f in "$RUN_DIR/trajectory.jsonl" "$NIGHTLY_REPORT_PATH"; do
+    m="$(stat -f%m "$f" 2>/dev/null || stat -c%Y "$f" 2>/dev/null || echo '')"
+    [ -n "$m" ] || continue  # missing/stat error: contributes nothing
+    if [ -z "$newest_m" ] || [ "$m" -gt "$newest_m" ]; then
+      newest_m="$m"; newest_f="$f"
+    fi
+  done
+  if [ -z "$newest_m" ]; then
+    echo "no progress file ever appeared"
+  else
+    echo "$(basename "$newest_f"), $((now - newest_m))s ago"
+  fi
 }
 
 # H2: wire actual-vs-ceiling into a healthy report's Budget section, inserted
@@ -283,9 +311,16 @@ else
   # H2: --token-budget + --trajectory arm the token circuit breaker. The
   # watchdog polls trajectory.jsonl (~15s) and group-kills with exit 123 if
   # the deduped token sum breaches NIGHTLY_TOKEN_BUDGET.
+  # H3: --stall-secs + --progress arm the stall watchdog on the SAME poll loop.
+  # Progress = newest mtime across trajectory.jsonl (primary: any agent activity
+  # touches it) and the report path (secondary). No progress for
+  # NIGHTLY_STALL_SECS -> group-kill with exit 122.
   ( cd "$REPO_ROOT" && python3 "$WATCHDOG" --grace 30 \
       --token-budget "$NIGHTLY_TOKEN_BUDGET" \
       --trajectory "$RUN_DIR/trajectory.jsonl" \
+      --stall-secs "$NIGHTLY_STALL_SECS" \
+      --progress "$RUN_DIR/trajectory.jsonl" \
+      --progress "$NIGHTLY_REPORT_PATH" \
       "$TIMEOUT_SECS" -- \
       "$CLAUDE_BIN" -p "$(cat "$BRIEF")" \
       --output-format stream-json --verbose \
@@ -312,12 +347,17 @@ else
     && log "run_metrics.json written (claude $CLAUDE_VERSION)" \
     || log "WARNING: run_metrics.json generation failed"
 
-  # H2: map the token circuit breaker's exit 123 to its own RED stub, and on
-  # healthy nights record actual-vs-ceiling in the report's Budget section.
+  # Map the watchdog's group-kill exits to their own RED stubs (token 123 wins
+  # over stall 122, matching the watchdog's own precedence), and on healthy
+  # nights record actual-vs-ceiling in the report's Budget section.
   TOKEN_TOTAL="$(read_token_total)"
   if [ "$AGENT_EXIT" -eq "$TOKEN_EXIT_CODE" ]; then
     log "token budget breached: ${TOKEN_TOTAL:-unknown} of $NIGHTLY_TOKEN_BUDGET tokens (watchdog exit 123)"
     write_red_stub "token budget exceeded (${TOKEN_TOTAL:-unknown} of $NIGHTLY_TOKEN_BUDGET tokens)"
+  elif [ "$AGENT_EXIT" -eq "$STALL_EXIT_CODE" ]; then
+    STALL_WHERE="$(stall_last_activity)"
+    log "stall watchdog fired: no progress for ${NIGHTLY_STALL_SECS}s (last activity: $STALL_WHERE) (watchdog exit 122)"
+    write_red_stub "stalled: no progress for ${NIGHTLY_STALL_SECS}s (last activity: $STALL_WHERE)"
   elif [ -s "$REPORT_PATH" ]; then
     inject_budget_token_line "- tokens: ${TOKEN_TOTAL:-n/a} of $NIGHTLY_TOKEN_BUDGET (budget)"
   fi
