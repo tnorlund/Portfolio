@@ -10,8 +10,10 @@ parsed/<messageId>.<ingest_id>.json:
                                   # spoofable identity keying the parsed object
       "s3_key": "raw/...",
       "from_domain": "doordash.com",
-      "original_from": "...",     # unwrapped when the mail arrived via a
-                                  # forwarding rule (X-Forwarded-For et al.)
+      "original_from": "...",     # authenticated sender selected for dispatch
+      "transport_from": "...",    # raw RFC-822 From claim
+      "claimed_original_from": "..." | null,  # raw X-Original-From claim
+      "sender_auth_source": "ses-dmarc" | null,
       "subject": "...",
       "group": "doordash" | null,
       "classification": "receipt" | "txn_signal" | "needs_ocr" | "non_receipt"
@@ -52,44 +54,109 @@ s3 = boto3.client("s3")
 # normalized copy, and parser-specific representations at once, so a large
 # payload can OOM. Reject anything oversized BEFORE fetching it into memory.
 MAX_RAW_BYTES = 15 * 1024 * 1024
+SES_AUTHSERV_ID = "amazonses.com"
 
 
-def _from_domain(msg) -> tuple[str, str]:
-    """Return (from_addr, domain) for sender dispatch.
+def _unique_header(msg, name: str) -> str | None:
+    values = msg.get_all(name) or []
+    if len(values) != 1:
+        return None
+    return str(values[0])
 
-    ``Reply-To`` is deliberately NOT consulted: it is free-form and often
-    points marketing/spoofed mail at an unrelated domain. ``X-Original-From``
-    is honored only for the documented iCloud auto-forwarding case (the
-    forwarder rewrites ``From`` to itself but preserves the original sender
-    here); the SES authentication verdicts recorded alongside let the
-    downstream reconciliation plane decide how much to trust it.
+
+def _single_address(values) -> tuple[str, str]:
+    """Return one unambiguous mailbox and its ASCII domain, else empty."""
+    if isinstance(values, str):
+        values = [values]
+    addresses = [
+        addr.strip()
+        for _name, addr in email.utils.getaddresses(list(values or []))
+        if addr and "@" in addr
+    ]
+    if len(addresses) != 1:
+        return "", ""
+    addr = addresses[0]
+    domain = addr.rsplit("@", 1)[1].strip().rstrip(".").lower()
+    if not domain or not re.fullmatch(r"[a-z0-9.-]+", domain):
+        return "", ""
+    return addr, domain
+
+
+def _trusted_ses_auth_results(msg) -> str | None:
+    """Return the sole SES authentication result, rejecting impostor copies.
+
+    SES adds one ``Authentication-Results: amazonses.com`` field to the S3
+    object. A sender can add lookalike MIME headers, but cannot suppress the
+    SES-added field; requiring exactly one means an unstripped impostor makes
+    the message fail closed instead of becoming another spoofing primitive.
     """
-    for header in ("X-Original-From", "From"):
-        raw = msg.get(header)
-        if not raw:
+    matches = []
+    for value in msg.get_all("Authentication-Results") or []:
+        authserv_id, separator, _results = str(value).partition(";")
+        if separator and authserv_id.strip().lower() == SES_AUTHSERV_ID:
+            matches.append(str(value))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _auth_entries(value: str) -> list[tuple[str, str, str]]:
+    pattern = re.compile(
+        r"(?:^|;)\s*(spf|dkim|dmarc|arc)\s*=\s*([a-z_]+)(.*?)"
+        r"(?=;\s*(?:spf|dkim|dmarc|arc)\s*=|$)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    return [
+        (mechanism.lower(), status.lower(), details)
+        for mechanism, status, details in pattern.findall(value)
+    ]
+
+
+def _identity_domain(value: str) -> str:
+    identity = value.strip().strip("<>\"'")
+    domain = identity.rsplit("@", 1)[-1].rstrip(".").lower()
+    if not domain or not re.fullmatch(r"[a-z0-9.-]+", domain):
+        return ""
+    return domain
+
+
+def _authenticated_sender(msg) -> tuple[str, str, str | None]:
+    """Bind sender dispatch to SES DMARC PASS for the visible From identity."""
+    addr, domain = _single_address(msg.get_all("From") or [])
+    auth_results = _trusted_ses_auth_results(msg)
+    if not addr or not auth_results:
+        return "", "", None
+    for mechanism, status, details in _auth_entries(auth_results):
+        if mechanism != "dmarc" or status != "pass":
             continue
-        addr = email.utils.parseaddr(raw)[1]
-        m = re.search(r"@([\w.\-]+)", addr or "")
-        if m:
-            return addr, m.group(1).lower()
-    return "", ""
+        match = re.search(
+            r"(?:^|[;\s])header\.from\s*=\s*([^;\s()]+)",
+            details,
+            re.IGNORECASE,
+        )
+        if match and _identity_domain(match.group(1)) == domain:
+            return addr, domain, "ses-dmarc"
+    return "", "", None
 
 
 def _ses_auth(msg) -> dict:
-    """Extract the SES-stamped spam/virus verdicts and SPF/DKIM/DMARC results.
+    """Extract unique SES-stamped content and authentication results.
 
     SES writes these headers into the stored message; scan_enabled only
-    *produces* them, it never rejects, so the pipeline must gate on them.
+    *produces* them, it never rejects. Duplicates fail closed because a sender
+    may have injected a lookalike before SES added its authoritative field.
     """
-    spam = (msg.get("X-SES-Spam-Verdict") or "").strip().upper() or None
-    virus = (msg.get("X-SES-Virus-Verdict") or "").strip().upper() or None
-    ar = " ".join(msg.get_all("Authentication-Results") or [])
-    auth = {}
-    for mech in ("spf", "dkim", "dmarc"):
-        m = re.search(rf"\b{mech}=(\w+)", ar)
-        if m:
-            auth[mech] = m.group(1).lower()
-    return {"spam_verdict": spam, "virus_verdict": virus, "auth": auth}
+    spam = (_unique_header(msg, "X-SES-Spam-Verdict") or "").strip().upper()
+    virus = (_unique_header(msg, "X-SES-Virus-Verdict") or "").strip().upper()
+    auth = {
+        mechanism: status
+        for mechanism, status, _details in _auth_entries(
+            _trusted_ses_auth_results(msg) or "")
+        if mechanism in ("spf", "dkim", "dmarc")
+    }
+    return {
+        "spam_verdict": spam or None,
+        "virus_verdict": virus or None,
+        "auth": auth,
+    }
 
 
 def _content_rejected(spam, virus) -> bool:
@@ -158,38 +225,36 @@ def lambda_handler(event, _context):
             out["message_id"] = (msg.get("Message-ID") or key).strip()
             out["subject"] = msg.get("Subject", "")
             out.update(_ses_auth(msg))
-            from_addr, domain = _from_domain(msg)
+            transport_addr, _transport_domain = _single_address(
+                msg.get_all("From") or [])
+            claimed_addr, claimed_domain = _single_address(
+                msg.get_all("X-Original-From") or [])
+            from_addr, domain, auth_source = _authenticated_sender(msg)
             out["from_domain"] = domain
             out["original_from"] = from_addr
+            out["transport_from"] = transport_addr
+            out["claimed_original_from"] = claimed_addr or None
+            out["sender_auth_source"] = auth_source
             if _content_rejected(spam=out["spam_verdict"],
                                  virus=out["virus_verdict"]):
                 # SES flagged (or could not clear) malware/spam; hold it out of
                 # reconciliation. Distinct from parser-determined non_receipt so
                 # downstream can treat scan failures differently.
                 out["classification"] = "quarantine"
+            elif auth_source is None:
+                out["classification"] = "quarantine"
+                out["error"] = "sender identity was not authenticated by SES"
             else:
                 grp = registry.group_for_domain(domain)
-                out["group"] = grp
-                if grp:
-                    # The registry chose the group from the canonical sender
-                    # (X-Original-From in the iCloud-forwarding case), but the
-                    # parsers re-dispatch on the message's own ``From`` header —
-                    # which the forwarder rewrote to itself. Normalize ONLY the
-                    # parser's temp copy so its From matches the sender the
-                    # registry keyed on; the stored raw/ evidence is untouched.
-                    parser_bytes = raw
-                    orig_from = msg.get("X-Original-From")
-                    if orig_from:
-                        norm = email.message_from_bytes(
-                            raw, policy=email.policy.default)
-                        if norm.get("From") is not None:
-                            norm.replace_header("From", orig_from)
-                        else:
-                            norm["From"] = orig_from
-                        parser_bytes = norm.as_bytes()
+                claimed_grp = registry.group_for_domain(claimed_domain)
+                if claimed_grp and claimed_grp != grp:
+                    out["classification"] = "quarantine"
+                    out["error"] = "unauthenticated X-Original-From claim"
+                elif grp:
+                    out["group"] = grp
                     with tempfile.NamedTemporaryFile(
                             suffix=".eml", delete=False) as tmp:
-                        tmp.write(parser_bytes)
+                        tmp.write(raw)
                         path = tmp.name
                     try:
                         parsed = registry.run_parser(grp, path)

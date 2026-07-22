@@ -41,6 +41,14 @@ jobs:
           find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
             | xargs -0 "$PYTHON" -m py_compile
 
+      - name: Test inbound email sender authentication
+        run: |
+          PYTHON=$(command -v python3.12 || command -v python3)
+          "$PYTHON" -m venv .venv-email-receipt
+          source .venv-email-receipt/bin/activate
+          python -m pip install --quiet boto3 pytest
+          python -m pytest -q infra/tests/test_email_receipt_inbox_handler.py
+
   python-tests:
     name: Python (${{ matrix.package }})
     runs-on: [self-hosted, macOS, ARM64]
