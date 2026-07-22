@@ -261,7 +261,7 @@ def test_resegment_proxies_force_lambda_mode(label, monkeypatch):
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
 def test_resegment_plan_attaches_contact_sheet_as_image_content(label, monkeypatch):
     module = _load_module(label, SERVER_FILES[label])
-    monkeypatch.setattr(module, "get_clients", lambda: (object(), object(), object()))
+    monkeypatch.setattr(module, "get_dynamo_client", lambda: object())
 
     async def fake_plan(_arguments):
         return {
