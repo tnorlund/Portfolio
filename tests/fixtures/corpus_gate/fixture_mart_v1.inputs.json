@@ -1,0 +1,509 @@
+{
+ "canvas": {
+  "h": 700,
+  "w": 420
+ },
+ "composed": false,
+ "manifest_words": [
+  {
+   "bbox": [
+    340,
+    950,
+    580,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "FIXTURE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    600,
+    950,
+    770,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "MART",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    860,
+    350,
+    886
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "APPLES",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    860,
+    850,
+    886
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "3.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    820,
+    320,
+    846
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BREAD",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    820,
+    850,
+    846
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "2.50",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    780,
+    360,
+    806
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHEESE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    780,
+    850,
+    806
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "5.75",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    740,
+    310,
+    766
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "JUICE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    740,
+    850,
+    766
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.25",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    600,
+    420,
+    626
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SUBTOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    600,
+    850,
+    626
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "16.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    560,
+    240,
+    586
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TAX",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    560,
+    850,
+    586
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "0.00",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    520,
+    320,
+    546
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    520,
+    850,
+    546
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "16.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    400,
+    280,
+    426
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CASH",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    400,
+    850,
+    426
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "16.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    300,
+    120,
+    500,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "THANK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    520,
+    120,
+    670,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "YOU",
+   "word_id": 0
+  }
+ ],
+ "section_sequence": [],
+ "slug": "fixture_mart",
+ "syn_words": [
+  {
+   "bbox": [
+    340,
+    950,
+    580,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "FIXTURE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    600,
+    950,
+    770,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "MART",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    860,
+    350,
+    886
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "APPLES",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    860,
+    850,
+    886
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "3.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    820,
+    320,
+    846
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BREAD",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    820,
+    850,
+    846
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "2.50",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    780,
+    360,
+    806
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHEESE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    780,
+    850,
+    806
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "5.75",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    740,
+    310,
+    766
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "JUICE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    740,
+    850,
+    766
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.25",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    600,
+    420,
+    626
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SUBTOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    600,
+    850,
+    626
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "16.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    560,
+    240,
+    586
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TAX",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    560,
+    850,
+    586
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "0.00",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    520,
+    320,
+    546
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    520,
+    850,
+    546
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "16.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    400,
+    280,
+    426
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CASH",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    400,
+    850,
+    426
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "16.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    300,
+    120,
+    500,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "THANK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    520,
+    120,
+    670,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "YOU",
+   "word_id": 0
+  }
+ ]
+}

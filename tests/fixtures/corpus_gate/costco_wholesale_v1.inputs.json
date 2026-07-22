@@ -1,0 +1,663 @@
+{
+ "canvas": {
+  "h": 900,
+  "w": 460
+ },
+ "composed": false,
+ "manifest_words": [
+  {
+   "bbox": [
+    380,
+    950,
+    620,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "COSTCO",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    360,
+    920,
+    640,
+    946
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "WHOLESALE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    860,
+    380,
+    886
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BANANAS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    860,
+    850,
+    886
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "1.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    820,
+    290,
+    846
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "MILK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    820,
+    850,
+    846
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "3.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    780,
+    280,
+    806
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "EGGS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    780,
+    850,
+    806
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.29",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    740,
+    320,
+    766
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BREAD",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    740,
+    850,
+    766
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "2.50",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    700,
+    350,
+    726
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "COFFEE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    700,
+    850,
+    726
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "9.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    420,
+    420,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SUBTOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    420,
+    850,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "22.26",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    390,
+    240,
+    416
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TAX",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    390,
+    850,
+    416
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "0.00",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    360,
+    320,
+    386
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    360,
+    850,
+    386
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "22.26",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    300,
+    280,
+    326
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "VISA",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    300,
+    850,
+    326
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "22.26",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    260,
+    350,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHANGE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    260,
+    850,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "0.00",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    250,
+    120,
+    450,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "THANK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    470,
+    120,
+    620,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "YOU",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    250,
+    80,
+    450,
+    106
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "ITEMS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    470,
+    80,
+    650,
+    106
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SOLD",
+   "word_id": 0
+  }
+ ],
+ "section_sequence": [
+  "STOREFRONT",
+  "ITEMS",
+  "SUMMARY",
+  "PAYMENT",
+  "FOOTER"
+ ],
+ "slug": "costco",
+ "syn_words": [
+  {
+   "bbox": [
+    380,
+    950,
+    620,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "COSTCO",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    360,
+    920,
+    640,
+    946
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "WHOLESALE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    860,
+    380,
+    886
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BANANAS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    860,
+    850,
+    886
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "1.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    820,
+    290,
+    846
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "MILK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    820,
+    850,
+    846
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "3.49",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    780,
+    280,
+    806
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "EGGS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    780,
+    850,
+    806
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.29",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    740,
+    320,
+    766
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BREAD",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    740,
+    850,
+    766
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "2.50",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    700,
+    350,
+    726
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "COFFEE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    700,
+    850,
+    726
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "9.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    420,
+    420,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SUBTOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    420,
+    850,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "22.26",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    390,
+    240,
+    416
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TAX",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    390,
+    850,
+    416
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "0.00",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    360,
+    320,
+    386
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    360,
+    850,
+    386
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "22.26",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    300,
+    280,
+    326
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "VISA",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    700,
+    300,
+    850,
+    326
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "22.26",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    260,
+    350,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHANGE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    720,
+    260,
+    850,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "0.00",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    250,
+    120,
+    450,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "THANK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    470,
+    120,
+    620,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "YOU",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    250,
+    80,
+    450,
+    106
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "ITEMS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    470,
+    80,
+    650,
+    106
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SOLD",
+   "word_id": 0
+  }
+ ]
+}
