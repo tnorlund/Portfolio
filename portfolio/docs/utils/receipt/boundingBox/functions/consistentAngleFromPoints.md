@@ -8,7 +8,7 @@
 
 > **consistentAngleFromPoints**(`pts`): `number` \| `null`
 
-Defined in: [utils/receipt/boundingBox.ts:224](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/utils/receipt/boundingBox.ts#L224)
+Defined in: [utils/receipt/boundingBox.ts:224](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/utils/receipt/boundingBox.ts#L224)
 
 Compute angle from points ensuring consistent left-to-right direction.
 This eliminates angle direction inconsistencies caused by hull point ordering.

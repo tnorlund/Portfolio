@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMReceiptWord
 
-Defined in: [types/api.ts:434](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L434)
+Defined in: [types/api.ts:434](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L434)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:434](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > **bounding\_box**: [`BoundingBox`](BoundingBox.md)
 
-Defined in: [types/api.ts:439](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L439)
+Defined in: [types/api.ts:439](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L439)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:439](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > **line\_id**: `number`
 
-Defined in: [types/api.ts:436](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L436)
+Defined in: [types/api.ts:436](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L436)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:436](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > **receipt\_id**: `number`
 
-Defined in: [types/api.ts:435](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L435)
+Defined in: [types/api.ts:435](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L435)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:435](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > **text**: `string`
 
-Defined in: [types/api.ts:438](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L438)
+Defined in: [types/api.ts:438](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L438)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:438](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > **word\_id**: `number`
 
-Defined in: [types/api.ts:437](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L437)
+Defined in: [types/api.ts:437](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L437)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:437](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > `optional` **bottom\_left**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:442](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L442)
+Defined in: [types/api.ts:442](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L442)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:442](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > `optional` **bottom\_right**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:443](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L443)
+Defined in: [types/api.ts:443](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L443)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:443](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > `optional` **top\_left**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:440](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L440)
+Defined in: [types/api.ts:440](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L440)
 
 ***
 
@@ -78,4 +78,4 @@ Defined in: [types/api.ts:440](https://github.com/tnorlund/Portfolio/blob/f2b21b
 
 > `optional` **top\_right**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:441](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L441)
+Defined in: [types/api.ts:441](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L441)

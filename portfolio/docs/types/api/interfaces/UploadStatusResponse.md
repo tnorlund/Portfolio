@@ -6,7 +6,7 @@
 
 # Interface: UploadStatusResponse
 
-Defined in: [types/api.ts:11](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L11)
+Defined in: [types/api.ts:11](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L11)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:11](https://github.com/tnorlund/Portfolio/blob/f2b21b6
 
 > **image\_id**: `string`
 
-Defined in: [types/api.ts:12](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L12)
+Defined in: [types/api.ts:12](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L12)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:12](https://github.com/tnorlund/Portfolio/blob/f2b21b6
 
 > **ocr\_status**: `"PENDING"` \| `"COMPLETED"` \| `"FAILED"`
 
-Defined in: [types/api.ts:13](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L13)
+Defined in: [types/api.ts:13](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L13)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:13](https://github.com/tnorlund/Portfolio/blob/f2b21b6
 
 > **processing\_stage**: `string` \| `null`
 
-Defined in: [types/api.ts:14](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L14)
+Defined in: [types/api.ts:14](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L14)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:14](https://github.com/tnorlund/Portfolio/blob/f2b21b6
 
 > **receipt\_count**: `number`
 
-Defined in: [types/api.ts:15](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L15)
+Defined in: [types/api.ts:15](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L15)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:15](https://github.com/tnorlund/Portfolio/blob/f2b21b6
 
 > **receipts**: [`UploadReceiptProgress`](UploadReceiptProgress.md)[]
 
-Defined in: [types/api.ts:16](https://github.com/tnorlund/Portfolio/blob/f2b21b6edbf2e02bd764abc0446de2e0b8cd1ba1/portfolio/types/api.ts#L16)
+Defined in: [types/api.ts:16](https://github.com/tnorlund/Portfolio/blob/b47e05a31cfc3f08fb406ff2ad1fdbde75503bfb/portfolio/types/api.ts#L16)
