@@ -1,0 +1,444 @@
+{
+ "items": [
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#MANIFEST"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_MANIFEST"
+   },
+   "bundle_hash": {
+    "S": "78186ca27049c2b0f9126f54b8601ee4a555193889311a21f740d9cb172bcc52"
+   },
+   "component_count": {
+    "N": "7"
+   },
+   "component_hashes": {
+    "M": {
+     "assets": {
+      "S": "f62deb1bd8d6888671c8aa434c2a8d8defe69e3391b4ebe4aa75073343245ce3"
+     },
+     "catalog_snapshot": {
+      "S": "581b6ba782e93119cca0a2193e34ae411d6841bebb74708807f98ae6f58ea7a8"
+     },
+     "flags": {
+      "S": "9172e8f20d8c61e921ccdee257e9b809e8d70d9b145a6abf1ff4de0c06a82e27"
+     },
+     "identity": {
+      "S": "d0ef38457194dc9d5340789e6990ff01ec0abaa4150b6005fba4704855d73c07"
+     },
+     "layout": {
+      "S": "f58134c7b4bedb9d6aaa7b199f3163a642e00be84a98cbebb87195c044a7b27b"
+     },
+     "stylemap": {
+      "S": "58781d458867757da9b12e785823898b3f605e10d3f49d54efce2def115a267f"
+     },
+     "typography": {
+      "S": "07f9821d117be661d2d25d768c78c3b7c7267a93adabe5ec5b2a5519cb748919"
+     }
+    }
+   },
+   "confirmed_proposals": {
+    "L": []
+   },
+   "gate_results": {
+    "M": {}
+   },
+   "gate_status": {
+    "S": "PASS"
+   },
+   "mint_run_id": {
+    "S": "variant-selftest-v1"
+   },
+   "provenance": {
+    "M": {
+     "minted_at": {
+      "S": "2026-07-21T00:00:00+00:00"
+     },
+     "written_by": {
+      "S": "fixture"
+     }
+    }
+   },
+   "sealed_at": {
+    "S": "2026-07-21T00:00:00+00:00"
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "status": {
+    "S": "SEALED"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#assets"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "assets"
+   },
+   "content_hash": {
+    "S": "f62deb1bd8d6888671c8aa434c2a8d8defe69e3391b4ebe4aa75073343245ce3"
+   },
+   "payload": {
+    "S": "{\"fonts\":{\"regular\":{\"advance_ratio\":0.54,\"bucket_alias\":\"merchant-font-artifacts\",\"cache_filename\":\"variant_selftest.glyphs.npz\",\"cap_h\":58.0,\"compiled_at\":\"2026-07-21T00:00:00+00:00\",\"content_hash\":\"3c85f7d3015a3cf11e8ffc1170d7c19c0fd04042809c073cd9b83daa173f67f7\",\"glyph_count\":94,\"pitch_check\":\"OK\",\"s3_key\":\"merchant_fonts/variant_selftest/regular-3c85f7d3015a.npz\",\"source_commit\":\"fixture\"}},\"missing_merchant_font\":false,\"profile\":{}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#catalog_snapshot"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "catalog_snapshot"
+   },
+   "content_hash": {
+    "S": "581b6ba782e93119cca0a2193e34ae411d6841bebb74708807f98ae6f58ea7a8"
+   },
+   "payload": {
+    "S": "{\"as_of\":\"2026-07-21T00:00:00+00:00\",\"catalog_hash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\",\"item_count\":0,\"items\":[]}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#flags"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "flags"
+   },
+   "content_hash": {
+    "S": "9172e8f20d8c61e921ccdee257e9b809e8d70d9b145a6abf1ff4de0c06a82e27"
+   },
+   "payload": {
+    "S": "{\"typography\":{\"dashed_separators\":true,\"font\":\"PTMONO\"}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#identity"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "identity"
+   },
+   "content_hash": {
+    "S": "d0ef38457194dc9d5340789e6990ff01ec0abaa4150b6005fba4704855d73c07"
+   },
+   "payload": {
+    "S": "{\"aliases\":[\"VARIANT SELFTEST #001\"],\"merchant_name\":\"Variant Selftest\",\"normalized_aliases\":[\"variant selftest\",\"variant selftest 001\"],\"slug\":\"variant_selftest\",\"upper_slug\":\"VARIANT_SELFTEST\"}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#layout"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "layout"
+   },
+   "content_hash": {
+    "S": "f58134c7b4bedb9d6aaa7b199f3163a642e00be84a98cbebb87195c044a7b27b"
+   },
+   "payload": {
+    "S": "{\"available\":true,\"template\":{\"columns\":{\"items\":[{\"anchor\":\"right\",\"role\":\"amount\",\"support\":9,\"x\":0.86}]},\"sections\":[{\"name\":\"items\"}],\"separators\":[{\"char\":\"-\"}],\"variants\":[{\"classifier_hint\":{\"tokens\":[\"SELF\"],\"type\":\"text_marker\"},\"columns\":{\"items\":[{\"anchor\":\"right\",\"role\":\"amount\",\"support\":2,\"x\":0.6}]},\"sections\":[{\"name\":\"items\"}],\"separators\":[{\"char\":\"-\"}],\"source_receipt_keys\":[\"IMAGE#self#RECEIPT#00001\"],\"support\":2,\"variant_id\":\"self-low\"},{\"classifier_hint\":{\"tokens\":[\"CHECKOUT\"],\"type\":\"text_marker\"},\"columns\":{\"items\":[{\"anchor\":\"right\",\"role\":\"amount\",\"support\":7,\"x\":0.7}]},\"sections\":[{\"name\":\"items\"}],\"separators\":[{\"char\":\"-\"}],\"source_receipt_keys\":[\"IMAGE#checkout#RECEIPT#00001\"],\"support\":7,\"variant_id\":\"checkout-high\"}],\"version\":1}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#stylemap"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "stylemap"
+   },
+   "content_hash": {
+    "S": "58781d458867757da9b12e785823898b3f605e10d3f49d54efce2def115a267f"
+   },
+   "payload": {
+    "S": "{\"available\":true,\"document\":{\"sections\":{\"HEADER\":{\"face\":\"regular\"}},\"source\":\"fixture\",\"version\":1},\"source\":null}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#variant_selftest"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#typography"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "typography"
+   },
+   "content_hash": {
+    "S": "07f9821d117be661d2d25d768c78c3b7c7267a93adabe5ec5b2a5519cb748919"
+   },
+   "payload": {
+    "S": "{\"section_scale\":{\"HEADER\":0.8},\"typography\":{\"bitmap_font\":{\"regular\":\"variant_selftest.glyphs.npz\"},\"bitmap_thin\":0.2,\"condense\":0.9,\"pitch_ratio\":0.55}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "variant_selftest"
+   },
+   "version": {
+    "N": "1"
+   }
+  }
+ ]
+}

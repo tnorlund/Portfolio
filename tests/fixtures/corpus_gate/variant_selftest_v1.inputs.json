@@ -1,0 +1,471 @@
+{
+ "canvas": {
+  "h": 900,
+  "w": 460
+ },
+ "composed": false,
+ "manifest_words": [
+  {
+   "bbox": [
+    340,
+    950,
+    600,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "VARIANT",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    620,
+    950,
+    880,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SELFTEST",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    860,
+    290,
+    886
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "MILK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    860,
+    700,
+    886
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "3.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    820,
+    320,
+    846
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BREAD",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    820,
+    700,
+    846
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "2.50",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    780,
+    280,
+    806
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "EGGS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    780,
+    700,
+    806
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.29",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    740,
+    360,
+    766
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHEESE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    740,
+    700,
+    766
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "5.75",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    700,
+    310,
+    726
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "JUICE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    700,
+    700,
+    726
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.25",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    420,
+    320,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    540,
+    420,
+    700,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "20.78",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    200,
+    260,
+    360,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SELF",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    420,
+    260,
+    720,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHECKOUT",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    250,
+    120,
+    450,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "THANK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    470,
+    120,
+    620,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "YOU",
+   "word_id": 0
+  }
+ ],
+ "section_sequence": [
+  "storefront",
+  "items",
+  "summary",
+  "payment",
+  "footer"
+ ],
+ "slug": "costco",
+ "syn_words": [
+  {
+   "bbox": [
+    340,
+    950,
+    600,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "VARIANT",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    620,
+    950,
+    880,
+    976
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SELFTEST",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    860,
+    290,
+    886
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "MILK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    860,
+    700,
+    886
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "3.99",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    820,
+    320,
+    846
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "BREAD",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    820,
+    700,
+    846
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "2.50",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    780,
+    280,
+    806
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "EGGS",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    780,
+    700,
+    806
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.29",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    740,
+    360,
+    766
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHEESE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    740,
+    700,
+    766
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "5.75",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    700,
+    310,
+    726
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "JUICE",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    560,
+    700,
+    700,
+    726
+   ],
+   "labels": [
+    "LINE_TOTAL"
+   ],
+   "line_id": 0,
+   "text": "4.25",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    120,
+    420,
+    320,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "TOTAL",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    540,
+    420,
+    700,
+    446
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "20.78",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    200,
+    260,
+    360,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "SELF",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    420,
+    260,
+    720,
+    286
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "CHECKOUT",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    250,
+    120,
+    450,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "THANK",
+   "word_id": 0
+  },
+  {
+   "bbox": [
+    470,
+    120,
+    620,
+    146
+   ],
+   "labels": [],
+   "line_id": 0,
+   "text": "YOU",
+   "word_id": 0
+  }
+ ]
+}

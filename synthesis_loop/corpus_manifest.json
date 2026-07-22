@@ -14,6 +14,13 @@
    "truth_fixture": "tests/fixtures/merchant_truth/fixture_mart.v1.json",
    "eval_inputs": "tests/fixtures/corpus_gate/fixture_mart_v1.inputs.json",
    "columns_source": "bootstrap"
+  },
+  {
+   "name": "variant_selftest_v1",
+   "merchant": "Variant Selftest",
+   "truth_fixture": "tests/fixtures/merchant_truth/variant_selftest.v1.json",
+   "eval_inputs": "tests/fixtures/corpus_gate/variant_selftest_v1.inputs.json",
+   "columns_source": "profile"
   }
  ]
 }

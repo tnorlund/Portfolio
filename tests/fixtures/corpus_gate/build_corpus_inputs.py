@@ -105,6 +105,46 @@ def fixture_mart_words() -> list[dict]:
     return rows
 
 
+def variant_selftest_words() -> list[dict]:
+    """A receipt exercising the §7.2 profile/variant column path.
+
+    Uses the costco SECTION_BANDS (via ``slug="costco"``) so item rows land
+    in the ITEMS band. The amount lane is inked at right-edge x=0.70 -- where
+    the ``variant_selftest`` truth bundle's WINNING variant (checkout-high,
+    support 7) places it. The words carry both the ``SELF`` and ``CHECKOUT``
+    text markers, so both variants match and the tie-break selects the
+    high-support one; a selector regression to the DEFAULT (x=0.86) or the
+    low-support variant (x=0.60) moves the profile lane off the ink and the
+    columns metric goes UNTESTED.
+    """
+    rows = []
+    # STOREFRONT
+    rows += _row(950, [("VARIANT", 340, 260, []), ("SELFTEST", 620, 260, [])])
+    # ITEMS: amounts right-edge at x=560+140=700 -> 0.70 (the winner lane)
+    rows += _row(
+        860, [("MILK", 120, 170, []), ("3.99", 560, 140, ["LINE_TOTAL"])]
+    )
+    rows += _row(
+        820, [("BREAD", 120, 200, []), ("2.50", 560, 140, ["LINE_TOTAL"])]
+    )
+    rows += _row(
+        780, [("EGGS", 120, 160, []), ("4.29", 560, 140, ["LINE_TOTAL"])]
+    )
+    rows += _row(
+        740, [("CHEESE", 120, 240, []), ("5.75", 560, 140, ["LINE_TOTAL"])]
+    )
+    rows += _row(
+        700, [("JUICE", 120, 190, []), ("4.25", 560, 140, ["LINE_TOTAL"])]
+    )
+    # SUMMARY
+    rows += _row(420, [("TOTAL", 120, 200, []), ("20.78", 540, 160, [])])
+    # PAYMENT: the SELF / CHECKOUT markers the classifier_hint matches on
+    rows += _row(260, [("SELF", 200, 160, []), ("CHECKOUT", 420, 300, [])])
+    # FOOTER
+    rows += _row(120, [("THANK", 250, 200, []), ("YOU", 470, 150, [])])
+    return rows
+
+
 BUNDLES = {
     "costco_wholesale_v1.inputs.json": {
         "slug": "costco",
@@ -125,6 +165,21 @@ BUNDLES = {
         "section_sequence": [],
         "canvas": {"w": 420, "h": 700},
         "words": fixture_mart_words,
+    },
+    "variant_selftest_v1.inputs.json": {
+        # slug=costco borrows costco's SECTION_BANDS so items land in the
+        # ITEMS band; the truth resolves via merchant "Variant Selftest".
+        "slug": "costco",
+        "composed": False,
+        "section_sequence": [
+            "storefront",
+            "items",
+            "summary",
+            "payment",
+            "footer",
+        ],
+        "canvas": {"w": 460, "h": 900},
+        "words": variant_selftest_words,
     },
 }
 

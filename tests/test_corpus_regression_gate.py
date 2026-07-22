@@ -164,6 +164,85 @@ def test_json_findings_are_machine_parseable(temp_corpus, tmp_path, capsys):
 
 
 # --------------------------------------------------------------------------
+# §7.2 profile / variant-selection path (columns_source="profile")
+# --------------------------------------------------------------------------
+def _variant_entry() -> dict:
+    manifest = gate._load_json(gate.MANIFEST_PATH)
+    return next(
+        e for e in manifest["entries"] if e["name"] == "variant_selftest_v1"
+    )
+
+
+def test_variant_entry_columns_derive_from_profile_not_bootstrap():
+    """The variant corpus entry's ITEMS lane comes from the PROFILE path.
+
+    ``source == "profile"`` proves ``profile_columns`` consumed the layout
+    template's variant lane; a regression that emptied it would fall back to
+    ``bootstrap(no-profile-data)`` and this pin would flip.
+    """
+    rec = gate.capture_entry(_variant_entry())
+    bands = rec["metrics"]["columns"]["bands"]
+    assert "ITEMS" in bands, bands
+    assert bands["ITEMS"]["source"] == "profile"
+    assert rec["metrics"]["columns"]["verdict"] == "PASS"
+
+
+def test_variant_tie_break_selects_highest_support():
+    """The receipt matches BOTH variants; §7.2 tie-break must pick support 7."""
+    from receipt_dynamo.merchant_truth_variants import (
+        normalize_word_set,
+        select_variant,
+    )
+
+    entry = _variant_entry()
+    truth = gate._load_json(gate._repo_path(entry["truth_fixture"]))
+    template = None
+    for item in truth["items"]:
+        if item["SK"]["S"].endswith("C#layout"):
+            # low-level DynamoDB item format: payload is {"S": "<json>"}
+            template = json.loads(item["payload"]["S"])["template"]
+    assert template and template.get("variants")
+    inputs = gate._load_json(gate._repo_path(entry["eval_inputs"]))
+    word_set = normalize_word_set(
+        [w["text"] for w in inputs["manifest_words"]]
+    )
+    chosen = select_variant(
+        template,
+        section_sequence=inputs["section_sequence"],
+        word_set=word_set,
+    )
+    assert chosen is not None
+    assert chosen["variant_id"] == "checkout-high"
+
+
+def test_select_variant_regression_flips_corpus_verdict(monkeypatch):
+    """A select_variant regression must flip the corpus columns verdict.
+
+    Simulate the regression by patching the shared selector to always fall
+    back to DEFAULT (as a variant-blind reader would): the DEFAULT lane sits
+    at x=0.86, off the inked amounts at x=0.70, so the columns metric drops
+    from PASS to UNTESTED -- a recorded regression naming this receipt +
+    columns.
+    """
+    import receipt_dynamo.merchant_truth_variants as variants
+
+    baseline = gate._load_json(gate.COMMITTED_BASELINE)
+    base_rec = baseline["entries"]["variant_selftest_v1"]
+    assert base_rec["metrics"]["columns"]["verdict"] == "PASS"
+
+    monkeypatch.setattr(
+        variants, "select_variant", lambda *a, **k: None, raising=True
+    )
+    regressed = gate.capture_entry(_variant_entry())
+    assert regressed["metrics"]["columns"]["verdict"] != "PASS"
+
+    findings = gate._diff_entry("variant_selftest_v1", base_rec, regressed)
+    columns = [f for f in findings if f["metric"] == "columns"]
+    assert columns, f"expected a columns finding, got {findings}"
+    assert any(f["field"] == "columns.verdict" for f in columns)
+
+
+# --------------------------------------------------------------------------
 # committed-artifact guards (what CI actually runs)
 # --------------------------------------------------------------------------
 def test_committed_baseline_in_sync_with_fixtures():

@@ -11,9 +11,18 @@
         },
         "columns": {
           "bands": {
-            "ITEMS": "PASS",
-            "PAYMENT": "UNTESTED",
-            "SUMMARY": "UNTESTED"
+            "ITEMS": {
+              "source": "bootstrap",
+              "verdict": "PASS"
+            },
+            "PAYMENT": {
+              "source": "bootstrap",
+              "verdict": "UNTESTED"
+            },
+            "SUMMARY": {
+              "source": "bootstrap",
+              "verdict": "UNTESTED"
+            }
           },
           "verdict": "PASS_WITH_GAPS"
         },
@@ -74,7 +83,10 @@
         },
         "columns": {
           "bands": {
-            "ALL": "PASS"
+            "ALL": {
+              "source": "bootstrap",
+              "verdict": "PASS"
+            }
           },
           "verdict": "PASS"
         },
@@ -120,6 +132,70 @@
       "truth": {
         "bundle_hash": "4010db5d5de3b0da8889df9c233ac86d92e54f15df8e7b7aa164c654154663be",
         "slug": "fixture_mart",
+        "version": 1
+      }
+    },
+    "variant_selftest_v1": {
+      "merchant": "Variant Selftest",
+      "metrics": {
+        "arithmetic": {
+          "n_items": 5,
+          "testable": 0,
+          "verdict": "UNTESTED",
+          "violated": 0
+        },
+        "columns": {
+          "bands": {
+            "ITEMS": {
+              "source": "profile",
+              "verdict": "PASS"
+            }
+          },
+          "verdict": "PASS"
+        },
+        "coverage_gaps": [
+          "arithmetic",
+          "graphics",
+          "style",
+          "style:total_line"
+        ],
+        "graphics": {
+          "verdict": "SKIPPED"
+        },
+        "logo": {
+          "area_ratio": null,
+          "center_offset_frac": null,
+          "size_ratio": null,
+          "verdict": "PASS"
+        },
+        "overall": "PASS_WITH_GAPS",
+        "separators": {
+          "kind_mismatches": 0,
+          "real_count": 0,
+          "synth_count": 0,
+          "verdict": "PASS"
+        },
+        "style": {
+          "body_stroke_rel_real": 0.0427,
+          "body_stroke_rel_synth": 0.0427,
+          "verdict": "UNTESTED"
+        },
+        "tokens": {
+          "ink_recall": 1.0,
+          "text_precision": 1.0,
+          "text_recall": 1.0,
+          "verdict": "PASS"
+        }
+      },
+      "name": "variant_selftest_v1",
+      "render_hashes": {
+        "real": "9cf391db7e6144773abf27ef9ac0fc48bc1a56a8341abc900360810c20b63a02",
+        "syn": "9cf391db7e6144773abf27ef9ac0fc48bc1a56a8341abc900360810c20b63a02"
+      },
+      "slug": "costco",
+      "truth": {
+        "bundle_hash": "78186ca27049c2b0f9126f54b8601ee4a555193889311a21f740d9cb172bcc52",
+        "slug": "variant_selftest",
         "version": 1
       }
     }

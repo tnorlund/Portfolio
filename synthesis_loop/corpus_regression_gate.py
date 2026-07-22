@@ -24,6 +24,25 @@ image pairs. No boto3, no DynamoDB, no S3. The default ``--write-gate-record
 False`` is not even reachable here (the CLI ``run`` path is not used), so no
 gate record is ever written.
 
+Consequently, what THIS gate does NOT cover -- deliberately, because each
+needs AWS and/or is another guard's jurisdiction:
+  - the production RENDERER's pixels (``section_compare.render_pair`` -- font
+    profile, glyph atlas, receipt words, real S3 image): render_regression
+    _guard.py's job, and it needs the dev table + S3 + creds. Our "render
+    hashes" pin the DETERMINISTIC fixture render of the committed words, not
+    production renderer output.
+  - ``build_stamp`` provenance (git SHA / dirty-worktree / atlas hash /
+    ``inputs_hash`` over live image+manifest+detector bytes): a run-stamp
+    concern, not a metric-verdict concern, and it reads the worktree/AWS.
+  - compose-derivation (``compose_dollartree.canonical_words`` and the
+    ``composed`` re-layout branch in ``run``): the corpus feeds ``syn_words``
+    directly, so ``composed`` is carried as a fixture flag, not derived.
+  - ``section_sequence`` LOADING (``load_section_sequence`` -- a Dynamo read):
+    the corpus vendors the sequence in the inputs bundle instead.
+  - the ONLINE freshness gate (``_capture_expected_active`` strong-read +
+    stale-cache detection) and PINNED mode: fixture mode's fail-closed hash
+    verification is the only truth-resolution path exercised here.
+
 The corpus:
   - ``corpus_manifest.json`` (beside this script) lists entries; each names a
     committed merchant-truth fixture (``tests/fixtures/merchant_truth/*.json``)
@@ -50,7 +69,11 @@ Verbs (mirroring render_regression_guard's capture/compare/check):
 Each finding names the receipt, the metric, the field, the baseline and
 current values, and (for numerics) the delta -- e.g.
 ``{"receipt": "costco_wholesale_v1", "metric": "tokens", "field": "verdict",
-"baseline": "PASS", "current": "FAIL"}``.
+"baseline": "PASS", "current": "FAIL"}``. NOTE for consumers (H7's poster):
+``delta`` is OPTIONAL -- it is present only when both values are numeric
+(verdict/string/render-hash findings carry no ``delta``), so a consumer must
+``.get("delta")`` rather than index it. The gate's own text printer already
+guards it this way.
 
 Intended CI invocation (wired in H7, NOT here):
     python3.12 synthesis_loop/corpus_regression_gate.py check --json
@@ -171,7 +194,15 @@ def _metric_summary(checks: dict) -> dict:
         "columns": {
             "verdict": col["verdict"],
             "bands": {
-                name: band["verdict"]
+                # per band: verdict + which lane SOURCE produced it. For
+                # columns_source="profile" entries the source is "profile"
+                # (the §7.2 variant selection ran); a profile/select_variant
+                # regression that empties the lane flips it to
+                # "bootstrap(no-profile-data)", a recorded regression.
+                name: {
+                    "verdict": band["verdict"],
+                    "source": band.get("source"),
+                }
                 for name, band in (col.get("bands") or {}).items()
             },
         },
