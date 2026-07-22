@@ -1021,13 +1021,16 @@ def _composite_paper_texture(
 
 
 # ---------------------------------------------------------------------------
-# Per-merchant render profiles (data-driven registry).
+# Per-merchant render profiles (versioned merchant truth).
 #
-# All per-merchant configuration lives in ``merchant_profiles.json`` (keyed by
-# exact merchant_name), NOT in code, so onboarding a merchant is a data edit.
-# See docs/synthetic-receipt-rendering-generalization.md. The helpers below read
-# that registry; their signatures and return shapes are unchanged, so callers
-# (render_matrix, _render_cached_hybrid) are untouched.
+# All per-merchant configuration comes from the merchant's ACTIVE
+# MerchantTruth bundle in DynamoDB, resolved through the fail-closed
+# ``MerchantTruthLoader`` (docs/architecture/MERCHANT_TRUTH_DYNAMO.md) and
+# mapped back into the legacy in-memory profile shape the render code
+# consumes, so every helper below keeps its signature and return shape and
+# callers (render_matrix, _render_cached_hybrid, glyph_review, ...) are
+# untouched. ``scripts/merchant_profiles.json`` is no longer read at render
+# time — it remains only as the mint INPUT for truth versions.
 # ---------------------------------------------------------------------------
 
 # Header size relative to body when a profile omits section_scale (measured +
@@ -1062,20 +1065,260 @@ _FONT_TOKENS = {"PTMONO": _PTMONO, "VT323": _VT323, "B612": _B612}
 # kept local (paid-font derived). Relocate via $BITMATRIX_DIR.
 _BITMATRIX_DIR = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
 
-_MERCHANT_PROFILES_PATH = os.path.join(
-    os.path.dirname(__file__), "merchant_profiles.json"
+# Truth-resolution modes (contract §4). ``online-active`` is the normal
+# fail-closed path; the two degraded modes must be requested EXPLICITLY via
+# $MERCHANT_TRUTH_MODE and mark every degradation loudly — a normal run never
+# silently renders without verified truth.
+_MERCHANT_TRUTH_MODES = ("online-active", "offline-fallback", "fixture")
+_DEGRADED_TRUTH_MODES = ("offline-fallback", "fixture")
+# Shared with the eval's --truth-fixture bundles (W8): loader low-level
+# {"items": [...]} files, one SEALED/PASS bundle per file.
+_MERCHANT_TRUTH_FIXTURE_DIR = os.path.join(
+    REPO_ROOT, "tests", "fixtures", "merchant_truth"
 )
-_MERCHANT_PROFILES_CACHE: dict | None = None
+# C#assets pointers carry an environment-neutral bucket alias, not a raw
+# bucket name (dev/prod promotion is a bucket swap; the content hashes are
+# what actually authenticate the bytes).
+_ARTIFACT_BUCKET_ALIAS = "merchant-font-artifacts"
+_ARTIFACT_BUCKET_DEFAULT = "raw-image-bucket-c779c32"  # dev
+
+# v1-migration fidelity shim: the legacy registry distinguished a profile
+# WITHOUT a section_scale key (-> _DEFAULT_SECTION_SCALE header shrink) from
+# one with an explicit empty {} (-> uniform, no shrink), but the v1 mint
+# wrote ``profile.get("section_scale", {})`` and collapsed both to {}. These
+# are the merchants whose legacy profile carried the EXPLICIT empty map at
+# mint time (pinned by tests/test_merchant_truth_profile_parity.py against
+# scripts/merchant_profiles.json). Applies to version-1 bundles only; a v2
+# mint must record the distinction itself, at which point this shim is dead
+# code to delete.
+_V1_EXPLICIT_EMPTY_SECTION_SCALE = frozenset(
+    {"in_n_out_burger", "sprouts_farmers_market"}
+)
+
+_MERCHANT_TRUTH_REGISTRY = None
+_TRUTH_DEGRADED_MARKS: set[tuple] = set()
+
+
+class _MerchantTruthRegistry:
+    """Per-process view of the fleet: alias map + one ACTIVE bundle each."""
+
+    def __init__(self, mode: str, artifacts: dict, warnings: list[str]):
+        self.mode = mode  # one of _MERCHANT_TRUTH_MODES
+        self.artifacts = artifacts  # slug -> MerchantTruthArtifact
+        self.warnings = list(warnings)
+        self.profiles: dict[str, dict] = {}  # canonical name -> legacy shape
+        self.canonical_by_slug: dict[str, str] = {}
+        self.slug_by_canonical: dict[str, str] = {}
+        self.alias_to_slug: dict[str, str] = {}  # normalized alias -> slug
+        for slug, artifact in artifacts.items():
+            identity = artifact.components.get("identity") or {}
+            name, profile = _profile_from_truth(artifact)
+            self.profiles[name] = profile
+            self.canonical_by_slug[slug] = name
+            self.slug_by_canonical[name] = slug
+            for alias in identity.get("normalized_aliases") or [slug]:
+                self.alias_to_slug.setdefault(alias, slug)
+
+
+def _merchant_truth_mode() -> str:
+    mode = (
+        os.environ.get("MERCHANT_TRUTH_MODE", "online-active").strip().lower()
+    )
+    if mode not in _MERCHANT_TRUTH_MODES:
+        raise ValueError(
+            f"MERCHANT_TRUTH_MODE={mode!r} is not one of "
+            f"{sorted(_MERCHANT_TRUTH_MODES)}"
+        )
+    return mode
+
+
+def _truth_cache_dir():
+    from pathlib import Path
+
+    return Path(
+        os.environ.get("MERCHANT_TRUTH_CACHE_DIR")
+        or os.path.expanduser("~/.cache/merchant_truth")
+    )
+
+
+def _mark_degraded(merchant, face: str, filename: str, reason: str) -> None:
+    """Loud, once-per-artifact marker for every explicit degraded render."""
+    key = (str(merchant), face, filename)
+    if key in _TRUTH_DEGRADED_MARKS:
+        return
+    _TRUTH_DEGRADED_MARKS.add(key)
+    print(
+        f"[merchant-truth] DEGRADED ({_merchant_truth_mode()}): rendering "
+        f"{merchant!r} without verified {face} artifact {filename!r} "
+        f"({reason}); permitted only in explicit fixture/offline mode"
+    )
+
+
+def _profile_from_truth(artifact) -> tuple[str, dict]:
+    """Map one verified truth bundle back into the legacy profile shape.
+
+    Exact inverse of the v1 migration's ``_build_merchant_payload``
+    (receipt_dynamo/migrations/merchant_truth_v1.py): measured typography +
+    section_scale from C#typography, decided typography and the
+    header/graphics/compose blocks from C#flags, aliases from C#identity,
+    logo/logo_anchor/stylemap-filename from C#assets.profile, layout_template
+    from C#layout. Round-trip fidelity across the whole registry is pinned by
+    tests/test_merchant_truth_profile_parity.py.
+    """
+    components = artifact.components
+    identity = components.get("identity") or {}
+    typography_component = components.get("typography") or {}
+    flags = components.get("flags") or {}
+    layout = components.get("layout") or {}
+    assets = components.get("assets") or {}
+    profile_assets = assets.get("profile") or {}
+
+    profile: dict = {}
+    aliases = identity.get("aliases") or []
+    if aliases:
+        profile["aliases"] = list(aliases)
+    typography: dict = {}
+    typography.update(
+        copy.deepcopy(typography_component.get("typography") or {})
+    )
+    typography.update(copy.deepcopy(flags.get("typography") or {}))
+    stylemap_filename = profile_assets.get("stylemap_filename")
+    if stylemap_filename:
+        typography["stylemap"] = stylemap_filename
+    if typography:
+        profile["typography"] = typography
+    section_scale = typography_component.get("section_scale") or {}
+    if section_scale or (
+        artifact.version == 1
+        and artifact.slug in _V1_EXPLICIT_EMPTY_SECTION_SCALE
+    ):
+        profile["section_scale"] = dict(section_scale)
+    for key in (
+        "header",
+        "graphics",
+        "compose",
+        "logo_subtitle",
+        "logo_reserve_subtitle",
+    ):
+        if key in flags:
+            profile[key] = copy.deepcopy(flags[key])
+    for key in ("logo", "logo_anchor"):
+        if key in profile_assets:
+            profile[key] = copy.deepcopy(profile_assets[key])
+    if layout.get("available") and layout.get("template") is not None:
+        profile["layout_template"] = copy.deepcopy(layout["template"])
+    name = identity.get("merchant_name") or artifact.slug
+    return name, profile
+
+
+def _build_truth_registry() -> "_MerchantTruthRegistry":
+    """One fleet alias map + the ACTIVE bundle per merchant, verified."""
+    from receipt_dynamo.merchant_truth_loader import (
+        MerchantTruthLoader,
+        TruthResolutionMode,
+    )
+
+    mode = _merchant_truth_mode()
+    cache_dir = _truth_cache_dir()
+    ci = bool(os.environ.get("CI"))
+    warnings: list[str] = []
+    artifacts: dict = {}
+    if mode == "fixture":
+        fixture_spec = (
+            os.environ.get("MERCHANT_TRUTH_FIXTURE")
+            or _MERCHANT_TRUTH_FIXTURE_DIR
+        )
+        from pathlib import Path
+
+        spec = Path(fixture_spec)
+        paths = sorted(spec.glob("*.json")) if spec.is_dir() else [spec]
+        paths = [p for p in paths if not p.name.startswith("_")]
+        if not paths or not all(p.exists() for p in paths):
+            raise FileNotFoundError(
+                f"MERCHANT_TRUTH_MODE=fixture but no fixture bundle at "
+                f"{fixture_spec!r}"
+            )
+        loader = MerchantTruthLoader(None, cache_dir, ci=ci)
+        for path in paths:
+            artifact = loader.load(
+                "", TruthResolutionMode.FIXTURE, fixture_path=path
+            )
+            artifacts[artifact.slug] = artifact
+        print(
+            f"[merchant-truth] FIXTURE mode: {len(artifacts)} bundle(s) "
+            f"from {fixture_spec} — degraded by design, never a normal run"
+        )
+    elif mode == "offline-fallback":
+        from receipt_dynamo.entities.merchant_truth import (
+            MerchantTruthActive,
+        )
+
+        fleet_path = cache_dir / "fleet-active.json"
+        if not fleet_path.exists():
+            raise FileNotFoundError(
+                f"MERCHANT_TRUTH_MODE=offline-fallback but no cached fleet "
+                f"at {fleet_path} (run online once to warm the cache)"
+            )
+        with fleet_path.open(encoding="utf-8") as fh:
+            fleet_items = json.load(fh).get("items", [])
+        loader = MerchantTruthLoader(None, cache_dir, ci=ci)
+        for item in fleet_items:
+            active = MerchantTruthActive.from_item(item)
+            artifact = loader.load(
+                active.slug, TruthResolutionMode.OFFLINE_FALLBACK
+            )
+            if artifact.incomplete:
+                if not artifact.components.get("identity"):
+                    warnings.append(
+                        f"skipping {active.slug}: offline cache too "
+                        f"incomplete to reconstruct a profile"
+                    )
+                    continue
+                warnings.append(
+                    f"{active.slug}: offline bundle incomplete "
+                    f"({'; '.join(artifact.warnings)})"
+                )
+            artifacts[artifact.slug] = artifact
+        print(
+            f"[merchant-truth] OFFLINE-FALLBACK mode: {len(artifacts)} "
+            f"cached bundle(s) from {cache_dir} — a flip since the last "
+            f"online run is NOT visible"
+        )
+        for line in warnings:
+            print(f"[merchant-truth] DEGRADED (offline-fallback): {line}")
+    else:  # online-active
+        from receipt_dynamo import DynamoClient
+
+        table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+        reader = DynamoClient(table)
+        loader = MerchantTruthLoader(reader, cache_dir, ci=ci)
+        for active in reader.list_active_merchant_truth():
+            artifact = loader.load(
+                active.slug, TruthResolutionMode.ONLINE_ACTIVE
+            )
+            artifacts[artifact.slug] = artifact
+    return _MerchantTruthRegistry(mode, artifacts, warnings)
+
+
+def _merchant_truth_registry(
+    refresh: bool = False,
+) -> "_MerchantTruthRegistry":
+    global _MERCHANT_TRUTH_REGISTRY
+    if _MERCHANT_TRUTH_REGISTRY is None or refresh:
+        _MERCHANT_TRUTH_REGISTRY = _build_truth_registry()
+    return _MERCHANT_TRUTH_REGISTRY
+
+
+def _reset_merchant_truth_registry() -> None:
+    """Drop the per-process truth registry (tests / mode switches)."""
+    global _MERCHANT_TRUTH_REGISTRY
+    _MERCHANT_TRUTH_REGISTRY = None
+    _TRUTH_DEGRADED_MARKS.clear()
 
 
 def load_merchant_profiles(refresh: bool = False) -> dict:
-    """Load and cache the merchant profile registry (``merchant_profiles.json``)."""
-    global _MERCHANT_PROFILES_CACHE
-    if _MERCHANT_PROFILES_CACHE is None or refresh:
-        with open(_MERCHANT_PROFILES_PATH, encoding="utf-8") as fh:
-            data = json.load(fh)
-        _MERCHANT_PROFILES_CACHE = data.get("profiles", {}) or {}
-    return _MERCHANT_PROFILES_CACHE
+    """Legacy-shaped merchant profile registry from ACTIVE truth bundles."""
+    return _merchant_truth_registry(refresh).profiles
 
 
 def get_merchant_profile_key(
@@ -1084,27 +1327,66 @@ def get_merchant_profile_key(
     """The canonical registry KEY and record for ``merchant``.
 
     Dynamo holds name variants of the same store ("TRADER JOE'S", "CVS
-    pharmacy(r)"); a profile lists those under "aliases" so every variant
-    resolves to the one canonical record. Returns the profile's canonical KEY
-    alongside the record so callers that key external systems off the canonical
-    merchant name -- e.g. the MerchantFont Dynamo pointer, published under the
-    canonical name, not a receipt's alias -- resolve the same record the
-    profile does. ``(None, {})`` when unknown.
+    pharmacy(r)"); the bundle's identity component lists those under
+    "aliases" so every variant resolves to the one canonical record. Returns
+    the canonical KEY alongside the record so callers that key external
+    systems off the canonical merchant name resolve the same record the
+    profile does. ``(None, {})`` only for a MISSING merchant (None/empty —
+    the generic unbranded render); a NAMED merchant with no ACTIVE truth
+    bundle raises — there is no silent legacy-path fallback.
     """
-    profiles = load_merchant_profiles()
     name = merchant or ""
+    if not name.strip():
+        return None, {}
+    registry = _merchant_truth_registry()
+    profiles = registry.profiles
     hit = profiles.get(name)
     if hit is not None:
         return name, hit
     for key, record in profiles.items():
         if name in record.get("aliases", ()):
             return key, record
-    return None, {}
+    from receipt_dynamo.merchant_truth_loader import (
+        normalize_merchant_alias,
+    )
+
+    slug = registry.alias_to_slug.get(normalize_merchant_alias(name))
+    if slug is not None:
+        key = registry.canonical_by_slug[slug]
+        return key, profiles[key]
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+
+    raise MerchantTruthIntegrityError(
+        f"no ACTIVE merchant-truth bundle resolves merchant {name!r} "
+        f"(mode={registry.mode}; known merchants: "
+        f"{sorted(registry.canonical_by_slug.values())}). Blocked "
+        f"merchants need their assets published, a version minted+sealed, "
+        f"and an owner ACTIVE flip; offline/CI runs must opt into "
+        f"MERCHANT_TRUTH_MODE=fixture with a fixture bundle. The legacy "
+        f"merchant_profiles.json fallback no longer exists."
+    )
 
 
 def get_merchant_profile(merchant: str | None) -> dict:
     """The registry record for ``merchant`` (exact match, then declared alias)."""
     return get_merchant_profile_key(merchant)[1]
+
+
+def _truth_artifact(merchant: str | None):
+    """The verified ACTIVE bundle artifact backing ``merchant``'s profile."""
+    key, _ = get_merchant_profile_key(merchant)
+    if key is None:
+        from receipt_dynamo.data.shared_exceptions import (
+            MerchantTruthIntegrityError,
+        )
+
+        raise MerchantTruthIntegrityError(
+            "a merchant name is required to resolve truth-bundle assets"
+        )
+    registry = _merchant_truth_registry()
+    return registry.artifacts[registry.slug_by_canonical[key]]
 
 
 def section_scale_for_merchant(merchant: str | None) -> dict:
@@ -1137,82 +1419,189 @@ def _merchant_logo(merchant: str | None):
     return Image.fromarray(rgba, "RGBA")
 
 
+def _artifact_bucket(bucket_alias: str | None) -> str:
+    """Resolve a bundle's environment-neutral bucket alias to a real bucket."""
+    if bucket_alias != _ARTIFACT_BUCKET_ALIAS:
+        from receipt_dynamo.data.shared_exceptions import (
+            MerchantTruthIntegrityError,
+        )
+
+        raise MerchantTruthIntegrityError(
+            f"unknown artifact bucket alias {bucket_alias!r} "
+            f"(expected {_ARTIFACT_BUCKET_ALIAS!r})"
+        )
+    return os.environ.get("MERCHANT_FONT_BUCKET", _ARTIFACT_BUCKET_DEFAULT)
+
+
+def _sha256_file(path: str) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _ensure_font_cached(filename: str, merchant: str, face: str) -> str:
-    """Resolve a font artifact to $BITMATRIX_DIR, fetching from the
-    MerchantFont pointer (Dynamo -> S3) on a local-cache miss.
+    """Resolve a bundle-declared binary artifact to $BITMATRIX_DIR,
+    hash-verified and FAIL-CLOSED.
 
-    Glyph sources live in git; compiled artifacts are published to S3 with a
-    Dynamo pointer per (merchant, face). The local dir is only a cache, so a
-    fresh machine (mini, Lambda, CI) renders without any manual publish
-    ritual. Never raises: on any fetch failure the original local path is
-    returned and the renderer's existing missing-file behavior applies.
+    The merchant's ACTIVE truth bundle (C#assets) is the only source of
+    pointers: font npz and logo each carry ``{bucket_alias, s3_key,
+    content_hash}``. The local dir stays a cache, but cached bytes are
+    verified against the bundle's content hash before being trusted — a
+    tampered or stale cache RAISES instead of silently rendering. A missing
+    pointer or a failed/hash-mismatched fetch also raises; the legacy
+    return-whatever-file-exists behavior is gone. Only the explicit degraded
+    modes (fixture / offline-fallback) may proceed without the artifact, and
+    they mark it loudly (missing-file fallbacks downstream then apply, e.g.
+    CI rendering without atlases by design).
     """
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+
     local = os.path.join(_BITMATRIX_DIR, filename)
-    if os.path.exists(local):
+    registry = _merchant_truth_registry()
+    artifact = _truth_artifact(merchant)
+    degraded = registry.mode in _DEGRADED_TRUTH_MODES
+    if artifact.incomplete:
+        # Offline best-effort bundle: its pointers never verified against
+        # the manifest, so no hash here is trustworthy. Explicitly degraded.
+        _mark_degraded(merchant, face, filename, "incomplete offline bundle")
         return local
-    try:
-        import hashlib
-
-        import boto3
-
-        from receipt_dynamo import DynamoClient
-
-        table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
-        client = DynamoClient(table)
-        # Pointers are published under the profile's CANONICAL name; a render
-        # invoked with a receipt-variant alias ("CVS pharmacy", "TRADER JOE'S")
-        # must resolve to that key first or the lookup misses and the font
-        # silently drops.
-        lookup = get_merchant_profile_key(merchant)[0] or merchant
-        if face in ("stylemap", "logo"):
-            ptr = client.get_merchant_font(lookup, "regular")
-            bucket = ptr.s3_bucket if ptr else None
-            attr = "stylemap_s3_key" if face == "stylemap" else "logo_s3_key"
-            key = getattr(ptr, attr, None) if ptr else None
-            want_hash = None
-        else:
-            ptr = client.get_merchant_font(lookup, face)
-            bucket = ptr.s3_bucket if ptr else None
-            key = ptr.s3_key if ptr else None
-            want_hash = ptr.content_hash if ptr else None
-        if not bucket or not key:
-            return local
+    assets = artifact.components.get("assets") or {}
+    if face == "logo":
+        pointer = assets.get("logo")
+    elif face == "stylemap":
+        raise ValueError(
+            "stylemap is read inline from the truth bundle "
+            "(merchant_typography); it is not a fetched artifact"
+        )
+    else:
         # A pointer may only satisfy the exact filename it was published as
-        # (a merchant can have several atlases; never let a studio build
-        # masquerade as e.g. Costco's chart-derived production font). Stylemaps
-        # and logos ride on the regular pointer under their own key fields
-        # (stylemap_s3_key/logo_s3_key), so the atlas cache_filename guard does
-        # not apply to them -- it would always mismatch and drop the download.
-        want_name = getattr(ptr, "cache_filename", None)
-        guarded = face not in ("stylemap", "logo")
-        if want_name and want_name != filename and guarded:
+        # (never let a studio build masquerade as e.g. Costco's
+        # chart-derived production font). The profile may also deliberately
+        # map a face onto ANOTHER face's file (Italia Deli / Neighborly
+        # render ``heavy`` with the regular atlas), so resolve by the
+        # requested FILENAME across the bundle's font pointers — the
+        # filename comes from the same sealed bundle's typography, and the
+        # matched pointer's content hash still authenticates the bytes.
+        fonts = assets.get("fonts") or {}
+        pointer = fonts.get(face)
+        if pointer is not None and pointer.get("cache_filename") != filename:
+            pointer = None
+        if pointer is None:
+            pointer = next(
+                (
+                    entry
+                    for entry in fonts.values()
+                    if entry.get("cache_filename") == filename
+                ),
+                None,
+            )
+    if pointer is None:
+        if degraded:
+            _mark_degraded(
+                merchant, face, filename, "no asset pointer in bundle"
+            )
             return local
-        if not want_name and guarded:
-            return local
-        os.makedirs(_BITMATRIX_DIR, exist_ok=True)
-        tmp = local + ".fetch"
-        boto3.client("s3").download_file(bucket, key, tmp)
-        if want_hash:
-            h = hashlib.sha256(open(tmp, "rb").read()).hexdigest()
-            if h != want_hash:
-                os.remove(tmp)
-                return local
-        os.replace(tmp, local)
-        print(f"[merchant-font] fetched {face} for {merchant!r} -> {local}")
-    except Exception:
+        raise MerchantTruthIntegrityError(
+            f"ACTIVE bundle for {merchant!r} (v{artifact.version}) has no "
+            f"{face} asset pointer for {filename!r}; publish the asset and "
+            f"mint a new version instead of rendering unverified bytes"
+        )
+    want_hash = pointer.get("content_hash")
+    if not want_hash:
+        raise MerchantTruthIntegrityError(
+            f"{face} pointer for {merchant!r} carries no content_hash; "
+            f"the bundle cannot be verified"
+        )
+    if os.path.exists(local):
+        got_hash = _sha256_file(local)
+        if got_hash != want_hash:
+            raise MerchantTruthIntegrityError(
+                f"cached {face} artifact {local} does not match the ACTIVE "
+                f"bundle for {merchant!r} (v{artifact.version}): sha256 "
+                f"{got_hash} != {want_hash}. Refusing to render from "
+                f"unverified bytes — delete the cached file to re-fetch."
+            )
         return local
+    if degraded:
+        _mark_degraded(
+            merchant, face, filename, "not cached locally; no fetch offline"
+        )
+        return local
+    import boto3
+
+    bucket = _artifact_bucket(pointer.get("bucket_alias"))
+    key = pointer.get("s3_key")
+    if not key:
+        raise MerchantTruthIntegrityError(
+            f"{face} pointer for {merchant!r} has no s3_key"
+        )
+    os.makedirs(_BITMATRIX_DIR, exist_ok=True)
+    tmp = local + ".fetch"
+    try:
+        boto3.client("s3").download_file(bucket, key, tmp)
+        got_hash = _sha256_file(tmp)
+        if got_hash != want_hash:
+            raise MerchantTruthIntegrityError(
+                f"fetched {face} artifact s3://{bucket}/{key} does not "
+                f"match the ACTIVE bundle for {merchant!r} "
+                f"(v{artifact.version}): sha256 {got_hash} != {want_hash}"
+            )
+        os.replace(tmp, local)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    print(
+        f"[merchant-truth] fetched+verified {face} for {merchant!r} "
+        f"-> {local}"
+    )
     return local
+
+
+def _truth_stylemap(merchant: str | None, filename: str) -> dict | None:
+    """The bundle's inline, hash-verified stylemap document (or None).
+
+    Online mode fails closed when the profile declares a stylemap the ACTIVE
+    bundle cannot supply; the explicit degraded modes mark the drop and
+    return None so the renderer's existing no-stylemap fallback applies.
+    """
+    registry = _merchant_truth_registry()
+    artifact = _truth_artifact(merchant)
+    payload = artifact.components.get("stylemap") or {}
+    if payload.get("available") and payload.get("document") is not None:
+        return copy.deepcopy(payload["document"])
+    if registry.mode in _DEGRADED_TRUTH_MODES or artifact.incomplete:
+        _mark_degraded(
+            merchant, "stylemap", filename, "bundle stylemap unavailable"
+        )
+        return None
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+
+    raise MerchantTruthIntegrityError(
+        f"profile for {merchant!r} declares stylemap {filename!r} but the "
+        f"ACTIVE bundle (v{artifact.version}) has no stylemap document"
+    )
 
 
 def merchant_typography(merchant: str | None) -> dict:
     """Per-merchant grid typography kwargs; {} -> default grid font.
 
     Resolves the profile's ``typography`` block: the ``font`` token -> a bundled
-    font path, ``bitmap_font`` filenames -> $BITMATRIX_DIR paths, and copies the
-    remaining shaping/treatment keys (condense, stroke, display_headings,
-    reverse_*, dashed_separators) through verbatim. Drops a bitmap_font/font_path
-    whose assets are missing (e.g. CI without the local atlases) so rendering
-    falls back gracefully.
+    font path, ``bitmap_font`` filenames -> hash-verified $BITMATRIX_DIR paths,
+    the ``stylemap`` filename -> the bundle's inline verified document, and
+    copies the remaining shaping/treatment keys (condense, stroke,
+    display_headings, reverse_*, dashed_separators) through verbatim. A
+    bitmap_font/font_path whose assets are missing is dropped ONLY in the
+    explicit degraded truth modes (fixture / offline-fallback, loudly
+    marked); in normal online mode a missing or unverifiable artifact raises
+    inside :func:`_ensure_font_cached` instead of silently falling back.
     """
     typo = get_merchant_profile(merchant).get("typography", {})
     cfg: dict = {}
@@ -1229,13 +1618,14 @@ def merchant_typography(merchant: str | None) -> dict:
                 for k, v in val.items()
             }
         elif key == "stylemap":
-            # Measured per-section style rules (Glyph Studio fleet); the JSON
-            # is published into $BITMATRIX_DIR like the atlases. Dropped
-            # gracefully when absent so CI renders keep working.
-            sm_path = _ensure_font_cached(val, merchant, face="stylemap")
-            if os.path.exists(sm_path):
-                with open(sm_path, encoding="utf-8") as fh:
-                    cfg["stylemap"] = json.load(fh)
+            # Measured per-section style rules (Glyph Studio fleet). The
+            # document is INLINE in the verified truth bundle (C#stylemap),
+            # so no file fetch and no unverified local JSON: the loader
+            # already hash-verified it against the sealed manifest. Absent
+            # only in explicit degraded modes (marked), never silently.
+            document = _truth_stylemap(merchant, val)
+            if document is not None:
+                cfg["stylemap"] = document
         else:
             cfg[key] = val
     bf = cfg.get("bitmap_font")
