@@ -302,9 +302,88 @@ def diff_layout(old_payload: Any, new_payload: Any) -> list[str]:
                 new_columns.get(section) or [],
             )
         )
-    old_rest = {k: v for k, v in old_template.items() if k != "columns"}
-    new_rest = {k: v for k, v in new_template.items() if k != "columns"}
+    # §7.2 variants[] descend semantically (added/removed variants + per-variant
+    # column moves in paper-width units); everything else diffs as leaves. Both
+    # `columns` and `variants` are pulled out of the leaf diff so they are not
+    # double-reported. A variant-blind template (no `variants`) yields no
+    # variant lines, so v1 bundles diff byte-identically to before.
+    lines.extend(
+        _diff_variants(
+            old_template.get("variants") or [],
+            new_template.get("variants") or [],
+        )
+    )
+    old_rest = {
+        k: v
+        for k, v in old_template.items()
+        if k not in {"columns", "variants"}
+    }
+    new_rest = {
+        k: v
+        for k, v in new_template.items()
+        if k not in {"columns", "variants"}
+    }
     lines.extend(diff_leaves(old_rest, new_rest, prefix="template"))
+    return lines
+
+
+def _variants_by_id(
+    variants: list[Any],
+) -> dict[str, dict[str, Any]]:
+    """Index variant entries by ``variant_id`` (skip malformed entries)."""
+    keyed: dict[str, dict[str, Any]] = {}
+    for index, variant in enumerate(variants):
+        if not isinstance(variant, dict):
+            continue
+        vid = str(variant.get("variant_id", f"variant[{index}]"))
+        keyed[vid] = variant
+    return keyed
+
+
+def _diff_variants(
+    old_variants: list[Any], new_variants: list[Any]
+) -> list[str]:
+    """Per-variant sub-diff over ``template.variants[]`` (§7.2).
+
+    Variants are paired by ``variant_id``: an id only on one side is an
+    added/removed variant; a shared id descends into per-section column moves
+    (paper-width units) plus a leaf diff of the variant's other keys
+    (``classifier_hint`` / ``support`` / ``source_receipt_keys`` / sections /
+    separators).
+    """
+    lines: list[str] = []
+    old_keyed = _variants_by_id(old_variants)
+    new_keyed = _variants_by_id(new_variants)
+    for vid in sorted(set(old_keyed) | set(new_keyed)):
+        prefix = f"variant[{vid}]"
+        if vid not in new_keyed:
+            old_variant = old_keyed[vid]
+            lines.append(
+                f"- {prefix} removed "
+                f"(support {format_value(old_variant.get('support'))})"
+            )
+            continue
+        if vid not in old_keyed:
+            new_variant = new_keyed[vid]
+            lines.append(
+                f"- {prefix} added "
+                f"(support {format_value(new_variant.get('support'))})"
+            )
+            continue
+        old_variant, new_variant = old_keyed[vid], new_keyed[vid]
+        old_columns = old_variant.get("columns") or {}
+        new_columns = new_variant.get("columns") or {}
+        for section in sorted(set(old_columns) | set(new_columns)):
+            lines.extend(
+                _diff_section_columns(
+                    f"{prefix} {section}",
+                    old_columns.get(section) or [],
+                    new_columns.get(section) or [],
+                )
+            )
+        old_rest = {k: v for k, v in old_variant.items() if k != "columns"}
+        new_rest = {k: v for k, v in new_variant.items() if k != "columns"}
+        lines.extend(diff_leaves(old_rest, new_rest, prefix=prefix))
     return lines
 
 

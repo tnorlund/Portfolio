@@ -1932,12 +1932,66 @@ def _load_real(merchant: str, image_id: str, receipt_id: int):
     return real, words, rec
 
 
-def profile_columns(truth: TruthContext, section: str) -> list[dict]:
+def load_section_sequence(
+    merchant: str, image_id: str, receipt_id: int
+) -> list[str]:
+    """The receipt's canonical section names in top-to-bottom order.
+
+    Reads ``RECEIPT_SECTION`` rows, maps each ``section_type`` onto the shared
+    canonical vocabulary (``STOREFRONT`` -> ``storefront`` etc.; non-canonical
+    legacy/metadata types are skipped), and orders sections by their first
+    line. This is the ``section_sequence`` the §7.2 ``section_*`` hints match
+    against. Best-effort: any failure yields ``[]`` (text_marker hints still
+    work, and a variant-blind bundle ignores it entirely).
+    """
+    try:
+        from glyphstudio.sections import is_canonical_section
+        from receipt_dynamo.data.dynamo_client import DynamoClient
+
+        table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+        client = DynamoClient(table)
+        sections = client.get_receipt_sections_from_receipt(
+            image_id, receipt_id
+        )
+        ordered = sorted(
+            sections,
+            key=lambda s: min(s.line_ids) if s.line_ids else 1 << 30,
+        )
+        sequence: list[str] = []
+        for section in ordered:
+            canonical = str(section.section_type).strip().lower()
+            if is_canonical_section(canonical) and canonical not in sequence:
+                sequence.append(canonical)
+        return sequence
+    except Exception as exc:  # noqa: BLE001 -- best-effort, never fatal
+        print(
+            f"section sequence unavailable for {merchant} "
+            f"{image_id}/{receipt_id}: {exc}",
+            file=sys.stderr,
+        )
+        return []
+
+
+def profile_columns(
+    truth: TruthContext,
+    section: str,
+    *,
+    section_sequence: "list[str] | None" = None,
+    word_set: "frozenset[str] | None" = None,
+) -> list[dict]:
     """Measured columns from the bundle's C#layout template (P2 source).
 
     Validates the template's schema version and shape before consuming it --
     a template from a future schema version (or a hand-mangled one) is
     ignored loudly rather than silently misread.
+
+    §7.2 variant-aware: when the template carries ``variants[]``, the columns
+    come from the variant whose ``classifier_hint`` matches the receipt under
+    eval (its canonical ``section_sequence`` / normalized ``word_set``),
+    selected by the shared ``merchant_truth_variants`` algorithm. A
+    variant-blind template (no ``variants``) reads the top-level DEFAULT
+    columns exactly as before -- the selector returns the DEFAULT and the
+    output is byte-identical.
     """
     template = truth.component("layout").get("template") or {}
     if not template:
@@ -1951,8 +2005,14 @@ def profile_columns(truth: TruthContext, section: str) -> list[dict]:
             file=sys.stderr,
         )
         return []
-    cols = (template.get("columns") or {}).get(section) or []
-    return [dict(c) for c in cols]
+    from receipt_dynamo.merchant_truth_variants import variant_columns
+
+    return variant_columns(
+        template,
+        section,
+        section_sequence=section_sequence or [],
+        word_set=word_set or frozenset(),
+    )
 
 
 def evaluate_pair(
@@ -1967,11 +2027,20 @@ def evaluate_pair(
     syn_png: str,
     composed: bool,
     columns_source: str = "bootstrap",
+    section_sequence: "list[str] | None" = None,
 ) -> dict:
     """All 7 metrics over an aligned (real, synth) image pair."""
     W, H = syn_img.size
     real_gray = np.asarray(real_img.convert("L"), dtype=np.uint8)
     syn_gray = np.asarray(syn_img.convert("L"), dtype=np.uint8)
+    # §7.2 variant selection inputs, derived from the receipt under eval:
+    # the normalized OCR word set (from the real receipt's words) and its
+    # canonical section sequence (passed in by run()). Both feed
+    # profile_columns' variant selection; a variant-blind bundle ignores them.
+    from receipt_dynamo.merchant_truth_variants import normalize_word_set
+
+    receipt_word_set = normalize_word_set(words_real)
+    receipt_section_sequence = section_sequence or []
     px_real = words_to_px(words_real, W, H)
     px_syn = words_to_px(words_syn, W, H)
     rows_real = group_visual_rows(px_real)
@@ -2001,7 +2070,12 @@ def evaluate_pair(
         band_rows_real = rows_in(rows_real, (y0, y1))
         band_rows_syn = rows_in(rows_syn, (y0, y1))
         if columns_source == "profile":
-            columns = profile_columns(truth, canonical)
+            columns = profile_columns(
+                truth,
+                canonical,
+                section_sequence=receipt_section_sequence,
+                word_set=receipt_word_set,
+            )
             source = "profile"
             if not columns:
                 columns = derive_columns_bootstrap(band_rows_real, W)
@@ -2202,6 +2276,9 @@ def run(args) -> int:
     real.save(real_png)
     syn.save(syn_png)
     stamp["inputs_hash"] = inputs_hash(real_png, manifest_words)
+    section_sequence = load_section_sequence(
+        args.merchant, args.image_id, args.receipt_id
+    )
     checks = evaluate_pair(
         real,
         syn,
@@ -2213,6 +2290,7 @@ def run(args) -> int:
         syn_png=syn_png,
         composed=composed,
         columns_source=args.columns_source,
+        section_sequence=section_sequence,
     )
     doc = {
         "mode": "real-vs-synth",

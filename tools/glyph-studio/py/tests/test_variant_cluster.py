@@ -210,10 +210,17 @@ def test_two_populations_separate():
     (variant,) = template["variants"]
     assert variant["support"] == 4
     assert all("sfc-" in k for k in variant["source_receipt_keys"])
-    # the classifier hint names the self-checkout lane header marker
+    # the classifier hint is a §7.2 structured rule keyed off the distinctive
+    # self-checkout lane-header marker (reconciled to a text_marker hint)
     assert variant["variant_id"] == "self_checkout"
-    assert "self_checkout" in variant["classifier_hint"]["markers_any"]
-    assert "member" in variant["classifier_hint"]["markers_absent"]
+    assert variant["classifier_hint"] == {
+        "type": "text_marker",
+        "tokens": ["CHECKOUT", "SELF"],
+    }
+    # the raw distinctive signals survive in the verdict's features
+    feats = payload["verdict"]["distinguishing_features"]
+    assert any("prints 'self_checkout'" in f for f in feats)
+    assert any("omits 'member'" in f for f in feats)
     # per-cluster pooling kept the distinct amount lanes
     default_amount = [
         c["x"] for c in template["columns"]["items"] if c["role"] == "amount"
@@ -340,10 +347,16 @@ def test_degenerate_cluster_demoted_not_emitted():
 
 def test_classifier_hint_markers_are_distinctive():
     """Markers shared by both populations must never become classifiers;
-    only markers common to one side and rare on the other survive."""
+    only markers common to one side and rare on the other survive. The raw
+    distinctive signal is now surfaced in the verdict's marker features
+    (``prints``/``omits``); the variant carries the reconciled §7.2 hint."""
     payload = build_variant_payload(_mixed_corpus())
-    (variant,) = payload["template"]["variants"]
-    hint = variant["classifier_hint"]
+    marker_feats = [
+        f
+        for f in payload["verdict"]["distinguishing_features"]
+        if " prints '" in f or " omits '" in f
+    ]
+    text = " ".join(marker_feats)
     for shared in (
         "warehouse_header",
         "items_sold",
@@ -351,7 +364,41 @@ def test_classifier_hint_markers_are_distinctive():
         "total_line",
         "payment",
     ):
-        assert shared not in hint["markers_any"]
-        assert shared not in hint["markers_absent"]
-    assert hint["markers_any"] == ["self_checkout"]
-    assert set(hint["markers_absent"]) == {"member", "footer"}
+        assert shared not in text
+    assert any(f.endswith("prints 'self_checkout'") for f in marker_feats)
+    absent = {
+        f.split("omits ")[1].strip("'")
+        for f in marker_feats
+        if " omits '" in f
+    }
+    assert absent == {"member", "footer"}
+
+
+def test_generator_emits_valid_section72_hints_round_trip():
+    """The reconciled hint is a §7.2 structured rule that the SHARED selector
+    (receipt_dynamo.merchant_truth_variants) consumes: a self-checkout
+    receipt's word set selects the variant, a register receipt falls to
+    DEFAULT. This is the W-G -> W-H compatibility contract, exercised end to
+    end on the synthetic 2-population corpus."""
+    from receipt_dynamo.merchant_truth_variants import (
+        HINT_TYPES,
+        normalize_word_set,
+        select_variant,
+    )
+
+    payload = build_variant_payload(_mixed_corpus())
+    template = payload["template"]
+    (variant,) = template["variants"]
+    assert variant["classifier_hint"]["type"] in HINT_TYPES
+
+    sfc_words = normalize_word_set(
+        line["text"] for line in _selfcheckout_scan(0)["lines"]
+    )
+    selected = select_variant(template, word_set=sfc_words)
+    assert selected is not None
+    assert selected["variant_id"] == "self_checkout"
+
+    reg_words = normalize_word_set(
+        line["text"] for line in _register_scan(0)["lines"]
+    )
+    assert select_variant(template, word_set=reg_words) is None

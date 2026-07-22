@@ -742,6 +742,109 @@ def test_layout_diff_expresses_moves_in_paper_width_units() -> None:
     assert "- template.measured.receipts: 12 -> 15" in lines
 
 
+def _layout_with_variants(variants: list[dict]) -> dict:
+    """A minimal layout payload whose template carries §7.2 variants[]."""
+    return {
+        "available": True,
+        "template": {
+            "version": 1,
+            "columns": {
+                "items": [
+                    {
+                        "role": "amount",
+                        "anchor": "right",
+                        "x": 0.86,
+                        "support": 9,
+                    }
+                ]
+            },
+            "variants": variants,
+        },
+    }
+
+
+def _variant(variant_id: str, amount_x: float, support: int) -> dict:
+    return {
+        "variant_id": variant_id,
+        "classifier_hint": {"type": "text_marker", "tokens": ["SELF"]},
+        "columns": {
+            "items": [
+                {
+                    "role": "amount",
+                    "anchor": "right",
+                    "x": amount_x,
+                    "support": support,
+                }
+            ]
+        },
+        "support": support,
+        "source_receipt_keys": [f"IMAGE#{variant_id}#RECEIPT#00001"],
+    }
+
+
+def test_layout_diff_descends_variant_column_moves() -> None:
+    """A per-variant column move is reported in paper-width units under a
+    variant[...] prefix -- W-H's variant-aware diff_layout."""
+    old = _layout_with_variants([_variant("self-checkout", 0.7000, 7)])
+    new = _layout_with_variants([_variant("self-checkout", 0.7063, 7)])
+
+    lines = mtd.diff_layout(old, new)
+
+    assert (
+        "- variant[self-checkout] items: amount/right column "
+        "x 0.7000 -> 0.7063 (moved +0.0063 paper-width)" in lines
+    )
+
+
+def test_layout_diff_reports_added_and_removed_variants() -> None:
+    old = _layout_with_variants([_variant("self-checkout", 0.70, 7)])
+    new = _layout_with_variants([_variant("register-express", 0.80, 5)])
+
+    lines = mtd.diff_layout(old, new)
+
+    assert any(
+        line.startswith("- variant[self-checkout] removed") for line in lines
+    )
+    assert any(
+        line.startswith("- variant[register-express] added") for line in lines
+    )
+
+
+def test_layout_diff_reports_variant_support_and_hint_change() -> None:
+    old = _layout_with_variants([_variant("self-checkout", 0.70, 7)])
+    new_variant = _variant("self-checkout", 0.70, 9)
+    new_variant["classifier_hint"] = {
+        "type": "text_marker",
+        "tokens": ["SELF", "CHECKOUT"],
+    }
+    new = _layout_with_variants([new_variant])
+
+    lines = mtd.diff_layout(old, new)
+
+    assert "- variant[self-checkout].support: 7 -> 9" in lines
+    assert any(
+        "variant[self-checkout].classifier_hint" in line for line in lines
+    )
+
+
+def test_layout_diff_without_variants_is_unchanged() -> None:
+    """A variant-blind layout (no variants key) yields no variant lines --
+    v1 bundles diff byte-identically to the pre-§7.2 differ."""
+    old = _v1_payloads()["layout"]
+    new = _v2_payloads()["layout"]
+    assert "variants" not in old["template"]
+    assert "variants" not in new["template"]
+
+    lines = mtd.diff_layout(old, new)
+
+    assert not any("variant[" in line for line in lines)
+    # the established layout assertions still hold
+    assert (
+        "- items: amount/right column x 0.9439 -> 0.9502 "
+        "(moved +0.0063 paper-width)" in lines
+    )
+
+
 def test_catalog_diff_reports_added_removed_and_price_changes() -> None:
     old = _v1_payloads()["catalog_snapshot"]
     new = _v2_payloads()["catalog_snapshot"]

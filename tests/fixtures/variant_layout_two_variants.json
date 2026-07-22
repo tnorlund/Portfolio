@@ -1,0 +1,248 @@
+{
+  "_comment": "W-H fixtures: valid schema-v1 layout templates carrying template.variants[] that exercise every §7.2 classifier_hint type, the multi-match support tie-break, malformed-hint fallback, and the empty-variants (byte-identical DEFAULT) regression. Each `template` passes validate_layout_template. The DEFAULT items.amount lane sits at x=0.86; each variant moves it so a selection is observable in the returned columns.",
+  "text_marker": {
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "desc", "anchor": "left", "x": 0.05, "support": 9},
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 9}
+        ]
+      },
+      "sections": [{"name": "storefront"}, {"name": "items"}],
+      "separators": [{"char": "*"}],
+      "variants": [
+        {
+          "variant_id": "self-checkout",
+          "classifier_hint": {"type": "text_marker", "tokens": ["SELF", "CHECKOUT"]},
+          "columns": {
+            "items": [
+              {"role": "desc", "anchor": "left", "x": 0.08, "support": 7},
+              {"role": "amount", "anchor": "right", "x": 0.70, "support": 7}
+            ]
+          },
+          "sections": [{"name": "storefront"}, {"name": "items"}],
+          "separators": [{"char": "="}],
+          "support": 7,
+          "source_receipt_keys": ["IMAGE#sfc#RECEIPT#00001"]
+        }
+      ]
+    },
+    "matching_word_set": ["COSTCO", "SELF", "CHECKOUT", "TOTAL"],
+    "matching_section_sequence": ["storefront", "items", "summary"],
+    "nonmatching_word_set": ["COSTCO", "MEMBER", "TOTAL"],
+    "nonmatching_section_sequence": ["storefront", "items", "summary"],
+    "default_amount_x": 0.86,
+    "variant_amount_x": 0.70
+  },
+  "section_presence": {
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 9}
+        ]
+      },
+      "sections": [{"name": "items"}],
+      "separators": [{"char": "-"}],
+      "variants": [
+        {
+          "variant_id": "survey-variant",
+          "classifier_hint": {"type": "section_presence", "sections": ["survey"]},
+          "columns": {
+            "items": [
+              {"role": "amount", "anchor": "right", "x": 0.80, "support": 4}
+            ]
+          },
+          "sections": [{"name": "items"}, {"name": "survey"}],
+          "separators": [{"char": "-"}],
+          "support": 4,
+          "source_receipt_keys": ["IMAGE#svy#RECEIPT#00001"]
+        }
+      ]
+    },
+    "matching_section_sequence": ["storefront", "items", "summary", "survey"],
+    "nonmatching_section_sequence": ["storefront", "items", "summary"],
+    "default_amount_x": 0.86,
+    "variant_amount_x": 0.80
+  },
+  "section_order": {
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 9}
+        ]
+      },
+      "sections": [{"name": "items"}],
+      "separators": [{"char": "-"}],
+      "variants": [
+        {
+          "variant_id": "payment-before-total",
+          "classifier_hint": {"type": "section_order", "sequence": ["payment", "total_line"]},
+          "columns": {
+            "items": [
+              {"role": "amount", "anchor": "right", "x": 0.75, "support": 3}
+            ]
+          },
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 3,
+          "source_receipt_keys": ["IMAGE#ord#RECEIPT#00001"]
+        }
+      ]
+    },
+    "matching_section_sequence": ["storefront", "items", "payment", "total_line"],
+    "nonmatching_section_sequence": ["storefront", "items", "total_line", "payment"],
+    "default_amount_x": 0.86,
+    "variant_amount_x": 0.75
+  },
+  "tie_break": {
+    "_comment": "Both variants' hints match the same receipt; the higher-support variant (self-checkout, 7) must win over low-support (2). Equal support would fall back to lexicographically smallest variant_id.",
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 9}
+        ]
+      },
+      "sections": [{"name": "items"}],
+      "separators": [{"char": "-"}],
+      "variants": [
+        {
+          "variant_id": "low-support",
+          "classifier_hint": {"type": "text_marker", "tokens": ["SELF"]},
+          "columns": {
+            "items": [
+              {"role": "amount", "anchor": "right", "x": 0.60, "support": 2}
+            ]
+          },
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 2,
+          "source_receipt_keys": ["IMAGE#low#RECEIPT#00001"]
+        },
+        {
+          "variant_id": "high-support",
+          "classifier_hint": {"type": "text_marker", "tokens": ["CHECKOUT"]},
+          "columns": {
+            "items": [
+              {"role": "amount", "anchor": "right", "x": 0.70, "support": 7}
+            ]
+          },
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 7,
+          "source_receipt_keys": ["IMAGE#high#RECEIPT#00001"]
+        }
+      ]
+    },
+    "matching_word_set": ["SELF", "CHECKOUT"],
+    "winner_variant_id": "high-support",
+    "winner_amount_x": 0.70,
+    "loser_amount_x": 0.60,
+    "default_amount_x": 0.86
+  },
+  "tie_break_equal_support": {
+    "_comment": "Two matching variants of equal support: lexicographically smallest variant_id ('aaa-variant') wins over 'zzz-variant'.",
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 9}
+        ]
+      },
+      "sections": [{"name": "items"}],
+      "separators": [{"char": "-"}],
+      "variants": [
+        {
+          "variant_id": "zzz-variant",
+          "classifier_hint": {"type": "text_marker", "tokens": ["MARK"]},
+          "columns": {"items": [{"role": "amount", "anchor": "right", "x": 0.55, "support": 4}]},
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 4,
+          "source_receipt_keys": ["IMAGE#zzz#RECEIPT#00001"]
+        },
+        {
+          "variant_id": "aaa-variant",
+          "classifier_hint": {"type": "text_marker", "tokens": ["MARK"]},
+          "columns": {"items": [{"role": "amount", "anchor": "right", "x": 0.65, "support": 4}]},
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 4,
+          "source_receipt_keys": ["IMAGE#aaa#RECEIPT#00001"]
+        }
+      ]
+    },
+    "matching_word_set": ["MARK"],
+    "winner_variant_id": "aaa-variant",
+    "winner_amount_x": 0.65
+  },
+  "malformed": {
+    "_comment": "Malformed / unknown-type hints must never match; the reader falls back to the DEFAULT top-level columns.",
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 9}
+        ]
+      },
+      "sections": [{"name": "items"}],
+      "separators": [{"char": "-"}],
+      "variants": [
+        {
+          "variant_id": "bad-type",
+          "classifier_hint": {"type": "regex_match", "pattern": ".*"},
+          "columns": {"items": [{"role": "amount", "anchor": "right", "x": 0.50, "support": 3}]},
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 3,
+          "source_receipt_keys": ["IMAGE#bad#RECEIPT#00001"]
+        },
+        {
+          "variant_id": "not-a-dict-hint",
+          "classifier_hint": "self-checkout",
+          "columns": {"items": [{"role": "amount", "anchor": "right", "x": 0.40, "support": 2}]},
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 2,
+          "source_receipt_keys": ["IMAGE#str#RECEIPT#00001"]
+        },
+        {
+          "variant_id": "empty-args",
+          "classifier_hint": {"type": "text_marker", "tokens": []},
+          "columns": {"items": [{"role": "amount", "anchor": "right", "x": 0.30, "support": 2}]},
+          "sections": [{"name": "items"}],
+          "separators": [{"char": "-"}],
+          "support": 2,
+          "source_receipt_keys": ["IMAGE#emp#RECEIPT#00001"]
+        }
+      ]
+    },
+    "word_set": ["SELF", "CHECKOUT"],
+    "section_sequence": ["storefront", "items", "survey"],
+    "default_amount_x": 0.86
+  },
+  "empty_variants": {
+    "_comment": "The Costco-shaped REFUTE case: variants[] empty. Selection must return DEFAULT; profile_columns output is byte-identical to the pre-§7.2 reader.",
+    "template": {
+      "version": 1,
+      "columns": {
+        "items": [
+          {"role": "desc", "anchor": "left", "x": 0.05, "support": 12},
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 12}
+        ],
+        "summary": [
+          {"role": "amount", "anchor": "right", "x": 0.86, "support": 8}
+        ]
+      },
+      "sections": [{"name": "storefront"}, {"name": "items"}, {"name": "summary"}],
+      "separators": [{"char": "*"}],
+      "variants": []
+    },
+    "word_set": ["COSTCO", "SELF", "CHECKOUT"],
+    "section_sequence": ["storefront", "items", "summary"],
+    "default_amount_x": 0.86
+  }
+}
