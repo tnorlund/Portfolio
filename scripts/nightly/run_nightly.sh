@@ -23,6 +23,8 @@
 #   NIGHTLY_PREFLIGHT_BIN   default $REPO_ROOT/scripts/agent_preflight.sh
 #   NIGHTLY_TIMEOUT_SECS    default 14400 (4h)
 #   NIGHTLY_MAX_TURNS       default 80
+#   NIGHTLY_TOKEN_BUDGET    default 2000000 (H2 token circuit breaker ceiling;
+#                           breach -> watchdog exit 123 -> RED stub)
 #
 # Exit: 0 report produced and published (any verdict); 1 only when even the
 # stub/publish path failed.
@@ -39,6 +41,11 @@ CAMPAIGN_LOG="${NIGHTLY_CAMPAIGN_LOG:-$HOME/section_label_kickoff/CAMPAIGN_LOG.m
 PREFLIGHT_BIN="${NIGHTLY_PREFLIGHT_BIN:-$REPO_ROOT/scripts/agent_preflight.sh}"
 TIMEOUT_SECS="${NIGHTLY_TIMEOUT_SECS:-14400}"
 MAX_TURNS="${NIGHTLY_MAX_TURNS:-80}"
+# H2 token circuit breaker ceiling (conservative ~2M/run, raisable as trust
+# builds). Exported so it is visible to the loop and any child process.
+export NIGHTLY_TOKEN_BUDGET="${NIGHTLY_TOKEN_BUDGET:-2000000}"
+# Must match watchdog.py TOKEN_EXIT (exit code on a token-budget group-kill).
+TOKEN_EXIT_CODE=123
 BRIEF="$REPO_ROOT/docs/nightly/BRIEF.md"
 CANNED_REPORT="$SCRIPT_DIR/fixtures/canned_agent_report.md"
 CHECKER="$SCRIPT_DIR/check_contract.py"
@@ -91,6 +98,36 @@ log() {
 }
 
 elapsed() { echo "$(( $(date +%s) - START_EPOCH ))"; }
+
+# H2: actual tokens consumed this run, summed from run_metrics.json the same
+# way the breaker counts (all four usage types, deduped per message). Echoes an
+# integer, or nothing on any error (fail quiet; a missing number never breaks
+# the report).
+read_token_total() {
+  [ -s "$RUN_DIR/run_metrics.json" ] || return 0
+  python3 - "$RUN_DIR/run_metrics.json" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    m = json.load(open(sys.argv[1]))
+    t = m.get("token_totals") or {}
+    print(sum(v for v in t.values() if isinstance(v, int)))
+except Exception:
+    pass
+PY
+}
+
+# H2: wire actual-vs-ceiling into a healthy report's Budget section, inserted
+# right after the "## Budget" heading so the contract check still passes.
+inject_budget_token_line() {
+  local line="$1" tmp
+  [ -s "$REPORT_PATH" ] || return 0
+  tmp="$(mktemp "${TMPDIR:-/tmp}/nightly-budget.XXXXXX")" || return 0
+  awk -v ins="$line" '
+    { print }
+    /^## Budget[[:space:]]*$/ && !done { print ins; done=1 }
+  ' "$REPORT_PATH" > "$tmp" && cat "$tmp" > "$REPORT_PATH"
+  rm -f "$tmp"
+}
 
 # 4h watchdog: scripts/nightly/watchdog.py owns setsid + group-kill
 # (SIGTERM to -PGID, 30s grace, then SIGKILL to -PGID) on every path. The
@@ -243,7 +280,13 @@ else
   # (this is what watchdogs H2/H3 poll). The old plain-text agent_stdout.log is
   # regenerated below from the trajectory's final result event so the human
   # continuity (and any log reader) still sees a readable final message.
-  ( cd "$REPO_ROOT" && python3 "$WATCHDOG" --grace 30 "$TIMEOUT_SECS" -- \
+  # H2: --token-budget + --trajectory arm the token circuit breaker. The
+  # watchdog polls trajectory.jsonl (~15s) and group-kills with exit 123 if
+  # the deduped token sum breaches NIGHTLY_TOKEN_BUDGET.
+  ( cd "$REPO_ROOT" && python3 "$WATCHDOG" --grace 30 \
+      --token-budget "$NIGHTLY_TOKEN_BUDGET" \
+      --trajectory "$RUN_DIR/trajectory.jsonl" \
+      "$TIMEOUT_SECS" -- \
       "$CLAUDE_BIN" -p "$(cat "$BRIEF")" \
       --output-format stream-json --verbose \
       --permission-mode bypassPermissions \
@@ -268,6 +311,16 @@ else
     -o "$RUN_DIR/run_metrics.json" 2>> "$RUN_DIR/wrapper.log" \
     && log "run_metrics.json written (claude $CLAUDE_VERSION)" \
     || log "WARNING: run_metrics.json generation failed"
+
+  # H2: map the token circuit breaker's exit 123 to its own RED stub, and on
+  # healthy nights record actual-vs-ceiling in the report's Budget section.
+  TOKEN_TOTAL="$(read_token_total)"
+  if [ "$AGENT_EXIT" -eq "$TOKEN_EXIT_CODE" ]; then
+    log "token budget breached: ${TOKEN_TOTAL:-unknown} of $NIGHTLY_TOKEN_BUDGET tokens (watchdog exit 123)"
+    write_red_stub "token budget exceeded (${TOKEN_TOTAL:-unknown} of $NIGHTLY_TOKEN_BUDGET tokens)"
+  elif [ -s "$REPORT_PATH" ]; then
+    inject_budget_token_line "- tokens: ${TOKEN_TOTAL:-n/a} of $NIGHTLY_TOKEN_BUDGET (budget)"
+  fi
 fi
 
 # ---- 3. Contract check ----------------------------------------------------
