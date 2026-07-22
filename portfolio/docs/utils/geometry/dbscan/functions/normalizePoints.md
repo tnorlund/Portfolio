@@ -8,7 +8,7 @@
 
 > **normalizePoints**(`points`): [`Point`](../../../../types/api/interfaces/Point.md)[]
 
-Defined in: [utils/geometry/dbscan.ts:105](https://github.com/tnorlund/Portfolio/blob/9b82f67a0e9e3bef8eb679a05ee5ebcfba8c2b58/portfolio/utils/geometry/dbscan.ts#L105)
+Defined in: [utils/geometry/dbscan.ts:105](https://github.com/tnorlund/Portfolio/blob/cf0c940f49fc1e07f6c629c16b7d13a0a7eae070/portfolio/utils/geometry/dbscan.ts#L105)
 
 ## Parameters
 

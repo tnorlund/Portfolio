@@ -8,7 +8,7 @@
 
 > **findBoundaryLinesWithSkew**(`lines`, `_hull`, `centroid`, `avgAngle`): `object`
 
-Defined in: [utils/receipt/geometry.ts:18](https://github.com/tnorlund/Portfolio/blob/9b82f67a0e9e3bef8eb679a05ee5ebcfba8c2b58/portfolio/utils/receipt/geometry.ts#L18)
+Defined in: [utils/receipt/geometry.ts:18](https://github.com/tnorlund/Portfolio/blob/cf0c940f49fc1e07f6c629c16b7d13a0a7eae070/portfolio/utils/receipt/geometry.ts#L18)
 
 Find the subset of lines that form the left and right boundaries of a
 skewed receipt.
