@@ -38,6 +38,37 @@ def _label_font(size: int):
         return ImageFont.load_default()
 
 
+def _validation_status(label) -> str:
+    status = getattr(label, "validation_status", "") or ""
+    status = getattr(status, "value", status)
+    return str(status).strip().upper()
+
+
+def _labels_by_coordinate(
+    labels, receipt_id
+) -> dict[tuple[int, int], list[str]]:
+    """Collect every renderable label, with reviewed labels ordered first."""
+    grouped: dict[tuple[int, int], dict[str, int]] = {}
+    for item in labels:
+        if item.receipt_id != receipt_id:
+            continue
+        status = _validation_status(item)
+        label = str(getattr(item, "label", "") or "").strip()
+        if not label or status == "INVALID" or label.upper() == "O":
+            continue
+        coordinate = (item.line_id, item.word_id)
+        rank = 0 if status == "VALID" else 1
+        label_ranks = grouped.setdefault(coordinate, {})
+        label_ranks[label] = min(rank, label_ranks.get(label, rank))
+    return {
+        coordinate: sorted(
+            label_ranks,
+            key=lambda label: (label_ranks[label], label),
+        )
+        for coordinate, label_ranks in grouped.items()
+    }
+
+
 def sheet(atlas_path: str, out_png: str) -> int:
     a = np.load(atlas_path)
     chars = sorted(chr(int(k[1:])) for k in a.files if k.startswith("c"))
@@ -144,14 +175,9 @@ def receipt(
             f"receipt {receipt_id} not found for image {image_id}; found {found}"
         )
     ws = [w for w in d.receipt_words if w.receipt_id == receipt_id]
-    lbl = {
-        (l.line_id, l.word_id): l.label
-        for l in d.receipt_word_labels
-        if l.receipt_id == receipt_id
-        # INVALID labels are not on the printed receipt; keep unreviewed ones
-        # (same policy as _real_receipt_dict in render_synthetic_receipts).
-        and str(getattr(l, "validation_status", "") or "").upper() != "INVALID"
-    }
+    # INVALID labels are not on the printed receipt; keep unreviewed ones
+    # (same policy as _real_receipt_dict in render_synthetic_receipts).
+    lbl = _labels_by_coordinate(d.receipt_word_labels, receipt_id)
     words = [
         {
             "text": w.text,
@@ -163,11 +189,7 @@ def receipt(
                 w.bottom_right["x"] * 1000,
                 w.bottom_right["y"] * 1000,
             ],
-            "labels": (
-                [lbl[(w.line_id, w.word_id)]]
-                if lbl.get((w.line_id, w.word_id)) not in (None, "O")
-                else []
-            ),
+            "labels": lbl.get((w.line_id, w.word_id), []),
         }
         for w in ws
     ]
