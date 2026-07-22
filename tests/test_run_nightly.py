@@ -9,6 +9,7 @@ same-date re-run).
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -19,6 +20,9 @@ from scripts.nightly import check_contract
 
 REPO_ROOT = Path(__file__).parent.parent
 WRAPPER = REPO_ROOT / "scripts" / "nightly" / "run_nightly.sh"
+SAMPLE_TRAJECTORY = (
+    REPO_ROOT / "tests" / "fixtures" / "nightly" / "trajectory_sample.jsonl"
+)
 
 
 def write_executable(path: Path, body: str) -> Path:
@@ -181,6 +185,101 @@ def test_preflight_red_produces_red_stub(nightly_env, tmp_path):
     assert proc2.returncode == 0, proc2.stderr
     second_sha = origin_sha()
     assert second_sha != first_sha, "re-run did not reach origin"
+
+
+def test_real_launch_captures_trajectory_and_metrics(nightly_env, tmp_path):
+    """H1: the real-launch path (no --dry-run) drives claude in stream-json
+    mode. A fake claude replays the recorded fixture to stdout and writes a
+    valid report; the wrapper must capture trajectory.jsonl, regenerate
+    agent_stdout.log from the final result event (continuity), and record
+    run_metrics.json including the claude --version it queried.
+    """
+    valid_report = (
+        REPO_ROOT / "tests" / "fixtures" / "nightly" / "valid_report.md"
+    ).read_text()
+
+    # Fake claude: `--version` prints a version; otherwise it replays the
+    # recorded stream-json fixture to stdout AND writes the mission report.
+    fake_claude = write_executable(
+        tmp_path / "fake_claude_streamjson.sh",
+        "#!/bin/bash\n"
+        'for a in "$@"; do\n'
+        '  if [ "$a" = "--version" ]; then\n'
+        '    echo "9.9.9 (Fake Claude)"; exit 0\n'
+        "  fi\n"
+        "done\n"
+        f"cat {json.dumps(str(SAMPLE_TRAJECTORY))}\n"
+        f"cat > \"$NIGHTLY_REPORT_PATH\" <<'REPORT'\n{valid_report}REPORT\n"
+        "exit 0\n",
+    )
+
+    stub_repo = tmp_path / "stub_repo_launch"
+    stub_repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=stub_repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "root",
+        ],
+        cwd=stub_repo,
+        check=True,
+    )
+    brief_dir = stub_repo / "docs" / "nightly"
+    brief_dir.mkdir(parents=True)
+    (brief_dir / "BRIEF.md").write_text("test brief\n")
+
+    env = dict(nightly_env)
+    env.update(
+        {
+            "NIGHTLY_DATE": "1999-01-04",
+            "NIGHTLY_REPO_ROOT": str(stub_repo),
+            "CLAUDE_BIN": str(fake_claude),
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+    )
+    # Real-launch path (no --dry-run): --dry-run would bypass the claude call
+    # and the trajectory entirely, so it must NOT be used here.
+    proc = run_wrapper(env)
+    assert proc.returncode == 0, proc.stderr
+
+    run_dir = tmp_path / "logs" / "1999-01-04"
+
+    # 1. Trajectory captured verbatim from the stream-json stdout.
+    traj = run_dir / "trajectory.jsonl"
+    assert (
+        traj.exists()
+    ), "stream-json stdout must be captured to trajectory.jsonl"
+    assert traj.read_text() == SAMPLE_TRAJECTORY.read_text()
+
+    # 2. agent_stdout.log continuity: regenerated final result text, not JSON.
+    agent_stdout = (run_dir / "agent_stdout.log").read_text()
+    assert "The directory contains four files" in agent_stdout
+    assert '{"type"' not in agent_stdout
+
+    # 3. run_metrics.json recorded, including the wrapper-queried version.
+    metrics = json.loads((run_dir / "run_metrics.json").read_text())
+    assert metrics["session_id"] == "74c0e794-b1c7-46a0-8c47-7920e3e8676a"
+    assert metrics["num_turns"] == 2
+    assert metrics["total_cost_usd"] == pytest.approx(0.07367019999999999)
+    assert metrics["claude_version"] == "9.9.9 (Fake Claude)"
+    assert metrics["truncated"] is False
+
+    # 4. The report still passed the contract check and published.
+    report = tmp_path / "reports" / "1999-01-04.md"
+    result = check_contract.check_report_text(report.read_text())
+    assert result["valid"] is True, result["problems"]
+    assert result["verdict"] == "GREEN"
 
 
 def test_invalid_agent_report_replaced_by_red_stub(nightly_env, tmp_path):
