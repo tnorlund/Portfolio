@@ -233,6 +233,34 @@ def test_misaligned_dmarc_identity_fails_closed(monkeypatch) -> None:
     assert parser_calls == []
 
 
+def test_aligned_from_with_failing_dmarc_quarantines(monkeypatch) -> None:
+    # The canonical direct spoof: the visible From aligns with the DMARC
+    # identity, but DMARC itself FAILED. Accepting any non-"pass" status
+    # here would let an attacker mail as receipts@online.costco.com; this
+    # pins the status == "pass" gate the mutation check found uncovered.
+    raw = _message(
+        "Costco <receipts@online.costco.com>",
+        auth_results=(
+            "amazonses.com; spf=fail envelope-from=online.costco.com; "
+            "dkim=fail header.i=@online.costco.com; dmarc=fail "
+            "header.from=online.costco.com;",
+        ),
+    )
+    fake_s3 = FakeS3(raw)
+    handler = _load_handler(monkeypatch, fake_s3)
+    parser_calls = []
+    monkeypatch.setattr(
+        handler.registry,
+        "run_parser",
+        lambda group, path: parser_calls.append((group, path)) or {},
+    )
+
+    result = handler.lambda_handler(_s3_event(), None)
+
+    assert result["processed"][0]["classification"] == "quarantine"
+    assert parser_calls == []
+
+
 def test_unvalidated_arc_cannot_authenticate_original_sender(
     monkeypatch,
 ) -> None:
