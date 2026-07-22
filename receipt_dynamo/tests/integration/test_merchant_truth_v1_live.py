@@ -31,6 +31,7 @@ from receipt_dynamo.migrations.merchant_truth_v1 import (
 from receipt_dynamo.migrations.merchant_truth_v1_live import (
     PROD_TABLE_NAME,
     bootstrap_gate_results,
+    filter_payloads,
     run_live_mint,
     validate_live_table,
     verify_live_against_dry_run,
@@ -141,13 +142,13 @@ def catalog_item(slug: str) -> dict[str, Any]:
     }
 
 
-def built_payloads():
+def built_payloads(git_sha: str = GIT_SHA, generated_at: str = NOW):
     return build_v1_payloads(
         profile_document(),
         FakeSource(),  # type: ignore[arg-type]
         profiles_source_path="scripts/merchant_profiles.json",
-        git_sha=GIT_SHA,
-        generated_at=NOW,
+        git_sha=git_sha,
+        generated_at=generated_at,
     )
 
 
@@ -308,6 +309,113 @@ def test_unmapped_leaf_fails_before_any_payload_is_built() -> None:
         )
 
 
+OTHER_GIT_SHA = "b" * 40
+LATER = "2026-07-21T16:00:00+00:00"
+
+
+def live(client, payloads, payload_dir, generated_at: str = NOW):
+    return run_live_mint(
+        client,
+        payloads,
+        table_name=client.table_name,
+        gate_results=gate_results(payload_dir),
+        generated_at=generated_at,
+        explicit_table=True,
+    )
+
+
+def test_full_replay_skips_sealed_merchants_instead_of_aborting(
+    dynamodb_table: str, tmp_path: Path
+) -> None:
+    """Reviewer finding on #1205: run_id is git-sha-dependent, so a replay
+    under a newer HEAD used to raise MerchantTruthConflictError on the
+    first already-sealed merchant. It must skip them and mint the rest."""
+    client = DynamoClient(dynamodb_table)
+    payloads_a, _ = built_payloads()
+    live(client, filter_payloads(payloads_a, ["cvs", "vons"]), tmp_path)
+
+    payloads_b, _ = built_payloads(git_sha=OTHER_GIT_SHA)
+    results = live(client, payloads_b, tmp_path)
+
+    by_action: dict[str, set[str]] = {}
+    for result in results:
+        by_action.setdefault(result.action, set()).add(result.slug)
+    assert by_action["SKIPPED_SEALED"] == {"cvs", "vons"}
+    assert len(by_action["MINTED_SEALED"]) == 11
+    assert by_action["EXCLUDED"] == set(EXPECTED_MISSING_FONT_SLUGS)
+    assert "CONFLICT_SEALED" not in by_action
+    skipped = next(r for r in results if r.action == "SKIPPED_SEALED")
+    assert (
+        f"SKIPPED (already sealed, bundle={skipped.bundle_hash[:12]})"
+        in skipped.report_line
+    )
+    # Every unblocked merchant ends up sealed and read-back-verifiable.
+    payload_dir = tmp_path / "payloads"
+    payloads_c, crosswalk = built_payloads(git_sha=OTHER_GIT_SHA)
+    write_dry_run_payloads(
+        payload_dir,
+        payloads_c,
+        crosswalk,
+        generated_at=NOW,
+        git_sha=OTHER_GIT_SHA,
+    )
+    verify_results = verify_live_against_dry_run(
+        client,
+        payload_dir,
+        sorted(p.slug for p in payloads_c if not p.blockers),
+        work_dir=tmp_path / "_live_verify",
+    )
+    assert all(result.ok for result in verify_results)
+
+
+def test_sealed_bundle_differing_from_source_reports_conflict(
+    dynamodb_table: str, tmp_path: Path
+) -> None:
+    client = DynamoClient(dynamodb_table)
+    payloads_a, _ = built_payloads()
+    live(client, filter_payloads(payloads_a, ["cvs"]), tmp_path)
+    sealed = client.get_merchant_truth_manifest("cvs", 1, consistent_read=True)
+    assert sealed is not None
+
+    # A later generated_at changes catalog_snapshot.as_of, so the source
+    # would now produce a different bundle: drift, not an idempotent skip.
+    payloads_b, _ = built_payloads(generated_at=LATER)
+    results = live(
+        client,
+        filter_payloads(payloads_b, ["cvs", "vons"]),
+        tmp_path,
+        generated_at=LATER,
+    )
+
+    conflict = next(r for r in results if r.slug == "cvs")
+    assert conflict.action == "CONFLICT_SEALED"
+    assert conflict.bundle_hash == sealed.bundle_hash
+    assert conflict.source_bundle_hash != sealed.bundle_hash
+    assert (
+        "CONFLICT (sealed bundle differs from source)" in conflict.report_line
+    )
+    # The conflict did not write: the sealed manifest is untouched.
+    after = client.get_merchant_truth_manifest("cvs", 1, consistent_read=True)
+    assert after is not None
+    assert after.bundle_hash == sealed.bundle_hash
+    assert after.sealed_at == sealed.sealed_at
+    # And the loop continued past the conflict.
+    minted = next(r for r in results if r.slug == "vons")
+    assert minted.action == "MINTED_SEALED"
+
+
+def test_filter_payloads_validates_slugs_against_the_payload_set() -> None:
+    payloads, _ = built_payloads()
+
+    filtered = filter_payloads(payloads, ["vons", "cvs"])
+    assert [p.slug for p in filtered] == ["cvs", "vons"]
+
+    with pytest.raises(ValueError, match="unknown merchant slugs: wallmart"):
+        filter_payloads(payloads, ["cvs", "wallmart"])
+    with pytest.raises(ValueError, match="contains no slugs"):
+        filter_payloads(payloads, [" ", ""])
+
+
 def _create_dev_named_table() -> None:
     boto3.client("dynamodb", region_name="us-east-1").create_table(
         TableName=DEV_TABLE_NAME,
@@ -331,14 +439,14 @@ def _create_dev_named_table() -> None:
     )
 
 
-def _seed_dev_sources() -> None:
+def _seed_dev_sources(publish_all: bool = False) -> None:
     dynamodb = boto3.client("dynamodb", region_name="us-east-1")
     s3 = boto3.client("s3", region_name="us-east-1")
     s3.create_bucket(Bucket="font-bucket")
     for merchant in MERCHANTS:
         slug = slugify_merchant(merchant)
         dynamodb.put_item(TableName=DEV_TABLE_NAME, Item=catalog_item(slug))
-        if slug in EXPECTED_MISSING_FONT_SLUGS:
+        if not publish_all and slug in EXPECTED_MISSING_FONT_SLUGS:
             continue
         font = merchant_font(merchant)
         dynamodb.put_item(TableName=DEV_TABLE_NAME, Item=font.to_item())
@@ -357,6 +465,19 @@ def seeded_dev_environment(tmp_path: Path):
     with mock_aws():
         _create_dev_named_table()
         _seed_dev_sources()
+        profiles_path = tmp_path / "profiles.json"
+        profiles_path.write_text(
+            json.dumps(profile_document()), encoding="utf-8"
+        )
+        yield profiles_path
+
+
+@pytest.fixture
+def published_dev_environment(tmp_path: Path):
+    """Publish-day state: all 16 merchants have MerchantFont rows."""
+    with mock_aws():
+        _create_dev_named_table()
+        _seed_dev_sources(publish_all=True)
         profiles_path = tmp_path / "profiles.json"
         profiles_path.write_text(
             json.dumps(profile_document()), encoding="utf-8"
@@ -452,6 +573,187 @@ def test_script_default_stays_dry_run_and_write_free(
         ExpressionAttributeValues={":type": {"S": "MERCHANT_TRUTH_MANIFEST"}},
     )
     assert truth_rows["Items"] == []
+
+
+def test_script_merchants_filter_applies_to_dry_run(
+    seeded_dev_environment: Path, tmp_path: Path, capsys
+) -> None:
+    output_dir = tmp_path / "payloads"
+
+    exit_code = _script_main(
+        [
+            "--profiles",
+            str(seeded_dev_environment),
+            "--output-dir",
+            str(output_dir),
+            "--git-sha",
+            GIT_SHA,
+            "--generated-at",
+            NOW,
+            "--merchants",
+            "cvs,vons",
+        ]
+    )
+
+    captured = capsys.readouterr().out
+    assert exit_code == 0
+    assert "DRY RUN: wrote 2 merchant payloads" in captured
+    payload_files = sorted(
+        p.name for p in output_dir.glob("*.json") if not p.name.startswith("_")
+    )
+    assert payload_files == ["cvs.json", "vons.json"]
+
+
+def test_script_merchants_filter_rejects_unknown_slug(
+    seeded_dev_environment: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="unknown merchant slugs"):
+        _script_main(
+            [
+                "--profiles",
+                str(seeded_dev_environment),
+                "--output-dir",
+                str(tmp_path / "payloads"),
+                "--git-sha",
+                GIT_SHA,
+                "--generated-at",
+                NOW,
+                "--merchants",
+                "cvs,wallmart",
+                "--live",
+            ]
+        )
+
+
+def test_script_replay_after_partial_mint_skips_and_verifies(
+    seeded_dev_environment: Path, tmp_path: Path, capsys
+) -> None:
+    """End-to-end reviewer scenario: partial mint at one git SHA, then a
+    full --live --verify replay at a different SHA skips the sealed
+    merchants, mints the rest, and exits 0."""
+    first = _script_main(
+        [
+            "--profiles",
+            str(seeded_dev_environment),
+            "--output-dir",
+            str(tmp_path / "payloads-1"),
+            "--git-sha",
+            GIT_SHA,
+            "--generated-at",
+            NOW,
+            "--merchants",
+            "cvs,vons",
+            "--live",
+            "--verify",
+        ]
+    )
+    assert first == 0
+    capsys.readouterr()
+
+    exit_code = _script_main(
+        [
+            "--profiles",
+            str(seeded_dev_environment),
+            "--output-dir",
+            str(tmp_path / "payloads-2"),
+            "--git-sha",
+            OTHER_GIT_SHA,
+            "--generated-at",
+            NOW,
+            "--live",
+            "--verify",
+        ]
+    )
+
+    captured = capsys.readouterr().out
+    assert exit_code == 0
+    assert captured.count("MINTED+SEALED v1") == 11
+    assert captured.count("SKIPPED (already sealed, bundle=") == 2
+    assert captured.count("EXCLUDED (asset-blocked)") == 3
+    assert "CONFLICT" not in captured
+    assert "skipped 2 already-sealed" in captured
+    assert "VERIFY OK: 13 live bundles byte-match" in captured
+
+
+def test_default_expectation_fails_once_all_fonts_are_published(
+    published_dev_environment: Path, tmp_path: Path
+) -> None:
+    """Coverage differing from the (default) expectation still hard-fails."""
+    with pytest.raises(ValueError, match="MerchantFont coverage changed"):
+        _script_main(
+            [
+                "--profiles",
+                str(published_dev_environment),
+                "--output-dir",
+                str(tmp_path / "payloads"),
+                "--git-sha",
+                GIT_SHA,
+                "--generated-at",
+                NOW,
+            ]
+        )
+
+
+def test_empty_expected_missing_slugs_covers_publish_day(
+    published_dev_environment: Path, tmp_path: Path, capsys
+) -> None:
+    """The staged owner command: post-publish mint of the trio with an
+    explicitly empty missing-font expectation and zero code changes."""
+    output_dir = tmp_path / "payloads"
+
+    exit_code = _script_main(
+        [
+            "--profiles",
+            str(published_dev_environment),
+            "--output-dir",
+            str(output_dir),
+            "--git-sha",
+            GIT_SHA,
+            "--generated-at",
+            NOW,
+            "--merchants",
+            "amazon_fresh,dollar_tree,smith_s",
+            "--expected-missing-slugs",
+            "",
+            "--live",
+            "--verify",
+        ]
+    )
+
+    captured = capsys.readouterr().out
+    assert exit_code == 0
+    assert "merchants: 3" in captured
+    assert captured.count("MINTED+SEALED v1") == 3
+    assert "EXCLUDED" not in captured
+    assert "VERIFY OK: 3 live bundles byte-match" in captured
+    client = DynamoClient(DEV_TABLE_NAME)
+    for slug in ("amazon_fresh", "dollar_tree", "smith_s"):
+        manifest = client.get_merchant_truth_manifest(
+            slug, 1, consistent_read=True
+        )
+        assert manifest is not None and manifest.status == "SEALED"
+
+
+def test_wrong_declared_expectation_still_hard_fails(
+    published_dev_environment: Path, tmp_path: Path
+) -> None:
+    """The flag is declarative, not a bypass: a stated expectation that
+    does not match reality fails identically."""
+    with pytest.raises(ValueError, match="MerchantFont coverage changed"):
+        _script_main(
+            [
+                "--profiles",
+                str(published_dev_environment),
+                "--output-dir",
+                str(tmp_path / "payloads"),
+                "--git-sha",
+                GIT_SHA,
+                "--generated-at",
+                NOW,
+                "--expected-missing-slugs",
+                "amazon_fresh",
+            ]
+        )
 
 
 @pytest.mark.parametrize(

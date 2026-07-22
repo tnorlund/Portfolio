@@ -86,6 +86,14 @@ class MerchantTruthWriter(Protocol):
         consistent_read: bool = False,
     ) -> list[dict[str, Any]]: ...
 
+    def get_merchant_truth_manifest(
+        self,
+        slug: str,
+        version: int,
+        *,
+        consistent_read: bool = False,
+    ) -> MerchantTruthManifest | None: ...
+
 
 def validate_live_table(table_name: str, *, explicit: bool) -> None:
     """Refuse every live target except the pinned dev table.
@@ -169,20 +177,54 @@ class LiveMintResult:
 
     merchant_name: str
     slug: str
-    action: str  # "MINTED_SEALED" | "EXCLUDED"
+    # "MINTED_SEALED" | "EXCLUDED" | "SKIPPED_SEALED" | "CONFLICT_SEALED"
+    action: str
     version: int
     bundle_hash: str | None = None
     blockers: tuple[str, ...] = ()
+    source_bundle_hash: str | None = None
 
     @property
     def report_line(self) -> str:
+        digest = (self.bundle_hash or "")[:12]
         if self.action == "EXCLUDED":
             return (
                 f"EXCLUDED (asset-blocked) {self.slug}: "
                 f"{'; '.join(self.blockers)}"
             )
-        digest = (self.bundle_hash or "")[:12]
+        if self.action == "SKIPPED_SEALED":
+            return f"SKIPPED (already sealed, bundle={digest}) {self.slug}"
+        if self.action == "CONFLICT_SEALED":
+            source_digest = (self.source_bundle_hash or "")[:12]
+            return (
+                f"CONFLICT (sealed bundle differs from source) "
+                f"{self.slug}: sealed={digest} source={source_digest}"
+            )
         return f"MINTED+SEALED v{self.version} {self.slug} bundle={digest}"
+
+
+def filter_payloads(
+    payloads: Sequence[MerchantV1Payload],
+    merchants: Sequence[str],
+) -> list[MerchantV1Payload]:
+    """Restrict payloads to explicitly requested slugs, failing closed.
+
+    Unknown slugs are an operator error (typo or a merchant absent from the
+    source registry) and abort before anything is written or minted.
+    """
+    requested = sorted(
+        {slug.strip() for slug in merchants if slug and slug.strip()}
+    )
+    if not requested:
+        raise ValueError("--merchants was passed but contains no slugs")
+    known = {payload.slug for payload in payloads}
+    unknown = sorted(set(requested) - known)
+    if unknown:
+        raise ValueError(
+            f"unknown merchant slugs: {', '.join(unknown)}; "
+            f"known slugs: {', '.join(sorted(known))}"
+        )
+    return [payload for payload in payloads if payload.slug in requested]
 
 
 def _payload_entities(
@@ -221,9 +263,12 @@ def run_live_mint(
     """Mint + seal v1 for every unblocked merchant through the accessor.
 
     Blocked merchants (any non-empty ``blockers``) are excluded, never
-    minted, and reported. The dry-run payload items are replayed verbatim:
-    the accessor re-derives hashes, re-validates governance, and writes its
-    own MINT/SEAL audit rows.
+    minted, and reported. Merchants whose target version is already SEALED
+    are skipped (identical bundle) or reported as a drift CONFLICT
+    (different bundle) without writing, so a full replay is idempotent
+    regardless of the current git SHA. The dry-run payload items are
+    replayed verbatim: the accessor re-derives hashes, re-validates
+    governance, and writes its own MINT/SEAL audit rows.
     """
     validate_live_table(table_name, explicit=explicit_table)
     results: list[LiveMintResult] = []
@@ -240,6 +285,36 @@ def run_live_mint(
             )
             continue
         manifest, components = _payload_entities(payload)
+        existing = client.get_merchant_truth_manifest(
+            payload.slug, manifest.version, consistent_read=True
+        )
+        if existing is not None and existing.status == "SEALED":
+            # The mint run_id is git-sha-dependent, so replaying under a
+            # newer HEAD must not abort on merchants sealed by an earlier
+            # run: an identical bundle is an idempotent no-op, a different
+            # bundle is a drift signal to surface — never overwritten.
+            if existing.bundle_hash == manifest.bundle_hash:
+                results.append(
+                    LiveMintResult(
+                        merchant_name=payload.merchant_name,
+                        slug=payload.slug,
+                        action="SKIPPED_SEALED",
+                        version=existing.version,
+                        bundle_hash=existing.bundle_hash,
+                    )
+                )
+            else:
+                results.append(
+                    LiveMintResult(
+                        merchant_name=payload.merchant_name,
+                        slug=payload.slug,
+                        action="CONFLICT_SEALED",
+                        version=existing.version,
+                        bundle_hash=existing.bundle_hash,
+                        source_bundle_hash=manifest.bundle_hash,
+                    )
+                )
+            continue
         client.mint_version(
             payload.slug,
             manifest.version,

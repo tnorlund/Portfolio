@@ -29,6 +29,7 @@ from receipt_dynamo.migrations.merchant_truth_v1 import (
 )
 from receipt_dynamo.migrations.merchant_truth_v1_live import (
     bootstrap_gate_results,
+    filter_payloads,
     format_live_banner,
     run_live_mint,
     validate_live_table,
@@ -64,6 +65,24 @@ def main(argv: list[str] | None = None) -> int:
             f"DynamoDB table (default: exact dev table {DEV_TABLE_NAME}). "
             "Live mode refuses any other table unless passed explicitly; "
             "the prod table is refused unconditionally."
+        ),
+    )
+    parser.add_argument(
+        "--merchants",
+        help=(
+            "Comma-separated merchant slugs to restrict the run to; "
+            "validated against the payload set and applied to dry-run, "
+            "--live, and --verify alike."
+        ),
+    )
+    parser.add_argument(
+        "--expected-missing-slugs",
+        default=None,
+        help=(
+            "Comma-separated slugs expected to have NO MerchantFont row "
+            "(default: the historical asset-blocked trio). Pass an empty "
+            'string ("") once all fonts are published. Coverage differing '
+            "from this expectation hard-fails before anything is written."
         ),
     )
     parser.add_argument("--region", default="us-east-1")
@@ -105,6 +124,13 @@ def main(argv: list[str] | None = None) -> int:
         boto3.client("s3", region_name=args.region),
         table_name,
     )
+    expected_missing = None
+    if args.expected_missing_slugs is not None:
+        expected_missing = frozenset(
+            slug.strip()
+            for slug in args.expected_missing_slugs.split(",")
+            if slug.strip()
+        )
     payloads, crosswalk = build_v1_payloads(
         document,
         source,
@@ -112,7 +138,10 @@ def main(argv: list[str] | None = None) -> int:
         git_sha=git_sha,
         generated_at=generated_at,
         stylemap_root=args.stylemap_root,
+        expected_missing_slugs=expected_missing,
     )
+    if args.merchants:
+        payloads = filter_payloads(payloads, args.merchants.split(","))
     write_dry_run_payloads(
         args.output_dir,
         payloads,
@@ -147,8 +176,12 @@ def main(argv: list[str] | None = None) -> int:
             print(result.report_line)
         minted = [r for r in results if r.action == "MINTED_SEALED"]
         excluded = [r for r in results if r.action == "EXCLUDED"]
+        skipped = [r for r in results if r.action == "SKIPPED_SEALED"]
+        conflicts = [r for r in results if r.action == "CONFLICT_SEALED"]
         print(
             f"LIVE: minted+sealed {len(minted)} merchants on {table_name}; "
+            f"skipped {len(skipped)} already-sealed; "
+            f"{len(conflicts)} sealed-bundle conflicts; "
             f"excluded {len(excluded)} asset-blocked merchants; dry-run "
             f"payloads written to {args.output_dir}"
         )

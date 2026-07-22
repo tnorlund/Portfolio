@@ -374,8 +374,14 @@ def build_v1_payloads(
     git_sha: str,
     generated_at: str,
     stylemap_root: Path | None = None,
+    expected_missing_slugs: frozenset[str] | None = None,
 ) -> tuple[list[MerchantV1Payload], list[LeafDisposition]]:
-    """Build all exact nine-item mint payloads without any DynamoDB writes."""
+    """Build all exact nine-item mint payloads without any DynamoDB writes.
+
+    ``expected_missing_slugs`` makes the MerchantFont coverage expectation
+    declarative per run (default: the historical asset-blocked trio). Any
+    coverage differing from the stated expectation still hard-fails.
+    """
     crosswalk = build_crosswalk(document)
     profiles: dict[str, dict[str, Any]] = document["profiles"]
     font_rows = [
@@ -386,15 +392,20 @@ def build_v1_payloads(
     for font in font_rows:
         fonts_by_name.setdefault(font.merchant_name, []).append(font)
 
+    expected_missing = (
+        EXPECTED_MISSING_FONT_SLUGS
+        if expected_missing_slugs is None
+        else frozenset(expected_missing_slugs)
+    )
     missing_slugs = {
         slugify_merchant(name)
         for name in profiles
         if name not in fonts_by_name
     }
-    if missing_slugs != EXPECTED_MISSING_FONT_SLUGS:
+    if missing_slugs != expected_missing:
         raise ValueError(
             "MerchantFont coverage changed; expected missing "
-            f"{sorted(EXPECTED_MISSING_FONT_SLUGS)}, got "
+            f"{sorted(expected_missing)}, got "
             f"{sorted(missing_slugs)}"
         )
 
