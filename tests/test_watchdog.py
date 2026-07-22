@@ -141,6 +141,48 @@ def test_missing_trajectory_fails_open(tmp_path):
     assert rc == 5
 
 
+def test_poll_error_fails_open_child_completes(tmp_path, monkeypatch):
+    """Safety-critical: if the token poll itself RAISES (not just parses
+    garbage), the swallow layer must fail open — the armed watchdog's child
+    completes normally, its own exit code preserved, no kill.
+
+    The garbage/missing tests only exercise the parser's tolerance; this one
+    forces the summing call to blow up (a hypothetical compute_metrics bug or
+    stream-json shape drift) and pins that a poll exception can NEVER kill a
+    healthy night. Remove the ``except Exception`` in watchdog._token_usage and
+    this test reds (run() propagates the error and the child is orphaned)."""
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("simulated compute_metrics failure")
+
+    # _token_usage does `from scripts.nightly import trajectory_tools` and calls
+    # compute_metrics at poll time, so patching the module attribute makes every
+    # poll raise.
+    monkeypatch.setattr(
+        "scripts.nightly.trajectory_tools.compute_metrics", _boom
+    )
+
+    traj = tmp_path / "trajectory.jsonl"
+    # Write real, over-budget usage so that WITHOUT the swallow the run would
+    # both crash (poll raises) — proving the swallow, not a low count, is what
+    # keeps the child alive.
+    traj.write_text(
+        _USAGE_EVENT.replace("__ID_MARKER__", "1").replace(
+            "__TOKENS__", "999999"
+        )
+        + "\n"
+    )
+    rc = watchdog.run(
+        timeout=10,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", "sleep 0.6; exit 5"],
+        token_budget=1,  # tiny: any counted token would trip
+        trajectory=str(traj),
+        poll_interval=0.2,
+    )
+    assert rc == 5  # failed open despite the raising poll; child's code kept
+
+
 def test_no_budget_flag_is_wall_clock_only(tmp_path):
     """Budget absent -> byte-identical to today: normal exit passes through,
     and a wall-clock timeout still group-kills with exit 124."""

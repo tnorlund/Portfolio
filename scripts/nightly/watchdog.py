@@ -93,6 +93,11 @@ def _token_usage(trajectory: str) -> int | None:
     treated as "no signal", never as a reason to kill a healthy night. The
     underlying parser is already tolerant (counts what parses, skips garbage),
     so pure-garbage or partial files yield 0 here, never an exception.
+
+    Boundary: a zero-token wedge (a trajectory that parses cleanly but grows no
+    usage events) sums to 0 and never trips this breaker — a wedged-but-idle
+    run is the stall watchdog's jurisdiction (H3, exit 122), not the token
+    breaker's.
     """
     try:
         try:
@@ -169,6 +174,9 @@ def run(
             return proc.wait(timeout=min(poll_interval, remaining))
         except subprocess.TimeoutExpired:
             pass
+        # Tie-break: token (123) wins deterministically over timeout (124) when
+        # a breach is detected in the deadline-expiring poll slice — the budget
+        # is checked here, before the loop re-tests the wall-clock deadline.
         used = _token_usage(trajectory)  # None on any error -> fail open
         if used is not None and used > token_budget:
             print(
