@@ -1,0 +1,444 @@
+{
+ "items": [
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#MANIFEST"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_MANIFEST"
+   },
+   "bundle_hash": {
+    "S": "4010db5d5de3b0da8889df9c233ac86d92e54f15df8e7b7aa164c654154663be"
+   },
+   "component_count": {
+    "N": "7"
+   },
+   "component_hashes": {
+    "M": {
+     "assets": {
+      "S": "22ee1fbde4953752a19994a42c12abfd219a48ff220141b85890707cce6e9a2a"
+     },
+     "catalog_snapshot": {
+      "S": "581b6ba782e93119cca0a2193e34ae411d6841bebb74708807f98ae6f58ea7a8"
+     },
+     "flags": {
+      "S": "9172e8f20d8c61e921ccdee257e9b809e8d70d9b145a6abf1ff4de0c06a82e27"
+     },
+     "identity": {
+      "S": "c84ba554f26864335b18492626b73b50520df4a4aaf23563142361434ff3f908"
+     },
+     "layout": {
+      "S": "fba67087e0f4bcb030a97da55354facb970d2217ae9186d45ebb8c421da61e98"
+     },
+     "stylemap": {
+      "S": "58781d458867757da9b12e785823898b3f605e10d3f49d54efce2def115a267f"
+     },
+     "typography": {
+      "S": "1592625b9b906cf2b820ac56b9c5a2c195e30fee0dd94d74085a3fae4224a775"
+     }
+    }
+   },
+   "confirmed_proposals": {
+    "L": []
+   },
+   "gate_results": {
+    "M": {}
+   },
+   "gate_status": {
+    "S": "PASS"
+   },
+   "mint_run_id": {
+    "S": "fixture-mart-v1"
+   },
+   "provenance": {
+    "M": {
+     "minted_at": {
+      "S": "2026-07-21T00:00:00+00:00"
+     },
+     "written_by": {
+      "S": "fixture"
+     }
+    }
+   },
+   "sealed_at": {
+    "S": "2026-07-21T00:00:00+00:00"
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "status": {
+    "S": "SEALED"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#assets"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "assets"
+   },
+   "content_hash": {
+    "S": "22ee1fbde4953752a19994a42c12abfd219a48ff220141b85890707cce6e9a2a"
+   },
+   "payload": {
+    "S": "{\"fonts\":{\"regular\":{\"advance_ratio\":0.54,\"bucket_alias\":\"merchant-font-artifacts\",\"cache_filename\":\"fixture_mart.glyphs.npz\",\"cap_h\":58.0,\"compiled_at\":\"2026-07-21T00:00:00+00:00\",\"content_hash\":\"28065e7b034796fd3660d1f557f4e8178e47a2076c5ebae173fb6bfe2eadf76f\",\"glyph_count\":94,\"pitch_check\":\"OK\",\"s3_key\":\"merchant_fonts/fixture_mart/regular-28065e7b0347.npz\",\"source_commit\":\"fixture\"}},\"logo\":{\"bucket_alias\":\"merchant-font-artifacts\",\"content_hash\":\"7b7a4604e99b40cd03a0b9b69a72adce811014274df0d1d06cdc2fae535ac2ea\",\"s3_key\":\"merchant_fonts/fixture_mart/logo-7b7a4604.png\",\"size\":24},\"missing_merchant_font\":false,\"profile\":{\"logo\":\"fixture_mart_logo.png\",\"logo_anchor\":{\"center\":true,\"phrases\":[\"FIXTURE MART\"]}}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#catalog_snapshot"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "catalog_snapshot"
+   },
+   "content_hash": {
+    "S": "581b6ba782e93119cca0a2193e34ae411d6841bebb74708807f98ae6f58ea7a8"
+   },
+   "payload": {
+    "S": "{\"as_of\":\"2026-07-21T00:00:00+00:00\",\"catalog_hash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\",\"item_count\":0,\"items\":[]}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#flags"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "flags"
+   },
+   "content_hash": {
+    "S": "9172e8f20d8c61e921ccdee257e9b809e8d70d9b145a6abf1ff4de0c06a82e27"
+   },
+   "payload": {
+    "S": "{\"typography\":{\"dashed_separators\":true,\"font\":\"PTMONO\"}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#identity"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "identity"
+   },
+   "content_hash": {
+    "S": "c84ba554f26864335b18492626b73b50520df4a4aaf23563142361434ff3f908"
+   },
+   "payload": {
+    "S": "{\"aliases\":[\"FIXTURE MART #001\"],\"merchant_name\":\"Fixture Mart\",\"normalized_aliases\":[\"fixture mart\",\"fixture mart 001\"],\"slug\":\"fixture_mart\",\"upper_slug\":\"FIXTURE_MART\"}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#layout"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "layout"
+   },
+   "content_hash": {
+    "S": "fba67087e0f4bcb030a97da55354facb970d2217ae9186d45ebb8c421da61e98"
+   },
+   "payload": {
+    "S": "{\"available\":false,\"template\":null}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#stylemap"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "stylemap"
+   },
+   "content_hash": {
+    "S": "58781d458867757da9b12e785823898b3f605e10d3f49d54efce2def115a267f"
+   },
+   "payload": {
+    "S": "{\"available\":true,\"document\":{\"sections\":{\"HEADER\":{\"face\":\"regular\"}},\"source\":\"fixture\",\"version\":1},\"source\":null}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  },
+  {
+   "PK": {
+    "S": "MERCHANT_TRUTH#fixture_mart"
+   },
+   "SK": {
+    "S": "TRUTH#v0000000001#C#typography"
+   },
+   "TYPE": {
+    "S": "MERCHANT_TRUTH_COMPONENT"
+   },
+   "component": {
+    "S": "typography"
+   },
+   "content_hash": {
+    "S": "1592625b9b906cf2b820ac56b9c5a2c195e30fee0dd94d74085a3fae4224a775"
+   },
+   "payload": {
+    "S": "{\"section_scale\":{\"HEADER\":0.8},\"typography\":{\"bitmap_font\":{\"regular\":\"fixture_mart.glyphs.npz\"},\"bitmap_thin\":0.2,\"condense\":0.9,\"pitch_ratio\":0.55}}"
+   },
+   "provenance": {
+    "M": {
+     "pipeline": {
+      "S": "fixture"
+     },
+     "provenance_completeness": {
+      "S": "legacy"
+     },
+     "source_kind": {
+      "S": "migration"
+     },
+     "written_by": {
+      "M": {
+       "kind": {
+        "S": "migration"
+       },
+       "name": {
+        "S": "fixture"
+       },
+       "version": {
+        "S": "1"
+       }
+      }
+     }
+    }
+   },
+   "slug": {
+    "S": "fixture_mart"
+   },
+   "version": {
+    "N": "1"
+   }
+  }
+ ]
+}

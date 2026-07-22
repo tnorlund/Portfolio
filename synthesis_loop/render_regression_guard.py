@@ -26,7 +26,11 @@ baseline. Re-capture (and commit) that manifest only for an intended,
 reviewed render change.
 
 Env: same as glyph_review receipt mode (DYNAMODB_TABLE_NAME, AWS_REGION,
-BITMATRIX_DIR, AWS creds with read access to the dev table).
+BITMATRIX_DIR, AWS creds with read access to the dev table). Merchant truth
+resolves through the MerchantTruthLoader (MERCHANT_TRUTH_MODE, default
+online-active); the committed baseline is captured with loader-driven
+renders, so the guard now pins the LOADER path, not the retired
+merchant_profiles.json path.
 """
 
 from __future__ import annotations
