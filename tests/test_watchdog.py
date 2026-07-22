@@ -5,6 +5,13 @@ The regression test reproduces the reviewer's probe: a grandchild
 parent out. The old perl alarm+exec fallback killed only the direct
 child, so the writer survived; the setsid + killpg watchdog must kill
 the whole group.
+
+The token-budget tests (plan humble-skipping-quilt H2) extend the same
+group-kill probe: a fast-burn synthetic trajectory grown past a tiny budget
+must trip the breaker (exit 123) and kill the WHOLE group (the grandchild
+writer stops), while an under-budget run passes the child's exit through, a
+pure-garbage trajectory fails OPEN (no kill), and the absence of the budget
+flag leaves wall-clock-only behavior unchanged.
 """
 
 from __future__ import annotations
@@ -19,6 +26,201 @@ from scripts.nightly import watchdog
 WATCHDOG_CLI = (
     Path(__file__).parent.parent / "scripts" / "nightly" / "watchdog.py"
 )
+
+# A single stream-json assistant usage event carrying ID_MARKER for a distinct
+# message id (usage is summed per DISTINCT message id, so unique ids are what
+# make the running total grow) and TOKENS input tokens.
+_USAGE_EVENT = (
+    '{"type":"assistant","message":{"id":"m__ID_MARKER__",'
+    '"usage":{"input_tokens":__TOKENS__,"output_tokens":0,'
+    '"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}'
+)
+
+
+def _burn_trajectory_script(traj: Path, probe: Path, tokens_per_event: int):
+    """A shell program that (a) backgrounds a grandchild writer loop and
+    (b) appends a fresh unique usage event to ``traj`` every 0.1s forever.
+
+    It never exits on its own: only the watchdog's group-kill can stop it, so
+    the grandchild writer doubles as proof the whole group died.
+    """
+    event = _USAGE_EVENT.replace("__TOKENS__", str(tokens_per_event))
+    # printf template with %d for the incrementing message id; escape the
+    # literal % that appear nowhere and the JSON braces are fine for printf.
+    event_fmt = event.replace("__ID_MARKER__", "%d")
+    return (
+        f'(while :; do echo alive >> "{probe}"; sleep 0.1; done) &\n'
+        "i=0\n"
+        "while :; do\n"
+        "  i=$((i+1))\n"
+        f'  printf \'{event_fmt}\\n\' "$i" >> "{traj}"\n'
+        "  sleep 0.1\n"
+        "done\n"
+    )
+
+
+def test_token_budget_breach_group_kills_and_exits_123(tmp_path):
+    """Fast-burn trajectory past a tiny budget: exit 123 AND the grandchild
+    writer must stop (whole-group death), same probe as the wall-clock test."""
+    traj = tmp_path / "trajectory.jsonl"
+    probe = tmp_path / "probe.out"
+    # 1000 tokens/event, budget 2500 -> trips after the 3rd event (~0.3s).
+    script = _burn_trajectory_script(traj, probe, tokens_per_event=1000)
+
+    started = time.time()
+    rc = watchdog.run(
+        timeout=30,  # generous wall clock: the BREAKER must fire, not this
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script],
+        token_budget=2500,
+        trajectory=str(traj),
+        poll_interval=0.2,
+    )
+    assert rc == watchdog.TOKEN_EXIT, rc
+    assert time.time() - started < 15  # breaker fired fast, not the 30s wall
+
+    # Group-death proof: the backgrounded grandchild writer must have stopped.
+    assert probe.exists(), "writer grandchild never started"
+    time.sleep(0.4)
+    size_a = probe.stat().st_size
+    assert size_a > 0
+    time.sleep(0.8)
+    size_b = probe.stat().st_size
+    assert size_a == size_b, (
+        "grandchild survived the token-budget kill "
+        f"({size_a} -> {size_b} bytes still growing)"
+    )
+
+
+def test_under_budget_passes_child_exit_through(tmp_path):
+    """Budget armed but never breached: the child's own exit code survives."""
+    traj = tmp_path / "trajectory.jsonl"
+    event = _USAGE_EVENT.replace("__ID_MARKER__", "1").replace(
+        "__TOKENS__", "10"
+    )
+    script = f"printf '{event}\\n' >> \"{traj}\"; sleep 0.5; exit 7"
+    rc = watchdog.run(
+        timeout=10,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script],
+        token_budget=1_000_000,
+        trajectory=str(traj),
+        poll_interval=0.2,
+    )
+    assert rc == 7
+
+
+def test_garbage_trajectory_fails_open_child_completes(tmp_path):
+    """Pure-garbage trajectory + tiny budget: the breaker must NOT trip and
+    must NOT crash the monitor. Count what parses (nothing), skip the rest."""
+    traj = tmp_path / "trajectory.jsonl"
+    traj.write_text("this is not json\n{not: valid, json at all\n\x00\x01\n")
+    script = f'echo "more garbage <<>>" >> "{traj}"; sleep 0.6; exit 0'
+    rc = watchdog.run(
+        timeout=10,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", script],
+        token_budget=1,  # would trip instantly if any garbage were counted
+        trajectory=str(traj),
+        poll_interval=0.2,
+    )
+    assert rc == 0  # failed open: child ran to normal completion
+
+
+def test_missing_trajectory_fails_open(tmp_path):
+    """A trajectory file that never appears must not trip or crash."""
+    traj = tmp_path / "never_created.jsonl"
+    rc = watchdog.run(
+        timeout=10,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", "sleep 0.5; exit 5"],
+        token_budget=1,
+        trajectory=str(traj),
+        poll_interval=0.2,
+    )
+    assert rc == 5
+
+
+def test_poll_error_fails_open_child_completes(tmp_path, monkeypatch):
+    """Safety-critical: if the token poll itself RAISES (not just parses
+    garbage), the swallow layer must fail open — the armed watchdog's child
+    completes normally, its own exit code preserved, no kill.
+
+    The garbage/missing tests only exercise the parser's tolerance; this one
+    forces the summing call to blow up (a hypothetical compute_metrics bug or
+    stream-json shape drift) and pins that a poll exception can NEVER kill a
+    healthy night. Remove the ``except Exception`` in watchdog._token_usage and
+    this test reds (run() propagates the error and the child is orphaned)."""
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("simulated compute_metrics failure")
+
+    # _token_usage does `from scripts.nightly import trajectory_tools` and calls
+    # compute_metrics at poll time, so patching the module attribute makes every
+    # poll raise.
+    monkeypatch.setattr(
+        "scripts.nightly.trajectory_tools.compute_metrics", _boom
+    )
+
+    traj = tmp_path / "trajectory.jsonl"
+    # Write real, over-budget usage so that WITHOUT the swallow the run would
+    # both crash (poll raises) — proving the swallow, not a low count, is what
+    # keeps the child alive.
+    traj.write_text(
+        _USAGE_EVENT.replace("__ID_MARKER__", "1").replace(
+            "__TOKENS__", "999999"
+        )
+        + "\n"
+    )
+    rc = watchdog.run(
+        timeout=10,
+        grace=1.0,
+        cmd=["/bin/sh", "-c", "sleep 0.6; exit 5"],
+        token_budget=1,  # tiny: any counted token would trip
+        trajectory=str(traj),
+        poll_interval=0.2,
+    )
+    assert rc == 5  # failed open despite the raising poll; child's code kept
+
+
+def test_no_budget_flag_is_wall_clock_only(tmp_path):
+    """Budget absent -> byte-identical to today: normal exit passes through,
+    and a wall-clock timeout still group-kills with exit 124."""
+    # Pass-through (no token args at all).
+    assert (
+        watchdog.run(timeout=10, grace=1, cmd=["/bin/sh", "-c", "exit 9"]) == 9
+    )
+    # Wall-clock timeout path unchanged (exit 124, not 123).
+    out = tmp_path / "probe.out"
+    script = f'(while :; do echo x >> "{out}"; sleep 0.1; done) & sleep 30'
+    rc = watchdog.run(timeout=1.0, grace=1.0, cmd=["/bin/sh", "-c", script])
+    assert rc == watchdog.TIMEOUT_EXIT
+
+
+def test_cli_token_flags_parse_and_passthrough(tmp_path):
+    """CLI wiring: --token-budget/--trajectory parse; under budget the child
+    exit passes through (proves the flags don't disturb usage parsing)."""
+    traj = tmp_path / "trajectory.jsonl"
+    traj.write_text("")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG_CLI),
+            "--grace",
+            "1",
+            "--token-budget",
+            "1000000",
+            "--trajectory",
+            str(traj),
+            "10",
+            "--",
+            "/bin/sh",
+            "-c",
+            "exit 4",
+        ],
+        check=False,
+    )
+    assert proc.returncode == 4
 
 
 def test_normal_exit_passes_through_exit_code():
