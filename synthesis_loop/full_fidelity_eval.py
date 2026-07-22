@@ -24,14 +24,29 @@ crops. Seven metrics, each with a machine verdict:
                   sum(lines) = subtotal, subtotal + tax = total = tender.
 
 Every run emits ``<slug>.checks.json`` + ``<slug>.report.md`` + a stamped
-``<slug>.sheet.png``, all carrying the git SHA, merchant-profile hash and
-atlas hash; a dirty worktree refuses to run unless ``--allow-dirty``.
+``<slug>.sheet.png``, all carrying the git SHA, the merchant-truth bundle
+tuple ``{slug, version, bundle_hash}`` actually used, and the atlas hash; a
+dirty worktree refuses to run unless ``--allow-dirty``.
+
+Merchant truth (W8): all merchant truth (layout columns, typography names,
+engine flags, logo expectation) is resolved through ``MerchantTruthLoader``
+-- the eval never opens ``scripts/merchant_profiles.json``. Three modes:
+
+- online-active (default): the expected ACTIVE tuple is captured with a
+  strong read BEFORE the bundle load; a realized bundle that differs FAILS
+  the eval (stale-cache detection).
+- pinned (``--pin-version`` + ``--pin-bundle-hash``): the realized tuple
+  must equal the pin or the eval FAILS. PINNED mode IS the freshness gate.
+- fixture (``--truth-fixture PATH``): CI/offline -- a vendored bundle,
+  still hash-verified fail-closed by the loader.
 
 Usage:
   full_fidelity_eval.py run <merchant> <image_id> <receipt_id> <slug>
       [--out-root DIR] [--allow-dirty] [--columns-source bootstrap|profile]
+      [--pin-version N --pin-bundle-hash HASH | --truth-fixture PATH]
   full_fidelity_eval.py real-real <merchant> <image_id_a> <receipt_id_a>
       <image_id_b> <receipt_id_b> <slug> [--out-root DIR] [--allow-dirty]
+      [--pin-version N --pin-bundle-hash HASH | --truth-fixture PATH]
 
 ``real-real`` compares two REAL receipts of the same merchant (no synth):
 the cross-receipt sanity leg of the metric-validation table -- structural
@@ -51,7 +66,10 @@ import re
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from statistics import median
+from typing import Any
 
 import numpy as np
 
@@ -219,33 +237,218 @@ def worktree_state() -> tuple[str, bool]:
     return sha, dirty
 
 
-def profile_hash(merchant: str) -> str:
-    with open(
-        os.path.join(REPO, "scripts", "merchant_profiles.json"),
-        encoding="utf-8",
-    ) as fh:
-        profiles = json.load(fh)["profiles"]
-    block = profiles.get(merchant, {})
-    payload = json.dumps(block, sort_keys=True).encode()
-    return hashlib.sha256(payload).hexdigest()[:16]
+# ---------------------------------------------------------------------------
+# merchant truth resolution (W8): the eval reads versioned MerchantTruth
+# bundles through the fail-closed loader -- never merchant_profiles.json.
+# ---------------------------------------------------------------------------
+class TruthFreshnessError(SystemExit):
+    """Realized truth bundle differs from the expected tuple: eval FAILS."""
 
 
-def atlas_hash(merchant: str) -> str:
-    """SHA over the render ARTIFACTS the profile references: atlas npz,
+@dataclass(frozen=True)
+class TruthContext:
+    """The verified bundle this eval ran against, plus the expected tuple.
+
+    ``artifact`` is a loader ``MerchantTruthArtifact`` (already
+    gate-eligible); ``expected_*`` is the tuple captured for the run (the
+    pin in pinned mode, the strong-read ACTIVE tuple in online mode, the
+    fixture's own manifest in fixture mode).
+    """
+
+    artifact: Any
+    expected_version: int
+    expected_bundle_hash: str
+    mode: str
+
+    @property
+    def slug(self) -> str:
+        return self.artifact.slug
+
+    @property
+    def version(self) -> int:
+        return self.artifact.version
+
+    @property
+    def bundle_hash(self) -> str:
+        return self.artifact.bundle_hash
+
+    def component(self, name: str) -> dict:
+        payload = self.artifact.components.get(name)
+        return payload if isinstance(payload, dict) else {}
+
+
+def _default_cache_dir() -> Path:
+    return Path(
+        os.environ.get("MERCHANT_TRUTH_CACHE_DIR")
+        or os.path.expanduser("~/.cache/merchant_truth")
+    )
+
+
+def _dynamo_reader():
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+
+    table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+    return DynamoClient(table)
+
+
+def _capture_expected_active(reader, merchant: str):
+    """Strong-read the expected ACTIVE tuple ONCE, before the bundle load.
+
+    This is the online half of the freshness gate: the tuple captured here
+    is what the realized bundle must equal, so a loader that (for any
+    reason) served an older bundle than the current ACTIVE fails the run
+    instead of stamping stale truth.
+    """
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+    from receipt_dynamo.merchant_truth_loader import normalize_merchant_alias
+
+    normalized = normalize_merchant_alias(merchant)
+    slug = None
+    for active in reader.list_active_merchant_truth():
+        aliases = {
+            normalize_merchant_alias(alias)
+            for alias in [active.slug, *active.normalized_aliases]
+        }
+        if normalized in aliases:
+            slug = active.slug
+            break
+    if slug is None:
+        raise MerchantTruthIntegrityError(
+            f"no ACTIVE merchant truth matches {merchant!r}"
+        )
+    captured = reader.get_active_merchant_truth(slug, consistent_read=True)
+    if captured is None:
+        raise MerchantTruthIntegrityError(
+            f"merchant {slug!r} has no ACTIVE pointer"
+        )
+    return captured
+
+
+def resolve_truth(
+    merchant: str,
+    *,
+    pin_version: int | None = None,
+    pin_bundle_hash: str | None = None,
+    fixture_path: str | None = None,
+    reader=None,
+    cache_dir: str | Path | None = None,
+) -> TruthContext:
+    """Resolve one merchant's truth bundle and enforce THE FRESHNESS GATE.
+
+    - fixture: offline; the vendored bundle is hash-verified and must be
+      for the requested merchant.
+    - pinned: the realized ``{version, bundle_hash}`` must equal the pin.
+    - online-active (default): the expected ACTIVE tuple is captured with
+      a strong read BEFORE the load; a realized bundle that differs fails
+      (stale-cache detection).
+    """
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+    from receipt_dynamo.merchant_truth_loader import (
+        MerchantTruthLoader,
+        TruthResolutionMode,
+        normalize_merchant_alias,
+    )
+
+    if fixture_path and (
+        pin_version is not None or pin_bundle_hash is not None
+    ):
+        raise SystemExit(
+            "--truth-fixture and --pin-version/--pin-bundle-hash are "
+            "mutually exclusive"
+        )
+    if (pin_version is None) != (pin_bundle_hash is None):
+        raise SystemExit(
+            "pinned mode requires BOTH --pin-version and --pin-bundle-hash"
+        )
+    cache = Path(cache_dir) if cache_dir else _default_cache_dir()
+
+    if fixture_path:
+        loader = MerchantTruthLoader(None, cache)
+        artifact = loader.load(
+            merchant,
+            TruthResolutionMode.FIXTURE,
+            fixture_path=Path(fixture_path),
+        )
+        identity = artifact.components.get("identity") or {}
+        known = {
+            normalize_merchant_alias(alias)
+            for alias in [
+                artifact.slug,
+                *(identity.get("normalized_aliases") or []),
+            ]
+        }
+        if normalize_merchant_alias(merchant) not in known:
+            raise SystemExit(
+                f"truth fixture is for {artifact.slug!r}, not {merchant!r}"
+            )
+        expected_version = artifact.version
+        expected_hash = artifact.expected_bundle_hash
+        mode = "fixture"
+    elif pin_version is not None:
+        reader = reader if reader is not None else _dynamo_reader()
+        loader = MerchantTruthLoader(reader, cache)
+        artifact = loader.load(
+            merchant,
+            TruthResolutionMode.PINNED,
+            pin_version=pin_version,
+            pin_bundle_hash=pin_bundle_hash,
+        )
+        expected_version = pin_version
+        expected_hash = pin_bundle_hash
+        mode = "pinned"
+    else:
+        reader = reader if reader is not None else _dynamo_reader()
+        expected = _capture_expected_active(reader, merchant)
+        loader = MerchantTruthLoader(reader, cache)
+        artifact = loader.load(merchant, TruthResolutionMode.ONLINE_ACTIVE)
+        expected_version = expected.version
+        expected_hash = expected.bundle_hash
+        mode = "online-active"
+
+    # THE FRESHNESS GATE: the realized bundle must equal the expected tuple.
+    try:
+        artifact.assert_gate_eligible(
+            expected_version=expected_version,
+            expected_bundle_hash=expected_hash,
+        )
+    except MerchantTruthIntegrityError as error:
+        raise TruthFreshnessError(
+            f"freshness gate: realized bundle {artifact.slug} "
+            f"v{artifact.version} {artifact.bundle_hash} does not match the "
+            f"expected {mode} tuple v{expected_version} {expected_hash}: "
+            f"{error}"
+        ) from error
+    return TruthContext(
+        artifact=artifact,
+        expected_version=expected_version,
+        expected_bundle_hash=expected_hash,
+        mode=mode,
+    )
+
+
+def atlas_hash(truth: TruthContext) -> str:
+    """SHA over the render ARTIFACTS the bundle references: atlas npz,
     logo, and the published stylemap JSON (stylemaps change styling without
-    touching the profile block, so they must be in the stamp)."""
-    with open(
-        os.path.join(REPO, "scripts", "merchant_profiles.json"),
-        encoding="utf-8",
-    ) as fh:
-        block = json.load(fh)["profiles"].get(merchant, {})
+    touching the typography block, so they must be in the stamp). Names come
+    from C#typography (bitmap fonts) and C#assets (logo/stylemap filenames);
+    bytes are hashed from the local BITMATRIX_DIR the render actually used.
+    """
     bitdir = os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")
-    typography = block.get("typography") or {}
+    typography = truth.component("typography").get("typography") or {}
+    assets_profile = truth.component("assets").get("profile") or {}
     names = sorted(
         set(
-            list(typography.get("bitmap_font", {}).values())
-            + ([block["logo"]] if block.get("logo") else [])
-            + ([typography["stylemap"]] if typography.get("stylemap") else [])
+            list((typography.get("bitmap_font") or {}).values())
+            + ([assets_profile["logo"]] if assets_profile.get("logo") else [])
+            + (
+                [assets_profile["stylemap_filename"]]
+                if assets_profile.get("stylemap_filename")
+                else []
+            )
         )
     )
     digest = hashlib.sha256()
@@ -260,7 +463,9 @@ def atlas_hash(merchant: str) -> str:
     return digest.hexdigest()[:16]
 
 
-def build_stamp(merchant: str, *, allow_dirty: bool) -> dict:
+def build_stamp(
+    merchant: str, truth: TruthContext, *, allow_dirty: bool
+) -> dict:
     sha, dirty = worktree_state()
     if dirty and not allow_dirty:
         raise SystemExit(
@@ -270,8 +475,15 @@ def build_stamp(merchant: str, *, allow_dirty: bool) -> dict:
     return {
         "git_sha": sha,
         "dirty": dirty,
-        "profile_hash": profile_hash(merchant),
-        "atlas_hash": atlas_hash(merchant),
+        "merchant_truth": {
+            "slug": truth.slug,
+            "version": truth.version,
+            "bundle_hash": truth.bundle_hash,
+            "mode": truth.mode,
+            "expected_version": truth.expected_version,
+            "expected_bundle_hash": truth.expected_bundle_hash,
+        },
+        "atlas_hash": atlas_hash(truth),
         "merchant": merchant,
     }
 
@@ -1720,23 +1932,14 @@ def _load_real(merchant: str, image_id: str, receipt_id: int):
     return real, words, rec
 
 
-def profile_block(merchant: str) -> dict:
-    with open(
-        os.path.join(REPO, "scripts", "merchant_profiles.json"),
-        encoding="utf-8",
-    ) as fh:
-        return json.load(fh)["profiles"].get(merchant, {})
+def profile_columns(truth: TruthContext, section: str) -> list[dict]:
+    """Measured columns from the bundle's C#layout template (P2 source).
 
-
-def profile_columns(merchant: str, section: str) -> list[dict]:
-    """Measured columns from the profile's layout_template (P2 source).
-
-    Validates the block's schema version and shape before consuming it --
+    Validates the template's schema version and shape before consuming it --
     a template from a future schema version (or a hand-mangled one) is
     ignored loudly rather than silently misread.
     """
-    block = profile_block(merchant)
-    template = block.get("layout_template") or {}
+    template = truth.component("layout").get("template") or {}
     if not template:
         return []
     from glyphstudio.layout_template import validate_layout_template
@@ -1744,7 +1947,7 @@ def profile_columns(merchant: str, section: str) -> list[dict]:
     problems = validate_layout_template(template)
     if problems:
         print(
-            f"layout_template for {merchant!r} ignored: {problems}",
+            f"layout_template for {truth.slug!r} ignored: {problems}",
             file=sys.stderr,
         )
         return []
@@ -1759,7 +1962,7 @@ def evaluate_pair(
     words_syn: list[dict],
     *,
     slug: str,
-    merchant: str,
+    truth: TruthContext,
     real_png: str,
     syn_png: str,
     composed: bool,
@@ -1798,7 +2001,7 @@ def evaluate_pair(
         band_rows_real = rows_in(rows_real, (y0, y1))
         band_rows_syn = rows_in(rows_syn, (y0, y1))
         if columns_source == "profile":
-            columns = profile_columns(merchant, canonical)
+            columns = profile_columns(truth, canonical)
             source = "profile"
             if not columns:
                 columns = derive_columns_bootstrap(band_rows_real, W)
@@ -1846,7 +2049,9 @@ def evaluate_pair(
         real_gray,
         syn_gray,
         storefront_band,
-        expects_logo=bool(profile_block(merchant).get("logo")),
+        expects_logo=bool(
+            (truth.component("assets").get("profile") or {}).get("logo")
+        ),
     )
     arithmetic = arithmetic_check(words_syn)
 
@@ -1903,7 +2108,11 @@ def _write_report(out_stem: str, doc: dict) -> None:
         ),
         f"- git: `{stamp['git_sha'][:12]}`"
         + (" (DIRTY)" if stamp["dirty"] else ""),
-        f"- profile: `{stamp['profile_hash']}` atlas: `{stamp['atlas_hash']}`",
+        f"- truth: `{stamp['merchant_truth']['slug']}` "
+        f"v{stamp['merchant_truth']['version']} "
+        f"`{stamp['merchant_truth']['bundle_hash']}` "
+        f"({stamp['merchant_truth']['mode']})",
+        f"- atlas: `{stamp['atlas_hash']}`",
         "",
         f"## OVERALL: {checks['overall']}",
         "",
@@ -1944,10 +2153,12 @@ def _write_sheet(out_stem: str, real_img, syn_img, doc: dict) -> None:
         )
     except OSError:
         f = ImageFont.load_default()
+    truth = stamp["merchant_truth"]
     text = (
         f"{doc['slug']}  {doc['checks']['overall']}  "
         f"git {stamp['git_sha'][:12]}{'+DIRTY' if stamp['dirty'] else ''}  "
-        f"profile {stamp['profile_hash']}  atlas {stamp['atlas_hash']}"
+        f"truth {truth['slug']}@v{truth['version']} "
+        f"{truth['bundle_hash'][:12]}  atlas {stamp['atlas_hash']}"
     )
     dd.text((pad, 8), text, fill=(180, 0, 0), font=f)
     dd.text((pad, 30), "REAL", fill=(0, 0, 0), font=f)
@@ -1958,7 +2169,13 @@ def _write_sheet(out_stem: str, real_img, syn_img, doc: dict) -> None:
 def run(args) -> int:
     import section_compare
 
-    stamp = build_stamp(args.merchant, allow_dirty=args.allow_dirty)
+    truth = resolve_truth(
+        args.merchant,
+        pin_version=args.pin_version,
+        pin_bundle_hash=args.pin_bundle_hash,
+        fixture_path=args.truth_fixture,
+    )
+    stamp = build_stamp(args.merchant, truth, allow_dirty=args.allow_dirty)
     out_dir = os.path.join(args.out_root, f"{args.slug}_eval")
     os.makedirs(out_dir, exist_ok=True)
     real, syn, _n_bar, words = section_compare.render_pair(
@@ -1972,10 +2189,10 @@ def run(args) -> int:
     _, manifest_words, _ = _load_real(
         args.merchant, args.image_id, args.receipt_id
     )
-    block = profile_block(args.merchant)
-    composed = bool(block.get("compose"))
+    flags = truth.component("flags")
+    composed = bool(flags.get("compose"))
     words_syn = words
-    if composed and block.get("compose") == "dollartree":
+    if composed and flags.get("compose") == "dollartree":
         from compose_dollartree import canonical_words
 
         words_syn = canonical_words(words)
@@ -1991,7 +2208,7 @@ def run(args) -> int:
         manifest_words,
         words_syn,
         slug=args.slug,
-        merchant=args.merchant,
+        truth=truth,
         real_png=real_png,
         syn_png=syn_png,
         composed=composed,
@@ -2028,7 +2245,13 @@ def run(args) -> int:
 
 
 def run_real_real(args) -> int:
-    stamp = build_stamp(args.merchant, allow_dirty=args.allow_dirty)
+    truth = resolve_truth(
+        args.merchant,
+        pin_version=args.pin_version,
+        pin_bundle_hash=args.pin_bundle_hash,
+        fixture_path=args.truth_fixture,
+    )
+    stamp = build_stamp(args.merchant, truth, allow_dirty=args.allow_dirty)
     out_dir = os.path.join(args.out_root, f"{args.slug}_eval")
     os.makedirs(out_dir, exist_ok=True)
     real_a, words_a, _rec_a = _load_real(
@@ -2140,6 +2363,23 @@ def main(argv=None) -> int:
     p_rr.add_argument("slug")
     p_rr.add_argument("--out-root", default=".out")
     p_rr.add_argument("--allow-dirty", action="store_true")
+    for sub_parser in (p_run, p_rr):
+        sub_parser.add_argument(
+            "--pin-version",
+            type=int,
+            default=None,
+            help="pinned mode: exact bundle version (with --pin-bundle-hash)",
+        )
+        sub_parser.add_argument(
+            "--pin-bundle-hash",
+            default=None,
+            help="pinned mode: exact bundle hash (with --pin-version)",
+        )
+        sub_parser.add_argument(
+            "--truth-fixture",
+            default=None,
+            help="fixture mode: vendored truth bundle JSON (CI/offline)",
+        )
     args = ap.parse_args(argv)
     if args.mode == "run":
         return run(args)
