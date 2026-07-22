@@ -577,7 +577,51 @@ optional key is added:
 - The template `version` stays `1`; `variants` presence/absence is the only
   discriminator.
 
-### 7.3 Version-number readers
+`classifier_hint` is a **structured rule, not free text** — the W-G
+(clustering emits hints) / W-H (readers match hints) compatibility contract:
+
+```json
+{"type": "section_presence" | "section_order" | "text_marker", ...args}
+```
+
+- `section_presence` — args `{"sections": [...canonical names...]}`; matches
+  when every named section is present in the receipt's **canonical section
+  sequence** (its `RECEIPT_SECTION` canonical names in top-to-bottom order).
+- `section_order` — args `{"sequence": [...canonical names...]}`; matches
+  when the named sections appear in exactly that relative order within the
+  canonical section sequence.
+- `text_marker` — args `{"tokens": [...normalized tokens...]}`; matches when
+  every token is present in the receipt's **normalized OCR word set**
+  (upper-cased, punctuation-stripped).
+
+Readers match hints against exactly those two inputs — the canonical
+section sequence for the `section_*` types, the normalized OCR word set for
+`text_marker` — nothing else. **Multi-match tie-break:** when more than one
+variant's hint matches, the variant with the **highest `support` wins**;
+equal support breaks ties by lexicographically smallest `variant_id`
+(deterministic). No match, no hint, or an unrecognized `type` → the DEFAULT
+variant. New `type` values are payload evolutions and are sanctioned here
+first (§7.1).
+
+### 7.3 `section_scale`: explicit-empty vs absent (v2 typography)
+
+v1 could not distinguish "measured uniform scale" from "never measured", so
+the renderer carries a v1-only shim (`_V1_EXPLICIT_EMPTY_SECTION_SCALE`).
+The v2 typography payload encodes the distinction **directly**:
+
+- `section_scale` key **present** with value `{}` — an **explicit uniform
+  scale**: measurement determined that no section deviates; the engine
+  applies **no default shrink**.
+- `section_scale` key **absent** — not measured; the engine applies its
+  **default behavior** (HEADER shrink).
+- Key present and non-empty — per-section scales, as today.
+
+This sanctions W-J minting the distinction into Costco v2 and W-K making
+the renderer shim **version-conditional**: the shim stays for v1 bundles
+and is dropped for v2+ bundles, which are trusted to mean exactly what they
+say.
+
+### 7.4 Version-number readers
 
 §3 already promises "mint reads the current max version (descending Query,
 first item)". v3.1 sanctions that read as two named accessors on
@@ -598,7 +642,7 @@ may delete an abandoned OPEN version, leaving a gap in the sequence; gaps
 are legal and expected, and readers must not assume density — "latest" is
 whatever the descending Query returns, not `count`.
 
-### 7.4 Eval→seal gate bridge and the PASS_WITH_GAPS policy
+### 7.5 Eval→seal gate bridge and the PASS_WITH_GAPS policy
 
 `full_fidelity_eval` emits `checks["overall"] ∈ {PASS, PASS_WITH_GAPS,
 FAIL}`, while `seal_version` derives its gate from `gate_results`
@@ -610,15 +654,22 @@ ambiguity). A bridge adapter maps one onto the other; policy:
 - `PASS_WITH_GAPS` → **seals**: the bridge presents a passing seal signal
   (`status: "PASS", passed: true`) while recording `overall:
   "PASS_WITH_GAPS"` and the gap list **verbatim** in `gate_results` on the
-  manifest AND in the gate record (§7.5). Gaps are never summarized away.
+  manifest AND in the gate record's `gaps` field (§7.6). Gaps are never
+  summarized away.
 - `FAIL` → **blocks the seal**: the version stays OPEN, and the gate record
   written for the failing run is the work list for closing it.
+
+Consistency invariant: `overall == "PASS_WITH_GAPS"` **iff** the gap list
+is non-empty. An `overall` of `PASS_WITH_GAPS` accompanied by an empty
+`gaps` list is a **bridge error** — the bridge must reject it rather than
+seal (and conversely a non-empty gap list may never be presented as plain
+`PASS`).
 
 Rationale: sealing on PASS_WITH_GAPS is safe because **flips stay
 owner-gated** — a sealed-with-gaps version still cannot become ACTIVE
 without the owner reading the diff and the recorded gaps.
 
-### 7.5 `MERCHANT_TRUTH_GATE` record type
+### 7.6 `MERCHANT_TRUTH_GATE` record type
 
 Eval/gate history moves from files-only into a queryable record class under
 the merchant partition:
@@ -635,9 +686,13 @@ the merchant partition:
   (§3): fleet-wide gate-history enumeration is one GSITYPE query and never
   drags other record classes.
 - **Payload:** `{run_at, bundle: {version, hash}, eval_git_sha, overall,
-  per_metric verdicts, evidence_refs, receipt_tested}` — enough to answer
-  "what gated this bundle, when, at which eval code, and with which
-  evidence" without opening files.
+  per_metric verdicts, gaps, evidence_refs, receipt_tested}` — enough to
+  answer "what gated this bundle, when, at which eval code, and with which
+  evidence" without opening files. `gaps` is an explicit list of
+  `{metric, verdict, detail}` entries — exactly the non-PASS subset of the
+  `per_metric` verdicts (which remain the full picture); this is the same
+  gap list §7.5 requires verbatim, so the §7.5 invariant applies: `overall
+  == "PASS_WITH_GAPS"` iff `gaps` is non-empty.
 - **Append-only:** conditional create
   (`attribute_not_exists(PK) AND attribute_not_exists(SK)`); no
   update/delete accessor, same discipline as components.
@@ -655,7 +710,7 @@ Gate history is a **record type, not an 8th component** (§7.1): it is
 per-run evidence about a bundle, not part of the bundle's immutable
 closure, and it must not perturb `bundle_hash` or the exact-set gates.
 
-### 7.6 Measurement-mint provenance
+### 7.7 Measurement-mint provenance
 
 v2+ mints are **real** mints, not migrations:
 
@@ -666,14 +721,23 @@ v2+ mints are **real** mints, not migrations:
 - The `provenance_completeness=legacy` escape (`source_kind=migration`) is
   **migration-only** — it may never appear on a v2+ mint of a re-measured
   component.
-- A component the mint does **not** re-measure is carried forward
-  **explicitly**, never silently: its provenance block adds
-  `carried_forward_from: v{n}` naming the sealed source version whose
-  payload (and content hash) it reuses, alongside that source's original
-  provenance. The §3 writer-kind rules are unchanged. An unchanged hash
-  with no carry marker is a mint error.
+- **Carry rule, keyed off provenance:** a component that was NOT
+  re-measured this run (its provenance is not a fresh measurement) and
+  whose payload hash matches the prior sealed version MUST carry
+  `carried_forward_from: v{n}` naming that version; the validator checks
+  that the named version's same-component hash equals this one's. A
+  component that WAS re-measured this run and happened to produce an
+  identical payload (fresh measurement provenance, same hash, no carry
+  marker) is **legitimate** — the fresh provenance is what distinguishes
+  it.
+- **Carried components reuse the SOURCE's provenance** and MUST NOT assert
+  a new measurement: no fresh `measured_at`, no fresh
+  `source_receipt_keys` — the carried block is the source version's
+  provenance plus the `carried_forward_from` marker. A carry that stamps
+  new measurement fields is a mint error (the carry-that-lies hole). The
+  §3 writer-kind rules are unchanged.
 
-### 7.7 Ratified decisions (Costco v2 pilot)
+### 7.8 Ratified decisions (Costco v2 pilot)
 
 Owner-ratified at the W-A review, recorded here so the pilot's inputs are
 part of the contract:
