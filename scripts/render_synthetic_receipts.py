@@ -2980,11 +2980,13 @@ def _phrase_logo_placement(
     Some merchants print the wordmark as a pure graphic (no OCR text) beside a
     slogan (e.g. The Home Depot's tilted square + "How doers get more done."). The
     ``MERCHANT_NAME``/brand logo-line detection finds nothing, so we anchor off
-    the slogan instead: any line whose alphanumeric-normalized text contains one
-    of the profile ``phrases`` is part of the lockup. Those words are suppressed
-    (the logo depicts them) and the logo is sized to a band matching its own pixel
-    aspect ratio, optionally extended left to the margin to cover the graphic mark
-    that sits left of the slogan. Returns (drop_words, bbox) or ``None``.
+    the slogan instead: any contiguous word span whose alphanumeric-normalized
+    text equals one of the profile ``phrases`` is part of the lockup. Only those
+    matched words are suppressed (the logo depicts them), while unrelated words
+    on the same OCR row remain renderable. The logo is sized to a band matching
+    its own pixel aspect ratio, optionally extended left to the margin to cover
+    the graphic mark that sits left of the slogan. Returns (drop_words, bbox) or
+    ``None``.
     """
     norm = [_normalize_phrase(p) for p in phrases if p]
     if not norm:
@@ -2996,23 +2998,35 @@ def _phrase_logo_placement(
         # ("HOWDOERS" = "HOW"+"DOERS") but a short brand phrase never fires on
         # an unrelated word that merely contains it ("TREE" must not match
         # "STREET"). A whole-line substring test conflates the two.
-        toks = [_normalize_phrase(w.get("text") or "") for w in words]
-        toks = [t for t in toks if t]
-        if not toks or not _phrase_run_match(toks, norm):
+        word_tokens = [
+            (word, _normalize_phrase(word.get("text") or "")) for word in words
+        ]
+        word_tokens = [(word, token) for word, token in word_tokens if token]
+        toks = [token for _word, token in word_tokens]
+        spans = _phrase_run_spans(toks, norm)
+        if not spans:
             continue
+        matched_indexes = {
+            index for start, stop in spans for index in range(start, stop)
+        }
+        matched_words = [
+            word
+            for index, (word, _token) in enumerate(word_tokens)
+            if index in matched_indexes
+        ]
         # This anchors a TOP-of-receipt lockup; short brand phrases ("VONS")
         # also match footer URLs / body mentions, which unions a bogus
         # mid-receipt band and drops body words. Only accept header lines.
         ys = [
             v
-            for w in words
+            for w in matched_words
             if w.get("bbox")
             for v in (w["bbox"][1], w["bbox"][3])
         ]
         if ys and (sum(ys) / len(ys)) < 780.0:
             continue
         if ys:
-            matched.append((max(ys), max(ys) - min(ys), words))
+            matched.append((max(ys), max(ys) - min(ys), matched_words))
     # Absorb only the TOP cluster of matched lines (contiguous within ~one
     # line height). A graphic badge's shed tokens sit adjacent to each other;
     # a REAL text line printed further below (The Stand's "THE STAND" under
@@ -3079,20 +3093,29 @@ def _phrase_run_match(tokens: list[str], norm_phrases: list[str]) -> bool:
     This keeps multi-word slogan anchors working while stopping short brand
     phrases from firing on unrelated words.
     """
+    return bool(_phrase_run_spans(tokens, norm_phrases))
+
+
+def _phrase_run_spans(
+    tokens: list[str], norm_phrases: list[str]
+) -> list[tuple[int, int]]:
+    """Return every contiguous token span that exactly matches a phrase."""
     n = len(tokens)
     # Stop each run once it can no longer equal any phrase (longest phrase's
     # length), so a configured phrase longer than any fixed cap still matches
     # while runaway concatenation is still bounded.
-    max_len = max((len(p) for p in norm_phrases), default=0)
+    phrase_set = set(norm_phrases)
+    max_len = max((len(p) for p in phrase_set), default=0)
+    spans = []
     for i in range(n):
         acc = ""
         for j in range(i, n):
             acc += tokens[j]
-            if acc in norm_phrases:
-                return True
+            if acc in phrase_set:
+                spans.append((i, j + 1))
             if len(acc) > max_len:
                 break
-    return False
+    return spans
 
 
 def _flatten_receipt_words(receipt: dict) -> list[dict]:

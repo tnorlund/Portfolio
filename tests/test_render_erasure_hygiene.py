@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 from PIL import Image
 
+from receipt_dynamo.constants import ValidationStatus
 from scripts import render_synthetic_receipts as rsr
 from synthesis_loop import glyph_review
 
@@ -40,8 +41,9 @@ def test_phrase_logo_placement_drops_only_matched_span() -> None:
     )
 
     assert placed is not None
-    dropped, _bbox = placed
+    dropped, bbox = placed
     assert [word["text"] for word in dropped] == ["COSTCO"]
+    assert bbox[2] <= phrase["bbox"][2]
 
 
 def test_glyph_review_preserves_all_word_labels_in_stable_order(
@@ -62,7 +64,9 @@ def test_glyph_review_preserves_all_word_labels_in_stable_order(
         Image.new("RGB", (20, 40), "white").save(path)
 
     fake_renderer._render_cached_hybrid = capture_render
-    monkeypatch.setitem(sys.modules, "render_synthetic_receipts", fake_renderer)
+    monkeypatch.setitem(
+        sys.modules, "render_synthetic_receipts", fake_renderer
+    )
 
     word = SimpleNamespace(
         receipt_id=1,
@@ -78,14 +82,14 @@ def test_glyph_review_preserves_all_word_labels_in_stable_order(
             line_id=2,
             word_id=3,
             label="MERCHANT_NAME",
-            validation_status="PENDING",
+            validation_status="VALID",
         ),
         SimpleNamespace(
             receipt_id=1,
             line_id=2,
             word_id=3,
             label="ADDRESS_LINE",
-            validation_status="VALID",
+            validation_status="PENDING",
         ),
     ]
     receipt = SimpleNamespace(
@@ -129,6 +133,32 @@ def test_glyph_review_preserves_all_word_labels_in_stable_order(
 
     assert result == 0
     assert captured["words"][0]["labels"] == [
-        "ADDRESS_LINE",
         "MERCHANT_NAME",
+        "ADDRESS_LINE",
     ]
+
+
+def test_glyph_review_label_order_filters_and_deduplicates() -> None:
+    def label(name, status):
+        return SimpleNamespace(
+            receipt_id=1,
+            line_id=4,
+            word_id=5,
+            label=name,
+            validation_status=status,
+        )
+
+    labels = [
+        label("PAYMENT_METHOD", "pending"),
+        label("COUPON", "pending"),
+        label("DATE", ValidationStatus.VALID),
+        label("ADDRESS_LINE", "valid"),
+        label("PAYMENT_METHOD", ValidationStatus.VALID),
+        label("IGNORED", ValidationStatus.INVALID),
+        label("O", "VALID"),
+        label(None, "VALID"),
+    ]
+
+    assert glyph_review._labels_by_coordinate(labels, 1) == {
+        (4, 5): ["ADDRESS_LINE", "DATE", "PAYMENT_METHOD", "COUPON"]
+    }
