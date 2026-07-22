@@ -6,9 +6,10 @@ layout templates, asset pointers, engine flags, catalog snapshots) out of
 content-hashed, provenance-carrying records in the existing single table,
 using proper DynamoDB access patterns.
 
-Status: DESIGN v3 — frozen. Review rounds: 2 (cap reached per #1190 polish
-policy). Remaining spec ambiguity is settled at implementation time in #1188
-P4 code+tests.
+Status: DESIGN v3.1 — schema-evolution amendment; core v3 unchanged. Review
+rounds: 2 (cap reached per #1190 polish policy). Remaining spec ambiguity is
+settled at implementation time in #1188 P4 code+tests. The v3.1 amendment is
+§7 only; §§0–6 are the frozen v3 text.
 
 ## 0. Goals and non-goals
 
@@ -503,3 +504,189 @@ not provide (finding 2).
    across merchants, in the same validation path as flip. Globally
    addressable `ALIAS#<normalized-name>` records are an optional later step,
    only if scale or a direct point-read consumer requires it.
+
+## 7. Schema evolution (v3.1)
+
+Amendment for the Costco complete-in-Dynamo pilot (v2 bundles). §§0–6 are
+unchanged v3 text; every rule below is additive. Ratified per the plan
+(`humble-skipping-quilt`) at the W-A owner review.
+
+### 7.1 Payload-evolution rules
+
+Component `payload` values are opaque canonical JSON (`Any` at the entity
+layer): a payload's **shape MAY evolve across bundle versions** without a
+contract revision. What is frozen is the component **set** — exactly the 7
+names in `COMPONENT_NAMES` (identity, typography, stylemap, layout, assets,
+flags, catalog_snapshot). Adding (or removing) a component is a **major
+contract revision**, not a payload evolution: it trips the four exact-set
+gates plus the diff tool's fixed review order —
+
+1. `MerchantTruthManifest.__post_init__`
+   (`receipt_dynamo/entities/merchant_truth.py` — "manifest must declare the
+   exact component set");
+2. `_MerchantTruth.mint_version`
+   (`receipt_dynamo/data/_merchant_truth.py` — "mint requires exactly one of
+   every declared component");
+3. the `MerchantTruthLoader` bundle verification
+   (`receipt_dynamo/merchant_truth_loader.py` — "loaded component
+   names/count do not match the contract");
+4. the `merchant_truth_diff` contract check
+   (`scripts/merchant_truth_diff.py`) — plus its module-level
+   `assert set(COMPONENT_ORDER) == COMPONENT_NAMES`.
+
+Rules for any payload shape evolution:
+
+- All four gates above (and every existing schema validator) must keep
+  passing on both old and new payloads — evolutions are additive or
+  tolerated-unknown-key changes, never breaking rewrites.
+- Old sealed versions are immutable and are never rewritten to the new
+  shape; readers must accept every shape this section has ever sanctioned.
+- Every shape evolution is **sanctioned in this section first** (docs PR
+  precedes code, invariant 4 of the plan).
+
+### 7.2 Layout variants: `template.variants[]`
+
+The layout component learns receipt-format variants (e.g. Costco register
+vs. self-checkout) **additively**. The template keeps `version: 1`; the
+existing top-level `columns` / `sections` / `separators` remain exactly what
+they are today and are now defined as the **DEFAULT variant**. A new
+optional key is added:
+
+```json
+"variants": [
+  {
+    "variant_id": "self-checkout",
+    "classifier_hint": "...",
+    "columns": [...],
+    "sections": [...],
+    "separators": [...],
+    "support": 7,
+    "source_receipt_keys": ["IMAGE#...|RECEIPT#..."]
+  }
+]
+```
+
+- `support` (receipt count backing the variant) and `source_receipt_keys`
+  are **required** on every variant entry — no unprovenanced variants.
+- Readers (eval `profile_columns`, `merchant_truth_diff`'s `diff_layout`,
+  and any future variant-aware renderer) select a variant by
+  `classifier_hint`; when no hint matches — or the reader is
+  variant-unaware — they fall back to the top-level DEFAULT variant.
+  Existing validators tolerate the unknown `variants` key, so v1 bundles
+  and variant-unaware readers are unaffected.
+- The template `version` stays `1`; `variants` presence/absence is the only
+  discriminator.
+
+### 7.3 Version-number readers
+
+§3 already promises "mint reads the current max version (descending Query,
+first item)". v3.1 sanctions that read as two named accessors on
+`_MerchantTruth`:
+
+- `get_latest_merchant_truth_version(slug, *, sealed_only)` — descending
+  Query on `begins_with(SK, "TRUTH#v")`, first manifest. With
+  `sealed_only=True` it returns the highest **SEALED** version (what
+  promotion/diff/mint-from want); otherwise the highest version of any
+  status, OPEN included (what mint allocation must see so it never collides
+  with an in-flight OPEN version).
+- `next_mint_version(slug)` — `get_latest…(sealed_only=False) + 1` (1 when
+  no versions exist), still guarded by the conditional manifest create: a
+  race loses the condition and retries with a re-read.
+
+Version numbers are **never reused**. `cleanup_merchant_truth_open_version`
+may delete an abandoned OPEN version, leaving a gap in the sequence; gaps
+are legal and expected, and readers must not assume density — "latest" is
+whatever the descending Query returns, not `count`.
+
+### 7.4 Eval→seal gate bridge and the PASS_WITH_GAPS policy
+
+`full_fidelity_eval` emits `checks["overall"] ∈ {PASS, PASS_WITH_GAPS,
+FAIL}`, while `seal_version` derives its gate from `gate_results`
+(`_derive_gate_status`: explicit `status`/`passed`, fail-closed on
+ambiguity). A bridge adapter maps one onto the other; policy:
+
+- `PASS` → seals: `gate_results = {status: "PASS", passed: true, overall:
+  "PASS", …}`.
+- `PASS_WITH_GAPS` → **seals**: the bridge presents a passing seal signal
+  (`status: "PASS", passed: true`) while recording `overall:
+  "PASS_WITH_GAPS"` and the gap list **verbatim** in `gate_results` on the
+  manifest AND in the gate record (§7.5). Gaps are never summarized away.
+- `FAIL` → **blocks the seal**: the version stays OPEN, and the gate record
+  written for the failing run is the work list for closing it.
+
+Rationale: sealing on PASS_WITH_GAPS is safe because **flips stay
+owner-gated** — a sealed-with-gaps version still cannot become ACTIVE
+without the owner reading the diff and the recorded gaps.
+
+### 7.5 `MERCHANT_TRUTH_GATE` record type
+
+Eval/gate history moves from files-only into a queryable record class under
+the merchant partition:
+
+| Record | SK | TYPE |
+|---|---|---|
+| Gate run | `GATE#{run_at_iso}#v{n:010d}` | `MERCHANT_TRUTH_GATE` |
+
+- **PK** = `MERCHANT_TRUTH#{slug}`, same partition as the truth records;
+  `GATE#` sorts before `PROPOSED#` and `TRUTH#`, so the existing
+  `begins_with(SK, "TRUTH#…")` queries are untouched. The version segment
+  uses the same `v{n:010d}` zero-padded encoding as the key grammar (§2).
+- **Own TYPE** `MERCHANT_TRUTH_GATE`, per the one-TYPE-per-record-class rule
+  (§3): fleet-wide gate-history enumeration is one GSITYPE query and never
+  drags other record classes.
+- **Payload:** `{run_at, bundle: {version, hash}, eval_git_sha, overall,
+  per_metric verdicts, evidence_refs, receipt_tested}` — enough to answer
+  "what gated this bundle, when, at which eval code, and with which
+  evidence" without opening files.
+- **Append-only:** conditional create
+  (`attribute_not_exists(PK) AND attribute_not_exists(SK)`); no
+  update/delete accessor, same discipline as components.
+- **Evidence sheets stay in S3/files** — `evidence_refs` are pointers, per
+  the §0 non-goal on binaries.
+- **Write governance:** the writer passes the same `expected_table_name`
+  env guard as every `_MerchantTruth` write; the eval writes gate records
+  only when explicitly enabled (`--write-gate-record`, default off) and,
+  until a prod promotion policy for gate history exists, writes are
+  **dev-pinned** — gate records are not part of the promoted bundle closure
+  (§5 risk 1 imports "only the selected SEALED bundle plus a prod promotion
+  audit"; that list does not grow here).
+
+Gate history is a **record type, not an 8th component** (§7.1): it is
+per-run evidence about a bundle, not part of the bundle's immutable
+closure, and it must not perturb `bundle_hash` or the exact-set gates.
+
+### 7.6 Measurement-mint provenance
+
+v2+ mints are **real** mints, not migrations:
+
+- Every measured component carries full per-component provenance (§2,
+  finding 6): `written_by.kind = "measurement_pipeline"` (or
+  `"engine_config_sync"` for `flags`), `source_receipt_keys`, `pipeline` +
+  `pipeline_version`, `measured_at`.
+- The `provenance_completeness=legacy` escape (`source_kind=migration`) is
+  **migration-only** — it may never appear on a v2+ mint of a re-measured
+  component.
+- A component the mint does **not** re-measure is carried forward
+  **explicitly**, never silently: its provenance block adds
+  `carried_forward_from: v{n}` naming the sealed source version whose
+  payload (and content hash) it reuses, alongside that source's original
+  provenance. The §3 writer-kind rules are unchanged. An unchanged hash
+  with no carry marker is a mint error.
+
+### 7.7 Ratified decisions (Costco v2 pilot)
+
+Owner-ratified at the W-A review, recorded here so the pilot's inputs are
+part of the contract:
+
+1. **Curated catalog path is DROPPED.** `catalog_snapshot` is populated by
+   the observed miner only (labeled receipts, y-band name↔price matching,
+   receipt provenance per item); no hand-curated item list ships.
+2. **Discarded `_comment` leaves are preserved as PROPOSED records.** The
+   v1 migration classified profile `_comment` leaves (including the
+   original self-checkout curator note) as discarded-with-reason; each such
+   note is imported as a `MERCHANT_TRUTH_PROPOSAL` with git-sha provenance
+   and a zero-text-loss check, so no curator knowledge is lost.
+3. **Variant-clustering corpus = SCAN receipts.** Clustering for §7.2 runs
+   over the 29 Costco SCAN receipts; the 8 PHOTO receipts are **excluded**,
+   and the exclusion (count + image type) is recorded alongside the
+   clustering output so the corpus is reproducible.
