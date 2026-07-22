@@ -55,8 +55,9 @@ class MerchantTruthGateRecord(DynamoDBEntity):
     bundle_hash: str
     eval_git_sha: str
     overall: str
-    per_metric: dict[str, str]
+    per_metric: list[dict[str, Any]]
     gaps: list[dict[str, Any]] = field(default_factory=list)
+    coverage: list[str] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
     receipt_tested: Any = None
 
@@ -73,14 +74,23 @@ class MerchantTruthGateRecord(DynamoDBEntity):
             )
         if self.overall not in GATE_OVERALL_VERDICTS:
             raise ValueError(f"invalid gate overall verdict: {self.overall!r}")
-        if not isinstance(self.per_metric, dict) or not self.per_metric:
-            raise ValueError("per_metric must be a non-empty verdict map")
-        for name, verdict in self.per_metric.items():
-            if not isinstance(name, str) or not name:
-                raise ValueError("per_metric keys must be non-empty strings")
+        # per_metric matches the eval->seal bridge shape (contract section
+        # 7.5): a list of {metric, verdict}, the FULL picture, so a seal's
+        # manifest gate_results and this record carry byte-identical lists.
+        if not isinstance(self.per_metric, list) or not self.per_metric:
+            raise ValueError("per_metric must be a non-empty verdict list")
+        for entry in self.per_metric:
+            if not isinstance(entry, dict):
+                raise ValueError("each per_metric entry must be a map")
+            metric = entry.get("metric")
+            verdict = entry.get("verdict")
+            if not isinstance(metric, str) or not metric:
+                raise ValueError(
+                    "per_metric.metric must be a non-empty string"
+                )
             if not isinstance(verdict, str) or not verdict:
                 raise ValueError(
-                    f"per_metric[{name!r}] verdict must be a non-empty string"
+                    "per_metric.verdict must be a non-empty string"
                 )
         if not isinstance(self.gaps, list):
             raise ValueError("gaps must be a list")
@@ -99,6 +109,15 @@ class MerchantTruthGateRecord(DynamoDBEntity):
             # never appear in the gap list.
             if verdict == "PASS":
                 raise ValueError("a PASS verdict may not appear in gaps")
+        # ``coverage`` records the eval's sub-metric coverage_gaps paths
+        # (e.g. "columns:top:price") SEPARATELY: they are not per-metric
+        # verdicts, so section 7.6 keeps them out of ``gaps`` (which stays
+        # exactly the non-PASS per-metric subset the bridge derives). The
+        # contract permits additional record fields.
+        if not isinstance(self.coverage, list) or any(
+            not isinstance(path, str) or not path for path in self.coverage
+        ):
+            raise ValueError("coverage entries must be non-empty strings")
         if not isinstance(self.evidence_refs, list) or any(
             not isinstance(ref, str) or not ref for ref in self.evidence_refs
         ):
@@ -142,6 +161,7 @@ class MerchantTruthGateRecord(DynamoDBEntity):
             "overall": {"S": self.overall},
             "per_metric": to_dynamodb_value(self.per_metric),
             "gaps": to_dynamodb_value(self.gaps),
+            "coverage": to_dynamodb_value(self.coverage),
             "evidence_refs": to_dynamodb_value(self.evidence_refs),
             "receipt_tested": to_dynamodb_value(self.receipt_tested),
         }
@@ -157,8 +177,9 @@ class MerchantTruthGateRecord(DynamoDBEntity):
             bundle_hash=bundle.get("hash", data.get("bundle_hash")),
             eval_git_sha=data["eval_git_sha"],
             overall=data["overall"],
-            per_metric=data.get("per_metric", {}),
+            per_metric=data.get("per_metric", []),
             gaps=data.get("gaps", []),
+            coverage=data.get("coverage", []),
             evidence_refs=data.get("evidence_refs", []),
             receipt_tested=data.get("receipt_tested"),
         )

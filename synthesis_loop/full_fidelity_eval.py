@@ -2174,17 +2174,6 @@ _GATE_DEV_TABLE = "ReceiptsTable-dc5be22"
 _GATE_PROD_TABLE = "ReceiptsTable-d7ff76a"
 _GATE_PROD_MARKER = "d7ff76a"
 
-# The 7 real-vs-synth metrics, in report order.
-_GATE_METRICS = (
-    "columns",
-    "style",
-    "tokens",
-    "separators",
-    "graphics",
-    "logo",
-    "arithmetic",
-)
-
 
 def _resolve_gate_table() -> str:
     """Resolve the gate-record target table, refusing prod unconditionally."""
@@ -2198,45 +2187,25 @@ def _resolve_gate_table() -> str:
     return table
 
 
-def _build_gate_gaps(checks: dict) -> list[dict]:
-    """Derive the gate-record gap list from an eval's checks.
+def _derive_gate_results(checks: dict) -> dict:
+    """Derive {overall, per_metric, gaps} via the ONE eval->seal bridge.
 
-    The gaps are the non-PASS subset of the per-metric verdicts plus the
-    sub-metric coverage gaps the eval surfaces (untested lanes/classes).
-    Because the eval sets ``overall == PASS_WITH_GAPS`` iff ``coverage_gaps``
-    is non-empty, and a FAIL adds its failing metric here, this list satisfies
-    the section 7.6 invariant (PASS carries no gaps; PASS_WITH_GAPS carries
-    at least one) while giving a FAIL run its work list.
+    Reuses ``bridge_eval_to_gate_results`` (W-C/W-D, #1215) verbatim so a
+    W-J seal's manifest ``gate_results`` and this run's gate record carry
+    byte-identical ``gaps``/``per_metric`` (contract section 7.5's
+    same-verbatim-in-both). A ``FAIL`` blocks the seal but must still yield a
+    gate record as the work list, so the bridge's failing derivation is read
+    off the ``GateBlockedError`` rather than re-implemented here.
     """
-    gaps: list[dict] = []
-    seen: set[str] = set()
-    for name in _GATE_METRICS:
-        metric = checks.get(name)
-        if not isinstance(metric, dict):
-            continue
-        verdict = metric.get("verdict")
-        if verdict and verdict != "PASS":
-            gaps.append(
-                {
-                    "metric": name,
-                    "verdict": verdict,
-                    "detail": f"metric {name!r} returned {verdict}",
-                }
-            )
-            seen.add(name)
-    for entry in checks.get("coverage_gaps", []):
-        # Top-level metric gaps are already captured above; keep the
-        # sub-metric coverage paths (e.g. "columns:top:price", "style:HEADER").
-        if entry in seen:
-            continue
-        gaps.append(
-            {
-                "metric": entry,
-                "verdict": "COVERAGE_GAP",
-                "detail": f"incomplete coverage: {entry}",
-            }
-        )
-    return gaps
+    from receipt_dynamo.data.merchant_truth_gate_bridge import (
+        GateBlockedError,
+        bridge_eval_to_gate_results,
+    )
+
+    try:
+        return bridge_eval_to_gate_results(checks)
+    except GateBlockedError as blocked:
+        return blocked.gate_results
 
 
 def _write_gate_record(args, truth, stamp: dict, checks: dict, stem: str):
@@ -2252,20 +2221,19 @@ def _write_gate_record(args, truth, stamp: dict, checks: dict, stem: str):
     )
 
     table = _resolve_gate_table()
-    per_metric = {
-        name: checks[name]["verdict"]
-        for name in _GATE_METRICS
-        if isinstance(checks.get(name), dict) and checks[name].get("verdict")
-    }
+    gate = _derive_gate_results(checks)
     record = MerchantTruthGateRecord(
         slug=args.slug,
         run_at=datetime.now(timezone.utc).isoformat(),
         version=truth.version,
         bundle_hash=truth.bundle_hash,
         eval_git_sha=stamp["git_sha"],
-        overall=checks["overall"],
-        per_metric=per_metric,
-        gaps=_build_gate_gaps(checks),
+        overall=gate["overall"],
+        per_metric=gate["per_metric"],
+        gaps=gate["gaps"],
+        # Sub-metric coverage paths are NOT per-metric verdicts (section
+        # 7.6): they ride a separate field, never the gap subset.
+        coverage=list(checks.get("coverage_gaps", [])),
         evidence_refs=[
             stem + ".checks.json",
             stem + ".report.md",

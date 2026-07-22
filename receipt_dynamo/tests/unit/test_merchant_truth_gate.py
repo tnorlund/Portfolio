@@ -22,8 +22,12 @@ def make(**overrides):
         bundle_hash=HASH,
         eval_git_sha="deadbeefcafe",
         overall="PASS",
-        per_metric={"columns": "PASS", "logo": "PASS"},
+        per_metric=[
+            {"metric": "columns", "verdict": "PASS"},
+            {"metric": "logo", "verdict": "PASS"},
+        ],
         gaps=[],
+        coverage=[],
         evidence_refs=["/out/costco.checks.json"],
         receipt_tested={"image_id": "img-1", "receipt_id": 1},
     )
@@ -55,10 +59,24 @@ def test_roundtrip_equal():
     record = make(
         version=2,
         overall="PASS_WITH_GAPS",
-        per_metric={"columns": "PASS", "logo": "PASS_WITH_GAPS"},
-        gaps=[{"metric": "logo", "verdict": "PASS_WITH_GAPS", "detail": "x"}],
+        per_metric=[
+            {"metric": "columns", "verdict": "PASS"},
+            {"metric": "logo", "verdict": "PASS_WITH_GAPS"},
+        ],
+        gaps=[
+            {
+                "metric": "logo",
+                "verdict": "PASS_WITH_GAPS",
+                "detail": {"score": 0.4, "note": "faint"},
+            }
+        ],
+        coverage=["columns:top:price", "style:HEADER"],
     )
-    assert MerchantTruthGateRecord.from_item(record.to_item()) == record
+    restored = MerchantTruthGateRecord.from_item(record.to_item())
+    assert restored == record
+    # detail is preserved verbatim as a map (the bridge shape), not a string.
+    assert restored.gaps[0]["detail"] == {"score": 0.4, "note": "faint"}
+    assert restored.coverage == ["columns:top:price", "style:HEADER"]
 
 
 def test_fail_run_may_carry_gaps_as_work_list():
@@ -66,13 +84,28 @@ def test_fail_run_may_carry_gaps_as_work_list():
     # list for closing the version.
     record = make(
         overall="FAIL",
-        per_metric={"columns": "PASS", "logo": "FAIL"},
+        per_metric=[
+            {"metric": "columns", "verdict": "PASS"},
+            {"metric": "logo", "verdict": "FAIL"},
+        ],
         gaps=[
-            {"metric": "logo", "verdict": "FAIL", "detail": "no logo drawn"}
+            {
+                "metric": "logo",
+                "verdict": "FAIL",
+                "detail": {"reason": "no logo drawn"},
+            }
         ],
     )
     assert record.overall == "FAIL"
     assert len(record.gaps) == 1
+
+
+def test_coverage_paths_live_outside_gaps():
+    # A PASS run may still carry coverage paths (sub-metric untested lanes);
+    # they are not gaps, so the PASS-carries-no-gaps rule is not tripped.
+    record = make(overall="PASS", gaps=[], coverage=["columns:top:price"])
+    assert record.gaps == []
+    assert record.coverage == ["columns:top:price"]
 
 
 # --- the section 7.5/7.6 PASS_WITH_GAPS-iff-gaps invariant, at construction ---
@@ -111,7 +144,21 @@ def test_rejects_bad_hash():
 
 def test_rejects_empty_per_metric():
     with pytest.raises(ValueError, match="per_metric must be a non-empty"):
-        make(per_metric={})
+        make(per_metric=[])
+
+
+def test_rejects_per_metric_wrong_shape():
+    # The old dict[str, str] shape is rejected -- per_metric is the bridge's
+    # list[{metric, verdict}].
+    with pytest.raises(ValueError, match="per_metric must be a non-empty"):
+        make(per_metric={"columns": "PASS"})
+    with pytest.raises(ValueError, match="per_metric.metric"):
+        make(per_metric=[{"verdict": "PASS"}])
+
+
+def test_rejects_bad_coverage():
+    with pytest.raises(ValueError, match="coverage entries"):
+        make(coverage=["ok", ""])
 
 
 def test_rejects_gap_missing_detail():

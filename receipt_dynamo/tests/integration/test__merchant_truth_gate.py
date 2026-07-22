@@ -24,8 +24,12 @@ def record(run_at: str, version: int, bundle_hash: str, **overrides):
         bundle_hash=bundle_hash,
         eval_git_sha="deadbeefcafe",
         overall="PASS",
-        per_metric={"columns": "PASS", "logo": "PASS"},
+        per_metric=[
+            {"metric": "columns", "verdict": "PASS"},
+            {"metric": "logo", "verdict": "PASS"},
+        ],
         gaps=[],
+        coverage=[],
         evidence_refs=["/out/costco.checks.json"],
         receipt_tested={"image_id": "img-1", "receipt_id": 1},
     )
@@ -41,9 +45,16 @@ def test_two_runs_list_in_order(dynamodb_table: str):
         1,
         HASH_A,
         overall="PASS_WITH_GAPS",
-        per_metric={"columns": "PASS", "logo": "PASS_WITH_GAPS"},
+        per_metric=[
+            {"metric": "columns", "verdict": "PASS"},
+            {"metric": "logo", "verdict": "PASS_WITH_GAPS"},
+        ],
         gaps=[
-            {"metric": "logo", "verdict": "PASS_WITH_GAPS", "detail": "faint"}
+            {
+                "metric": "logo",
+                "verdict": "PASS_WITH_GAPS",
+                "detail": {"note": "faint"},
+            }
         ],
     )
     # Insert out of order to prove the query orders by SK, not insert order.
@@ -86,8 +97,14 @@ def test_gsitype_enumerates_across_merchants(dynamodb_table: str):
         bundle_hash=HASH_B,
         eval_git_sha="feedface",
         overall="FAIL",
-        per_metric={"columns": "FAIL"},
-        gaps=[{"metric": "columns", "verdict": "FAIL", "detail": "wobble"}],
+        per_metric=[{"metric": "columns", "verdict": "FAIL"}],
+        gaps=[
+            {
+                "metric": "columns",
+                "verdict": "FAIL",
+                "detail": {"reason": "wobble"},
+            }
+        ],
         evidence_refs=["/out/sprouts.checks.json"],
         receipt_tested={"image_id": "img-2", "receipt_id": 3},
     )
