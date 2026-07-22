@@ -96,6 +96,11 @@ from receipt_dynamo.entities.merchant_truth import (  # noqa: F401
     merchant_truth_pk,
     version_prefix,
 )
+from receipt_dynamo.entities.merchant_truth_gate import (  # noqa: F401
+    GATE_OVERALL_VERDICTS,
+    MerchantTruthGateRecord,
+    gate_version_segment,
+)
 from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: F401
 from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
@@ -276,6 +281,7 @@ __all__ = [
     "MerchantTruthActive",
     "MerchantTruthAudit",
     "MerchantTruthComponent",
+    "MerchantTruthGateRecord",
     "MerchantTruthManifest",
     "MerchantTruthProposal",
     "OCRJob",
