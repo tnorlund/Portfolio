@@ -42,6 +42,7 @@ MAX_TURNS="${NIGHTLY_MAX_TURNS:-80}"
 BRIEF="$REPO_ROOT/docs/nightly/BRIEF.md"
 CANNED_REPORT="$SCRIPT_DIR/fixtures/canned_agent_report.md"
 CHECKER="$SCRIPT_DIR/check_contract.py"
+TRAJECTORY_TOOLS="$SCRIPT_DIR/trajectory_tools.py"
 # Dev table pin: never inherit a prod-pointing env into the loop.
 export DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-ReceiptsTable-dc5be22}"
 export PORTFOLIO_ENV=dev
@@ -237,14 +238,36 @@ else
   fi
   log "watchdog self-test OK (setsid + group-kill)"
   log "launching headless claude ($CLAUDE_BIN), timeout=${TIMEOUT_SECS}s max_turns=$MAX_TURNS"
+  # H1: stream-json + --verbose captures the full tool-call/turn trajectory
+  # AND final usage/cost. stdout is the JSONL event stream -> trajectory.jsonl
+  # (this is what watchdogs H2/H3 poll). The old plain-text agent_stdout.log is
+  # regenerated below from the trajectory's final result event so the human
+  # continuity (and any log reader) still sees a readable final message.
   ( cd "$REPO_ROOT" && python3 "$WATCHDOG" --grace 30 "$TIMEOUT_SECS" -- \
       "$CLAUDE_BIN" -p "$(cat "$BRIEF")" \
+      --output-format stream-json --verbose \
       --permission-mode bypassPermissions \
       --model claude-fable-5 \
       --max-turns "$MAX_TURNS" \
-      > "$RUN_DIR/agent_stdout.log" 2> "$RUN_DIR/agent_stderr.log" )
+      > "$RUN_DIR/trajectory.jsonl" 2> "$RUN_DIR/agent_stderr.log" )
   AGENT_EXIT=$?
   log "agent exit=$AGENT_EXIT"
+
+  # Regenerate agent_stdout.log (continuity) from the trajectory's final
+  # result event; never fatal (the parser degrades on a truncated trace).
+  python3 "$TRAJECTORY_TOOLS" extract-result "$RUN_DIR/trajectory.jsonl" \
+    > "$RUN_DIR/agent_stdout.log" 2>> "$RUN_DIR/wrapper.log" \
+    || log "WARNING: extract-result failed; agent_stdout.log may be empty"
+
+  # Record run_metrics.json. claude --version is captured HERE by the wrapper
+  # (a stream-json shape-drift canary per the plan's Cross-cutting note).
+  CLAUDE_VERSION="$("$CLAUDE_BIN" --version 2>/dev/null | head -1)"
+  python3 "$TRAJECTORY_TOOLS" metrics "$RUN_DIR/trajectory.jsonl" \
+    --claude-version "$CLAUDE_VERSION" \
+    --duration-secs "$(elapsed)" \
+    -o "$RUN_DIR/run_metrics.json" 2>> "$RUN_DIR/wrapper.log" \
+    && log "run_metrics.json written (claude $CLAUDE_VERSION)" \
+    || log "WARNING: run_metrics.json generation failed"
 fi
 
 # ---- 3. Contract check ----------------------------------------------------
