@@ -33,12 +33,11 @@ this item. The progress signal is the NEWEST mtime across all ``--progress``
 files (primary: trajectory.jsonl, which any agent activity touches; secondary:
 the report path). If ``now - newest_mtime > stall_secs`` the whole group is
 killed on the same path and the watchdog returns exit 122. A progress file that
-does not exist YET contributes nothing (the trajectory appears within seconds
-of launch); but so a run where NO progress file EVER appears still trips, the
-watchdog's own START TIME is the baseline mtime, so a never-created file trips
-at stall_secs after launch. Fails OPEN on any stat error (same swallow
-discipline as the token breaker): a stat glitch must never kill a healthy
-night.
+does not yet exist contributes nothing (the trajectory appears within seconds
+of launch); the watchdog's own start time is the baseline, so a run where no
+progress file ever appears trips at stall_secs from launch. Fails OPEN on any
+stat error (same swallow discipline as the token breaker): a stat glitch must
+never kill a healthy night.
 
 Precedence when multiple limits are coincident in one poll slice: token (123) >
 stall (122) > wall (124). The token and stall breaches are tested between wait

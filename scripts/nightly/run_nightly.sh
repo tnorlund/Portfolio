@@ -357,7 +357,17 @@ else
   elif [ "$AGENT_EXIT" -eq "$STALL_EXIT_CODE" ]; then
     STALL_WHERE="$(stall_last_activity)"
     log "stall watchdog fired: no progress for ${NIGHTLY_STALL_SECS}s (last activity: $STALL_WHERE) (watchdog exit 122)"
-    write_red_stub "stalled: no progress for ${NIGHTLY_STALL_SECS}s (last activity: $STALL_WHERE)"
+    # A wedged run must NOT publish as healthy: the RED stub is always written.
+    # But if the agent had already produced a report, preserve its original
+    # bytes (mirroring rejected_report.md) before the stub overwrites it, and
+    # point the owner at it.
+    STALL_STUB="stalled: no progress for ${NIGHTLY_STALL_SECS}s (last activity: $STALL_WHERE)"
+    if [ -s "$REPORT_PATH" ]; then
+      cp "$REPORT_PATH" "$RUN_DIR/stalled_report.md" 2>/dev/null \
+        && STALL_STUB="$STALL_STUB; partial report preserved at $RUN_DIR/stalled_report.md" \
+        || log "WARNING: could not preserve stalled report copy"
+    fi
+    write_red_stub "$STALL_STUB"
   elif [ -s "$REPORT_PATH" ]; then
     inject_budget_token_line "- tokens: ${TOKEN_TOTAL:-n/a} of $NIGHTLY_TOKEN_BUDGET (budget)"
   fi

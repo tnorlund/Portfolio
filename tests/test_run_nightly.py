@@ -335,3 +335,88 @@ def test_invalid_agent_report_replaced_by_red_stub(nightly_env, tmp_path):
     # The rejected original is preserved for debugging.
     rejected = tmp_path / "logs" / "1999-01-03" / "rejected_report.md"
     assert rejected.read_text() == "not a report\n"
+
+
+def test_stall_exit_preserves_partial_report_and_writes_stub(
+    nightly_env, tmp_path
+):
+    """H3 policy: an induced stall (the agent exits 122, the code the stall
+    watchdog returns on a no-progress group-kill) must PUBLISH the RED stub — a
+    wedged run must never publish as healthy — but if the agent had already
+    written a report, its ORIGINAL BYTES are preserved at
+    $RUN_DIR/stalled_report.md (mirroring rejected_report.md) and named in the
+    stub."""
+    partial = (
+        "# Nightly Report (partial, agent wedged)\n\n"
+        "## Verdict\n**Verdict: GREEN** - looked fine until it hung\n\n"
+        "PARTIAL-REPORT-SENTINEL-do-not-lose-me\n"
+    )
+    # Fake claude: writes a partial report to the report path, emits one
+    # stream-json line to stdout (-> trajectory.jsonl), then exits 122.
+    stall_claude = write_executable(
+        tmp_path / "stall_claude.sh",
+        "#!/bin/bash\n"
+        'for a in "$@"; do\n'
+        '  if [ "$a" = "--version" ]; then echo "9.9.9 (Fake)"; exit 0; fi\n'
+        "done\n"
+        f"cat > \"$NIGHTLY_REPORT_PATH\" <<'REPORT'\n{partial}REPORT\n"
+        'echo \'{"type":"assistant","message":'
+        '{"id":"m1","usage":{"input_tokens":1}}}\'\n'
+        "exit 122\n",
+    )
+    stub_repo = tmp_path / "stub_repo_stall"
+    stub_repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=stub_repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "root",
+        ],
+        cwd=stub_repo,
+        check=True,
+    )
+    brief_dir = stub_repo / "docs" / "nightly"
+    brief_dir.mkdir(parents=True)
+    (brief_dir / "BRIEF.md").write_text("test brief\n")
+
+    env = dict(nightly_env)
+    env.update(
+        {
+            "NIGHTLY_DATE": "1999-01-05",
+            "NIGHTLY_REPO_ROOT": str(stub_repo),
+            "CLAUDE_BIN": str(stall_claude),
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+    )
+    proc = run_wrapper(env)
+    assert proc.returncode == 0, proc.stderr
+
+    run_dir = tmp_path / "logs" / "1999-01-05"
+
+    # 1. The partial report is preserved verbatim (original bytes).
+    stalled = run_dir / "stalled_report.md"
+    assert stalled.exists(), "partial report must be preserved on a stall"
+    assert stalled.read_text() == partial
+
+    # 2. The PUBLISHED report is the RED stub, not the partial (no healthy
+    #    publish of a wedged run).
+    report = tmp_path / "reports" / "1999-01-05.md"
+    text = report.read_text()
+    assert "PARTIAL-REPORT-SENTINEL-do-not-lose-me" not in text
+    result = check_contract.check_report_text(text)
+    assert result["valid"] is True, result["problems"]
+    assert result["verdict"] == "RED"
+    assert "stalled: no progress" in text
+    # 3. The stub names the preserved copy.
+    assert "stalled_report.md" in text
