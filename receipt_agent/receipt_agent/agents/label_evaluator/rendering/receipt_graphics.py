@@ -185,4 +185,10 @@ def graphics_profile_for_merchant(merchant: str | None) -> dict:
             "payload_from_hri": True,
             "preserve_quiet_zone": True,
         }
+    if "vons" in name:
+        # Vons prints a long numeric Code128 transaction symbol. Keeping the
+        # digits in Code C yields modules wide enough for Vision to decode;
+        # inserting visual-density separators forces Code B and collapses the
+        # resized modules into an undecodable hairline pattern.
+        profile["inbody_barcode"] = {"payload_shaping": "raw"}
     return profile

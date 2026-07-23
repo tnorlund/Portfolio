@@ -2614,10 +2614,14 @@ def _visual_barcode_payload(digits: str, symbology: str) -> str:
 
 
 def _inbody_barcode_payload(digits: str, options: dict) -> str:
-    """Return the configured data encoded by an HRI-derived barcode."""
+    """Select the configured scanner-safe HRI-derived payload."""
+    max_digits = int(options.get("max_digits", len(digits)))
+    raw = digits[:max_digits]
     if options.get("payload_from_hri"):
-        return digits
-    return _visual_barcode_payload(digits, options["symbology"])
+        return raw
+    if options.get("payload_shaping") == "raw":
+        return raw
+    return _visual_barcode_payload(raw, options["symbology"])
 
 
 def graphics_for_merchant(merchant: str | None) -> dict:
@@ -2731,7 +2735,7 @@ def _overlay_inbody_barcodes(
         )
         cx = (left + right) / 2.0
         payload = _inbody_barcode_payload(
-            digits[: ib["max_digits"]],
+            digits,
             ib,
         )
         tile = receipt_graphics.render_barcode_tile(

@@ -199,6 +199,19 @@ class TestInbodyBarcodePayload:
             == self.PAYLOAD
         )
 
+    def test_vons_keeps_numeric_code128_for_scannable_modules(self):
+        profile = receipt_graphics.graphics_profile_for_merchant("Vons")
+        options = {
+            **rsr._INBODY_BARCODE_DEFAULTS,
+            **profile["inbody_barcode"],
+        }
+
+        payload = rsr._inbody_barcode_payload(
+            "00313505101552502031820", options
+        )
+
+        assert payload == "00313505101552502031820"
+
     def test_other_inbody_barcodes_keep_the_density_shaping_default(self):
         assert (
             rsr._inbody_barcode_payload(  # pylint: disable=protected-access
