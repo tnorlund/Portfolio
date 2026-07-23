@@ -199,6 +199,11 @@ def fix_item_amount_ocr(words: list[dict]) -> int:
             )
             if repaired == text:
                 continue
+            # A local OCR repair must not re-seed the whole page's stochastic
+            # paper texture. Preserve the source token solely for deterministic
+            # texture identity; rendering and evaluation still consume
+            # ``repaired`` below.
+            word.setdefault("_texture_seed_text", text)
             word["text"] = repaired
             changed += 1
     return changed

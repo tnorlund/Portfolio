@@ -29,6 +29,7 @@ def test_item_amount_ocr_repair_requires_product_row():
 
     assert fix_item_amount_ocr(words) == 1
     assert words[2]["text"] == "579.99"
+    assert words[2]["_texture_seed_text"] == "5Y9,99"
     assert words[4]["text"] == "5Y9,99"
 
 
