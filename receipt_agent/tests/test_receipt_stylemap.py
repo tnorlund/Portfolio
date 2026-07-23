@@ -2,6 +2,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
     classify_row,
     measured_row_style,
     normalize_face_key,
+    requires_bold_reinforcement,
     row_style,
 )
 
@@ -195,3 +196,7 @@ def test_standalone_transaction_heading_uses_heavy_footer_face():
         "bold": False,
         "underline": False,
     }
+    assert requires_bold_reinforcement("SALE TRANSACTION")
+    assert requires_bold_reinforcement("Transaction")
+    assert not requires_bold_reinforcement("Items in Transaction: 14")
+    assert not requires_bold_reinforcement("PAYMENT CARD PURCHASE TRANSACTION")
