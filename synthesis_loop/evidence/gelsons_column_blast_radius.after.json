@@ -1,0 +1,29 @@
+{
+  "git_sha": "2089caf4b0433756791c059289431e96b64fcf10",
+  "merchant": "Gelson's Westlake Village",
+  "merchant_truth": {
+    "bundle_hash": "9486f47c16ee3cc2e38dbe505b1feef6692cc1633d74d1ceafd7e3a423e48c09",
+    "mode": "online-active",
+    "slug": "gelson_s_westlake_village",
+    "version": 1
+  },
+  "metric": "columns",
+  "receipt": "223c03e2-9f7e-481d-bc33-2b0631fbaaf9#1",
+  "result": {
+    "amount_abs_drift_px": 1.0,
+    "amount_outlier_frac": 0.0,
+    "amount_wobble_iqr_px": 0.0,
+    "amount_to_flag_gap_delta_px": 2.64,
+    "amount_to_flag_gap_limit_px": 13.18,
+    "flag_abs_drift_px": 2.0,
+    "flag_outlier_frac": 0.0,
+    "verdict": "PASS"
+  },
+  "synthetic_sha256": "4b4a4c31bca4562b3382b7de00866b35cffe789425d359563472718fb3e6ef64",
+  "unchanged_metrics": {
+    "arithmetic": "PASS",
+    "logo": "PASS",
+    "separators": "PASS",
+    "tokens": "PASS"
+  }
+}

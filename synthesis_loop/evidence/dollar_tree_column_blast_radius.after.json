@@ -1,0 +1,23 @@
+{
+  "git_sha": "2089caf4b0433756791c059289431e96b64fcf10",
+  "merchant": "Dollar Tree",
+  "merchant_truth": {
+    "bundle_hash": "d6bd3769a14349e2449e55a607ecc49eba57598c9cb5ace310f1b80ef0261d0b",
+    "mode": "fixture",
+    "note": "No ACTIVE Dollar Tree truth exists in dev; this is a hash-verified dry v1 fixture built from the legacy profile.",
+    "slug": "dollar_tree",
+    "version": 1
+  },
+  "metric": "columns",
+  "receipt": "0944ee8d-4a0d-464e-8109-de35a9ba379a#1",
+  "regression_verdict": "PASS",
+  "result": {
+    "abs_drift_px": 53.5,
+    "known_baseline_gap": "Source photos are sheared; the canonical composer intentionally owns render geometry.",
+    "shear_px_per_100px": 35.48,
+    "verdict": "FAIL",
+    "wobble_iqr_px": 15.9
+  },
+  "synthetic_sha256": "085236d9ade0668301827a136cfaae617409bce9402142a77a17e90b54f13e85",
+  "unchanged_from_parent": true
+}

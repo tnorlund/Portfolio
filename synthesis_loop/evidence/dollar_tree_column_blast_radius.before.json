@@ -1,0 +1,28 @@
+{
+  "baseline": {
+    "abs_drift_px": 53.5,
+    "git_sha": "b1be770d0d23b7901f18277d232231842b509676",
+    "shear_px_per_100px": 35.48,
+    "synthetic_sha256": "085236d9ade0668301827a136cfaae617409bce9402142a77a17e90b54f13e85",
+    "verdict": "FAIL",
+    "wobble_iqr_px": 15.9
+  },
+  "captured_regression": {
+    "abs_drift_px": 48.5,
+    "git_sha": "cdfd224a6fcf1349c6f517156d1dbfeb384c4ee9",
+    "shear_px_per_100px": 66.55,
+    "synthetic_sha256": "17f1c8cb09cf2ead9cc8b023fa67c52757291c5c23c28c329877cc5f8eeb8ed7",
+    "verdict": "FAIL",
+    "wobble_iqr_px": 18.95
+  },
+  "merchant": "Dollar Tree",
+  "merchant_truth": {
+    "bundle_hash": "d6bd3769a14349e2449e55a607ecc49eba57598c9cb5ace310f1b80ef0261d0b",
+    "mode": "fixture",
+    "note": "No ACTIVE Dollar Tree truth exists in dev; this is a hash-verified dry v1 fixture built from the legacy profile.",
+    "slug": "dollar_tree",
+    "version": 1
+  },
+  "metric": "columns",
+  "receipt": "0944ee8d-4a0d-464e-8109-de35a9ba379a#1"
+}
