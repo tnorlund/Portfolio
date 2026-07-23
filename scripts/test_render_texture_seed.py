@@ -65,6 +65,17 @@ def test_seed_changes_with_content():
     assert rsr._content_texture_seed(r) != rsr._content_texture_seed(other2)
 
 
+def test_seed_preserves_source_identity_for_local_render_repairs():
+    source = _receipt()
+    repaired = _receipt()
+    repaired["words"][0]["_texture_seed_text"] = "DOUBLE-DOUBLE"
+    repaired["words"][0]["text"] = "DOUBLE DOUBLE"
+
+    assert rsr._content_texture_seed(source) == rsr._content_texture_seed(
+        repaired
+    )
+
+
 def test_seed_handles_empty_and_missing_fields():
     # Must not raise on sparse dicts (barcodes-only / logo-only receipts).
     assert isinstance(rsr._content_texture_seed({}), int)

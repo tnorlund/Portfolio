@@ -1709,7 +1709,7 @@ _TAX_RE = re.compile(r"^(SALES\s+TAX|SALES$|TAX\b|CA\s+TAX|NV\s+TAX)", re.I)
 _TOTAL_RE = re.compile(r"^\**\s*(TOTAL|BALANCE\s+DUE|AMOUNT\s+DUE)\b", re.I)
 _TENDER_RE = re.compile(
     r"^(AMERICAN|EXPRES|VISA|MASTERCARD|MC\b|DEBIT|CASH\b|EFT|CHARGE\b|"
-    r"US\s+DEBIT|CREDIT\s+CARD)",
+    r"US\s+DEBIT|CREDIT\s+CARD|SHOP\s+CARD|GIFT\s+CARD)",
     re.I,
 )
 _CHANGE_RE = re.compile(r"^CHANGE\b", re.I)
@@ -1754,6 +1754,7 @@ def arithmetic_check(words: list[dict]) -> dict:
     rows = group_visual_rows(px)
     items = []
     summary: dict[str, float] = {}
+    in_item_region = True
     has_discount = any(
         set(w.get("labels") or []) & _DISCOUNT_LABELS for w in words
     )
@@ -1765,21 +1766,39 @@ def arithmetic_check(words: list[dict]) -> dict:
             if _amount_of(w["text"]) is not None
         ]
         label_of = {lbl for w in row for lbl in (w.get("labels") or [])}
+        discount_row = bool(label_of & _DISCOUNT_LABELS)
+        explicit_item = bool(
+            label_of & {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY", "PRODUCT_NAME"}
+        )
         if _SUBTOTAL_RE.match(text) and amounts:
             summary.setdefault("subtotal", amounts[-1][1])
+            in_item_region = False
         elif _TAX_RE.match(text) and amounts:
             summary.setdefault("tax", amounts[-1][1])
+            in_item_region = False
         elif _CHANGE_RE.match(text) and amounts:
             summary.setdefault("change", amounts[-1][1])
         elif _TIP_RE.match(text) and amounts:
             summary.setdefault("tip", amounts[-1][1])
-        elif _TOTAL_RE.match(text) and amounts:
-            summary.setdefault("total", amounts[-1][1])
         elif _TENDER_RE.match(text) and amounts:
-            summary.setdefault("tender", amounts[-1][1])
+            summary["tender"] = summary.get("tender", 0.0) + amounts[-1][1]
+        elif (
+            ("GRAND_TOTAL" in label_of or _TOTAL_RE.match(text))
+            and amounts
+            and not discount_row
+        ):
+            # Some registers print "**** BALANCE" rather than a textual
+            # TOTAL/BALANCE DUE anchor.  The validated GRAND_TOTAL label is the
+            # stronger signal in that case.  Conversely, a later loyalty block
+            # may contain "Total Savings"; discount labels keep that value from
+            # replacing the actual transaction total.
+            summary.setdefault("total", amounts[-1][1])
+            in_item_region = False
         elif "LINE_TOTAL" in label_of or (
-            amounts
+            in_item_region
+            and amounts
             and any(ch.isalpha() for ch in text)
+            and explicit_item
             and not any(
                 rx.match(text)
                 for rx in (

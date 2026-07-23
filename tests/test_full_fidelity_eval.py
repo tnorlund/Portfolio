@@ -447,6 +447,83 @@ def test_arithmetic_untestable_without_amounts():
     assert out["verdict"] == "UNTESTED"
 
 
+def test_arithmetic_ignores_payment_detail_and_sums_split_tenders():
+    words = []
+
+    def add_row(y, entries):
+        for text, left, labels in entries:
+            words.append(_wordline(text, y, left=left, labels=labels))
+
+    add_row(
+        900,
+        [
+            ("ITEM A", 20, ["PRODUCT_NAME"]),
+            ("10.00", 800, ["LINE_TOTAL"]),
+        ],
+    )
+    add_row(
+        860,
+        [
+            ("ITEM B", 20, ["PRODUCT_NAME"]),
+            ("20.00", 800, ["LINE_TOTAL"]),
+        ],
+    )
+    add_row(820, [("SUBTOTAL", 300, []), ("30.00", 800, ["SUBTOTAL"])])
+    add_row(780, [("TAX", 300, []), ("3.00", 800, ["TAX"])])
+    add_row(740, [("TOTAL", 300, []), ("33.00", 800, ["GRAND_TOTAL"])])
+    add_row(700, [("AMOUNT:", 40, []), ("$11.00", 800, [])])
+    add_row(660, [("REMAINING BALANCE:", 40, []), ("$0.00", 800, [])])
+    add_row(620, [("Shop Card", 40, []), ("11.00", 800, [])])
+    add_row(580, [("AMOUNT:", 40, []), ("$22.00", 800, [])])
+    add_row(540, [("EFT/Debit", 40, ["PAYMENT_METHOD"]), ("22.00", 800, [])])
+    add_row(500, [("CHANGE", 40, []), ("0.00", 800, [])])
+    add_row(460, [("A 9.75% Tax", 40, []), ("3.00", 800, [])])
+    add_row(420, [("TOTAL TAX", 40, []), ("3.00", 800, [])])
+
+    out = ffe.arithmetic_check(words)
+
+    assert out["verdict"] == "PASS", out
+    assert out["n_items"] == 2
+    assert out["summary"]["tender"] == 33.0
+    assert all(i["status"] == "HOLDS" for i in out["identities"])
+
+
+def test_arithmetic_prefers_labeled_balance_over_total_savings():
+    words = []
+
+    def add_row(y, entries):
+        for text, left, labels in entries:
+            words.append(_wordline(text, y, left=left, labels=labels))
+
+    add_row(
+        900,
+        [
+            ("**** BALANCE", 40, []),
+            ("61.13", 800, ["GRAND_TOTAL"]),
+        ],
+    )
+    add_row(
+        860,
+        [
+            ("Visa", 40, ["PAYMENT_METHOD"]),
+            ("61.13", 800, []),
+        ],
+    )
+    add_row(
+        820,
+        [
+            ("Total Savings", 40, ["DISCOUNT"]),
+            ("3.50", 800, ["DISCOUNT"]),
+        ],
+    )
+
+    out = ffe.arithmetic_check(words)
+
+    assert out["verdict"] == "PASS", out
+    assert out["summary"]["total"] == 61.13
+    assert out["summary"]["tender"] == 61.13
+
+
 # ---------------------------------------------------------------------------
 # codex-review hardening (round 1)
 # ---------------------------------------------------------------------------
