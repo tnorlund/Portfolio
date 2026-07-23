@@ -159,11 +159,14 @@ jobs:
             pip install black isort
             BASE_REF="${{ github.base_ref || 'main' }}"
             CHANGED_PY="$(git diff --name-only --diff-filter=ACMRT \
-              "origin/$BASE_REF"...HEAD -- receipt_agent \
+              "origin/$BASE_REF"...HEAD \
               | grep '\.py$' || true)"
             if [ -n "$CHANGED_PY" ]; then
-              black --check --line-length=79 $CHANGED_PY
-              isort --check-only --profile=black --line-length=79 $CHANGED_PY
+              while IFS= read -r py_file; do
+                black --check --line-length=79 "$py_file"
+                isort --check-only --profile=black --line-length=79 \
+                  "$py_file"
+              done <<< "$CHANGED_PY"
             fi
           else
             pip install -e "${{ matrix.package }}[lint]"
