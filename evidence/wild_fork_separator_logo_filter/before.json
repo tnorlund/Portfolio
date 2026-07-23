@@ -56,6 +56,13 @@
     }
   },
   "diagnosis": {
+    "real_real_unmasked": {
+      "real_count": 1,
+      "synth_count": 1,
+      "matched_y_frac": 0.0157,
+      "dy": 0.0,
+      "verdict": "PASS"
+    },
     "real_detected_y_px": 42.0,
     "synth_detected_y_px": [
       40.1,
@@ -69,6 +76,6 @@
       "cy": 160.0,
       "h": 321.0
     },
-    "note": "Every gated candidate lies inside the measured storefront-logo bounding box. The real receipt's two item-header dash rules are lower on the page and are not the candidates being compared."
+    "note": "The real-vs-itself metric calls the logo stroke at y=0.0157 the receipt's sole separator. Every gated real-vs-synth candidate lies inside the measured storefront-logo bounding box. The real receipt's two item-header dash rules are lower on the page and are not the candidates being compared."
   }
 }

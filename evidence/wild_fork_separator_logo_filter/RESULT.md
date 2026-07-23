@@ -18,6 +18,11 @@ The independent logo metric measured the real and synth logo bounds at
 The two faded item-header dash rules visible lower in both panels were not the
 candidates responsible for the gate failure.
 
+The real-vs-itself control makes the classification error explicit: before
+logo exclusion it reports `PASS`, count 1/1, with its sole matched
+"separator" at y=0.0157 (the logo stroke) and `dy=0`. Thus the metric was
+self-consistent but measuring the wrong visual object.
+
 The separator inventory now excludes only the vertical extent of an expected
 logo's measured dominant connected component. It does not loosen separator
 thresholds or apply a fixed merchant/page cutoff. A regression fixture proves
