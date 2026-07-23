@@ -314,6 +314,37 @@ def test_separator_detector_ignores_text_rows():
     assert ffe.detect_separators(img) == []
 
 
+def test_separator_metric_excludes_measured_logo_strokes_only():
+    # Wild Fork's circular logo creates one real and two synthetic horizontal
+    # candidates even in the real-vs-real-aligned pair. They are graphic ink,
+    # while the matching rule at y=200 remains separator evidence.
+    real = _with_rules([30, 200])
+    syn = _with_rules([30, 60, 200])
+    unmasked = ffe.metric_separators(real, syn)
+    assert unmasked["verdict"] == "FAIL"
+    assert unmasked["phantom_in_synth"][0]["y_frac"] == 0.2033
+
+    logo = {
+        "real": {"cy": 45.0, "h": 70.0},
+        "synth": {"cy": 45.0, "h": 70.0},
+    }
+    storefront = (0.0, 0.15)
+    masked = ffe.metric_separators(
+        real,
+        syn,
+        excluded_real_y=ffe._logo_separator_exclusion(
+            logo, "real", storefront, H
+        ),
+        excluded_syn_y=ffe._logo_separator_exclusion(
+            logo, "synth", storefront, H
+        ),
+    )
+    assert masked["verdict"] == "PASS"
+    assert masked["real_count"] == 1
+    assert masked["synth_count"] == 1
+    assert masked["matched"][0]["real"]["y_frac"] == 0.67
+
+
 # ---------------------------------------------------------------------------
 # graphics (detector unavailable path only -- the Swift binary is exercised
 # in the live validation runs, not unit tests)
