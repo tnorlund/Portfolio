@@ -172,3 +172,26 @@ def test_qualified_multiword_department_tokens_match():
     assert classify_row("DEPT PATIO & OUTDOOR DECOR") == "section_header"
     # A non-token remainder still never matches.
     assert classify_row("FRESH HEALTH AND WELLNESS") != "section_header"
+
+
+def test_standalone_transaction_heading_uses_heavy_footer_face():
+    stylemap = {
+        "sections": {
+            "footer": {
+                "sizeScale": 1.09,
+                "weight": "normal",
+                "underline": False,
+            }
+        }
+    }
+
+    assert row_style(stylemap, "SALE TRANSACTION") == {
+        "scale": 1.09,
+        "bold": True,
+        "underline": False,
+    }
+    assert row_style(stylemap, "Items in Transaction: 14") == {
+        "scale": 1.09,
+        "bold": False,
+        "underline": False,
+    }

@@ -136,6 +136,7 @@ _RULES: list[tuple[str, re.Pattern]] = [
     ),
 ]
 _BARCODE_RE = re.compile(r"^\d{10,}$")
+_TRANSACTION_HEADING_RE = re.compile(r"^(?:SALE\s+)?TRANSACTION$", re.I)
 # Smith's (Kroger banner), M6 cold-start pilot: rules derived from the QA'd
 # VALID ReceiptSection rows on its 10 vetted dev scans. Only the sections whose
 # measured face departs from body are classified -- storefront (wordmark block
@@ -283,6 +284,15 @@ def row_style(
         return style
     style["scale"] = float(rule.get("sizeScale", 1.0))
     style["bold"] = rule.get("weight") == "bold"
+    # A standalone transaction heading is a display row, not ordinary footer
+    # prose. Fleet stylemaps historically pooled it with footer rows because
+    # the generic classifier quite reasonably maps the word "Transaction" to
+    # that section. Preserve the section's measured scale/underline settings,
+    # but select the heavy face for the standalone heading. Rows which merely
+    # contain the word ("Items in Transaction: 14", POS identifiers, payment
+    # narration) remain on the section's regular face.
+    if _TRANSACTION_HEADING_RE.fullmatch(row_text.strip()):
+        style["bold"] = True
     ul = rule.get("underline", False)
     if ul is True:
         style["underline"] = True
