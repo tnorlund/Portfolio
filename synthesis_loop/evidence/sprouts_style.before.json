@@ -1,0 +1,83 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "18dc387fbfd985fbc236e413ca051959613fe6e66c263f2a9a23fe67551cb74b",
+  "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+  "metric": "style",
+  "receipt_id": 1,
+  "result": {
+    "body_stroke_fail": false,
+    "body_stroke_rel": {
+      "real": 0.114,
+      "synth": 0.114
+    },
+    "failing_classes": {
+      "address": {
+        "extra_style": [
+          "underline"
+        ],
+        "real": {
+          "bold": 1,
+          "n": 7,
+          "underline": 0
+        },
+        "synth": {
+          "bold": 0,
+          "n": 7,
+          "underline": 4
+        }
+      },
+      "barcode_caption": {
+        "extra_style": [
+          "bold"
+        ],
+        "real": {
+          "bold": 0,
+          "n": 2,
+          "underline": 0
+        },
+        "synth": {
+          "bold": 1,
+          "n": 2,
+          "underline": 0
+        }
+      },
+      "store_hours": {
+        "extra_style": [
+          "underline"
+        ],
+        "real": {
+          "bold": 0,
+          "n": 2,
+          "underline": 0
+        },
+        "synth": {
+          "bold": 0,
+          "n": 2,
+          "underline": 1
+        }
+      },
+      "summary": {
+        "extra_style": [
+          "underline"
+        ],
+        "real": {
+          "bold": 0,
+          "n": 2,
+          "underline": 0
+        },
+        "synth": {
+          "bold": 0,
+          "n": 2,
+          "underline": 1
+        }
+      }
+    },
+    "preserved_metrics": {
+      "arithmetic": "PASS",
+      "logo": "PASS",
+      "tokens": "PASS"
+    },
+    "verdict": "FAIL"
+  },
+  "truth_version": 1
+}
