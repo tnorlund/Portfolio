@@ -120,6 +120,44 @@ class TestPhraseRunMatch:
         assert not rsr._phrase_run_match(["HOW", "X", "DOERS"], ["HOWDOERS"])
 
 
+class TestMeasuredSeparatorInventory:
+    def test_empty_ocr_inventory_remains_authoritative(self):
+        profile = {"layout_template": {"separators": []}}
+
+        assert (
+            rsr._measured_separator_inventory(profile, compose_kind=None) == ()
+        )
+
+    def test_empty_composed_inventory_preserves_canonical_output(self):
+        profile = {
+            "compose": "dollartree",
+            "layout_template": {"separators": []},
+        }
+
+        assert (
+            rsr._measured_separator_inventory(
+                profile,
+                compose_kind="dollartree",
+            )
+            is None
+        )
+
+    def test_measured_rows_still_apply_to_composed_layout(self):
+        row = {"char": "*", "pos_frac_med": 0.75}
+        profile = {
+            "compose": "canonical",
+            "layout_template": {"separators": [row]},
+        }
+
+        inventory = rsr._measured_separator_inventory(
+            profile,
+            compose_kind="canonical",
+        )
+
+        assert inventory == (row,)
+        assert inventory[0] is not row
+
+
 class TestWordmarkSeedFilter:
     """P1 review finding: an UNLABELED word on the brand line (e.g. its label
     was INVALID-filtered) must not be seeded into the wordmark cluster."""

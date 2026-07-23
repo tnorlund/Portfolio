@@ -1865,6 +1865,32 @@ def _content_texture_seed(receipt: dict) -> int:
     return zlib.crc32("\n".join(parts).encode("utf-8"))
 
 
+def _measured_separator_inventory(
+    merchant_profile: dict,
+    *,
+    compose_kind: str | None,
+) -> tuple[dict, ...] | None:
+    """Return measured rules without reinterpreting composed punctuation."""
+    layout_template = merchant_profile.get("layout_template")
+    if not (
+        isinstance(layout_template, dict)
+        and "separators" in layout_template
+        and isinstance(layout_template["separators"], list)
+    ):
+        return None
+    separators = layout_template["separators"]
+    if compose_kind and not separators:
+        # A composer replaces source geometry with a canonical layout. With
+        # an authoritative empty inventory, the canonical output already is
+        # the separator policy; routing it through the source-row literal
+        # detector can turn punctuation-only rows into phantom rules.
+        return None
+    # ``None`` and ``[]`` intentionally differ for ordinary OCR layouts:
+    # missing data preserves legacy heuristics, while an explicit empty
+    # inventory disables them and retains only literal source rule rows.
+    return tuple(copy.deepcopy(separators))
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -1934,19 +1960,10 @@ def _render_cached_hybrid(
     # tokens just before drawing -- fixes the dominant remaining realism tell
     # without re-running synthesis. Mutates the per-render receipt dict in place.
     clean_for_render(receipt)
-    layout_template = merchant_profile.get("layout_template")
-    measured_separators = None
-    if (
-        isinstance(layout_template, dict)
-        and "separators" in layout_template
-        and isinstance(layout_template["separators"], list)
-    ):
-        # ``None`` and ``[]`` are intentionally different. Missing layout data
-        # preserves the legacy phrase heuristics; a measured empty inventory
-        # disables them while literal OCR rule rows remain authoritative.
-        measured_separators = tuple(
-            copy.deepcopy(layout_template["separators"])
-        )
+    measured_separators = _measured_separator_inventory(
+        merchant_profile,
+        compose_kind=compose_kind,
+    )
     config = RenderConfig(
         bitmap_font=bitmap_font,
         width=width,
