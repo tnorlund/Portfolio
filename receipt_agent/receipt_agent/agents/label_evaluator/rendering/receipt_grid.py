@@ -69,6 +69,9 @@ _GRID_FONT_MAX = 64
 # typical thermal body size; enough to land inside the [9, 28] px clamp.
 _FALLBACK_CHAR_WIDTH = 0.0125
 _FALLBACK_FONT_HEIGHT = 0.018
+_RUN_ADVANCE_CAP = 1.28
+_RUN_SEVERE_STRETCH = 1.60
+_RUN_SEVERE_ADVANCE_CAP = 1.65
 
 
 @dataclass(frozen=True)
@@ -890,10 +893,17 @@ def draw_text_run(
     if target_width and target_width > 0:
         # Mixed-layout rows are anchored by their observed OCR ink span, not the
         # table grid. Use that span to recover row pitch while keeping glyph
-        # shapes unscaled; a modest cap prevents noisy word boxes from turning
-        # normal receipt prose into display-style letterspacing.
+        # shapes unscaled. Keep the established modest cap for ordinary rows;
+        # only severe measured stretch may use the wider cap needed by
+        # horizontally foreshortened photographs.
         wanted = float(target_width) / max(1.0, len(text.rstrip()) - 0.5)
-        advance = max(base_advance, min(base_advance * 1.28, wanted))
+        stretch = wanted / base_advance
+        advance_cap = (
+            _RUN_SEVERE_ADVANCE_CAP
+            if stretch >= _RUN_SEVERE_STRETCH
+            else _RUN_ADVANCE_CAP
+        )
+        advance = max(base_advance, min(base_advance * advance_cap, wanted))
     pad = max(4, int(round(advance * 2)))
     width = max(8, int(round(advance * (len(text) + 2))) + 2 * pad)
     height = max(
@@ -1067,6 +1077,7 @@ _AMOUNT_LANE_TOL_CELLS = 4
 # carry a second, further-right amount column: "Total: USD$ 10.78" vs items).
 _AMOUNT_LANE_SNAP_CELLS = 2
 _RIGHT_SEGMENT_GAP_CELLS = 4.0
+_SOURCE_SEGMENT_STRETCH_RATIO = 1.5
 
 
 def _is_amount_prefix_token(text: str) -> bool:
@@ -1450,17 +1461,72 @@ def _truncate_to_cells(text: str, avail: int) -> tuple[str, int]:
     return glyphs[:avail], avail
 
 
+def _source_segment_is_stretched(
+    segment: Sequence[PlacedToken],
+    spec: GridSpec,
+) -> bool:
+    """Whether a compact plan erased substantial intra-column geometry."""
+    if len(segment) < 2:
+        return False
+    source_span = max(p.word.right for p in segment) - min(
+        p.word.left for p in segment
+    )
+    rendered_span = (
+        max(p.end_col for p in segment) - min(p.start_col for p in segment)
+    ) * spec.cell_w
+    minimum_source_span = _SOURCE_SEGMENT_STRETCH_RATIO * max(
+        rendered_span, 1.0
+    )
+    return source_span >= minimum_source_span
+
+
+def _align_stretched_source_segment(
+    segment: Sequence[PlacedToken],
+    spec: GridSpec,
+    previous_end: float,
+) -> float:
+    """Reset a stretched segment to its measured per-word source starts."""
+    for placed in segment:
+        source_start = (placed.word.left - spec.grid_left) / spec.cell_w
+        placed.start_col = max(source_start, previous_end + 1)
+        previous_end = placed.end_col
+    return previous_end
+
+
+def _right_align_source_segment(
+    segment: Sequence[PlacedToken],
+    spec: GridSpec,
+    previous_end: float,
+) -> float:
+    """Align an ordinary compact segment to its observed source right edge."""
+    source_right = max(p.word.right for p in segment)
+    rendered_right = (
+        spec.grid_left + max(p.end_col for p in segment) * spec.cell_w
+    )
+    shift = (source_right - rendered_right) / spec.cell_w
+    min_start = min(p.start_col for p in segment)
+    if min_start + shift <= previous_end:
+        shift = previous_end + 1 - min_start
+    if abs(shift) > 1e-6:
+        for placed in segment:
+            placed.start_col += shift
+    return max(previous_end, max(p.end_col for p in segment))
+
+
 def _right_align_source_segments(
     placed_row: Sequence[PlacedToken],
     spec: GridSpec,
 ) -> None:
-    """Right-anchor non-price column segments split by a large source gap.
+    """Preserve non-price columns split by a large source gap.
 
-    Payment/header rows often have left labels plus a right-justified value or
-    phrase. Those values are not prices, so the price lane cannot help; anchoring
-    them by their source left edge leaves short rendered text ending too far left
-    inside its OCR box. Split on real column gaps and align each later segment's
-    rendered right edge to the segment's observed source right edge.
+    Payment/header rows often have left labels plus a separated value or phrase.
+    Those values are not prices, so the price lane cannot help. Cursor-relative
+    compaction loses the measured gap, while right-aligning a whole compact
+    segment preserves only its final word and can move every earlier token
+    outside its own source box. Split on real column gaps. Preserve the
+    established right anchor for ordinary segments, but when a multi-word
+    source segment is at least 1.5x wider than its compact grid plan, reset each
+    token to its observed source start (moving it right only to avoid overlap).
     """
     if len(placed_row) < 2:
         return
@@ -1477,18 +1543,11 @@ def _right_align_source_segments(
         segment = placed_row[start_i:end_i]
         if not segment or any(p.is_price for p in segment):
             continue
-        source_right = max(p.word.right for p in segment)
-        rendered_right = (
-            spec.grid_left + max(p.end_col for p in segment) * spec.cell_w
-        )
-        shift = (source_right - rendered_right) / spec.cell_w
-        min_start = min(p.start_col for p in segment)
-        if min_start + shift <= prev_end:
-            shift = prev_end + 1 - min_start
-        if abs(shift) > 1e-6:
-            for placed in segment:
-                placed.start_col += shift
-        prev_end = max(prev_end, max(p.end_col for p in segment))
+        if _source_segment_is_stretched(segment, spec):
+            prev_end = _align_stretched_source_segment(segment, spec, prev_end)
+            continue
+
+        prev_end = _right_align_source_segment(segment, spec, prev_end)
 
 
 def draw_grid_line(
