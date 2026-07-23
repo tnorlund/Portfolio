@@ -219,9 +219,7 @@ def render_pair(merchant: str, image_id: str, receipt_id: int):
         **typ,
     )
     syn = Image.open(tmp).convert("RGB")
-    rendered_words = _render_true_words(
-        words, box_sink, width=wt, height=ht
-    )
+    rendered_words = _render_true_words(words, box_sink, width=wt, height=ht)
     real = None
     for bkt, key in [
         (rec.cdn_s3_bucket, rec.cdn_s3_key),
