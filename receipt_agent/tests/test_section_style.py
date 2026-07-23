@@ -2,14 +2,14 @@
 
 import pytest
 
+from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+    GridSpec,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     _scaled_bitmap_thin,
     _stylemap_uses_underlines,
     remap_grid_column,
     section_style,
-)
-from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
-    GridSpec,
 )
 
 
