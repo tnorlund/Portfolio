@@ -13,6 +13,9 @@ import pytest
 pytest.importorskip("PIL")
 
 from scripts import render_synthetic_receipts as rsr  # noqa: E402
+from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
+    receipt_graphics,
+)
 
 
 def _word(text, line_id, word_id, bbox):
@@ -165,3 +168,31 @@ class TestWordmarkSeedFilter:
         }
         cluster, _ = rsr._logo_wordmark_words(receipt)
         assert {w["text"] for w in cluster} == {"SPROUTS", "FARMERS"}
+
+
+class TestInbodyBarcodePayload:
+    def test_vons_keeps_numeric_code128_for_scannable_modules(self):
+        profile = receipt_graphics.graphics_profile_for_merchant("Vons")
+        options = {
+            **rsr._INBODY_BARCODE_DEFAULTS,
+            **profile["inbody_barcode"],
+        }
+
+        payload = rsr._inbody_barcode_payload(
+            "00313505101552502031820", options
+        )
+
+        assert payload == "00313505101552502031820"
+
+    def test_existing_density_shaping_remains_default(self):
+        profile = receipt_graphics.graphics_profile_for_merchant(
+            "Sprouts Farmers Market"
+        )
+        options = {
+            **rsr._INBODY_BARCODE_DEFAULTS,
+            **(profile.get("inbody_barcode") or {}),
+        }
+
+        payload = rsr._inbody_barcode_payload("99022003402972471754", options)
+
+        assert payload == "99-02-20-03-40-29-72-47-17-54"
