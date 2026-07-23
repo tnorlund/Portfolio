@@ -1,0 +1,52 @@
+{
+  "git_sha": "cb42230e916c7b8889c7c7ecfdb311388ba95355",
+  "dirty": false,
+  "bundle_hash": "63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb",
+  "image_id": "678a7c94-4948-4ebf-b8e9-9a17c13051ec",
+  "metric": "columns",
+  "receipt_id": 2,
+  "result": {
+    "amount": {
+      "abs_drift_px": 11.0,
+      "outlier_limit": 0.15,
+      "real": {
+        "lane_x_px": 719.84,
+        "n_rows": 13,
+        "outlier_frac": 0.0,
+        "wobble_iqr_px": 0.5
+      },
+      "synth": {
+        "lane_x_px": 708.93,
+        "n_rows": 13,
+        "outlier_frac": 0.077,
+        "wobble_iqr_px": 0.41
+      },
+      "verdict": "PASS"
+    },
+    "flag": {
+      "abs_drift_px": 7.5,
+      "real": {
+        "lane_x_px": 735.58,
+        "n_rows": 10,
+        "outlier_frac": 0.0,
+        "wobble_iqr_px": 0.23
+      },
+      "synth": {
+        "lane_x_px": 728.63,
+        "n_rows": 10,
+        "outlier_frac": 0.0,
+        "wobble_iqr_px": 0.74
+      },
+      "verdict": "PASS"
+    },
+    "lane_gap": {
+      "delta_px": 3.96,
+      "limit_px": 11.3,
+      "real_gap_px": 15.74,
+      "synth_gap_px": 19.7,
+      "verdict": "PASS"
+    },
+    "verdict": "PASS"
+  },
+  "truth_version": 1
+}

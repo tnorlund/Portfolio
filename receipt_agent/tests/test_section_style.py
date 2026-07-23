@@ -1,6 +1,10 @@
 """section_scale schema: legacy float vs {height_scale, condense} mapping."""
 
+from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+    GridSpec,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+    remap_grid_column,
     section_style,
 )
 
@@ -20,6 +24,18 @@ def test_mapping_defaults_missing_keys_to_noop():
     assert section_style({"condense": 0.85}) == (1.0, 0.85)
     assert section_style({"height_scale": 0.9}) == (0.9, 1.0)
     assert section_style({}) == (1.0, 1.0)
+
+
+def test_scaled_row_amount_lane_keeps_the_same_pixel_edge():
+    base = GridSpec(cell_w=10.0, cell_h=18.0, font_px=12, grid_left=8.0)
+    scaled = GridSpec(cell_w=12.5, cell_h=18.0, font_px=15, grid_left=8.0)
+
+    mapped = remap_grid_column(30.0, base, scaled)
+
+    assert mapped == 24.0
+    assert base.grid_left + 30.0 * base.cell_w == (
+        scaled.grid_left + mapped * scaled.cell_w
+    )
 
 
 def test_date_time_header_vote_is_positional():
