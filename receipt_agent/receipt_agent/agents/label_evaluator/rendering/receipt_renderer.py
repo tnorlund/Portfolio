@@ -396,6 +396,95 @@ def _draw_dash_row(
     )
 
 
+def _is_barcode_hri(line: Sequence[GridWord]) -> bool:
+    """Whether a row is the human-readable digits printed under a barcode."""
+    text = "".join(word.text for word in line)
+    compact = re.sub(r"[\s\-./]", "", text)
+    return len(compact) >= 14 and compact.isdigit()
+
+
+def _is_tender_summary(line: Sequence[GridWord], text: str) -> bool:
+    """Whether a row closes the sale with a balance or card-tender amount."""
+    if not any(is_price_token(word.text) for word in line):
+        return False
+    if "BALANCE" in text:
+        return True
+    return any(
+        token in text
+        for token in ("VISA", "MASTERCARD", "MASTER CARD", "AMEX", "DEBIT")
+    )
+
+
+def _is_structural_gap_transition(
+    before: Sequence[GridWord],
+    after: Sequence[GridWord],
+) -> bool:
+    """Recognize receipt-section boundaries which commonly carry a dash rule.
+
+    This is deliberately semantic rather than merchant-specific: barcode HRI
+    to cashier copy, tender summary to transaction detail, and payment amount
+    to card-network detail are all printer-format transitions shared by grocery
+    and POS receipts. Geometry remains the deciding signal; the transition is
+    considered only when the source OCR also preserves a substantial blank gap.
+    """
+    before_text = " ".join(word.text for word in before).upper()
+    after_text = " ".join(word.text for word in after).upper()
+
+    barcode_to_staff = _is_barcode_hri(before) and any(
+        marker in after_text for marker in ("CASHIER", "CLERK", "SERVER")
+    )
+    tender_to_transaction = _is_tender_summary(before, before_text) and any(
+        marker in after_text for marker in ("PURCHASE", "TRANSACTION")
+    )
+    amount_to_network = (
+        "PAYMENT" in before_text
+        and "AMOUNT" in before_text
+        and any(marker in after_text for marker in ("DEBIT", "CREDIT"))
+        and not any(is_price_token(word.text) for word in after)
+    )
+    return barcode_to_staff or tender_to_transaction or amount_to_network
+
+
+def _structural_gap_separator_centers(
+    rows: Sequence[Sequence[GridWord]],
+    min_gap: float,
+) -> list[float]:
+    """Return separator centers already reserved by source OCR whitespace.
+
+    Unlike the explicit ``dashed_separators`` treatment for OCR-dropped rows,
+    these rules consume no new line pitch and therefore never shift text.
+    """
+    centers: list[float] = []
+    for before, after in zip(rows, rows[1:]):
+        gap_top = max(word.bottom for word in before)
+        gap_bottom = min(word.top for word in after)
+        if gap_bottom - gap_top < min_gap:
+            continue
+        if _is_structural_gap_transition(before, after):
+            centers.append((gap_top + gap_bottom) / 2.0)
+    return centers
+
+
+def _dash_baseline_for_center(
+    center_y: float,
+    font,
+    *,
+    bitmap_font=None,
+    cap_px: int | None = None,
+) -> float:
+    """Convert a desired dash ink center into the renderer's baseline y."""
+    if bitmap_font is not None:
+        glyph = bitmap_font.glyph("-", cap_px or font.size)
+        if glyph is not None:
+            _, height, baseline_offset = glyph
+            return center_y - baseline_offset + height / 2.0
+    try:
+        _, top, _, bottom = font.getbbox("-", anchor="ls")
+    except (AttributeError, TypeError, ValueError):
+        return center_y
+    return center_y - (top + bottom) / 2.0
+
+
 def _is_asterisk_rule(row_text: str) -> bool:
     chars = [ch for ch in row_text if not ch.isspace()]
     if len(chars) < 3 or any(ch.isalnum() for ch in chars):
@@ -717,6 +806,15 @@ def _render_grid(
     # row is the "AMOUNT:" line).
     row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
     dash_after_rows: set[int] = set()
+    # Some POS formats leave the separator's full line of whitespace in OCR
+    # even though OCR drops the dashes themselves. Recover only semantic section
+    # transitions and draw at the source gap's measured midpoint. Existing
+    # explicit dashed-separator formats retain their profile-driven behavior.
+    gap_dash_centers = (
+        _structural_gap_separator_centers(rows, min_pitch * 0.55)
+        if config.mixed_layout and not config.dashed_separators
+        else []
+    )
     # dash_around_phrases works standalone: a merchant may bracket specific
     # rows (Target's REC# line) without the Costco-style after-TOTAL rule
     # that dashed_separators switches on.
@@ -1009,6 +1107,50 @@ def _render_grid(
             cap_px=cap_px,
             bitmap_thin=config.bitmap_thin,
         )
+    for center_y in gap_dash_centers:
+        gap_baseline = _dash_baseline_for_center(
+            center_y, font, bitmap_font=dash_bmf, cap_px=cap_px
+        )
+        _draw_dash_row(
+            draw,
+            content_left,
+            content_right,
+            gap_baseline,
+            spec,
+            font,
+            ink=_ink_for({}, config),
+            stroke=config.stroke,
+            condense=config.condense,
+            condense_glyphs=config.condense_glyphs,
+            bitmap_font=dash_bmf,
+            cap_px=cap_px,
+            bitmap_thin=config.bitmap_thin,
+        )
+        # Very short atlas dash glyphs can cover the full rule span on only
+        # their middle scanline; a real thermal separator is at least two dot
+        # rows high. A one-pixel second strike restores that physical thickness
+        # without widening the rule or moving surrounding text.
+        dash_glyph = (
+            dash_bmf.glyph("-", cap_px or font.size)
+            if dash_bmf is not None
+            else None
+        )
+        if dash_glyph is not None and dash_glyph[1] <= 3:
+            _draw_dash_row(
+                draw,
+                content_left,
+                content_right,
+                gap_baseline + 1,
+                spec,
+                font,
+                ink=_ink_for({}, config),
+                stroke=config.stroke,
+                condense=config.condense,
+                condense_glyphs=config.condense_glyphs,
+                bitmap_font=dash_bmf,
+                cap_px=cap_px,
+                bitmap_thin=config.bitmap_thin,
+            )
 
 
 def _load_grid_font(size: int, config: RenderConfig) -> ImageFont.FreeTypeFont:
