@@ -940,9 +940,7 @@ def _render_grid(
         # clears the observed 1.35x body-weight boundary; one dot remains
         # entirely inside this atlas's existing heavy glyph envelope.
         strike_offsets = (
-            (0, 1, 2)
-            if reinforce_bold
-            else ((0, 1) if sm_bold else (0,))
+            (0, 1, 2) if reinforce_bold else ((0, 1) if sm_bold else (0,))
         )
         run = _run_layout(line, center_to)
         if run is not None:
