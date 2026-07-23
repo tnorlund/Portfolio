@@ -1360,6 +1360,47 @@ def _drop_text_bands(
     return kept
 
 
+def _drop_excluded_y_bands(
+    seps: list[dict],
+    excluded: tuple[tuple[float, float], ...],
+) -> list[dict]:
+    """Remove rule candidates inside a separately measured graphic region.
+
+    A wide logo can contain several thin horizontal strokes which satisfy the
+    separator detector's pixel-shape heuristics.  Those strokes belong to the
+    logo metric, not the receipt's rule inventory.  Exclusions are derived from
+    the logo's measured connected-component bounds rather than a fixed top-page
+    cutoff, so genuine rules outside the graphic remain testable.
+    """
+    return [
+        sep
+        for sep in seps
+        if not any(y0 <= sep["y_frac"] <= y1 for y0, y1 in excluded)
+    ]
+
+
+def _logo_separator_exclusion(
+    logo: dict,
+    side: str,
+    storefront_band: tuple[float, float],
+    image_height: int,
+) -> tuple[tuple[float, float], ...]:
+    """Return the measured logo's vertical extent as a normalized y-band."""
+    blob = logo.get(side)
+    if not blob:
+        return ()
+    band_top = int(storefront_band[0] * image_height)
+    cy = band_top + float(blob["cy"])
+    half_h = float(blob["h"]) / 2.0
+    margin = 2.0
+    return (
+        (
+            max(0.0, (cy - half_h - margin) / image_height),
+            min(1.0, (cy + half_h + margin) / image_height),
+        ),
+    )
+
+
 def metric_separators(
     real_gray: np.ndarray,
     syn_gray: np.ndarray,
@@ -1367,6 +1408,8 @@ def metric_separators(
     rows_syn: list[list[dict]] | None = None,
     *,
     composed: bool = False,
+    excluded_real_y: tuple[tuple[float, float], ...] = (),
+    excluded_syn_y: tuple[tuple[float, float], ...] = (),
 ) -> dict:
     """Count/order/y agreement of full-width rules.
 
@@ -1382,11 +1425,17 @@ def metric_separators(
     photo carries but the detector's span/coverage bars cannot see through
     the curl. Rules the real side has that the synth DROPPED always gate.
     """
-    real_seps = _drop_text_bands(
-        detect_separators(real_gray), rows_real, real_gray.shape[0]
+    real_seps = _drop_excluded_y_bands(
+        _drop_text_bands(
+            detect_separators(real_gray), rows_real, real_gray.shape[0]
+        ),
+        excluded_real_y,
     )
-    syn_seps = _drop_text_bands(
-        detect_separators(syn_gray), rows_syn, syn_gray.shape[0]
+    syn_seps = _drop_excluded_y_bands(
+        _drop_text_bands(
+            detect_separators(syn_gray), rows_syn, syn_gray.shape[0]
+        ),
+        excluded_syn_y,
     )
     matched = []
     kind_fails = []
@@ -2116,16 +2165,35 @@ def evaluate_pair(
         real_gray, syn_gray, rows_real, rows_syn, classes_real, classes_syn
     )
     tokens = metric_tokens(words_real, words_syn, syn_gray, composed=composed)
-    separators = metric_separators(
-        real_gray, syn_gray, rows_real, rows_syn, composed=composed
-    )
     graphics = metric_graphics(real_png, syn_png)
+    expects_logo = bool(
+        (truth.component("assets").get("profile") or {}).get("logo")
+    )
     logo = metric_logo(
         real_gray,
         syn_gray,
         storefront_band,
-        expects_logo=bool(
-            (truth.component("assets").get("profile") or {}).get("logo")
+        expects_logo=expects_logo,
+    )
+    separators = metric_separators(
+        real_gray,
+        syn_gray,
+        rows_real,
+        rows_syn,
+        composed=composed,
+        excluded_real_y=(
+            _logo_separator_exclusion(
+                logo, "real", storefront_band, real_gray.shape[0]
+            )
+            if expects_logo
+            else ()
+        ),
+        excluded_syn_y=(
+            _logo_separator_exclusion(
+                logo, "synth", storefront_band, syn_gray.shape[0]
+            )
+            if expects_logo
+            else ()
         ),
     )
     arithmetic = arithmetic_check(words_syn)
