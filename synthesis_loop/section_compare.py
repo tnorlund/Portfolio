@@ -18,6 +18,7 @@ AWS_REGION, BITMATRIX_DIR, PORTFOLIO_ENV=dev).
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 from io import BytesIO
@@ -64,6 +65,56 @@ def _font(size: int):
         return ImageFont.truetype(_LABEL_FONT, size)
     except OSError:
         return ImageFont.load_default()
+
+
+def _render_true_words(
+    words: list[dict],
+    box_sink: list[dict],
+    *,
+    width: int,
+    height: int,
+) -> list[dict]:
+    """Return renderer-format words with bboxes from their actual draw plan.
+
+    ``box_sink`` uses absolute output pixels while the fidelity evaluator
+    consumes 0..1000 receipt coordinates with y increasing upward. Words
+    intentionally represented by a graphic (the logo) or a structural draw
+    path (a full asterisk rule) have no sink entry and retain their source box.
+    """
+    placements: dict[int, dict] = {}
+    for placement in box_sink:
+        index = placement.get("word_index")
+        px = placement.get("px")
+        if not isinstance(index, int) or not isinstance(px, (list, tuple)):
+            continue
+        if len(px) < 4:
+            continue
+        try:
+            values = tuple(float(value) for value in px[:4])
+        except (TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for value in values):
+            continue
+        placements[index] = dict(placement, px=values)
+
+    rendered = []
+    for index, source in enumerate(words):
+        word = dict(source)
+        word.pop("_box_index", None)
+        placement = placements.get(index)
+        if placement is not None and width > 0 and height > 0:
+            x0, y0, x1, y1 = placement["px"]
+            left, right = sorted((x0, x1))
+            top, bottom = sorted((y0, y1))
+            word["bbox"] = [
+                left / width * 1000.0,
+                (1.0 - top / height) * 1000.0,
+                right / width * 1000.0,
+                (1.0 - bottom / height) * 1000.0,
+            ]
+            word["text"] = str(placement.get("text") or word.get("text") or "")
+        rendered.append(word)
+    return rendered
 
 
 def render_pair(merchant: str, image_id: str, receipt_id: int):
@@ -131,8 +182,9 @@ def render_pair(merchant: str, image_id: str, receipt_id: int):
                 if lbl.get((w.line_id, w.word_id)) not in (None, "O")
                 else []
             ),
+            "_box_index": index,
         }
-        for w in ws
+        for index, w in enumerate(ws)
     ]
     barcodes = []
     if hasattr(c, "list_receipt_barcodes_from_receipt"):
@@ -154,6 +206,7 @@ def render_pair(merchant: str, image_id: str, receipt_id: int):
     wt = 760
     ht = int(round(wt * rec.height / rec.width))
     tmp = f"/tmp/_seccompare_{image_id}_{receipt_id}.png"
+    box_sink: list[dict] = []
     rsr._render_cached_hybrid(
         {"words": words, "barcodes": barcodes, "merchant_name": merchant},
         atlas,
@@ -162,9 +215,11 @@ def render_pair(merchant: str, image_id: str, receipt_id: int):
         height=ht,
         path=tmp,
         section_scale=ss,
+        box_sink=box_sink,
         **typ,
     )
     syn = Image.open(tmp).convert("RGB")
+    rendered_words = _render_true_words(words, box_sink, width=wt, height=ht)
     real = None
     for bkt, key in [
         (rec.cdn_s3_bucket, rec.cdn_s3_key),
@@ -181,7 +236,7 @@ def render_pair(merchant: str, image_id: str, receipt_id: int):
             continue
     if real is not None:
         real = real.resize((wt, ht))
-    return real, syn, len(barcodes), words
+    return real, syn, len(barcodes), rendered_words
 
 
 def stack_section(real, syn, name, y0, y1, pad=14):

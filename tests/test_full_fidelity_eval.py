@@ -22,6 +22,7 @@ for _p in (
         sys.path.insert(0, _p)
 
 import full_fidelity_eval as ffe  # noqa: E402
+import section_compare  # noqa: E402
 
 W, H = 400, 300
 
@@ -524,6 +525,41 @@ def test_render_path_call_sites_reference_shared_patterns():
 
     assert rsr._PRICE_TOKEN_RE is SYNTH_PRICE_TOKEN
     assert cdt._PRICE_RE is DOLLARTREE_PRICE_TOKEN
+
+
+def test_render_true_words_convert_box_sink_pixels_to_receipt_coordinates():
+    words = [
+        {
+            "text": "SOURCE",
+            "bbox": [10.0, 900.0, 100.0, 850.0],
+            "labels": ["PRODUCT_NAME"],
+            "_box_index": 0,
+        },
+        {
+            "text": "LOGO",
+            "bbox": [200.0, 950.0, 700.0, 900.0],
+            "labels": ["MERCHANT_NAME"],
+            "_box_index": 1,
+        },
+    ]
+    rendered = section_compare._render_true_words(
+        words,
+        [
+            {
+                "word_index": 0,
+                "text": "DRAWN",
+                "px": (20.0, 100.0, 60.0, 120.0),
+            }
+        ],
+        width=200,
+        height=400,
+    )
+
+    assert rendered[0]["text"] == "DRAWN"
+    assert rendered[0]["bbox"] == [100.0, 750.0, 300.0, 700.0]
+    # Graphic-backed words have no text sink and retain their source geometry.
+    assert rendered[1]["bbox"] == words[1]["bbox"]
+    assert all("_box_index" not in word for word in rendered)
 
 
 # ---------------------------------------------------------------------------

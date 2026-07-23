@@ -1,0 +1,36 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "6b709eb08fa7d09387dba01ebb212810f397b088c8636b7a0442571f8bfd53d7",
+  "image_id": "0324604e-e1f7-4021-b887-7ef7e012c563",
+  "metric": "tokens",
+  "receipt_id": 1,
+  "result": {
+    "ink_checked": 161,
+    "ink_missing_tokens": [
+      "SEQ#:",
+      "SHOP",
+      "CARD",
+      "RESP:",
+      "APPROVED",
+      "195.40",
+      "SHOP",
+      "CARD",
+      "APP#:",
+      "REMAINING",
+      "BALANCE:",
+      "$0.00",
+      "AID:",
+      "BY",
+      "PIN",
+      "TRAN",
+      "ID#:",
+      "78.00",
+      "78.00",
+      "THE"
+    ],
+    "ink_recall": 0.8758,
+    "text_recall": 0.9938,
+    "verdict": "FAIL"
+  },
+  "truth_version": 2
+}
