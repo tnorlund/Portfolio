@@ -55,6 +55,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
     measured_row_style,
+    requires_bold_reinforcement,
     row_style,
 )
 
@@ -922,6 +923,7 @@ def _render_grid(
         )
         sm_bold = bool(sm_style and sm_style["bold"])
         sm_underline = bool(sm_style and sm_style["underline"])
+        reinforce_bold = sm_bold and requires_bold_reinforcement(row_text)
         # A genuinely-compiled heavy face beats a 1px double-strike; fall back
         # to double-strike only when the profile's heavy is the regular file.
         bfp = config.bitmap_font or {}
@@ -932,10 +934,18 @@ def _render_grid(
         ):
             bf_row = bmf_heavy
             sm_bold = False
+        # Most heavy atlases need no synthetic strike. Standalone transaction
+        # headings are a measured exception: their real thermal stroke is
+        # stronger than the compiled heavy face alone. A two-dot reinforcement
+        # clears the observed 1.35x body-weight boundary; one dot remains
+        # entirely inside this atlas's existing heavy glyph envelope.
+        strike_offsets = (
+            (0, 1, 2) if reinforce_bold else ((0, 1) if sm_bold else (0,))
+        )
         run = _run_layout(line, center_to)
         if run is not None:
             text, anchor, x, target_w = run
-            for dx in ((0, 1) if sm_bold else (0,)):
+            for dx in strike_offsets:
                 draw_text_run(
                     draw,
                     text,
@@ -956,7 +966,7 @@ def _render_grid(
                     sink_words=line,
                 )
         else:
-            for dx in ((0, 1) if sm_bold else (0,)):
+            for dx in strike_offsets:
                 draw_grid_line(
                     draw,
                     line,
