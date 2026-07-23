@@ -51,6 +51,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     glyph_advance,
     group_words_into_grid_lines,
     is_price_token,
+    line_baseline,
     section_for_labels,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
@@ -188,6 +189,12 @@ class RenderConfig:
     # Rows containing any of these phrases get a dashed rule ABOVE and BELOW
     # (Costco wraps each "Shop Card" tender subtotal in rules; OCR drops them).
     dash_around_phrases: tuple = ()
+    # Measured rule-row inventory from ``layout_template.separators``.
+    # ``None`` means no measured inventory was supplied and preserves the
+    # legacy phrase heuristics byte-for-byte.  An explicit empty sequence is
+    # authoritative: draw literal OCR rule rows, but do not invent additional
+    # rules. Non-empty entries are drawn at their measured ``pos_frac_med``.
+    measured_separators: Sequence[Mapping[str, Any]] | None = None
     # Opt-in: also horizontally condense bitmap GLYPH IMAGES (not just cell
     # advance). Merchants calibrated before this knob existed keep the old
     # behavior; In-N-Out was calibrated with it on.
@@ -475,23 +482,26 @@ def _draw_dash_row(
     cap_px=None,
     bitmap_thin: float = 0.0,
     condense_glyphs: bool = False,
+    char: str = "-",
 ) -> None:
-    """A thermal separator rule printed as a run of actual ``-`` glyphs.
+    """A thermal separator rule printed as a run of actual rule glyphs.
 
-    Costco prints its section separators as a full-width row of the dash
-    character in the same monospace face as the body (dropped by OCR). Rendering
-    them through :func:`draw_token_chars` -- rather than a drawn line -- gives the
-    real letterform (bitmap atlas), condense, stroke and ink of the body text, so
-    the rule reads as printed dashes instead of a clean vector line. ``condense_glyphs``
-    mirrors the body text's per-glyph x-resize so the dashes track the same width.
+    Rendering measured separator characters through :func:`draw_token_chars`
+    -- rather than a drawn line -- gives the real letterform (bitmap atlas),
+    condense, stroke and ink of the body text, so the rule reads as printed
+    glyphs instead of a clean vector line. ``condense_glyphs`` mirrors the body
+    text's per-glyph x-resize so the rule tracks the same width.
     """
+    char = str(char or "-")[:1]
+    if char not in "*-=_~":
+        return
     start_col = int(round((x0 - spec.grid_left) / spec.cell_w))
     n = int((x1 - x0) / spec.cell_w)
     if n <= 0:
         return
     draw_token_chars(
         draw,
-        "-" * n,
+        char * n,
         start_col,
         baseline_y,
         spec,
@@ -511,6 +521,16 @@ def _is_asterisk_rule(row_text: str) -> bool:
     if len(chars) < 3 or any(ch.isalnum() for ch in chars):
         return False
     return chars.count("*") / len(chars) >= 0.75
+
+
+def _literal_separator_char(row_text: str) -> str | None:
+    """Return the dominant glyph for a literal OCR separator row."""
+    chars = [ch for ch in row_text if not ch.isspace()]
+    if len(chars) < 3 or any(ch.isalnum() for ch in chars):
+        return None
+    allowed = "*-=_~"
+    dominant = max(allowed, key=chars.count)
+    return dominant if chars.count(dominant) / len(chars) >= 0.75 else None
 
 
 def _ocr_grid_metrics(
@@ -836,13 +856,23 @@ def _render_grid(
     # TOTAL, and the AMOUNT-block transaction-date line (the date row whose prior
     # row is the "AMOUNT:" line).
     row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
-    dash_after_rows = _separator_anchor_rows(rows, row_texts, config)
+    dash_after_rows = (
+        _separator_anchor_rows(rows, row_texts, config)
+        if config.measured_separators is None
+        else set()
+    )
     baselines, dash_ys = _separator_layout(
         baselines,
         dash_after_rows,
         pitch=float(min_pitch),
         cap_h=cap_h,
     )
+    measured_separators: list[Mapping[str, Any]] = [
+        entry
+        for entry in (config.measured_separators or ())
+        if isinstance(entry, Mapping)
+    ]
+    measured_separator_used: set[int] = set()
     row_cache: dict[tuple, tuple] = {}
     prev_text = ""
     for line, baseline, sect in zip(rows, baselines, eff_sections):
@@ -907,13 +937,57 @@ def _render_grid(
                 )
             if sm_style is not None and sm_style["scale"] != 1.0:
                 sc = sc * sm_style["scale"]
-        if _is_asterisk_rule(row_text):
+        literal_separator = (
+            _literal_separator_char(row_text)
+            if config.measured_separators is not None
+            else ("*" if _is_asterisk_rule(row_text) else None)
+        )
+        if literal_separator is not None:
+            # A literal OCR rule already carries real vertical geometry. The
+            # normal baseline pass may push it hundreds of pixels after dense
+            # payment rows, so measured-layout mode restores its source row.
+            # When the template also contains a matching measured entry, its
+            # paper fraction wins and that entry is marked consumed.
+            separator_cap_px = (
+                max(
+                    6,
+                    int(round(float(cap_px or sizing.font_px) * 0.85)),
+                )
+                if config.measured_separators is not None
+                else cap_px
+            )
+            separator_baseline = (
+                line_baseline(line, ascent)
+                if config.measured_separators is not None
+                else baseline
+            )
+            source_y_frac = median(w.center_y for w in line) / config.height
+            candidates: list[tuple[float, int, float]] = []
+            for index, entry in enumerate(measured_separators):
+                if index in measured_separator_used:
+                    continue
+                if str(entry.get("char") or "")[:1] != literal_separator:
+                    continue
+                try:
+                    pos_frac = float(entry["pos_frac_med"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if 0.0 <= pos_frac <= 1.0:
+                    candidates.append(
+                        (abs(pos_frac - source_y_frac), index, pos_frac)
+                    )
+            if candidates:
+                _distance, index, pos_frac = min(candidates)
+                measured_separator_used.add(index)
+                separator_baseline = pos_frac * config.height + 0.35 * float(
+                    separator_cap_px or sizing.font_px
+                )
             n = int(content_cw / spec.cell_w)
             draw_token_chars(
                 draw,
-                "*" * max(3, n),
+                literal_separator * max(3, n),
                 0,
-                baseline,
+                separator_baseline,
                 spec,
                 font,
                 line[0].ink,
@@ -921,7 +995,7 @@ def _render_grid(
                 condense=config.condense,
                 condense_glyphs=config.condense_glyphs,
                 bitmap_font=bf_row,
-                cap_px=cap_px,
+                cap_px=separator_cap_px,
                 bitmap_thin=config.bitmap_thin,
             )
             continue
@@ -1096,6 +1170,39 @@ def _render_grid(
             bitmap_font=dash_bmf,
             cap_px=cap_px,
             bitmap_thin=config.bitmap_thin,
+        )
+    # Measured rows without a corresponding literal OCR token are still part of
+    # the observed merchant inventory. Draw each at its measured paper fraction
+    # without reserving a synthetic blank row or shifting downstream content.
+    measured_cap_px = max(
+        6, int(round(float(cap_px or sizing.font_px) * 0.85))
+    )
+    for index, entry in enumerate(measured_separators):
+        if index in measured_separator_used:
+            continue
+        char = str(entry.get("char") or "")[:1]
+        try:
+            pos_frac = float(entry["pos_frac_med"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if char not in "*-=_~" or not 0.0 <= pos_frac <= 1.0:
+            continue
+        measured_bmf = bmf if (bmf is not None and bmf.has(char)) else None
+        _draw_dash_row(
+            draw,
+            content_left,
+            content_right,
+            pos_frac * config.height + 0.35 * float(measured_cap_px),
+            spec,
+            font,
+            ink=_ink_for({}, config),
+            stroke=config.stroke,
+            condense=config.condense,
+            condense_glyphs=config.condense_glyphs,
+            bitmap_font=measured_bmf,
+            cap_px=measured_cap_px,
+            bitmap_thin=config.bitmap_thin,
+            char=char,
         )
 
 
