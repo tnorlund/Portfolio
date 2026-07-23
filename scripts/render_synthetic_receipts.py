@@ -1993,6 +1993,10 @@ def _render_cached_hybrid(
         min_font_px=9,
         max_font_px=max(28, int(height / 45)),
         grid_mode=True,
+        # C#layout is selected alongside the rest of this merchant's verified
+        # truth profile.  The renderer consumes it section-by-section; absence
+        # remains a strict no-op for merchants without measured geometry.
+        layout_template=copy.deepcopy(merchant_profile.get("layout_template")),
         # Optional body-font override. None -> the grid-font candidate list
         # (Andale -> vendored B612 -> legacy). The grid recalibrates cell_w / row
         # pitch from whatever face loads, so the SAME layout renders in any font.
