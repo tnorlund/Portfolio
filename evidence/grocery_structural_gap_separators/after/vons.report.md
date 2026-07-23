@@ -1,0 +1,373 @@
+# full_fidelity_eval -- vons
+
+- merchant: Vons
+- receipt: 678a7c94-4948-4ebf-b8e9-9a17c13051ec#2
+- git: `894a903ff600`
+- truth: `vons` v1 `63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb` (online-active)
+- atlas: `6ca4cb5cda99dd4c`
+
+## OVERALL: FAIL
+
+| metric | verdict |
+|---|---|
+| columns | FAIL |
+| style | FAIL |
+| tokens | PASS |
+| separators | PASS |
+| graphics | FAIL |
+| logo | PASS |
+| arithmetic | FAIL |
+
+```json
+{
+ "arithmetic": {
+  "identities": [
+   {
+    "detail": "",
+    "lhs": 3.5,
+    "name": "total_eq_tender",
+    "rhs": 61.13,
+    "status": "VIOLATED"
+   }
+  ],
+  "n_items": 19,
+  "summary": {
+   "change": 0.0,
+   "tax": 0.0,
+   "tender": 61.13,
+   "total": 3.5
+  },
+  "testable": 1,
+  "verdict": "FAIL",
+  "violated": 1
+ },
+ "columns": {
+  "bands": {
+   "ALL": {
+    "cell_w_px": 15.07,
+    "columns": [
+     {
+      "abs_drift_limit_px": 22.61,
+      "abs_drift_px": 11.0,
+      "column": {
+       "anchor": "right",
+       "role": "amount",
+       "spread": 0.0025,
+       "support": 13,
+       "x": 0.9524
+      },
+      "failed_on": [
+       "outliers"
+      ],
+      "outlier_limit": 0.15,
+      "real": {
+       "lane_mid_y_px": 1116.5,
+       "lane_x_px": 719.84,
+       "median_dev_px": -3.82,
+       "n_rows": 13,
+       "outlier_frac": 0.0,
+       "tilt_px_per_100px": 0.207,
+       "wobble_iqr_px": 0.5
+      },
+      "shear_px_per_100px": 0.07,
+      "synth": {
+       "lane_mid_y_px": 1116.5,
+       "lane_x_px": 709.0,
+       "median_dev_px": -14.82,
+       "n_rows": 13,
+       "outlier_frac": 0.154,
+       "tilt_px_per_100px": 0.28,
+       "wobble_iqr_px": 0.45
+      },
+      "verdict": "FAIL",
+      "wobble_limit_px": 3.5
+     },
+     {
+      "abs_drift_limit_px": 22.61,
+      "abs_drift_px": 7.5,
+      "column": {
+       "anchor": "left",
+       "role": "flag",
+       "spread": 0.0008,
+       "support": 10,
+       "x": 0.9586
+      },
+      "outlier_limit": 0.15,
+      "real": {
+       "lane_mid_y_px": 1074.2,
+       "lane_x_px": 735.58,
+       "median_dev_px": 7.46,
+       "n_rows": 10,
+       "outlier_frac": 0.0,
+       "tilt_px_per_100px": 0.19,
+       "wobble_iqr_px": 0.23
+      },
+      "shear_px_per_100px": 0.12,
+      "synth": {
+       "lane_mid_y_px": 1074.2,
+       "lane_x_px": 728.63,
+       "median_dev_px": -0.04,
+       "n_rows": 10,
+       "outlier_frac": 0.0,
+       "tilt_px_per_100px": 0.308,
+       "wobble_iqr_px": 0.74
+      },
+      "verdict": "PASS",
+      "wobble_limit_px": 2.96
+     }
+    ],
+    "lane_gaps": [
+     {
+      "delta_px": 3.89,
+      "limit_px": 11.3,
+      "pair": [
+       "amount",
+       "flag"
+      ],
+      "real_gap_px": 15.74,
+      "synth_gap_px": 19.63,
+      "verdict": "PASS"
+     }
+    ],
+    "source": "bootstrap",
+    "untested_roles": [],
+    "verdict": "FAIL"
+   }
+  },
+  "verdict": "FAIL"
+ },
+ "coverage_gaps": [
+  "style:barcode_caption",
+  "style:footer",
+  "style:section_header"
+ ],
+ "graphics": {
+  "matched": [],
+  "missing_in_synth": [
+   {
+    "kind": "1d",
+    "payload": "00313505101552502031820",
+    "symbology": "code128",
+    "x_frac": 0.0,
+    "y_frac": 1.0
+   }
+  ],
+  "phantom_in_synth": [],
+  "real": [
+   {
+    "kind": "1d",
+    "payload": "00313505101552502031820",
+    "symbology": "code128",
+    "x_frac": 0.0,
+    "y_frac": 1.0
+   }
+  ],
+  "synth": [],
+  "verdict": "FAIL"
+ },
+ "logo": {
+  "area_ratio": 0.992,
+  "center_offset_frac": 0.0125,
+  "real": {
+   "area": 7116.0,
+   "cx": 416.0,
+   "cy": 58.5,
+   "h": 110.0,
+   "w": 73.0
+  },
+  "size_ratio": 1.0,
+  "synth": {
+   "area": 7059.0,
+   "cx": 406.5,
+   "cy": 69.5,
+   "h": 110.0,
+   "w": 72.0
+  },
+  "verdict": "PASS",
+  "width_ratio": 0.986
+ },
+ "overall": "FAIL",
+ "separators": {
+  "kind_mismatches": 0,
+  "matched": [
+   {
+    "dy": 0.0015,
+    "real": {
+     "height_px": 2,
+     "kind": "dash",
+     "y_frac": 0.185
+    },
+    "synth": {
+     "height_px": 4,
+     "kind": "dash",
+     "y_frac": 0.1865
+    }
+   },
+   {
+    "dy": 0.0044,
+    "real": {
+     "height_px": 2,
+     "kind": "dash",
+     "y_frac": 0.5899
+    },
+    "synth": {
+     "height_px": 4,
+     "kind": "dash",
+     "y_frac": 0.5855
+    }
+   },
+   {
+    "dy": 0.0,
+    "real": {
+     "height_px": 2,
+     "kind": "dash",
+     "y_frac": 0.6737
+    },
+    "synth": {
+     "height_px": 4,
+     "kind": "dash",
+     "y_frac": 0.6737
+    }
+   }
+  ],
+  "missing_in_synth": [],
+  "phantom_in_synth": [],
+  "real_count": 3,
+  "synth_count": 3,
+  "verdict": "PASS"
+ },
+ "style": {
+  "body_stroke_fail": false,
+  "body_stroke_rel": {
+   "real": 0.0948,
+   "synth": 0.1336
+  },
+  "classes": [
+   {
+    "class": "address",
+    "missing_style": [
+     "bold"
+    ],
+    "real": {
+     "bold": 1,
+     "n": 2,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 2,
+     "underline": 0
+    },
+    "verdict": "FAIL"
+   },
+   {
+    "class": "barcode_caption",
+    "real": {
+     "bold": 0,
+     "n": 1,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 1,
+     "underline": 0
+    },
+    "verdict": "UNTESTED"
+   },
+   {
+    "class": "footer",
+    "real": {
+     "bold": 0,
+     "n": 1,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 1,
+     "underline": 0
+    },
+    "verdict": "UNTESTED"
+   },
+   {
+    "class": "payment",
+    "real": {
+     "bold": 0,
+     "n": 2,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 2,
+     "underline": 0
+    },
+    "verdict": "PASS"
+   },
+   {
+    "class": "section_header",
+    "real": {
+     "bold": 0,
+     "n": 1,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 1,
+     "underline": 0
+    },
+    "verdict": "UNTESTED"
+   },
+   {
+    "class": "summary",
+    "real": {
+     "bold": 0,
+     "n": 4,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 4,
+     "underline": 0
+    },
+    "verdict": "PASS"
+   },
+   {
+    "class": "total_line",
+    "real": {
+     "bold": 0,
+     "n": 3,
+     "underline": 0
+    },
+    "synth": {
+     "bold": 0,
+     "n": 3,
+     "underline": 0
+    },
+    "verdict": "PASS"
+   }
+  ],
+  "untested_classes": [
+   "barcode_caption",
+   "footer",
+   "section_header"
+  ],
+  "verdict": "FAIL"
+ },
+ "tokens": {
+  "composed": false,
+  "ink_checked": 196,
+  "ink_evidence_missing": false,
+  "ink_missing_tokens": [
+   "STORE",
+   "3135",
+   "DIR",
+   "CRUZ"
+  ],
+  "ink_recall": 0.9796,
+  "missing_tokens": [],
+  "precision_warn": false,
+  "text_precision": 1.0,
+  "text_recall": 1.0,
+  "verdict": "PASS"
+ }
+}
+```
