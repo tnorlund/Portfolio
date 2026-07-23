@@ -269,6 +269,18 @@ def section_style(value: Any) -> tuple[float, float]:
     return _clamped_scale(value, 0.25, 4.0), 1.0
 
 
+def remap_grid_column(
+    column: float | None,
+    source: GridSpec,
+    target: GridSpec,
+) -> float | None:
+    """Keep a shared lane on the same pixel edge across scaled row grids."""
+    if column is None:
+        return None
+    pixel_x = source.grid_left + float(column) * source.cell_w
+    return (pixel_x - target.grid_left) / max(target.cell_w, 1e-6)
+
+
 def render_receipt(
     receipt: Mapping[str, Any],
     *,
@@ -1194,9 +1206,16 @@ def _render_grid(
             row_cache[key] = (row_spec, row_font, row_cap)
             cached = row_cache[key]
         row_spec, row_font, row_cap = cached
-        # Lane only applies when the row shares the base cell grid (scale 1.0
-        # AND base condense -- a per-section condense changes the cell width).
-        lane = amount_lane if sc == 1.0 and sect_cond == 1.0 else None
+        # A small typographic size nudge still shares the body amount column:
+        # project that paper-space edge through pixels into the row grid.
+        # Larger section scales and per-section condensation describe a
+        # genuinely distinct layout, preserving the legacy no-lane behavior.
+        shares_body_lane = sect_cond == 1.0 and abs(sc - 1.0) < 0.05
+        lane = (
+            remap_grid_column(amount_lane, spec, row_spec)
+            if shares_body_lane
+            else None
+        )
         cp = (
             row_cap
             if row_cap
