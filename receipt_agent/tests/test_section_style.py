@@ -1,6 +1,8 @@
 """section_scale schema: legacy float vs {height_scale, condense} mapping."""
 
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+    _scaled_bitmap_thin,
+    _stylemap_uses_underlines,
     section_style,
 )
 
@@ -72,6 +74,26 @@ def test_unlabeled_priceless_receipt_never_becomes_all_footer():
 
     rows = [row("GELSONS MARKET", 10.0), row("THANK YOU", 40.0)]
     assert effective_row_sections(rows) == [None, None]
+
+
+def test_underline_stylemap_enables_bitmap_baseline_variation():
+    assert _stylemap_uses_underlines(
+        {
+            "sections": {
+                "item": {"underline": False},
+                "section_header": {"underline": "sometimes"},
+            }
+        }
+    )
+    assert not _stylemap_uses_underlines(
+        {"sections": {"item": {"underline": False}}}
+    )
+
+
+def test_material_bitmap_downscale_compensates_stroke_quantization():
+    assert _scaled_bitmap_thin(0.225, 0.95) == 0.225
+    assert _scaled_bitmap_thin(0.225, 0.85) == 0.525
+    assert _scaled_bitmap_thin(0.8, 0.5) == 0.9
 
 
 def test_non_positional_label_beats_date_time_everywhere():

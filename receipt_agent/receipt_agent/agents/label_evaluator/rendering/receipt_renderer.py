@@ -251,6 +251,30 @@ def section_style(value: Any) -> tuple[float, float]:
     return _clamped_scale(value, 0.25, 4.0), 1.0
 
 
+def _stylemap_uses_underlines(stylemap: Mapping[str, Any] | None) -> bool:
+    """Whether a stylemap needs real underline/non-underline separation."""
+    sections = (stylemap or {}).get("sections") or {}
+    return any(
+        rule.get("underline") in (True, "sometimes")
+        for rule in sections.values()
+        if isinstance(rule, Mapping)
+    )
+
+
+def _scaled_bitmap_thin(base_thin: float, scale: float) -> float:
+    """Keep materially downscaled regular bitmap rows visually lighter.
+
+    Nearest-neighbor bitmap scaling quantizes a 15% size reduction without
+    necessarily removing a stroke pixel. Compensate only at 0.9x or below;
+    near-body 0.95x sections retain the merchant's calibrated body thinning.
+    """
+    base = max(0.0, min(0.9, float(base_thin or 0.0)))
+    safe_scale = _clamped_scale(scale, 0.25, 4.0)
+    if safe_scale > 0.9:
+        return base
+    return min(0.9, base + 2.0 * (1.0 - safe_scale))
+
+
 def render_receipt(
     receipt: Mapping[str, Any],
     *,
@@ -536,6 +560,7 @@ def _render_grid(
     # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
     # target cap height (~0.72 of the em); advance comes from the atlas.
     bmf = bmf_heavy = None
+    bmf_light: dict[float, Any] = {}
     cap_px = None
     if config.bitmap_font:
         from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (
@@ -544,16 +569,36 @@ def _render_grid(
 
         bitmap_thin = max(0.0, min(0.9, float(config.bitmap_thin or 0.0)))
         glyph_vscale = float(config.bitmap_glyph_vscale or 1.0)
+        sections = (config.stylemap or {}).get("sections") or {}
+        baseline_variation = int(_stylemap_uses_underlines(config.stylemap))
         bmf = BitmapFont(
             config.bitmap_font["regular"],
             thin=bitmap_thin,
             vscale=glyph_vscale,
+            baseline_variation=baseline_variation,
         )
+        light_scales = {
+            _clamped_scale(rule.get("sizeScale", 1.0), 0.25, 4.0)
+            for rule in sections.values()
+            if isinstance(rule, Mapping)
+            and rule.get("weight") != "bold"
+            and _clamped_scale(rule.get("sizeScale", 1.0), 0.25, 4.0) <= 0.9
+        }
+        for light_scale in light_scales:
+            bmf_light[light_scale] = BitmapFont(
+                config.bitmap_font["regular"],
+                thin=_scaled_bitmap_thin(bitmap_thin, light_scale),
+                vscale=glyph_vscale,
+                baseline_variation=baseline_variation,
+            )
         heavy_path = config.bitmap_font.get(
             "heavy", config.bitmap_font["regular"]
         )
         bmf_heavy = BitmapFont(
-            heavy_path, thin=bitmap_thin, vscale=glyph_vscale
+            heavy_path,
+            thin=bitmap_thin,
+            vscale=glyph_vscale,
+            baseline_variation=baseline_variation,
         )
         cap_ratio = max(0.5, min(1.0, float(config.bitmap_cap_ratio)))
         cap_px = max(6, int(round(sizing.font_px * cap_ratio)))
@@ -819,6 +864,12 @@ def _render_grid(
                 )
             if sm_style is not None and sm_style["scale"] != 1.0:
                 sc = sc * sm_style["scale"]
+            if (
+                sm_style is not None
+                and not sm_style["bold"]
+                and sm_style["scale"] <= 0.9
+            ):
+                bf_row = bmf_light.get(sm_style["scale"], bf_row)
         if _is_asterisk_rule(row_text):
             n = int(content_cw / spec.cell_w)
             draw_token_chars(

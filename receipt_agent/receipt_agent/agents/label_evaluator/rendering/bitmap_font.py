@@ -69,6 +69,7 @@ class BitmapFont:
         *,
         thin: float = 0.0,
         vscale: float = 1.0,
+        baseline_variation: int = 0,
     ):
         data = np.load(atlas_path)
         self.glyphs = {
@@ -104,6 +105,11 @@ class BitmapFont:
         # glyphs ~17% too TALL at correct pitch (GOLD_STANDARD.md I2), so the
         # fix must be vertical-only. 1.0 (default) is byte-identical.
         self.vscale = max(0.5, min(1.5, float(vscale or 1.0)))
+        # Consensus atlases phase-lock every copy of a glyph to the same pixel
+        # rows. For stylemaps that distinguish real underlines, one pixel of
+        # deterministic character-level variation restores the small
+        # per-glyph baseline spread present in the source scans.
+        self.baseline_variation = max(0, min(2, int(baseline_variation or 0)))
         # key: (char, cap_px, thin, vscale)
         self._cache: dict[tuple[str, int, float, float], tuple] = {}
 
@@ -144,6 +150,8 @@ class BitmapFont:
             h = max(1, int(round(im.height * self.vscale)))
             im = im.resize((im.width, h), Image.NEAREST)
             off = int(round(off * self.vscale))
+        if self.baseline_variation:
+            off += ((ord(ch) % 3) - 1) * self.baseline_variation
         self._cache[key] = (im, h, off)
         return self._cache[key]
 
