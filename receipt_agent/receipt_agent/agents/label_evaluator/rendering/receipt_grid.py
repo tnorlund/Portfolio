@@ -1138,6 +1138,7 @@ def _measured_lane_starts(
 
     amount_x = usable("amount", "right")
     qty_x = usable("qty", "right")
+    flag_x = usable("flag", "left")
     label_x = usable("label", "left")
     desc_x = usable("desc", "left")
     starts: dict[int, float] = {}
@@ -1200,6 +1201,18 @@ def _measured_lane_starts(
         starts[index] = (
             target - spec.grid_left
         ) / spec.cell_w - drawn_cell_count(word.text)
+
+    flag_candidates = [
+        index
+        for index, word in enumerate(line)
+        if index not in starts
+        and index > 0
+        and is_price_token(line[index - 1].text)
+        and len(word.text.strip()) == 1
+        and word.text.strip().isalpha()
+    ]
+    for index, target in assign_unique(flag_candidates, flag_x, edge="left"):
+        starts[index] = (target - spec.grid_left) / spec.cell_w
 
     if label_x and line:
         label_candidates = [
@@ -1406,7 +1419,16 @@ def plan_grid_line(
                                 for column in measured_columns or ()
                             )
                         )
-                        else "left"
+                        else (
+                            "left_flag"
+                            if len(word.text.strip()) == 1
+                            and word.text.strip().isalpha()
+                            and any(
+                                str(column.get("role") or "").lower() == "flag"
+                                for column in measured_columns or ()
+                            )
+                            else "left"
+                        )
                     )
                     if i in measured
                     else ("right_aux" if measured_tax_flag else None)
@@ -1513,12 +1535,31 @@ def draw_grid_line(
     if center_to is None and placed_row and not measured_columns:
         _right_align_source_segments(placed_row, spec)
 
+    has_flag_lane = any(
+        str(column.get("role") or "").lower() == "flag"
+        for column in measured_columns or ()
+    )
+
+    def _measured_ink_shift_px(placed: PlacedToken) -> float:
+        """Translate measured OCR-box anchors onto their visible ink edges."""
+        if placed.measured_anchor in ("right", "right_aux"):
+            # Sections with a detached flag lane expose both bearings: amount
+            # ink ends one cell inside its right-anchored OCR box. Other
+            # measured sections retain the calibrated quarter-cell inset.
+            return (-1.0 if has_flag_lane else -0.25) * spec.cell_w
+        if placed.measured_anchor == "left_flag":
+            # The detached flag's ink starts one cell inside its left-anchored
+            # OCR box, symmetrically preserving the measured amount/flag gap.
+            return spec.cell_w
+        return 0.0
+
     def _record_boxes():
         if box_sink is None:
             return
         cap = float(cap_px or spec.font_px)
         for p in placed_row:
-            x0 = spec.grid_left + p.start_col * spec.cell_w
+            ink_shift = x_shift_px + _measured_ink_shift_px(p)
+            x0 = spec.grid_left + p.start_col * spec.cell_w + ink_shift
             x1 = x0 + p.cells * spec.cell_w
             desc = 0.22 * cap if _has_descender(p.draw_text) else 0.04 * cap
             box_sink.append(
@@ -1543,14 +1584,7 @@ def draw_grid_line(
     _record_boxes()
     for i, placed in enumerate(placed_row):
         ink = placed.word.ink
-        # OCR right-edge lanes include a small printer side bearing.  Keep the
-        # render-true bbox on the measured edge, but inset visible glyph ink by
-        # a quarter cell (and carry an adjacent tax flag with it).
-        measured_right_inset_px = (
-            -0.25 * spec.cell_w
-            if placed.measured_anchor in ("right", "right_aux")
-            else 0.0
-        )
+        measured_ink_shift_px = _measured_ink_shift_px(placed)
         # price -> box extends LEFT into the amount lane; date -> tight box.
         rev_price = reverse_price and placed.is_price
         rev_date = reverse_date and i == 0 and _is_date_token(placed.draw_text)
@@ -1567,14 +1601,14 @@ def draw_grid_line(
                         round(
                             spec.grid_left
                             + (placed.start_col - 0.4) * spec.cell_w
-                            + measured_right_inset_px
+                            + measured_ink_shift_px
                         )
                     )
                     x1 = int(
                         round(
                             spec.grid_left
                             + (placed.end_col + 0.4) * spec.cell_w
-                            + measured_right_inset_px
+                            + measured_ink_shift_px
                         )
                     )
                 else:
@@ -1583,7 +1617,7 @@ def draw_grid_line(
                             spec.grid_left
                             + (placed.start_col - price_box_extend_cells)
                             * spec.cell_w
-                            + measured_right_inset_px
+                            + measured_ink_shift_px
                         )
                     )
                     x1 = int(
@@ -1591,7 +1625,7 @@ def draw_grid_line(
                             spec.grid_left
                             + (placed.end_col + (0 if measured_columns else 1))
                             * spec.cell_w
-                            + measured_right_inset_px
+                            + measured_ink_shift_px
                         )
                     )
                 x0 = max(int(spec.grid_left), x0)
@@ -1612,12 +1646,14 @@ def draw_grid_line(
             bitmap_font=bitmap_font,
             cap_px=cap_px,
             left_edge_col=(
-                placed.start_col if placed.measured_anchor == "left" else None
+                placed.start_col
+                if placed.measured_anchor in ("left", "left_flag")
+                else None
             ),
             right_edge_col=placed.end_col if placed.is_price else None,
             bitmap_thin=bitmap_thin,
             condense_glyphs=condense_glyphs,
-            x_shift_px=x_shift_px + measured_right_inset_px,
+            x_shift_px=x_shift_px + measured_ink_shift_px,
         )
 
 
