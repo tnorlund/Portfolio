@@ -1,0 +1,47 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "18dc387fbfd985fbc236e413ca051959613fe6e66c263f2a9a23fe67551cb74b",
+  "controls": {
+    "arithmetic": "PASS",
+    "logo": "PASS",
+    "tokens": "PASS"
+  },
+  "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+  "metric": "columns",
+  "receipt_id": 1,
+  "result": {
+    "failed_on": [
+      "wobble",
+      "outliers",
+      "abs_drift",
+      "shear"
+    ],
+    "limits": {
+      "abs_drift_px": 27.26,
+      "outlier_frac": 0.15,
+      "shear_px_per_100px": 6.0,
+      "wobble_iqr_px": 2.5
+    },
+    "real": {
+      "lane_x_px": 695.0,
+      "median_dev_px": -4.81,
+      "n_rows": 5,
+      "outlier_frac": 0.0,
+      "tilt_px_per_100px": 0.0,
+      "wobble_iqr_px": 0.0
+    },
+    "source": "bootstrap",
+    "synth": {
+      "abs_drift_px": 40.0,
+      "lane_x_px": 725.29,
+      "median_dev_px": 35.19,
+      "n_rows": 5,
+      "outlier_frac": 0.2,
+      "shear_px_per_100px": 25.71,
+      "tilt_px_per_100px": -25.715,
+      "wobble_iqr_px": 9.39
+    },
+    "verdict": "FAIL"
+  },
+  "truth_version": 1
+}
