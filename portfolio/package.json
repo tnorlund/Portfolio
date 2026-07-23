@@ -58,7 +58,7 @@
     "lodash-es": ">=4.17.23"
   },
   "devDependencies": {
-    "@babel/plugin-syntax-flow": "^7.26.0",
+    "@babel/plugin-syntax-flow": "^7.29.7",
     "@jest/types": "^30.0.0",
     "@lhci/cli": "^0.15.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
