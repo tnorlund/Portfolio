@@ -1,0 +1,48 @@
+{
+  "base_git_sha": "6426a9187accbdfbaae1fc138739241378c2a9e3",
+  "bundle_hash": "557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418",
+  "guards": {
+    "corpus_regression_gate": "PASS",
+    "render_regression_guard": {
+      "costco_golden": "byte-identical",
+      "costco_new": "byte-identical",
+      "sprouts": "byte-identical",
+      "vons_golden": "byte-identical"
+    }
+  },
+  "image_id": "4c262079-4fec-4724-a8e1-2886f38ea454",
+  "merchant": "Trader Joe's",
+  "metric": "style",
+  "receipt_id": 1,
+  "result": {
+    "body_stroke_fail": false,
+    "body_stroke_rel": {
+      "real": 0.1068,
+      "synth": 0.1068
+    },
+    "footer": {
+      "real": {
+        "bold": 1,
+        "n": 2,
+        "underline": 0
+      },
+      "synth": {
+        "bold": 1,
+        "n": 2,
+        "underline": 0
+      },
+      "verdict": "PASS"
+    },
+    "preserved_metrics": {
+      "arithmetic": "PASS",
+      "columns": "PASS",
+      "graphics": "PASS",
+      "tokens": "PASS"
+    },
+    "untested_classes": [
+      "total_line"
+    ],
+    "verdict": "PASS_WITH_GAPS"
+  },
+  "truth_version": 1
+}
