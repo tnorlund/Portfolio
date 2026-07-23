@@ -1,10 +1,16 @@
 """Measured Merchant Truth column routing and grid placement."""
 
-import pytest
+from dataclasses import replace
+from pathlib import Path
 
+import pytest
+from PIL import Image, ImageDraw, ImageFont
+
+from receipt_agent.agents.label_evaluator.rendering import receipt_grid
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
     GridWord,
+    draw_grid_line,
     effective_canonical_row_sections,
     plan_grid_line,
 )
@@ -94,6 +100,83 @@ def test_measured_description_and_quantity_roles_use_their_declared_edges():
     # drawable grid; the quantity retains its measured right edge.
     assert 10 + by_text["ITEM"].start_col * 10 == pytest.approx(10)
     assert 10 + by_text["3"].end_col * 10 == pytest.approx(0.8852 * 760)
+
+
+def test_measured_flag_lane_anchors_detached_flag_to_declared_left_edge():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    line = [_word("4.29", 565, 615), _word("F", 620, 650)]
+    columns = [
+        {"role": "amount", "anchor": "right", "x": 0.8085},
+        {"role": "flag", "anchor": "left", "x": 0.8187},
+    ]
+
+    placed = plan_grid_line(
+        line,
+        spec,
+        measured_columns=columns,
+        paper_width=760,
+    )
+    by_text = {token.word.text: token for token in placed}
+
+    assert 10 + by_text["4.29"].end_col * 10 == pytest.approx(0.8085 * 760)
+    assert 10 + by_text["F"].start_col * 10 == pytest.approx(0.8187 * 760)
+    assert by_text["F"].measured_anchor == "left_flag"
+
+
+def test_flag_lane_bearings_are_reflected_in_render_true_boxes():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    line = [
+        replace(_word("4.29", 565, 615), word_index=0),
+        replace(_word("F", 620, 650), word_index=1),
+    ]
+    columns = [
+        {"role": "amount", "anchor": "right", "x": 0.8085},
+        {"role": "flag", "anchor": "left", "x": 0.8187},
+    ]
+    font_path = (
+        Path(receipt_grid.__file__).parent / "fonts" / "B612Mono-Regular.ttf"
+    )
+    image = Image.new("RGB", (760, 180), "white")
+    sink = []
+
+    draw_grid_line(
+        ImageDraw.Draw(image),
+        line,
+        100,
+        spec,
+        ImageFont.truetype(str(font_path), 16),
+        measured_columns=columns,
+        paper_width=760,
+        box_sink=sink,
+    )
+    by_index = {placement["word_index"]: placement for placement in sink}
+
+    assert by_index[0]["px"][2] == pytest.approx(0.8085 * 760 - spec.cell_w)
+    assert by_index[1]["px"][0] == pytest.approx(0.8187 * 760 + spec.cell_w)
+
+
+def test_amount_only_lane_keeps_quarter_cell_bearing():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    line = [replace(_word("116.99", 650, 710), word_index=0)]
+    columns = [{"role": "amount", "anchor": "right", "x": 0.9399}]
+    font_path = (
+        Path(receipt_grid.__file__).parent / "fonts" / "B612Mono-Regular.ttf"
+    )
+    image = Image.new("RGB", (760, 180), "white")
+    sink = []
+
+    draw_grid_line(
+        ImageDraw.Draw(image),
+        line,
+        100,
+        spec,
+        ImageFont.truetype(str(font_path), 16),
+        measured_columns=columns,
+        paper_width=760,
+        box_sink=sink,
+    )
+
+    assert sink[0]["px"][2] == pytest.approx(0.9399 * 760 - 0.25 * spec.cell_w)
 
 
 def test_canonical_sections_use_labels_then_generic_payment_markers():
