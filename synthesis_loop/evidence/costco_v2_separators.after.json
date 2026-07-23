@@ -1,0 +1,48 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "6b709eb08fa7d09387dba01ebb212810f397b088c8636b7a0442571f8bfd53d7",
+  "controls": {
+    "arithmetic": "PASS",
+    "graphics": "PASS",
+    "logo": "PASS",
+    "style": "PASS_WITH_GAPS",
+    "tokens": "PASS"
+  },
+  "image_id": "0324604e-e1f7-4021-b887-7ef7e012c563",
+  "metric": "separators",
+  "receipt_id": 1,
+  "result": {
+    "kind_mismatches": 0,
+    "matched": [
+      {
+        "dy": 0.0042,
+        "real": {
+          "height_px": 18,
+          "kind": "double",
+          "y_frac": 0.858
+        },
+        "synth": {
+          "height_px": 19,
+          "kind": "dash",
+          "y_frac": 0.8622
+        }
+      }
+    ],
+    "missing_in_synth": [],
+    "phantom_in_synth": [],
+    "real_count": 1,
+    "synth_count": 1,
+    "verdict": "PASS"
+  },
+  "truth_version": 2,
+  "verification": {
+    "corpus_regression_gate": "PASS (0 findings)",
+    "focused_tests": "34 passed",
+    "render_regression_guard": {
+      "costco_golden": "CHANGED (expected)",
+      "costco_new": "CHANGED (expected)",
+      "sprouts": "byte-identical",
+      "vons_golden": "byte-identical"
+    }
+  }
+}
