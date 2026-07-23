@@ -1,0 +1,37 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "6b709eb08fa7d09387dba01ebb212810f397b088c8636b7a0442571f8bfd53d7",
+  "image_id": "0324604e-e1f7-4021-b887-7ef7e012c563",
+  "metric": "columns",
+  "receipt_id": 1,
+  "result": {
+    "failed_on": [
+      "wobble",
+      "outliers",
+      "shear"
+    ],
+    "limits": {
+      "abs_drift_px": 26.8,
+      "outlier_frac": 0.4,
+      "shear_px_per_100px": 6.0,
+      "wobble_iqr_px": 3.86
+    },
+    "real": {
+      "lane_x_px": 685.19,
+      "n_rows": 8,
+      "outlier_frac": 0.25,
+      "wobble_iqr_px": 0.68
+    },
+    "source": "bootstrap",
+    "synth": {
+      "abs_drift_px": 25.0,
+      "lane_x_px": 703.16,
+      "n_rows": 6,
+      "outlier_frac": 0.5,
+      "shear_px_per_100px": 10.33,
+      "wobble_iqr_px": 10.71
+    },
+    "verdict": "FAIL"
+  },
+  "truth_version": 2
+}
