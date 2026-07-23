@@ -1,11 +1,11 @@
 """section_scale schema: legacy float vs {height_scale, condense} mapping."""
 
+from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+    GridSpec,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     remap_grid_column,
     section_style,
-)
-from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
-    GridSpec,
 )
 
 
