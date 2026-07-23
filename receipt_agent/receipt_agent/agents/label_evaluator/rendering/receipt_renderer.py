@@ -396,6 +396,62 @@ def _draw_dash_row(
     )
 
 
+def _inferred_policy_separator_baselines(
+    rows: Sequence[Sequence[GridWord]],
+    sections: Sequence[str | None],
+    baselines: Sequence[float],
+    *,
+    min_pitch: float,
+    cap_h: float,
+    content_top: float,
+    content_height: float,
+) -> list[float]:
+    """Infer an OCR-dropped dash rule before a lower legal-policy block.
+
+    Vision commonly drops a thin rule even though it preserves the deliberately
+    blank row around it.  A lower-page website row is classified as HEADER while
+    the legal copy beneath it is predominantly alphabetic (its labels may be
+    sparse or noisy).  When that semantic transition also has roughly one blank
+    text row, place the dash ink in the observed whitespace.  Requiring all three
+    signals keeps normal paragraph gaps and top header transitions untouched.
+    """
+    if not (
+        len(rows) == len(sections) == len(baselines)
+        and min_pitch > 0
+        and content_height > 0
+    ):
+        return []
+
+    inferred: list[float] = []
+    lower_page = content_top + 0.55 * content_height
+    for index in range(len(rows) - 1):
+        if sections[index] != "HEADER":
+            continue
+        if baselines[index] < lower_page:
+            continue
+        current_text = " ".join(word.text for word in rows[index])
+        if not re.search(
+            r"[A-Za-z][A-Za-z0-9.-]*\.[A-Za-z]{2,}", current_text
+        ):
+            continue
+        following_text = "".join(word.text for word in rows[index + 1])
+        following_letters = sum(ch.isalpha() for ch in following_text)
+        following_digits = sum(ch.isdigit() for ch in following_text)
+        if (
+            following_letters < 10
+            or following_letters <= 3 * following_digits
+            or any(is_price_token(word.text) for word in rows[index + 1])
+        ):
+            continue
+        gap = float(baselines[index + 1] - baselines[index])
+        if not 1.55 * min_pitch <= gap <= 3.25 * min_pitch:
+            continue
+        ink_midpoint = (baselines[index] + baselines[index + 1]) / 2.0
+        # A hyphen's visible bar sits about half a cap above the text baseline.
+        inferred.append(ink_midpoint + 0.5 * cap_h)
+    return inferred
+
+
 def _is_asterisk_rule(row_text: str) -> bool:
     chars = [ch for ch in row_text if not ch.isspace()]
     if len(chars) < 3 or any(ch.isalnum() for ch in chars):
@@ -712,6 +768,15 @@ def _render_grid(
         return None
 
     eff_sections = effective_row_sections(rows)
+    inferred_gap_dash_ys = _inferred_policy_separator_baselines(
+        rows,
+        eff_sections,
+        baselines,
+        min_pitch=float(min_pitch),
+        cap_h=cap_h,
+        content_top=float(config.margin),
+        content_height=float(inner_h),
+    )
     # Rows after which Costco prints a dashed rule (dropped by OCR): the grand
     # TOTAL, and the AMOUNT-block transaction-date line (the date row whose prior
     # row is the "AMOUNT:" line).
@@ -993,7 +1058,7 @@ def _render_grid(
     # gap below each anchor row. Use the merchant's bitmap face when it carries a
     # dash glyph, else the body TTF (which always has one).
     dash_bmf = bmf if (bmf is not None and bmf.has("-")) else None
-    for y in dash_ys:
+    for y in [*dash_ys, *inferred_gap_dash_ys]:
         _draw_dash_row(
             draw,
             content_left,
