@@ -12,6 +12,9 @@ import pytest
 
 pytest.importorskip("PIL")
 
+from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
+    receipt_graphics,
+)
 from scripts import render_synthetic_receipts as rsr  # noqa: E402
 
 
@@ -165,3 +168,79 @@ class TestWordmarkSeedFilter:
         }
         cluster, _ = rsr._logo_wordmark_words(receipt)
         assert {w["text"] for w in cluster} == {"SPROUTS", "FARMERS"}
+
+
+class TestInbodyBarcodePayload:
+    """HRI-derived Code128 symbols must remain decodable and truthful."""
+
+    PAYLOAD = "99022003402972471754"
+
+    def test_code128_encoder_keeps_a_leading_99_data_pair(self):
+        symbol = receipt_graphics._barcode_symbol(  # pylint: disable=protected-access
+            self.PAYLOAD,
+            "code128",
+        )
+
+        # Code128 Start C (105) followed by the first data pair (99). The
+        # dependency's optimizer previously mistook that data pair for a
+        # charset-switch opcode and deleted it.
+        assert symbol.encoded[:2] == [105, 99]
+
+    def test_sprouts_preserves_the_hri_as_the_encoded_payload(self):
+        options = receipt_graphics.graphics_profile_for_merchant(
+            "Sprouts Farmers Market"
+        )["inbody_barcode"]
+
+        assert (
+            rsr._inbody_barcode_payload(  # pylint: disable=protected-access
+                self.PAYLOAD,
+                options,
+            )
+            == self.PAYLOAD
+        )
+
+    def test_vons_keeps_numeric_code128_for_scannable_modules(self):
+        profile = receipt_graphics.graphics_profile_for_merchant("Vons")
+        options = {
+            **rsr._INBODY_BARCODE_DEFAULTS,
+            **profile["inbody_barcode"],
+        }
+
+        payload = rsr._inbody_barcode_payload(
+            "00313505101552502031820", options
+        )
+
+        assert payload == "00313505101552502031820"
+
+    def test_other_inbody_barcodes_keep_the_density_shaping_default(self):
+        assert (
+            rsr._inbody_barcode_payload(  # pylint: disable=protected-access
+                "12345678901234",
+                {"symbology": "code128"},
+            )
+            == "12-34-56-78-90-12-34"
+        )
+
+    def test_sprouts_keeps_scanner_quiet_zones_around_the_symbol(self):
+        options = receipt_graphics.graphics_profile_for_merchant(
+            "Sprouts Farmers Market"
+        )["inbody_barcode"]
+        tile = receipt_graphics.render_barcode_tile(
+            self.PAYLOAD,
+            "code128",
+            445,
+            84,
+            with_hri=False,
+        )
+
+        prepared = (
+            rsr._fit_inbody_barcode_tile(  # pylint: disable=protected-access
+                tile,
+                445,
+                84,
+                options,
+            ).convert("L")
+        )
+
+        assert prepared.crop((0, 0, 3, 84)).getextrema()[0] > 230
+        assert prepared.crop((442, 0, 445, 84)).getextrema()[0] > 230

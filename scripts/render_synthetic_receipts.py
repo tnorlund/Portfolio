@@ -2428,6 +2428,18 @@ def _fit_1d_barcode_tile_to_box(tile, w_px: int, h_px: int):
     return gray
 
 
+def _fit_inbody_barcode_tile(tile, w_px: int, h_px: int, options: dict):
+    """Size an in-body barcode while retaining configured scanner margins."""
+    if not options.get("preserve_quiet_zone"):
+        return _fit_1d_barcode_tile_to_box(tile, w_px, h_px)
+    from PIL import Image
+
+    size = (max(1, int(w_px)), max(1, int(h_px)))
+    if tile.size != size:
+        return tile.resize(size, Image.NEAREST)
+    return tile
+
+
 def _hri_digits(text: str) -> str | None:
     """The digit string if ``text`` is a long human-readable barcode caption."""
     digits = re.sub(r"[^0-9]", "", str(text or ""))
@@ -2601,6 +2613,17 @@ def _visual_barcode_payload(digits: str, symbology: str) -> str:
     return "-".join(pair for pair in pairs if pair)
 
 
+def _inbody_barcode_payload(digits: str, options: dict) -> str:
+    """Select the configured scanner-safe HRI-derived payload."""
+    max_digits = int(options.get("max_digits", len(digits)))
+    raw = digits[:max_digits]
+    if options.get("payload_from_hri"):
+        return raw
+    if options.get("payload_shaping") == "raw":
+        return raw
+    return _visual_barcode_payload(raw, options["symbology"])
+
+
 def graphics_for_merchant(merchant: str | None) -> dict:
     """Merchant graphics choices: the substring-default profile from
     receipt_graphics (barcode symbology / QR), overlaid with any explicit
@@ -2711,13 +2734,14 @@ def _overlay_inbody_barcodes(
             )
         )
         cx = (left + right) / 2.0
-        payload = _visual_barcode_payload(
-            digits[: ib["max_digits"]], ib["symbology"]
+        payload = _inbody_barcode_payload(
+            digits,
+            ib,
         )
         tile = receipt_graphics.render_barcode_tile(
             payload, ib["symbology"], bar_w, bar_h, with_hri=False
         )
-        tile = _fit_1d_barcode_tile_to_box(tile, bar_w, bar_h)
+        tile = _fit_inbody_barcode_tile(tile, bar_w, bar_h, ib)
         y_top = int(top - 6 - bar_h)
         _paste_graphic_tile(image, tile, int(cx - bar_w / 2), y_top)
         stamped_bands.append((float(y_top), float(top - 6)))
