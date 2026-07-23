@@ -471,6 +471,42 @@ def test_arithmetic_ignores_payment_detail_and_sums_split_tenders():
     assert all(i["status"] == "HOLDS" for i in out["identities"])
 
 
+def test_arithmetic_prefers_labeled_balance_over_total_savings():
+    words = []
+
+    def add_row(y, entries):
+        for text, left, labels in entries:
+            words.append(_wordline(text, y, left=left, labels=labels))
+
+    add_row(
+        900,
+        [
+            ("**** BALANCE", 40, []),
+            ("61.13", 800, ["GRAND_TOTAL"]),
+        ],
+    )
+    add_row(
+        860,
+        [
+            ("Visa", 40, ["PAYMENT_METHOD"]),
+            ("61.13", 800, []),
+        ],
+    )
+    add_row(
+        820,
+        [
+            ("Total Savings", 40, ["DISCOUNT"]),
+            ("3.50", 800, ["DISCOUNT"]),
+        ],
+    )
+
+    out = ffe.arithmetic_check(words)
+
+    assert out["verdict"] == "PASS", out
+    assert out["summary"]["total"] == 61.13
+    assert out["summary"]["tender"] == 61.13
+
+
 # ---------------------------------------------------------------------------
 # codex-review hardening (round 1)
 # ---------------------------------------------------------------------------

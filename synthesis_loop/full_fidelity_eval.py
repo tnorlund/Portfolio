@@ -1717,6 +1717,7 @@ def arithmetic_check(words: list[dict]) -> dict:
             if _amount_of(w["text"]) is not None
         ]
         label_of = {lbl for w in row for lbl in (w.get("labels") or [])}
+        discount_row = bool(label_of & _DISCOUNT_LABELS)
         explicit_item = bool(
             label_of & {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY", "PRODUCT_NAME"}
         )
@@ -1730,11 +1731,20 @@ def arithmetic_check(words: list[dict]) -> dict:
             summary.setdefault("change", amounts[-1][1])
         elif _TIP_RE.match(text) and amounts:
             summary.setdefault("tip", amounts[-1][1])
-        elif _TOTAL_RE.match(text) and amounts:
-            summary.setdefault("total", amounts[-1][1])
-            in_item_region = False
         elif _TENDER_RE.match(text) and amounts:
             summary["tender"] = summary.get("tender", 0.0) + amounts[-1][1]
+        elif (
+            ("GRAND_TOTAL" in label_of or _TOTAL_RE.match(text))
+            and amounts
+            and not discount_row
+        ):
+            # Some registers print "**** BALANCE" rather than a textual
+            # TOTAL/BALANCE DUE anchor.  The validated GRAND_TOTAL label is the
+            # stronger signal in that case.  Conversely, a later loyalty block
+            # may contain "Total Savings"; discount labels keep that value from
+            # replacing the actual transaction total.
+            summary.setdefault("total", amounts[-1][1])
+            in_item_region = False
         elif "LINE_TOTAL" in label_of or (
             in_item_region
             and amounts
