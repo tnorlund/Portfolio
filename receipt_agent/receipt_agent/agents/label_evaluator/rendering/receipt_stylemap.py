@@ -229,6 +229,19 @@ def normalize_face_key(text: str) -> str:
     return " ".join(str(text).upper().split())[:60]
 
 
+def requires_bold_reinforcement(row_text: str) -> bool:
+    """Whether a display heading needs a one-dot strike over its heavy face.
+
+    Thermal ``SALE TRANSACTION`` headings are materially heavier than their
+    surrounding body rows. Some compiled merchant atlases carry a distinct
+    heavy face whose stroke delta is still too small to reproduce that measured
+    emphasis. Keep the reinforcement tied to the same standalone-heading
+    grammar as :func:`row_style`; payment narration and item-count prose that
+    merely contain the word ``transaction`` remain untouched.
+    """
+    return bool(_TRANSACTION_HEADING_RE.fullmatch(str(row_text).strip()))
+
+
 def _safe_scale(value: Any) -> float:
     """row_faces is an external API boundary: clamp scale to sane, finite."""
     try:
@@ -291,7 +304,7 @@ def row_style(
     # but select the heavy face for the standalone heading. Rows which merely
     # contain the word ("Items in Transaction: 14", POS identifiers, payment
     # narration) remain on the section's regular face.
-    if _TRANSACTION_HEADING_RE.fullmatch(row_text.strip()):
+    if requires_bold_reinforcement(row_text):
         style["bold"] = True
     ul = rule.get("underline", False)
     if ul is True:
