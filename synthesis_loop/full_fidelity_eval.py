@@ -1551,7 +1551,14 @@ def metric_graphics(real_png: str, syn_png: str) -> dict:
 # metric 6: logo presence / size / offset
 # ---------------------------------------------------------------------------
 def _largest_blob(gray: np.ndarray) -> dict | None:
-    """Largest 8-connected ink component in a band (pure-numpy label pass)."""
+    """Dominant same-line logo envelope in a storefront band.
+
+    Receipt photos can carry a dark scanner edge through the full storefront
+    band.  A raw largest-component rule mistakes that substrate for the logo.
+    Reject tall edge-connected strips, then merge substantial components on the
+    dominant component's visual row so disconnected wordmark letters are
+    measured as one logo rather than one arbitrary glyph.
+    """
     thresh = paper_threshold(gray)
     ink = (gray < thresh).astype(np.int32)
     if int(ink.sum()) < 16:
@@ -1559,7 +1566,7 @@ def _largest_blob(gray: np.ndarray) -> dict | None:
     H, W = ink.shape
     labels = np.zeros((H, W), dtype=np.int32)
     next_label = 0
-    best = None
+    components = []
     stack: list[tuple[int, int]] = []
     for sy in range(H):
         for sx in range(W):
@@ -1587,15 +1594,57 @@ def _largest_blob(gray: np.ndarray) -> dict | None:
                         ):
                             labels[ny, nx] = next_label
                             stack.append((ny, nx))
-            if best is None or n > best["area"]:
-                best = {
+            components.append(
+                {
                     "area": n,
+                    "x0": x0,
+                    "x1": x1,
+                    "y0": y0,
+                    "y1": y1,
                     "w": x1 - x0 + 1,
                     "h": y1 - y0 + 1,
                     "cx": (x0 + x1) / 2.0,
                     "cy": (y0 + y1) / 2.0,
                 }
-    return best
+            )
+    usable = [
+        component
+        for component in components
+        if not (
+            component["h"] >= 0.55 * H
+            and (component["x0"] <= 1 or component["x1"] >= W - 2)
+        )
+    ]
+    if not usable:
+        usable = components
+    anchor = max(usable, key=lambda component: component["area"])
+    min_area = max(4, int(round(0.015 * anchor["area"])))
+
+    def same_visual_row(component: dict) -> bool:
+        overlap = max(
+            0,
+            min(anchor["y1"], component["y1"])
+            - max(anchor["y0"], component["y0"])
+            + 1,
+        )
+        return (
+            component["area"] >= min_area
+            and component["h"] >= 0.25 * anchor["h"]
+            and overlap >= 0.30 * min(anchor["h"], component["h"])
+        )
+
+    row = [component for component in usable if same_visual_row(component)]
+    x0 = min(component["x0"] for component in row)
+    x1 = max(component["x1"] for component in row)
+    y0 = min(component["y0"] for component in row)
+    y1 = max(component["y1"] for component in row)
+    return {
+        "area": sum(component["area"] for component in row),
+        "w": x1 - x0 + 1,
+        "h": y1 - y0 + 1,
+        "cx": (x0 + x1) / 2.0,
+        "cy": (y0 + y1) / 2.0,
+    }
 
 
 def metric_logo(
@@ -1947,6 +1996,7 @@ def load_section_sequence(
     """
     try:
         from glyphstudio.sections import is_canonical_section
+
         from receipt_dynamo.data.dynamo_client import DynamoClient
 
         table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
