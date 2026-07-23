@@ -55,11 +55,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_places, receipt_langsmith, receipt_upload]
+        package:
+          - receipt_dynamo
+          - receipt_dynamo_stream
+          - receipt_chroma
+          - receipt_places
+          - receipt_langsmith
+          - receipt_upload
+          - receipt_agent
     steps:
       - uses: actions/checkout@v7
         with:
           clean: true
+          fetch-depth: 0
 
       - name: Setup Python
         run: |
@@ -122,15 +130,49 @@ jobs:
                 pydantic pydantic-settings structlog requests tenacity
               pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
               ;;
+            receipt_agent)
+              # Renderer tests need the local data stack, but the sibling
+              # packages are not published on PyPI. Keep every local package
+              # editable so this job always exercises the checked-out code.
+              pip install -e receipt_dynamo
+              pip install --no-deps -e receipt_dynamo_stream
+              pip install --no-deps -e receipt_chroma
+              pip install --no-deps -e receipt_places
+              pip install --no-deps -e receipt_agent
+              pip install --no-deps -e receipt_upload
+              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+                pillow-avif-plugin langsmith langgraph \
+                "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
+                pydantic pydantic-settings structlog requests tenacity \
+                segno python-barcode numpy
+              pip install pytest pytest-asyncio pytest-mock pytest-cov \
+                pytest-xdist pytest-timeout pytest-rerunfailures moto \
+                responses
+              ;;
             *)
               pip install -e "${{ matrix.package }}[test]"
               ;;
           esac
 
           # Lint (uses versions from pyproject.toml [lint] dependency)
-          pip install -e "${{ matrix.package }}[lint]"
-          black --check --line-length=79 ${{ matrix.package }}
-          isort --check-only --profile=black --line-length=79 ${{ matrix.package }}
+          if [ "${{ matrix.package }}" = "receipt_agent" ]; then
+            pip install black isort
+            BASE_REF="${{ github.base_ref || 'main' }}"
+            CHANGED_PY="$(git diff --name-only --diff-filter=ACMRT \
+              "origin/$BASE_REF"...HEAD \
+              | grep '\.py$' || true)"
+            if [ -n "$CHANGED_PY" ]; then
+              while IFS= read -r py_file; do
+                black --check --line-length=79 "$py_file"
+                isort --check-only --profile=black --line-length=79 \
+                  "$py_file"
+              done <<< "$CHANGED_PY"
+            fi
+          else
+            pip install -e "${{ matrix.package }}[lint]"
+            black --check --line-length=79 ${{ matrix.package }}
+            isort --check-only --profile=black --line-length=79 ${{ matrix.package }}
+          fi
 
           # Test
           # --reruns 1 --reruns-delay 2: retry once with a 2s pause to absorb
@@ -149,6 +191,60 @@ jobs:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
+
+  repository-tests:
+    name: Python (repository tests)
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          clean: true
+
+      - name: Setup Python
+        run: |
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          elif [ -f "/opt/homebrew/bin/python3.12" ]; then
+            echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install editable local stack
+        run: |
+          PYTHON=$(command -v python3.12 || command -v python3)
+          if [ -z "$PYTHON" ]; then
+            echo "::error::No python3.12 or python3 found on PATH"
+            exit 1
+          fi
+          "$PYTHON" -m venv .venv-repository-tests
+          source .venv-repository-tests/bin/activate
+          pip install --upgrade pip wheel
+          pip install -e receipt_dynamo
+          pip install --no-deps -e receipt_dynamo_stream
+          pip install --no-deps -e receipt_chroma
+          pip install --no-deps -e receipt_places
+          pip install --no-deps -e receipt_agent
+          pip install --no-deps -e receipt_upload
+          pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+            pillow-avif-plugin langsmith langgraph \
+            "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
+            pydantic pydantic-settings structlog requests tenacity \
+            segno python-barcode numpy
+          pip install pytest pytest-asyncio pytest-mock pytest-xdist \
+            pytest-timeout pytest-rerunfailures moto responses
+
+      - name: Test root and maintained script suites
+        run: |
+          source .venv-repository-tests/bin/activate
+          SCRIPT_TESTS=()
+          while IFS= read -r test_file; do
+            SCRIPT_TESTS+=("$test_file")
+          done < <(find scripts -maxdepth 1 -name 'test_*.py' \
+            ! -name 'test_noise_detection.py' \
+            ! -name 'test_realtime_embedding.py' \
+            ! -name 'test_spark_processor_local.py' -print)
+          python -m pytest tests "${SCRIPT_TESTS[@]}" \
+            -n auto --timeout=120 --tb=short --maxfail=5 \
+            --reruns 1 --reruns-delay 2
 
   typescript-tests:
     name: TypeScript
@@ -223,7 +319,12 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [lambda-syntax, python-tests, typescript-tests, browser-tests]
+    needs:
+      - lambda-syntax
+      - python-tests
+      - repository-tests
+      - typescript-tests
+      - browser-tests
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
