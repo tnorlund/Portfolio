@@ -1891,6 +1891,18 @@ def _content_texture_seed(receipt: dict) -> int:
     return zlib.crc32("\n".join(parts).encode("utf-8"))
 
 
+def _measured_layout_template(
+    merchant_profile: dict,
+    *,
+    compose_kind: str | None,
+) -> dict | None:
+    """Keep source-measured geometry out of canonical composed layouts."""
+    layout_template = merchant_profile.get("layout_template")
+    if not isinstance(layout_template, dict) or compose_kind:
+        return None
+    return copy.deepcopy(layout_template)
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -1933,9 +1945,8 @@ def _render_cached_hybrid(
     # photo) and route the words through a composer BEFORE any layout. This
     # is the production hook -- glyph_review, section_compare and normal
     # renders all pass through here, so the composed layout IS the render.
-    compose_kind = get_merchant_profile(receipt.get("merchant_name")).get(
-        "compose"
-    )
+    merchant_profile = get_merchant_profile(receipt.get("merchant_name"))
+    compose_kind = merchant_profile.get("compose")
     if compose_kind == "dollartree":
         synth_dir = os.path.join(REPO_ROOT, "synthesis_loop")
         if synth_dir not in sys.path:
@@ -2007,9 +2018,14 @@ def _render_cached_hybrid(
         max_font_px=max(28, int(height / 45)),
         grid_mode=True,
         # C#layout is selected alongside the rest of this merchant's verified
-        # truth profile.  The renderer consumes it section-by-section; absence
+        # truth profile. The renderer consumes it section-by-section; absence
         # remains a strict no-op for merchants without measured geometry.
-        layout_template=copy.deepcopy(merchant_profile.get("layout_template")),
+        # Canonical composers already own their output geometry and therefore
+        # do not reapply lanes measured from the source photos.
+        layout_template=_measured_layout_template(
+            merchant_profile,
+            compose_kind=compose_kind,
+        ),
         # Optional body-font override. None -> the grid-font candidate list
         # (Andale -> vendored B612 -> legacy). The grid recalibrates cell_w / row
         # pitch from whatever face loads, so the SAME layout renders in any font.
