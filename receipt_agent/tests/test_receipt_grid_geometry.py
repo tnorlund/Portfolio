@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
+from receipt_agent.agents.label_evaluator.rendering import receipt_grid
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
     GridWord,
@@ -56,8 +59,11 @@ def test_text_run_can_recover_observed_source_span() -> None:
     image = Image.new("RGB", (600, 120), (255, 255, 255))
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype(
-        "receipt_agent/receipt_agent/agents/label_evaluator/rendering/"
-        "fonts/B612Mono-Regular.ttf",
+        str(
+            Path(receipt_grid.__file__).parent
+            / "fonts"
+            / "B612Mono-Regular.ttf"
+        ),
         18,
     )
     spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=18, grid_left=0.0)
