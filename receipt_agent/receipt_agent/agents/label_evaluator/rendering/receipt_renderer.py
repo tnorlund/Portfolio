@@ -47,10 +47,12 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     draw_text_run,
     draw_token_chars,
     drawn_cell_count,
+    effective_canonical_row_sections,
     effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
     is_price_token,
+    layout_columns_by_section,
     line_baseline,
     section_for_labels,
 )
@@ -123,6 +125,10 @@ class RenderConfig:
     # hard (non-anti-aliased) glyphs on a shared baseline. When False the legacy
     # per-token box-fitting path is used (see ``render_receipt``).
     grid_mode: bool = False
+    # Optional Merchant Truth C#layout template.  When present, grid rows are
+    # routed through canonical sections and role lanes; None leaves the legacy
+    # planner and rendered bytes unchanged.
+    layout_template: Mapping[str, Any] | None = None
     # Per-section typography (real thermal receipts switch Font A / Font B per
     # region). A ``section_scale`` entry is either a bare float that multiplies
     # the body font size (e.g. {"HEADER": 0.8}) or a mapping
@@ -661,6 +667,7 @@ def _render_grid(
                 section=section_for_labels(
                     word.get("labels"), in_header_zone=in_header_zone
                 ),
+                labels=tuple(word.get("labels") or ()),
             )
         )
     # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
@@ -719,6 +726,12 @@ def _render_grid(
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
     amount_lane = amount_lane_end(rows, spec)
+    canonical_sections = effective_canonical_row_sections(
+        rows, config.layout_template, config.height
+    )
+    measured_columns = layout_columns_by_section(
+        config.layout_template, canonical_sections, rows
+    )
 
     # Per-section typography: a row whose section has a scale != 1.0 or a font
     # override is drawn with its own (cached) spec/font. BODY/TOTALS stay at the
@@ -875,7 +888,10 @@ def _render_grid(
     measured_separator_used: set[int] = set()
     row_cache: dict[tuple, tuple] = {}
     prev_text = ""
-    for line, baseline, sect in zip(rows, baselines, eff_sections):
+    for line, baseline, sect, canonical_section in zip(
+        rows, baselines, eff_sections, canonical_sections
+    ):
+        row_columns = measured_columns.get(canonical_section or "") or None
         row_text = " ".join(w.text for w in line).upper()
         # A display heading (e.g. SELF-CHECKOUT, THANK YOU, ITEMS SOLD:) renders
         # heavy + enlarged; the heavy face is NOT applied to the whole TOTALS zone
@@ -905,7 +921,7 @@ def _render_grid(
             and config.reverse_date_anchor in prev_text
         )
         prev_text = row_text
-        center_to = _center_target(line)
+        center_to = None if row_columns else _center_target(line)
         fpath = section_font.get(sect) if sect else None
         # A row's section condense applies whether or not the row is an
         # enlarged display heading -- the heading scale overrides HEIGHT
@@ -1003,7 +1019,7 @@ def _render_grid(
             sm_style and (sm_style["bold"] or sm_style["underline"])
         )
         if sc == 1.0 and sect_cond == 1.0 and not fpath and not sm_extra:
-            run = _run_layout(line, center_to)
+            run = None if row_columns else _run_layout(line, center_to)
             if run is not None:
                 text, anchor, x, target_w = run
                 draw_text_run(
@@ -1033,6 +1049,8 @@ def _render_grid(
                 spec,
                 font,
                 amount_lane=amount_lane,
+                measured_columns=row_columns,
+                paper_width=config.width,
                 stroke=config.stroke,
                 condense=config.condense,
                 condense_glyphs=config.condense_glyphs,
@@ -1094,7 +1112,7 @@ def _render_grid(
         ):
             bf_row = bmf_heavy
             sm_bold = False
-        run = _run_layout(line, center_to)
+        run = None if row_columns else _run_layout(line, center_to)
         if run is not None:
             text, anchor, x, target_w = run
             for dx in ((0, 1) if sm_bold else (0,)):
@@ -1126,6 +1144,8 @@ def _render_grid(
                     row_spec,
                     row_font,
                     amount_lane=lane,
+                    measured_columns=row_columns,
+                    paper_width=config.width,
                     stroke=config.stroke,
                     condense=eff_cond,
                     condense_glyphs=config.condense_glyphs,

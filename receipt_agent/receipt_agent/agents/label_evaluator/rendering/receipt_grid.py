@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from statistics import median
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -203,6 +203,10 @@ class GridWord:
     # labels. Lets the renderer print each section at its own size/font, the way
     # real thermal receipts switch between Font A / Font B per region.
     section: str | None = None
+    # Original word labels, retained for the measured-layout path.  The legacy
+    # planner ignores this field; truth layouts use it to distinguish canonical
+    # sections and roles such as QUANTITY without merchant-specific text rules.
+    labels: tuple[str, ...] = ()
 
     @property
     def center_y(self) -> float:
@@ -238,6 +242,200 @@ SECTION_LABELS: dict[str, frozenset[str]] = {
     ),
     "PAYMENT": frozenset({"PAYMENT_METHOD", "LOYALTY_ID"}),
 }
+
+
+# Canonical section seeds shared by the renderer and the truth layout schema.
+# This is deliberately kept local to the rendering package: receipt-agent can
+# render without the Glyph Studio tooling being installed.  SECTION_* labels
+# take priority; the core-label projection mirrors glyphstudio.sections.
+_CANONICAL_SECTIONS = frozenset(
+    {
+        "storefront",
+        "address",
+        "items",
+        "section_header",
+        "summary",
+        "total_line",
+        "payment",
+        "survey",
+        "footer",
+        "barcode",
+    }
+)
+_CORE_LABEL_SECTION = {
+    "MERCHANT_NAME": "storefront",
+    "STORE_HOURS": "storefront",
+    "ADDRESS_LINE": "address",
+    "PHONE_NUMBER": "address",
+    "PRODUCT_NAME": "items",
+    "QUANTITY": "items",
+    "UNIT_PRICE": "items",
+    "LINE_TOTAL": "items",
+    "SUBTOTAL": "summary",
+    "TAX": "summary",
+    "DISCOUNT": "summary",
+    "COUPON": "summary",
+    "TIP": "summary",
+    "REFUND": "summary",
+    "GRAND_TOTAL": "total_line",
+    "PAYMENT_METHOD": "payment",
+    "CHANGE": "payment",
+    "CASH_BACK": "payment",
+    "LOYALTY_ID": "payment",
+    "WEBSITE": "footer",
+}
+_PAYMENT_MARKERS = (
+    "AMOUNT",
+    "APPROVED",
+    "AUTH",
+    "BALANCE",
+    "CARD",
+    "CHANGE",
+    "CREDIT",
+    "DEBIT",
+    "EFT",
+    "ENTRY",
+    "ISSUER",
+    "PURCHASE",
+    "RESP:",
+    "SEQ#",
+    "SWIPED",
+    "TRAN ID",
+    "VERIFIED BY PIN",
+)
+
+
+def _clean_label(label: Any) -> str:
+    value = str(label or "").upper()
+    return value[2:] if value[:2] in ("B-", "I-") else value
+
+
+def canonical_section_for_labels(
+    labels: Sequence[str] | None,
+) -> str | None:
+    """Canonical truth-layout section seeded by a word's labels."""
+    for raw in labels or ():
+        label = _clean_label(raw)
+        if label.startswith("SECTION_"):
+            section = label[len("SECTION_") :].lower()
+            if section in _CANONICAL_SECTIONS:
+                return section
+    for raw in labels or ():
+        section = _CORE_LABEL_SECTION.get(_clean_label(raw))
+        if section:
+            return section
+    return None
+
+
+def _canonical_row_seed(line: Sequence[GridWord]) -> str | None:
+    """Strongest canonical-section evidence carried by one visual row."""
+    counts: dict[str, int] = {}
+    for word in line:
+        section = canonical_section_for_labels(word.labels)
+        if section:
+            counts[section] = counts.get(section, 0) + 1
+    if counts:
+        return max(counts, key=counts.get)
+
+    text = " ".join(word.text for word in line).upper()
+    compact = re.sub(r"\s+", " ", text).strip()
+    if "SUBTOTAL" in compact or re.search(r"\bTAX\b", compact):
+        return "summary"
+    if "TOTAL NUMBER OF ITEMS" in compact or compact.startswith("TOTAL TAX"):
+        return "summary"
+    if (
+        compact.startswith("TOTAL ")
+        or compact == "TOTAL"
+        or compact.startswith("**** TOTAL")
+    ):
+        return "total_line"
+    if any(marker in compact for marker in _PAYMENT_MARKERS):
+        return "payment"
+    if re.search(r"X{4,}\d{2,4}", compact):
+        return "payment"
+    return None
+
+
+def effective_canonical_row_sections(
+    rows: Sequence[Sequence[GridWord]],
+    layout_template: Mapping[str, Any] | None,
+    paper_height: float,
+) -> list[str | None]:
+    """Resolve each row onto the truth layout's canonical section vocabulary.
+
+    Strong word labels and generic transaction markers win.  Sparse/unlabelled
+    rows fall back to the nearest measured section position, so the renderer can
+    consume a layout template without hard-coding a merchant or receipt shape.
+    """
+    if not isinstance(layout_template, Mapping):
+        return [None] * len(rows)
+
+    sections: list[tuple[str, float]] = []
+    for raw in layout_template.get("sections") or ():
+        if not isinstance(raw, Mapping):
+            continue
+        name = str(raw.get("name") or "").lower()
+        try:
+            pos = float(raw.get("pos_frac_med"))
+        except (TypeError, ValueError):
+            continue
+        if name in _CANONICAL_SECTIONS and 0.0 <= pos <= 1.0:
+            sections.append((name, pos))
+    sections.sort(key=lambda item: item[1])
+
+    result: list[str | None] = []
+    height = max(1.0, float(paper_height))
+    for row in rows:
+        seed = _canonical_row_seed(row)
+        if seed is not None:
+            result.append(seed)
+            continue
+        if not sections or not row:
+            result.append(None)
+            continue
+        y_frac = median(word.center_y for word in row) / height
+        result.append(min(sections, key=lambda item: abs(item[1] - y_frac))[0])
+    return result
+
+
+def layout_columns_by_section(
+    layout_template: Mapping[str, Any] | None,
+    row_sections: Sequence[str | None],
+    rows: Sequence[Sequence[GridWord]],
+) -> dict[str, list[dict]]:
+    """Variant-aware measured columns for the canonical sections in ``rows``."""
+    if not isinstance(layout_template, Mapping):
+        return {}
+
+    sequence: list[str] = []
+    for section in row_sections:
+        if section and (not sequence or sequence[-1] != section):
+            sequence.append(section)
+    words = [word.text for row in rows for word in row]
+    try:
+        from receipt_dynamo.merchant_truth_variants import (
+            normalize_word_set,
+            variant_columns,
+        )
+
+        word_set = normalize_word_set(words)
+        return {
+            section: variant_columns(
+                layout_template,
+                section,
+                section_sequence=sequence,
+                word_set=word_set,
+            )
+            for section in set(sequence)
+        }
+    except ImportError:
+        # receipt-agent normally depends on receipt-dynamo.  Keep direct,
+        # stripped-down renderer use graceful by consuming DEFAULT columns.
+        columns = layout_template.get("columns") or {}
+        return {
+            section: [dict(col) for col in columns.get(section) or ()]
+            for section in set(sequence)
+        }
 
 
 # HEADER labels that are POSITIONAL: a date/time is only header typography
@@ -457,6 +655,7 @@ def draw_token_chars(
     condense: float = 1.0,
     bitmap_font=None,
     cap_px: int | None = None,
+    left_edge_col: float | None = None,
     right_edge_col: float | None = None,
     bitmap_thin: float = 0.0,
     condense_glyphs: bool = False,
@@ -547,6 +746,18 @@ def draw_token_chars(
             img.paste(Image.new("RGB", glyph.size, ink), (x, y), glyph)
 
         col = start_col
+        left_shift = 0.0
+        if left_edge_col is not None:
+            first = next((c for c in text if c != " "), "")
+            if first:
+                first_res = bitmap_font.glyph(first, cap_px or spec.font_px)
+                if first_res is not None:
+                    first_width = first_res[0].width
+                    if condense_glyphs and condense < 0.999:
+                        first_width = max(
+                            1, int(round(first_width * condense))
+                        )
+                    left_shift = -(spec.cell_w - first_width) / 2.0
         right_shift = 0.0
         if right_edge_col is not None:
             last = next((c for c in reversed(text) if c != " "), "")
@@ -576,6 +787,7 @@ def draw_token_chars(
                         spec.grid_left
                         + col * spec.cell_w
                         + (spec.cell_w - gi.width) / 2.0
+                        + left_shift
                         + right_shift
                         + x_shift_px
                     )
@@ -586,7 +798,11 @@ def draw_token_chars(
                 # A data-built atlas may lack a rare glyph (e.g. 'j'/'z'); fall
                 # back to the TTF face so it renders instead of dropping out.
                 # (Chart atlases like Costco's are complete, so this never fires.)
-                _draw_ttf_fallback(char, col, right_shift + x_shift_px)
+                _draw_ttf_fallback(
+                    char,
+                    col,
+                    left_shift + right_shift + x_shift_px,
+                )
             col += 1
         return
     if condense >= 0.999:
@@ -828,6 +1044,9 @@ class PlacedToken:
     # The text actually drawn -- equals the word text unless a long description was
     # truncated (with an ellipsis) to clear the price column. Empty -> use word.text.
     text: str = ""
+    # Measured truth-lane edge carried into glyph drawing so bitmap side
+    # bearings do not turn a straight bbox lane into visible-ink wobble.
+    measured_anchor: str | None = None
 
     @property
     def draw_text(self) -> str:
@@ -885,10 +1104,158 @@ def amount_lane_end(
     return int(round(median(cluster)))
 
 
+def _measured_lane_starts(
+    line: Sequence[GridWord],
+    spec: GridSpec,
+    columns: Sequence[Mapping[str, Any]],
+    paper_width: float,
+) -> dict[int, float]:
+    """Token start columns implied by measured section/role anchors.
+
+    Amount and quantity roles anchor the token's right edge.  Label/description
+    roles anchor only source segment starts, preserving ordinary word flow
+    inside each segment.  Multiple measured lanes are selected by nearest
+    source edge, which naturally handles inline and far-right payment amounts.
+    """
+
+    def usable(role: str, anchor: str) -> list[float]:
+        xs: list[float] = []
+        for column in columns:
+            if str(column.get("role") or "").lower() != role:
+                continue
+            if str(column.get("anchor") or "").lower() != anchor:
+                continue
+            try:
+                x = float(column.get("x"))
+            except (TypeError, ValueError):
+                continue
+            if 0.0 <= x <= 1.0:
+                target = x * float(paper_width)
+                if anchor == "left":
+                    target = max(spec.grid_left, target)
+                xs.append(target)
+        return sorted(xs)
+
+    amount_x = usable("amount", "right")
+    qty_x = usable("qty", "right")
+    flag_x = usable("flag", "left")
+    label_x = usable("label", "left")
+    desc_x = usable("desc", "left")
+    starts: dict[int, float] = {}
+
+    def assign_unique(
+        candidates: Sequence[int],
+        targets: Sequence[float],
+        *,
+        edge: str,
+    ) -> list[tuple[int, float]]:
+        """Greedy minimum-distance matching with one token per measured lane."""
+        pairs = sorted(
+            (
+                (
+                    abs(
+                        (
+                            line[index].right
+                            if edge == "right"
+                            else line[index].left
+                        )
+                        - target
+                    ),
+                    index,
+                    target,
+                )
+                for index in candidates
+                for target in targets
+            ),
+            key=lambda pair: (pair[0], pair[1], pair[2]),
+        )
+        used_indexes: set[int] = set()
+        used_targets: set[float] = set()
+        assigned: list[tuple[int, float]] = []
+        for _, index, target in pairs:
+            if index in used_indexes or target in used_targets:
+                continue
+            used_indexes.add(index)
+            used_targets.add(target)
+            assigned.append((index, target))
+        return assigned
+
+    for index, word in enumerate(line):
+        if is_price_token(word.text) and amount_x:
+            target = min(amount_x, key=lambda x: abs(x - word.right))
+            starts[index] = (
+                target - spec.grid_left
+            ) / spec.cell_w - drawn_cell_count(word.text)
+
+    qty_candidates = [
+        index
+        for index, word in enumerate(line)
+        if index not in starts
+        and (
+            "QUANTITY" in {_clean_label(label) for label in word.labels}
+            or bool(re.fullmatch(r"\d{1,3}", word.text.strip()))
+        )
+    ]
+    for index, target in assign_unique(qty_candidates, qty_x, edge="right"):
+        word = line[index]
+        starts[index] = (
+            target - spec.grid_left
+        ) / spec.cell_w - drawn_cell_count(word.text)
+
+    flag_candidates = [
+        index
+        for index, word in enumerate(line)
+        if index not in starts
+        and index > 0
+        and is_price_token(line[index - 1].text)
+        and len(word.text.strip()) == 1
+        and word.text.strip().isalpha()
+    ]
+    for index, target in assign_unique(flag_candidates, flag_x, edge="left"):
+        starts[index] = (target - spec.grid_left) / spec.cell_w
+
+    if label_x and line:
+        label_candidates = [
+            index
+            for index, word in enumerate(line)
+            if index not in starts
+            and sum(ch.isalpha() for ch in word.text) >= 2
+            and any(
+                abs(word.left - target) <= 2.25 * spec.cell_w
+                for target in label_x
+            )
+        ]
+        for index, target in assign_unique(
+            label_candidates, label_x, edge="left"
+        ):
+            starts[index] = (target - spec.grid_left) / spec.cell_w
+
+    if desc_x and line:
+        segment_starts = [0]
+        for index, (left_word, right_word) in enumerate(
+            zip(line, line[1:]), start=1
+        ):
+            gap_cells = (right_word.left - left_word.right) / max(
+                spec.cell_w, 1.0
+            )
+            if gap_cells > _RIGHT_SEGMENT_GAP_CELLS:
+                segment_starts.append(index)
+        segment_starts = [
+            index for index in segment_starts if index not in starts
+        ]
+        for index, target in assign_unique(
+            segment_starts, desc_x, edge="left"
+        ):
+            starts[index] = (target - spec.grid_left) / spec.cell_w
+    return starts
+
+
 def plan_grid_line(
     line: Sequence[GridWord],
     spec: GridSpec,
     amount_lane: int | None = None,
+    measured_columns: Sequence[Mapping[str, Any]] | None = None,
+    paper_width: float | None = None,
 ) -> list[PlacedToken]:
     """Resolve every word of one visual row to a grid column (no drawing).
 
@@ -918,15 +1285,31 @@ def plan_grid_line(
     cell_of = [drawn_cell_count(w.text) for w in line]
     is_p = [is_price_token(w.text) for w in line]
     price_idxs = [i for i, p in enumerate(is_p) if p]
+    measured = (
+        _measured_lane_starts(
+            line,
+            spec,
+            measured_columns,
+            paper_width,
+        )
+        if measured_columns and paper_width
+        else {}
+    )
 
     # Right-anchored price slots: the rightmost price owns the amount lane; each
     # further-left price (a unit price on a weight/qty line) gets its own slot one
     # cell to the left, so two amounts never overprint into "23.9723.97". Only
     # prices already near the lane are stacked; far-left prices (coupon columns)
     # keep their own column.
-    anchored: dict[int, int] = {}
+    anchored: dict[int, float] = {}
     leftmost_price_start = None
-    if amount_lane is not None and price_idxs:
+    if measured:
+        anchored.update(
+            {index: start for index, start in measured.items() if is_p[index]}
+        )
+        if anchored:
+            leftmost_price_start = min(anchored.values())
+    elif amount_lane is not None and price_idxs:
         slot_right = amount_lane
         for i in reversed(price_idxs):
             abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
@@ -961,12 +1344,21 @@ def plan_grid_line(
         price = is_p[i]
         cells = cell_of[i]
         text = word.text
+        measured_tax_flag = (
+            i > 0
+            and i - 1 in measured
+            and is_p[i - 1]
+            and len(word.text.strip()) == 1
+            and word.text.strip().isalpha()
+        )
         amount_prefix = (
             not price
             and i + 1 in anchored
             and _is_amount_prefix_token(word.text)
         )
-        if i in anchored:
+        if i in measured:
+            start = measured[i]
+        elif i in anchored:
             start = anchored[i]
         elif amount_prefix:
             # Right-align the prefix ("USD$", "AMOUNT:") to its own source
@@ -977,6 +1369,12 @@ def plan_grid_line(
             absolute = token_start_col(word.text, word.left, word.right, spec)
             if cursor_col is None:
                 start = absolute
+            elif measured_tax_flag:
+                # A measured amount's one-letter tax flag occupies the amount
+                # cell's right bearing on real receipts.  The legacy full-cell
+                # de-glue gap pushes that flag two cells beyond the measured
+                # lane and makes the amount ink scan wobble.
+                start = cursor_col - 0.25
             elif price:
                 # A non-anchored price still must not glue to the prior token.
                 start = max(absolute, cursor_col + 1)
@@ -998,7 +1396,7 @@ def plan_grid_line(
                 and not amount_prefix
                 and (not price_idxs or i < price_idxs[0])
             ):
-                avail = leftmost_price_start - 1 - start
+                avail = int(leftmost_price_start - 1 - start)
                 if avail <= 0:
                     continue  # no room: drop this token rather than overprint
                 if cells > avail:
@@ -1010,6 +1408,31 @@ def plan_grid_line(
                 cells=cells,
                 is_price=price,
                 text=text,
+                measured_anchor=(
+                    (
+                        "right"
+                        if price
+                        or (
+                            re.fullmatch(r"\d{1,3}", word.text.strip())
+                            and any(
+                                str(column.get("role") or "").lower() == "qty"
+                                for column in measured_columns or ()
+                            )
+                        )
+                        else (
+                            "left_flag"
+                            if len(word.text.strip()) == 1
+                            and word.text.strip().isalpha()
+                            and any(
+                                str(column.get("role") or "").lower() == "flag"
+                                for column in measured_columns or ()
+                            )
+                            else "left"
+                        )
+                    )
+                    if i in measured
+                    else ("right_aux" if measured_tax_flag else None)
+                ),
             )
         )
         # Advance past EVERY token so the next word clears it by at least one cell.
@@ -1075,6 +1498,8 @@ def draw_grid_line(
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
     amount_lane: int | None = None,
+    measured_columns: Sequence[Mapping[str, Any]] | None = None,
+    paper_width: float | None = None,
     stroke: int = 0,
     condense: float = 1.0,
     bitmap_font=None,
@@ -1086,7 +1511,7 @@ def draw_grid_line(
     background: tuple[int, int, int] = (255, 255, 255),
     center_to: float | None = None,
     price_box_extend_cells: int = 4,
-    x_shift_px: int = 0,
+    x_shift_px: float = 0,
     box_sink: list | None = None,
 ) -> None:
     """Draw every word of one visual row at a single shared baseline.
@@ -1100,16 +1525,41 @@ def draw_grid_line(
     span is centered there -- for centered display lines (address, headings, footer)
     whose condensed rendered width is narrower than the source and would drift left.
     """
-    placed_row = plan_grid_line(line, spec, amount_lane=amount_lane)
-    if center_to is None and placed_row:
+    placed_row = plan_grid_line(
+        line,
+        spec,
+        amount_lane=amount_lane,
+        measured_columns=measured_columns,
+        paper_width=paper_width,
+    )
+    if center_to is None and placed_row and not measured_columns:
         _right_align_source_segments(placed_row, spec)
+
+    has_flag_lane = any(
+        str(column.get("role") or "").lower() == "flag"
+        for column in measured_columns or ()
+    )
+
+    def _measured_ink_shift_px(placed: PlacedToken) -> float:
+        """Translate measured OCR-box anchors onto their visible ink edges."""
+        if placed.measured_anchor in ("right", "right_aux"):
+            # Sections with a detached flag lane expose both bearings: amount
+            # ink ends one cell inside its right-anchored OCR box. Other
+            # measured sections retain the calibrated quarter-cell inset.
+            return (-1.0 if has_flag_lane else -0.25) * spec.cell_w
+        if placed.measured_anchor == "left_flag":
+            # The detached flag's ink starts one cell inside its left-anchored
+            # OCR box, symmetrically preserving the measured amount/flag gap.
+            return spec.cell_w
+        return 0.0
 
     def _record_boxes():
         if box_sink is None:
             return
         cap = float(cap_px or spec.font_px)
         for p in placed_row:
-            x0 = spec.grid_left + p.start_col * spec.cell_w
+            ink_shift = x_shift_px + _measured_ink_shift_px(p)
+            x0 = spec.grid_left + p.start_col * spec.cell_w + ink_shift
             x1 = x0 + p.cells * spec.cell_w
             desc = 0.22 * cap if _has_descender(p.draw_text) else 0.04 * cap
             box_sink.append(
@@ -1134,6 +1584,7 @@ def draw_grid_line(
     _record_boxes()
     for i, placed in enumerate(placed_row):
         ink = placed.word.ink
+        measured_ink_shift_px = _measured_ink_shift_px(placed)
         # price -> box extends LEFT into the amount lane; date -> tight box.
         rev_price = reverse_price and placed.is_price
         rev_date = reverse_date and i == 0 and _is_date_token(placed.draw_text)
@@ -1150,12 +1601,14 @@ def draw_grid_line(
                         round(
                             spec.grid_left
                             + (placed.start_col - 0.4) * spec.cell_w
+                            + measured_ink_shift_px
                         )
                     )
                     x1 = int(
                         round(
                             spec.grid_left
                             + (placed.end_col + 0.4) * spec.cell_w
+                            + measured_ink_shift_px
                         )
                     )
                 else:
@@ -1164,11 +1617,15 @@ def draw_grid_line(
                             spec.grid_left
                             + (placed.start_col - price_box_extend_cells)
                             * spec.cell_w
+                            + measured_ink_shift_px
                         )
                     )
                     x1 = int(
                         round(
-                            spec.grid_left + (placed.end_col + 1) * spec.cell_w
+                            spec.grid_left
+                            + (placed.end_col + (0 if measured_columns else 1))
+                            * spec.cell_w
+                            + measured_ink_shift_px
                         )
                     )
                 x0 = max(int(spec.grid_left), x0)
@@ -1188,10 +1645,15 @@ def draw_grid_line(
             condense=condense,
             bitmap_font=bitmap_font,
             cap_px=cap_px,
+            left_edge_col=(
+                placed.start_col
+                if placed.measured_anchor in ("left", "left_flag")
+                else None
+            ),
             right_edge_col=placed.end_col if placed.is_price else None,
             bitmap_thin=bitmap_thin,
             condense_glyphs=condense_glyphs,
-            x_shift_px=x_shift_px,
+            x_shift_px=x_shift_px + measured_ink_shift_px,
         )
 
 

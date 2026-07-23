@@ -1891,6 +1891,18 @@ def _measured_separator_inventory(
     return tuple(copy.deepcopy(separators))
 
 
+def _measured_layout_template(
+    merchant_profile: dict,
+    *,
+    compose_kind: str | None,
+) -> dict | None:
+    """Keep source-measured geometry out of canonical composed layouts."""
+    layout_template = merchant_profile.get("layout_template")
+    if not isinstance(layout_template, dict) or compose_kind:
+        return None
+    return copy.deepcopy(layout_template)
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -2010,6 +2022,15 @@ def _render_cached_hybrid(
         min_font_px=9,
         max_font_px=max(28, int(height / 45)),
         grid_mode=True,
+        # C#layout is selected alongside the rest of this merchant's verified
+        # truth profile. The renderer consumes it section-by-section; absence
+        # remains a strict no-op for merchants without measured geometry.
+        # Canonical composers already own their output geometry and therefore
+        # do not reapply lanes measured from the source photos.
+        layout_template=_measured_layout_template(
+            merchant_profile,
+            compose_kind=compose_kind,
+        ),
         # Optional body-font override. None -> the grid-font candidate list
         # (Andale -> vendored B612 -> legacy). The grid recalibrates cell_w / row
         # pitch from whatever face loads, so the SAME layout renders in any font.

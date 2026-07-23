@@ -158,6 +158,37 @@ class TestMeasuredSeparatorInventory:
         assert inventory[0] is not row
 
 
+class TestMeasuredLayoutTemplate:
+    def test_ocr_layout_receives_a_copy(self):
+        template = {"columns": {"items": [{"role": "amount", "x": 0.8}]}}
+        profile = {"layout_template": template}
+
+        selected = rsr._measured_layout_template(
+            profile,
+            compose_kind=None,
+        )
+
+        assert selected == template
+        assert selected is not template
+
+    def test_composer_owns_output_geometry(self):
+        profile = {
+            "compose": "dollartree",
+            "layout_template": {"columns": {"items": []}},
+        }
+
+        assert (
+            rsr._measured_layout_template(
+                profile,
+                compose_kind="dollartree",
+            )
+            is None
+        )
+
+    def test_missing_layout_remains_a_noop(self):
+        assert rsr._measured_layout_template({}, compose_kind=None) is None
+
+
 class TestWordmarkSeedFilter:
     """P1 review finding: an UNLABELED word on the brand line (e.g. its label
     was INVALID-filtered) must not be seeded into the wordmark cluster."""
