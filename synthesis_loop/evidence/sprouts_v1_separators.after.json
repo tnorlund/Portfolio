@@ -1,0 +1,72 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "18dc387fbfd985fbc236e413ca051959613fe6e66c263f2a9a23fe67551cb74b",
+  "controls": {
+    "arithmetic": "PASS",
+    "logo": "PASS",
+    "tokens": "PASS"
+  },
+  "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+  "metric": "separators",
+  "receipt_id": 1,
+  "result": {
+    "kind_mismatches": 0,
+    "matched": [
+      {
+        "dy": 0.0012,
+        "real": {
+          "height_px": 12,
+          "kind": "dash",
+          "y_frac": 0.6254
+        },
+        "synth": {
+          "height_px": 22,
+          "kind": "double",
+          "y_frac": 0.6266
+        }
+      },
+      {
+        "dy": 0.0006,
+        "real": {
+          "height_px": 13,
+          "kind": "double",
+          "y_frac": 0.7837
+        },
+        "synth": {
+          "height_px": 22,
+          "kind": "double",
+          "y_frac": 0.7831
+        }
+      },
+      {
+        "dy": 0.0024,
+        "real": {
+          "height_px": 3,
+          "kind": "dash",
+          "y_frac": 0.8987
+        },
+        "synth": {
+          "height_px": 3,
+          "kind": "dash",
+          "y_frac": 0.9011
+        }
+      }
+    ],
+    "missing_in_synth": [],
+    "phantom_in_synth": [],
+    "real_count": 3,
+    "synth_count": 3,
+    "verdict": "PASS"
+  },
+  "truth_version": 1,
+  "verification": {
+    "corpus_regression_gate": "PASS (0 findings)",
+    "focused_tests": "3 passed",
+    "render_regression_guard": {
+      "costco_golden": "byte-identical",
+      "costco_new": "byte-identical",
+      "sprouts": "CHANGED (expected)",
+      "vons_golden": "byte-identical"
+    }
+  }
+}
