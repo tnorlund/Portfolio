@@ -1,0 +1,24 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "a9de285daf995ce20245bdb397f1a0c25a25ec5ab27587f723b0df5e6c7504cc",
+  "image_id": "f008ea77-272b-4554-b8a6-e1676ec6a088",
+  "metric": "tokens",
+  "receipt_id": 2,
+  "result": {
+    "ink_checked": 106,
+    "ink_missing_tokens": [
+      "CA",
+      "SALES",
+      "PM",
+      "QTY",
+      "1",
+      "2"
+    ],
+    "ink_recall": 0.9434,
+    "missing_tokens": [],
+    "text_precision": 1.0,
+    "text_recall": 1.0,
+    "verdict": "FAIL"
+  },
+  "truth_version": 1
+}
