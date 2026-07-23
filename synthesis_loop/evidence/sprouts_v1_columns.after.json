@@ -1,0 +1,53 @@
+{
+  "bundle_hash": "18dc387fbfd985fbc236e413ca051959613fe6e66c263f2a9a23fe67551cb74b",
+  "controls": {
+    "arithmetic": "PASS",
+    "logo": "PASS",
+    "tokens": "PASS"
+  },
+  "eval_git_sha": "bd4cfa21f7670dfa3f31509b5cac0a208e76a1df",
+  "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+  "metric": "columns",
+  "receipt_id": 1,
+  "result": {
+    "failed_on": [],
+    "limits": {
+      "abs_drift_px": 27.26,
+      "outlier_frac": 0.15,
+      "shear_px_per_100px": 6.0,
+      "wobble_iqr_px": 2.5
+    },
+    "real": {
+      "lane_x_px": 695.0,
+      "median_dev_px": -4.81,
+      "n_rows": 5,
+      "outlier_frac": 0.0,
+      "tilt_px_per_100px": 0.0,
+      "wobble_iqr_px": 0.0
+    },
+    "source": "bootstrap",
+    "synth": {
+      "abs_drift_px": 3.0,
+      "lane_x_px": 697.02,
+      "median_dev_px": -1.81,
+      "n_rows": 5,
+      "outlier_frac": 0.0,
+      "shear_px_per_100px": 1.83,
+      "tilt_px_per_100px": -1.833,
+      "wobble_iqr_px": 1.31
+    },
+    "verdict": "PASS"
+  },
+  "truth_version": 1,
+  "verification": {
+    "corpus_regression_gate": "PASS (0 findings)",
+    "focused_tests": "6 passed",
+    "render_regression_guard": {
+      "costco_golden": "byte-identical",
+      "costco_new": "byte-identical",
+      "sprouts": "CHANGED (expected)",
+      "sprouts_sha256": "dc99fc499ffe7c47194f833149f80a670c413678d086a86914b7c1792da09891",
+      "vons_golden": "byte-identical"
+    }
+  }
+}
