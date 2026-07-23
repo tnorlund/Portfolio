@@ -1966,6 +1966,7 @@ def load_section_sequence(
     """
     try:
         from glyphstudio.sections import is_canonical_section
+
         from receipt_dynamo.data.dynamo_client import DynamoClient
 
         table = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
