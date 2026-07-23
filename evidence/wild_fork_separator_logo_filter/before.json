@@ -1,0 +1,81 @@
+{
+  "receipt": {
+    "image_id": "f008ea77-272b-4554-b8a6-e1676ec6a088",
+    "receipt_id": 2,
+    "slug": "wild_fork"
+  },
+  "stamp": {
+    "git_sha": "678e683a00d9fbe571de20cf1e50a4a4d3bc7a8f",
+    "merchant_truth": {
+      "bundle_hash": "a9de285daf995ce20245bdb397f1a0c25a25ec5ab27587f723b0df5e6c7504cc",
+      "mode": "online-active",
+      "version": 1
+    }
+  },
+  "metrics": {
+    "tokens": {
+      "ink_recall": 0.9717,
+      "text_precision": 1.0,
+      "text_recall": 1.0,
+      "verdict": "PASS"
+    },
+    "separators": {
+      "kind_mismatches": 0,
+      "matched": [
+        {
+          "dy": 0.0007,
+          "real": {
+            "height_px": 7,
+            "kind": "dash",
+            "y_frac": 0.0157
+          },
+          "synth": {
+            "height_px": 17,
+            "kind": "dash",
+            "y_frac": 0.015
+          }
+        }
+      ],
+      "missing_in_synth": [],
+      "phantom_in_synth": [
+        {
+          "height_px": 5,
+          "kind": "dash",
+          "y_frac": 0.0247
+        }
+      ],
+      "real_count": 1,
+      "synth_count": 2,
+      "verdict": "FAIL"
+    },
+    "graphics": {
+      "verdict": "PASS"
+    },
+    "logo": {
+      "verdict": "PASS"
+    }
+  },
+  "diagnosis": {
+    "real_real_unmasked": {
+      "real_count": 1,
+      "synth_count": 1,
+      "matched_y_frac": 0.0157,
+      "dy": 0.0,
+      "verdict": "PASS"
+    },
+    "real_detected_y_px": 42.0,
+    "synth_detected_y_px": [
+      40.1,
+      66.1
+    ],
+    "logo_real_bbox": {
+      "cy": 160.0,
+      "h": 321.0
+    },
+    "logo_synth_bbox": {
+      "cy": 160.0,
+      "h": 321.0
+    },
+    "note": "The real-vs-itself metric calls the logo stroke at y=0.0157 the receipt's sole separator. Every gated real-vs-synth candidate lies inside the measured storefront-logo bounding box. The real receipt's two item-header dash rules are lower on the page and are not the candidates being compared."
+  }
+}
