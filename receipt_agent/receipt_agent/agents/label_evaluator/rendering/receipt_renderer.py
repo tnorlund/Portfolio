@@ -52,8 +52,8 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     glyph_advance,
     group_words_into_grid_lines,
     is_price_token,
-    line_baseline,
     layout_columns_by_section,
+    line_baseline,
     section_for_labels,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
