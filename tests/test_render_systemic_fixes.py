@@ -207,3 +207,27 @@ class TestInbodyBarcodePayload:
             )
             == "12-34-56-78-90-12-34"
         )
+
+    def test_sprouts_keeps_scanner_quiet_zones_around_the_symbol(self):
+        options = receipt_graphics.graphics_profile_for_merchant(
+            "Sprouts Farmers Market"
+        )["inbody_barcode"]
+        tile = receipt_graphics.render_barcode_tile(
+            self.PAYLOAD,
+            "code128",
+            445,
+            84,
+            with_hri=False,
+        )
+
+        prepared = (
+            rsr._fit_inbody_barcode_tile(  # pylint: disable=protected-access
+                tile,
+                445,
+                84,
+                options,
+            ).convert("L")
+        )
+
+        assert prepared.crop((0, 0, 3, 84)).getextrema()[0] > 230
+        assert prepared.crop((442, 0, 445, 84)).getextrema()[0] > 230

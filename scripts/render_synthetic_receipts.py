@@ -2428,6 +2428,18 @@ def _fit_1d_barcode_tile_to_box(tile, w_px: int, h_px: int):
     return gray
 
 
+def _fit_inbody_barcode_tile(tile, w_px: int, h_px: int, options: dict):
+    """Size an in-body barcode while retaining configured scanner margins."""
+    if not options.get("preserve_quiet_zone"):
+        return _fit_1d_barcode_tile_to_box(tile, w_px, h_px)
+    from PIL import Image
+
+    size = (max(1, int(w_px)), max(1, int(h_px)))
+    if tile.size != size:
+        return tile.resize(size, Image.NEAREST)
+    return tile
+
+
 def _hri_digits(text: str) -> str | None:
     """The digit string if ``text`` is a long human-readable barcode caption."""
     digits = re.sub(r"[^0-9]", "", str(text or ""))
@@ -2725,7 +2737,7 @@ def _overlay_inbody_barcodes(
         tile = receipt_graphics.render_barcode_tile(
             payload, ib["symbology"], bar_w, bar_h, with_hri=False
         )
-        tile = _fit_1d_barcode_tile_to_box(tile, bar_w, bar_h)
+        tile = _fit_inbody_barcode_tile(tile, bar_w, bar_h, ib)
         y_top = int(top - 6 - bar_h)
         _paste_graphic_tile(image, tile, int(cx - bar_w / 2), y_top)
         stamped_bands.append((float(y_top), float(top - 6)))

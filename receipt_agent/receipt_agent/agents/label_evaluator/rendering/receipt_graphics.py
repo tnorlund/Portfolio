@@ -181,5 +181,8 @@ def graphics_profile_for_merchant(merchant: str | None) -> dict:
         # The long printed HRI is the real Code128 data, not merely a visual
         # density hint. Preserve it so the synthetic symbol decodes to the
         # transaction payload printed directly below it.
-        profile["inbody_barcode"] = {"payload_from_hri": True}
+        profile["inbody_barcode"] = {
+            "payload_from_hri": True,
+            "preserve_quiet_zone": True,
+        }
     return profile
