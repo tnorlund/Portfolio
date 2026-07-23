@@ -71,6 +71,40 @@ def _normalize_barcode_data(data: str, kind: str) -> str:
     return str(data) if data else (digits or "0")
 
 
+def _barcode_symbol(data: str, kind: str):
+    """Build a barcode symbol without dropping a leading Code128 ``99`` pair.
+
+    ``python-barcode`` represents both Code128 data and charset-switch opcodes
+    as integers. Its first-code optimizer therefore mistakes a leading numeric
+    data pair of ``99`` for a switch-to-Code-C instruction and removes it. A
+    Sprouts transaction payload begins with that pair, so the generated symbol
+    encoded only the remaining 18 digits. Preserve the pair when the encoder
+    already started in Code C; all other symbols keep the dependency's normal
+    optimization path.
+    """
+    import barcode
+    from barcode.codex import Code128
+    from barcode.writer import ImageWriter
+
+    if kind == "code128":
+
+        class ReceiptCode128(Code128):
+            """Code128 with the leading-99 optimizer ambiguity removed."""
+
+            def _try_to_optimize(self, encoded: list[int]) -> list[int]:
+                if (
+                    self._charset == "C"
+                    and self.code.startswith("99")
+                    and encoded[:2] == [105, 99]
+                ):
+                    return encoded
+                return super()._try_to_optimize(encoded)
+
+        return ReceiptCode128(data, writer=ImageWriter())
+    cls = barcode.get_barcode_class(kind)
+    return cls(data, writer=ImageWriter())
+
+
 def render_barcode_tile(
     data: str,
     kind: str,
@@ -85,15 +119,11 @@ def render_barcode_tile(
     ``False`` because most receipt footer barcodes are printed *without* a digit
     caption, and the spurious caption was one of the realism tells.
     """
-    import barcode
-    from barcode.writer import ImageWriter
-
     kind = kind if kind in _SUPPORTED_KINDS else "code128"
     w_px = max(40, int(w_px))
     h_px = max(20, int(h_px))
     payload = _normalize_barcode_data(data, kind)
 
-    writer = ImageWriter()
     # ``module_height`` is in mm; pick a value that gives the writer a tall-ish
     # raster which we then resample to the requested pixel box. The actual
     # aspect is governed by the resize below, so this only needs to be sane.
@@ -110,8 +140,7 @@ def render_barcode_tile(
         options["font_size"] = 8
         options["text_distance"] = 3.0
 
-    cls = barcode.get_barcode_class(kind)
-    rendered = cls(payload, writer=writer).render(options)
+    rendered = _barcode_symbol(payload, kind).render(options)
     tile = rendered.convert("L")
     if tile.size != (w_px, h_px):
         # Bars are vertical: resample so widths stay as even as possible. NEAREST
@@ -141,10 +170,16 @@ def graphics_profile_for_merchant(merchant: str | None) -> dict:
     kind = "code128"
     if any(token in name for token in _UPCA_MERCHANTS):
         kind = "upca"
-    return {
+    profile = {
         "barcode_kind": kind,
         # Receipt footers carry the transaction barcode without a printed digit
         # caption; the QR (when present) is the scannable anchor.
         "barcode_with_hri": False,
         "qr": True,
     }
+    if "sprouts" in name:
+        # The long printed HRI is the real Code128 data, not merely a visual
+        # density hint. Preserve it so the synthetic symbol decodes to the
+        # transaction payload printed directly below it.
+        profile["inbody_barcode"] = {"payload_from_hri": True}
+    return profile

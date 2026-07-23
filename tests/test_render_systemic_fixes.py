@@ -12,6 +12,9 @@ import pytest
 
 pytest.importorskip("PIL")
 
+from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
+    receipt_graphics,
+)
 from scripts import render_synthetic_receipts as rsr  # noqa: E402
 
 
@@ -165,3 +168,42 @@ class TestWordmarkSeedFilter:
         }
         cluster, _ = rsr._logo_wordmark_words(receipt)
         assert {w["text"] for w in cluster} == {"SPROUTS", "FARMERS"}
+
+
+class TestInbodyBarcodePayload:
+    """HRI-derived Code128 symbols must remain decodable and truthful."""
+
+    PAYLOAD = "99022003402972471754"
+
+    def test_code128_encoder_keeps_a_leading_99_data_pair(self):
+        symbol = receipt_graphics._barcode_symbol(  # pylint: disable=protected-access
+            self.PAYLOAD,
+            "code128",
+        )
+
+        # Code128 Start C (105) followed by the first data pair (99). The
+        # dependency's optimizer previously mistook that data pair for a
+        # charset-switch opcode and deleted it.
+        assert symbol.encoded[:2] == [105, 99]
+
+    def test_sprouts_preserves_the_hri_as_the_encoded_payload(self):
+        options = receipt_graphics.graphics_profile_for_merchant(
+            "Sprouts Farmers Market"
+        )["inbody_barcode"]
+
+        assert (
+            rsr._inbody_barcode_payload(  # pylint: disable=protected-access
+                self.PAYLOAD,
+                options,
+            )
+            == self.PAYLOAD
+        )
+
+    def test_other_inbody_barcodes_keep_the_density_shaping_default(self):
+        assert (
+            rsr._inbody_barcode_payload(  # pylint: disable=protected-access
+                "12345678901234",
+                {"symbology": "code128"},
+            )
+            == "12-34-56-78-90-12-34"
+        )
