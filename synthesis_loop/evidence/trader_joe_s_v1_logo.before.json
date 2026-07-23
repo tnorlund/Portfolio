@@ -1,0 +1,33 @@
+{
+  "receipt": "4c262079-4fec-4724-a8e1-2886f38ea454#1",
+  "git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "truth": {
+    "bundle_hash": "557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418",
+    "expected_bundle_hash": "557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418",
+    "expected_version": 1,
+    "mode": "online-active",
+    "slug": "trader_joe_s",
+    "version": 1
+  },
+  "metric": {
+    "area_ratio": 0.313,
+    "center_offset_frac": 0.2158,
+    "real": {
+      "area": 13912.0,
+      "cx": 30.5,
+      "cy": 118.5,
+      "h": 238.0,
+      "w": 62.0
+    },
+    "size_ratio": 0.265,
+    "synth": {
+      "area": 4360.0,
+      "cx": 194.5,
+      "cy": 54.0,
+      "h": 63.0,
+      "w": 116.0
+    },
+    "verdict": "FAIL",
+    "width_ratio": 1.871
+  }
+}
