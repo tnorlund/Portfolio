@@ -45,14 +45,13 @@ def mock_dynamo_client() -> MagicMock:
         "value": "Test Merchant",
     }
 
-    client.get_receipt_details.return_value = (
-        MagicMock(),  # image
-        mock_receipt,  # receipt
-        [mock_word],  # words
-        [mock_line],  # lines
-        None,  # ocr_results
-        [],  # labels
-    )
+    mock_details = MagicMock()
+    mock_details.receipt = mock_receipt
+    mock_details.words = [mock_word]
+    mock_details.lines = [mock_line]
+    mock_details.letters = []
+    mock_details.labels = []
+    client.get_receipt_details.return_value = mock_details
 
     # Mock get_receipt_places_by_merchant
     client.get_receipt_places_by_merchant.return_value = ([mock_place], None)
