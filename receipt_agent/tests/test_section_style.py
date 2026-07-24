@@ -167,6 +167,8 @@ def test_separator_anchors_reject_summary_and_item_count_lookalikes():
     )
     from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
         RenderConfig,
+    )
+    from receipt_agent.agents.label_evaluator.rendering.separators import (
         _separator_anchor_rows,
     )
 
@@ -202,7 +204,7 @@ def test_separator_anchors_reject_summary_and_item_count_lookalikes():
 
 
 def test_separator_layout_uses_existing_gap_and_only_adds_missing_clearance():
-    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+    from receipt_agent.agents.label_evaluator.rendering.separators import (
         _separator_layout,
     )
 
@@ -225,3 +227,37 @@ def test_separator_layout_uses_existing_gap_and_only_adds_missing_clearance():
     # Required clearance is 50.4px, so add 20.4px—not a full 40px row.
     assert cramped[1] == pytest.approx(150.4)
     assert cramped[2] == pytest.approx(200.4)
+
+
+def test_render_grid_iterates_separator_sources(monkeypatch):
+    from receipt_agent.agents.label_evaluator.rendering import receipt_renderer
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        RenderConfig,
+        render_receipt,
+    )
+
+    calls = []
+
+    def source(rows, row_texts, config):
+        calls.append((rows, row_texts, config))
+        return set()
+
+    monkeypatch.setattr(receipt_renderer, "SEPARATOR_SOURCES", (source,))
+    render_receipt(
+        {
+            "words": [
+                {
+                    "text": "BODY",
+                    "line_id": 1,
+                    "word_id": 1,
+                    "bbox": [100, 800, 300, 760],
+                    "labels": [],
+                }
+            ]
+        },
+        config=RenderConfig(width=240, height=360, grid_mode=True),
+        coord_max=1000,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1] == ["BODY"]

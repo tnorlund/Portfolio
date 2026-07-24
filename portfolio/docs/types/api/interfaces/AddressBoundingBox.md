@@ -6,7 +6,7 @@
 
 # Interface: AddressBoundingBox
 
-Defined in: [types/api.ts:119](https://github.com/tnorlund/Portfolio/blob/66fee7736650ed5b2ff75cccabf57821b49b5d18/portfolio/types/api.ts#L119)
+Defined in: [types/api.ts:119](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L119)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:119](https://github.com/tnorlund/Portfolio/blob/66fee7
 
 > **bl**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:122](https://github.com/tnorlund/Portfolio/blob/66fee7736650ed5b2ff75cccabf57821b49b5d18/portfolio/types/api.ts#L122)
+Defined in: [types/api.ts:122](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L122)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:122](https://github.com/tnorlund/Portfolio/blob/66fee7
 
 > **br**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:123](https://github.com/tnorlund/Portfolio/blob/66fee7736650ed5b2ff75cccabf57821b49b5d18/portfolio/types/api.ts#L123)
+Defined in: [types/api.ts:123](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L123)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:123](https://github.com/tnorlund/Portfolio/blob/66fee7
 
 > **tl**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:120](https://github.com/tnorlund/Portfolio/blob/66fee7736650ed5b2ff75cccabf57821b49b5d18/portfolio/types/api.ts#L120)
+Defined in: [types/api.ts:120](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L120)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:120](https://github.com/tnorlund/Portfolio/blob/66fee7
 
 > **tr**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:121](https://github.com/tnorlund/Portfolio/blob/66fee7736650ed5b2ff75cccabf57821b49b5d18/portfolio/types/api.ts#L121)
+Defined in: [types/api.ts:121](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L121)

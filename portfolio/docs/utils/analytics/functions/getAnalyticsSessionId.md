@@ -8,7 +8,7 @@
 
 > **getAnalyticsSessionId**(): `string`
 
-Defined in: [utils/analytics.ts:129](https://github.com/tnorlund/Portfolio/blob/66fee7736650ed5b2ff75cccabf57821b49b5d18/portfolio/utils/analytics.ts#L129)
+Defined in: [utils/analytics.ts:129](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/utils/analytics.ts#L129)
 
 ## Returns
 
