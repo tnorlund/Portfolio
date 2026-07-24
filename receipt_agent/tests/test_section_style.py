@@ -1,5 +1,7 @@
 """section_scale schema: legacy float vs {height_scale, condense} mapping."""
 
+import pytest
+
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     section_style,
 )
@@ -85,3 +87,119 @@ def test_non_positional_label_beats_date_time_everywhere():
         section_for_labels(["DATE", "PAYMENT_METHOD"], in_header_zone=False)
         == "PAYMENT"
     )
+
+
+def test_section_height_scale_affects_baseline_pitch(monkeypatch):
+    from receipt_agent.agents.label_evaluator.rendering import (
+        receipt_renderer as renderer,
+    )
+
+    captured = {}
+    original = renderer.assign_row_baselines
+
+    def capture(rows, ascent, min_pitch):
+        captured["pitch"] = list(min_pitch)
+        captured["sections"] = renderer.effective_row_sections(rows)
+        return original(rows, ascent, min_pitch)
+
+    monkeypatch.setattr(renderer, "assign_row_baselines", capture)
+    words = [
+        {
+            "text": "ITEM",
+            "bbox": [50, 790, 200, 810],
+            "labels": ["PRODUCT_NAME"],
+        },
+        {
+            "text": "1.00",
+            "bbox": [750, 790, 900, 810],
+            "labels": ["LINE_TOTAL"],
+        },
+        {"text": "RETURN", "bbox": [50, 590, 250, 610], "labels": []},
+        {"text": "POLICY", "bbox": [50, 560, 250, 580], "labels": []},
+        {"text": "DETAILS", "bbox": [50, 530, 250, 550], "labels": []},
+    ]
+    renderer.render_receipt(
+        {"words": words},
+        config=renderer.RenderConfig(
+            width=400,
+            height=600,
+            grid_mode=True,
+            min_font_px=20,
+            max_font_px=20,
+            section_scale={"FOOTER": 0.5},
+        ),
+        coord_max=1000,
+    )
+
+    assert captured["sections"] == ["BODY", "FOOTER", "FOOTER", "FOOTER"]
+    # The transition into FOOTER still clears the preceding body row. Once
+    # both neighboring rows are footer-sized, the geometric floor halves.
+    assert captured["pitch"][1] == captured["pitch"][0]
+    assert captured["pitch"][2] == captured["pitch"][0] * 0.5
+    assert captured["pitch"][3] == captured["pitch"][0] * 0.5
+
+
+def test_separator_anchors_reject_summary_and_item_count_lookalikes():
+    from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
+        GridWord,
+    )
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        RenderConfig,
+        _separator_anchor_rows,
+    )
+
+    def row(text, top):
+        words = []
+        left = 10.0
+        for token in text.split():
+            right = left + max(10.0, len(token) * 8.0)
+            words.append(
+                GridWord(
+                    left=left,
+                    top=top,
+                    right=right,
+                    bottom=top + 20.0,
+                    text=token,
+                    ink=(0, 0, 0),
+                )
+            )
+            left = right + 8.0
+        return words
+
+    texts = [
+        "**** TOTAL 957.97",
+        "TOTAL TAX 78.00",
+        "TOTAL NU BE EMS SOLD - 4",
+    ]
+    rows = [row(text, index * 40.0) for index, text in enumerate(texts)]
+    assert _separator_anchor_rows(
+        rows,
+        texts,
+        RenderConfig(dashed_separators=True),
+    ) == {0}
+
+
+def test_separator_layout_uses_existing_gap_and_only_adds_missing_clearance():
+    from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
+        _separator_layout,
+    )
+
+    roomy, dash_ys = _separator_layout(
+        [100.0, 180.0, 260.0],
+        {0, 1},
+        pitch=40.0,
+        cap_h=36.0,
+    )
+    assert roomy == [100.0, 180.0, 260.0]
+    assert 100.0 < dash_ys[0] < 180.0
+    assert 180.0 < dash_ys[1] < 260.0
+
+    cramped, _ = _separator_layout(
+        [100.0, 130.0, 180.0],
+        {0},
+        pitch=40.0,
+        cap_h=36.0,
+    )
+    # Required clearance is 50.4px, so add 20.4px—not a full 40px row.
+    assert cramped[1] == pytest.approx(150.4)
+    assert cramped[2] == pytest.approx(200.4)

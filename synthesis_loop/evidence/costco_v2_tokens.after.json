@@ -1,0 +1,42 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "6b709eb08fa7d09387dba01ebb212810f397b088c8636b7a0442571f8bfd53d7",
+  "controls": {
+    "graphics": "PASS",
+    "logo": "PASS",
+    "style": "PASS_WITH_GAPS"
+  },
+  "image_id": "0324604e-e1f7-4021-b887-7ef7e012c563",
+  "legacy_v1_scoreboard_receipt": {
+    "after_ink_recall": 1.0,
+    "before_ink_recall": 0.7232,
+    "verdict": "PASS"
+  },
+  "metric": "tokens",
+  "receipt_id": 1,
+  "result": {
+    "ink_checked": 161,
+    "ink_missing_tokens": [
+      "A",
+      "PIN"
+    ],
+    "ink_recall": 0.9876,
+    "missing_tokens": [
+      "0272472026",
+      "2TB"
+    ],
+    "text_recall": 0.9876,
+    "verdict": "PASS"
+  },
+  "truth_version": 2,
+  "verification": {
+    "corpus_regression_gate": "PASS (0 findings)",
+    "focused_tests": "64 passed",
+    "render_regression_guard": {
+      "costco_golden": "CHANGED (expected)",
+      "costco_new": "CHANGED (expected)",
+      "sprouts": "byte-identical",
+      "vons_golden": "byte-identical"
+    }
+  }
+}
