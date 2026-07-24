@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import math
 import os
-import re
 from dataclasses import dataclass, replace
 from statistics import median
 from typing import Any, Mapping, Sequence
@@ -32,10 +31,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
-)
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    US,
-    date_core,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
@@ -57,6 +52,11 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
     measured_row_style,
     requires_bold_reinforcement,
     row_style,
+)
+from receipt_agent.agents.label_evaluator.rendering.separators import (
+    SEPARATOR_SOURCES,
+    _is_final_total,
+    _separator_layout,
 )
 
 # Grid-path body face, most receipt-like first. Real thermal receipts use a
@@ -361,128 +361,6 @@ def render_receipt(
         )
 
     return image
-
-
-def _is_final_total(
-    row_text: str,
-    include: tuple[str, ...] = ("TOTAL",),
-    exclude: tuple[str, ...] = ("SUBTOTAL", "NUMBER", "SOLD", "TAX"),
-) -> bool:
-    """True for the grand-TOTAL row (Costco reverse-videos its amount), but not
-    SUBTOTAL nor the "TOTAL NUMBER OF ITEMS SOLD" line. The include/exclude token
-    sets come from the merchant profile (defaults match Costco's wording)."""
-    t = row_text.upper()
-    if not all(tok in t for tok in include):
-        return False
-    return not any(tok in t for tok in exclude)
-
-
-_DATE_LED = re.compile(f"^{date_core(US)}$")
-
-
-def _separator_anchor_rows(
-    rows: Sequence[Sequence[GridWord]],
-    row_texts: Sequence[str],
-    config: RenderConfig,
-) -> set[int]:
-    """Rows after which a profile-requested dashed separator is printed.
-
-    A grand-total rule needs both the configured total wording and a currency
-    amount. The amount requirement prevents item-count rows such as
-    ``TOTAL ... ITEMS SOLD = 4`` from becoming separators when OCR fragments
-    the configured exclusion word. ``total_exclude_tokens`` additionally
-    rejects summary lookalikes such as ``TOTAL TAX``.
-    """
-    anchors: set[int] = set()
-    if not (config.dashed_separators or config.dash_around_phrases):
-        return anchors
-    for k, (line, text) in enumerate(zip(rows, row_texts)):
-        previous = row_texts[k - 1] if k > 0 else ""
-        first = text.split()[0] if text.split() else ""
-        is_total_row = (
-            config.dashed_separators
-            and any(is_price_token(word.text) for word in line)
-            and _is_final_total(
-                text,
-                config.total_include_tokens,
-                config.total_exclude_tokens,
-            )
-        )
-        is_amount_date = (
-            config.dashed_separators
-            and config.dash_after_amount_date
-            and "AMOUNT" in previous
-            and bool(_DATE_LED.match(first))
-        )
-        if is_total_row or is_amount_date:
-            anchors.add(k)
-        for phrase in config.dash_around_phrases or ():
-            if text.startswith(phrase.upper()) and any(
-                is_price_token(word.text) for word in line
-            ):
-                anchors.add(k)
-                if k > 0:
-                    anchors.add(k - 1)
-    return anchors
-
-
-def _separator_layout(
-    baselines: Sequence[float],
-    dash_after_rows: set[int],
-    *,
-    pitch: float,
-    cap_h: float,
-) -> tuple[list[float], list[float]]:
-    """Place separator baselines in existing whitespace when possible.
-
-    The old implementation inserted a full body row for every separator and
-    shifted the entire remaining receipt. Multi-tender receipts therefore
-    accumulated hundreds of pixels of drift even though their source layout
-    already reserved generous gaps around tender summaries.
-
-    A thin dash row only needs the whitespace between the current row's
-    descender and the next row's cap. Existing gaps are left untouched. For a
-    genuinely cramped pair, add only the missing clearance rather than a full
-    pitch. This keeps later rows stable while still preventing overprint.
-    """
-    adjusted = [float(value) for value in baselines]
-    dash_ys: list[float] = []
-    if not adjusted or not dash_after_rows:
-        return adjusted, dash_ys
-
-    pitch = max(1.0, float(pitch))
-    cap_h = max(1.0, float(cap_h))
-    # Current descenders consume about .22 cap and the next row consumes one
-    # cap above its baseline. The remaining .18 cap gives the dash ink and a
-    # small paper gap on each side.
-    required_gap = max(pitch, cap_h * 1.40)
-    for k in sorted(dash_after_rows):
-        if k < 0 or k >= len(adjusted):
-            continue
-        current = adjusted[k]
-        if k + 1 >= len(adjusted):
-            dash_ys.append(current + cap_h * 0.90)
-            continue
-
-        gap = adjusted[k + 1] - current
-        extra = max(0.0, required_gap - gap)
-        if extra:
-            for j in range(k + 1, len(adjusted)):
-                adjusted[j] += extra
-            gap += extra
-
-        whitespace_start = current + cap_h * 0.22
-        whitespace_end = adjusted[k + 1] - cap_h
-        if whitespace_end > whitespace_start:
-            ink_target = (whitespace_start + whitespace_end) / 2.0
-        else:
-            ink_target = current + gap / 2.0
-        # ``draw_token_chars`` receives a text baseline. A hyphen's ink sits
-        # around half a cap above that baseline (both the bitmap atlas and the
-        # TTF fallback do this), so lower the draw baseline to put the visible
-        # dash—not its invisible text baseline—in the whitespace target.
-        dash_ys.append(ink_target + cap_h * 0.55)
-    return adjusted, dash_ys
 
 
 def _draw_dash_row(
@@ -882,7 +760,9 @@ def _render_grid(
     # TOTAL, and the AMOUNT-block transaction-date line (the date row whose prior
     # row is the "AMOUNT:" line).
     row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
-    dash_after_rows = _separator_anchor_rows(rows, row_texts, config)
+    dash_after_rows: set[int] = set()
+    for separator_source in SEPARATOR_SOURCES:
+        dash_after_rows.update(separator_source(rows, row_texts, config))
     baselines, dash_ys = _separator_layout(
         baselines,
         dash_after_rows,
