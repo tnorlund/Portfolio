@@ -6,7 +6,7 @@
 
 # Class: PerformanceLogger
 
-Defined in: [utils/performance/logger.ts:10](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L10)
+Defined in: [utils/performance/logger.ts:10](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L10)
 
 ## Constructors
 
@@ -24,7 +24,7 @@ Defined in: [utils/performance/logger.ts:10](https://github.com/tnorlund/Portfol
 
 > **clear**(): `void`
 
-Defined in: [utils/performance/logger.ts:109](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L109)
+Defined in: [utils/performance/logger.ts:109](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L109)
 
 #### Returns
 
@@ -36,7 +36,7 @@ Defined in: [utils/performance/logger.ts:109](https://github.com/tnorlund/Portfo
 
 > **downloadReport**(): `void`
 
-Defined in: [utils/performance/logger.ts:244](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L244)
+Defined in: [utils/performance/logger.ts:244](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L244)
 
 #### Returns
 
@@ -48,7 +48,7 @@ Defined in: [utils/performance/logger.ts:244](https://github.com/tnorlund/Portfo
 
 > **generateReport**(): `string`
 
-Defined in: [utils/performance/logger.ts:118](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L118)
+Defined in: [utils/performance/logger.ts:118](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L118)
 
 #### Returns
 
@@ -60,7 +60,7 @@ Defined in: [utils/performance/logger.ts:118](https://github.com/tnorlund/Portfo
 
 > **getLogs**(): [`PerformanceLog`](../interfaces/PerformanceLog.md)[]
 
-Defined in: [utils/performance/logger.ts:105](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L105)
+Defined in: [utils/performance/logger.ts:105](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L105)
 
 #### Returns
 
@@ -72,7 +72,7 @@ Defined in: [utils/performance/logger.ts:105](https://github.com/tnorlund/Portfo
 
 > **loadFromLocalStorage**(): `void`
 
-Defined in: [utils/performance/logger.ts:48](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L48)
+Defined in: [utils/performance/logger.ts:48](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L48)
 
 #### Returns
 
@@ -84,7 +84,7 @@ Defined in: [utils/performance/logger.ts:48](https://github.com/tnorlund/Portfol
 
 > **log**(`metrics`): `void`
 
-Defined in: [utils/performance/logger.ts:14](https://github.com/tnorlund/Portfolio/blob/eec7450e3412128eb145152c6f26dd3d8a5fd354/portfolio/utils/performance/logger.ts#L14)
+Defined in: [utils/performance/logger.ts:14](https://github.com/tnorlund/Portfolio/blob/80b4c11028ced201ec4f6f08896d2e4b80e1a813/portfolio/utils/performance/logger.ts#L14)
 
 #### Parameters
 
