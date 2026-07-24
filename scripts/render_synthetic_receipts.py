@@ -1860,7 +1860,7 @@ def _content_texture_seed(receipt: dict) -> int:
         word_id = _coerce_id(word.get("word_id"))
         bbox = word.get("bbox") or []
         bbox_str = ",".join(f"{float(v):.2f}" for v in bbox)
-        text = word.get("text", "")
+        text = word.get("_texture_seed_text", word.get("text", ""))
         parts.append(f"{line_id}:{word_id}:{text}:{bbox_str}")
     return zlib.crc32("\n".join(parts).encode("utf-8"))
 

@@ -6,19 +6,20 @@ deterministic, high-frequency ones just before drawing -- it does NOT re-run the
 synthesis pipeline, so it only affects the rendered image (the demo), not the
 stored training labels.
 
-Two repairs, both low-risk and context-gated:
+Repairs are low-risk and context-gated:
 
 * :func:`canonicalize_auth_tokens` -- the EMV / payment-auth block: ``DID:``/``AND:``
   -> ``AID:`` (only before a hex AID), ``WIN`` -> ``PIN`` (only after ``BY``),
   ``Seg#`` -> ``Seq#``, and a stray trailing period on a price.
-* (future) totals reconciliation lives alongside this and is applied by the same
-  :func:`clean_for_render` entry point.
+* :func:`fix_item_amount_ocr` -- amount-shaped OCR confusions are repaired only
+  on rows carrying a product label.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from receipt_agent.agents.label_evaluator.rendering.number_format import (
     US as _NF,
@@ -31,6 +32,9 @@ from receipt_agent.agents.label_evaluator.rendering.number_format import (
 )
 from receipt_agent.agents.label_evaluator.rendering.number_format import (
     integer_part as _integer_part,
+)
+from receipt_agent.agents.label_evaluator.rendering.row_bands import (
+    group_rows_quantized,
 )
 
 # A hex Application IDentifier as printed in the EMV block, e.g. A0000000980840.
@@ -47,6 +51,24 @@ _PRICE_TRAILING_DOT = re.compile(
 _AMOUNT_3DEC = re.compile(
     f"^([-+]?{_NF.currency}?{_integer_part(_NF)}){_NF.decimal}(\\d{{3}})"
     f"([-+]?{_NF.tax_flag}?)$"
+)
+
+# Amount-shaped OCR token with a two-digit fractional part. The candidate may
+# contain common digit confusions, but is never repaired without product-row
+# evidence (see ``fix_item_amount_ocr``).
+_ITEM_AMOUNT_OCR = re.compile(
+    r"^([-+]?\$?)([0-9OILSBY]+)([.,])([0-9OILSBY]{2})([A-Z]?)([-+]?)$",
+    re.I,
+)
+_DIGIT_OCR_TRANSLATION = str.maketrans(
+    {
+        "O": "0",
+        "I": "1",
+        "L": "1",
+        "S": "5",
+        "B": "8",
+        "Y": "7",
+    }
 )
 
 # Date / time tokens. A printed transaction line is ``<date> <time> ...`` so the
@@ -140,6 +162,53 @@ def fix_currency_decimals(words: list[dict]) -> int:
     return n
 
 
+def fix_item_amount_ocr(words: list[dict]) -> int:
+    """Repair amount-shaped digit confusions on labeled product rows.
+
+    A product row can contain an unlabeled amount even when its description
+    words carry ``PRODUCT_NAME``. Require that row evidence, a decimal-shaped
+    token, and at least one actual OCR correction (letter substitution or
+    decimal comma) before mutating anything. Product codes and prose therefore
+    remain untouched.
+    """
+    positioned = [word for word in words if word.get("bbox")]
+    rows = group_rows_quantized(
+        positioned,
+        lambda word: float(word["bbox"][1]) + float(word["bbox"][3]),
+        step=16,
+        descending=True,
+    )
+
+    changed = 0
+    for row in rows:
+        has_product = any(
+            "PRODUCT_NAME" in (word.get("labels") or []) for word in row
+        )
+        if not has_product:
+            continue
+        for word in row:
+            text = str(word.get("text") or "").strip()
+            match = _ITEM_AMOUNT_OCR.fullmatch(text)
+            if match is None:
+                continue
+            whole = match.group(2).upper().translate(_DIGIT_OCR_TRANSLATION)
+            fraction = match.group(4).upper().translate(_DIGIT_OCR_TRANSLATION)
+            repaired = (
+                f"{match.group(1)}{whole}.{fraction}"
+                f"{match.group(5)}{match.group(6)}"
+            )
+            if repaired == text:
+                continue
+            # A local OCR repair must not re-seed the whole page's stochastic
+            # paper texture. Preserve the source token solely for deterministic
+            # texture identity; rendering and evaluation still consume
+            # ``repaired`` below.
+            word.setdefault("_texture_seed_text", text)
+            word["text"] = repaired
+            changed += 1
+    return changed
+
+
 def canonicalize_dates(words: list[dict]) -> int:
     """Repair garbled transaction-date tokens to the receipt's canonical date.
 
@@ -192,16 +261,18 @@ def fix_items_sold_separator(words: list[dict]) -> int:
 def clean_for_render(receipt: Mapping[str, Any]) -> dict:
     """Apply all render-time content repairs to ``receipt`` (mutates word dicts).
 
-    Returns a small report ``{auth_fixed, totals_fixed, dates_fixed, seps_fixed}``.
+    Returns a small report of repair counts.
     """
     words = list(_iter_word_dicts(receipt))
     auth_fixed = canonicalize_auth_tokens(words)
     totals_fixed = fix_currency_decimals(words)
+    item_amounts_fixed = fix_item_amount_ocr(words)
     dates_fixed = canonicalize_dates(words)
     seps_fixed = fix_items_sold_separator(words)
     return {
         "auth_fixed": auth_fixed,
         "totals_fixed": totals_fixed,
+        "item_amounts_fixed": item_amounts_fixed,
         "dates_fixed": dates_fixed,
         "seps_fixed": seps_fixed,
     }

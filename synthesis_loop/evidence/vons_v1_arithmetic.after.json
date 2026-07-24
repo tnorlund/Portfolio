@@ -1,0 +1,34 @@
+{
+  "receipt": "678a7c94-4948-4ebf-b8e9-9a17c13051ec#2",
+  "git_sha": "bf55f4d88abe18f87271d93542dd7bd5a68dbfb7",
+  "dirty": false,
+  "truth": {
+    "bundle_hash": "63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb",
+    "expected_bundle_hash": "63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb",
+    "expected_version": 1,
+    "mode": "online-active",
+    "slug": "vons",
+    "version": 1
+  },
+  "metric": {
+    "identities": [
+      {
+        "detail": "",
+        "lhs": 61.13,
+        "name": "total_eq_tender",
+        "rhs": 61.13,
+        "status": "HOLDS"
+      }
+    ],
+    "n_items": 12,
+    "summary": {
+      "change": 0.0,
+      "tax": 0.0,
+      "tender": 61.13,
+      "total": 61.13
+    },
+    "testable": 1,
+    "verdict": "PASS",
+    "violated": 0
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "6b709eb08fa7d09387dba01ebb212810f397b088c8636b7a0442571f8bfd53d7",
+  "image_id": "0324604e-e1f7-4021-b887-7ef7e012c563",
+  "metric": "arithmetic",
+  "receipt_id": 1,
+  "result": {
+    "n_items": 13,
+    "summary": {
+      "change": 0.0,
+      "subtotal": 879.97,
+      "tax": 78.0,
+      "tender": 181.6,
+      "total": 957.97
+    },
+    "testable": 3,
+    "verdict": "FAIL",
+    "violated": 2
+  },
+  "truth_version": 2
+}
