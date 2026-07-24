@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "git_sha": "819d03373a179e76d32175553b294f0b9fb6742b",
+    "missing_in_synth": 3,
+    "phantom_in_synth": 0,
+    "synthetic_sha256": "085236d9ade0668301827a136cfaae617409bce9402142a77a17e90b54f13e85",
+    "verdict": "FAIL"
+  },
+  "captured_regression": {
+    "git_sha": "aca111e0d8b092ca590b58f0b48675306bf5eaa5",
+    "missing_in_synth": 3,
+    "phantom_in_synth": 4,
+    "synthetic_sha256": "d56c8911c7de48a2be9b52874979cf949f70e139ed41469b714f54b6c1765297",
+    "verdict": "FAIL"
+  },
+  "merchant": "Dollar Tree",
+  "merchant_truth": {
+    "bundle_hash": "d6bd3769a14349e2449e55a607ecc49eba57598c9cb5ace310f1b80ef0261d0b",
+    "mode": "fixture",
+    "note": "No ACTIVE Dollar Tree truth exists in dev; this is a hash-verified dry v1 fixture built from the legacy profile.",
+    "slug": "dollar_tree",
+    "version": 1
+  },
+  "metric": "separators",
+  "receipt": "0944ee8d-4a0d-464e-8109-de35a9ba379a#1"
+}

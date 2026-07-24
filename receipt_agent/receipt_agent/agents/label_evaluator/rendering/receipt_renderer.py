@@ -33,10 +33,6 @@ from PIL import Image, ImageDraw, ImageFont
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     MerchantFontProfile,
 )
-from receipt_agent.agents.label_evaluator.rendering.number_format import (
-    US,
-    date_core,
-)
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
     GridWord,
@@ -47,10 +43,12 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     draw_text_run,
     draw_token_chars,
     drawn_cell_count,
+    effective_canonical_row_sections,
     effective_row_sections,
     glyph_advance,
     group_words_into_grid_lines,
     is_price_token,
+    layout_columns_by_section,
     line_baseline,
     section_for_labels,
 )
@@ -58,6 +56,11 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
     measured_row_style,
     requires_bold_reinforcement,
     row_style,
+)
+from receipt_agent.agents.label_evaluator.rendering.separators import (
+    SEPARATOR_SOURCES,
+    _is_final_total,
+    _separator_layout,
 )
 
 # Grid-path body face, most receipt-like first. Real thermal receipts use a
@@ -124,6 +127,10 @@ class RenderConfig:
     # hard (non-anti-aliased) glyphs on a shared baseline. When False the legacy
     # per-token box-fitting path is used (see ``render_receipt``).
     grid_mode: bool = False
+    # Optional Merchant Truth C#layout template.  When present, grid rows are
+    # routed through canonical sections and role lanes; None leaves the legacy
+    # planner and rendered bytes unchanged.
+    layout_template: Mapping[str, Any] | None = None
     # Per-section typography (real thermal receipts switch Font A / Font B per
     # region). A ``section_scale`` entry is either a bare float that multiplies
     # the body font size (e.g. {"HEADER": 0.8}) or a mapping
@@ -288,6 +295,18 @@ def _scaled_bitmap_thin(base_thin: float, scale: float) -> float:
     return min(0.9, base + 2.0 * (1.0 - safe_scale))
 
 
+def remap_grid_column(
+    column: float | None,
+    source: GridSpec,
+    target: GridSpec,
+) -> float | None:
+    """Keep a shared lane on the same pixel edge across scaled row grids."""
+    if column is None:
+        return None
+    pixel_x = source.grid_left + float(column) * source.cell_w
+    return (pixel_x - target.grid_left) / max(target.cell_w, 1e-6)
+
+
 def render_receipt(
     receipt: Mapping[str, Any],
     *,
@@ -370,128 +389,6 @@ def render_receipt(
     return image
 
 
-def _is_final_total(
-    row_text: str,
-    include: tuple[str, ...] = ("TOTAL",),
-    exclude: tuple[str, ...] = ("SUBTOTAL", "NUMBER", "SOLD", "TAX"),
-) -> bool:
-    """True for the grand-TOTAL row (Costco reverse-videos its amount), but not
-    SUBTOTAL nor the "TOTAL NUMBER OF ITEMS SOLD" line. The include/exclude token
-    sets come from the merchant profile (defaults match Costco's wording)."""
-    t = row_text.upper()
-    if not all(tok in t for tok in include):
-        return False
-    return not any(tok in t for tok in exclude)
-
-
-_DATE_LED = re.compile(f"^{date_core(US)}$")
-
-
-def _separator_anchor_rows(
-    rows: Sequence[Sequence[GridWord]],
-    row_texts: Sequence[str],
-    config: RenderConfig,
-) -> set[int]:
-    """Rows after which a profile-requested dashed separator is printed.
-
-    A grand-total rule needs both the configured total wording and a currency
-    amount. The amount requirement prevents item-count rows such as
-    ``TOTAL ... ITEMS SOLD = 4`` from becoming separators when OCR fragments
-    the configured exclusion word. ``total_exclude_tokens`` additionally
-    rejects summary lookalikes such as ``TOTAL TAX``.
-    """
-    anchors: set[int] = set()
-    if not (config.dashed_separators or config.dash_around_phrases):
-        return anchors
-    for k, (line, text) in enumerate(zip(rows, row_texts)):
-        previous = row_texts[k - 1] if k > 0 else ""
-        first = text.split()[0] if text.split() else ""
-        is_total_row = (
-            config.dashed_separators
-            and any(is_price_token(word.text) for word in line)
-            and _is_final_total(
-                text,
-                config.total_include_tokens,
-                config.total_exclude_tokens,
-            )
-        )
-        is_amount_date = (
-            config.dashed_separators
-            and config.dash_after_amount_date
-            and "AMOUNT" in previous
-            and bool(_DATE_LED.match(first))
-        )
-        if is_total_row or is_amount_date:
-            anchors.add(k)
-        for phrase in config.dash_around_phrases or ():
-            if text.startswith(phrase.upper()) and any(
-                is_price_token(word.text) for word in line
-            ):
-                anchors.add(k)
-                if k > 0:
-                    anchors.add(k - 1)
-    return anchors
-
-
-def _separator_layout(
-    baselines: Sequence[float],
-    dash_after_rows: set[int],
-    *,
-    pitch: float,
-    cap_h: float,
-) -> tuple[list[float], list[float]]:
-    """Place separator baselines in existing whitespace when possible.
-
-    The old implementation inserted a full body row for every separator and
-    shifted the entire remaining receipt. Multi-tender receipts therefore
-    accumulated hundreds of pixels of drift even though their source layout
-    already reserved generous gaps around tender summaries.
-
-    A thin dash row only needs the whitespace between the current row's
-    descender and the next row's cap. Existing gaps are left untouched. For a
-    genuinely cramped pair, add only the missing clearance rather than a full
-    pitch. This keeps later rows stable while still preventing overprint.
-    """
-    adjusted = [float(value) for value in baselines]
-    dash_ys: list[float] = []
-    if not adjusted or not dash_after_rows:
-        return adjusted, dash_ys
-
-    pitch = max(1.0, float(pitch))
-    cap_h = max(1.0, float(cap_h))
-    # Current descenders consume about .22 cap and the next row consumes one
-    # cap above its baseline. The remaining .18 cap gives the dash ink and a
-    # small paper gap on each side.
-    required_gap = max(pitch, cap_h * 1.40)
-    for k in sorted(dash_after_rows):
-        if k < 0 or k >= len(adjusted):
-            continue
-        current = adjusted[k]
-        if k + 1 >= len(adjusted):
-            dash_ys.append(current + cap_h * 0.90)
-            continue
-
-        gap = adjusted[k + 1] - current
-        extra = max(0.0, required_gap - gap)
-        if extra:
-            for j in range(k + 1, len(adjusted)):
-                adjusted[j] += extra
-            gap += extra
-
-        whitespace_start = current + cap_h * 0.22
-        whitespace_end = adjusted[k + 1] - cap_h
-        if whitespace_end > whitespace_start:
-            ink_target = (whitespace_start + whitespace_end) / 2.0
-        else:
-            ink_target = current + gap / 2.0
-        # ``draw_token_chars`` receives a text baseline. A hyphen's ink sits
-        # around half a cap above that baseline (both the bitmap atlas and the
-        # TTF fallback do this), so lower the draw baseline to put the visible
-        # dash—not its invisible text baseline—in the whitespace target.
-        dash_ys.append(ink_target + cap_h * 0.55)
-    return adjusted, dash_ys
-
-
 def _draw_dash_row(
     draw,
     x0: float,
@@ -539,6 +436,62 @@ def _draw_dash_row(
         bitmap_thin=bitmap_thin,
         condense_glyphs=condense_glyphs,
     )
+
+
+def _inferred_policy_separator_baselines(
+    rows: Sequence[Sequence[GridWord]],
+    sections: Sequence[str | None],
+    baselines: Sequence[float],
+    *,
+    min_pitch: float,
+    cap_h: float,
+    content_top: float,
+    content_height: float,
+) -> list[float]:
+    """Infer an OCR-dropped dash rule before a lower legal-policy block.
+
+    Vision commonly drops a thin rule even though it preserves the deliberately
+    blank row around it.  A lower-page website row is classified as HEADER while
+    the legal copy beneath it is predominantly alphabetic (its labels may be
+    sparse or noisy).  When that semantic transition also has roughly one blank
+    text row, place the dash ink in the observed whitespace.  Requiring all three
+    signals keeps normal paragraph gaps and top header transitions untouched.
+    """
+    if not (
+        len(rows) == len(sections) == len(baselines)
+        and min_pitch > 0
+        and content_height > 0
+    ):
+        return []
+
+    inferred: list[float] = []
+    lower_page = content_top + 0.55 * content_height
+    for index in range(len(rows) - 1):
+        if sections[index] != "HEADER":
+            continue
+        if baselines[index] < lower_page:
+            continue
+        current_text = " ".join(word.text for word in rows[index])
+        if not re.search(
+            r"[A-Za-z][A-Za-z0-9.-]*\.[A-Za-z]{2,}", current_text
+        ):
+            continue
+        following_text = "".join(word.text for word in rows[index + 1])
+        following_letters = sum(ch.isalpha() for ch in following_text)
+        following_digits = sum(ch.isdigit() for ch in following_text)
+        if (
+            following_letters < 10
+            or following_letters <= 3 * following_digits
+            or any(is_price_token(word.text) for word in rows[index + 1])
+        ):
+            continue
+        gap = float(baselines[index + 1] - baselines[index])
+        if not 1.55 * min_pitch <= gap <= 3.25 * min_pitch:
+            continue
+        ink_midpoint = (baselines[index] + baselines[index + 1]) / 2.0
+        # A hyphen's visible bar sits about half a cap above the text baseline.
+        inferred.append(ink_midpoint + 0.5 * cap_h)
+    return inferred
 
 
 def _is_asterisk_rule(row_text: str) -> bool:
@@ -686,6 +639,7 @@ def _render_grid(
                 section=section_for_labels(
                     word.get("labels"), in_header_zone=in_header_zone
                 ),
+                labels=tuple(word.get("labels") or ()),
             )
         )
     # Bitmap (glyph-atlas) font: the merchant's actual letterforms. cap_px is the
@@ -765,6 +719,12 @@ def _render_grid(
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
     amount_lane = amount_lane_end(rows, spec)
+    canonical_sections = effective_canonical_row_sections(
+        rows, config.layout_template, config.height
+    )
+    measured_columns = layout_columns_by_section(
+        config.layout_template, canonical_sections, rows
+    )
 
     # Per-section typography: a row whose section has a scale != 1.0 or a font
     # override is drawn with its own (cached) spec/font. BODY/TOTALS stay at the
@@ -898,15 +858,25 @@ def _render_grid(
             return text, "left", min(w.left for w in line), target_w
         return None
 
+    inferred_gap_dash_ys = _inferred_policy_separator_baselines(
+        rows,
+        eff_sections,
+        baselines,
+        min_pitch=float(min_pitch),
+        cap_h=cap_h,
+        content_top=float(config.margin),
+        content_height=float(inner_h),
+    )
     # Rows after which Costco prints a dashed rule (dropped by OCR): the grand
     # TOTAL, and the AMOUNT-block transaction-date line (the date row whose prior
     # row is the "AMOUNT:" line).
     row_texts = [" ".join(w.text for w in ln).upper() for ln in rows]
-    dash_after_rows = (
-        _separator_anchor_rows(rows, row_texts, config)
-        if config.separators is None
-        else set()
-    )
+    # Measured separators (config.separators) are authoritative: when the
+    # merchant-truth bundle supplies them, skip every heuristic source.
+    dash_after_rows: set[int] = set()
+    if config.separators is None:
+        for separator_source in SEPARATOR_SOURCES:
+            dash_after_rows.update(separator_source(rows, row_texts, config))
     baselines, dash_ys = _separator_layout(
         baselines,
         dash_after_rows,
@@ -921,7 +891,10 @@ def _render_grid(
     measured_separator_used: set[int] = set()
     row_cache: dict[tuple, tuple] = {}
     prev_text = ""
-    for line, baseline, sect in zip(rows, baselines, eff_sections):
+    for line, baseline, sect, canonical_section in zip(
+        rows, baselines, eff_sections, canonical_sections
+    ):
+        row_columns = measured_columns.get(canonical_section or "") or None
         row_text = " ".join(w.text for w in line).upper()
         # A display heading (e.g. SELF-CHECKOUT, THANK YOU, ITEMS SOLD:) renders
         # heavy + enlarged; the heavy face is NOT applied to the whole TOTALS zone
@@ -951,7 +924,7 @@ def _render_grid(
             and config.reverse_date_anchor in prev_text
         )
         prev_text = row_text
-        center_to = _center_target(line)
+        center_to = None if row_columns else _center_target(line)
         fpath = section_font.get(sect) if sect else None
         # A row's section condense applies whether or not the row is an
         # enlarged display heading -- the heading scale overrides HEIGHT
@@ -1055,7 +1028,7 @@ def _render_grid(
             sm_style and (sm_style["bold"] or sm_style["underline"])
         )
         if sc == 1.0 and sect_cond == 1.0 and not fpath and not sm_extra:
-            run = _run_layout(line, center_to)
+            run = None if row_columns else _run_layout(line, center_to)
             if run is not None:
                 text, anchor, x, target_w = run
                 draw_text_run(
@@ -1085,6 +1058,8 @@ def _render_grid(
                 spec,
                 font,
                 amount_lane=amount_lane,
+                measured_columns=row_columns,
+                paper_width=config.width,
                 stroke=config.stroke,
                 condense=config.condense,
                 condense_glyphs=config.condense_glyphs,
@@ -1126,9 +1101,16 @@ def _render_grid(
             row_cache[key] = (row_spec, row_font, row_cap)
             cached = row_cache[key]
         row_spec, row_font, row_cap = cached
-        # Lane only applies when the row shares the base cell grid (scale 1.0
-        # AND base condense -- a per-section condense changes the cell width).
-        lane = amount_lane if sc == 1.0 and sect_cond == 1.0 else None
+        # A small typographic size nudge still shares the body amount column:
+        # project that paper-space edge through pixels into the row grid.
+        # Larger section scales and per-section condensation describe a
+        # genuinely distinct layout, preserving the legacy no-lane behavior.
+        shares_body_lane = sect_cond == 1.0 and abs(sc - 1.0) < 0.05
+        lane = (
+            remap_grid_column(amount_lane, spec, row_spec)
+            if shares_body_lane
+            else None
+        )
         cp = (
             row_cap
             if row_cap
@@ -1155,7 +1137,7 @@ def _render_grid(
         strike_offsets = (
             (0, 1, 2) if reinforce_bold else ((0, 1) if sm_bold else (0,))
         )
-        run = _run_layout(line, center_to)
+        run = None if row_columns else _run_layout(line, center_to)
         if run is not None:
             text, anchor, x, target_w = run
             for dx in strike_offsets:
@@ -1187,6 +1169,8 @@ def _render_grid(
                     row_spec,
                     row_font,
                     amount_lane=lane,
+                    measured_columns=row_columns,
+                    paper_width=config.width,
                     stroke=config.stroke,
                     condense=eff_cond,
                     condense_glyphs=config.condense_glyphs,
@@ -1216,7 +1200,7 @@ def _render_grid(
     # gap below each anchor row. Use the merchant's bitmap face when it carries a
     # dash glyph, else the body TTF (which always has one).
     dash_bmf = bmf if (bmf is not None and bmf.has("-")) else None
-    for y in dash_ys:
+    for y in [*dash_ys, *inferred_gap_dash_ys]:
         _draw_dash_row(
             draw,
             content_left,

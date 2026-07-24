@@ -199,6 +199,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: true
+          fetch-depth: 0
 
       - name: Setup Python
         run: |
@@ -231,6 +232,17 @@ jobs:
             segno python-barcode numpy
           pip install pytest pytest-asyncio pytest-mock pytest-xdist \
             pytest-timeout pytest-rerunfailures moto responses
+
+      - name: Verify eval regression corpus
+        run: |
+          source .venv-repository-tests/bin/activate
+          python synthesis_loop/corpus_regression_gate.py check --json
+
+      - name: Verify evidence provenance
+        run: |
+          source .venv-repository-tests/bin/activate
+          python scripts/verify_evidence_stamps.py --json \
+            --head "$GITHUB_SHA"
 
       - name: Test root and maintained script suites
         run: |

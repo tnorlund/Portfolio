@@ -1,0 +1,42 @@
+{
+  "artifact": "/tmp/top5-gelsons-lane-final/gelson_s_westlake_village_eval/gelson_s_westlake_village.checks.json",
+  "git_sha": "aa5b74ddae5c128a49418f4f23f2701d8fe3b313",
+  "merchant": "Gelson's Westlake Village",
+  "merchant_truth": {
+    "bundle_hash": "9486f47c16ee3cc2e38dbe505b1feef6692cc1633d74d1ceafd7e3a423e48c09",
+    "slug": "gelson_s_westlake_village",
+    "version": 1
+  },
+  "metric": "columns",
+  "receipt": "223c03e2-9f7e-481d-bc33-2b0631fbaaf9#1",
+  "result": {
+    "amount": {
+      "abs_drift_px": 1.0,
+      "outlier_frac": 0.0,
+      "verdict": "PASS",
+      "wobble_iqr_px": 0.0,
+      "wobble_limit_px": 3.84
+    },
+    "amount_flag_gap": {
+      "delta_px": 2.64,
+      "limit_px": 13.18,
+      "real_gap_px": 42.64,
+      "synth_gap_px": 40.0,
+      "verdict": "PASS"
+    },
+    "flag": {
+      "abs_drift_px": 2.0,
+      "outlier_frac": 0.0,
+      "verdict": "PASS",
+      "wobble_iqr_px": 1.0
+    },
+    "verdict": "PASS"
+  },
+  "unchanged_metrics": {
+    "arithmetic": "PASS",
+    "graphics": "PASS",
+    "logo": "PASS",
+    "separators": "PASS",
+    "tokens": "PASS"
+  }
+}

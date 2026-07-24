@@ -5,11 +5,17 @@
     "slug": "wild_fork"
   },
   "stamp": {
+    "atlas_hash": "b20b0630057ed0d0",
     "dirty": false,
-    "git_sha": "ca833b8f5f7a783bb36f0ce75d83fd6c79b4cb74",
+    "git_sha": "9299de46eec9361dc8318958afe71c81ffe125ac",
+    "inputs_hash": "3db5094c05b19c80",
+    "merchant": "Wild Fork",
     "merchant_truth": {
       "bundle_hash": "a9de285daf995ce20245bdb397f1a0c25a25ec5ab27587f723b0df5e6c7504cc",
+      "expected_bundle_hash": "a9de285daf995ce20245bdb397f1a0c25a25ec5ab27587f723b0df5e6c7504cc",
+      "expected_version": 1,
       "mode": "online-active",
+      "slug": "wild_fork",
       "version": 1
     }
   },
@@ -26,7 +32,7 @@
       "verdict": "PASS_WITH_GAPS"
     },
     "tokens": {
-      "ink_recall": 0.9717,
+      "ink_recall": 1.0,
       "text_precision": 1.0,
       "text_recall": 1.0,
       "verdict": "PASS"
@@ -44,7 +50,7 @@
       "verdict": "PASS"
     },
     "logo": {
-      "area_ratio": 0.985,
+      "area_ratio": 0.968,
       "center_offset_frac": 0.0099,
       "size_ratio": 1.0,
       "width_ratio": 0.945,

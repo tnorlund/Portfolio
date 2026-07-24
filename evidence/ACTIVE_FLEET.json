@@ -1,0 +1,61 @@
+{
+  "active": {
+    "costco_wholesale": {
+      "bundle_hash": "c5cd31202f7a52cee5f5b492c675ae4ed1d94241529bdc3d16d85b18bf7fd064",
+      "version": 1
+    },
+    "cvs": {
+      "bundle_hash": "9a2aee9fc39eabb8469d0fb66d7d63140a2cae80a1e41a43fed6d702670c3faf",
+      "version": 1
+    },
+    "gelson_s_westlake_village": {
+      "bundle_hash": "9486f47c16ee3cc2e38dbe505b1feef6692cc1633d74d1ceafd7e3a423e48c09",
+      "version": 1
+    },
+    "in_n_out_burger": {
+      "bundle_hash": "36a82f4e2ae8cb81b9868a67abe5d983dc7525b2f5c35fe0c481643a301faec3",
+      "version": 1
+    },
+    "italia_deli___bakery": {
+      "bundle_hash": "84726353150b127ed12862239c00863948bb1b9dd5b5104841208fd7c2fba5a5",
+      "version": 1
+    },
+    "neighborly": {
+      "bundle_hash": "1efafa7688feb3df4090df7442cfbf9a898025f39ead6a98ba0c04f8484fce72",
+      "version": 1
+    },
+    "sprouts_farmers_market": {
+      "bundle_hash": "18dc387fbfd985fbc236e413ca051959613fe6e66c263f2a9a23fe67551cb74b",
+      "version": 1
+    },
+    "target": {
+      "bundle_hash": "98db85a38da588db0f566a540f3f0a4454eedcbb8565fbdc6f41f3ac496e4a12",
+      "version": 1
+    },
+    "the_home_depot": {
+      "bundle_hash": "89807363837eb4f6e3ae2d2d08f24c9454b73e0008d0c215003cf80fb1a583fe",
+      "version": 1
+    },
+    "the_stand___american_classics_redefined": {
+      "bundle_hash": "c9d40358fc1665323c3639239ff4b19e1c1c02c032f723a260c2cb7c6d9dcd27",
+      "version": 1
+    },
+    "trader_joe_s": {
+      "bundle_hash": "557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418",
+      "version": 1
+    },
+    "vons": {
+      "bundle_hash": "63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb",
+      "version": 1
+    },
+    "wild_fork": {
+      "bundle_hash": "a9de285daf995ce20245bdb397f1a0c25a25ec5ab27587f723b0df5e6c7504cc",
+      "version": 1
+    }
+  },
+  "schema_version": 1,
+  "source": {
+    "read_mode": "strong-per-slug",
+    "table": "ReceiptsTable-dc5be22"
+  }
+}

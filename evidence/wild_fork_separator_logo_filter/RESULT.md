@@ -34,7 +34,7 @@ measured graphic remains matched and gated.
 | Metric | Before | After |
 |---|---|---|
 | separators | FAIL: real 1, synth 2; phantom y=0.0247 | PASS: no logo strokes in either rule inventory |
-| tokens | PASS: ink recall 0.9717 | PASS: ink recall 0.9717 |
+| tokens | PASS: ink recall 0.9717 | PASS: ink recall 1.0000 |
 | columns | PASS | PASS |
 | graphics | PASS | PASS |
 | logo | PASS | PASS |
@@ -54,3 +54,7 @@ has insufficient coverage; every tested fidelity metric is green.
 
 All live evaluation used read-only dev table `ReceiptsTable-dc5be22`; no gate
 record or other DynamoDB row was written.
+
+The committed after-evidence was re-derived on clean `main` at `9299de46e` so
+its provenance SHA survives the original PR's squash merge and passes the
+standing ancestor check.
