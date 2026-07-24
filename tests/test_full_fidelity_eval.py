@@ -369,6 +369,22 @@ def test_logo_metric_flags_missing_and_offset():
     assert out3["verdict"] == "PASS"
 
 
+def test_logo_metric_ignores_photo_edge_and_merges_wordmark_letters():
+    real = blank()
+    stamp(real, 0, 0, 30, 45)  # scanner/photo edge, not storefront ink
+    for left in (100, 150, 200):
+        stamp(real, left, 10, left + 30, 31)
+    synth = blank()
+    for left in (103, 151, 199):
+        stamp(synth, left, 11, left + 29, 31)
+
+    out = ffe.metric_logo(real, synth, (0.0, 0.15), expects_logo=True)
+
+    assert out["verdict"] == "PASS", out
+    assert out["real"]["w"] == 130
+    assert out["real"]["cx"] == 164.5
+
+
 # ---------------------------------------------------------------------------
 # arithmetic
 # ---------------------------------------------------------------------------
