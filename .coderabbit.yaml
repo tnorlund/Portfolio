@@ -1,5 +1,7 @@
 language: en-US
 reviews:
+  auto_review:
+    drafts: true
   path_instructions:
     - path: "**/*.py"
       instructions: |
