@@ -1771,9 +1771,8 @@ def resolve_bitmap_thin(
     from statistics import median
 
     from ink_calibration import derive_bitmap_thin  # noqa: E402
-    from receipt_line_scorecard import _load_words_and_real  # noqa: E402
-
     from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
+    from receipt_line_scorecard import _load_words_and_real  # noqa: E402
 
     client = DynamoClient(table_name=table, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant)
@@ -1916,6 +1915,7 @@ def _render_cached_hybrid(
     mixed_layout: bool = False,
     stylemap: dict | None = None,
     dash_around_phrases: tuple | list = (),
+    separators: tuple | list | None = None,
     pitch_ratio: float | None = None,
     condense_glyphs: bool = False,
     box_sink: list | None = None,
@@ -1984,6 +1984,7 @@ def _render_cached_hybrid(
         mixed_layout=mixed_layout,
         stylemap=stylemap,
         dash_around_phrases=tuple(dash_around_phrases or ()),
+        separators=separators,
         pitch_ratio=pitch_ratio,
         condense_glyphs=bool(condense_glyphs),
         box_sink=box_sink,
