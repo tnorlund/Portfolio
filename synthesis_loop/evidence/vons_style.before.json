@@ -1,0 +1,38 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb",
+  "image_id": "678a7c94-4948-4ebf-b8e9-9a17c13051ec",
+  "merchant": "Vons",
+  "metric": "style",
+  "receipt_id": 2,
+  "result": {
+    "body_stroke_fail": false,
+    "body_stroke_rel": {
+      "real": 0.0948,
+      "synth": 0.1336
+    },
+    "failing_classes": {
+      "address": {
+        "missing_style": [
+          "bold"
+        ],
+        "real": {
+          "bold": 1,
+          "n": 2,
+          "underline": 0
+        },
+        "synth": {
+          "bold": 0,
+          "n": 2,
+          "underline": 0
+        }
+      }
+    },
+    "preserved_metrics": {
+      "logo": "PASS",
+      "tokens": "PASS"
+    },
+    "verdict": "FAIL"
+  },
+  "truth_version": 1
+}

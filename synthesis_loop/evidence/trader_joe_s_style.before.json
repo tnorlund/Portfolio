@@ -1,0 +1,39 @@
+{
+  "base_git_sha": "e517d33fdc043abfcbff5f70e87dfd21bccc8952",
+  "bundle_hash": "557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418",
+  "image_id": "4c262079-4fec-4724-a8e1-2886f38ea454",
+  "merchant": "Trader Joe's",
+  "metric": "style",
+  "receipt_id": 1,
+  "result": {
+    "body_stroke_fail": false,
+    "body_stroke_rel": {
+      "real": 0.1068,
+      "synth": 0.1068
+    },
+    "failing_classes": {
+      "footer": {
+        "missing_style": [
+          "bold"
+        ],
+        "real": {
+          "bold": 1,
+          "n": 2,
+          "underline": 0
+        },
+        "synth": {
+          "bold": 0,
+          "n": 2,
+          "underline": 0
+        }
+      }
+    },
+    "preserved_metrics": {
+      "arithmetic": "PASS",
+      "graphics": "PASS",
+      "tokens": "PASS"
+    },
+    "verdict": "FAIL"
+  },
+  "truth_version": 1
+}
