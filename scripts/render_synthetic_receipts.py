@@ -1771,8 +1771,9 @@ def resolve_bitmap_thin(
     from statistics import median
 
     from ink_calibration import derive_bitmap_thin  # noqa: E402
-    from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
     from receipt_line_scorecard import _load_words_and_real  # noqa: E402
+
+    from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 
     client = DynamoClient(table_name=table, region=region)
     places, _ = client.get_receipt_places_by_merchant(merchant)
