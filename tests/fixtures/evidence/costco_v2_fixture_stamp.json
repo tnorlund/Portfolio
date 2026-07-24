@@ -1,0 +1,17 @@
+{
+  "receipt": {
+    "image_id": "85a28b87-0a52-4fac-83a0-3a3f11d6f6c1",
+    "receipt_id": 1,
+    "slug": "costco_wholesale"
+  },
+  "stamp": {
+    "dirty": false,
+    "git_sha": "0123456789abcdef0123456789abcdef01234567",
+    "merchant_truth": {
+      "bundle_hash": "6b709eb08fa7d09387dba01ebb212810f397b088c8636b7a0442571f8bfd53d7",
+      "mode": "fixture",
+      "slug": "costco_wholesale",
+      "version": 2
+    }
+  }
+}
