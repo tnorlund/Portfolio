@@ -8,7 +8,7 @@
 
 > **profileFunction**\<`T`\>(`name`, `fn`): `Promise`\<\{ `profile`: [`PerformanceProfile`](../interfaces/PerformanceProfile.md); `result`: `T`; \}\>
 
-Defined in: [utils/performance/testing.ts:137](https://github.com/tnorlund/Portfolio/blob/c778bb1bb5ddcf23f77fc71028885f2f934204fa/portfolio/utils/performance/testing.ts#L137)
+Defined in: [utils/performance/testing.ts:137](https://github.com/tnorlund/Portfolio/blob/04c3ab815970fb94dfaddc4b2c0bbf97d818a7be/portfolio/utils/performance/testing.ts#L137)
 
 Profile a function and get detailed performance breakdown
 

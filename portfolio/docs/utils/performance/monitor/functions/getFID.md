@@ -8,7 +8,7 @@
 
 > **getFID**(): `number` \| `undefined`
 
-Defined in: [utils/performance/monitor.ts:235](https://github.com/tnorlund/Portfolio/blob/c778bb1bb5ddcf23f77fc71028885f2f934204fa/portfolio/utils/performance/monitor.ts#L235)
+Defined in: [utils/performance/monitor.ts:235](https://github.com/tnorlund/Portfolio/blob/04c3ab815970fb94dfaddc4b2c0bbf97d818a7be/portfolio/utils/performance/monitor.ts#L235)
 
 ## Returns
 

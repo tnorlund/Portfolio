@@ -8,7 +8,7 @@
 
 > **lineIntersection**(`p1`, `d1`, `p2`, `d2`): [`Point`](../interfaces/Point.md) \| `null`
 
-Defined in: [utils/geometry/basic.ts:112](https://github.com/tnorlund/Portfolio/blob/c778bb1bb5ddcf23f77fc71028885f2f934204fa/portfolio/utils/geometry/basic.ts#L112)
+Defined in: [utils/geometry/basic.ts:112](https://github.com/tnorlund/Portfolio/blob/04c3ab815970fb94dfaddc4b2c0bbf97d818a7be/portfolio/utils/geometry/basic.ts#L112)
 
 Find intersection of two lines defined by point + direction.
 

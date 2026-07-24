@@ -8,7 +8,7 @@
 
 > **computeReceiptBoxFromRefinedSegments**(`lines`, `hull`, `centroid`, `finalAngle`, `refinedSegments`): [`Point`](../../../../types/api/interfaces/Point.md)[]
 
-Defined in: [utils/receipt/boundingBox.ts:751](https://github.com/tnorlund/Portfolio/blob/c778bb1bb5ddcf23f77fc71028885f2f934204fa/portfolio/utils/receipt/boundingBox.ts#L751)
+Defined in: [utils/receipt/boundingBox.ts:751](https://github.com/tnorlund/Portfolio/blob/04c3ab815970fb94dfaddc4b2c0bbf97d818a7be/portfolio/utils/receipt/boundingBox.ts#L751)
 
 Compute the final receipt bounding box from refined hull edge alignment segments (Step 9).
 
