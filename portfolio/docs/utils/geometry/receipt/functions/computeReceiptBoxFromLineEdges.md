@@ -8,7 +8,7 @@
 
 > **computeReceiptBoxFromLineEdges**(`lines`, `hull`, `centroid`, `avgAngle`): [`Point`](../../basic/interfaces/Point.md)[]
 
-Defined in: [utils/geometry/receipt.ts:216](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/utils/geometry/receipt.ts#L216)
+Defined in: [utils/geometry/receipt.ts:216](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/utils/geometry/receipt.ts#L216)
 
 Build a four‑point bounding box for a receipt based on estimated
 line edges.

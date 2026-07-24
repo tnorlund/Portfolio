@@ -6,7 +6,7 @@
 
 # Interface: Point
 
-Defined in: [types/api.ts:114](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L114)
+Defined in: [types/api.ts:114](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L114)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:114](https://github.com/tnorlund/Portfolio/blob/081166
 
 > **x**: `number`
 
-Defined in: [types/api.ts:115](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L115)
+Defined in: [types/api.ts:115](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L115)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [types/api.ts:115](https://github.com/tnorlund/Portfolio/blob/081166
 
 > **y**: `number`
 
-Defined in: [types/api.ts:116](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L116)
+Defined in: [types/api.ts:116](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L116)

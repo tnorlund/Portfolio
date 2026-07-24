@@ -8,7 +8,7 @@
 
 > **findHullExtentsRelativeToCentroid**(`hull`, `centroid`): `object`
 
-Defined in: [utils/receipt/boundingBox.ts:15](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/utils/receipt/boundingBox.ts#L15)
+Defined in: [utils/receipt/boundingBox.ts:15](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/utils/receipt/boundingBox.ts#L15)
 
 Get the extreme coordinates of a convex hull relative to its centroid.
 

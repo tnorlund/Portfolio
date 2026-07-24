@@ -8,7 +8,7 @@
 
 > **createBoundaryLineFromTheilSen**(`theilSenResult`): [`BoundaryLine`](../interfaces/BoundaryLine.md)
 
-Defined in: [utils/receipt/boundingBox.ts:710](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/utils/receipt/boundingBox.ts#L710)
+Defined in: [utils/receipt/boundingBox.ts:710](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/utils/receipt/boundingBox.ts#L710)
 
 Convert a Theil-Sen line result to a BoundaryLine.
 

@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationTimelineResponse
 
-Defined in: [types/api.ts:43](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L43)
+Defined in: [types/api.ts:43](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L43)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:43](https://github.com/tnorlund/Portfolio/blob/0811662
 
 > **generated\_at**: `string`
 
-Defined in: [types/api.ts:44](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L44)
+Defined in: [types/api.ts:44](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L44)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:44](https://github.com/tnorlund/Portfolio/blob/0811662
 
 > **keyframes**: [`LabelValidationKeyframe`](LabelValidationKeyframe.md)[]
 
-Defined in: [types/api.ts:46](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L46)
+Defined in: [types/api.ts:46](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L46)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: [types/api.ts:46](https://github.com/tnorlund/Portfolio/blob/0811662
 
 > **total\_records**: `number`
 
-Defined in: [types/api.ts:45](https://github.com/tnorlund/Portfolio/blob/08116626ae84e074540d898ce82aee9bb717ed6b/portfolio/types/api.ts#L45)
+Defined in: [types/api.ts:45](https://github.com/tnorlund/Portfolio/blob/3d62acca050dc8e6b10ccfc5478a588a9f272d28/portfolio/types/api.ts#L45)
