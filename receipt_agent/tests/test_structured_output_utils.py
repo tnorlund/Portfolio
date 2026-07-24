@@ -68,7 +68,11 @@ class TestInvokeStructuredWithRetry:
         llm = MagicMock()
         structured_llm = MagicMock()
         structured_response = MagicMock()
-        structured_llm.invoke.return_value = structured_response
+        structured_llm.invoke.return_value = {
+            "parsed": structured_response,
+            "parsing_error": None,
+            "raw": MagicMock(),
+        }
         llm.with_structured_output.return_value = structured_llm
 
         result = invoke_structured_with_retry(
@@ -81,7 +85,9 @@ class TestInvokeStructuredWithRetry:
         assert result.success is True
         assert result.response == structured_response
         assert result.attempts == 1
-        llm.with_structured_output.assert_called_once_with(DummySchema)
+        llm.with_structured_output.assert_called_once_with(
+            DummySchema, include_raw=True
+        )
 
     def test_failure_returns_metadata(self):
         """Returns structured failure metadata after retries are exhausted."""
@@ -141,7 +147,13 @@ class TestAinvokeStructuredWithRetry:
         llm = MagicMock()
         structured_llm = MagicMock()
         structured_response = MagicMock()
-        structured_llm.ainvoke = AsyncMock(return_value=structured_response)
+        structured_llm.ainvoke = AsyncMock(
+            return_value={
+                "parsed": structured_response,
+                "parsing_error": None,
+                "raw": MagicMock(),
+            }
+        )
         llm.with_structured_output.return_value = structured_llm
 
         result = await ainvoke_structured_with_retry(
@@ -176,7 +188,9 @@ class TestAinvokeStructuredWithRetry:
         """Rate limit errors are propagated for Step Functions retry handling."""
         llm = MagicMock()
         structured_llm = MagicMock()
-        structured_llm.ainvoke = AsyncMock(side_effect=LLMRateLimitError("429"))
+        structured_llm.ainvoke = AsyncMock(
+            side_effect=LLMRateLimitError("429")
+        )
         llm.with_structured_output.return_value = structured_llm
 
         with pytest.raises(LLMRateLimitError):

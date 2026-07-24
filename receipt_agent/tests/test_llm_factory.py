@@ -128,7 +128,7 @@ class TestErrorDetection:
 class TestCreateLLM:
     """Tests for create_llm function."""
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
     def test_creates_openrouter_with_env_vars(self, mock_chat_openai):
         """Test that create_llm creates ChatOpenAI for OpenRouter."""
         mock_chat_openai.return_value = MagicMock()
@@ -150,7 +150,7 @@ class TestCreateLLM:
         assert call_kwargs["api_key"] == "or_test_key"
         assert call_kwargs["temperature"] == 0.0
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
     def test_creates_with_custom_params(self, mock_chat_openai):
         """Test that create_llm respects custom parameters."""
         mock_chat_openai.return_value = MagicMock()
@@ -167,7 +167,7 @@ class TestCreateLLM:
         assert call_kwargs["temperature"] == 0.7
         assert call_kwargs["timeout"] == 300
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
     def test_includes_openrouter_headers(self, mock_chat_openai):
         """Test that create_llm includes OpenRouter-specific headers."""
         mock_chat_openai.return_value = MagicMock()
@@ -191,7 +191,7 @@ class TestCreateLLM:
             ):
                 create_llm()
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
     def test_uses_receipt_agent_prefix_env_vars(self, mock_chat_openai):
         """Test that RECEIPT_AGENT_ prefixed env vars are used."""
         mock_chat_openai.return_value = MagicMock()
@@ -420,6 +420,8 @@ class TestCreateLLMInvoker:
             model="test-model",
             temperature=0.5,
             timeout=120,
+            reasoning=None,
+            reasoning_effort=None,
         )
 
 
