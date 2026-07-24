@@ -7,9 +7,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Superseded PR runs are cancelled (a new push makes the old one moot), but
+# main-push runs are NEVER cancelled: their `deploy` job runs `pulumi up`, and
+# killing that mid-update can leave the stack locked or partially applied. A
+# burst of merges must queue, not interrupt each other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PYTHONPATH: ${{ github.workspace }}
@@ -331,6 +335,12 @@ jobs:
 
   deploy:
     name: Deploy
+    # One production deploy at a time, across runs. Never cancel a running
+    # one - Pulumi holds an account-wide lock and an interrupted update is
+    # how that lock gets stranded.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     needs:
       - lambda-syntax
       - python-tests
