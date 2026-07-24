@@ -68,7 +68,7 @@ Verbs (mirroring render_regression_guard's capture/compare/check):
 
 Each finding names the receipt, the metric, the field, the baseline and
 current values, and (for numerics) the delta -- e.g.
-``{"receipt": "costco_wholesale_v1", "metric": "tokens", "field": "verdict",
+``{"receipt": "synthetic_selftest_v1", "metric": "tokens", "field": "verdict",
 "baseline": "PASS", "current": "FAIL"}``. NOTE for consumers (H7's poster):
 ``delta`` is OPTIONAL -- it is present only when both values are numeric
 (verdict/string/render-hash findings carry no ``delta``), so a consumer must
