@@ -938,7 +938,11 @@ def _smooth_luma_field(rng, height, width, scale, amp):
 
 
 def _composite_paper_texture(
-    image, *, seed: int | None = None, strength: float | None = None
+    image,
+    *,
+    seed: int | None = None,
+    strength: float | None = None,
+    protect_paper: bool = False,
 ):
     """Composite thermal-paper realism onto a clean render.
 
@@ -947,6 +951,13 @@ def _composite_paper_texture(
     print-head banding, a top-to-bottom thermal fade, fine grain, an edge
     vignette, and a fractional-degree skew with paper-colour fill (the scan tilt).
     ``strength`` (env ``RECEIPT_PAPER_STRENGTH``, default 1.0) scales the effect.
+
+    When ``protect_paper`` is true, clean paper pixels retain a minimum luma
+    after the stacked effects.  This is used by profiles that carry a measured
+    ink colour: the renderer can distinguish intentional ink from paper and
+    must not let independent grain/vignette layers combine into isolated
+    ink-dark pixels.  The texture and cyan scanner bars remain visible; only
+    paper pixels that cross the paper/ink separation are lifted.
     """
     import numpy as np
     from PIL import Image, ImageFilter
@@ -959,6 +970,7 @@ def _composite_paper_texture(
     s = max(0.0, float(strength))
     source_mode = image.mode
     base = image.convert("RGB")
+    clean_luma = np.asarray(base.convert("L"), dtype=np.float32)
     # Ink bleed: thermal dots spread slightly -- soften the razor-digital edges.
     if s > 0:
         base = base.filter(ImageFilter.GaussianBlur(0.6 * min(s, 1.5)))
@@ -1003,6 +1015,20 @@ def _composite_paper_texture(
         rgb[..., 0] -= 24.0 * s * ew
         rgb[..., 1] -= 2.0 * s * ew
         rgb[..., 2] -= 4.0 * s * ew
+
+    if protect_paper:
+        paper_reference = float(np.percentile(clean_luma, 85))
+        paper_mask = clean_luma >= paper_reference - 18.0
+        paper_floor = paper_reference - 35.0
+        textured_luma = (
+            rgb[..., 0] * 0.299 + rgb[..., 1] * 0.587 + rgb[..., 2] * 0.114
+        )
+        lift = np.where(
+            paper_mask,
+            np.maximum(0.0, paper_floor - textured_luma),
+            0.0,
+        )
+        rgb += lift[:, :, None]
 
     rgb = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
     textured = Image.fromarray(rgb, mode="RGB")
@@ -2138,7 +2164,13 @@ def _render_cached_hybrid(
     # metrics (measured on the textured image) bounce run-to-run whenever an
     # evaluator re-rendered to a fresh debug path. See _content_texture_seed.
     texture_seed = _content_texture_seed(receipt)
-    image = _composite_paper_texture(image, seed=texture_seed)
+    image = _composite_paper_texture(
+        image,
+        seed=texture_seed,
+        # A measured ink colour makes paper/ink separation explicit. Preserve
+        # that separation through the otherwise independent texture layers.
+        protect_paper=ink is not None,
+    )
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     image.convert("RGB").save(path, format="PNG")
     return path
