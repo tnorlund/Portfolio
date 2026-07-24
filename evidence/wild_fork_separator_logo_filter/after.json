@@ -1,0 +1,59 @@
+{
+  "receipt": {
+    "image_id": "f008ea77-272b-4554-b8a6-e1676ec6a088",
+    "receipt_id": 2,
+    "slug": "wild_fork"
+  },
+  "stamp": {
+    "dirty": false,
+    "git_sha": "ca833b8f5f7a783bb36f0ce75d83fd6c79b4cb74",
+    "merchant_truth": {
+      "bundle_hash": "a9de285daf995ce20245bdb397f1a0c25a25ec5ab27587f723b0df5e6c7504cc",
+      "mode": "online-active",
+      "version": 1
+    }
+  },
+  "metrics": {
+    "overall": "PASS_WITH_GAPS",
+    "coverage_gaps": [
+      "style",
+      "style:policy"
+    ],
+    "columns": {
+      "verdict": "PASS"
+    },
+    "style": {
+      "verdict": "PASS_WITH_GAPS"
+    },
+    "tokens": {
+      "ink_recall": 0.9717,
+      "text_precision": 1.0,
+      "text_recall": 1.0,
+      "verdict": "PASS"
+    },
+    "separators": {
+      "kind_mismatches": 0,
+      "matched": [],
+      "missing_in_synth": [],
+      "phantom_in_synth": [],
+      "real_count": 0,
+      "synth_count": 0,
+      "verdict": "PASS"
+    },
+    "graphics": {
+      "verdict": "PASS"
+    },
+    "logo": {
+      "area_ratio": 0.985,
+      "center_offset_frac": 0.0099,
+      "size_ratio": 1.0,
+      "width_ratio": 0.945,
+      "verdict": "PASS"
+    },
+    "arithmetic": {
+      "testable": 3,
+      "violated": 0,
+      "verdict": "PASS"
+    }
+  }
+}
