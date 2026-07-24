@@ -1,0 +1,20 @@
+{
+  "git_sha": "819d03373a179e76d32175553b294f0b9fb6742b",
+  "merchant": "The Stand - American Classics Redefined",
+  "merchant_truth": {
+    "bundle_hash": "c9d40358fc1665323c3639239ff4b19e1c1c02c032f723a260c2cb7c6d9dcd27",
+    "mode": "online-active",
+    "slug": "the_stand___american_classics_redefined",
+    "version": 1
+  },
+  "metric": "separators",
+  "receipt": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#1",
+  "result": {
+    "missing_in_synth": 0,
+    "phantom_in_synth": 0,
+    "real_count": 0,
+    "synth_count": 0,
+    "verdict": "PASS"
+  },
+  "synthetic_sha256": "25c58932c68f3e341a85b1726db5f136b06dc9deb9752fe654ab9d508742306e"
+}
