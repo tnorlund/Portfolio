@@ -8,7 +8,7 @@
 
 > **getJpegFallbackUrl**(`image`): `string`
 
-Defined in: [utils/imageFormat.ts:246](https://github.com/tnorlund/Portfolio/blob/ac78671c53f7c6c738d79fa09a830b82ee21f2f8/portfolio/utils/imageFormat.ts#L246)
+Defined in: [utils/imageFormat.ts:246](https://github.com/tnorlund/Portfolio/blob/8a74aac9c040fc0735a2bc68a1cfe6a397e31147/portfolio/utils/imageFormat.ts#L246)
 
 Get the JPEG fallback URL for an image.
 Use this as an onError fallback when AVIF/WebP CDN keys are broken.
