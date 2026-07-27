@@ -1,257 +1,177 @@
-"""Lambda handler for marking batch summaries as completed after successful compaction.
+"""Finalize embedding state after canonical snapshot promotion.
 
-This handler marks all batches from poll_results as COMPLETED only after
-successful compaction (data written to S3 and EFS). This ensures batches
-are only marked complete when the entire workflow succeeds.
+The pollers stage deltas but deliberately leave receipt entities ``PENDING``.
+This handler runs only after final compaction succeeds, marks the exact staged
+items ``SUCCESS``, and then closes completed BatchSummaries.  Any failure is
+raised so Step Functions retries or catches it; returning an HTTP-style 500
+would incorrectly count as a successful Task.
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import os
 import tempfile
-from typing import Any, Dict
+from typing import Any
 
 import boto3
+from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-# Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize DynamoDB client
-dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 
-# Initialize S3 client
-s3_client = boto3.client("s3")
+def _load_poll_results(event: dict[str, Any]) -> list[dict[str, Any]]:
+    poll_results = event.get("poll_results") or []
+    key = event.get("poll_results_s3_key")
+    bucket = event.get("poll_results_s3_bucket")
+    if poll_results or not (key and bucket):
+        return poll_results
 
-
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """Mark batch summaries as COMPLETED after successful compaction.
-
-    Args:
-        event: Lambda event containing:
-            - poll_results: Array of poll results, each containing batch_id
-            - poll_results_s3_key: (optional) S3 key where poll_results is stored
-            - poll_results_s3_bucket: (optional) S3 bucket where poll_results is stored
-
-    Returns:
-        Dictionary containing:
-            - batches_marked: Number of batches marked as complete
-            - batch_ids: List of batch IDs that were marked complete
-    """
-    logger.info("Starting mark_batches_complete handler")
-
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as stream:
+        path = stream.name
     try:
-        poll_results = event.get("poll_results", [])
-
-        # Load poll_results from S3 if it's stored there
-        poll_results_s3_key = event.get("poll_results_s3_key")
-        poll_results_s3_bucket = event.get("poll_results_s3_bucket")
-
-        if (
-            (not poll_results or poll_results is None)
-            and poll_results_s3_key
-            and poll_results_s3_bucket
-        ):
-            logger.info(
-                "Loading poll_results from S3: %s/%s",
-                poll_results_s3_bucket,
-                poll_results_s3_key,
-            )
-            with tempfile.NamedTemporaryFile(
-                mode="r", suffix=".json", delete=False
-            ) as tmp_file:
-                tmp_file_path = tmp_file.name
-
-            try:
-                s3_client.download_file(
-                    poll_results_s3_bucket, poll_results_s3_key, tmp_file_path
-                )
-                with open(tmp_file_path, "r", encoding="utf-8") as f:
-                    poll_results = json.load(f)
-                logger.info(
-                    "Loaded poll_results from S3 (%d items)",
-                    len(poll_results),
-                )
-            finally:
-                try:
-                    os.unlink(tmp_file_path)
-                except Exception:
-                    pass
-
-        if not poll_results:
-            logger.info("No poll results to mark as complete")
-            return {
-                "batches_marked": 0,
-                "batch_ids": [],
-            }
-
-        # Extract unique batch_ids from poll_results
-        # CRITICAL: Only mark batches as COMPLETED if they actually completed
-        # Filter out batches that are still processing (action: "wait") or failed
-        batch_ids = []
-        skipped_batches = []
-        for result in poll_results:
-            if isinstance(result, dict) and "batch_id" in result:
-                batch_id = result["batch_id"]
-                batch_status = result.get("batch_status", "").lower()
-                action = result.get("action", "")
-
-                # Only mark batches as COMPLETED if:
-                # 1. batch_status is "completed" AND
-                # 2. action is "process_results" (not "wait", "handle_failure", etc.)
-                if (
-                    batch_id
-                    and batch_status == "completed"
-                    and action == "process_results"
-                ):
-                    if batch_id not in batch_ids:
-                        batch_ids.append(batch_id)
-                else:
-                    # Track skipped batches for logging
-                    if batch_id:
-                        skipped_batches.append(
-                            {
-                                "batch_id": batch_id,
-                                "batch_status": batch_status,
-                                "action": action,
-                            }
-                        )
-
-        if skipped_batches:
-            logger.info(
-                "Skipping batches that are not completed: %d batches (sample: %s)",
-                len(skipped_batches),
-                skipped_batches[:5],  # Log first 5
-            )
-
-        if not batch_ids:
-            if skipped_batches:
-                logger.info(
-                    "No completed batches to mark - all batches are still processing or failed: %d total",
-                    len(skipped_batches),
-                )
-            else:
-                logger.warning("No batch_ids found in poll_results")
-            return {
-                "batches_marked": 0,
-                "batch_ids": [],
-                "skipped_batches": (
-                    len(skipped_batches) if skipped_batches else 0
-                ),
-            }
-
-        logger.info(
-            "Marking %d batches as complete: %s",
-            len(batch_ids),
-            batch_ids[:5],  # Log first 5
-        )
-
-        # Fetch all batch summaries at once and update in batches (more efficient)
-        marked_count = 0
-        errors = []
-
+        boto3.client("s3").download_file(bucket, key, path)
+        with open(path, "r", encoding="utf-8") as stream:
+            loaded = json.load(stream)
+        if not isinstance(loaded, list):
+            raise ValueError("poll results must be a JSON list")
+        return loaded
+    finally:
         try:
-            # Get all batch summaries in one call
-            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(
-                batch_ids
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _items_to_finalize(
+    poll_results: list[dict[str, Any]], collection: str
+) -> list[dict[str, Any]]:
+    items: dict[tuple, dict[str, Any]] = {}
+    for result in poll_results:
+        if not isinstance(result, dict):
+            continue
+        if result.get("collection") != collection or not result.get("delta_key"):
+            continue
+        if result.get("action") not in {"process_results", "process_partial"}:
+            continue
+        for item in result.get("embedded_items") or []:
+            if not isinstance(item, dict):
+                continue
+            key = (
+                item.get("image_id"),
+                item.get("receipt_id"),
+                item.get("line_id"),
+                item.get("word_id"),
             )
+            if all(value is not None for value in key[:3]):
+                items[key] = item
+    return list(items.values())
 
-            # Update status for all summaries
-            for batch_summary in batch_summaries:
-                batch_summary.status = "COMPLETED"
 
-            # Update all summaries in batches (update_batch_summaries uses transactions)
-            # Process in chunks of 25 (DynamoDB transaction limit)
-            chunk_size = 25
-            for i in range(0, len(batch_summaries), chunk_size):
-                chunk = batch_summaries[i : i + chunk_size]
-                try:
-                    dynamo_client.update_batch_summaries(chunk)
-                    marked_count += len(chunk)
-                    logger.info(
-                        "Marked %d batches as complete (chunk %d)",
-                        len(chunk),
-                        i // chunk_size + 1,
-                    )
-                except Exception as e:
-                    # If batch update fails, try individual updates
-                    logger.warning(
-                        "Batch update failed, trying individual updates: %s",
-                        str(e)[:200],
-                    )
-                    for batch_summary in chunk:
-                        try:
-                            dynamo_client.update_batch_summary(batch_summary)
-                            marked_count += 1
-                            logger.info(
-                                "Marked batch as complete: %s",
-                                batch_summary.batch_id,
-                            )
-                        except Exception as e2:
-                            error_msg = f"Failed to mark batch {batch_summary.batch_id} as complete: {str(e2)[:100]}"
-                            errors.append(error_msg)
-                            logger.error(
-                                "Error marking batch as complete: %s - %s",
-                                batch_summary.batch_id,
-                                str(e2),
-                            )
-
-            # Check for any batch_ids that weren't found
-            found_batch_ids = {bs.batch_id for bs in batch_summaries}
-            for batch_id in batch_ids:
-                if batch_id not in found_batch_ids:
-                    error_msg = f"Batch {batch_id} not found in DynamoDB"
-                    errors.append(error_msg)
-                    logger.warning("Batch not found: %s", batch_id)
-
-        except AttributeError as e:
-            # Fallback: if methods don't exist, try individual calls
-            logger.warning(
-                "Batch methods not available, falling back to individual calls: %s",
-                str(e),
-            )
-            for batch_id in batch_ids:
-                try:
-                    # Try get_batch_summary first
-                    batch_summary = dynamo_client.get_batch_summary(batch_id)
-                    batch_summary.status = "COMPLETED"
-                    dynamo_client.update_batch_summary(batch_summary)
-                    marked_count += 1
-                    logger.info("Marked batch as complete: %s", batch_id)
-                except Exception as e2:
-                    error_msg = f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
-                    errors.append(error_msg)
-                    logger.error(
-                        "Error marking batch as complete: %s - %s",
-                        batch_id,
-                        str(e2),
-                    )
-
-        if errors:
-            logger.warning(
-                "Some batches failed to mark as complete: %d marked, %d errors, %d total",
-                marked_count,
-                len(errors),
-                len(batch_ids),
-            )
-        else:
-            logger.info(
-                "Successfully marked all %d batches as complete", marked_count
-            )
-
-        return {
-            "batches_marked": marked_count,
-            "batch_ids": batch_ids,
-            "errors": errors if errors else None,
-        }
-
-    except Exception as e:
-        logger.error(
-            "Unexpected error marking batches as complete: %s", str(e)
+def _finalize_lines(dynamo: DynamoClient, items: list[dict[str, Any]]) -> int:
+    requested: dict[tuple[str, int], set[int]] = {}
+    for item in items:
+        requested.setdefault((item["image_id"], int(item["receipt_id"])), set()).add(
+            int(item["line_id"])
         )
-        return {
-            "statusCode": 500,
-            "error": str(e),
-            "message": "Failed to mark batches as complete",
+
+    changed = []
+    for (image_id, receipt_id), line_ids in requested.items():
+        for line in dynamo.list_receipt_lines_from_receipt(image_id, receipt_id):
+            if (
+                line.line_id in line_ids
+                and line.embedding_status != EmbeddingStatus.SUCCESS.value
+            ):
+                line.embedding_status = EmbeddingStatus.SUCCESS.value
+                changed.append(line)
+    for offset in range(0, len(changed), 25):
+        dynamo.update_receipt_lines(changed[offset : offset + 25])
+    return len(changed)
+
+
+def _finalize_words(dynamo: DynamoClient, items: list[dict[str, Any]]) -> int:
+    requested: dict[tuple[str, int], set[tuple[int, int]]] = {}
+    for item in items:
+        requested.setdefault((item["image_id"], int(item["receipt_id"])), set()).add(
+            (int(item["line_id"]), int(item["word_id"]))
+        )
+
+    changed = []
+    for (image_id, receipt_id), word_ids in requested.items():
+        for word in dynamo.list_receipt_words_from_receipt(image_id, receipt_id):
+            if (
+                word.line_id,
+                word.word_id,
+            ) in word_ids and word.embedding_status != EmbeddingStatus.SUCCESS.value:
+                word.embedding_status = EmbeddingStatus.SUCCESS.value
+                changed.append(word)
+    for offset in range(0, len(changed), 25):
+        dynamo.update_receipt_words(changed[offset : offset + 25])
+    return len(changed)
+
+
+def _completed_batch_ids(
+    poll_results: list[dict[str, Any]],
+) -> list[str]:
+    return sorted(
+        {
+            result["batch_id"]
+            for result in poll_results
+            if isinstance(result, dict)
+            and result.get("batch_id")
+            and str(result.get("batch_status", "")).lower() == "completed"
+            and result.get("action") == "process_results"
         }
+    )
+
+
+def _complete_summaries(dynamo: DynamoClient, batch_ids: list[str]) -> int:
+    if not batch_ids:
+        return 0
+    summaries = dynamo.get_batch_summaries_by_batch_ids(batch_ids)
+    found = {summary.batch_id for summary in summaries}
+    missing = sorted(set(batch_ids) - found)
+    if missing:
+        raise RuntimeError(f"Batch summaries missing: {missing[:10]}")
+
+    for summary in summaries:
+        summary.status = BatchStatus.COMPLETED.value
+    for offset in range(0, len(summaries), 25):
+        dynamo.update_batch_summaries(summaries[offset : offset + 25])
+    return len(summaries)
+
+
+def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+    """Finalize exact items and BatchSummaries after compaction."""
+    table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+    if not table_name:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+    dynamo = DynamoClient(table_name)
+    poll_results = _load_poll_results(event)
+    if not poll_results:
+        return {
+            "lines_marked": 0,
+            "words_marked": 0,
+            "batches_marked": 0,
+            "batch_ids": [],
+        }
+
+    lines_marked = _finalize_lines(dynamo, _items_to_finalize(poll_results, "lines"))
+    words_marked = _finalize_words(dynamo, _items_to_finalize(poll_results, "words"))
+    batch_ids = _completed_batch_ids(poll_results)
+    batches_marked = _complete_summaries(dynamo, batch_ids)
+    logger.info(
+        "Finalized canonical embedding state: %d lines, %d words, %d batches",
+        lines_marked,
+        words_marked,
+        batches_marked,
+    )
+    return {
+        "lines_marked": lines_marked,
+        "words_marked": words_marked,
+        "batches_marked": batches_marked,
+        "batch_ids": batch_ids,
+    }

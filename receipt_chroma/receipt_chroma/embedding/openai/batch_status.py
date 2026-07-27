@@ -11,10 +11,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
-
 from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
+
+from receipt_chroma.embedding.formatting.line_format import (
+    get_primary_line_id,
+    group_lines_into_visual_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +53,7 @@ def map_openai_to_dynamo_status(openai_status: str) -> BatchStatus:
     return mapping[openai_status]
 
 
-def process_error_file(
-    openai_batch_id: str, openai_client: OpenAI
-) -> Dict[str, Any]:
+def process_error_file(openai_batch_id: str, openai_client: OpenAI) -> Dict[str, Any]:
     """
     Download and process error file for failed or expired batches.
 
@@ -269,22 +271,20 @@ def handle_failed_status(
 
     # Mark all failed items for retry based on batch type
     marked_count = 0
+    entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
     if error_info["error_details"]:
-        failed_ids = [
-            detail["custom_id"] for detail in error_info["error_details"]
-        ]
-        # Determine entity type from batch_type
-        entity_type = (
-            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
-        )
-        marked_count = mark_items_for_retry(
-            failed_ids, entity_type, dynamo_client
-        )
+        failed_ids = [detail["custom_id"] for detail in error_info["error_details"]]
+        marked_count = mark_items_for_retry(failed_ids, entity_type, dynamo_client)
         logger.info(
             "Marked %d failed items from failed batch %s for retry",
             marked_count,
             openai_batch_id,
         )
+    # Error files can be absent or incomplete. Release any remaining claims
+    # referenced by this terminal batch so discovery can retry the full set.
+    marked_count += release_batch_receipts_for_retry(
+        batch_summary, entity_type, dynamo_client
+    )
 
     # Log sample errors for debugging
     if error_info["sample_errors"]:
@@ -336,36 +336,37 @@ def handle_expired_status(
     batch_summary.status = BatchStatus.EXPIRED
     dynamo_client.update_batch_summary(batch_summary)
 
-    # Mark failed items for retry based on batch type
+    # An expired provider batch is terminal.  Requeue both the failed IDs and
+    # the partial successes; Step Functions cannot publish a partial delta and
+    # atomically finalize the remaining claims as one batch.  Re-embedding the
+    # partial successes is cheaper than reporting SUCCESS for vectors that
+    # never reached the canonical snapshot.
     marked_count = 0
-    if failed_ids:
-        # Determine entity type from batch_type
-        entity_type = (
-            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
-        )
-        marked_count = mark_items_for_retry(
-            failed_ids, entity_type, dynamo_client
-        )
+    retry_ids = [
+        result["custom_id"] for result in successful_results if result.get("custom_id")
+    ] + failed_ids
+    entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+    if retry_ids:
+        marked_count = mark_items_for_retry(retry_ids, entity_type, dynamo_client)
         logger.info(
             "Marked %d failed items from expired batch %s for retry",
             marked_count,
             openai_batch_id,
         )
-
-    # TODO: Consider marking successful items as COMPLETED
-    # This would require implementing a similar function to
-    # mark_items_for_retry but setting status to COMPLETED instead of FAILED
+    marked_count += release_batch_receipts_for_retry(
+        batch_summary, entity_type, dynamo_client
+    )
 
     return {
-        "action": "process_partial",
+        "action": "handle_failure",
         "status": "expired",
         "successful_count": len(successful_results),
         "failed_count": len(failed_ids),
         "marked_for_retry": marked_count,
         "partial_results": successful_results,
         "failed_ids": failed_ids,
-        "next_step": "process_partial_and_retry_failed",
-        "should_continue_processing": bool(successful_results),
+        "next_step": "create_retry_batch",
+        "should_continue_processing": False,
     }
 
 
@@ -400,9 +401,7 @@ def handle_in_progress_status(
     if isinstance(submitted_at, str):
         submitted_at = datetime.fromisoformat(submitted_at)
 
-    hours_elapsed = (
-        datetime.now(timezone.utc) - submitted_at
-    ).total_seconds() / 3600
+    hours_elapsed = (datetime.now(timezone.utc) - submitted_at).total_seconds() / 3600
 
     # Warn if approaching 24h limit
     if hours_elapsed > 20:
@@ -446,10 +445,17 @@ def handle_cancelled_status(
     batch_summary = dynamo_client.get_batch_summary(batch_id)
     batch_summary.status = map_openai_to_dynamo_status(status)
     dynamo_client.update_batch_summary(batch_summary)
+    marked_count = 0
+    if status == "cancelled":
+        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        marked_count = release_batch_receipts_for_retry(
+            batch_summary, entity_type, dynamo_client
+        )
 
     return {
         "action": "handle_cancellation",
         "status": status,
+        "marked_for_retry": marked_count,
         "next_step": "cleanup_or_retry",
         "should_continue_processing": False,
     }
@@ -503,9 +509,7 @@ def handle_batch_status(
             batch_id, openai_batch_id, status, dynamo_client
         )
     if status in ["canceling", "cancelled"]:
-        return handle_cancelled_status(
-            batch_id, openai_batch_id, status, dynamo_client
-        )
+        return handle_cancelled_status(batch_id, openai_batch_id, status, dynamo_client)
 
     logger.error("Unknown batch status: %s", status)
     raise ValueError(f"Unknown batch status: {status}")
@@ -515,7 +519,12 @@ def mark_items_for_retry(
     failed_ids: List[str], entity_type: str, dynamo_client: DynamoClient
 ) -> int:
     """
-    Mark failed items for retry in DynamoDB.
+    Release failed item claims for retry in DynamoDB.
+
+    Discovery selects ``NONE`` only, so a retryable provider failure must
+    return items to ``NONE`` rather than strand them in ``FAILED``.  Line
+    custom IDs identify the primary line of a visual row; all row members are
+    released together.
 
     Args:
         failed_ids: List of custom IDs that failed
@@ -537,27 +546,33 @@ def mark_items_for_retry(
 
             if entity_type == "line":
                 line_id = int(parts[5])
-                # Get and update line
-                lines = dynamo_client.get_lines_from_receipt(
+                lines = dynamo_client.list_receipt_lines_from_receipt(
                     image_id, receipt_id
                 )
-                for line in lines:
-                    if line.line_id == line_id:
-                        line.embedding_status = EmbeddingStatus.FAILED
-                        dynamo_client.update_lines([line])
-                        marked_count += 1
-                        break
+                row = next(
+                    (
+                        candidate
+                        for candidate in group_lines_into_visual_rows(lines)
+                        if candidate and get_primary_line_id(candidate) == line_id
+                    ),
+                    None,
+                )
+                if row:
+                    for line in row:
+                        line.embedding_status = EmbeddingStatus.NONE.value
+                    dynamo_client.update_receipt_lines(list(row))
+                    marked_count += len(row)
 
             elif entity_type == "word":
+                line_id = int(parts[5])
                 word_id = int(parts[7])
-                # Get and update word
-                words = dynamo_client.get_words_from_receipt(
+                words = dynamo_client.list_receipt_words_from_receipt(
                     image_id, receipt_id
                 )
                 for word in words:
-                    if word.word_id == word_id:
-                        word.embedding_status = EmbeddingStatus.FAILED
-                        dynamo_client.update_words([word])
+                    if word.line_id == line_id and word.word_id == word_id:
+                        word.embedding_status = EmbeddingStatus.NONE.value
+                        dynamo_client.update_receipt_words([word])
                         marked_count += 1
                         break
 
@@ -570,6 +585,47 @@ def mark_items_for_retry(
             continue
 
     logger.info("Marked %d items for retry", marked_count)
+    return marked_count
+
+
+def release_batch_receipts_for_retry(
+    batch_summary: BatchSummary,
+    entity_type: str,
+    dynamo_client: DynamoClient,
+) -> int:
+    """Release every still-pending entity referenced by a terminal batch.
+
+    Provider error files are optional and do not necessarily enumerate every
+    claimed request. The BatchSummary receipt manifest is the durable fallback
+    that prevents missing error rows from remaining ``PENDING`` forever.
+    """
+    marked_count = 0
+    for image_id, receipt_id in batch_summary.receipt_refs:
+        if receipt_id is None:
+            continue
+        if entity_type == "line":
+            entities = dynamo_client.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
+            update = dynamo_client.update_receipt_lines
+        elif entity_type == "word":
+            entities = dynamo_client.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
+            update = dynamo_client.update_receipt_words
+        else:
+            raise ValueError(f"Unsupported entity_type: {entity_type}")
+
+        pending = [
+            entity
+            for entity in entities
+            if entity.embedding_status == EmbeddingStatus.PENDING.value
+        ]
+        for entity in pending:
+            entity.embedding_status = EmbeddingStatus.NONE.value
+        if pending:
+            update(pending)
+            marked_count += len(pending)
     return marked_count
 
 
@@ -624,13 +680,8 @@ def mark_words_embedded(
                 e,
             )
             continue
-        word = words_by_receipt.get((image_id, receipt_id), {}).get(
-            (line_id, word_id)
-        )
-        if (
-            word is not None
-            and word.embedding_status != EmbeddingStatus.SUCCESS.value
-        ):
+        word = words_by_receipt.get((image_id, receipt_id), {}).get((line_id, word_id))
+        if word is not None and word.embedding_status != EmbeddingStatus.SUCCESS.value:
             word.embedding_status = EmbeddingStatus.SUCCESS.value
             to_update.setdefault((image_id, receipt_id), []).append(word)
 

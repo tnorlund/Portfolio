@@ -8,11 +8,11 @@ Uses row-based visual grouping: lines that appear on the same visual row
 The embedding includes context from the row above and row below.
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
+import utils.logging  # pylint: disable=import-error
 from embedding_ingest import (  # pylint: disable=import-error
     deserialize_receipt_lines,
     download_serialized_file,
@@ -30,9 +30,9 @@ from receipt_chroma.embedding.openai import (
     submit_openai_batch,
     upload_to_openai,
 )
+from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-
-import utils.logging  # pylint: disable=import-error
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from utils.env_vars import get_required_env  # pylint: disable=import-error
 
 get_logger = utils.logging.get_logger
@@ -57,11 +57,15 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     logger.info("Starting submit_to_openai handler")
 
+    batch_summary_recorded = False
+    lines_to_mark_pending = []
+    previous_line_statuses = []
+    dynamo_client = None
     try:
         # Extract parameters from event
         s3_key = event["s3_key"]
         s3_bucket = event["s3_bucket"]
-        batch_id = str(uuid4())
+        batch_id = str(uuid5(NAMESPACE_URL, f"line:{s3_bucket}:{s3_key}"))
 
         # Download the serialized lines from S3
         filepath = download_serialized_file(s3_bucket=s3_bucket, s3_key=s3_key)
@@ -78,11 +82,32 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         receipt_id = lines_to_embed[0].receipt_id
 
         dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
+        try:
+            existing = dynamo_client.get_batch_summary(batch_id)
+        except EntityNotFoundError:
+            existing = None
+        if existing is not None:
+            if existing.status in {
+                BatchStatus.PENDING.value,
+                BatchStatus.VALIDATING.value,
+                BatchStatus.IN_PROGRESS.value,
+                BatchStatus.FINALIZING.value,
+                BatchStatus.CANCELING.value,
+                BatchStatus.COMPLETED.value,
+            }:
+                logger.info("Batch already submitted", batch_id=batch_id)
+                return {
+                    "batch_id": batch_id,
+                    "openai_batch_id": existing.openai_batch_id,
+                    "status": str(existing.status),
+                    "idempotent_replay": True,
+                }
+            # The deterministic content ID is reused for a terminal provider
+            # failure. Remove the terminal attempt before writing its retry.
+            dynamo_client.delete_batch_summary(existing)
 
         # Query all lines in the receipt for context
-        all_lines_in_receipt = query_receipt_lines(
-            dynamo_client, image_id, receipt_id
-        )
+        all_lines_in_receipt = query_receipt_lines(dynamo_client, image_id, receipt_id)
         logger.info(
             "Found lines in receipt",
             count=len(all_lines_in_receipt),
@@ -118,9 +143,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Build custom_id (ChromaDB format) - uses primary line ID
             custom_id = (
-                f"IMAGE#{image_id}#"
-                f"RECEIPT#{receipt_id:05d}#"
-                f"LINE#{primary_line_id:05d}"
+                f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{primary_line_id:05d}"
             )
 
             # Format as OpenAI batch API request
@@ -148,6 +171,18 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         write_ndjson(input_file, formatted_lines)
         logger.info("Wrote input file", filepath=str(input_file))
 
+        # Claim before the irreversible provider call. Discovery normally did
+        # this already; repeating PENDING is harmless for direct invocations.
+        lines_to_mark_pending = [
+            line
+            for line in all_lines_in_receipt
+            if line.line_id in all_line_ids_in_processed_rows
+        ]
+        previous_line_statuses = [
+            (line, line.embedding_status) for line in lines_to_mark_pending
+        ]
+        set_pending_and_update_lines(dynamo_client, lines_to_mark_pending)
+
         # Initialize clients
         openai_client = OpenAI()
 
@@ -168,28 +203,23 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
-        # Update line embedding status in DynamoDB for ALL lines in processed rows
-        # This ensures consistent status transitions: all lines in a visual row
-        # go NONE -> PENDING -> SUCCESS together (since line_polling marks all
-        # lines in a row as SUCCESS when the embedding completes)
-        lines_to_mark_pending = [
-            line
-            for line in all_lines_in_receipt
-            if line.line_id in all_line_ids_in_processed_rows
-        ]
-        set_pending_and_update_lines(dynamo_client, lines_to_mark_pending)
-        logger.info(
-            "Updated embedding status for lines",
-            lines_marked_pending=len(lines_to_mark_pending),
-            original_batch_size=len(lines_to_embed),
-        )
-
         # Save batch summary to database
         add_batch_summary(batch_summary, dynamo_client)
+        batch_summary_recorded = True
         logger.info("Added batch summary", batch_id=batch_summary.batch_id)
 
         return {"batch_id": batch_id}
 
     except Exception as e:
+        if dynamo_client is not None and not batch_summary_recorded:
+            for line, previous_status in previous_line_statuses:
+                line.embedding_status = previous_status
+            if previous_line_statuses:
+                try:
+                    dynamo_client.update_receipt_lines(
+                        [line for line, _status in previous_line_statuses]
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception("Failed to release line embedding claim")
         logger.error("Error submitting to OpenAI", error=str(e))
         raise RuntimeError(f"Error submitting to OpenAI: {str(e)}") from e

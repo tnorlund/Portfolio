@@ -13,6 +13,7 @@ from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
+import utils.logging  # pylint: disable=import-error
 from botocore.config import Config
 from handlers.skipped_all import build_skipped_all_s3_result
 from openai import OpenAI
@@ -28,15 +29,10 @@ from receipt_chroma.embedding.openai import (
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-
-import utils.logging  # pylint: disable=import-error
 from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
     openai_circuit_breaker,
-)
-from utils.dual_chroma_client import (
-    DualChromaClient,  # pylint: disable=import-error
 )
 from utils.graceful_shutdown import (  # pylint: disable=import-error
     final_cleanup,
@@ -72,6 +68,41 @@ s3_client = boto3.client("s3")
 _fix_place_lambda_client = boto3.client(
     "lambda", config=Config(read_timeout=910, connect_timeout=10)
 )
+
+
+def _embedded_word_items(
+    results: List[dict], descriptions: Dict[str, Dict[int, dict]]
+) -> list[dict[str, Any]]:
+    """Return exact word keys that were staged in a valid delta."""
+    words_by_receipt = {
+        (image_id, receipt_id): {
+            (word.line_id, word.word_id) for word in details["words"]
+        }
+        for image_id, receipts in descriptions.items()
+        for receipt_id, details in receipts.items()
+    }
+    embedded: dict[tuple[str, int, int, int], dict[str, Any]] = {}
+    for result in results:
+        try:
+            meta = parse_word_custom_id(result["custom_id"])
+        except (KeyError, ValueError):
+            continue
+        key = (
+            meta["image_id"],
+            meta["receipt_id"],
+            meta["line_id"],
+            meta["word_id"],
+        )
+        if (meta["line_id"], meta["word_id"]) in words_by_receipt.get(
+            (meta["image_id"], meta["receipt_id"]), set()
+        ):
+            embedded[key] = {
+                "image_id": meta["image_id"],
+                "receipt_id": meta["receipt_id"],
+                "line_id": meta["line_id"],
+                "word_id": meta["word_id"],
+            }
+    return list(embedded.values())
 
 
 # Type variable for retry decorator
@@ -995,6 +1026,23 @@ def _handle_internal_core(
 
         delta_save_duration = time.time() - delta_save_start_time
 
+        if delta_result.get("status") == "failed" or not delta_result.get(
+            "delta_key"
+        ):
+            logger.error(
+                "Failed to save word delta",
+                batch_id=batch_id,
+                error=delta_result.get("error", "Missing delta key"),
+            )
+            return {
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "batch_status": batch_status,
+                "action": "delta_save_failed",
+                "error": delta_result.get("error", "Failed to save delta"),
+                "results_count": len(results),
+            }
+
         delta_id = delta_result["delta_id"]
         embedding_count = delta_result["embedding_count"]
 
@@ -1025,16 +1073,22 @@ def _handle_internal_core(
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
 
-        # Flip word embedding_status now that the delta is durably in S3
-        # (#990: this was skipped, stranding words in PENDING forever)
-        with operation_with_timeout("mark_words_embedded", max_duration=120):
-            words_marked = mark_words_embedded(
-                results, descriptions, dynamo_client
-            )
-        collected_metrics["WordsMarkedSuccess"] = words_marked
+        embedded_items = _embedded_word_items(results, descriptions)
+        if not skip_sqs:
+            with operation_with_timeout(
+                "mark_words_embedded", max_duration=120
+            ):
+                words_marked = mark_words_embedded(
+                    results, descriptions, dynamo_client
+                )
+            collected_metrics["WordsMarkedSuccess"] = words_marked
+        else:
+            words_marked = 0
         logger.info(
-            "Marked words as embedded",
+            "Prepared word embedding finalization",
+            embedded_items=len(embedded_items),
             words_marked=words_marked,
+            deferred=skip_sqs,
             batch_id=batch_id,
         )
 
@@ -1067,6 +1121,7 @@ def _handle_internal_core(
             "storage": "s3_delta",
             "collection": "words",
             "database": "words",
+            "embedded_items": embedded_items,
         }
 
         logger.info("Successfully completed word polling", **full_result)

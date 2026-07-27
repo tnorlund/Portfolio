@@ -10,14 +10,13 @@ payload size limits.
 import json
 import logging
 import os
-import random
 import tempfile
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Union
 
 import boto3
-from receipt_dynamo.constants import BatchType
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
 
@@ -32,34 +31,54 @@ MAX_PAYLOAD_SIZE = 150 * 1024  # 150KB (conservative)
 s3_client = boto3.client("s3")
 
 
-def _list_pending_batches(
+ACTIVE_BATCH_STATUSES = (
+    BatchStatus.PENDING,
+    BatchStatus.VALIDATING,
+    BatchStatus.IN_PROGRESS,
+    BatchStatus.FINALIZING,
+    BatchStatus.CANCELING,
+)
+
+
+def _list_active_batches(
     dynamo_client: DynamoClient, batch_type: BatchType
 ) -> List[BatchSummary]:
-    """
-    List pending embedding batches from DynamoDB with pagination.
+    """List every provider-live embedding batch with pagination.
+
+    Polling records the OpenAI provider state on ``BatchSummary.status``.
+    Querying only ``PENDING`` therefore loses a batch after its first poll.
+    Keep all nonterminal provider states visible until compaction finalizes it.
 
     Args:
         dynamo_client: DynamoDB client instance
         batch_type: Type of batches to list (LINE_EMBEDDING or WORD_EMBEDDING)
 
     Returns:
-        List of pending batch summaries
+        Deduplicated active batch summaries, oldest first.
     """
-    summaries, lek = dynamo_client.get_batch_summaries_by_status(
-        status="PENDING",
-        batch_type=batch_type,
-        limit=25,
-        last_evaluated_key=None,
-    )
-    while lek:
-        next_summaries, lek = dynamo_client.get_batch_summaries_by_status(
-            status="PENDING",
+    summaries: dict[str, BatchSummary] = {}
+    for status in ACTIVE_BATCH_STATUSES:
+        page, lek = dynamo_client.get_batch_summaries_by_status(
+            status=status,
             batch_type=batch_type,
             limit=25,
-            last_evaluated_key=lek,
+            last_evaluated_key=None,
         )
-        summaries.extend(next_summaries)
-    return summaries
+        for summary in page:
+            summaries[summary.batch_id] = summary
+        while lek:
+            page, lek = dynamo_client.get_batch_summaries_by_status(
+                status=status,
+                batch_type=batch_type,
+                limit=25,
+                last_evaluated_key=lek,
+            )
+            for summary in page:
+                summaries[summary.batch_id] = summary
+    return sorted(
+        summaries.values(),
+        key=lambda summary: (summary.submitted_at, summary.batch_id),
+    )
 
 
 def lambda_handler(
@@ -116,11 +135,11 @@ def lambda_handler(
 
         # Get pending batches from DynamoDB based on type
         if batch_type == "word":
-            pending_batches = _list_pending_batches(
+            pending_batches = _list_active_batches(
                 dynamo_client, BatchType.WORD_EMBEDDING
             )
         else:
-            pending_batches = _list_pending_batches(
+            pending_batches = _list_active_batches(
                 dynamo_client, BatchType.LINE_EMBEDDING
             )
 
@@ -139,23 +158,14 @@ def lambda_handler(
         # long-term fix (offload poll results to S3 instead of inline).
         try:
             max_batches = int(
-                event.get("max_batches")
-                or os.environ.get("MAX_BATCHES_PER_RUN", 0)
+                event.get("max_batches") or os.environ.get("MAX_BATCHES_PER_RUN", 0)
             )
         except (TypeError, ValueError):
             max_batches = 0
         if max_batches and total_pending > max_batches:
-            # Randomly sample the slice instead of always taking the first
-            # `max_batches` from the status GSI. A fixed prefix would let a few
-            # permanently-stuck batches (e.g. orphaned batches referencing
-            # deleted words, which poll but never mark COMPLETE) sit at the
-            # front and starve every later batch forever. Random sampling lets
-            # the healthy batches drain (they get marked COMPLETE and leave the
-            # PENDING set), so the backlog actually converges.
-            random.shuffle(pending_batches)
             pending_batches = pending_batches[:max_batches]
             logger.info(
-                "Capping this run to a random %d of %d pending batches "
+                "Capping this run to the oldest %d of %d active batches "
                 "(remaining %d will be handled by subsequent runs)",
                 max_batches,
                 total_pending,

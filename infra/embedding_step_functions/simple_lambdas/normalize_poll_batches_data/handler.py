@@ -271,9 +271,7 @@ def _download_and_combine_poll_results(
                 ) as tmp_file:
                     tmp_file_path = tmp_file.name
 
-                s3_client.download_file(
-                    result_bucket, result_key, tmp_file_path
-                )
+                s3_client.download_file(result_bucket, result_key, tmp_file_path)
 
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     result = json.load(f)
@@ -293,15 +291,14 @@ def _download_and_combine_poll_results(
                     result_key,
                     error_code,
                 )
-                # Continue with other results
+                raise
             except BotoCoreError:
                 logger.exception(
-                    "Botocore error downloading poll result: "
-                    "bucket=%s, key=%s",
+                    "Botocore error downloading poll result: bucket=%s, key=%s",
                     result_bucket,
                     result_key,
                 )
-                # Continue with other results
+                raise
             finally:
                 # Clean up temp file regardless of success or failure
                 if tmp_file_path:
@@ -326,8 +323,9 @@ def _filter_valid_deltas(
         if not isinstance(result, dict):
             continue
 
-        # Must have delta_key
-        if "delta_key" not in result:
+        # A present-but-null key is not a delta. Accepting it defers the error
+        # to compaction and can still let the batch finalizer run.
+        if not result.get("delta_key"):
             logger.debug("Skipping result without delta_key: %s", result)
             continue
 

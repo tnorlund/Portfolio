@@ -1,24 +1,30 @@
-"""Components for embedding step functions infrastructure.
+"""Lazy exports for embedding infrastructure components."""
 
-This module contains modular Pulumi ComponentResources that make up
-the embedding infrastructure, allowing for better code organization
-and easier maintenance of the 79-character line limit.
-"""
+from importlib import import_module
 
-from .docker_image import DockerImageComponent
-from .lambda_functions import (
-    CONTAINER_FUNCTION_NAMES,
-    LambdaFunctionsComponent,
-)
-from .line_workflow import LineEmbeddingWorkflow
-from .monitoring import MonitoringComponent
-from .word_workflow import WordEmbeddingWorkflow
+_EXPORTS = {
+    "CONTAINER_FUNCTION_NAMES": (
+        "lambda_functions",
+        "CONTAINER_FUNCTION_NAMES",
+    ),
+    "DockerImageComponent": ("docker_image", "DockerImageComponent"),
+    "EmbedAllWorkflow": ("backfill_workflow", "EmbedAllWorkflow"),
+    "LambdaFunctionsComponent": (
+        "lambda_functions",
+        "LambdaFunctionsComponent",
+    ),
+    "LineEmbeddingWorkflow": ("line_workflow", "LineEmbeddingWorkflow"),
+    "MonitoringComponent": ("monitoring", "MonitoringComponent"),
+    "WordEmbeddingWorkflow": ("word_workflow", "WordEmbeddingWorkflow"),
+}
 
-__all__ = [
-    "DockerImageComponent",
-    "CONTAINER_FUNCTION_NAMES",
-    "LambdaFunctionsComponent",
-    "LineEmbeddingWorkflow",
-    "WordEmbeddingWorkflow",
-    "MonitoringComponent",
-]
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(name) from exc
+    module = import_module(f"{__name__}.{module_name}")
+    return getattr(module, attribute)

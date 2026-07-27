@@ -7,16 +7,15 @@ from pathlib import Path
 # Add parent directory to path so 'infra' package can be imported
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import api_gateway
 import pulumi
 import pulumi_aws as aws
-from pulumi import Output
-
-import api_gateway
 from components.http_api_route import (
     RouteDefinition,
     create_lambda_route,
     create_lambda_routes,
 )
+from pulumi import Output
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -50,12 +49,12 @@ from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_refresh_lambda import create_label_refresh_lambda
 from merge_receipt_lambda import create_merge_receipt_lambda
-from resegment_receipt_lambda import create_resegment_receipt_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
+from resegment_receipt_lambda import create_resegment_receipt_lambda
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
 from trigger_reocr_lambda import create_trigger_reocr_lambda
@@ -74,10 +73,11 @@ label_validation_project_name = f"receipt-validation-v1-{pulumi.get_stack()}"
 
 # Import other necessary components
 try:
-    from infra.components import lambda_layer  # noqa: F401 (side effects)
     from lambda_functions.label_count_cache_updater.infra import (
         label_count_cache_updater_lambda,
     )
+
+    from infra.components import lambda_layer  # noqa: F401 (side effects)
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
@@ -218,6 +218,11 @@ embedding_infrastructure = EmbeddingInfrastructure(
     # Use same subnets as compaction Lambda
     vpc_subnet_ids=compaction_lambda_subnets,
     lambda_security_group_id=security.sg_lambda_id,
+)
+
+pulumi.export(
+    "embedding_embed_all_v1_sf_arn",
+    embedding_infrastructure.embed_all_workflow.state_machine.arn,
 )
 
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
