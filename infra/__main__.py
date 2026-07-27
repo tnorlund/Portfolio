@@ -20,9 +20,13 @@ from components.http_api_route import (
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
-if config.get_bool("docker-buildkit") is not False:  # Default to True if not set
+if (
+    config.get_bool("docker-buildkit") is not False
+):  # Default to True if not set
     os.environ["DOCKER_BUILDKIT"] = "1"
-    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = "1"  # Also enable for docker-compose
+    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
+        "1"  # Also enable for docker-compose
+    )
 
     # Warning if BuildKit might not be inherited by Docker
     if not os.environ.get("DOCKER_BUILDKIT"):
@@ -162,7 +166,9 @@ pulumi.export(
     "step_function_failure_topic_arn",
     notification_system.step_function_topic_arn,
 )
-pulumi.export("critical_error_topic_arn", notification_system.critical_error_topic_arn)
+pulumi.export(
+    "critical_error_topic_arn", notification_system.critical_error_topic_arn
+)
 
 # Create billing alerts for CloudWatch custom metrics costs
 billing_alerts = BillingAlerts(
@@ -345,7 +351,9 @@ upload_images = UploadImages(
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
-pulumi.export("llm_validation_queue_url", upload_images.llm_validation_queue.url)
+pulumi.export(
+    "llm_validation_queue_url", upload_images.llm_validation_queue.url
+)
 
 # ML Training Infrastructure
 # -------------------------
@@ -366,12 +374,16 @@ if enable_sagemaker:
         raw_bucket_arn=upload_images.image_bucket.arn,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
-    pulumi.export("layoutlm_training_bucket", sagemaker_training.output_bucket.bucket)
+    pulumi.export(
+        "layoutlm_training_bucket", sagemaker_training.output_bucket.bucket
+    )
     pulumi.export(
         "layoutlm_sagemaker_ecr_repo",
         sagemaker_training.ecr_repo.repository_url,
     )
-    pulumi.export("layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn)
+    pulumi.export(
+        "layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn
+    )
     pulumi.export(
         "layoutlm_start_training_lambda",
         sagemaker_training.start_training_lambda.arn,
@@ -380,7 +392,9 @@ if enable_sagemaker:
         "layoutlm_codebuild_project", sagemaker_training.codebuild_project.name
     )
     # Export model location for Swift OCR CLI to download LayoutLM model
-    pulumi.export("layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket)
+    pulumi.export(
+        "layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket
+    )
     pulumi.export("layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip")
 
     # Per-epoch checkpoint evaluation. Reuses the training container image and
@@ -408,7 +422,9 @@ else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
     if training_bucket_config:
-        layoutlm_training_bucket_name = Output.from_input(training_bucket_config)
+        layoutlm_training_bucket_name = Output.from_input(
+            training_bucket_config
+        )
 
 # Create LayoutLM inference API if we have a training bucket (either from training infra or config)
 if layoutlm_training_bucket_name is not None:
@@ -464,7 +480,9 @@ if layoutlm_training_bucket_name is not None:
         integration_name="layoutlm_inference_lambda_integration",
         lambda_function=layoutlm_inference_lambda,
         routes=(
-            RouteDefinition("layoutlm_inference_route", "GET /layoutlm_inference"),
+            RouteDefinition(
+                "layoutlm_inference_route", "GET /layoutlm_inference"
+            ),
             RouteDefinition(
                 "layoutlm_inference_cache_route",
                 "GET /layoutlm-inference-cache",
@@ -1063,8 +1081,12 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # ChromaDB infrastructure exports (hybrid deployment)
 pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
-pulumi.export("chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url)
-pulumi.export("chromadb_words_queue_url", chromadb_infrastructure.words_queue_url)
+pulumi.export(
+    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
+)
+pulumi.export(
+    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
+)
 pulumi.export(
     "stream_processor_function_arn",
     chromadb_infrastructure.stream_processor_arn,
@@ -1197,7 +1219,9 @@ if pulumi.get_stack() == "prod":
         "web-analytics",
         cloudfront_logs_bucket=cloudfront_logs_bucket.bucket,
         log_prefix="cloudfront/prod/",
-        ga_service_account_key=_analytics_cfg.get_secret("gaServiceAccountKey"),
+        ga_service_account_key=_analytics_cfg.get_secret(
+            "gaServiceAccountKey"
+        ),
         ga_property_id=_analytics_cfg.get("gaPropertyId"),
         github_token=_analytics_cfg.get_secret("githubTrafficToken"),
         github_repos=_analytics_cfg.get("githubTrafficRepos"),
@@ -1237,7 +1261,9 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
-pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
+pulumi.export(
+    "merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name
+)
 
 # Receipt Re-segmentation Lambda (one source receipt -> N guarded outputs)
 resegment_receipt_lambda = create_resegment_receipt_lambda(
@@ -1266,7 +1292,9 @@ trigger_reocr_lambda = create_trigger_reocr_lambda(
     ocr_job_queue_arn=upload_images.ocr_queue.arn,
 )
 pulumi.export("trigger_reocr_lambda_arn", trigger_reocr_lambda.lambda_arn)
-pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name)
+pulumi.export(
+    "trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name
+)
 
 # Label Refresh Lambda — subscribes to the DynamoDB stream and
 # automatically re-evaluates ReceiptWord labels whenever a word's
@@ -1277,7 +1305,9 @@ pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.
 # deploy is observe-only. Flip per stack with:
 #   pulumi config set portfolio:label_refresh_dry_run false --stack dev
 # Then verify dev for 48h before flipping prod.
-_label_refresh_dry_run = pulumi.Config("portfolio").get_bool("label_refresh_dry_run")
+_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
+    "label_refresh_dry_run"
+)
 label_refresh_lambda = create_label_refresh_lambda(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
@@ -1285,7 +1315,9 @@ label_refresh_lambda = create_label_refresh_lambda(
     dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
 )
 pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
-pulumi.export("label_refresh_lambda_name", label_refresh_lambda.lambda_function.name)
+pulumi.export(
+    "label_refresh_lambda_name", label_refresh_lambda.lambda_function.name
+)
 pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
@@ -1296,9 +1328,15 @@ langsmith_bulk_export = LangSmithBulkExport(
     f"langsmith-export-{stack}",
     project_name=f"label-evaluator-{stack}",
 )
-pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
-pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
-pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
+pulumi.export(
+    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+)
+pulumi.export(
+    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
+)
+pulumi.export(
+    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
+)
 
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
@@ -1383,7 +1421,9 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
-pulumi.export("label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name)
+pulumi.export(
+    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
+)
 
 # CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
 # Only create if SageMaker training is enabled (we need the training bucket)
@@ -1401,7 +1441,9 @@ if enable_sagemaker and layoutlm_training_bucket_name is not None:
     )
 
     pulumi.export("coreml_export_job_queue_url", coreml_export.job_queue_url)
-    pulumi.export("coreml_export_results_queue_url", coreml_export.results_queue_url)
+    pulumi.export(
+        "coreml_export_results_queue_url", coreml_export.results_queue_url
+    )
     pulumi.export(
         "coreml_export_process_results_lambda_arn",
         coreml_export.process_results_lambda.arn,
@@ -1435,7 +1477,9 @@ create_lambda_route(
     permission_name="label_validation_timeline_lambda_permission",
 )
 
-pulumi.export("label_validation_timeline_cache_bucket", timeline_cache_bucket.id)
+pulumi.export(
+    "label_validation_timeline_cache_bucket", timeline_cache_bucket.id
+)
 pulumi.export(
     "label_validation_timeline_cache_generator_lambda",
     timeline_cache_generator_lambda.name,
@@ -1490,7 +1534,9 @@ if hasattr(api_gateway, "api"):
 
     create_lambda_route(
         api=api_gateway.api,
-        integration_name=("label_evaluator_receipt_health_issues_post_integration"),
+        integration_name=(
+            "label_evaluator_receipt_health_issues_post_integration"
+        ),
         route_name="label_evaluator_receipt_health_issues_post_route",
         route_key="POST /label_evaluator/receipt_health_issues",
         lambda_function=label_evaluator_viz_cache.api_lambda,
