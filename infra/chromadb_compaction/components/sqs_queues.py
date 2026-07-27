@@ -311,4 +311,6 @@ def create_chromadb_queues(
     Returns:
         ChromaDBQueues component resource
     """
-    return ChromaDBQueues(name, producer_role_arns=producer_role_arns, opts=opts)
+    return ChromaDBQueues(
+        name, producer_role_arns=producer_role_arns, opts=opts
+    )
