@@ -84,7 +84,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Generated batch ID", batch_id=batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
-        local_path = download_serialized_file(s3_bucket=s3_bucket, s3_key=s3_key)
+        local_path = download_serialized_file(
+            s3_bucket=s3_bucket, s3_key=s3_key
+        )
         logger.info("Downloaded file", local_path=local_path)
 
         # Deserialize the words from the downloaded file
@@ -115,7 +117,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             dynamo_client.delete_batch_summary(existing)
 
         # Query all words in the receipt for context
-        all_words_in_receipt = query_receipt_words(dynamo_client, image_id, receipt_id)
+        all_words_in_receipt = query_receipt_words(
+            dynamo_client, image_id, receipt_id
+        )
         logger.info(
             "Found words in receipt",
             count=len(all_words_in_receipt),

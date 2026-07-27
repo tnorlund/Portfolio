@@ -45,7 +45,9 @@ def _discover_batches(
     """
     ddb = boto3.client("dynamodb")
     converter = (
-        ReceiptLine.from_item if entity_type == "lines" else ReceiptWord.from_item
+        ReceiptLine.from_item
+        if entity_type == "lines"
+        else ReceiptWord.from_item
     )
     prefix = "LINE#" if entity_type == "lines" else "WORD#"
     batches: list[list] = []
@@ -116,10 +118,14 @@ def _serialize_and_upload(
     for batch in batches:
         image_id = batch[0].image_id
         receipt_id = batch[0].receipt_id
-        rows = [json.dumps(entity.to_dict(), sort_keys=True) for entity in batch]
+        rows = [
+            json.dumps(entity.to_dict(), sort_keys=True) for entity in batch
+        ]
         content = "\n".join(rows) + "\n"
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-        filename = f"{entity_type}-{image_id}-{receipt_id}-{content_hash}.ndjson"
+        filename = (
+            f"{entity_type}-{image_id}-{receipt_id}-{content_hash}.ndjson"
+        )
         path = Path("/tmp") / filename
         try:
             with path.open("w", encoding="utf-8") as stream:
@@ -191,8 +197,12 @@ def _claim_receipt(table_name: str, entities: list) -> bool:
                             "ConditionExpression": "embedding_status = :none",
                             "ExpressionAttributeValues": {
                                 ":none": {"S": EmbeddingStatus.NONE.value},
-                                ":pending": {"S": EmbeddingStatus.PENDING.value},
-                                ":pending_gsi": {"S": "EMBEDDING_STATUS#PENDING"},
+                                ":pending": {
+                                    "S": EmbeddingStatus.PENDING.value
+                                },
+                                ":pending_gsi": {
+                                    "S": "EMBEDDING_STATUS#PENDING"
+                                },
                             },
                         }
                     }
@@ -257,7 +267,9 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     if max_batches <= 0:
         raise ValueError("max_batches must be a positive integer")
 
-    selected, has_more = _discover_batches(table_name, entity_type, max_batches)
+    selected, has_more = _discover_batches(
+        table_name, entity_type, max_batches
+    )
 
     if not selected:
         return {

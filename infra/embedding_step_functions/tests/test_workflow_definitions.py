@@ -29,7 +29,9 @@ def _assert_targets_exist(definition: dict) -> None:
 
 
 def test_submit_definition_is_bounded_and_discards_map_output() -> None:
-    definition = json.loads(build_submit_definition("words", "find-arn", "submit-arn"))
+    definition = json.loads(
+        build_submit_definition("words", "find-arn", "submit-arn")
+    )
     find = definition["States"]["FindAndClaimUnembedded"]
     submit = definition["States"]["SubmitBatches"]
 
@@ -41,7 +43,9 @@ def test_submit_definition_is_bounded_and_discards_map_output() -> None:
 
 def test_ingest_definition_polls_active_batches_and_finalizes_last() -> None:
     definition = json.loads(
-        build_ingest_definition("lines", "list", "poll", "compact", "normalize", "mark")
+        build_ingest_definition(
+            "lines", "list", "poll", "compact", "normalize", "mark"
+        )
     )
     states = definition["States"]
 
@@ -53,10 +57,16 @@ def test_ingest_definition_polls_active_batches_and_finalizes_last() -> None:
     _assert_targets_exist(definition)
 
 
-def test_embed_all_definition_is_manual_resumable_and_payload_bounded() -> None:
+def test_embed_all_definition_is_manual_resumable_and_payload_bounded() -> (
+    None
+):
     definition = json.loads(
         build_backfill_definition(
-            "control", "line-submit", "word-submit", "line-ingest", "word-ingest"
+            "control",
+            "line-submit",
+            "word-submit",
+            "line-ingest",
+            "word-ingest",
         )
     )
     states = definition["States"]
@@ -68,7 +78,9 @@ def test_embed_all_definition_is_manual_resumable_and_payload_bounded() -> None:
     assert states["WaitForFixedPoint"]["Next"] == "ConfirmFixedPoint"
     assert states["MarkBackfillComplete"]["Parameters"]["action"] == "complete"
     for branch in states["SubmitMissing"]["Branches"]:
-        child_input = branch["States"]["RunChildWorkflow"]["Parameters"]["Input"]
+        child_input = branch["States"]["RunChildWorkflow"]["Parameters"][
+            "Input"
+        ]
         assert child_input["submission_namespace"] == "backfill-v1"
 
     for state_name in ("SubmitMissing", "IngestActive"):

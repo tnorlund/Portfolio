@@ -53,7 +53,9 @@ def _items_to_finalize(
     for result in poll_results:
         if not isinstance(result, dict):
             continue
-        if result.get("collection") != collection or not result.get("delta_key"):
+        if result.get("collection") != collection or not result.get(
+            "delta_key"
+        ):
             continue
         if result.get("action") not in {"process_results", "process_partial"}:
             continue
@@ -74,13 +76,15 @@ def _items_to_finalize(
 def _finalize_lines(dynamo: DynamoClient, items: list[dict[str, Any]]) -> int:
     requested: dict[tuple[str, int], set[int]] = {}
     for item in items:
-        requested.setdefault((item["image_id"], int(item["receipt_id"])), set()).add(
-            int(item["line_id"])
-        )
+        requested.setdefault(
+            (item["image_id"], int(item["receipt_id"])), set()
+        ).add(int(item["line_id"]))
 
     changed = []
     for (image_id, receipt_id), line_ids in requested.items():
-        for line in dynamo.list_receipt_lines_from_receipt(image_id, receipt_id):
+        for line in dynamo.list_receipt_lines_from_receipt(
+            image_id, receipt_id
+        ):
             if (
                 line.line_id in line_ids
                 and line.embedding_status != EmbeddingStatus.SUCCESS.value
@@ -95,17 +99,23 @@ def _finalize_lines(dynamo: DynamoClient, items: list[dict[str, Any]]) -> int:
 def _finalize_words(dynamo: DynamoClient, items: list[dict[str, Any]]) -> int:
     requested: dict[tuple[str, int], set[tuple[int, int]]] = {}
     for item in items:
-        requested.setdefault((item["image_id"], int(item["receipt_id"])), set()).add(
-            (int(item["line_id"]), int(item["word_id"]))
-        )
+        requested.setdefault(
+            (item["image_id"], int(item["receipt_id"])), set()
+        ).add((int(item["line_id"]), int(item["word_id"])))
 
     changed = []
     for (image_id, receipt_id), word_ids in requested.items():
-        for word in dynamo.list_receipt_words_from_receipt(image_id, receipt_id):
+        for word in dynamo.list_receipt_words_from_receipt(
+            image_id, receipt_id
+        ):
             if (
-                word.line_id,
-                word.word_id,
-            ) in word_ids and word.embedding_status != EmbeddingStatus.SUCCESS.value:
+                (
+                    word.line_id,
+                    word.word_id,
+                )
+                in word_ids
+                and word.embedding_status != EmbeddingStatus.SUCCESS.value
+            ):
                 word.embedding_status = EmbeddingStatus.SUCCESS.value
                 changed.append(word)
     for offset in range(0, len(changed), 25):
@@ -159,8 +169,12 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "batch_ids": [],
         }
 
-    lines_marked = _finalize_lines(dynamo, _items_to_finalize(poll_results, "lines"))
-    words_marked = _finalize_words(dynamo, _items_to_finalize(poll_results, "words"))
+    lines_marked = _finalize_lines(
+        dynamo, _items_to_finalize(poll_results, "lines")
+    )
+    words_marked = _finalize_words(
+        dynamo, _items_to_finalize(poll_results, "words")
+    )
     batch_ids = _completed_batch_ids(poll_results)
     batches_marked = _complete_summaries(dynamo, batch_ids)
     logger.info(

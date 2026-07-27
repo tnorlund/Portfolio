@@ -158,7 +158,8 @@ def lambda_handler(
         # long-term fix (offload poll results to S3 instead of inline).
         try:
             max_batches = int(
-                event.get("max_batches") or os.environ.get("MAX_BATCHES_PER_RUN", 0)
+                event.get("max_batches")
+                or os.environ.get("MAX_BATCHES_PER_RUN", 0)
             )
         except (TypeError, ValueError):
             max_batches = 0

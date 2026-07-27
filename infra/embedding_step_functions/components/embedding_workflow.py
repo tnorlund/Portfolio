@@ -47,7 +47,9 @@ def _lambda_retry(*, include_task_failed: bool = False) -> list[dict]:
     return retries
 
 
-def build_submit_definition(entity_type: str, find_arn: str, submit_arn: str) -> str:
+def build_submit_definition(
+    entity_type: str, find_arn: str, submit_arn: str
+) -> str:
     """Build a bounded discovery/submit workflow for lines or words."""
     return json.dumps(
         {
@@ -148,7 +150,9 @@ def build_ingest_definition(
                             "PollBatch": {
                                 "Type": "Task",
                                 "Resource": poll_arn,
-                                "Retry": _lambda_retry(include_task_failed=True),
+                                "Retry": _lambda_retry(
+                                    include_task_failed=True
+                                ),
                                 "End": True,
                             }
                         },
@@ -381,7 +385,9 @@ class EmbeddingWorkflow(ComponentResource):
                 lambda_functions[f"embedding-find-{entity_type}"].arn,
                 lambda_functions[f"embedding-submit-{entity_type}"].arn,
             ).apply(
-                lambda arns: build_submit_definition(entity_type, arns[0], arns[1])
+                lambda arns: build_submit_definition(
+                    entity_type, arns[0], arns[1]
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -400,5 +406,8 @@ class EmbeddingWorkflow(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
         self.register_outputs(
-            {"submit_sf_arn": self.submit_sf.arn, "ingest_sf_arn": self.ingest_sf.arn}
+            {
+                "submit_sf_arn": self.submit_sf.arn,
+                "ingest_sf_arn": self.ingest_sf.arn,
+            }
         )

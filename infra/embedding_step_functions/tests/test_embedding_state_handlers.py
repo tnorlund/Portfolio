@@ -23,7 +23,9 @@ def _load(name: str, relative_path: str):
 
 
 def test_list_active_batches_keeps_provider_in_progress_states() -> None:
-    module = _load("embedding_list_active", "simple_lambdas/list_pending/handler.py")
+    module = _load(
+        "embedding_list_active", "simple_lambdas/list_pending/handler.py"
+    )
     now = datetime.now(timezone.utc)
     summaries = {
         status: [
@@ -143,7 +145,9 @@ def test_finalizer_requires_a_real_delta_and_completed_batch() -> None:
     ]
 
 
-def test_partial_receipt_claim_is_rolled_back_after_a_collision(monkeypatch) -> None:
+def test_partial_receipt_claim_is_rolled_back_after_a_collision(
+    monkeypatch,
+) -> None:
     module = _load(
         "embedding_find_unembedded",
         "simple_lambdas/find_unembedded/handler.py",
@@ -166,7 +170,9 @@ def test_partial_receipt_claim_is_rolled_back_after_a_collision(monkeypatch) -> 
                             "Code": "TransactionCanceledException",
                             "Message": "claim lost",
                         },
-                        "CancellationReasons": [{"Code": "ConditionalCheckFailed"}],
+                        "CancellationReasons": [
+                            {"Code": "ConditionalCheckFailed"}
+                        ],
                     },
                     "TransactWriteItems",
                 )
@@ -174,12 +180,16 @@ def test_partial_receipt_claim_is_rolled_back_after_a_collision(monkeypatch) -> 
     fake_dynamo = FakeDynamo()
     monkeypatch.setattr(module.boto3, "client", lambda _service: fake_dynamo)
 
-    assert module._claim_receipt("table", [FakeEntity(i) for i in range(26)]) is False
+    assert (
+        module._claim_receipt("table", [FakeEntity(i) for i in range(26)])
+        is False
+    )
     assert len(fake_dynamo.calls) == 3
     rollback = fake_dynamo.calls[2]
     assert len(rollback) == 25
     assert all(
-        ":none_gsi" in item["Update"]["ExpressionAttributeValues"] for item in rollback
+        ":none_gsi" in item["Update"]["ExpressionAttributeValues"]
+        for item in rollback
     )
 
 
@@ -217,7 +227,9 @@ def test_discovery_returns_a_bounded_receipt_page(monkeypatch) -> None:
 
     batches, has_more = module._discover_batches("table", "words", 1)
 
-    assert [[entity.image_id for entity in batch] for batch in batches] == [["image-a"]]
+    assert [[entity.image_id for entity in batch] for batch in batches] == [
+        ["image-a"]
+    ]
     assert has_more is True
     assert len(fake_dynamo.query_calls) == 1
     assert fake_dynamo.query_calls[0]["Limit"] == 500
@@ -272,9 +284,13 @@ def test_canceling_batch_keeps_claims_until_provider_is_terminal() -> None:
             assert updated is summary
 
         def list_receipt_words_from_receipt(self, _image_id, _receipt_id):
-            raise AssertionError("CANCELING is provider-active and must keep claims")
+            raise AssertionError(
+                "CANCELING is provider-active and must keep claims"
+            )
 
-    result = handle_cancelled_status("batch-a", "openai-a", "canceling", FakeDynamo())
+    result = handle_cancelled_status(
+        "batch-a", "openai-a", "canceling", FakeDynamo()
+    )
 
     assert summary.status == BatchStatus.CANCELING
     assert result["marked_for_retry"] == 0

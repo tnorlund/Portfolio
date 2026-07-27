@@ -108,7 +108,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             dynamo_client.delete_batch_summary(existing)
 
         # Query all lines in the receipt for context
-        all_lines_in_receipt = query_receipt_lines(dynamo_client, image_id, receipt_id)
+        all_lines_in_receipt = query_receipt_lines(
+            dynamo_client, image_id, receipt_id
+        )
         logger.info(
             "Found lines in receipt",
             count=len(all_lines_in_receipt),
@@ -143,9 +145,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             primary_line_id = row_line_ids[0]
 
             # Build custom_id (ChromaDB format) - uses primary line ID
-            custom_id = (
-                f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{primary_line_id:05d}"
-            )
+            custom_id = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{primary_line_id:05d}"
 
             # Format as OpenAI batch API request
             entry = {

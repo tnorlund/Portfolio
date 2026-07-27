@@ -187,7 +187,9 @@ def _list_entities(dynamo: DynamoClient, entity_type: str) -> list:
     return list(by_key.values())
 
 
-def _update_entities(dynamo: DynamoClient, entity_type: str, entities: Iterable) -> int:
+def _update_entities(
+    dynamo: DynamoClient, entity_type: str, entities: Iterable
+) -> int:
     pending = list(entities)
     update = (
         dynamo.update_receipt_lines
@@ -218,7 +220,10 @@ def _reconcile_entities(
     noise_marked = 0
     for entity in entities:
         target = None
-        if entity.is_noise and entity.embedding_status != EmbeddingStatus.NOISE.value:
+        if (
+            entity.is_noise
+            and entity.embedding_status != EmbeddingStatus.NOISE.value
+        ):
             target = EmbeddingStatus.NOISE.value
             noise_marked += 1
         elif (
@@ -251,7 +256,9 @@ def _reconcile_entities(
 def _counts(entities: list) -> dict[str, int]:
     counts = {status.value: 0 for status in ENTITY_STATUSES}
     for entity in entities:
-        status = getattr(entity.embedding_status, "value", entity.embedding_status)
+        status = getattr(
+            entity.embedding_status, "value", entity.embedding_status
+        )
         counts[str(status)] = counts.get(str(status), 0) + 1
     counts["ELIGIBLE"] = sum(not entity.is_noise for entity in entities)
     return counts
@@ -304,14 +311,20 @@ def _initialize(_event: dict[str, Any]) -> dict[str, Any]:
     """Reset all eligible rows once, guarded by the durable v1 marker."""
     phase = _state_phase()
     if phase in {"READY", "RUNNING", "COMPLETED"}:
-        return {"initialized": False, "phase": phase, "version": BACKFILL_VERSION}
+        return {
+            "initialized": False,
+            "phase": phase,
+            "version": BACKFILL_VERSION,
+        }
 
     dynamo = DynamoClient(_table_name())
     active = _list_batches(dynamo, BatchType.LINE_EMBEDDING) + _list_batches(
         dynamo, BatchType.WORD_EMBEDDING
     )
     if active:
-        raise RuntimeError("Cannot initialize while embedding batches are active")
+        raise RuntimeError(
+            "Cannot initialize while embedding batches are active"
+        )
 
     _write_phase("INITIALIZING")
     totals: dict[str, int] = {}
@@ -327,7 +340,9 @@ def _initialize(_event: dict[str, Any]) -> dict[str, Any]:
             if entity.embedding_status != target:
                 entity.embedding_status = target
                 changed.append(entity)
-        totals[f"{entity_type}_reset"] = _update_entities(dynamo, entity_type, changed)
+        totals[f"{entity_type}_reset"] = _update_entities(
+            dynamo, entity_type, changed
+        )
 
     _write_phase("READY", **totals)
     return {

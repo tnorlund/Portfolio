@@ -52,7 +52,9 @@ def map_openai_to_dynamo_status(openai_status: str) -> BatchStatus:
     return mapping[openai_status]
 
 
-def process_error_file(openai_batch_id: str, openai_client: OpenAI) -> Dict[str, Any]:
+def process_error_file(
+    openai_batch_id: str, openai_client: OpenAI
+) -> Dict[str, Any]:
     """
     Download and process error file for failed or expired batches.
 
@@ -270,10 +272,16 @@ def handle_failed_status(
 
     # Mark all failed items for retry based on batch type
     marked_count = 0
-    entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+    entity_type = (
+        "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+    )
     if error_info["error_details"]:
-        failed_ids = [detail["custom_id"] for detail in error_info["error_details"]]
-        marked_count = mark_items_for_retry(failed_ids, entity_type, dynamo_client)
+        failed_ids = [
+            detail["custom_id"] for detail in error_info["error_details"]
+        ]
+        marked_count = mark_items_for_retry(
+            failed_ids, entity_type, dynamo_client
+        )
         logger.info(
             "Marked %d failed items from failed batch %s for retry",
             marked_count,
@@ -342,11 +350,17 @@ def handle_expired_status(
     # never reached the canonical snapshot.
     marked_count = 0
     retry_ids = [
-        result["custom_id"] for result in successful_results if result.get("custom_id")
+        result["custom_id"]
+        for result in successful_results
+        if result.get("custom_id")
     ] + failed_ids
-    entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+    entity_type = (
+        "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+    )
     if retry_ids:
-        marked_count = mark_items_for_retry(retry_ids, entity_type, dynamo_client)
+        marked_count = mark_items_for_retry(
+            retry_ids, entity_type, dynamo_client
+        )
         logger.info(
             "Marked %d failed items from expired batch %s for retry",
             marked_count,
@@ -400,7 +414,9 @@ def handle_in_progress_status(
     if isinstance(submitted_at, str):
         submitted_at = datetime.fromisoformat(submitted_at)
 
-    hours_elapsed = (datetime.now(timezone.utc) - submitted_at).total_seconds() / 3600
+    hours_elapsed = (
+        datetime.now(timezone.utc) - submitted_at
+    ).total_seconds() / 3600
 
     # Warn if approaching 24h limit
     if hours_elapsed > 20:
@@ -446,7 +462,9 @@ def handle_cancelled_status(
     dynamo_client.update_batch_summary(batch_summary)
     marked_count = 0
     if status == "cancelled":
-        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        entity_type = (
+            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        )
         marked_count = release_batch_receipts_for_retry(
             batch_summary, entity_type, dynamo_client
         )
@@ -508,7 +526,9 @@ def handle_batch_status(
             batch_id, openai_batch_id, status, dynamo_client
         )
     if status in ["canceling", "cancelled"]:
-        return handle_cancelled_status(batch_id, openai_batch_id, status, dynamo_client)
+        return handle_cancelled_status(
+            batch_id, openai_batch_id, status, dynamo_client
+        )
 
     logger.error("Unknown batch status: %s", status)
     raise ValueError(f"Unknown batch status: {status}")
@@ -552,7 +572,8 @@ def mark_items_for_retry(
                     (
                         candidate
                         for candidate in group_lines_into_visual_rows(lines)
-                        if candidate and get_primary_line_id(candidate) == line_id
+                        if candidate
+                        and get_primary_line_id(candidate) == line_id
                     ),
                     None,
                 )
@@ -679,8 +700,13 @@ def mark_words_embedded(
                 e,
             )
             continue
-        word = words_by_receipt.get((image_id, receipt_id), {}).get((line_id, word_id))
-        if word is not None and word.embedding_status != EmbeddingStatus.SUCCESS.value:
+        word = words_by_receipt.get((image_id, receipt_id), {}).get(
+            (line_id, word_id)
+        )
+        if (
+            word is not None
+            and word.embedding_status != EmbeddingStatus.SUCCESS.value
+        ):
             word.embedding_status = EmbeddingStatus.SUCCESS.value
             to_update.setdefault((image_id, receipt_id), []).append(word)
 

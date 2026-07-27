@@ -332,9 +332,9 @@ class EmbedAllWorkflow(ComponentResource):
             role_arn=self.role.arn,
             type="STANDARD",
             tags={"environment": stack, "purpose": "one-time-backfill"},
-            definition=Output.all(control_lambda.arn, *child_state_machines).apply(
-                lambda arns: build_backfill_definition(*arns)
-            ),
+            definition=Output.all(
+                control_lambda.arn, *child_state_machines
+            ).apply(lambda arns: build_backfill_definition(*arns)),
             opts=ResourceOptions(parent=self),
         )
         self.register_outputs({"state_machine_arn": self.state_machine.arn})

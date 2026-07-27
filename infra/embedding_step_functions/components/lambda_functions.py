@@ -145,7 +145,8 @@ class LambdaFunctionsComponent(ComponentResource):
             f"lambda-basic-execution-{stack}",
             role=self.lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -312,10 +313,14 @@ class LambdaFunctionsComponent(ComponentResource):
             lambda_func = self._create_zip_lambda(name, lambda_config)
             self.zip_lambda_functions[name] = lambda_func
 
-    def _create_zip_lambda(self, name: str, config: Dict[str, Any]) -> Function:
+    def _create_zip_lambda(
+        self, name: str, config: Dict[str, Any]
+    ) -> Function:
         """Create a single zip-based Lambda function."""
         source_path = (
-            Path(__file__).parent.parent / "simple_lambdas" / config["source_dir"]
+            Path(__file__).parent.parent
+            / "simple_lambdas"
+            / config["source_dir"]
         )
 
         # Common environment variables
@@ -470,7 +475,9 @@ class LambdaFunctionsComponent(ComponentResource):
             parent=old_parent,
         )
 
-    def _container_lambda_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def _container_lambda_config(
+        self, config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Return the per-function settings layered on the shared image."""
         handler_type = config["handler_type"]
         common = {
@@ -483,7 +490,8 @@ class LambdaFunctionsComponent(ComponentResource):
             result = {
                 **common,
                 "description": (
-                    "Embedding vector compaction handler for ChromaDB " "operations"
+                    "Embedding vector compaction handler for ChromaDB "
+                    "operations"
                 ),
                 "tags": {
                     "Project": "Embedding",
@@ -495,7 +503,9 @@ class LambdaFunctionsComponent(ComponentResource):
                     "HANDLER_TYPE": handler_type,
                     "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                     "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                    "COMPACTION_QUEUE_URL": (self.chromadb_queues.lines_queue_url),
+                    "COMPACTION_QUEUE_URL": (
+                        self.chromadb_queues.lines_queue_url
+                    ),
                     "OPENAI_API_KEY": openai_api_key,
                     "S3_BUCKET": self.batch_bucket.bucket,
                     "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
@@ -506,7 +516,8 @@ class LambdaFunctionsComponent(ComponentResource):
                         portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
                     ),
                     "CHROMA_CLOUD_API_KEY": (
-                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY") or ""
+                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY")
+                        or ""
                     ),
                     "CHROMA_CLOUD_TENANT": (
                         portfolio_config.get("CHROMA_CLOUD_TENANT") or ""
@@ -539,7 +550,9 @@ class LambdaFunctionsComponent(ComponentResource):
                     "HANDLER_TYPE": handler_type,
                     "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                     "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                    "COMPACTION_QUEUE_URL": (self.chromadb_queues.lines_queue_url),
+                    "COMPACTION_QUEUE_URL": (
+                        self.chromadb_queues.lines_queue_url
+                    ),
                     "OPENAI_API_KEY": openai_api_key,
                     "S3_BUCKET": self.batch_bucket.bucket,
                     "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",

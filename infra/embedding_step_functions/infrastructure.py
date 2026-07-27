@@ -116,7 +116,9 @@ class EmbeddingInfrastructure(ComponentResource):
         # Manual only: no EventBridge rule or deployment hook starts this.
         self.embed_all_workflow = EmbedAllWorkflow(
             f"{name}-backfill",
-            control_lambda=self.lambdas.all_functions["embedding-backfill-control"],
+            control_lambda=self.lambdas.all_functions[
+                "embedding-backfill-control"
+            ],
             line_workflow=self.line_workflow,
             word_workflow=self.word_workflow,
             opts=ResourceOptions(parent=self),
@@ -164,7 +166,9 @@ class EmbeddingInfrastructure(ComponentResource):
 
         # Lambda function mappings
         self.zip_lambda_functions = self.lambdas.zip_lambda_functions
-        self.container_lambda_functions = self.lambdas.container_lambda_functions
+        self.container_lambda_functions = (
+            self.lambdas.container_lambda_functions
+        )
 
         # Additional legacy mappings
         if hasattr(self, "container_lambda_functions"):
@@ -194,19 +198,31 @@ class EmbeddingInfrastructure(ComponentResource):
                 "chromadb_queue_url": self.chromadb_queues.lines_queue_url,
                 "batch_bucket_name": self.batch_bucket.bucket,
                 # Line workflows
-                "embedding_line_submit_sf_arn": (self.embedding_line_submit_sf.arn),
-                "embedding_line_ingest_sf_arn": (self.embedding_line_ingest_sf.arn),
+                "embedding_line_submit_sf_arn": (
+                    self.embedding_line_submit_sf.arn
+                ),
+                "embedding_line_ingest_sf_arn": (
+                    self.embedding_line_ingest_sf.arn
+                ),
                 # Word workflows
-                "embedding_word_submit_sf_arn": (self.embedding_word_submit_sf.arn),
-                "embedding_word_ingest_sf_arn": (self.embedding_word_ingest_sf.arn),
+                "embedding_word_submit_sf_arn": (
+                    self.embedding_word_submit_sf.arn
+                ),
+                "embedding_word_ingest_sf_arn": (
+                    self.embedding_word_ingest_sf.arn
+                ),
                 "embedding_embed_all_v1_sf_arn": (
                     self.embed_all_workflow.state_machine.arn
                 ),
                 # Legacy names
                 "create_batches_sf_arn": self.create_batches_sf.arn,
                 "poll_and_store_sf_arn": self.poll_and_store_sf.arn,
-                "create_word_batches_sf_arn": (self.create_word_batches_sf.arn),
-                "poll_word_embeddings_sf_arn": (self.poll_word_embeddings_sf.arn),
+                "create_word_batches_sf_arn": (
+                    self.create_word_batches_sf.arn
+                ),
+                "poll_word_embeddings_sf_arn": (
+                    self.poll_word_embeddings_sf.arn
+                ),
                 # Monitoring outputs
                 "alert_topic_arn": self.monitoring.alert_topic.arn,
             }
