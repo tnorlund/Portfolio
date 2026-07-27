@@ -2,21 +2,21 @@
 
 - merchant: Vons
 - receipt: 678a7c94-4948-4ebf-b8e9-9a17c13051ec#2
-- git: `e517d33fdc04`
+- git: `1d0dd32f5795`
 - truth: `vons` v1 `63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb` (online-active)
-- atlas: `10428f512cce66eb`
+- atlas: `6ca4cb5cda99dd4c`
 
 ## OVERALL: FAIL
 
 | metric | verdict |
 |---|---|
-| columns | FAIL |
+| columns | PASS |
 | style | FAIL |
 | tokens | PASS |
 | separators | FAIL |
-| graphics | FAIL |
+| graphics | PASS |
 | logo | PASS |
-| arithmetic | FAIL |
+| arithmetic | PASS |
 
 ```json
 {
@@ -24,22 +24,22 @@
   "identities": [
    {
     "detail": "",
-    "lhs": 3.5,
+    "lhs": 61.13,
     "name": "total_eq_tender",
     "rhs": 61.13,
-    "status": "VIOLATED"
+    "status": "HOLDS"
    }
   ],
-  "n_items": 19,
+  "n_items": 12,
   "summary": {
    "change": 0.0,
    "tax": 0.0,
    "tender": 61.13,
-   "total": 3.5
+   "total": 61.13
   },
   "testable": 1,
-  "verdict": "FAIL",
-  "violated": 1
+  "verdict": "PASS",
+  "violated": 0
  },
  "columns": {
   "bands": {
@@ -56,9 +56,6 @@
        "support": 13,
        "x": 0.9524
       },
-      "failed_on": [
-       "outliers"
-      ],
       "outlier_limit": 0.15,
       "real": {
        "lane_mid_y_px": 1116.5,
@@ -71,15 +68,15 @@
       },
       "shear_px_per_100px": 0.07,
       "synth": {
-       "lane_mid_y_px": 1116.5,
-       "lane_x_px": 709.0,
+       "lane_mid_y_px": 1167.0,
+       "lane_x_px": 709.07,
        "median_dev_px": -14.82,
-       "n_rows": 13,
-       "outlier_frac": 0.154,
+       "n_rows": 14,
+       "outlier_frac": 0.0,
        "tilt_px_per_100px": 0.28,
-       "wobble_iqr_px": 0.45
+       "wobble_iqr_px": 0.32
       },
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "wobble_limit_px": 3.5
      },
      {
@@ -102,15 +99,15 @@
        "tilt_px_per_100px": 0.19,
        "wobble_iqr_px": 0.23
       },
-      "shear_px_per_100px": 0.12,
+      "shear_px_per_100px": 0.02,
       "synth": {
-       "lane_mid_y_px": 1074.2,
-       "lane_x_px": 728.63,
+       "lane_mid_y_px": 1087.5,
+       "lane_x_px": 728.62,
        "median_dev_px": -0.04,
        "n_rows": 10,
        "outlier_frac": 0.0,
-       "tilt_px_per_100px": 0.308,
-       "wobble_iqr_px": 0.74
+       "tilt_px_per_100px": 0.206,
+       "wobble_iqr_px": 0.33
       },
       "verdict": "PASS",
       "wobble_limit_px": 2.96
@@ -118,23 +115,23 @@
     ],
     "lane_gaps": [
      {
-      "delta_px": 3.89,
+      "delta_px": 3.81,
       "limit_px": 11.3,
       "pair": [
        "amount",
        "flag"
       ],
       "real_gap_px": 15.74,
-      "synth_gap_px": 19.63,
+      "synth_gap_px": 19.55,
       "verdict": "PASS"
      }
     ],
     "source": "bootstrap",
     "untested_roles": [],
-    "verdict": "FAIL"
+    "verdict": "PASS"
    }
   },
-  "verdict": "FAIL"
+  "verdict": "PASS"
  },
  "coverage_gaps": [
   "style:barcode_caption",
@@ -142,16 +139,27 @@
   "style:section_header"
  ],
  "graphics": {
-  "matched": [],
-  "missing_in_synth": [
+  "matched": [
    {
-    "kind": "1d",
-    "payload": "00313505101552502031820",
-    "symbology": "code128",
-    "x_frac": 0.0,
-    "y_frac": 1.0
+    "dy": 0.0,
+    "payload_match": true,
+    "real": {
+     "kind": "1d",
+     "payload": "00313505101552502031820",
+     "symbology": "code128",
+     "x_frac": 0.0,
+     "y_frac": 1.0
+    },
+    "synth": {
+     "kind": "1d",
+     "payload": "00313505101552502031820",
+     "symbology": "code128",
+     "x_frac": 0.0,
+     "y_frac": 1.0
+    }
    }
   ],
+  "missing_in_synth": [],
   "phantom_in_synth": [],
   "real": [
    {
@@ -162,29 +170,37 @@
     "y_frac": 1.0
    }
   ],
-  "synth": [],
-  "verdict": "FAIL"
+  "synth": [
+   {
+    "kind": "1d",
+    "payload": "00313505101552502031820",
+    "symbology": "code128",
+    "x_frac": 0.0,
+    "y_frac": 1.0
+   }
+  ],
+  "verdict": "PASS"
  },
  "logo": {
-  "area_ratio": 0.992,
-  "center_offset_frac": 0.0125,
+  "area_ratio": 0.999,
+  "center_offset_frac": 0.0105,
   "real": {
-   "area": 7116.0,
-   "cx": 416.0,
-   "cy": 58.5,
-   "h": 110.0,
-   "w": 73.0
+   "area": 24447.0,
+   "cx": 378.5,
+   "cy": 58.0,
+   "h": 113.0,
+   "w": 294.0
   },
-  "size_ratio": 1.0,
+  "size_ratio": 1.009,
   "synth": {
-   "area": 7059.0,
-   "cx": 406.5,
-   "cy": 69.5,
-   "h": 110.0,
-   "w": 72.0
+   "area": 24431.0,
+   "cx": 370.5,
+   "cy": 70.5,
+   "h": 114.0,
+   "w": 288.0
   },
   "verdict": "PASS",
-  "width_ratio": 0.986
+  "width_ratio": 0.98
  },
  "overall": "FAIL",
  "separators": {
@@ -216,7 +232,7 @@
   "body_stroke_fail": false,
   "body_stroke_rel": {
    "real": 0.0948,
-   "synth": 0.1336
+   "synth": 0.1658
   },
   "classes": [
    {
@@ -332,17 +348,15 @@
   "composed": false,
   "ink_checked": 196,
   "ink_evidence_missing": false,
-  "ink_missing_tokens": [
-   "STORE",
-   "3135",
-   "DIR",
-   "CRUZ"
+  "ink_missing_tokens": [],
+  "ink_recall": 1.0,
+  "missing_tokens": [
+   "FRENCH",
+   "ROAST"
   ],
-  "ink_recall": 0.9796,
-  "missing_tokens": [],
   "precision_warn": false,
-  "text_precision": 1.0,
-  "text_recall": 1.0,
+  "text_precision": 0.9898,
+  "text_recall": 0.9898,
   "verdict": "PASS"
  }
 }

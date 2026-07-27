@@ -2,20 +2,20 @@
 
 - merchant: Trader Joe's
 - receipt: 4c262079-4fec-4724-a8e1-2886f38ea454#1
-- git: `e517d33fdc04`
+- git: `1d0dd32f5795`
 - truth: `trader_joe_s` v1 `557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418` (online-active)
-- atlas: `4c355fbd82e342b7`
+- atlas: `037dc0610504a9b9`
 
 ## OVERALL: FAIL
 
 | metric | verdict |
 |---|---|
 | columns | PASS |
-| style | FAIL |
+| style | PASS_WITH_GAPS |
 | tokens | PASS |
 | separators | FAIL |
 | graphics | PASS |
-| logo | FAIL |
+| logo | PASS |
 | arithmetic | PASS |
 
 ```json
@@ -30,7 +30,7 @@
     "status": "HOLDS"
    }
   ],
-  "n_items": 15,
+  "n_items": 14,
   "summary": {
    "tender": 63.66,
    "total": 63.66
@@ -66,13 +66,13 @@
       },
       "shear_px_per_100px": 1.57,
       "synth": {
-       "lane_mid_y_px": 814.5,
-       "lane_x_px": 738.63,
+       "lane_mid_y_px": 823.0,
+       "lane_x_px": 738.65,
        "median_dev_px": -6.64,
        "n_rows": 17,
        "outlier_frac": 0.0,
-       "tilt_px_per_100px": -0.592,
-       "wobble_iqr_px": 0.27
+       "tilt_px_per_100px": -0.599,
+       "wobble_iqr_px": 0.29
       },
       "verdict": "PASS",
       "wobble_limit_px": 3.8
@@ -87,6 +87,7 @@
   "verdict": "PASS"
  },
  "coverage_gaps": [
+  "style",
   "style:total_line"
  ],
  "graphics": {
@@ -98,25 +99,25 @@
   "verdict": "PASS"
  },
  "logo": {
-  "area_ratio": 0.313,
-  "center_offset_frac": 0.2158,
+  "area_ratio": 1.173,
+  "center_offset_frac": 0.0329,
   "real": {
-   "area": 13912.0,
-   "cx": 30.5,
-   "cy": 118.5,
-   "h": 238.0,
-   "w": 62.0
+   "area": 18139.0,
+   "cx": 410.5,
+   "cy": 48.0,
+   "h": 69.0,
+   "w": 612.0
   },
-  "size_ratio": 0.265,
+  "size_ratio": 0.971,
   "synth": {
-   "area": 4360.0,
-   "cx": 194.5,
-   "cy": 54.0,
-   "h": 63.0,
-   "w": 116.0
+   "area": 21272.0,
+   "cx": 385.5,
+   "cy": 55.0,
+   "h": 67.0,
+   "w": 600.0
   },
-  "verdict": "FAIL",
-  "width_ratio": 1.871
+  "verdict": "PASS",
+  "width_ratio": 0.98
  },
  "overall": "FAIL",
  "separators": {
@@ -138,25 +139,22 @@
   "body_stroke_fail": false,
   "body_stroke_rel": {
    "real": 0.1068,
-   "synth": 0.1068
+   "synth": 0.1565
   },
   "classes": [
    {
     "class": "footer",
-    "missing_style": [
-     "bold"
-    ],
     "real": {
      "bold": 1,
      "n": 2,
      "underline": 0
     },
     "synth": {
-     "bold": 0,
+     "bold": 1,
      "n": 2,
      "underline": 0
     },
-    "verdict": "FAIL"
+    "verdict": "PASS"
    },
    {
     "class": "payment",
@@ -190,16 +188,14 @@
   "untested_classes": [
    "total_line"
   ],
-  "verdict": "FAIL"
+  "verdict": "PASS_WITH_GAPS"
  },
  "tokens": {
   "composed": false,
   "ink_checked": 138,
   "ink_evidence_missing": false,
-  "ink_missing_tokens": [
-   "REPRINT"
-  ],
-  "ink_recall": 0.9928,
+  "ink_missing_tokens": [],
+  "ink_recall": 1.0,
   "missing_tokens": [],
   "precision_warn": false,
   "text_precision": 1.0,
