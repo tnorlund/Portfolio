@@ -427,9 +427,15 @@ class TestDeltaMerging:
             bucket=bucket_name,
         )
 
-        # Should not merge anything
+        # Should not merge anything, but the failure must be reported so the
+        # SQS message is retried instead of silently deleted.
         assert total_merged == 0
-        assert len(per_run_results) == 0
+        assert len(per_run_results) == 1
+        failure = per_run_results[0]
+        assert failure["error"] is not None
+        assert failure["merged_count"] == 0
+        assert failure["run_id"] == "run-missing"
+        assert failure["record_id"] == compaction_msg.context.record_id
 
         snapshot_client.close()
 

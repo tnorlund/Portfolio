@@ -143,6 +143,15 @@ class CollectionUpdateResult:
         )
 
     @property
+    def failed_delta_merges(self) -> List[Dict[str, Any]]:
+        """Delta merges that failed and must be retried."""
+        return [
+            r
+            for r in (self.delta_merge_results or [])
+            if r.get("error") is not None
+        ]
+
+    @property
     def has_errors(self) -> bool:
         """Whether any updates had errors."""
         all_results = (
@@ -151,4 +160,6 @@ class CollectionUpdateResult:
             + list(self.receipt_deletions or [])
             + list(self.section_updates or [])
         )
-        return any(r.error is not None for r in all_results)
+        if any(r.error is not None for r in all_results):
+            return True
+        return bool(self.failed_delta_merges)

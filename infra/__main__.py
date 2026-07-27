@@ -202,6 +202,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
     lambda_security_group_id=security.sg_lambda_id,
+    alert_topic_arn=notification_system.critical_error_topic_arn,
 )
 
 # Create embedding infrastructure using shared bucket and queues
@@ -1248,7 +1249,9 @@ resegment_receipt_lambda = create_resegment_receipt_lambda(
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
-pulumi.export("resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn)
+pulumi.export(
+    "resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn
+)
 pulumi.export(
     "resegment_receipt_lambda_name",
     resegment_receipt_lambda.lambda_function.name,

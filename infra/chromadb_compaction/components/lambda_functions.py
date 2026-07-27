@@ -143,21 +143,21 @@ class HybridLambdaDeployment(ComponentResource):
                 "memory_size": 10240,  # 10GB (Lambda max) for large collections
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
-                # Allow 2 concurrent invocations so lines and words queues
-                # can be processed in parallel.  Per-collection locks in the
-                # handler prevent concurrent writes to the same snapshot.
+                # Must equal the sum of the two event source mappings'
+                # maximum_concurrency (2 lines + 2 words).  Standard-queue ESMs
+                # cannot go below 2, so reserved=2 left half the poller slots
+                # permanently throttled — and a throttled poll still increments
+                # ApproximateReceiveCount, burning the message's retention
+                # budget until it expired unprocessed (~27k throttles/day
+                # during the 07-12 storm).
                 #
-                # Why 2, not 4 (sum of ESM maximum_concurrency)?
-                # Each handler invocation acquires a per-collection lock before
-                # downloading + mutating the snapshot.  A second invocation for
-                # the *same* collection would block on that lock until the first
-                # finishes, wasting Lambda billing time without adding throughput.
-                # reserved=2 gives us 1 lines + 1 words in parallel — the only
-                # combination that does useful work.  Bumping to 4 just adds two
-                # invocations that spin on the lock.  AWS ESM throttling here is
-                # intentional: messages stay in the queue until a slot opens,
-                # which is the correct back-pressure behaviour.
-                "reserved_concurrent_executions": 2,
+                # An invocation that loses the per-collection lock is cheap,
+                # not wasteful: acquire() fails immediately and the handler
+                # returns the batch for retry rather than blocking on the lock.
+                # Residual lock contention is now visible via the
+                # CompactionLockAcquisitionFailed alarm instead of hiding in
+                # SQS receive counts.
+                "reserved_concurrent_executions": 4,
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
                     "delta message processing"

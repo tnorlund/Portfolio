@@ -46,7 +46,10 @@ def merge_compaction_deltas(
 
     Returns:
         Tuple of (total_vectors_merged, list of per-run merge results).
-        Each result dict has: run_id, image_id, receipt_id, merged_count
+        Each result dict has: run_id, image_id, receipt_id, merged_count,
+        error, record_id.  Failed runs are included with a non-None ``error``
+        and do not contribute to the merged total, so the caller can retry
+        their SQS messages rather than deleting them.
     """
     if not compaction_runs:
         return 0, []
@@ -67,10 +70,35 @@ def merge_compaction_deltas(
                 workdir=workdir,
             )
             if merged is not None:
-                total_merged += merged["merged_count"]
+                if merged.get("error") is None:
+                    total_merged += merged["merged_count"]
                 per_run_results.append(merged)
 
     return total_merged, per_run_results
+
+
+def _run_result(
+    msg: Any,
+    run_id: Any,
+    image_id: Any,
+    receipt_id: Any,
+    merged_count: int,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build a per-run merge result.
+
+    ``record_id`` carries the originating SQS message id so a failed merge can
+    be reported back to Lambda as a batch item failure.
+    """
+    context = getattr(msg, "context", None)
+    return {
+        "run_id": run_id,
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "merged_count": merged_count,
+        "error": error,
+        "record_id": getattr(context, "record_id", None),
+    }
 
 
 def _process_single_run(
@@ -85,9 +113,16 @@ def _process_single_run(
     """Process one COMPACTION_RUN message: download delta and merge vectors.
 
     Returns:
-        Result dict with run_id, image_id, receipt_id, merged_count on
-        success, or ``None`` if the run was skipped or failed.
+        Result dict with run_id, image_id, receipt_id, merged_count and
+        ``error``.  ``error`` is ``None`` on success and a description of the
+        failure otherwise, so the caller can retry the originating SQS message
+        instead of deleting it.  ``None`` is returned only when the run has
+        nothing to merge (no delta prefix).
     """
+    run_id: Any = None
+    image_id: Any = None
+    receipt_id: Any = None
+
     try:
         entity = getattr(msg, "entity_data", {}) or {}
         run_id = entity.get("run_id")
@@ -125,10 +160,17 @@ def _process_single_run(
             logger.exception(
                 "Failed to download or extract delta: %s", delta_prefix
             )
-            return None
+            return _run_result(
+                msg,
+                run_id,
+                image_id,
+                receipt_id,
+                merged_count=0,
+                error=f"delta download failed: {delta_prefix}",
+            )
 
         # Merge delta vectors into snapshot
-        merged_count = _merge_delta_into_snapshot(
+        merged_count, merge_error = _merge_delta_into_snapshot(
             delta_dir=delta_dir,
             chroma_client=chroma_client,
             collection_name=collection.value,
@@ -138,22 +180,36 @@ def _process_single_run(
             receipt_id=receipt_id,
         )
 
+        if merge_error is not None:
+            return _run_result(
+                msg,
+                run_id,
+                image_id,
+                receipt_id,
+                merged_count=0,
+                error=merge_error,
+            )
+
         if (
             run_id is not None
             and image_id is not None
             and receipt_id is not None
         ):
-            return {
-                "run_id": run_id,
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "merged_count": merged_count,
-            }
+            return _run_result(
+                msg, run_id, image_id, receipt_id, merged_count=merged_count
+            )
         return None
 
-    except Exception:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception("Failed processing compaction run")
-        return None
+        return _run_result(
+            msg,
+            run_id,
+            image_id,
+            receipt_id,
+            merged_count=0,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _merge_delta_into_snapshot(
@@ -164,11 +220,13 @@ def _merge_delta_into_snapshot(
     run_id: Any = None,
     image_id: Any = None,
     receipt_id: Any = None,
-) -> int:
+) -> Tuple[int, Optional[str]]:
     """Open a local delta directory and upsert its vectors into the snapshot.
 
     Returns:
-        Number of vectors merged (0 if the delta was empty or unreadable).
+        Tuple of (vectors merged, error).  ``error`` is ``None`` when the
+        merge succeeded — including for an empty delta, which merges zero
+        vectors legitimately — and a description otherwise.
     """
     delta_client = ChromaClient(persist_directory=delta_dir, mode="read")
     try:
@@ -185,7 +243,7 @@ def _merge_delta_into_snapshot(
                 receipt_id,
                 collection_name,
             )
-            return 0
+            return 0, None
 
         embeddings = data.get("embeddings")
         documents = data.get("documents")
@@ -231,7 +289,7 @@ def _merge_delta_into_snapshot(
 
         if missing_ids:
             logger.error(
-                "Upsert verification failed — returning 0 so the run "
+                "Upsert verification failed — reporting an error so the run "
                 "is not marked as merged and can be retried: "
                 "run_id=%s, image_id=%s, receipt_id=%s, "
                 "collection=%s, total=%d, missing=%d",
@@ -242,7 +300,10 @@ def _merge_delta_into_snapshot(
                 len(ids),
                 len(missing_ids),
             )
-            return 0
+            return 0, (
+                f"upsert verification failed: {len(missing_ids)} of "
+                f"{len(ids)} vectors missing"
+            )
 
         logger.info(
             "Upsert verified successfully: run_id=%s, image_id=%s, "
@@ -254,9 +315,9 @@ def _merge_delta_into_snapshot(
             len(ids),
         )
 
-        return len(ids)
+        return len(ids), None
 
-    except Exception:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception(
             "Delta has no collection or failed to read: "
             "collection=%s, run_id=%s, image_id=%s, receipt_id=%s",
@@ -265,7 +326,7 @@ def _merge_delta_into_snapshot(
             image_id,
             receipt_id,
         )
-        return 0
+        return 0, f"delta merge failed: {type(exc).__name__}: {exc}"
     finally:
         delta_client.close()
 
