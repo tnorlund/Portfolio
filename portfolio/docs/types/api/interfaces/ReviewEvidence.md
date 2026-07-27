@@ -6,7 +6,7 @@
 
 # Interface: ReviewEvidence
 
-Defined in: [types/api.ts:630](https://github.com/tnorlund/Portfolio/blob/8324e542c9e54fb0952c7b9002ffaa4dfd61f853/portfolio/types/api.ts#L630)
+Defined in: [types/api.ts:630](https://github.com/tnorlund/Portfolio/blob/a3d059be173b35c1101b70161507e591b2c4be64/portfolio/types/api.ts#L630)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:630](https://github.com/tnorlund/Portfolio/blob/8324e5
 
 > **evidence\_source**: `"words"` \| `"lines"`
 
-Defined in: [types/api.ts:634](https://github.com/tnorlund/Portfolio/blob/8324e542c9e54fb0952c7b9002ffaa4dfd61f853/portfolio/types/api.ts#L634)
+Defined in: [types/api.ts:634](https://github.com/tnorlund/Portfolio/blob/a3d059be173b35c1101b70161507e591b2c4be64/portfolio/types/api.ts#L634)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:634](https://github.com/tnorlund/Portfolio/blob/8324e5
 
 > **is\_same\_merchant**: `boolean`
 
-Defined in: [types/api.ts:635](https://github.com/tnorlund/Portfolio/blob/8324e542c9e54fb0952c7b9002ffaa4dfd61f853/portfolio/types/api.ts#L635)
+Defined in: [types/api.ts:635](https://github.com/tnorlund/Portfolio/blob/a3d059be173b35c1101b70161507e591b2c4be64/portfolio/types/api.ts#L635)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:635](https://github.com/tnorlund/Portfolio/blob/8324e5
 
 > **label\_valid**: `boolean`
 
-Defined in: [types/api.ts:633](https://github.com/tnorlund/Portfolio/blob/8324e542c9e54fb0952c7b9002ffaa4dfd61f853/portfolio/types/api.ts#L633)
+Defined in: [types/api.ts:633](https://github.com/tnorlund/Portfolio/blob/a3d059be173b35c1101b70161507e591b2c4be64/portfolio/types/api.ts#L633)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:633](https://github.com/tnorlund/Portfolio/blob/8324e5
 
 > **similarity\_score**: `number`
 
-Defined in: [types/api.ts:632](https://github.com/tnorlund/Portfolio/blob/8324e542c9e54fb0952c7b9002ffaa4dfd61f853/portfolio/types/api.ts#L632)
+Defined in: [types/api.ts:632](https://github.com/tnorlund/Portfolio/blob/a3d059be173b35c1101b70161507e591b2c4be64/portfolio/types/api.ts#L632)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:632](https://github.com/tnorlund/Portfolio/blob/8324e5
 
 > **word\_text**: `string`
 
-Defined in: [types/api.ts:631](https://github.com/tnorlund/Portfolio/blob/8324e542c9e54fb0952c7b9002ffaa4dfd61f853/portfolio/types/api.ts#L631)
+Defined in: [types/api.ts:631](https://github.com/tnorlund/Portfolio/blob/a3d059be173b35c1101b70161507e591b2c4be64/portfolio/types/api.ts#L631)
