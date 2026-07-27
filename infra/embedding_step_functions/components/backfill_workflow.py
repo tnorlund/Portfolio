@@ -53,6 +53,7 @@ def _control_task(
 def _child_branch(
     state_machine_arn: str,
     *,
+    branch_name: str,
     submission_namespace: str | None = None,
 ) -> dict[str, Any]:
     child_input: dict[str, Any] = {
@@ -60,10 +61,11 @@ def _child_branch(
     }
     if submission_namespace:
         child_input["submission_namespace"] = submission_namespace
+    state_name = f"Run{branch_name}"
     return {
-        "StartAt": "RunChildWorkflow",
+        "StartAt": state_name,
         "States": {
-            "RunChildWorkflow": {
+            state_name: {
                 "Type": "Task",
                 "Resource": "arn:aws:states:::states:startExecution.sync:2",
                 "Parameters": {
@@ -163,10 +165,12 @@ def build_backfill_definition(
             "Branches": [
                 _child_branch(
                     line_submit_arn,
+                    branch_name="LineSubmit",
                     submission_namespace="backfill-v1",
                 ),
                 _child_branch(
                     word_submit_arn,
+                    branch_name="WordSubmit",
                     submission_namespace="backfill-v1",
                 ),
             ],
@@ -188,8 +192,8 @@ def build_backfill_definition(
         "IngestActive": {
             "Type": "Parallel",
             "Branches": [
-                _child_branch(line_ingest_arn),
-                _child_branch(word_ingest_arn),
+                _child_branch(line_ingest_arn, branch_name="LineIngest"),
+                _child_branch(word_ingest_arn, branch_name="WordIngest"),
             ],
             "ResultPath": None,
             "Next": "Inspect",
