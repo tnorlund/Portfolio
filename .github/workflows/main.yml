@@ -53,6 +53,14 @@ jobs:
           python -m pip install --quiet boto3 pytest
           python -m pytest -q infra/tests/test_email_receipt_inbox_handler.py
 
+      - name: Test compaction lock configuration
+        run: |
+          # Stubs its Lambda-only imports, so the venv above (pytest only) is
+          # enough. Guards the lock heartbeat wiring and delta-failure
+          # propagation that caused the 07-12 compaction outage.
+          source .venv-email-receipt/bin/activate
+          python -m pytest -q infra/tests/test_compaction_lock_config.py
+
   python-tests:
     name: Python (${{ matrix.package }})
     runs-on: [self-hosted, macOS, ARM64]

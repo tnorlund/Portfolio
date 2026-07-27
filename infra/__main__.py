@@ -208,6 +208,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
     lambda_security_group_id=security.sg_lambda_id,
+    alert_topic_arn=notification_system.critical_error_topic_arn,
 )
 
 # Create embedding infrastructure using shared bucket and queues

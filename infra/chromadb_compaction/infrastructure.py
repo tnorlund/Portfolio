@@ -8,8 +8,10 @@ Coordinates all components including SQS queues, S3 buckets, and hybrid Lambda d
 
 from typing import Optional
 
-from pulumi import ComponentResource, ResourceOptions
+import pulumi
+from pulumi import ComponentResource, Input, ResourceOptions
 
+from .components.alarms import create_chromadb_compaction_alarms
 from .components.lambda_functions import create_hybrid_lambda_deployment
 from .components.s3_buckets import create_chromadb_buckets
 from .components.sqs_queues import create_chromadb_queues
@@ -33,6 +35,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         chromadb_buckets=None,
         subnet_ids=None,
         lambda_security_group_id: str | None = None,
+        alert_topic_arn: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -45,6 +48,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             chromadb_buckets: Shared ChromaDB S3 buckets component
             subnet_ids: Subnet IDs for Lambda placement
             lambda_security_group_id: Security group ID for Lambda VPC access
+            alert_topic_arn: SNS topic notified by the compaction alarms
             opts: Optional resource options
         """
         super().__init__(
@@ -76,6 +80,14 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             dynamodb_stream_arn=dynamodb_stream_arn,
             vpc_subnet_ids=subnet_ids,
             lambda_security_group_id=lambda_security_group_id,
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Alarm on the compaction handler's EMF failure metrics.
+        self.alarms = create_chromadb_compaction_alarms(
+            name=f"{name}-alarms",
+            alert_topic_arn=alert_topic_arn,
+            stack=pulumi.get_stack(),
             opts=ResourceOptions(parent=self),
         )
 
@@ -111,6 +123,7 @@ def create_chromadb_compaction_infrastructure(
     chromadb_buckets=None,
     subnet_ids=None,
     lambda_security_group_id: str | None = None,
+    alert_topic_arn: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
     """
@@ -123,6 +136,7 @@ def create_chromadb_compaction_infrastructure(
         chromadb_buckets: Shared ChromaDB S3 buckets component
         subnet_ids: Subnet IDs for Lambda placement
         lambda_security_group_id: Security group ID for Lambda VPC access
+        alert_topic_arn: SNS topic notified by the compaction alarms
         opts: Optional resource options
 
     Returns:
@@ -140,5 +154,6 @@ def create_chromadb_compaction_infrastructure(
         chromadb_buckets=chromadb_buckets,
         subnet_ids=subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
+        alert_topic_arn=alert_topic_arn,
         opts=opts,
     )

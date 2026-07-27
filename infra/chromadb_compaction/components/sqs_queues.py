@@ -151,15 +151,21 @@ class ChromaDBQueues(ComponentResource):
             # Visibility timeout must be >= Lambda timeout per AWS requirements.
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,  # Long polling
-            # High maxReceiveCount so the INTENDED back-pressure works: the
-            # consumer is deliberately concurrency-limited (reserved=2), so SQS
-            # throttles polls when no slot is free — and each throttled poll
-            # increments ApproximateReceiveCount. With maxReceiveCount=10 those
-            # throttle-bounces dead-lettered messages before they ever got a
-            # processing slot. A high cap lets them wait for a slot instead.
+            # maxReceiveCount has to clear throttle-bounces without going so
+            # high that the DLQ is unreachable.  Each poll (including one
+            # throttled by the consumer's reserved concurrency) increments
+            # ApproximateReceiveCount, which is why maxReceiveCount=10
+            # dead-lettered messages before they got a slot (issue #990).
+            # But retention/visibility caps receives at 345600/900 = 384, so
+            # the old cap of 1000 could never be reached: a poison message
+            # churned for 4 days and then expired silently instead of
+            # dead-lettering.  100 sits between the two — reachable in ~25h
+            # of consistent failure (4x margin inside retention), and far
+            # above the throttle-bounce rate now that reserved concurrency
+            # matches the event source mappings.
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 1000}
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 100}
                 )
             ),
             tags={
@@ -177,14 +183,14 @@ class ChromaDBQueues(ComponentResource):
             message_retention_seconds=345600,  # 4 days
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,  # Long polling
-            # See lines_queue: high cap so throttle-bounces don't dead-letter
-            # before a slot opens. The words queue is where this bit hard — a
-            # bulk delete/label-revalidation flood (one stream message per
-            # word/label change) throttle-bounced ~12k messages into the DLQ
-            # without ever being processed. See issue #990.
+            # See lines_queue for the arithmetic.  The words queue is where
+            # this bit hardest in both directions: a bulk delete/label-
+            # revalidation flood throttle-bounced ~12k messages into the DLQ
+            # under maxReceiveCount=10 (issue #990), and under 1000 the
+            # 07-12 compaction storm churned messages to expiry instead.
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 1000}
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 100}
                 )
             ),
             tags={
