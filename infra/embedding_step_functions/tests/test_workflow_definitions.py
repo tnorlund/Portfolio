@@ -78,7 +78,7 @@ def test_embed_all_definition_is_manual_resumable_and_payload_bounded() -> (
     assert states["WaitForFixedPoint"]["Next"] == "ConfirmFixedPoint"
     assert states["MarkBackfillComplete"]["Parameters"]["action"] == "complete"
     for branch in states["SubmitMissing"]["Branches"]:
-        child_input = branch["States"]["RunChildWorkflow"]["Parameters"][
+        child_input = branch["States"][branch["StartAt"]]["Parameters"][
             "Input"
         ]
         assert child_input["submission_namespace"] == "backfill-v1"
@@ -86,8 +86,10 @@ def test_embed_all_definition_is_manual_resumable_and_payload_bounded() -> (
     for state_name in ("SubmitMissing", "IngestActive"):
         state = states[state_name]
         assert state["ResultPath"] is None
+        branch_start_names = [b["StartAt"] for b in state["Branches"]]
+        assert len(set(branch_start_names)) == len(branch_start_names)
         for branch in state["Branches"]:
-            child = branch["States"]["RunChildWorkflow"]
+            child = branch["States"][branch["StartAt"]]
             assert child["Resource"].endswith("startExecution.sync:2")
             assert child["ResultPath"] is None
 
