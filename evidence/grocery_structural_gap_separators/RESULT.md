@@ -11,11 +11,16 @@ It does not add line pitch or shift any OCR row.
 | Vons `678a7c94-4948-4ebf-b8e9-9a17c13051ec#2` | FAIL: real 3, synth 0 | PASS: 3/3 matched; y deltas 0.0015, 0.0044, 0.0000 |
 | Trader Joe's `4c262079-4fec-4724-a8e1-2886f38ea454#1` | FAIL: real 1, synth 0 | PASS: 1/1 matched; y delta 0.0010 |
 
-Both sides of this pair were re-derived on 2026-07-27 after the rebase.
-`before/` is measured at `1d0dd32f5` (main without this branch); `after/` is
-measured at `63cc32906`, this branch's renderer commit. The two runs share a
-worktree, atlas (`atlas_hash`), and inputs (`inputs_hash`), so the renderer
-change is the only variable.
+Both sides of this pair were measured on 2026-07-27. `before/` is measured at
+`1d0dd32f5` (main without this change); `after/` is measured at `8324e542c`,
+the squash commit that landed this work on main. The two runs share a worktree,
+atlas (`atlas_hash`), and inputs (`inputs_hash`), so the renderer change is the
+only variable.
+
+The `after/` side was re-measured once more after the squash merge: the original
+stamp pointed at the pre-squash branch commit `63cc32906`, which the squash
+orphaned, and `verify_evidence_stamps.py` requires the stamped SHA to be an
+ancestor of HEAD. Re-running against `8324e542c` reproduced identical metrics.
 
 Every check section is byte-identical before and after except `separators`:
 `columns`, `style`, `tokens`, `graphics`, `logo`, `arithmetic`, and

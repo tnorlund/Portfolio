@@ -2,7 +2,7 @@
 
 - merchant: Trader Joe's
 - receipt: 4c262079-4fec-4724-a8e1-2886f38ea454#1
-- git: `63cc32906b9c`
+- git: `8324e542c9e5`
 - truth: `trader_joe_s` v1 `557c433fcc1e5d74ca66a54f194cf4deca9e39976d26412dc0e1b5ebd778c418` (online-active)
 - atlas: `037dc0610504a9b9`
 

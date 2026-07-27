@@ -2,7 +2,7 @@
 
 - merchant: Vons
 - receipt: 678a7c94-4948-4ebf-b8e9-9a17c13051ec#2
-- git: `63cc32906b9c`
+- git: `8324e542c9e5`
 - truth: `vons` v1 `63775db497ae88a596847c2ddea69cfa1271eda40b755c1e2fae87b36da506cb` (online-active)
 - atlas: `6ca4cb5cda99dd4c`
 
