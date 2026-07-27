@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
+
 from receipt_chroma.embedding.formatting.line_format import (
     get_primary_line_id,
     group_lines_into_visual_rows,
