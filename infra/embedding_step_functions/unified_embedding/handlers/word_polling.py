@@ -13,7 +13,6 @@ from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
-import utils.logging  # pylint: disable=import-error
 from botocore.config import Config
 from handlers.skipped_all import build_skipped_all_s3_result
 from openai import OpenAI
@@ -29,6 +28,8 @@ from receipt_chroma.embedding.openai import (
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+import utils.logging  # pylint: disable=import-error
 from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
@@ -150,9 +151,7 @@ def retry_openai_api_call(
             for attempt in range(max_retries + 1):
                 try:
                     return func(*args, **kwargs)
-                except (
-                    Exception
-                ) as e:  # pylint: disable=broad-exception-caught
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     last_exception = e
                     error_str = str(e).lower()
                     error_type = type(e).__name__
@@ -259,9 +258,7 @@ def _ensure_receipt_place(
 
     # Confirm the receipt entity itself exists before invoking the agent.
     try:
-        dynamo_client.get_receipt_details(
-            image_id=image_id, receipt_id=receipt_id
-        )
+        dynamo_client.get_receipt_details(image_id=image_id, receipt_id=receipt_id)
     except EntityNotFoundError:
         logger.warning(
             "Receipt entity missing; skipping orphaned receipt",
@@ -272,9 +269,7 @@ def _ensure_receipt_place(
 
     fix_place_fn = os.environ.get("FIX_PLACE_LAMBDA_NAME")
     if not fix_place_fn:
-        raise RuntimeError(
-            "FIX_PLACE_LAMBDA_NAME environment variable not set"
-        )
+        raise RuntimeError("FIX_PLACE_LAMBDA_NAME environment variable not set")
 
     payload = json.dumps(
         {
@@ -453,9 +448,7 @@ def _handle_internal(
             collected_metrics.get("WordPollingErrors", 0) + 1
         )
         metric_dimensions["error_type"] = type(e).__name__
-        error_types[type(e).__name__] = (
-            error_types.get(type(e).__name__, 0) + 1
-        )
+        error_types[type(e).__name__] = error_types.get(type(e).__name__, 0) + 1
         tracer.add_annotation("error", type(e).__name__)
         tracer.add_metadata(
             "error_details", {"message": str(e), "type": type(e).__name__}
@@ -605,9 +598,7 @@ def _handle_internal_core(
     def _get_batch_status_with_retry() -> str:
         """Get batch status with retry logic."""
         with trace_openai_batch_poll(batch_id, openai_batch_id):
-            with operation_with_timeout(
-                "get_openai_batch_status", max_duration=60
-            ):
+            with operation_with_timeout("get_openai_batch_status", max_duration=60):
                 with openai_circuit_breaker().call():
                     return get_openai_batch_status(  # type: ignore[no-any-return]
                         openai_batch_id, openai_client
@@ -702,10 +693,7 @@ def _handle_internal_core(
         raise
 
     # Process based on the action determined by status handler
-    if (
-        status_result["action"] == "process_results"
-        and batch_status == "completed"
-    ):
+    if status_result["action"] == "process_results" and batch_status == "completed":
         logger.info("Processing completed batch results")
 
         # Check timeout before processing
@@ -715,9 +703,7 @@ def _handle_internal_core(
                 collected_metrics.get("WordPollingTimeouts", 0) + 1
             )
             metric_dimensions["timeout_stage"] = "pre_results"
-            error_types["TimeoutError"] = (
-                error_types.get("TimeoutError", 0) + 1
-            )
+            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -725,19 +711,13 @@ def _handle_internal_core(
                 dimensions=metric_dimensions if metric_dimensions else None,
                 properties={"error_types": error_types},
             )
-            raise TimeoutError(
-                "Lambda timeout detected before result processing"
-            )
+            raise TimeoutError("Lambda timeout detected before result processing")
 
         # Download the batch results with monitoring, circuit breaker, and retry protection
-        @retry_openai_api_call(
-            max_retries=3, initial_delay=2.0, max_delay=60.0
-        )
+        @retry_openai_api_call(max_retries=3, initial_delay=2.0, max_delay=60.0)
         def _download_results_with_retry() -> List[dict]:
             """Download batch results with retry logic."""
-            with tracer.subsegment(
-                "OpenAI.DownloadResults", namespace="remote"
-            ):
+            with tracer.subsegment("OpenAI.DownloadResults", namespace="remote"):
                 with operation_with_timeout(
                     "download_openai_batch_result", max_duration=180
                 ):
@@ -885,9 +865,7 @@ def _handle_internal_core(
             return skipped_result
 
         # Get receipt details with timeout protection
-        with operation_with_timeout(
-            "get_receipt_descriptions", max_duration=60
-        ):
+        with operation_with_timeout("get_receipt_descriptions", max_duration=60):
             descriptions, skipped_receipts = _get_receipt_descriptions(results)
 
         # Filter out results for skipped (missing) receipts
@@ -963,9 +941,7 @@ def _handle_internal_core(
                 collected_metrics.get("WordPollingTimeouts", 0) + 1
             )
             metric_dimensions["timeout_stage"] = "pre_save"
-            error_types["TimeoutError"] = (
-                error_types.get("TimeoutError", 0) + 1
-            )
+            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -991,9 +967,7 @@ def _handle_internal_core(
                     with chromadb_circuit_breaker().call():
                         # Check for graceful shutdown during long operation
                         if should_stop():
-                            logger.warning(
-                                "Save operation cancelled due to shutdown"
-                            )
+                            logger.warning("Save operation cancelled due to shutdown")
                             raise RuntimeError(
                                 "Operation cancelled during graceful shutdown"
                             )
@@ -1019,16 +993,12 @@ def _handle_internal_core(
                                 # Validation failed after retries
                                 validation_success = False
                                 validation_attempts = 3  # max_retries default
-                                validation_retries = (
-                                    2  # retries = attempts - 1
-                                )
+                                validation_retries = 2  # retries = attempts - 1
                             raise
 
         delta_save_duration = time.time() - delta_save_start_time
 
-        if delta_result.get("status") == "failed" or not delta_result.get(
-            "delta_key"
-        ):
+        if delta_result.get("status") == "failed" or not delta_result.get("delta_key"):
             logger.error(
                 "Failed to save word delta",
                 batch_id=batch_id,
@@ -1055,15 +1025,11 @@ def _handle_internal_core(
 
         # Collect metrics (aggregated, not per-call)
         collected_metrics["SavedEmbeddings"] = embedding_count
-        collected_metrics["DeltasSaved"] = (
-            collected_metrics.get("DeltasSaved", 0) + 1
-        )
+        collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
         collected_metrics["DeltaValidationAttempts"] = validation_attempts
         if validation_retries > 0:
             collected_metrics["DeltaValidationRetries"] = validation_retries
-        collected_metrics["DeltaValidationSuccess"] = (
-            1 if validation_success else 0
-        )
+        collected_metrics["DeltaValidationSuccess"] = 1 if validation_success else 0
         collected_metrics["DeltaSaveDuration"] = (
             delta_save_duration  # Includes upload + validation
         )
@@ -1075,12 +1041,8 @@ def _handle_internal_core(
 
         embedded_items = _embedded_word_items(results, descriptions)
         if not skip_sqs:
-            with operation_with_timeout(
-                "mark_words_embedded", max_duration=120
-            ):
-                words_marked = mark_words_embedded(
-                    results, descriptions, dynamo_client
-                )
+            with operation_with_timeout("mark_words_embedded", max_duration=120):
+                words_marked = mark_words_embedded(results, descriptions, dynamo_client)
             collected_metrics["WordsMarkedSuccess"] = words_marked
         else:
             words_marked = 0
@@ -1096,9 +1058,7 @@ def _handle_internal_core(
         # (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
-            with operation_with_timeout(
-                "mark_batch_complete", max_duration=30
-            ):
+            with operation_with_timeout("mark_batch_complete", max_duration=30):
                 _mark_batch_complete(batch_id)
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
@@ -1179,18 +1139,13 @@ def _handle_internal_core(
             "result_s3_bucket": bucket,
         }
 
-    elif (
-        status_result["action"] == "process_partial"
-        and batch_status == "expired"
-    ):
+    elif status_result["action"] == "process_partial" and batch_status == "expired":
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info(
-                "Processing partial results", count=len(partial_results)
-            )
+            logger.info("Processing partial results", count=len(partial_results))
 
             # Ensure receipt_place exists for partial results
             skipped_orphans_partial: set[tuple[str, int]] = set()
@@ -1243,9 +1198,7 @@ def _handle_internal_core(
                 partial_results = filtered_partial_place
 
             # Get receipt details for successful results
-            descriptions, skipped_partial = _get_receipt_descriptions(
-                partial_results
-            )
+            descriptions, skipped_partial = _get_receipt_descriptions(partial_results)
             if skipped_partial:
                 filtered_partial: list[dict] = []
                 for r in partial_results:
@@ -1271,15 +1224,11 @@ def _handle_internal_core(
                 # Get bucket name for delta save
                 bucket_name = os.environ.get("CHROMADB_BUCKET")
                 if not bucket_name:
-                    raise ValueError(
-                        "CHROMADB_BUCKET environment variable not set"
-                    )
+                    raise ValueError("CHROMADB_BUCKET environment variable not set")
 
                 # Determine SQS queue URL based on skip_sqs flag
                 sqs_queue_url = (
-                    None
-                    if skip_sqs
-                    else os.environ.get("COMPACTION_QUEUE_URL")
+                    None if skip_sqs else os.environ.get("COMPACTION_QUEUE_URL")
                 )
 
                 # Save partial results
@@ -1370,9 +1319,7 @@ def _handle_internal_core(
     if status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
         collected_metrics[f"WordPolling{status_result['action'].title()}"] = (
-            collected_metrics.get(
-                f"WordPolling{status_result['action'].title()}", 0
-            )
+            collected_metrics.get(f"WordPolling{status_result['action'].title()}", 0)
             + 1
         )
 

@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import NAMESPACE_URL, uuid5
 
-import utils.logging  # pylint: disable=import-error
 from embedding_ingest import (  # pylint: disable=import-error
     deserialize_receipt_lines,
     download_serialized_file,
@@ -33,6 +32,8 @@ from receipt_chroma.embedding.openai import (
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+import utils.logging  # pylint: disable=import-error
 from utils.env_vars import get_required_env  # pylint: disable=import-error
 
 get_logger = utils.logging.get_logger
