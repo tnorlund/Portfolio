@@ -3,12 +3,17 @@ ChromaDB Compaction Pulumi Components
 
 This package contains the Pulumi infrastructure components for ChromaDB
 compaction:
+- alarms: CloudWatch alarms on the compaction handler's EMF metrics
 - s3_buckets: S3 bucket resources for storing ChromaDB snapshots
 - sqs_queues: SQS queue resources for message passing
 - docker_image: Docker image building for container-based Lambda
 - lambda_functions: Hybrid Lambda deployment (zip + container)
 """
 
+from .alarms import (
+    ChromaDBCompactionAlarms,
+    create_chromadb_compaction_alarms,
+)
 from .docker_image import DockerImageComponent
 from .lambda_functions import (
     HybridLambdaDeployment,
@@ -20,6 +25,8 @@ from .sqs_queues import ChromaDBQueues, create_chromadb_queues
 # pylint: disable=duplicate-code
 # Export lists are expected to be similar between package __init__ files
 __all__ = [
+    "ChromaDBCompactionAlarms",
+    "create_chromadb_compaction_alarms",
     "ChromaDBBuckets",
     "create_chromadb_buckets",
     "ChromaDBQueues",

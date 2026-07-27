@@ -272,6 +272,51 @@ class TestCollectionUpdateResult:
         )
         assert result_with_label_error.has_errors is True
 
+    def test_collection_result_has_errors_for_failed_delta_merge(self):
+        """A failed delta merge counts as an error so it can be retried."""
+        result = CollectionUpdateResult(
+            collection=ChromaDBCollection.LINES,
+            metadata_updates=[],
+            label_updates=[],
+            delta_merge_count=0,
+            delta_merge_results=[
+                {
+                    "run_id": "run-1",
+                    "image_id": "img-1",
+                    "receipt_id": 1,
+                    "merged_count": 0,
+                    "error": "delta download failed",
+                    "record_id": "record-1",
+                }
+            ],
+        )
+
+        assert result.has_errors is True
+        assert len(result.failed_delta_merges) == 1
+        assert result.failed_delta_merges[0]["record_id"] == "record-1"
+
+    def test_collection_result_successful_delta_merge_is_not_an_error(self):
+        """A successful delta merge must not mark the collection failed."""
+        result = CollectionUpdateResult(
+            collection=ChromaDBCollection.LINES,
+            metadata_updates=[],
+            label_updates=[],
+            delta_merge_count=10,
+            delta_merge_results=[
+                {
+                    "run_id": "run-1",
+                    "image_id": "img-1",
+                    "receipt_id": 1,
+                    "merged_count": 10,
+                    "error": None,
+                    "record_id": "record-1",
+                }
+            ],
+        )
+
+        assert result.has_errors is False
+        assert result.failed_delta_merges == []
+
     def test_collection_result_to_dict(self):
         """Test converting CollectionUpdateResult to dictionary."""
         result = CollectionUpdateResult(

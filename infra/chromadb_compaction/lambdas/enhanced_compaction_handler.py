@@ -252,13 +252,21 @@ def _collect_failed_message_ids(
     """Collect message IDs for failed processing operations.
 
     Args:
-        result: CollectionUpdateResult with metadata_updates and label_updates
+        result: CollectionUpdateResult with metadata_updates, label_updates
+            and delta_merge_results
         messages: Original stream messages to match against
 
     Returns:
         List of stream record IDs for messages that failed processing
     """
     failed_ids: list[str] = []
+
+    # Delta merges carry the originating record id, so a failed merge can be
+    # retried instead of having its message deleted with the batch.
+    for run_result in result.failed_delta_merges:
+        record_id = run_result.get("record_id")
+        if record_id:
+            failed_ids.append(record_id)
 
     # Check metadata update failures (place updates + section recomputes
     # both key results by image_id/receipt_id)
@@ -329,10 +337,22 @@ def process_collection(  # pylint: disable=too-many-locals
     # Initialize DynamoDB client
     dynamo_client = DynamoClient(table_name)
 
-    # Initialize lock manager
+    # Initialize lock manager.  The duration/heartbeat settings come from the
+    # Lambda environment (set in components/lambda_functions.py); without them
+    # the LockManager defaults to a 5-minute lock that expires part-way
+    # through a large merge.
     lock_manager = LockManager(
         dynamo_client=dynamo_client,
         collection=collection,
+        heartbeat_interval=int(
+            os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30")
+        ),
+        lock_duration_minutes=int(
+            os.environ.get("LOCK_DURATION_MINUTES", "3")
+        ),
+        max_heartbeat_failures=int(
+            os.environ.get("MAX_HEARTBEAT_FAILURES", "3")
+        ),
     )
 
     # Acquire lock for atomic snapshot upload
@@ -342,6 +362,12 @@ def process_collection(  # pylint: disable=too-many-locals
         if metrics:
             metrics.count("CompactionLockAcquisitionFailed", 1)
         return {"failed_message_ids": [m.context.record_id for m in messages]}
+
+    # Keep the lock alive for the whole download/merge/upload cycle.  A merge
+    # of a multi-hundred-MB snapshot outlives the initial lock duration, and
+    # upload_snapshot_atomic discards the merged result at its ownership check
+    # if the lock expired in the meantime.
+    lock_manager.start_heartbeat()
 
     # Create temp directory for snapshot
     temp_dir = tempfile.mkdtemp(prefix=f"chroma-{collection.value}-")
@@ -455,6 +481,18 @@ def process_collection(  # pylint: disable=too-many-locals
         # detect completion.
         if result.delta_merge_results:
             for run_result in result.delta_merge_results:
+                # A failed merge stays PENDING so it is retried; marking it
+                # COMPLETED here would strand the receipt without vectors.
+                if run_result.get("error") is not None:
+                    op_logger.error(
+                        "Delta merge failed - leaving CompactionRun for retry",
+                        run_id=run_result.get("run_id"),
+                        collection=collection.value,
+                        error=run_result["error"],
+                    )
+                    if metrics:
+                        metrics.count("CompactionDeltaMergeError", 1)
+                    continue
                 try:
                     dynamo_client.mark_compaction_run_completed(
                         image_id=run_result["image_id"],
@@ -485,6 +523,15 @@ def process_collection(  # pylint: disable=too-many-locals
         }
 
     finally:
+        # Stop the heartbeat before releasing so the worker thread cannot
+        # re-extend a lock we no longer own.
+        try:
+            lock_manager.stop_heartbeat()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            op_logger.debug(
+                "Failed to stop heartbeat during cleanup", error=str(e)
+            )
+
         # Release lock if acquired
         try:
             lock_manager.release()

@@ -50,12 +50,12 @@ from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_refresh_lambda import create_label_refresh_lambda
 from merge_receipt_lambda import create_merge_receipt_lambda
-from resegment_receipt_lambda import create_resegment_receipt_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
+from resegment_receipt_lambda import create_resegment_receipt_lambda
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
 from trigger_reocr_lambda import create_trigger_reocr_lambda
@@ -208,6 +208,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
     lambda_security_group_id=security.sg_lambda_id,
+    alert_topic_arn=notification_system.critical_error_topic_arn,
 )
 
 # Create embedding infrastructure using shared bucket and queues
@@ -1269,7 +1270,9 @@ resegment_receipt_lambda = create_resegment_receipt_lambda(
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
-pulumi.export("resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn)
+pulumi.export(
+    "resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn
+)
 pulumi.export(
     "resegment_receipt_lambda_name",
     resegment_receipt_lambda.lambda_function.name,
