@@ -56,12 +56,12 @@ def assert_type(
         raise exc_type(format_type_error(name, value, expected))
 
 
-# Regex for UUID version 4 (case-insensitive, enforcing the '4' and the
-# [89AB] variant).
+# Regex for RFC-4122 UUIDs of version 4 (random) or version 5 (namespaced,
+# used for deterministic/idempotent batch ids), enforcing the [89AB] variant.
 UUID_V4_REGEX = re.compile(
     r"^[0-9A-Fa-f]{8}-"
     r"[0-9A-Fa-f]{4}-"
-    r"4[0-9A-Fa-f]{3}-"
+    r"[45][0-9A-Fa-f]{3}-"
     r"[89ABab][0-9A-Fa-f]{3}-"
     r"[0-9A-Fa-f]{12}$"
 )
