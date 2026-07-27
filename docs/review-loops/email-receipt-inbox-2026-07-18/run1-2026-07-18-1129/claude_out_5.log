@@ -1,0 +1,9 @@
+Round 5 complete.
+
+**Finding 1 [med] — FIXED.** The review flagged `external_active_rule_set=True` as a broken mode: it publishes MX without any guarantee this component's rule set is the account's active one.
+
+The finding was correct on the merits. This component's `store_rule` is always created inside the `rule_set` it builds locally — it's never added to a foreign, externally-managed set. So the `external_active_rule_set` boolean's documented premise ("caller merged our store rule into an external active set") was physically impossible, and the flag added no dependency on any external activation resource. Setting it with `activate=False` would publish MX while mail routed to whatever unrelated set SES had active — no rule for this recipient → dropped.
+
+I took the "remove this mode" remediation rather than the option-2 redesign (accept an external rule-set name + activation resource). Option 2 would add real complexity — creating the store rule inside a foreign set and threading an external activation dependency — for a caller that doesn't exist (default `False`; the only instantiation at `__main__.py:1607` never passes it). MX now publishes only when `activation is not None`, and depends on that activation alongside the store rule, versioning, and notification.
+
+Design contracts respected: config gating, `in.` subdomain DNS confinement, parsed/-only Lambda output, and parsers all untouched. Verification passes (`registry OK: 16 groups`), committed and pushed to `feat/email-receipt-inbox`, resolution written to `.review-loop/resolution_5.md`.

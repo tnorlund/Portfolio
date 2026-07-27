@@ -1,0 +1,11 @@
+Round 2 complete. Both findings adjudicated on the merits, verification passes, committed and pushed.
+
+## Summary
+
+**Finding 1 [med] — S3 versioning propagation barrier — DECLINED.**
+The cited AWS 15-minute caveat is about enabling versioning on a bucket that *already holds objects*. Here the bucket is created fresh with versioning Enabled at creation, before any object can exist; S3 is strongly read-after-write consistent; and the first write can't happen until MX resolves (published last, transitively `depends_on` versioning + activation + notification, plus real DNS/SES latency measured in minutes). The handler also degrades gracefully when a `versionId` is absent. A hard-coded Pulumi sleep barrier would add deploy friction to a default-off experimental component with no durability gain.
+
+**Finding 2 [med] — `needs_ocr` parser output discarded — FIXED.**
+`parse_apple.parse_retail_stub` extracts `merchant_name`/`notes`/`date`/`order_id` before flagging `needs_pdf=True` (→ classified `needs_ocr`), but the handler only persisted `parsed` into `receipt` for `receipt`/`txn_signal`. Added `needs_ocr` to that set so those already-extracted fields survive. Handler-only change, writes stay in `parsed/`, parsers untouched — all design contracts preserved.
+
+Verification: `registry OK: 16 groups`. Pushed as `45cafefa0`.

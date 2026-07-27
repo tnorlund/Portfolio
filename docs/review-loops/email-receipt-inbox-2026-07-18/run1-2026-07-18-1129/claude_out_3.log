@@ -1,0 +1,15 @@
+All four round-3 findings resolved, verified, committed (`6658707d9`), and pushed.
+
+## Summary
+
+All four `[med]` findings were valid and **FIXED** — none required declining, and no design contract was violated (component stays config-gated, DNS confined to `in.`, Lambda writes only to `parsed/`, parsers untouched — only the integration classifier reads hints they already emit).
+
+1. **Async-config readiness gating** — `FunctionEventInvokeConfig` is now captured and added to the `BucketNotification` `depends_on`, propagating through activation and MX. Mail can no longer invoke the parser before the DLQ failure destination exists. Added a finite `maximum_event_age_in_seconds`.
+
+2. **Ingress bounds** — pre-fetch 15 MB size guard quarantines oversized payloads without loading the body; `reserved_concurrent_executions=10` caps the function's share of account concurrency.
+
+3. **Parser-semantic classification** — Uber trip-summaries → `non_receipt`, Venmo P2P → `txn_signal`, merchant purchases still → `receipt`. Verified all five paths behave correctly.
+
+4. **Narrowed parse-error catch** — only deterministic parse exceptions become `parse_error`; `ImportError`/`OSError`/unexpected errors propagate to retry + DLQ.
+
+Verification passed (`registry OK: 16 groups`). Resolution written to `.review-loop/resolution_3.md`.

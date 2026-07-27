@@ -1,0 +1,140 @@
+{
+  "date": "2026-07-15T22:56:40.590549+00:00",
+  "lambda": "merge-receipt-dev-merge-receipt",
+  "deploy": {
+    "image_digest": "sha256:e84bb5e23773c970b5e4dba710efabe8300832efcfbf86163a868f0aa11fc1c9",
+    "last_modified": "2026-07-15T22:46:46.000+0000",
+    "pr": "https://github.com/tnorlund/Portfolio/pull/1160"
+  },
+  "merges": [
+    {
+      "image_id": "5195dba0-2b41-4f10-ac24-8ca555883865",
+      "merchant": "Black Tap Craft Burgers & Beer - Nashville",
+      "from": [
+        1,
+        2
+      ],
+      "to": 3,
+      "words": 92,
+      "labels": 29,
+      "compaction_run_id": "d1c77bdd-6da1-4940-b4ec-6391e34c6878",
+      "deleted_receipts": [
+        2,
+        1
+      ],
+      "pattern": "item_body + amount_column",
+      "status": "success"
+    },
+    {
+      "image_id": "ec9ced37-d4de-4815-b055-d99d96abc253",
+      "merchant": "The Novo",
+      "from": [
+        1,
+        2
+      ],
+      "to": 3,
+      "words": 59,
+      "labels": 72,
+      "compaction_run_id": "fa797f77-179a-4bc0-94bf-a432b5770b60",
+      "deleted_receipts": [
+        2,
+        1
+      ],
+      "pattern": "ticket_body + seat_stub",
+      "status": "success"
+    },
+    {
+      "image_id": "c137dfd9-351c-4d4e-9dae-7950ab7db753",
+      "merchant": "Carousel",
+      "from": [
+        1,
+        2
+      ],
+      "to": 3,
+      "words": 89,
+      "labels": 22,
+      "compaction_run_id": "194b3c6f-d40b-43d6-9f7c-8488736734ca",
+      "deleted_receipts": [
+        2,
+        1
+      ],
+      "pattern": "partial_draft + full_sales_draft",
+      "status": "success"
+    },
+    {
+      "image_id": "74a4f6ee-ac21-4d42-a2bf-e1414b954ae4",
+      "merchant": "Italia Deli & Bakery",
+      "from": [
+        1,
+        2
+      ],
+      "to": 3,
+      "words": 111,
+      "labels": 60,
+      "compaction_run_id": "c77d1a09-ab94-4e7d-9d41-fba0cd170801",
+      "deleted_receipts": [
+        2,
+        1
+      ],
+      "pattern": "payment_emv + itemized_order",
+      "status": "success"
+    },
+    {
+      "image_id": "4efce3f8-4370-49a4-a38c-98b8db6c5fb7",
+      "merchant": "Sushi Planet",
+      "from": [
+        1,
+        2
+      ],
+      "to": 3,
+      "words": 141,
+      "labels": 83,
+      "compaction_run_id": "52f57ee9-fa4f-41f5-94ce-9f594d6dcd9b",
+      "deleted_receipts": [
+        2,
+        1
+      ],
+      "pattern": "payment_slip + itemized_ticket",
+      "status": "success"
+    },
+    {
+      "image_id": "3404eeb0-531f-49dc-806c-9ec2b18bf640",
+      "merchant": "Zen Leaf Cannabis Dispensary",
+      "from": [
+        1,
+        2
+      ],
+      "to": 3,
+      "words": 88,
+      "labels": 41,
+      "compaction_run_id": "442da9b6-9014-43b4-aa50-f9b23860d442",
+      "deleted_receipts": [
+        2,
+        1
+      ],
+      "pattern": "duplicate_atm_slip",
+      "status": "success"
+    }
+  ],
+  "prior_manual": [
+    {
+      "image_id": "4d2c992c-b0ec-4c11-8565-0d407111bc65",
+      "merchant": "Roosterfish",
+      "note": "Partial merge earlier created r3; place fix shipped; r1/r2 deleted manually; embeddings may still be NONE on r3"
+    }
+  ],
+  "deletes_not_merges": [
+    {
+      "image_id": "ed3f3909-62d8-430b-9a1a-e82628d9d5ee",
+      "receipt_id": 2,
+      "reason": "Vons Schedule&Save promo fragment mis-attached next to Sprouts receipt; not same slip"
+    }
+  ],
+  "explicit_skip_multi_slip": [
+    {
+      "image_id": "06772a51-2dca-4833-8fa3-015eda4a53b4",
+      "brand": "Twisted Oak",
+      "reason": "two different totals $76.68 vs $9.12 same night"
+    }
+  ]
+}

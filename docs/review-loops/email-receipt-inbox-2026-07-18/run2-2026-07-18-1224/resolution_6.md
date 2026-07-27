@@ -1,0 +1,9 @@
+# Resolution — Review Round 6
+
+1. [med] handler.py:204 — broad AttributeError/TypeError catch swallows parser integration failures (missing entry point, wrong signature, invalid return type) as permanent parse_error, bypassing retries/DLQ — **FIXED**.
+   - `registry._resolve_entrypoints()` imports every parser module and binds + `inspect.signature`-validates each entry point once at **cold start**. A missing module (ImportError), a missing/renamed/non-callable entry attr, or a signature that can't take the single .eml path now fails the whole invocation → retries → DLQ, instead of surfacing per-message inside the handler's catch as a false `parse_error`.
+   - `run_parser` now uses the pre-resolved callable and validates the return type via `_validate_result` (dict / list-of-dicts / None); a wrong return type raises the new `ParserContractError`.
+   - `ParserContractError` subclasses `Exception` only (not ValueError/TypeError/etc.), so it propagates past the handler's per-message parse catch to the DLQ.
+   - Partial DECLINE (sub-recommendation): the reviewer's "catch only a dedicated per-message parsing exception" would require the untouched stdlib parsers to raise a bespoke exception type — barred by the "parsers untouched" design contract and unnecessary once the three integration paths are structurally removed. The remaining ValueError/KeyError/IndexError/AttributeError/TypeError/MessageError catch now covers only genuine parser-internal failures on THIS message body, which are correctly permanent parse_errors. Handler comment updated to document this.
+
+Verification: `py_compile` of infrastructure.py, handler.py, registry.py passes; `import registry` (which now eagerly resolves all 16 group entry points) succeeds with 16 groups; return-type validation unit-checks pass.

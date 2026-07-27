@@ -255,3 +255,10 @@ backups/
 # local (tracked copies of the per-font manifests + validation results live in
 # synthesis_loop/rom_font_manifests/)
 .out/rom-fonts/
+
+# Claude Code worktrees are local scratch checkouts
+.claude/worktrees/
+
+# Archived review-loop runs keep their small timing/verification logs, which
+# the blanket *.log rule above would otherwise drop.
+!docs/review-loops/**/*.log

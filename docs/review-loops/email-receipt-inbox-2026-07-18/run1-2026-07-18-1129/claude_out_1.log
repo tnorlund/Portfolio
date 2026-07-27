@@ -1,0 +1,18 @@
+Round 1 complete. Verification passes and the commit is pushed to `feat/email-receipt-inbox` (`b8b79b2a4`).
+
+## Summary of dispositions
+
+| # | Sev | Disposition |
+|---|-----|-------------|
+| 1 | high | **FIXED** — added domain verification (TXT + `DomainIdentityVerification`) and wired the full `depends_on` chain (Lambda←policies, notification←invoke permission, receipt rule←verification+bucket policy, activation←store rule) |
+| 2 | high | **FIXED (partial)** — dropped spoofable `Reply-To` dispatch, captured SES spam/virus/SPF/DKIM/DMARC verdicts, spam/virus `FAIL`→`non_receipt`; **declined** the SES-level alignment reject (would break the iCloud-forwarding design it's built on) |
+| 3 | med | **FIXED** — S3 get/put kept outside the parse-error catch so infra failures retry instead of persisting as `parse_error` |
+| 4 | med | **FIXED** — SQS DLQ + `FunctionEventInvokeConfig` on-failure destination + IAM |
+| 5 | med | **FIXED** — bucket versioning, fetch exact `VersionId`, record etag/sequencer/version, `sha256` `ingest_id`, `s3:GetObjectVersion` |
+| 6 | med | **FIXED (partial)** — registered costco + travel-housing, added travel `parse(path)`; **declined** pypdf vendoring (already degrades to `needs_ocr`) |
+| 7 | med | **DECLINED** — single-owner SES topology is a deployment/ops decision; component is config-gated (default off), rule-set names already stack-scoped, and the singleton-activation risk is documented |
+| 8 | med | **FIXED** — chase-alerts requires recognized `alert_type`+`direction`+`amount` before `txn_signal` |
+| 9 | med | **FIXED** — `tls_policy="Require"` |
+| 10 | low | **FIXED (partial)** — lifecycle now covers `parsed/` + noncurrent versions; **declined** hard-coded default duration and alarms as governance/advisory |
+
+Design contracts respected: instantiation stays behind `email_receipt_inbox_enabled` (default off), all new DNS records (`_amazonses.in.…`) stay on the `in.` subdomain, the Lambda still writes only to `parsed/` (the DLQ is operational, not a data sink), and parsers were touched only to add the missing travel entry point (an integration break per finding 6).

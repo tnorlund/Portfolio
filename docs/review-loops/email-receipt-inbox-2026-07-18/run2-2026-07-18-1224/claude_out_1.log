@@ -1,0 +1,17 @@
+Done. Round 1 complete.
+
+## Summary
+
+The review had 2 findings; both resolved on the merits:
+
+**Finding 1 [med] — DLQ unmonitored / "loses no mail" overstated → FIXED (partial).**
+- Added a CloudWatch alarm on the parser DLQ depth (`ApproximateNumberOfMessagesVisible > 0`) so async invokes that exhaust retries/age-out are surfaced for redrive instead of silently expiring at the 14-day retention.
+- Exposed the queue as `self.dlq` and added a `dlq_url` register_output (addresses "no exported queue identifier").
+- Corrected the inaccurate "loses no mail" comment to state the true durability model: the raw email is durably stored in S3 `raw/` by the SES rule *before* the async trigger, so a dropped trigger event is redrivable — no mail is lost.
+- Declined the heavier "automated redrive" / "insert SQS between S3 and Lambda" alternatives as disproportionate for a config-gated, default-off component whose source data is already durable in `raw/`.
+
+**Finding 2 [low] — missing `source_account` → FIXED.** Added `source_account=account_id` to the S3 invoke `Permission` (trivial confused-deputy hardening against bucket-name reclamation).
+
+**Design contracts honored:** no changes to config-gating, DNS stays on the `in.` subdomain, the Lambda still writes only to `parsed/` (alarm is infra, not a Lambda output), parsers untouched.
+
+Verification passed (`registry OK: 16 groups`), committed, and pushed to `origin feat/email-receipt-inbox`.

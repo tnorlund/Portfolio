@@ -1,0 +1,12 @@
+Round 6 complete. Summary:
+
+**Finding 1 [med] — FIXED.** The review correctly identified that the handler's broad `AttributeError`/`TypeError` catch was conflating two distinct failure classes: genuine per-message parse failures (correctly permanent `parse_error`s) and *systematic integration defects* that were being masked as `parse_error` and reported as success, bypassing Lambda retries and the DLQ.
+
+The fix moves all three integration paths out of the per-message catch:
+- **Missing/renamed entry point** and **incompatible signature** → resolved and `inspect.signature`-validated once at cold start in `registry._resolve_entrypoints()`. A broken deploy now fails the invocation loudly (→ retries → DLQ) rather than surfacing per-message.
+- **Invalid return type** → validated in `run_parser` via `_validate_result` (dict / list-of-dicts / None).
+- Both raise a dedicated `ParserContractError` that does **not** subclass the handler's caught exceptions, so it propagates to the DLQ.
+
+I declined only the narrow "require parsers to raise a dedicated exception" sub-recommendation, with a concrete justification: it would violate the "parsers untouched" design contract and is unnecessary once the integration paths are structurally removed.
+
+All design contracts respected (no infra/DNS/DynamoDB changes, parsers untouched). Verification passes (`registry OK: 16 groups`), committed as `fix: review round 6 …`, and pushed to `origin feat/email-receipt-inbox`.
