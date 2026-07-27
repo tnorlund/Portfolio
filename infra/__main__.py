@@ -221,6 +221,11 @@ embedding_infrastructure = EmbeddingInfrastructure(
     lambda_security_group_id=security.sg_lambda_id,
 )
 
+pulumi.export(
+    "embedding_embed_all_v1_sf_arn",
+    embedding_infrastructure.embed_all_workflow.state_machine.arn,
+)
+
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"s3-gateway-{pulumi.get_stack()}",

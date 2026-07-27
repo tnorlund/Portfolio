@@ -108,17 +108,17 @@ class MonitoringComponent(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-            # Lambda error rate alarm
+            # AWS/Lambda exposes Errors, not a native ErrorRate metric.
             error_alarm = MetricAlarm(
                 f"{name}-error-alarm-{stack}",
-                alarm_description=f"Lambda {name} high error rate",
-                metric_name="ErrorRate",
+                alarm_description=f"Lambda {name} invocation errors",
+                metric_name="Errors",
                 namespace="AWS/Lambda",
-                statistic="Average",
+                statistic="Sum",
                 period=300,  # 5 minutes
-                evaluation_periods=2,
-                threshold=5.0,  # 5% error rate
-                comparison_operator="GreaterThanThreshold",
+                evaluation_periods=1,
+                threshold=1,
+                comparison_operator="GreaterThanOrEqualToThreshold",
                 dimensions={
                     "FunctionName": function_name,
                 },
@@ -159,8 +159,6 @@ class MonitoringComponent(ComponentResource):
         self.step_function_alarms = {}
 
         for name, step_func in self.step_functions.items():
-            state_machine_name = step_func.name
-
             # Step Function execution failure alarm
             execution_failure_alarm = MetricAlarm(
                 f"{name}-execution-failure-alarm-{stack}",
@@ -181,17 +179,18 @@ class MonitoringComponent(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-            # Step Function execution timeout alarm
+            # Alarm on actual timeouts. Long-running backfills are expected
+            # and should not alert merely for exceeding 30 minutes.
             execution_timeout_alarm = MetricAlarm(
                 f"{name}-execution-timeout-alarm-{stack}",
                 alarm_description=f"Step Function {name} execution timeouts",
-                metric_name="ExecutionTime",
+                metric_name="ExecutionsTimedOut",
                 namespace="AWS/States",
-                statistic="Maximum",
+                statistic="Sum",
                 period=300,  # 5 minutes
                 evaluation_periods=1,
-                threshold=1800000,  # 30 minutes in milliseconds
-                comparison_operator="GreaterThanThreshold",
+                threshold=1,
+                comparison_operator="GreaterThanOrEqualToThreshold",
                 dimensions={
                     "StateMachineArn": step_func.arn,
                 },

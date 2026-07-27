@@ -193,6 +193,7 @@ class LambdaFunctionsComponent(ComponentResource):
                             "dynamodb:DeleteItem",
                             "dynamodb:BatchWriteItem",
                             "dynamodb:BatchGetItem",
+                            "dynamodb:TransactWriteItems",
                             "dynamodb:DescribeTable",
                         ],
                         "Resource": [
@@ -279,18 +280,14 @@ class LambdaFunctionsComponent(ComponentResource):
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded",
+                "entity_type": "lines",
             },
             "embedding-find-words": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
-                "source_dir": "find_unembedded_words",
-            },
-            "embedding-split-chunks": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 0.5,
-                "timeout": MINUTE * 15,
-                "source_dir": "split_into_chunks",
+                "source_dir": "find_unembedded",
+                "entity_type": "words",
             },
             "embedding-normalize-batches": {
                 "handler": "handler.lambda_handler",
@@ -298,29 +295,17 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 5,
                 "source_dir": "normalize_poll_batches_data",
             },
-            "embedding-create-chunk-groups": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 0.5,
-                "timeout": MINUTE * 5,
-                "source_dir": "create_chunk_groups",
-            },
-            "embedding-prepare-chunk-groups": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 0.5,
-                "timeout": MINUTE * 5,
-                "source_dir": "prepare_chunk_groups",
-            },
-            "embedding-prepare-merge-pairs": {
-                "handler": "handler.handle",
-                "memory": GIGABYTE * 0.5,
-                "timeout": MINUTE * 5,
-                "source_dir": "prepare_merge_pairs",
-            },
             "embedding-mark-complete": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 0.5,
                 "timeout": MINUTE * 5,
                 "source_dir": "mark_batches_complete",
+            },
+            "embedding-backfill-control": {
+                "handler": "handler.lambda_handler",
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
+                "source_dir": "backfill_control",
             },
         }
 
@@ -341,18 +326,14 @@ class LambdaFunctionsComponent(ComponentResource):
         # Common environment variables
         env_vars = {
             "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-            "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
         }
 
-        # Add ChromaDB bucket for split_into_chunks, normalize_poll_batches_data, create_chunk_groups, prepare_chunk_groups, and prepare_merge_pairs
-        if config["source_dir"] in [
-            "split_into_chunks",
-            "normalize_poll_batches_data",
-            "create_chunk_groups",
-            "prepare_chunk_groups",
-            "prepare_merge_pairs",
-        ]:
+        if "entity_type" in config:
+            env_vars["ENTITY_TYPE"] = config["entity_type"]
+            env_vars["MAX_BATCHES_PER_RUN"] = "100"
+
+        if config["source_dir"] == "normalize_poll_batches_data":
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
 
         # SIMPLIFIED ARCHITECTURE (v2): Configuration for big chunks
@@ -365,11 +346,6 @@ class LambdaFunctionsComponent(ComponentResource):
             # Legacy config (kept for backward compatibility, not used in simplified mode)
             env_vars["CHUNKS_PER_LAMBDA"] = "4"
 
-        # Add optimization configuration for N-way merge (legacy, not used in simplified mode)
-        # MERGE_GROUP_SIZE: Group size for parallel reduce (default: 10 instead of 2)
-        if config["source_dir"] == "prepare_merge_pairs":
-            env_vars["MERGE_GROUP_SIZE"] = "10"
-
         # Create the Lambda function
         # Determine which layers are needed based on imports
         # - dynamo_layer: Only receipt_dynamo
@@ -379,6 +355,8 @@ class LambdaFunctionsComponent(ComponentResource):
         uses_only_receipt_dynamo = config["source_dir"] in [
             "list_pending",
             "mark_batches_complete",
+            "find_unembedded",
+            "backfill_control",
         ]
 
         # Add appropriate layers
@@ -399,7 +377,7 @@ class LambdaFunctionsComponent(ComponentResource):
             layers=layers,
             architectures=["arm64"],
             tags={"environment": stack},
-            opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
+            opts=ResourceOptions(parent=self),
         )
 
     def _create_container_lambda_functions(self):

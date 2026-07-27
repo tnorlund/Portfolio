@@ -4,10 +4,9 @@ This handler reads from S3, formats the data using receipt_chroma,
 and submits to OpenAI's Batch API.
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from embedding_ingest import (  # pylint: disable=import-error
     deserialize_receipt_words,
@@ -26,7 +25,9 @@ from receipt_chroma.embedding.openai import (
     submit_openai_batch,
     upload_to_openai,
 )
+from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 import utils.logging  # pylint: disable=import-error
 from utils.env_vars import get_required_env  # pylint: disable=import-error
@@ -67,6 +68,10 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         receipt_id=event.get("receipt_id"),
     )
 
+    batch_summary_recorded = False
+    deserialized_words = []
+    previous_word_statuses = []
+    dynamo_client = None
     try:
         # Extract parameters from event
         s3_bucket = event["s3_bucket"]
@@ -75,7 +80,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         receipt_id = event["receipt_id"]
 
         # Generate unique batch ID
-        batch_id = str(uuid4())
+        batch_id = str(uuid5(NAMESPACE_URL, f"word:{s3_bucket}:{s3_key}"))
         logger.info("Generated batch ID", batch_id=batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
@@ -89,6 +94,27 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Deserialized words", count=len(deserialized_words))
 
         dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
+        try:
+            existing = dynamo_client.get_batch_summary(batch_id)
+        except EntityNotFoundError:
+            existing = None
+        if existing is not None:
+            if existing.status in {
+                BatchStatus.PENDING.value,
+                BatchStatus.VALIDATING.value,
+                BatchStatus.IN_PROGRESS.value,
+                BatchStatus.FINALIZING.value,
+                BatchStatus.CANCELING.value,
+                BatchStatus.COMPLETED.value,
+            }:
+                logger.info("Batch already submitted", batch_id=batch_id)
+                return {
+                    "batch_id": batch_id,
+                    "openai_batch_id": existing.openai_batch_id,
+                    "status": str(existing.status),
+                    "idempotent_replay": True,
+                }
+            dynamo_client.delete_batch_summary(existing)
 
         # Query all words in the receipt for context
         all_words_in_receipt = query_receipt_words(
@@ -138,6 +164,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         write_ndjson(input_file, formatted_words)
         logger.info("Wrote input file", filepath=str(input_file))
 
+        # Claim before the irreversible provider call. Discovery normally did
+        # this already; repeating PENDING is harmless for direct invocations.
+        previous_word_statuses = [
+            (word, word.embedding_status) for word in deserialized_words
+        ]
+        set_pending_and_update_words(dynamo_client, deserialized_words)
+
         # Initialize clients
         openai_client = OpenAI()
 
@@ -158,14 +191,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
-        # Update word embedding status in DynamoDB
-        set_pending_and_update_words(dynamo_client, deserialized_words)
-        logger.info(
-            "Updated embedding status for words", count=len(deserialized_words)
-        )
-
         # Store batch summary in DynamoDB
         add_batch_summary(batch_summary, dynamo_client)
+        batch_summary_recorded = True
         logger.info("Added batch summary to DynamoDB")
 
         return {
@@ -182,5 +210,15 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         raise RuntimeError(f"Invalid event format: {str(e)}") from e
 
     except Exception as e:
+        if dynamo_client is not None and not batch_summary_recorded:
+            for word, previous_status in previous_word_statuses:
+                word.embedding_status = previous_status
+            if previous_word_statuses:
+                try:
+                    dynamo_client.update_receipt_words(
+                        [word for word, _status in previous_word_statuses]
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception("Failed to release word embedding claim")
         logger.error("Unexpected error submitting word batch", error=str(e))
         raise RuntimeError(f"Internal error: {str(e)}") from e

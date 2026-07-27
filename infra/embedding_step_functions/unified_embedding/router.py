@@ -6,22 +6,8 @@ No module-level state for better testability and clarity.
 
 import logging
 import os
+from importlib import import_module
 from typing import Any, Dict
-
-# Import handlers when needed, not at module level
-from handlers import (
-    compaction,
-    create_chunk_groups,
-    find_unembedded,
-    find_unembedded_words,
-    line_polling,
-    list_pending,
-    mark_batches_complete,
-    split_into_chunks,
-    submit_openai,
-    submit_words_openai,
-    word_polling,
-)
 
 from utils import response as response_utils
 
@@ -29,19 +15,15 @@ from utils import response as response_utils
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Handler mapping
-HANDLER_MAP = {
-    "word_polling": word_polling.handle,
-    "line_polling": line_polling.handle,
-    "compaction": compaction.handle,
-    "find_unembedded": find_unembedded.handle,
-    "submit_openai": submit_openai.handle,
-    "list_pending": list_pending.handle,
-    "split_into_chunks": split_into_chunks.handle,
-    "find_unembedded_words": find_unembedded_words.handle,
-    "submit_words_openai": submit_words_openai.handle,
-    "mark_batches_complete": mark_batches_complete.handle,
-    "create_chunk_groups": create_chunk_groups.handle,
+# Only container-deployed handler types belong here. Lightweight discovery,
+# list, normalization, and finalization handlers are zip Lambdas. Lazy imports
+# avoid loading compaction (and its AWS clients) in every submit/poll process.
+HANDLER_MODULES = {
+    "word_polling": "handlers.word_polling",
+    "line_polling": "handlers.line_polling",
+    "compaction": "handlers.compaction",
+    "submit_openai": "handlers.submit_openai",
+    "submit_words_openai": "handlers.submit_words_openai",
 }
 
 
@@ -64,17 +46,18 @@ def route_request(event: Dict[str, Any], context: Any) -> Any:
     if not handler_type:
         raise ValueError(
             f"HANDLER_TYPE environment variable must be set. "
-            f"Valid values: {', '.join(HANDLER_MAP.keys())}"
+            f"Valid values: {', '.join(HANDLER_MODULES.keys())}"
         )
 
     # Get the handler function
-    handler = HANDLER_MAP.get(handler_type)
+    module_name = HANDLER_MODULES.get(handler_type)
 
-    if not handler:
+    if not module_name:
         raise ValueError(
             f"Invalid HANDLER_TYPE: {handler_type}. "
-            f"Valid values: {', '.join(HANDLER_MAP.keys())}"
+            f"Valid values: {', '.join(HANDLER_MODULES.keys())}"
         )
+    handler = import_module(module_name).handle
 
     logger.info("Routing to %s handler", handler_type)
 

@@ -20,6 +20,7 @@ from chromadb_compaction import (  # type: ignore[import-not-found]
 from .components import (
     CONTAINER_FUNCTION_NAMES,
     DockerImageComponent,
+    EmbedAllWorkflow,
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
     MonitoringComponent,
@@ -112,6 +113,17 @@ class EmbeddingInfrastructure(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Manual only: no EventBridge rule or deployment hook starts this.
+        self.embed_all_workflow = EmbedAllWorkflow(
+            f"{name}-backfill",
+            control_lambda=self.lambdas.all_functions[
+                "embedding-backfill-control"
+            ],
+            line_workflow=self.line_workflow,
+            word_workflow=self.word_workflow,
+            opts=ResourceOptions(parent=self),
+        )
+
         # Create monitoring component
         self.monitoring = MonitoringComponent(
             f"{name}-monitoring",
@@ -121,6 +133,7 @@ class EmbeddingInfrastructure(ComponentResource):
                 "line_ingest": self.line_workflow.ingest_sf,
                 "word_submit": self.word_workflow.submit_sf,
                 "word_ingest": self.word_workflow.ingest_sf,
+                "embed_all_v1": self.embed_all_workflow.state_machine,
             },
             opts=ResourceOptions(parent=self),
         )
@@ -197,6 +210,9 @@ class EmbeddingInfrastructure(ComponentResource):
                 ),
                 "embedding_word_ingest_sf_arn": (
                     self.embedding_word_ingest_sf.arn
+                ),
+                "embedding_embed_all_v1_sf_arn": (
+                    self.embed_all_workflow.state_machine.arn
                 ),
                 # Legacy names
                 "create_batches_sf_arn": self.create_batches_sf.arn,

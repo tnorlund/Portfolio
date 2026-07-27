@@ -293,15 +293,14 @@ def _download_and_combine_poll_results(
                     result_key,
                     error_code,
                 )
-                # Continue with other results
+                raise
             except BotoCoreError:
                 logger.exception(
-                    "Botocore error downloading poll result: "
-                    "bucket=%s, key=%s",
+                    "Botocore error downloading poll result: bucket=%s, key=%s",
                     result_bucket,
                     result_key,
                 )
-                # Continue with other results
+                raise
             finally:
                 # Clean up temp file regardless of success or failure
                 if tmp_file_path:
@@ -326,8 +325,9 @@ def _filter_valid_deltas(
         if not isinstance(result, dict):
             continue
 
-        # Must have delta_key
-        if "delta_key" not in result:
+        # A present-but-null key is not a delta. Accepting it defers the error
+        # to compaction and can still let the batch finalizer run.
+        if not result.get("delta_key"):
             logger.debug("Skipping result without delta_key: %s", result)
             continue
 

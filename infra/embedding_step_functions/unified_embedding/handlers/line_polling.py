@@ -35,9 +35,6 @@ from utils.circuit_breaker import (  # pylint: disable=import-error
     chromadb_circuit_breaker,
     openai_circuit_breaker,
 )
-from utils.dual_chroma_client import (
-    DualChromaClient,  # pylint: disable=import-error
-)
 from utils.graceful_shutdown import (  # pylint: disable=import-error
     final_cleanup,
     register_shutdown_callback,
@@ -454,7 +451,8 @@ def _handle_internal_core(
         results: List[dict],
         descriptions: dict[str, dict[int, dict]],
         stale_receipts: Optional[List[list]] = None,
-    ) -> None:
+        mark_success: bool = True,
+    ) -> list[dict[str, Any]]:
         """
         Update the embedding status of ALL lines in each visual row to SUCCESS.
 
@@ -475,7 +473,8 @@ def _handle_internal_core(
                 save_line_embeddings_as_delta.
         """
         stale = {tuple(t) for t in (stale_receipts or [])}
-        # Group lines by receipt for efficient updates
+        embedded_items: dict[tuple[str, int, int], dict[str, Any]] = {}
+        # Group changed lines by receipt for efficient updates
         lines_by_receipt: dict[str, dict[int, list]] = {}
 
         # Cache visual rows per receipt to avoid recomputing
@@ -524,16 +523,17 @@ def _handle_internal_core(
                     break
 
             if target_row:
-                # Initialize the receipt dict if needed
-                if image_id not in lines_by_receipt:
-                    lines_by_receipt[image_id] = {}
-                if receipt_id not in lines_by_receipt[image_id]:
-                    lines_by_receipt[image_id][receipt_id] = []
-
-                # Update embedding status for ALL lines in the visual row
                 for line in target_row:
-                    line.embedding_status = EmbeddingStatus.SUCCESS.value
-                    lines_by_receipt[image_id][receipt_id].append(line)
+                    embedded_items[(image_id, receipt_id, line.line_id)] = {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "line_id": line.line_id,
+                    }
+                    if mark_success:
+                        line.embedding_status = EmbeddingStatus.SUCCESS.value
+                        lines_by_receipt.setdefault(image_id, {}).setdefault(
+                            receipt_id, []
+                        ).append(line)
 
                 logger.debug(
                     "Marked visual row lines as SUCCESS",
@@ -594,6 +594,7 @@ def _handle_internal_core(
         for image_id, receipts in lines_by_receipt.items():
             for receipt_id, lines_to_update in receipts.items():
                 dynamo_client.update_receipt_lines(lines_to_update)
+        return list(embedded_items.values())
 
     def _mark_batch_complete(batch_id: str) -> None:
         """
@@ -989,16 +990,23 @@ def _handle_internal_core(
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
 
-        # Update line embedding status to SUCCESS (line-specific step) with timeout protection
+        # In Step Functions mode, keep rows PENDING until the canonical
+        # snapshot merge succeeds. The exact row members travel in the S3
+        # poll result and are finalized by MarkBatchesComplete.
         with operation_with_timeout(
-            "update_line_embedding_status_to_success", max_duration=60
+            "prepare_line_embedding_status", max_duration=60
         ):
-            _update_line_embedding_status_to_success(
+            embedded_items = _update_line_embedding_status_to_success(
                 results,
                 descriptions,
                 stale_receipts=delta_result.get("stale_receipts"),
+                mark_success=not skip_sqs,
             )
-        logger.info("Updated line embedding status to SUCCESS")
+        logger.info(
+            "Prepared line embedding finalization",
+            item_count=len(embedded_items),
+            deferred=skip_sqs,
+        )
 
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
@@ -1025,6 +1033,7 @@ def _handle_internal_core(
             "storage": "s3_delta",
             "collection": "lines",
             "database": "lines",
+            "embedded_items": embedded_items,
         }
         # Only advertise a delta when one was actually produced. An all-stale
         # batch (every result regrouped since submit) produces no delta:
