@@ -14,6 +14,7 @@ import gc
 import logging
 import os
 import random
+import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -51,6 +52,12 @@ _VALID_MODES = frozenset(("read", "write", "delta"))
 
 # (connect_seconds, read_seconds) applied to the Chroma Cloud HTTP session.
 ChromaRequestTimeout = Tuple[float, float]
+
+# Which shared systems a Cloud client owns is derived by diffing a
+# process-wide cache around its construction, so two constructions running
+# at once would attribute each other's registrations. Serialize them.
+_CLOUD_CONSTRUCTION_LOCK = threading.Lock()
+_CLOUD_CONSTRUCTION_LOCK_TIMEOUT = 30.0
 
 
 def _apply_cloud_request_timeout(
@@ -401,6 +408,61 @@ class ChromaClient:
         """Exit context manager and close client."""
         self.close()
 
+    def _create_cloud_client(self) -> Any:
+        """Build a Cloud client, recording the systems it registers.
+
+        Ownership comes from diffing Chroma's process-wide system cache
+        around the construction, so two constructions running at once would
+        each see the other's registrations and could evict a live entry.
+        The lock makes the snapshot-construct-diff sequence atomic;
+        construction is rare and already a network round trip, so
+        serializing it costs little.
+
+        The wait is bounded because a constructor can hang -- Chroma's
+        session has no timeout of its own until we attach one. Rather than
+        let one wedged construction block every later attempt in a warm
+        container, a timed-out caller proceeds unsynchronized and falls back
+        to the identifier it can attribute with certainty, its own.
+        """
+        acquired = _CLOUD_CONSTRUCTION_LOCK.acquire(
+            timeout=_CLOUD_CONSTRUCTION_LOCK_TIMEOUT
+        )
+        if not acquired:
+            logger.warning(
+                "Timed out waiting to serialize Chroma Cloud construction; "
+                "proceeding without full system-ownership tracking"
+            )
+
+        before_identifiers = _system_cache_identifiers() if acquired else set()
+        try:
+            client = chromadb.CloudClient(
+                api_key=self._cloud_api_key,
+                tenant=self._cloud_tenant,
+                database=self._cloud_database,
+            )
+        except BaseException:
+            # Chroma registers its system before the identity request it can
+            # fail on, and there is no client for close() to work from, so
+            # evict here or a Cloud outage accumulates a system and a pool
+            # per failed attempt in a warm Lambda. Only safe to attribute
+            # the delta to us while the lock is held.
+            if acquired:
+                _release_cloud_client(
+                    None,
+                    _system_cache_identifiers() - before_identifiers,
+                )
+            raise
+        else:
+            self._cloud_system_identifiers = (
+                _system_cache_identifiers() - before_identifiers
+                if acquired
+                else set()
+            )
+            return client
+        finally:
+            if acquired:
+                _CLOUD_CONSTRUCTION_LOCK.release()
+
     def _ensure_client(self) -> Any:
         """Get or create ChromaDB client."""
         if self._closed:
@@ -421,28 +483,7 @@ class ChromaClient:
                         "cloud_api_key is set but cloud_database is missing. "
                         "Pass cloud_database explicitly (e.g. 'receipt_dev')."
                     )
-                # One CloudClient registers several shared systems; capture
-                # exactly which so close() can evict all of them.
-                before_identifiers = _system_cache_identifiers()
-                try:
-                    self._client = chromadb.CloudClient(
-                        api_key=self._cloud_api_key,
-                        tenant=self._cloud_tenant,
-                        database=self._cloud_database,
-                    )
-                except BaseException:
-                    # Chroma registers its system before the identity request
-                    # it can fail on. There is no client for close() to work
-                    # from, so evict here or a Cloud outage accumulates a
-                    # system and a pool per failed attempt in a warm Lambda.
-                    _release_cloud_client(
-                        None,
-                        _system_cache_identifiers() - before_identifiers,
-                    )
-                    raise
-                self._cloud_system_identifiers = (
-                    _system_cache_identifiers() - before_identifiers
-                )
+                self._client = self._create_cloud_client()
                 _apply_cloud_request_timeout(
                     self._client, self._cloud_request_timeout
                 )

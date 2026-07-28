@@ -57,18 +57,69 @@ from receipt_chroma.embedding.cloud_upsert import (
 
 _CLIENT_FACTORY = "receipt_chroma.embedding.cloud_upsert._create_cloud_client"
 
+# Gates held open to simulate a stalled Cloud. The permits fixture releases
+# every one of them in teardown so no thread outlives its test.
+_ACTIVE_GATES: list = []
+
+
+def blocking_gate() -> threading.Event:
+    """An event teardown will set, so a blocked worker can unwind."""
+    gate = threading.Event()
+    _ACTIVE_GATES.append(gate)
+    return gate
+
+
+def stalls_until_released(gate: threading.Event):
+    """A client factory that blocks until the gate opens."""
+
+    def factory(*_args, **_kwargs):
+        gate.wait(30)
+        raise RuntimeError("released")
+
+    return factory
+
+
+def slow_sink(gate: threading.Event):
+    """A log sink that blocks until the gate opens."""
+
+    def sink(*_args, **_kwargs):
+        gate.wait(30)
+
+    return sink
+
 
 @pytest.fixture(autouse=True)
 def _fresh_backpressure_permits(monkeypatch):
-    """Give each test its own permits.
+    """Give each test its own permits and let its threads finish.
 
-    An abandoned attempt keeps its permit until the thread behind it
-    unwinds, so without this the deadline tests would starve whichever
-    test ran next.
+    The deadline tests deliberately abandon worker threads. Each test gets a
+    private semaphore so it cannot starve the next one, and every abandoned
+    worker is released and joined afterwards -- one still running during the
+    next test would keep touching a live semaphore and make the timing
+    assertions flap.
     """
     monkeypatch.setattr(
         cu, "_orphaned_attempts", threading.Semaphore(MAX_ORPHANED_ATTEMPTS)
     )
+    before = {t.ident for t in threading.enumerate()}
+
+    yield
+
+    for gate in _ACTIVE_GATES:
+        gate.set()
+    _ACTIVE_GATES.clear()
+
+    deadline = time.monotonic() + 30.0
+    for thread in threading.enumerate():
+        if thread.ident in before or not thread.name.startswith(
+            "cloud-upsert"
+        ):
+            continue
+        thread.join(max(0.0, deadline - time.monotonic()))
+        assert not thread.is_alive(), (
+            f"{thread.name} outlived its test; it would interfere with the "
+            "next one"
+        )
 
 
 CLOUD_CFG = {
@@ -694,11 +745,12 @@ class TestDeadline:
 
     def test_a_stalled_client_constructor_cannot_outlast_the_budget(self):
         """Chroma's CloudClient() issues its own untimed requests."""
+        gate = blocking_gate()
         started = threading.Event()
 
         def never_returns(*_args, **_kwargs):
             started.set()
-            time.sleep(30)
+            gate.wait(30)
             raise AssertionError("should have been abandoned")
 
         began = time.monotonic()
@@ -752,14 +804,15 @@ class TestBoundedTail:
 
     def test_a_blocked_log_sink_cannot_extend_the_overrun(self):
         """A slow handler after the join would undo the whole budget."""
+        gate = blocking_gate()
         started = threading.Event()
 
         def never_returns(*_args, **_kwargs):
             started.set()
-            time.sleep(30)
+            gate.wait(30)
 
         slow_log = MagicMock()
-        slow_log.warning.side_effect = lambda *a, **k: time.sleep(5)
+        slow_log.warning.side_effect = slow_sink(blocking_gate())
 
         began = time.monotonic()
         with patch(_CLIENT_FACTORY, side_effect=never_returns):
@@ -777,9 +830,10 @@ class TestBoundedTail:
         assert elapsed < 2.0, f"tail was unbounded: {elapsed:.2f}s"
 
     def test_emit_within_budget_reports_completion(self):
+        gate = blocking_gate()
         assert emit_within_budget(lambda: None) is True
         assert (
-            emit_within_budget(lambda: time.sleep(2), grace_seconds=0.05)
+            emit_within_budget(lambda: gate.wait(30), grace_seconds=0.05)
             is False
         )
 
@@ -794,107 +848,85 @@ class TestOrphanedThreadBackpressure:
     """Abandoned attempts can pile up in a warm container."""
 
     def test_too_many_in_flight_attempts_skip_the_write(self):
-        gate = threading.Event()
+        gate = blocking_gate()
 
-        def blocks_until_released(*_args, **_kwargs):
-            gate.wait(30)
-            raise RuntimeError("released")
-
-        try:
-            with patch(_CLIENT_FACTORY, side_effect=blocks_until_released):
-                stuck = [
-                    upsert_payload_to_cloud(
-                        make_payload(1),
-                        "words",
-                        CLOUD_CFG,
-                        deadline_seconds=0.05,
-                    )
-                    for _ in range(MAX_ORPHANED_ATTEMPTS)
-                ]
-                assert all(r.deadline_exceeded for r in stuck)
-
-                # The permits are all held by threads that never finished.
-                blocked = upsert_payload_to_cloud(
+        with patch(_CLIENT_FACTORY, side_effect=stalls_until_released(gate)):
+            stuck = [
+                upsert_payload_to_cloud(
                     make_payload(1),
                     "words",
                     CLOUD_CFG,
-                    deadline_seconds=5.0,
+                    deadline_seconds=0.05,
                 )
+                for _ in range(MAX_ORPHANED_ATTEMPTS)
+            ]
+            assert all(r.deadline_exceeded for r in stuck)
 
-            assert blocked.success is False
-            assert blocked.backpressure is True
-            assert "still in flight" in blocked.error
-            assert blocked.batches == 0
-        finally:
-            gate.set()
+            # The permits are all held by threads that never finished.
+            blocked = upsert_payload_to_cloud(
+                make_payload(1),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=5.0,
+            )
+
+        assert blocked.success is False
+        assert blocked.backpressure is True
+        assert "still in flight" in blocked.error
+        assert blocked.batches == 0
 
     def test_every_skipped_record_is_counted(self):
         """The metric exists to size the incident it reports."""
-        gate = threading.Event()
+        gate = blocking_gate()
 
-        def blocks_until_released(*_args, **_kwargs):
-            gate.wait(30)
-            raise RuntimeError("released")
-
-        try:
-            with patch(_CLIENT_FACTORY, side_effect=blocks_until_released):
-                for _ in range(MAX_ORPHANED_ATTEMPTS):
-                    upsert_payload_to_cloud(
-                        make_payload(1),
-                        "words",
-                        CLOUD_CFG,
-                        deadline_seconds=0.05,
-                    )
-
-                blocked = upsert_payload_to_cloud(
-                    make_payload(37),
-                    "words",
-                    CLOUD_CFG,
-                    deadline_seconds=5.0,
-                )
-
-            assert blocked.attempted == 37
-            assert blocked.upserted == 0
-            assert blocked.dropped == 37
-            assert blocked.drop_reasons == {"orphaned_threads": 37}
-        finally:
-            gate.set()
-
-    def test_rejection_telemetry_is_time_bounded(self):
-        """Earlier attempts are stuck on I/O; the log sink may be too."""
-        gate = threading.Event()
-
-        def blocks_until_released(*_args, **_kwargs):
-            gate.wait(30)
-            raise RuntimeError("released")
-
-        slow_log = MagicMock()
-        slow_log.warning.side_effect = lambda *a, **k: time.sleep(5)
-
-        try:
-            with patch(_CLIENT_FACTORY, side_effect=blocks_until_released):
-                for _ in range(MAX_ORPHANED_ATTEMPTS):
-                    upsert_payload_to_cloud(
-                        make_payload(1),
-                        "words",
-                        CLOUD_CFG,
-                        deadline_seconds=0.05,
-                    )
-
-                began = time.monotonic()
-                blocked = upsert_payload_to_cloud(
-                    make_payload(5),
+        with patch(_CLIENT_FACTORY, side_effect=stalls_until_released(gate)):
+            for _ in range(MAX_ORPHANED_ATTEMPTS):
+                upsert_payload_to_cloud(
+                    make_payload(1),
                     "words",
                     CLOUD_CFG,
                     deadline_seconds=0.05,
-                    log=slow_log,
                 )
-                elapsed = time.monotonic() - began
 
-            assert blocked.backpressure is True
-            assert elapsed < 2.0, f"rejection tail unbounded: {elapsed:.2f}s"
-        finally:
-            gate.set()
+            blocked = upsert_payload_to_cloud(
+                make_payload(37),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=5.0,
+            )
+
+        assert blocked.attempted == 37
+        assert blocked.upserted == 0
+        assert blocked.dropped == 37
+        assert blocked.drop_reasons == {"orphaned_threads": 37}
+
+    def test_rejection_telemetry_is_time_bounded(self):
+        """Earlier attempts are stuck on I/O; the log sink may be too."""
+        gate = blocking_gate()
+        slow_log = MagicMock()
+        slow_log.warning.side_effect = slow_sink(blocking_gate())
+
+        with patch(_CLIENT_FACTORY, side_effect=stalls_until_released(gate)):
+            for _ in range(MAX_ORPHANED_ATTEMPTS):
+                upsert_payload_to_cloud(
+                    make_payload(1),
+                    "words",
+                    CLOUD_CFG,
+                    deadline_seconds=0.05,
+                )
+
+            began = time.monotonic()
+            blocked = upsert_payload_to_cloud(
+                make_payload(5),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=0.05,
+                log=slow_log,
+            )
+            elapsed = time.monotonic() - began
+
+        assert blocked.backpressure is True
+        assert elapsed < 2.0, f"rejection tail unbounded: {elapsed:.2f}s"
 
     def test_backpressure_asks_callers_to_bound_their_telemetry(self):
         result = CloudUpsertResult(collection="words", backpressure=True)

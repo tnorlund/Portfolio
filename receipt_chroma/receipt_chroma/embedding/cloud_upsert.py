@@ -675,6 +675,11 @@ def upsert_payload_to_cloud(
 
     effective_batch = max(1, min(batch_size, UPSERT_BATCH_SIZE))
     deadline_at = start + deadline_seconds
+    # Bind the semaphore once. An abandoned attempt releases whenever its
+    # thread finally unwinds, which may be long after this call returned;
+    # releasing the object it acquired keeps that from crediting a permit to
+    # whatever the module global points at by then.
+    permits = _orphaned_attempts
 
     # Everything below talks to Cloud, including client construction: Chroma
     # issues identity, tenant and database requests inside CloudClient()
@@ -747,11 +752,11 @@ def upsert_payload_to_cloud(
                         collection_name,
                         exc_info=True,
                     )
-            _orphaned_attempts.release()
+            permits.release()
 
     # Backpressure: if enough previous attempts are still stuck, this one
     # would only add another thread and another session to a warm container.
-    if not _orphaned_attempts.acquire(blocking=False):
+    if not permits.acquire(blocking=False):
         result.backpressure = True
         result.error = (
             f"more than {MAX_ORPHANED_ATTEMPTS} cloud upsert attempts are "

@@ -5,6 +5,7 @@ These tests focus on client behavior, context managers, and resource management
 without requiring actual ChromaDB operations or file I/O.
 """
 
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -765,6 +766,83 @@ def test_a_failed_cloud_constructor_leaves_nothing_registered():
             assert (
                 len(cache) == baseline
             ), f"leaked {len(cache) - baseline} system(s) on cycle {cycle}"
+
+
+@pytest.mark.unit
+def test_a_failed_construction_does_not_evict_a_concurrent_one():
+    """Ownership is derived by diffing a process-wide cache.
+
+    Without serializing the snapshot-construct-diff sequence, a failing
+    constructor's cleanup sees systems registered by another constructor
+    that started after its snapshot, and evicts live entries belonging to
+    a client still in use.
+    """
+    import threading
+
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+    identity = MagicMock(tenant="tenant", databases=["database"])
+    results = {}
+
+    def identity_call(*_args, **_kwargs):
+        # One patch for both threads; the failure is keyed off the caller so
+        # the two constructions genuinely overlap.
+        if threading.current_thread().name == "failing":
+            time.sleep(0.4)
+            raise RuntimeError("cloud is down")
+        return identity
+
+    def build(name):
+        client = ChromaClient(
+            cloud_api_key="key",
+            cloud_tenant="tenant",
+            cloud_database="database",
+            mode="write",
+            metadata_only=False,
+        )
+        try:
+            _ = client.client
+            results[name] = ("ok", client)
+        except Exception:  # pylint: disable=broad-exception-caught
+            results[name] = ("failed", client)
+
+    with (
+        patch(
+            "chromadb.api.fastapi.FastAPI.get_user_identity",
+            side_effect=identity_call,
+        ),
+        patch("chromadb.api.fastapi.FastAPI.heartbeat", return_value=1),
+        patch("chromadb.api.fastapi.FastAPI.get_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.get_database"),
+        patch("chromadb.api.fastapi.FastAPI.create_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.create_database"),
+    ):
+        failing = threading.Thread(
+            target=build, args=("failing",), name="failing"
+        )
+        surviving = threading.Thread(
+            target=build, args=("surviving",), name="surviving"
+        )
+        failing.start()
+        time.sleep(0.05)  # let the failing constructor take its snapshot
+        surviving.start()
+        failing.join(30)
+        surviving.join(30)
+
+    assert results["failing"][0] == "failed"
+    assert results["surviving"][0] == "ok"
+
+    survivor = results["surviving"][1]
+    tracked = survivor._cloud_system_identifiers
+    assert tracked, "expected the surviving client to own systems"
+    assert all(
+        identifier in cache for identifier in tracked
+    ), "the failed construction evicted a live client's systems"
+
+    survivor.close()
+    assert len(cache) == baseline
 
 
 @pytest.mark.unit
