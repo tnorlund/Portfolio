@@ -24,9 +24,11 @@ Tracing:
 - Child traces for each phase nest under the parent
 """
 
+import json
 import logging
 import os
 import shutil
+import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -41,6 +43,7 @@ from receipt_chroma.embedding import (
     download_and_embed_parallel,
     upload_lines_delta,
     upload_words_delta,
+    upsert_payload_to_cloud,
 )
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
@@ -180,6 +183,119 @@ def _make_read_client(
         persist_directory=local_dir,
         mode="write",
         metadata_only=True,
+    )
+
+
+_METRICS_NAMESPACE = "EmbeddingWorkflow"
+
+
+def _emit_emf_metrics(
+    metrics: Dict[str, Any],
+    dimensions: Optional[Dict[str, str]] = None,
+    units: Optional[Dict[str, str]] = None,
+    properties: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Write metrics to stdout in CloudWatch Embedded Metric Format.
+
+    Mirrors the compaction handler's EMF conventions (same namespace, same
+    ENABLE_METRICS gate) without pulling in its Lambda-local ``utils``
+    package, which is not bundled into the upload container.
+    """
+    if os.environ.get("ENABLE_METRICS", "true").strip().lower() != "true":
+        return
+
+    unit_for = units or {}
+    emf: Dict[str, Any] = {
+        "_aws": {
+            "Timestamp": int(time.time() * 1000),
+            "CloudWatchMetrics": [
+                {
+                    "Namespace": _METRICS_NAMESPACE,
+                    "Dimensions": (
+                        [list(dimensions.keys())] if dimensions else [[]]
+                    ),
+                    "Metrics": [
+                        {"Name": name, "Unit": unit_for.get(name, "Count")}
+                        for name in metrics
+                    ],
+                }
+            ],
+        }
+    }
+    if dimensions:
+        emf.update(dimensions)
+    emf.update(metrics)
+    if properties:
+        emf.update(properties)
+
+    print(json.dumps(emf))
+
+
+def _upsert_to_cloud_nonfatal(
+    payload: Dict[str, Any],
+    collection_name: str,
+    cloud_cfg: Optional[Dict[str, str]],
+    image_id: str,
+    receipt_id: int,
+) -> None:
+    """Publish freshly embedded vectors to Chroma Cloud, best effort.
+
+    Without this the vectors only become queryable once compaction merges
+    the delta tarball uploaded alongside them. That merge holds a global
+    per-collection lock, so it can lag by minutes. Failing here costs that
+    latency and nothing else -- the delta and CompactionRun still flow.
+    """
+    if not cloud_cfg:
+        return
+
+    try:
+        result = upsert_payload_to_cloud(
+            payload=payload,
+            collection_name=collection_name,
+            cloud_config=cloud_cfg,
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.exception("Chroma Cloud upsert raised for %s", collection_name)
+        _emit_emf_metrics(
+            {"IngestCloudUpsertFailure": 1},
+            dimensions={"collection": collection_name},
+            properties={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "error": f"{type(e).__name__}: {e}",
+            },
+        )
+        return
+
+    if not result.enabled:
+        return
+
+    metric_name = (
+        "IngestCloudUpsertSuccess"
+        if result.success
+        else "IngestCloudUpsertFailure"
+    )
+    _emit_emf_metrics(
+        {
+            metric_name: 1,
+            "IngestCloudUpsertRecords": result.upserted,
+            "IngestCloudUpsertFailedBatches": result.failed_batches,
+            "IngestCloudUpsertLatency": round(result.duration_seconds, 3),
+        },
+        dimensions={"collection": collection_name},
+        units={"IngestCloudUpsertLatency": "Seconds"},
+        properties={
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "attempted": result.attempted,
+            "error": result.error,
+        },
+    )
+    _log(
+        f"Chroma Cloud upsert ({collection_name}): "
+        f"{result.upserted}/{result.attempted} records in "
+        f"{result.duration_seconds:.2f}s"
+        + (f" — FAILED: {result.error}" if not result.success else "")
     )
 
 
@@ -598,6 +714,16 @@ def _run_lines_pipeline_worker(
             if not cloud_cfg:
                 client.upsert(collection_name="lines", **line_payload)
 
+            # Publish straight to Chroma Cloud so these rows are queryable
+            # now instead of after the next compaction merge.
+            _upsert_to_cloud_nonfatal(
+                payload=line_payload,
+                collection_name="lines",
+                cloud_cfg=cloud_cfg,
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+
             # Upload delta to S3
             import boto3
 
@@ -1014,6 +1140,16 @@ def _run_words_pipeline_worker(
             # read client is Cloud and the delta upload below is self-contained).
             if not cloud_cfg:
                 client.upsert(collection_name="words", **word_payload)
+
+            # Publish straight to Chroma Cloud so these words are queryable
+            # now instead of after the next compaction merge.
+            _upsert_to_cloud_nonfatal(
+                payload=word_payload,
+                collection_name="words",
+                cloud_cfg=cloud_cfg,
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
 
             # Upload delta to S3
             import boto3

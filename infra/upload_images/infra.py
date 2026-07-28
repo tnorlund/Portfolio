@@ -525,11 +525,16 @@ class UploadImages(ComponentResource):
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
-                # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
+                # Chroma Cloud: the upload path reads from Cloud (skipping the
+                # S3 snapshot) and upserts freshly embedded vectors straight to
+                # it, so they are queryable without waiting for compaction.
                 "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
                 "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
                 "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
+                # Gates the EMF metrics the ingest cloud upsert emits, matching
+                # the compaction Lambda's flag.
+                "ENABLE_METRICS": "true",
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,

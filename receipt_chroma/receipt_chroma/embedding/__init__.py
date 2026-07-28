@@ -5,6 +5,11 @@ the ChromaDB ingestion pipeline, including delta creation, OpenAI batch
 orchestration, and metadata management.
 """
 
+from receipt_chroma.embedding.cloud_upsert import (
+    UPSERT_BATCH_SIZE,
+    CloudUpsertResult,
+    upsert_payload_to_cloud,
+)
 from receipt_chroma.embedding.delta.line_delta import (
     save_line_embeddings_as_delta,
 )
@@ -24,6 +29,8 @@ from receipt_chroma.embedding.orchestration import (
 )
 
 __all__ = [
+    "UPSERT_BATCH_SIZE",
+    "CloudUpsertResult",
     "EmbeddingConfig",
     "EmbeddingResult",
     "build_words_payload",
@@ -35,4 +42,5 @@ __all__ = [
     "save_word_embeddings_as_delta",
     "upload_lines_delta",
     "upload_words_delta",
+    "upsert_payload_to_cloud",
 ]
