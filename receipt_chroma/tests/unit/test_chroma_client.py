@@ -5,6 +5,7 @@ These tests focus on client behavior, context managers, and resource management
 without requiring actual ChromaDB operations or file I/O.
 """
 
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -665,6 +666,277 @@ def test_cloud_client_config_with_none_values():
     assert client._cloud_api_key == "test-key"
     assert client._cloud_tenant is None
     assert client._cloud_database is None
+
+
+def _fake_cloud_client(identifier):
+    """Build a stand-in for chromadb's CloudClient internals."""
+    client = MagicMock()
+    client._identifier = identifier
+    client._system = MagicMock()
+    client._server._session = MagicMock()
+    return client
+
+
+@pytest.mark.unit
+def test_cloud_request_timeout_is_applied_to_the_session():
+    """Chroma builds its Cloud session with timeout=None."""
+    import httpx
+
+    from receipt_chroma.data.chroma_client import _apply_cloud_request_timeout
+
+    client = _fake_cloud_client("id-timeout")
+    _apply_cloud_request_timeout(client, (10.0, 30.0))
+
+    applied = client._server._session.timeout
+    assert isinstance(applied, httpx.Timeout)
+    assert applied.connect == 10.0
+    assert applied.read == 30.0
+
+
+@pytest.mark.unit
+def test_missing_timeout_is_a_noop():
+    client = _fake_cloud_client("id-none")
+    original = client._server._session.timeout
+
+    from receipt_chroma.data.chroma_client import _apply_cloud_request_timeout
+
+    _apply_cloud_request_timeout(client, None)
+
+    assert client._server._session.timeout is original
+
+
+@pytest.mark.unit
+def test_unexpected_client_internals_do_not_raise():
+    """The session path is private, so a miss must stay advisory."""
+    from receipt_chroma.data.chroma_client import _apply_cloud_request_timeout
+
+    _apply_cloud_request_timeout(object(), (1.0, 2.0))
+
+
+@pytest.mark.unit
+def test_closing_a_cloud_client_releases_its_system_and_pool():
+    """Chroma never evicts its shared systems, so close() must."""
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    from receipt_chroma.data.chroma_client import _release_cloud_client
+
+    fake = _fake_cloud_client("id-release")
+    cache = SharedSystemClient._identifier_to_system
+    cache["id-release"] = fake._system
+    before = len(cache)
+
+    _release_cloud_client(fake, {"id-release"})
+
+    fake._server._session.close.assert_called_once()
+    fake._system.stop.assert_called_once()
+    assert "id-release" not in cache
+    assert len(cache) == before - 1
+
+
+@pytest.mark.unit
+def test_a_failed_cloud_constructor_leaves_nothing_registered():
+    """Chroma registers its system before the request that can fail.
+
+    ``_client`` stays None on that path, so ``close()`` has nothing to work
+    from; without eviction at the failure site a Cloud outage accumulates a
+    system and a pool per attempt in a warm Lambda.
+    """
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    with patch(
+        "chromadb.api.fastapi.FastAPI.get_user_identity",
+        side_effect=RuntimeError("cloud is down"),
+    ):
+        for cycle in range(4):
+            client = ChromaClient(
+                cloud_api_key="key",
+                cloud_tenant="tenant",
+                cloud_database="database",
+                mode="write",
+                metadata_only=False,
+            )
+            # Chroma re-wraps the transport failure as a ValueError.
+            with pytest.raises(ValueError, match="cloud is down"):
+                _ = client.client
+            client.close()
+
+            assert (
+                len(cache) == baseline
+            ), f"leaked {len(cache) - baseline} system(s) on cycle {cycle}"
+
+
+@pytest.mark.unit
+def test_a_failed_construction_does_not_evict_a_concurrent_one():
+    """Ownership is derived by diffing a process-wide cache.
+
+    Without serializing the snapshot-construct-diff sequence, a failing
+    constructor's cleanup sees systems registered by another constructor
+    that started after its snapshot, and evicts live entries belonging to
+    a client still in use.
+    """
+    import threading
+
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+    identity = MagicMock(tenant="tenant", databases=["database"])
+    results = {}
+
+    def identity_call(*_args, **_kwargs):
+        # One patch for both threads; the failure is keyed off the caller so
+        # the two constructions genuinely overlap.
+        if threading.current_thread().name == "failing":
+            time.sleep(0.4)
+            raise RuntimeError("cloud is down")
+        return identity
+
+    def build(name):
+        client = ChromaClient(
+            cloud_api_key="key",
+            cloud_tenant="tenant",
+            cloud_database="database",
+            mode="write",
+            metadata_only=False,
+        )
+        try:
+            _ = client.client
+            results[name] = ("ok", client)
+        except Exception:  # pylint: disable=broad-exception-caught
+            results[name] = ("failed", client)
+
+    with (
+        patch(
+            "chromadb.api.fastapi.FastAPI.get_user_identity",
+            side_effect=identity_call,
+        ),
+        patch("chromadb.api.fastapi.FastAPI.heartbeat", return_value=1),
+        patch("chromadb.api.fastapi.FastAPI.get_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.get_database"),
+        patch("chromadb.api.fastapi.FastAPI.create_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.create_database"),
+    ):
+        failing = threading.Thread(
+            target=build, args=("failing",), name="failing"
+        )
+        surviving = threading.Thread(
+            target=build, args=("surviving",), name="surviving"
+        )
+        failing.start()
+        time.sleep(0.05)  # let the failing constructor take its snapshot
+        surviving.start()
+        failing.join(30)
+        surviving.join(30)
+
+    assert results["failing"][0] == "failed"
+    assert results["surviving"][0] == "ok"
+
+    survivor = results["surviving"][1]
+    tracked = survivor._cloud_system_identifiers
+    assert tracked, "expected the surviving client to own systems"
+    assert all(
+        identifier in cache for identifier in tracked
+    ), "the failed construction evicted a live client's systems"
+
+    survivor.close()
+    assert len(cache) == baseline
+
+
+@pytest.mark.unit
+def test_release_evicts_every_identifier_the_construction_added():
+    """Only the outermost identifier is reachable from the client."""
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    from receipt_chroma.data.chroma_client import _release_cloud_client
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    fake = _fake_cloud_client("id-outer")
+    extra_systems = {f"id-inner-{i}": MagicMock() for i in range(2)}
+    cache["id-outer"] = fake._system
+    cache.update(extra_systems)
+
+    _release_cloud_client(fake, {"id-outer", *extra_systems})
+
+    assert len(cache) == baseline
+    for system in extra_systems.values():
+        system.stop.assert_called_once()
+
+
+@pytest.mark.unit
+def test_repeated_cloud_client_cycles_do_not_grow_the_cache():
+    """Two create/close cycles previously grew the cache 0 -> 3 -> 6."""
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    for cycle in range(3):
+        fake = _fake_cloud_client(f"id-cycle-{cycle}")
+        cache[fake._identifier] = fake._system
+
+        client = ChromaClient(
+            cloud_api_key="key",
+            cloud_tenant="tenant",
+            cloud_database="database",
+            mode="write",
+        )
+        client._client = fake
+        client._cloud_system_identifiers = {fake._identifier}
+        client.close()
+
+        assert len(cache) == baseline, f"leaked on cycle {cycle}"
+
+
+@pytest.mark.unit
+def test_real_cloud_client_cycles_return_the_cache_to_baseline():
+    """A real CloudClient registers three systems, not one.
+
+    ``client._identifier`` names only the outermost; its internal client and
+    admin client register their own. Evicting just the first left two behind
+    every cycle. Network calls are mocked so construction runs offline.
+    """
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    identity = MagicMock(tenant="tenant", databases=["database"])
+    with (
+        patch(
+            "chromadb.api.fastapi.FastAPI.get_user_identity",
+            return_value=identity,
+        ),
+        patch("chromadb.api.fastapi.FastAPI.heartbeat", return_value=1),
+        patch("chromadb.api.fastapi.FastAPI.get_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.get_database"),
+        patch("chromadb.api.fastapi.FastAPI.create_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.create_database"),
+    ):
+        for cycle in range(3):
+            client = ChromaClient(
+                cloud_api_key="key",
+                cloud_tenant="tenant",
+                cloud_database="database",
+                mode="write",
+                metadata_only=False,
+            )
+            _ = client.client
+
+            assert (
+                len(client._cloud_system_identifiers) > 1
+            ), "expected CloudClient to register more than one system"
+            assert len(cache) > baseline
+
+            client.close()
+
+            assert (
+                len(cache) == baseline
+            ), f"leaked {len(cache) - baseline} system(s) on cycle {cycle}"
 
 
 def test_create_if_missing_uses_atomic_get_or_create(monkeypatch):

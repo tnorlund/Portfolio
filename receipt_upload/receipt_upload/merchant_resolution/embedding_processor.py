@@ -24,13 +24,18 @@ Tracing:
 - Child traces for each phase nest under the parent
 """
 
+import json
 import logging
 import os
+import pickle
 import shutil
+import tempfile
+import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Type
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import boto3
 from receipt_agent.constants import CORE_LABELS
@@ -41,6 +46,11 @@ from receipt_chroma.embedding import (
     download_and_embed_parallel,
     upload_lines_delta,
     upload_words_delta,
+    upsert_payload_to_cloud,
+)
+from receipt_chroma.embedding.cloud_upsert import (
+    DEFAULT_REQUEST_TIMEOUT,
+    emit_within_budget,
 )
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
@@ -175,12 +185,290 @@ def _make_read_client(
             cloud_api_key=cloud_cfg["api_key"],
             cloud_tenant=cloud_cfg["tenant"],
             cloud_database=cloud_cfg["database"],
+            # Chroma leaves its Cloud session unbounded; without this a
+            # stalled read hangs until the Lambda itself times out.
+            cloud_request_timeout=DEFAULT_REQUEST_TIMEOUT,
         )
     return ChromaClient(
         persist_directory=local_dir,
         mode="write",
         metadata_only=True,
     )
+
+
+_METRICS_NAMESPACE = "EmbeddingWorkflow"
+
+# How stale a worker's label snapshot may be before the direct Cloud write is
+# skipped in favour of compaction's ordered path. Well above ingest p90
+# (40.8s) so healthy runs always publish, and far below the Lambda's 900s
+# ceiling so a stalled run cannot publish minutes-old labels.
+_DEFAULT_MAX_LABEL_AGE_SECONDS = 300.0
+
+
+def _emit_emf_metrics(
+    metrics: Dict[str, Any],
+    dimensions: Optional[Dict[str, str]] = None,
+    units: Optional[Dict[str, str]] = None,
+    properties: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Write metrics to stdout in CloudWatch Embedded Metric Format.
+
+    Mirrors the compaction handler's EMF conventions (same namespace, same
+    ENABLE_METRICS gate) without pulling in its Lambda-local ``utils``
+    package, which is not bundled into the upload container.
+    """
+    if os.environ.get("ENABLE_METRICS", "true").strip().lower() != "true":
+        return
+
+    unit_for = units or {}
+    emf: Dict[str, Any] = {
+        "_aws": {
+            "Timestamp": int(time.time() * 1000),
+            "CloudWatchMetrics": [
+                {
+                    "Namespace": _METRICS_NAMESPACE,
+                    "Dimensions": (
+                        [list(dimensions.keys())] if dimensions else [[]]
+                    ),
+                    "Metrics": [
+                        {"Name": name, "Unit": unit_for.get(name, "Count")}
+                        for name in metrics
+                    ],
+                }
+            ],
+        }
+    }
+    if dimensions:
+        emf.update(dimensions)
+    emf.update(metrics)
+    if properties:
+        emf.update(properties)
+
+    print(json.dumps(emf))
+
+
+def _stage_cloud_payload(
+    payload: Dict[str, Any],
+    collection_name: str,
+    cloud_cfg: Optional[Dict[str, str]],
+) -> Optional[str]:
+    """Park a payload on local disk for the parent to publish later.
+
+    A record is only recoverable once its CompactionRun exists, and that row
+    is written by the parent after both workers finish. So a worker cannot
+    publish its own payload -- it hands it back instead. The handoff goes
+    through a file because Phase 2 runs on processes outside Lambda (see
+    ``_get_phase2_executor_class``), where an in-memory reference would not
+    survive; the file is local to the host either way and the parent deletes
+    it in its finally block.
+
+    Returns the path, or None when Cloud is disabled or staging failed --
+    both of which just mean this receipt waits for compaction.
+    """
+    if not cloud_cfg:
+        return None
+
+    handle: Optional[int] = None
+    path: Optional[str] = None
+    try:
+        handle, path = tempfile.mkstemp(
+            prefix=f"cloud-publish-{collection_name}-", suffix=".pkl"
+        )
+        with os.fdopen(handle, "wb") as staged:
+            handle = None  # fdopen owns the descriptor now
+            pickle.dump(payload, staged, protocol=pickle.HIGHEST_PROTOCOL)
+        staged_path, path = path, None
+        return staged_path
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Could not stage %s payload for Chroma Cloud publication",
+            collection_name,
+        )
+        return None
+    finally:
+        # Anything still owned here failed partway: close the descriptor and
+        # remove the half-written file rather than leaving it in /tmp, which
+        # a warm Lambda keeps across invocations.
+        if handle is not None:
+            try:
+                os.close(handle)
+            except OSError:
+                pass
+        _discard_staged_payload(path)
+
+
+def _publish_staged_payload(
+    path: Optional[str],
+    collection_name: str,
+    cloud_cfg: Optional[Dict[str, str]],
+    image_id: str,
+    receipt_id: int,
+    labels_fetched_at: Optional[float] = None,
+) -> None:
+    """Publish a payload a worker staged, once its CompactionRun is durable."""
+    if not path or not cloud_cfg:
+        return
+    try:
+        with open(path, "rb") as staged:
+            payload = pickle.load(staged)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Could not read staged %s payload; leaving publication to "
+            "compaction",
+            collection_name,
+        )
+        return
+
+    _upsert_to_cloud_nonfatal(
+        payload=payload,
+        collection_name=collection_name,
+        cloud_cfg=cloud_cfg,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        labels_fetched_at=labels_fetched_at,
+    )
+
+
+def _discard_staged_payload(path: Optional[str]) -> None:
+    """Remove a staged payload file, published or not."""
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.warning("Could not remove staged payload %s", path)
+
+
+def _max_label_age_seconds() -> float:
+    """Age past which a worker's label snapshot is too stale to publish."""
+    raw = os.environ.get("INGEST_CLOUD_UPSERT_MAX_LABEL_AGE_SECONDS", "")
+    try:
+        return float(raw) if raw.strip() else _DEFAULT_MAX_LABEL_AGE_SECONDS
+    except ValueError:
+        return _DEFAULT_MAX_LABEL_AGE_SECONDS
+
+
+def _upsert_to_cloud_nonfatal(
+    payload: Dict[str, Any],
+    collection_name: str,
+    cloud_cfg: Optional[Dict[str, str]],
+    image_id: str,
+    receipt_id: int,
+    labels_fetched_at: Optional[float] = None,
+) -> None:
+    """Publish freshly embedded vectors to Chroma Cloud, best effort.
+
+    Call this only once the collection's delta tarball is durable in S3.
+    The delta and its CompactionRun are the backstop; this write just makes
+    the same vectors queryable now instead of after the next compaction
+    merge, which holds a global per-collection lock and can lag by minutes.
+
+    Known race (full fix is Phase 2): compaction routes a receipt's label
+    and place updates through the same FIFO group as its CompactionRun, so
+    those updates are ordered against each other. A direct write is not in
+    that order. If a label update lands in Cloud after this worker read its
+    labels, publishing here would overwrite the newer value with the older
+    snapshot, and the delta -- ordered after the already-consumed label
+    event -- would not repair it. Until records carry a revision token, the
+    mitigation is a bound on how stale the snapshot may be: past that, skip
+    the direct write and let compaction publish in FIFO order.
+
+    Nothing escapes this function; telemetry is inside the guard because a
+    failed metric write must not fail an ingest that already succeeded.
+    """
+    if not cloud_cfg:
+        return
+
+    try:
+        if labels_fetched_at is not None:
+            age = time.monotonic() - labels_fetched_at
+            max_age = _max_label_age_seconds()
+            if age > max_age:
+                _emit_emf_metrics(
+                    {"IngestCloudUpsertSkipped": 1},
+                    dimensions={"collection": collection_name},
+                    properties={
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "reason": "stale_risk",
+                        "label_age_seconds": round(age, 3),
+                    },
+                )
+                _log(
+                    f"Skipping Chroma Cloud upsert ({collection_name}): "
+                    f"label snapshot is {age:.1f}s old (limit {max_age:.0f}s); "
+                    "leaving publication to compaction's ordered path"
+                )
+                return
+
+        result = upsert_payload_to_cloud(
+            payload=payload,
+            collection_name=collection_name,
+            cloud_config=cloud_cfg,
+        )
+
+        if not result.enabled:
+            return
+
+        metric_name = (
+            "IngestCloudUpsertSuccess"
+            if result.success
+            else "IngestCloudUpsertFailure"
+        )
+        summary = (
+            f"Chroma Cloud upsert ({collection_name}): "
+            f"{result.upserted}/{result.attempted} records in "
+            f"{result.duration_seconds:.2f}s"
+            + (f" — FAILED: {result.error}" if not result.success else "")
+        )
+        emit_metrics = partial(
+            _emit_emf_metrics,
+            {
+                metric_name: 1,
+                "IngestCloudUpsertRecords": result.upserted,
+                "IngestCloudUpsertFailedBatches": result.failed_batches,
+                "IngestCloudUpsertDropped": result.dropped,
+                "IngestCloudUpsertTruncated": result.truncated,
+                "IngestCloudUpsertLatency": round(result.duration_seconds, 3),
+            },
+            dimensions={"collection": collection_name},
+            units={"IngestCloudUpsertLatency": "Seconds"},
+            properties={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "attempted": result.attempted,
+                "deadline_exceeded": result.deadline_exceeded,
+                "backpressure": result.backpressure,
+                "drop_reasons": result.drop_reasons,
+                "error": result.error,
+            },
+        )
+
+        if result.telemetry_must_be_bounded:
+            # Something upstream is stuck -- the budget is spent, or earlier
+            # attempts have not returned. Reporting that must not block on
+            # the same I/O: a stalled stdout would hand it back to ingest.
+            emit_within_budget(emit_metrics)
+            emit_within_budget(_log, summary)
+        else:
+            emit_metrics()
+            _log(summary)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.exception("Chroma Cloud upsert raised for %s", collection_name)
+        try:
+            _emit_emf_metrics(
+                {"IngestCloudUpsertFailure": 1},
+                dimensions={"collection": collection_name},
+                properties={
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "error": f"{type(e).__name__}: {e}",
+                },
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Failed to emit cloud upsert failure metric")
 
 
 def _prepare_pending_core_labels(
@@ -368,6 +656,7 @@ def _run_lines_pipeline_worker(
     table_name: str,
     google_places_api_key: Optional[str],
     langsmith_headers: Optional[Dict[str, str]] = None,
+    labels_fetched_at: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Worker function for lines pipeline (runs in separate process).
@@ -609,10 +898,19 @@ def _run_lines_pipeline_worker(
                 s3_client=s3_client,
             )
 
+            # Hand the payload back for the parent to publish to Chroma Cloud
+            # once the CompactionRun exists. Publishing here would put records
+            # in Cloud that nothing can reconcile if the other pipeline or the
+            # CompactionRun write then fails.
+            cloud_payload_path = _stage_cloud_payload(
+                line_payload, "lines", cloud_cfg
+            )
+
             # Return serializable result
             return {
                 "success": True,
                 "lines_prefix": prefix,
+                "cloud_payload_path": cloud_payload_path,
                 # Metrics-only observability (no behavior change): visual-row
                 # provenance and deterministic section-proposal stats.
                 "row_count": len(persisted_rows),
@@ -653,6 +951,7 @@ def _run_lines_pipeline_worker(
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
+    traced_result: Optional[Dict[str, Any]] = None
     if langsmith_headers:
         try:
             import logging
@@ -678,19 +977,26 @@ def _run_lines_pipeline_worker(
                 project_name=project,
                 enabled=True,
             ):
-                result = _do_lines_work()
+                traced_result = _do_lines_work()
 
             # CRITICAL: Flush traces before process exits
             # Each child process has its own LangSmith client and background thread
             log.info("[LINES_WORKER] Flushing traces before process exit")
             Client().flush()
-            return result
+            return traced_result
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception(
                 "[LINES_WORKER] ERROR in tracing: %s", e
             )
+            # The pipeline reruns below and stages a fresh payload. Drop the
+            # one this attempt staged -- its path is about to be discarded
+            # with the result, and nobody else will clean it up.
+            if traced_result:
+                _discard_staged_payload(
+                    traced_result.get("cloud_payload_path")
+                )
     return _do_lines_work()
 
 
@@ -705,6 +1011,7 @@ def _run_words_pipeline_worker(
     chromadb_bucket: str,
     table_name: str,
     langsmith_headers: Optional[Dict[str, str]] = None,
+    labels_fetched_at: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Worker function for words pipeline (runs in separate process).
@@ -1026,9 +1333,18 @@ def _run_words_pipeline_worker(
                 s3_client=s3_client,
             )
 
+            # Hand the payload back for the parent to publish to Chroma Cloud
+            # once the CompactionRun exists. Publishing here would put records
+            # in Cloud that nothing can reconcile if the other pipeline or the
+            # CompactionRun write then fails.
+            cloud_payload_path = _stage_cloud_payload(
+                word_payload, "words", cloud_cfg
+            )
+
             return {
                 "success": True,
                 "words_prefix": prefix,
+                "cloud_payload_path": cloud_payload_path,
                 "async_llm_payload": async_llm_payload,
                 **validation_stats,
             }
@@ -1039,6 +1355,7 @@ def _run_words_pipeline_worker(
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
+    traced_result: Optional[Dict[str, Any]] = None
     if langsmith_headers:
         try:
             import logging
@@ -1064,19 +1381,26 @@ def _run_words_pipeline_worker(
                 project_name=project,
                 enabled=True,
             ):
-                result = _do_words_work()
+                traced_result = _do_words_work()
 
             # CRITICAL: Flush traces before process exits
             # Each child process has its own LangSmith client and background thread
             log.info("[WORDS_WORKER] Flushing traces before process exit")
             Client().flush()
-            return result
+            return traced_result
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception(
                 "[WORDS_WORKER] ERROR in tracing: %s", e
             )
+            # The pipeline reruns below and stages a fresh payload. Drop the
+            # one this attempt staged -- its path is about to be discarded
+            # with the result, and nobody else will clean it up.
+            if traced_result:
+                _discard_staged_payload(
+                    traced_result.get("cloud_payload_path")
+                )
     return _do_words_work()
 
 
@@ -1219,8 +1543,12 @@ class MerchantResolvingEmbeddingProcessor:
         else:
             _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
-        # Get word labels for enrichment
+        # Get word labels for enrichment. The read time bounds how stale the
+        # workers' label snapshot can be when they publish to Chroma Cloud
+        # outside compaction's FIFO ordering; CLOCK_MONOTONIC is system-wide,
+        # so this stays comparable inside the pipeline subprocesses.
         word_labels: List[ReceiptWordLabel] = []
+        labels_fetched_at = time.monotonic()
         try:
             word_labels, _ = self.dynamo.list_receipt_word_labels_for_receipt(
                 image_id, receipt_id
@@ -1292,6 +1620,9 @@ class MerchantResolvingEmbeddingProcessor:
         lines_stats: Dict[str, Any] = {}
         lines_prefix: Optional[str] = None
         words_prefix: Optional[str] = None
+        lines_cloud_payload: Optional[str] = None
+        words_cloud_payload: Optional[str] = None
+        compaction_run_created = False
 
         try:
             # =================================================================
@@ -1360,6 +1691,7 @@ class MerchantResolvingEmbeddingProcessor:
                     table_name=table_name,
                     google_places_api_key=self.google_places_api_key,
                     langsmith_headers=langsmith_headers,
+                    labels_fetched_at=labels_fetched_at,
                 )
 
                 words_future = executor.submit(
@@ -1374,6 +1706,7 @@ class MerchantResolvingEmbeddingProcessor:
                     chromadb_bucket=self.chromadb_bucket,
                     table_name=table_name,
                     langsmith_headers=langsmith_headers,
+                    labels_fetched_at=labels_fetched_at,
                 )
 
                 # Wait for both to complete
@@ -1388,6 +1721,9 @@ class MerchantResolvingEmbeddingProcessor:
                 try:
                     lines_result = lines_future.result()
                     lines_prefix = lines_result.get("lines_prefix")
+                    lines_cloud_payload = lines_result.get(
+                        "cloud_payload_path"
+                    )
 
                     # Observability-only stats from the lines pipeline: row
                     # provenance, section proposals, verification outcomes.
@@ -1474,6 +1810,9 @@ class MerchantResolvingEmbeddingProcessor:
                 try:
                     words_result = words_future.result()
                     words_prefix = words_result.get("words_prefix")
+                    words_cloud_payload = words_result.get(
+                        "cloud_payload_path"
+                    )
                     async_llm_payload = words_result.get("async_llm_payload")
                     if words_result.get("success"):
                         validation_stats = {
@@ -1483,6 +1822,7 @@ class MerchantResolvingEmbeddingProcessor:
                             not in (
                                 "success",
                                 "words_prefix",
+                                "cloud_payload_path",
                                 "async_llm_payload",
                             )
                         }
@@ -1498,18 +1838,55 @@ class MerchantResolvingEmbeddingProcessor:
             # PHASE 3: Create compaction run (after both deltas uploaded)
             # =================================================================
             if lines_prefix and words_prefix:
-                create_compaction_run(
-                    run_id=run_id,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    lines_prefix=lines_prefix,
-                    words_prefix=words_prefix,
-                    dynamo_client=self.dynamo,
-                )
-                _log(f"Phase 3 complete: created compaction run {run_id}")
+                try:
+                    create_compaction_run(
+                        run_id=run_id,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        lines_prefix=lines_prefix,
+                        words_prefix=words_prefix,
+                        dynamo_client=self.dynamo,
+                    )
+                    compaction_run_created = True
+                    _log(f"Phase 3 complete: created compaction run {run_id}")
+                except Exception as e:
+                    _log(f"ERROR: Failed to create compaction run: {e}")
+                    logger.exception("Compaction run creation failed")
             else:
                 _log(
                     "WARNING: Skipping compaction run - missing delta prefixes"
+                )
+
+            # =================================================================
+            # PHASE 3a: Publish both collections to Chroma Cloud
+            # =================================================================
+            # Only now is every record recoverable: both deltas are in S3 and
+            # the CompactionRun that points at them is durable. Publishing
+            # earlier -- per collection, as this originally did -- could leave
+            # Cloud holding one collection, or both, with no event that would
+            # ever reconcile them. Without the run, publication waits for a
+            # later ingest rather than going out unbacked.
+            if compaction_run_created:
+                _publish_staged_payload(
+                    lines_cloud_payload,
+                    "lines",
+                    cloud_cfg,
+                    image_id,
+                    receipt_id,
+                    labels_fetched_at,
+                )
+                _publish_staged_payload(
+                    words_cloud_payload,
+                    "words",
+                    cloud_cfg,
+                    image_id,
+                    receipt_id,
+                    labels_fetched_at,
+                )
+            elif lines_cloud_payload or words_cloud_payload:
+                _log(
+                    "Skipping Chroma Cloud publication - no durable "
+                    "compaction run to reconcile the records"
                 )
 
             # =================================================================
@@ -1616,6 +1993,11 @@ class MerchantResolvingEmbeddingProcessor:
             logger.exception("Processing failed")
 
         finally:
+            # Staged Cloud payloads are consumed above; drop them whether or
+            # not they were published.
+            _discard_staged_payload(lines_cloud_payload)
+            _discard_staged_payload(words_cloud_payload)
+
             # Clean up temp directories
             # Note: ChromaClients are created and closed within worker processes
             try:
@@ -1630,7 +2012,10 @@ class MerchantResolvingEmbeddingProcessor:
                 logger.warning("Error cleaning up words_dir: %s", e)
 
         return {
-            "success": True,
+            # A receipt is only fully processed once its CompactionRun exists;
+            # without it the deltas are orphaned and nothing will merge them.
+            "success": compaction_run_created,
+            "compaction_run_created": compaction_run_created,
             "run_id": run_id,
             "lines_count": len(lines),
             "words_count": len(words),

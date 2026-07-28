@@ -14,6 +14,7 @@ import gc
 import logging
 import os
 import random
+import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Tuple,
     Type,
     TypeVar,
     cast,
@@ -47,6 +49,114 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 ChromaMode = Literal["read", "write", "delta"]
 _VALID_MODES = frozenset(("read", "write", "delta"))
+
+# (connect_seconds, read_seconds) applied to the Chroma Cloud HTTP session.
+ChromaRequestTimeout = Tuple[float, float]
+
+# Which shared systems a Cloud client owns is derived by diffing a
+# process-wide cache around its construction, so two constructions running
+# at once would attribute each other's registrations. Serialize them.
+_CLOUD_CONSTRUCTION_LOCK = threading.Lock()
+_CLOUD_CONSTRUCTION_LOCK_TIMEOUT = 30.0
+
+
+def _apply_cloud_request_timeout(
+    client: Any,
+    timeout: Optional[ChromaRequestTimeout],
+) -> None:
+    """Bound the Cloud client's HTTP requests.
+
+    Chroma builds its Cloud session as ``httpx.Client(timeout=None)``
+    (``chromadb/api/fastapi.py``) and exposes no setting for it, so the only
+    way to bound a request is to reach the session after construction. That
+    path is private, so treat a miss as advisory: callers that need a hard
+    deadline must also enforce their own wall clock.
+    """
+    if timeout is None:
+        return
+
+    connect_seconds, read_seconds = timeout
+    try:
+        import httpx
+
+        session = client._server._session  # pylint: disable=protected-access
+        session.timeout = httpx.Timeout(
+            connect=connect_seconds,
+            read=read_seconds,
+            write=read_seconds,
+            pool=connect_seconds,
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "Could not set Chroma Cloud request timeout; requests are "
+            "unbounded and only the caller's wall-clock budget applies",
+            exc_info=True,
+        )
+
+
+def _system_cache_identifiers() -> set:
+    """Snapshot the identifiers currently in Chroma's shared-system cache."""
+    # pylint: disable=protected-access
+    try:
+        return set(SharedSystemClient._identifier_to_system)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Could not read Chroma system cache", exc_info=True)
+        return set()
+
+
+def _release_cloud_client(client: Any, identifiers: Optional[set]) -> None:
+    """Tear down a Cloud client's HTTP pool and shared-system cache entries.
+
+    Chroma caches one ``System`` per settings identifier for the life of the
+    process and never evicts it, so a create/close cycle that only drops
+    Python references leaks both the systems and their httpx pools. In a
+    warm Lambda those accumulate across invocations.
+
+    Constructing one ``CloudClient`` registers *three* identifiers -- its own
+    plus its internal client and admin client -- so ``client._identifier``
+    alone leaves two behind. ``identifiers`` is the set the construction
+    actually added, captured by diffing the cache around it.
+    """
+    try:
+        session = getattr(getattr(client, "_server", None), "_session", None)
+        if session is not None:
+            session.close()
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Chroma Cloud session close failed", exc_info=True)
+
+    # pylint: disable=protected-access
+    try:
+        cache = SharedSystemClient._identifier_to_system
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Could not read Chroma system cache", exc_info=True)
+        return
+
+    to_evict = set(identifiers or ())
+    own_identifier = getattr(client, "_identifier", None)
+    if own_identifier is not None:
+        to_evict.add(own_identifier)
+
+    for identifier in to_evict:
+        system = cache.get(identifier)
+        if system is None:
+            continue
+        try:
+            system.stop()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "Chroma Cloud system stop failed for %s",
+                identifier,
+                exc_info=True,
+            )
+        try:
+            del cache[identifier]
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "Chroma Cloud system cache eviction failed for %s",
+                identifier,
+                exc_info=True,
+            )
+
 
 # Default retry settings for Chroma Cloud rate limits
 _DEFAULT_MAX_RETRIES = 4
@@ -203,6 +313,7 @@ class ChromaClient:
         cloud_api_key: Optional[str] = None,
         cloud_tenant: Optional[str] = None,
         cloud_database: Optional[str] = None,
+        cloud_request_timeout: Optional["ChromaRequestTimeout"] = None,
     ):
         """
         Initialize the ChromaDB client.
@@ -220,6 +331,12 @@ class ChromaClient:
                          cloud_api_key is set)
             cloud_database: Chroma Cloud database name (required when
                            cloud_api_key is set, e.g. 'receipt_dev')
+            cloud_request_timeout: Optional (connect, read) seconds applied to
+                          the Cloud HTTP session. Chroma builds that session
+                          with ``timeout=None``, so without this a stalled
+                          request hangs until the caller's own deadline (in
+                          Lambda, until the function times out). ``None``
+                          keeps Chroma's unbounded default.
         """
         self.persist_directory = persist_directory
         normalized_mode = mode.lower()
@@ -245,6 +362,8 @@ class ChromaClient:
         self._cloud_database: Optional[str] = (
             cloud_database or ""
         ).strip() or None
+        self._cloud_request_timeout = cloud_request_timeout
+        self._cloud_system_identifiers: set = set()
 
         # Configure embedding function
         if embedding_function:
@@ -289,6 +408,61 @@ class ChromaClient:
         """Exit context manager and close client."""
         self.close()
 
+    def _create_cloud_client(self) -> Any:
+        """Build a Cloud client, recording the systems it registers.
+
+        Ownership comes from diffing Chroma's process-wide system cache
+        around the construction, so two constructions running at once would
+        each see the other's registrations and could evict a live entry.
+        The lock makes the snapshot-construct-diff sequence atomic;
+        construction is rare and already a network round trip, so
+        serializing it costs little.
+
+        The wait is bounded because a constructor can hang -- Chroma's
+        session has no timeout of its own until we attach one. Rather than
+        let one wedged construction block every later attempt in a warm
+        container, a timed-out caller proceeds unsynchronized and falls back
+        to the identifier it can attribute with certainty, its own.
+        """
+        acquired = _CLOUD_CONSTRUCTION_LOCK.acquire(
+            timeout=_CLOUD_CONSTRUCTION_LOCK_TIMEOUT
+        )
+        if not acquired:
+            logger.warning(
+                "Timed out waiting to serialize Chroma Cloud construction; "
+                "proceeding without full system-ownership tracking"
+            )
+
+        before_identifiers = _system_cache_identifiers() if acquired else set()
+        try:
+            client = chromadb.CloudClient(
+                api_key=self._cloud_api_key,
+                tenant=self._cloud_tenant,
+                database=self._cloud_database,
+            )
+        except BaseException:
+            # Chroma registers its system before the identity request it can
+            # fail on, and there is no client for close() to work from, so
+            # evict here or a Cloud outage accumulates a system and a pool
+            # per failed attempt in a warm Lambda. Only safe to attribute
+            # the delta to us while the lock is held.
+            if acquired:
+                _release_cloud_client(
+                    None,
+                    _system_cache_identifiers() - before_identifiers,
+                )
+            raise
+        else:
+            self._cloud_system_identifiers = (
+                _system_cache_identifiers() - before_identifiers
+                if acquired
+                else set()
+            )
+            return client
+        finally:
+            if acquired:
+                _CLOUD_CONSTRUCTION_LOCK.release()
+
     def _ensure_client(self) -> Any:
         """Get or create ChromaDB client."""
         if self._closed:
@@ -309,10 +483,9 @@ class ChromaClient:
                         "cloud_api_key is set but cloud_database is missing. "
                         "Pass cloud_database explicitly (e.g. 'receipt_dev')."
                     )
-                self._client = chromadb.CloudClient(
-                    api_key=self._cloud_api_key,
-                    tenant=self._cloud_tenant,
-                    database=self._cloud_database,
+                self._client = self._create_cloud_client()
+                _apply_cloud_request_timeout(
+                    self._client, self._cloud_request_timeout
                 )
                 logger.debug(
                     "Created Chroma Cloud client (tenant=%s, database=%s)",
@@ -366,6 +539,10 @@ class ChromaClient:
         A failure in either flush step is observable to callers so snapshot
         uploads cannot silently proceed with a potentially incomplete database.
 
+        Cloud clients hold an httpx connection pool and an entry in Chroma's
+        process-wide shared-system cache; both are released here so repeated
+        create/close cycles in a warm Lambda do not accumulate.
+
         Ephemeral clients and clients that were never initialized only release
         Python references; they do not need the persistent-client GC and file
         handle delay.
@@ -381,10 +558,17 @@ class ChromaClient:
         needs_persistent_flush = (
             active_client is not None and self.use_persistent_client
         )
+        is_cloud = active_client is not None and bool(self._cloud_api_key)
 
         self._collections.clear()
         self._client = None
         self._closed = True
+
+        if is_cloud:
+            _release_cloud_client(
+                active_client, self._cloud_system_identifiers
+            )
+            self._cloud_system_identifiers = set()
 
         if not needs_persistent_flush:
             logger.debug("ChromaDB client closed successfully")
