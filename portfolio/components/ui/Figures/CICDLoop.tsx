@@ -392,8 +392,8 @@ function getPointAndTangentAtArcLength(
 
 /**
  * Build a filled ribbon segment path with:
- * - Arrow tip at the end (triangle added)
- * - Notch at the start (triangle cut out using evenodd)
+ * - An explicit arrow tip at the end
+ * - An explicit chevron notch at the start
  *
  * @param startGap - Gap geometry for the start (notch): position, tangent, normal, and half-width of gap
  * @param endGap - Gap geometry for the end (arrow): position, tangent, normal, and half-width of gap
@@ -498,8 +498,11 @@ function buildRibbonSegmentPath(
     rightEdge[rightEdge.length - 1] = endR;
   }
 
-  // Build outer polygon path (left edge -> arrow tip -> right edge back)
-  const outer =
+  // Build one continuous polygon so the arrow-base corners and notch apex are
+  // part of the ribbon outline. The previous compound-path approach omitted
+  // endR and subtracted a triangle whose base coincided with the outer path;
+  // both produced small wedges at the joins when the SVG was rasterized.
+  return (
     `M ${leftEdge[0].x} ${leftEdge[0].y} ` +
     leftEdge
       .slice(1)
@@ -507,20 +510,11 @@ function buildRibbonSegmentPath(
       .join(" ") +
     ` L ${tip.x} ${tip.y} ` +
     rightEdge
-      .slice(0, -1)
       .reverse()
       .map((p) => `L ${p.x} ${p.y}`)
       .join(" ") +
-    ` Z`;
-
-  // Build notch hole as a triangle subpath (evenodd will subtract it)
-  const hole =
-    `M ${notchL.x} ${notchL.y}` +
-    ` L ${notchApex.x} ${notchApex.y}` +
-    ` L ${notchR.x} ${notchR.y}` +
-    ` Z`;
-
-  return `${outer} ${hole}`;
+    ` L ${notchApex.x} ${notchApex.y} Z`
+  );
 }
 
 /**
@@ -1035,7 +1029,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                   ref={(el) => { ribbonRefs.current[i] = el; }}
                   d={g.ribbonD}
                   fill={color}
-                  fillRule="evenodd"
                 />
 
                 {/* Label along segment centerline */}
