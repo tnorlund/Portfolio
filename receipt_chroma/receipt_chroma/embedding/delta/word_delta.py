@@ -4,6 +4,7 @@ This module provides functionality for saving word embedding results
 as ChromaDB delta files for compaction.
 """
 
+import logging
 from typing import Dict, List, Optional, TypedDict
 
 from receipt_chroma.chroma_types import (
@@ -17,6 +18,8 @@ from receipt_chroma.embedding.metadata.word_metadata import (
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WordMetadataBase(TypedDict):
@@ -115,8 +118,20 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         word_id = _meta["word_id"]
         source = "openai_embedding_batch"
 
-        # From the descriptions, get the receipt details for this result
-        receipt_details = descriptions[image_id][receipt_id]
+        # From the descriptions, get the receipt details for this result.
+        # The receipt (or individual word) may have been deleted between
+        # submit and poll (merges, dedupe, promotions). A deleted entity is
+        # a skip, not a failure — raising here fed the circuit breaker and
+        # killed entire ingest runs over rows that no longer exist.
+        receipt_details = descriptions.get(image_id, {}).get(receipt_id)
+        if receipt_details is None:
+            logger.warning(
+                "Receipt deleted since submit; skipping result: "
+                "image_id=%s receipt_id=%s",
+                image_id,
+                receipt_id,
+            )
+            continue
         words = receipt_details["words"]
         labels = receipt_details["labels"]
         place = receipt_details["place"]
@@ -131,11 +146,15 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             None,
         )
         if target_word is None:
-            raise ValueError(
-                f"No ReceiptWord found for image_id={image_id}, "
-                f"receipt_id={receipt_id}, line_id={line_id}, "
-                f"word_id={word_id}"
+            logger.warning(
+                "ReceiptWord deleted since submit; skipping result: "
+                "image_id=%s receipt_id=%s line_id=%s word_id=%s",
+                image_id,
+                receipt_id,
+                line_id,
+                word_id,
             )
+            continue
 
         # Filter labels to only those for this specific word
         word_labels = [
