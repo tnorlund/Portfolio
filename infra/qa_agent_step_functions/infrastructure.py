@@ -567,7 +567,9 @@ def _build_state_machine_definition(
                     "langchain_project.$": "$.Payload.langchain_project",
                 },
                 "ResultPath": "$.questions_result",
-                "TimeoutSeconds": 900,
+                # 900s was knife-edge for 32 questions (cold starts + provider
+                # variance timed out an entire healthy run on 2026-07-28).
+                "TimeoutSeconds": 2400,
                 "Retry": [
                     {
                         "ErrorEquals": [
