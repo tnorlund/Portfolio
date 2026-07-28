@@ -346,6 +346,7 @@ export interface MilkSimilarityTiming {
     count: number;
     sequential_ms: number;
     speedup: number;
+    items_returned?: number;
   };
   visual_line_assembly?: {
     avg_ms: number;

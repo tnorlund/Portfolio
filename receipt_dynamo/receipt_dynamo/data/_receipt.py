@@ -32,8 +32,72 @@ from receipt_dynamo.entities.receipt_word_label import (
 
 from ._receipt_details_processor import process_receipt_details_query
 
+_RECEIPT_DETAILS_CONVERTERS = {
+    "RECEIPT": ("receipt", item_to_receipt),
+    "RECEIPT_LINE": ("line", item_to_receipt_line),
+    "RECEIPT_WORD": ("word", item_to_receipt_word),
+    "RECEIPT_WORD_LABEL": ("label", item_to_receipt_word_label),
+    "RECEIPT_PLACE": ("place", item_to_receipt_place),
+    "RECEIPT_BARCODE": ("barcode", item_to_receipt_barcode),
+}
+
 
 class _Receipt(FlattenedStandardMixin):
+    @staticmethod
+    def _convert_receipt_details_item(item):
+        """Convert one GSI4 item into its ReceiptDetails collection name."""
+        item_type = item.get("TYPE", {}).get("S")
+        converter = _RECEIPT_DETAILS_CONVERTERS.get(item_type)
+        if converter is None:
+            return None
+        collection_name, convert_item = converter
+        return (collection_name, convert_item(item))
+
+    @staticmethod
+    def _build_receipt_details(
+        items: list,
+        image_id: str,
+        receipt_id: int,
+    ) -> ReceiptDetails:
+        """Build ReceiptDetails from converted GSI4 items."""
+        receipt = None
+        place = None
+        lines, words, labels, barcodes = [], [], [], []
+
+        for item in items:
+            if item is None:
+                continue
+            item_type, entity = item
+            if item_type == "receipt":
+                receipt = entity
+            elif item_type == "line":
+                lines.append(entity)
+            elif item_type == "word":
+                words.append(entity)
+            elif item_type == "label":
+                labels.append(entity)
+            elif item_type == "place":
+                place = entity
+            elif item_type == "barcode":
+                barcodes.append(entity)
+
+        if receipt is None:
+            raise EntityNotFoundError(
+                (
+                    "receipt not found for "
+                    f"image_id={image_id}, receipt_id={receipt_id}"
+                )
+            )
+        return ReceiptDetails(
+            receipt=receipt,
+            lines=lines,
+            words=words,
+            labels=labels,
+            place=place,
+            barcodes=barcodes,
+            # letters excluded by GSI4 design - uses default empty list
+        )
+
     @handle_dynamodb_errors("add_receipt")
     def add_receipt(self, receipt: Receipt):
         """Adds a receipt to the database
@@ -451,24 +515,6 @@ class _Receipt(FlattenedStandardMixin):
                 Note: letters will be an empty list (excluded from GSI4).
         """
 
-        # Custom converter function that handles multiple entity types
-        # Note: RECEIPT_LETTER is not included because GSI4 excludes letters
-        def convert_item(item):
-            item_type = item.get("TYPE", {}).get("S")
-            if item_type == "RECEIPT":
-                return ("receipt", item_to_receipt(item))
-            if item_type == "RECEIPT_LINE":
-                return ("line", item_to_receipt_line(item))
-            if item_type == "RECEIPT_WORD":
-                return ("word", item_to_receipt_word(item))
-            if item_type == "RECEIPT_WORD_LABEL":
-                return ("label", item_to_receipt_word_label(item))
-            if item_type == "RECEIPT_PLACE":
-                return ("place", item_to_receipt_place(item))
-            if item_type == "RECEIPT_BARCODE":
-                return ("barcode", item_to_receipt_barcode(item))
-            return None
-
         # Query GSI4 for all receipt-related items (excluding letters)
         # GSI4PK: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}
         items, _ = self._query_entities(
@@ -478,49 +524,84 @@ class _Receipt(FlattenedStandardMixin):
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
             },
-            converter_func=convert_item,
+            converter_func=self._convert_receipt_details_item,
             limit=None,  # Get all items
             last_evaluated_key=None,
         )
 
-        receipt = None
-        place = None
-        lines, words, labels, barcodes = [], [], [], []
+        return self._build_receipt_details(items, image_id, receipt_id)
 
-        # Process converted items
-        for item in items:
-            if item is None:
-                continue
-            item_type, entity = item
-            if item_type == "receipt":
-                receipt = entity
-            elif item_type == "line":
-                lines.append(entity)
-            elif item_type == "word":
-                words.append(entity)
-            elif item_type == "label":
-                labels.append(entity)
-            elif item_type == "place":
-                place = entity
-            elif item_type == "barcode":
-                barcodes.append(entity)
+    @handle_dynamodb_errors("get_receipt_details_for_lines")
+    def get_receipt_details_for_lines(
+        self,
+        image_id: str,
+        receipt_id: int,
+        line_ids: list[int],
+    ) -> ReceiptDetails:
+        """Get receipt details restricted to selected receipt lines.
 
-        if receipt is None:
-            raise EntityNotFoundError(
-                (
-                    "receipt not found for "
-                    f"image_id={image_id}, receipt_id={receipt_id}"
-                )
+        The receipt header and place are always returned. Lines, words, and
+        labels are returned only when their primary-table sort key belongs to
+        one of ``line_ids``. DynamoDB still evaluates the GSI4 partition, but
+        filtering server-side avoids transferring and deserializing hundreds
+        of unrelated items for callers that need only a visual row.
+
+        Args:
+            image_id: The ID of the image the receipt belongs to.
+            receipt_id: The ID of the receipt to get.
+            line_ids: Non-empty list of receipt line IDs to include.
+
+        Returns:
+            ReceiptDetails containing the receipt, place, and focused line
+            data. Letters and barcodes are excluded.
+        """
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        if not isinstance(line_ids, list) or not line_ids:
+            raise EntityValidationError("line_ids must be a non-empty list.")
+        if not all(
+            isinstance(line_id, int)
+            and not isinstance(line_id, bool)
+            and line_id >= 0
+            for line_id in line_ids
+        ):
+            raise EntityValidationError(
+                "line_ids must contain non-negative integers."
             )
-        return ReceiptDetails(
-            receipt=receipt,
-            lines=lines,
-            words=words,
-            labels=labels,
-            place=place,
-            barcodes=barcodes,
-            # letters excluded by GSI4 design - uses default empty list
+
+        unique_line_ids = sorted(set(line_ids))
+        line_filters = []
+        expression_values = {
+            ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
+            ":receipt": {"S": "RECEIPT"},
+            ":place": {"S": "RECEIPT_PLACE"},
+            ":line": {"S": "RECEIPT_LINE"},
+            ":word": {"S": "RECEIPT_WORD"},
+            ":label": {"S": "RECEIPT_WORD_LABEL"},
+        }
+        for index, line_id in enumerate(unique_line_ids):
+            value_name = f":line_id_{index}"
+            expression_values[value_name] = {"S": f"#LINE#{line_id:05d}"}
+            line_filters.append(f"contains(#sk, {value_name})")
+
+        filter_expression = (
+            "#type IN (:receipt, :place) OR "
+            "(#type IN (:line, :word, :label) AND ("
+            + " OR ".join(line_filters)
+            + "))"
         )
+        items, _ = self._query_entities(
+            index_name="GSI4",
+            key_condition_expression="GSI4PK = :pk",
+            expression_attribute_names={"#type": "TYPE", "#sk": "SK"},
+            expression_attribute_values=expression_values,
+            converter_func=self._convert_receipt_details_item,
+            filter_expression=filter_expression,
+            limit=None,
+            last_evaluated_key=None,
+        )
+
+        return self._build_receipt_details(items, image_id, receipt_id)
 
     @handle_dynamodb_errors("list_receipts")
     def list_receipts(
