@@ -5,6 +5,7 @@ This file contains refactored tests using pytest.mark.parametrize to reduce
 code duplication.
 """
 
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, Literal, Type
 from uuid import uuid4
@@ -18,6 +19,7 @@ from receipt_dynamo import (
     Image,
     Receipt,
     ReceiptLetter,
+    ReceiptLine,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -927,6 +929,62 @@ def test_get_receipt_details_success(
     assert (
         lines == []
     ), "No lines were added in this test, so expect an empty list."
+
+
+@pytest.mark.integration
+def test_get_receipt_details_for_lines_filters_unrelated_items(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt: Receipt,
+    sample_receipt_word: ReceiptWord,
+) -> None:
+    """The focused GSI4 read returns only requested line data."""
+    client = DynamoClient(dynamodb_table)
+    first_line = ReceiptLine(
+        image_id=sample_receipt.image_id,
+        receipt_id=sample_receipt.receipt_id,
+        line_id=1,
+        text="FIRST",
+        bounding_box={"x": 0, "y": 0, "width": 10, "height": 10},
+        top_left={"x": 0, "y": 10},
+        top_right={"x": 10, "y": 10},
+        bottom_left={"x": 0, "y": 0},
+        bottom_right={"x": 10, "y": 0},
+        angle_degrees=0,
+        angle_radians=0,
+        confidence=1,
+    )
+    second_line = replace(first_line, line_id=2, text="SECOND")
+    second_word = replace(
+        sample_receipt_word,
+        line_id=2,
+        text="second-word",
+    )
+    first_label = ReceiptWordLabel(
+        image_id=sample_receipt.image_id,
+        receipt_id=sample_receipt.receipt_id,
+        line_id=1,
+        word_id=1,
+        label="PRODUCT_NAME",
+        reasoning="test",
+        timestamp_added=datetime.now().isoformat(),
+    )
+    second_label = replace(first_label, line_id=2, label="LINE_TOTAL")
+
+    client.add_receipt(sample_receipt)
+    client.add_receipt_lines([first_line, second_line])
+    client.add_receipt_words([sample_receipt_word, second_word])
+    client.add_receipt_word_labels([first_label, second_label])
+
+    details = client.get_receipt_details_for_lines(
+        sample_receipt.image_id,
+        sample_receipt.receipt_id,
+        [2],
+    )
+
+    assert details.receipt == sample_receipt
+    assert [line.line_id for line in details.lines] == [2]
+    assert [word.line_id for word in details.words] == [2]
+    assert [label.line_id for label in details.labels] == [2]
 
 
 # -------------------------------------------------------------------

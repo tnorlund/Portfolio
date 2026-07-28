@@ -17,6 +17,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import boto3
@@ -34,6 +35,8 @@ CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
 CACHE_KEY = "word-similarity-cache/milk.json"
 TARGET_WORD = "MILK"
+LOCAL_CACHE_OUTPUT = os.environ.get("LOCAL_CACHE_OUTPUT")
+LOCAL_CHROMADB_PATH = os.environ.get("LOCAL_CHROMADB_PATH")
 
 # Chroma Cloud configuration (optional - falls back to S3 if not set)
 CHROMA_CLOUD_ENABLED = (
@@ -67,7 +70,11 @@ def normalize_merchant(name: str) -> str:
 
 
 # Pattern to match price-like tokens (used to extract product name from row text)
-def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
+def find_milk_line(
+    lines,
+    target_word: str = "MILK",
+    candidate_line_ids: set[int] | None = None,
+) -> tuple[str, int] | None:
     """Find the specific OCR line containing the target word.
 
     When visual rows contain multiple products (e.g., KOMBUCHA and RAW MILK
@@ -76,6 +83,8 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
     Args:
         lines: List of ReceiptLine entities from DynamoDB
         target_word: Word to search for (default: MILK)
+        candidate_line_ids: Optional line IDs eligible to be returned. Other
+            lines remain available for detecting a following VOID marker.
 
     Returns:
         Tuple of (text, line_id) for the line containing target_word,
@@ -83,6 +92,11 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
     """
     by_id = {line.line_id: line.text.upper() for line in lines}
     for line in lines:
+        if (
+            candidate_line_ids is not None
+            and line.line_id not in candidate_line_ids
+        ):
+            continue
         if target_word in line.text.upper():
             # Check exclusions
             text_upper = line.text.upper()
@@ -92,10 +106,64 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
             # Skip voided purchases: receipts print the item line and then a
             # "Voided <item>" marker on the following line(s). Treat a VOID
             # marker within the next two lines as voiding this candidate.
-            if any("VOID" in by_id.get(line.line_id + off, "") for off in (1, 2)):
+            if any(
+                "VOID" in by_id.get(line.line_id + off, "") for off in (1, 2)
+            ):
                 continue
             return (line.text, line.line_id)
     return None
+
+
+def parse_row_line_ids(metadata: dict) -> list[int]:
+    """Return the visual row's DynamoDB line IDs from Chroma metadata."""
+    raw_line_ids = metadata.get("row_line_ids")
+    if isinstance(raw_line_ids, str):
+        try:
+            raw_line_ids = json.loads(raw_line_ids)
+        except (TypeError, ValueError):
+            raw_line_ids = None
+
+    if not isinstance(raw_line_ids, (list, tuple)):
+        raw_line_ids = [metadata.get("line_id")]
+
+    line_ids = []
+    for line_id in raw_line_ids:
+        if isinstance(line_id, bool):
+            continue
+        try:
+            parsed = int(line_id)
+        except (TypeError, ValueError):
+            continue
+        if parsed >= 0 and parsed not in line_ids:
+            line_ids.append(parsed)
+
+    if not line_ids:
+        raise ValueError("Chroma row is missing a valid line_id")
+    return line_ids
+
+
+def add_line_context(line_ids: list[int], radius: int = 2) -> list[int]:
+    """Include nearby OCR line IDs needed for price and VOID detection."""
+    return sorted(
+        {
+            candidate
+            for line_id in line_ids
+            for candidate in range(
+                max(0, line_id - radius), line_id + radius + 1
+            )
+        }
+    )
+
+
+def merge_row_line_ids(matches: list[dict]) -> list[int]:
+    """Combine visual-row line IDs for every milk match on a receipt."""
+    line_ids: list[int] = []
+    for match in matches:
+        for line_id in parse_row_line_ids(match):
+            if line_id not in line_ids:
+                line_ids.append(line_id)
+    return line_ids
+
 
 # Price ranges for inferring milk sizes
 MILK_SIZE_RANGES = {
@@ -175,6 +243,7 @@ class TimingStats:
     filter_lines: float = 0.0
     dynamo_fetch_total: float = 0.0
     dynamo_fetch_details: list = field(default_factory=list)
+    dynamo_items_returned: list[int] = field(default_factory=list)
     visual_line_assembly: list = field(default_factory=list)
     total: float = 0.0
     parallel_workers: int = 0
@@ -207,6 +276,7 @@ class TimingStats:
                 "min_ms": round(min(self.dynamo_fetch_details) * 1000, 1),
                 "max_ms": round(max(self.dynamo_fetch_details) * 1000, 1),
                 "count": len(self.dynamo_fetch_details),
+                "items_returned": sum(self.dynamo_items_returned),
             }
 
             # Calculate speedup from parallelization
@@ -624,10 +694,16 @@ def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
 
     logger.info("Snapshot downloaded successfully (%.2fs)", timing.s3_download)
 
-    # Step 2: Initialize local ChromaDB
+    return _fetch_lines_from_local(timing, temp_dir)
+
+
+def _fetch_lines_from_local(timing: TimingStats, chroma_path: str) -> list:
+    """Fetch target rows from an existing local ChromaDB snapshot."""
+    timing.use_chroma_cloud = False
+
     step_start = time.time()
     client = ChromaClient(
-        persist_directory=temp_dir,
+        persist_directory=chroma_path,
         mode="read",
         metadata_only=True,
     )
@@ -636,11 +712,15 @@ def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
         timing.chromadb_init = time.time() - step_start
 
         step_start = time.time()
-        all_lines = lines_collection.get(include=["metadatas"])
+        all_lines = lines_collection.get(
+            where_document={"$contains": TARGET_WORD},
+            include=["metadatas"],
+        )
         timing.chromadb_fetch_all = time.time() - step_start
         logger.info(
-            "Fetched %d lines from local ChromaDB (%.2fs)",
+            "Fetched %d lines containing '%s' from local ChromaDB (%.2fs)",
             len(all_lines["ids"]),
+            TARGET_WORD,
             timing.chromadb_fetch_all,
         )
     finally:
@@ -672,8 +752,21 @@ def handler(_event, _context):
             DYNAMODB_TABLE_NAME, max_pool_connections=100
         )
 
-        # Step 1: Fetch lines (Cloud or S3)
-        if CHROMA_CLOUD_ENABLED:
+        # Step 1: Fetch lines (local snapshot, Cloud, or S3)
+        if LOCAL_CHROMADB_PATH:
+            local_chroma_path = (
+                Path(LOCAL_CHROMADB_PATH).expanduser().resolve()
+            )
+            if (local_chroma_path / "chroma.sqlite3").is_file():
+                all_lines = _fetch_lines_from_local(
+                    timing, str(local_chroma_path)
+                )
+            else:
+                local_chroma_path.mkdir(parents=True, exist_ok=True)
+                all_lines = _fetch_lines_from_s3(
+                    timing, str(local_chroma_path)
+                )
+        elif CHROMA_CLOUD_ENABLED:
             try:
                 all_lines = _fetch_lines_from_cloud(timing)
             except Exception as e:
@@ -707,6 +800,8 @@ def handler(_event, _context):
                             "image_id": meta.get("image_id"),
                             "receipt_id": meta.get("receipt_id"),
                             "line_id": meta.get("line_id"),
+                            "row_line_ids": meta.get("row_line_ids"),
+                            "merchant_name": meta.get("merchant_name"),
                         }
                     )
 
@@ -730,21 +825,52 @@ def handler(_event, _context):
             receipt_id = int(matches[0]["receipt_id"])
             line_id = int(matches[0]["line_id"])
             product_text = matches[0]["text"]
-            work_items.append((image_id, receipt_id, line_id, product_text))
+            row_line_ids = merge_row_line_ids(matches)
+            merchant_name = matches[0].get("merchant_name")
+            work_items.append(
+                (
+                    image_id,
+                    receipt_id,
+                    line_id,
+                    product_text,
+                    row_line_ids,
+                    merchant_name,
+                )
+            )
 
         def process_receipt(work_item):
-            image_id, receipt_id, chromadb_line_id, row_text = work_item
-            timings = {"details": 0, "visual_line": 0}
+            (
+                image_id,
+                receipt_id,
+                chromadb_line_id,
+                row_text,
+                row_line_ids,
+                chroma_merchant_name,
+            ) = work_item
+            timings = {"details": 0, "visual_line": 0, "items": 0}
             try:
                 t0 = time.time()
-                details = dynamo_client.get_receipt_details(
-                    image_id, receipt_id
+                details = dynamo_client.get_receipt_details_for_lines(
+                    image_id,
+                    receipt_id,
+                    add_line_context(row_line_ids),
                 )
                 timings["details"] = time.time() - t0
+                timings["items"] = (
+                    1
+                    + int(details.place is not None)
+                    + len(details.lines)
+                    + len(details.words)
+                    + len(details.labels)
+                )
 
                 # Find the specific OCR line containing "MILK"
                 # This returns both text and line_id for accurate price lookup
-                milk_line = find_milk_line(details.lines, TARGET_WORD)
+                milk_line = find_milk_line(
+                    details.lines,
+                    TARGET_WORD,
+                    candidate_line_ids=set(row_line_ids),
+                )
                 if milk_line:
                     product_text, milk_line_id = milk_line
                 else:
@@ -764,26 +890,28 @@ def handler(_event, _context):
                 timings["visual_line"] = time.time() - t0
 
                 merchant = normalize_merchant(
-                    details.place.merchant_name if details.place else "Unknown"
+                    details.place.merchant_name
+                    if details.place
+                    else chroma_merchant_name or "Unknown"
                 )
                 price = line_total or unit_price
                 if not price:
                     # Some receipts (e.g. Target) print the price at the end
-                    # of the product line itself; split it out rather than
-                    # shipping a priceless row with the price in the name.
-                    m = re.search(r"\s+\$?(\d{1,3}\.\d{2})\s*$", product_text)
+                    # of the visual row. Use Chroma's combined row text because
+                    # the focused DynamoDB response may hold the product and
+                    # price in non-contiguous ReceiptLine entities.
+                    m = re.search(r"\s+\$?(\d{1,3}\.\d{2})\s*$", row_text)
                     if m:
                         price = m.group(1)
-                        product_text = product_text[: m.start()].rstrip()
+                        if product_text == row_text:
+                            product_text = product_text[: m.start()].rstrip()
                 product_text = strip_upc_prefix(product_text)
                 size = infer_size(product_text, price)
 
-                # NOTE: details.lines (the full per-receipt line list, ~75 lines
-                # x 69 receipts ~= 2.8 MB across the response) is intentionally
-                # NOT included in the cache entry. WordSimilarity.tsx builds a
-                # cropped image from `receipt` + `bbox` only and never reads
-                # `lines`. Including it inflated the API payload ~20x for no
-                # frontend benefit. See PR notes / type def MilkReceiptData.
+                # The focused line entities are used only to calculate this
+                # cache entry. WordSimilarity.tsx builds the crop from
+                # `receipt` + `bbox` and never reads `lines`, so do not include
+                # them in the response.
 
                 return {
                     "image_id": image_id,
@@ -825,6 +953,9 @@ def handler(_event, _context):
                         timing.dynamo_fetch_details.append(
                             result["_timings"]["details"]
                         )
+                        timing.dynamo_items_returned.append(
+                            result["_timings"]["items"]
+                        )
                         timing.visual_line_assembly.append(
                             result["_timings"]["visual_line"]
                         )
@@ -856,7 +987,9 @@ def handler(_event, _context):
             if r["price"]:
                 try:
                     summary[key]["prices"].append(
-                        float(str(r["price"]).replace("$", "").replace(",", ""))
+                        float(
+                            str(r["price"]).replace("$", "").replace(",", "")
+                        )
                     )
                 except ValueError:
                     pass
@@ -917,14 +1050,24 @@ def handler(_event, _context):
             "commentary": commentary,
         }
 
-        # Step 7: Upload to S3
-        logger.info("Uploading cache to S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY)
-        s3_client.put_object(
-            Bucket=S3_CACHE_BUCKET,
-            Key=CACHE_KEY,
-            Body=json.dumps(response_data, default=str),
-            ContentType="application/json",
-        )
+        # Step 7: Persist the cache. Local runs can write the complete result
+        # to disk without mutating the deployed S3 cache.
+        response_json = json.dumps(response_data, default=str)
+        if LOCAL_CACHE_OUTPUT:
+            output_path = Path(LOCAL_CACHE_OUTPUT).expanduser().resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(response_json, encoding="utf-8")
+            logger.info("Wrote local cache to %s", output_path)
+        else:
+            logger.info(
+                "Uploading cache to S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY
+            )
+            s3_client.put_object(
+                Bucket=S3_CACHE_BUCKET,
+                Key=CACHE_KEY,
+                Body=response_json,
+                ContentType="application/json",
+            )
 
         logger.info(
             "Cache generation complete: %d receipts, %d summary rows (total %.2fs)",
@@ -957,3 +1100,9 @@ def handler(_event, _context):
             logger.info("Cleaned up temp directory")
         except Exception as e:
             logger.warning("Failed to cleanup: %s", e)
+
+
+if __name__ == "__main__":
+    handler_result = handler({}, None)
+    print(handler_result["body"])
+    raise SystemExit(0 if handler_result["statusCode"] < 400 else 1)
