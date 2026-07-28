@@ -26,6 +26,7 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Tuple,
     Type,
     TypeVar,
     cast,
@@ -47,6 +48,44 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 ChromaMode = Literal["read", "write", "delta"]
 _VALID_MODES = frozenset(("read", "write", "delta"))
+
+# (connect_seconds, read_seconds) applied to the Chroma Cloud HTTP session.
+ChromaRequestTimeout = Tuple[float, float]
+
+
+def _apply_cloud_request_timeout(
+    client: Any,
+    timeout: Optional[ChromaRequestTimeout],
+) -> None:
+    """Bound the Cloud client's HTTP requests.
+
+    Chroma builds its Cloud session as ``httpx.Client(timeout=None)``
+    (``chromadb/api/fastapi.py``) and exposes no setting for it, so the only
+    way to bound a request is to reach the session after construction. That
+    path is private, so treat a miss as advisory: callers that need a hard
+    deadline must also enforce their own wall clock.
+    """
+    if timeout is None:
+        return
+
+    connect_seconds, read_seconds = timeout
+    try:
+        import httpx
+
+        session = client._server._session  # pylint: disable=protected-access
+        session.timeout = httpx.Timeout(
+            connect=connect_seconds,
+            read=read_seconds,
+            write=read_seconds,
+            pool=connect_seconds,
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "Could not set Chroma Cloud request timeout; requests are "
+            "unbounded and only the caller's wall-clock budget applies",
+            exc_info=True,
+        )
+
 
 # Default retry settings for Chroma Cloud rate limits
 _DEFAULT_MAX_RETRIES = 4
@@ -203,6 +242,7 @@ class ChromaClient:
         cloud_api_key: Optional[str] = None,
         cloud_tenant: Optional[str] = None,
         cloud_database: Optional[str] = None,
+        cloud_request_timeout: Optional["ChromaRequestTimeout"] = None,
     ):
         """
         Initialize the ChromaDB client.
@@ -220,6 +260,12 @@ class ChromaClient:
                          cloud_api_key is set)
             cloud_database: Chroma Cloud database name (required when
                            cloud_api_key is set, e.g. 'receipt_dev')
+            cloud_request_timeout: Optional (connect, read) seconds applied to
+                          the Cloud HTTP session. Chroma builds that session
+                          with ``timeout=None``, so without this a stalled
+                          request hangs until the caller's own deadline (in
+                          Lambda, until the function times out). ``None``
+                          keeps Chroma's unbounded default.
         """
         self.persist_directory = persist_directory
         normalized_mode = mode.lower()
@@ -245,6 +291,7 @@ class ChromaClient:
         self._cloud_database: Optional[str] = (
             cloud_database or ""
         ).strip() or None
+        self._cloud_request_timeout = cloud_request_timeout
 
         # Configure embedding function
         if embedding_function:
@@ -313,6 +360,9 @@ class ChromaClient:
                     api_key=self._cloud_api_key,
                     tenant=self._cloud_tenant,
                     database=self._cloud_database,
+                )
+                _apply_cloud_request_timeout(
+                    self._client, self._cloud_request_timeout
                 )
                 logger.debug(
                     "Created Chroma Cloud client (tenant=%s, database=%s)",

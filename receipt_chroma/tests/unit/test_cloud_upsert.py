@@ -1,8 +1,15 @@
 # ruff: noqa: E402
 """Unit tests for direct Chroma Cloud upsert from the ingest path.
 
-Covers the success path, non-fatal partial batch failure, the disabled
-no-op, and batching against Chroma Cloud's 300-record ceiling.
+Covers batching against Chroma Cloud's 300-record ceiling, the disabled
+no-op, non-fatal failure handling, the wall-clock budget, and the two
+Chroma behaviors this module exists to handle: metadata merges on write
+(so cleared keys need explicit ``None`` tombstones) and empty metadata
+dicts being rejected outright.
+
+The tombstone and empty-metadata cases are also exercised against a real
+local Chroma, not just a mock, because both were originally missed by
+mock-only coverage.
 """
 
 # IMPORTANT: Clear Chroma Cloud env vars BEFORE importing chromadb
@@ -24,15 +31,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from receipt_chroma.compaction.dual_write import CloudConfig
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.cloud_upsert import (
+    MAX_DOCUMENT_BYTES,
+    MAX_ID_BYTES,
+    MAX_METADATA_KEYS,
+    MAX_METADATA_VALUE_BYTES,
+    TOMBSTONE_KEYS,
     UPSERT_BATCH_SIZE,
     CloudUpsertResult,
     upsert_payload_to_cloud,
 )
 
-_CLIENT_FACTORY = (
-    "receipt_chroma.embedding.cloud_upsert._create_cloud_client_for_sync"
-)
+_CLIENT_FACTORY = "receipt_chroma.embedding.cloud_upsert._create_cloud_client"
 
 CLOUD_CFG = {
     "api_key": "test-key",
@@ -47,8 +58,18 @@ def make_payload(count: int) -> dict:
         "ids": [f"id-{i}" for i in range(count)],
         "embeddings": [[float(i), 0.5] for i in range(count)],
         "documents": [f"doc {i}" for i in range(count)],
-        "metadatas": [{"receipt_id": i} for i in range(count)],
+        "metadatas": [
+            {"image_id": "img", "receipt_id": i} for i in range(count)
+        ],
     }
+
+
+def sent_metadatas(client) -> list:
+    """Flatten the metadatas from every upsert call on a mock client."""
+    out = []
+    for call in client.upsert.call_args_list:
+        out.extend(call.kwargs["metadatas"])
+    return out
 
 
 # =============================================================================
@@ -73,6 +94,7 @@ class TestUpsertSuccess:
         assert result.upserted == 3
         assert result.batches == 1
         assert result.failed_batches == 0
+        assert result.dropped == 0
         assert result.error is None
         client.close.assert_called_once()
 
@@ -81,11 +103,6 @@ class TestUpsertSuccess:
         assert kwargs["ids"] == ["id-0", "id-1", "id-2"]
         assert kwargs["embeddings"] == [[0.0, 0.5], [1.0, 0.5], [2.0, 0.5]]
         assert kwargs["documents"] == ["doc 0", "doc 1", "doc 2"]
-        assert kwargs["metadatas"] == [
-            {"receipt_id": 0},
-            {"receipt_id": 1},
-            {"receipt_id": 2},
-        ]
 
     def test_accepts_cloud_config_dataclass(self):
         """CloudConfig is accepted alongside the ingest path's dict form."""
@@ -115,36 +132,197 @@ class TestUpsertSuccess:
         payload = {
             "ids": ["a"],
             "embeddings": [[0.1]],
-            "metadatas": [{"k": "v"}],
+            "metadatas": [{"image_id": "img"}],
         }
         with patch(_CLIENT_FACTORY, return_value=client):
             upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
 
         assert client.upsert.call_args.kwargs["documents"] is None
 
-    def test_oversized_metadata_keys_are_dropped(self):
-        """Keys past Chroma Cloud's 36-byte limit are stripped, not fatal."""
+    def test_request_timeout_is_passed_to_the_client(self):
+        """The Cloud session must not be left unbounded."""
         client = MagicMock()
-        long_key = "label_" + "x" * 60
+        with patch(_CLIENT_FACTORY, return_value=client) as factory:
+            upsert_payload_to_cloud(
+                make_payload(1),
+                "words",
+                CLOUD_CFG,
+                request_timeout=(5.0, 15.0),
+            )
+
+        assert factory.call_args.args[2] == (5.0, 15.0)
+
+
+# =============================================================================
+# Tombstones (metadata merges on write)
+# =============================================================================
+
+
+class TestTombstones:
+    """Chroma merges metadata, so cleared keys need explicit None."""
+
+    def test_absent_optional_keys_are_sent_as_none(self):
+        client = MagicMock()
         payload = {
-            "ids": ["a"],
+            "ids": ["w1"],
             "embeddings": [[0.1]],
-            "metadatas": [{long_key: 1, "keep": 2}],
+            "metadatas": [{"image_id": "img", "label_status": "unvalidated"}],
         }
         with patch(_CLIENT_FACTORY, return_value=client):
-            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+            upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        (metadata,) = sent_metadatas(client)
+        for key in TOMBSTONE_KEYS["words"]:
+            assert key in metadata, f"{key} must be tombstoned"
+            assert metadata[key] is None
+        assert metadata["label_status"] == "unvalidated"
+
+    def test_present_optional_keys_keep_their_value(self):
+        client = MagicMock()
+        payload = {
+            "ids": ["w1"],
+            "embeddings": [[0.1]],
+            "metadatas": [
+                {"image_id": "img", "valid_labels_array": ["GRAND_TOTAL"]}
+            ],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        (metadata,) = sent_metadatas(client)
+        assert metadata["valid_labels_array"] == ["GRAND_TOTAL"]
+        assert metadata["label_confidence"] is None
+
+    def test_lines_use_the_line_tombstone_set(self):
+        client = MagicMock()
+        payload = {
+            "ids": ["l1"],
+            "embeddings": [[0.1]],
+            "metadatas": [{"image_id": "img", "text": "TOTAL"}],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            upsert_payload_to_cloud(payload, "lines", CLOUD_CFG)
+
+        (metadata,) = sent_metadatas(client)
+        assert metadata["section_label"] is None
+        assert metadata["anchor_phone"] is None
+
+    def test_unknown_collection_adds_no_tombstones(self):
+        client = MagicMock()
+        payload = {
+            "ids": ["x"],
+            "embeddings": [[0.1]],
+            "metadatas": [{"image_id": "img"}],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            upsert_payload_to_cloud(payload, "other", CLOUD_CFG)
+
+        assert sent_metadatas(client) == [{"image_id": "img"}]
+
+
+class TestTombstonesAgainstRealChroma:
+    """The merge semantics this module compensates for, verified for real."""
+
+    def _client_factory(self, persist_dir):
+        def factory(_config, _collection, _timeout):
+            return ChromaClient(
+                persist_directory=persist_dir,
+                mode="write",
+                metadata_only=True,
+            )
+
+        return factory
+
+    def _read(self, persist_dir, record_id):
+        client = ChromaClient(
+            persist_directory=persist_dir, mode="write", metadata_only=True
+        )
+        try:
+            got = client.get_collection("words").get(
+                ids=[record_id], include=["metadatas"]
+            )
+            return got["metadatas"][0]
+        finally:
+            client.close()
+
+    def test_reingest_clears_a_removed_label_array(self, tmp_path):
+        """Without tombstones the old array survives the re-upsert."""
+        persist_dir = str(tmp_path / "chroma")
+        factory = self._client_factory(persist_dir)
+
+        labelled = {
+            "ids": ["w1"],
+            "embeddings": [[0.1, 0.2]],
+            "documents": ["TOTAL"],
+            "metadatas": [
+                {
+                    "image_id": "img",
+                    "text": "TOTAL",
+                    "label_status": "validated",
+                    "valid_labels_array": ["GRAND_TOTAL"],
+                }
+            ],
+        }
+        with patch(_CLIENT_FACTORY, factory):
+            upsert_payload_to_cloud(labelled, "words", CLOUD_CFG)
+        assert self._read(persist_dir, "w1")["valid_labels_array"] == [
+            "GRAND_TOTAL"
+        ]
+
+        # Label removed upstream: the builder pops the key entirely.
+        unlabelled = {
+            "ids": ["w1"],
+            "embeddings": [[0.1, 0.2]],
+            "documents": ["TOTAL"],
+            "metadatas": [
+                {
+                    "image_id": "img",
+                    "text": "TOTAL",
+                    "label_status": "unvalidated",
+                }
+            ],
+        }
+        with patch(_CLIENT_FACTORY, factory):
+            result = upsert_payload_to_cloud(unlabelled, "words", CLOUD_CFG)
 
         assert result.success is True
-        assert client.upsert.call_args.kwargs["metadatas"] == [{"keep": 2}]
+        metadata = self._read(persist_dir, "w1")
+        assert "valid_labels_array" not in metadata
+        assert metadata["label_status"] == "unvalidated"
+
+    def test_empty_metadata_record_is_dropped_not_batch_failing(
+        self, tmp_path
+    ):
+        """Chroma rejects empty metadata; one bad record must not fail 250."""
+        persist_dir = str(tmp_path / "chroma")
+        oversized_key = "label_" + "x" * 60
+        payload = {
+            "ids": ["good", "bad"],
+            "embeddings": [[0.1, 0.2], [0.3, 0.4]],
+            "documents": ["ok", "dropped"],
+            "metadatas": [
+                {"image_id": "img", "text": "OK"},
+                {oversized_key: 1},
+            ],
+        }
+        with patch(_CLIENT_FACTORY, self._client_factory(persist_dir)):
+            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        assert result.upserted == 1
+        assert result.dropped == 1
+        assert result.drop_reasons == {"empty_metadata": 1}
+        assert result.failed_batches == 0
+        assert result.success is False
+        assert self._read(persist_dir, "good")["text"] == "OK"
 
 
 # =============================================================================
-# Batching
+# Cloud limits
 # =============================================================================
 
 
-class TestUpsertBatching:
-    """Chroma Cloud rejects upserts above 300 records."""
+class TestCloudLimits:
+    """Quotas from docs.trychroma.com/cloud/quotas-limits."""
 
     def test_batch_size_default_stays_under_the_cloud_limit(self):
         assert UPSERT_BATCH_SIZE <= 300
@@ -163,17 +341,12 @@ class TestUpsertBatching:
             len(call.kwargs["ids"]) for call in client.upsert.call_args_list
         ]
         assert sizes == [250, 250, 101]
-        assert max(sizes) <= UPSERT_BATCH_SIZE
 
     def test_requested_batch_size_cannot_exceed_the_cap(self):
-        """An oversized batch_size is clamped rather than trusted."""
         client = MagicMock()
         with patch(_CLIENT_FACTORY, return_value=client):
             result = upsert_payload_to_cloud(
-                make_payload(300),
-                "words",
-                CLOUD_CFG,
-                batch_size=1000,
+                make_payload(300), "words", CLOUD_CFG, batch_size=1000
             )
 
         assert result.batches == 2
@@ -182,6 +355,88 @@ class TestUpsertBatching:
         ]
         assert sizes == [250, 50]
 
+    def test_oversized_metadata_value_is_truncated(self):
+        client = MagicMock()
+        payload = {
+            "ids": ["a"],
+            "embeddings": [[0.1]],
+            "metadatas": [{"image_id": "img", "text": "x" * 20000}],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        (metadata,) = sent_metadatas(client)
+        assert len(metadata["text"].encode("utf-8")) <= (
+            MAX_METADATA_VALUE_BYTES
+        )
+        assert result.truncated == 1
+        assert result.upserted == 1
+
+    def test_oversized_document_is_truncated(self):
+        client = MagicMock()
+        payload = {
+            "ids": ["a"],
+            "embeddings": [[0.1]],
+            "documents": ["y" * (MAX_DOCUMENT_BYTES + 500)],
+            "metadatas": [{"image_id": "img"}],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        document = client.upsert.call_args.kwargs["documents"][0]
+        assert len(document.encode("utf-8")) <= MAX_DOCUMENT_BYTES
+        assert result.truncated == 1
+
+    def test_too_many_keys_are_truncated_keeping_identity(self):
+        client = MagicMock()
+        metadata = {f"extra_{i}": i for i in range(60)}
+        metadata.update({"image_id": "img", "receipt_id": 1, "word_id": 2})
+        payload = {
+            "ids": ["a"],
+            "embeddings": [[0.1]],
+            "metadatas": [metadata],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        (sent,) = sent_metadatas(client)
+        assert len(sent) <= MAX_METADATA_KEYS
+        assert sent["image_id"] == "img"
+        assert sent["receipt_id"] == 1
+        assert sent["word_id"] == 2
+        assert result.truncated == 1
+
+    def test_oversized_id_is_dropped_not_truncated(self):
+        """Truncating an id would corrupt identity."""
+        client = MagicMock()
+        payload = {
+            "ids": ["ok", "z" * (MAX_ID_BYTES + 1)],
+            "embeddings": [[0.1], [0.2]],
+            "metadatas": [{"image_id": "img"}, {"image_id": "img"}],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        assert result.dropped == 1
+        assert result.drop_reasons == {"id_too_long": 1}
+        assert client.upsert.call_args.kwargs["ids"] == ["ok"]
+
+    @pytest.mark.parametrize(
+        "column", ["embeddings", "documents", "metadatas"]
+    )
+    def test_mismatched_column_length_writes_nothing(self, column):
+        """Misaligned columns would attach metadata to the wrong record."""
+        payload = make_payload(3)
+        payload[column] = payload[column][:2]
+
+        with patch(_CLIENT_FACTORY) as factory:
+            result = upsert_payload_to_cloud(payload, "words", CLOUD_CFG)
+
+        factory.assert_not_called()
+        assert result.success is False
+        assert result.upserted == 0
+        assert "ColumnLengthMismatch" in result.error
+
 
 # =============================================================================
 # Failure is non-fatal
@@ -189,43 +444,47 @@ class TestUpsertBatching:
 
 
 class TestUpsertFailureIsNonFatal:
-    """Cloud is best effort; compaction remains the durable path."""
+    """Cloud is best effort; the S3 delta remains the durable path."""
 
-    def test_partial_batch_failure_does_not_raise(self):
-        """One failing batch is reported, the rest still land."""
+    def test_batch_value_error_falls_back_to_per_record(self):
+        """One rejected record must not cost the rest of its batch."""
         client = MagicMock()
-        client.upsert.side_effect = [
-            None,
-            RuntimeError("cloud 503"),
-            None,
-        ]
+        rejected = []
+
+        def upsert(**kwargs):
+            ids = kwargs["ids"]
+            if len(ids) > 1:
+                raise ValueError("Expected metadata to be a non-empty dict")
+            if ids == ["id-1"]:
+                rejected.append(ids)
+                raise ValueError("bad record")
+
+        client.upsert.side_effect = upsert
         with patch(_CLIENT_FACTORY, return_value=client):
             result = upsert_payload_to_cloud(
-                make_payload(601), "words", CLOUD_CFG
+                make_payload(3), "words", CLOUD_CFG
             )
 
-        assert result.success is False
-        assert result.batches == 3
-        assert result.failed_batches == 1
-        assert result.upserted == 351
-        assert result.attempted == 601
-        assert result.error == "RuntimeError: cloud 503"
-        client.close.assert_called_once()
+        assert result.upserted == 2
+        assert result.dropped == 1
+        assert result.drop_reasons == {"rejected": 1}
+        assert result.failed_batches == 0
+        assert rejected == [["id-1"]]
 
-    def test_every_batch_failing_does_not_raise(self):
+    def test_non_value_error_fails_the_batch_without_raising(self):
         client = MagicMock()
-        client.upsert.side_effect = RuntimeError("cloud down")
+        client.upsert.side_effect = RuntimeError("cloud 503")
         with patch(_CLIENT_FACTORY, return_value=client):
             result = upsert_payload_to_cloud(
                 make_payload(10), "lines", CLOUD_CFG
             )
 
         assert result.success is False
-        assert result.upserted == 0
         assert result.failed_batches == 1
+        assert result.upserted == 0
+        assert result.error == "RuntimeError: cloud 503"
 
     def test_client_creation_failure_does_not_raise(self):
-        """An unreachable cloud is reported, not propagated."""
         with patch(_CLIENT_FACTORY, side_effect=ValueError("bad tenant")):
             result = upsert_payload_to_cloud(
                 make_payload(5), "words", CLOUD_CFG
@@ -234,7 +493,6 @@ class TestUpsertFailureIsNonFatal:
         assert result.success is False
         assert result.error == "ValueError: bad tenant"
         assert result.upserted == 0
-        assert result.batches == 0
 
     def test_close_failure_does_not_mask_success(self):
         client = MagicMock()
@@ -246,6 +504,51 @@ class TestUpsertFailureIsNonFatal:
 
         assert result.success is True
         assert result.upserted == 2
+
+
+class TestDeadline:
+    """A stalled Cloud must not eat the caller's remaining runtime."""
+
+    def test_slow_batches_stop_at_the_deadline(self):
+        """Once the budget is spent, remaining records go to compaction."""
+        client = MagicMock()
+        clock = {"now": 0.0}
+
+        def upsert(**_kwargs):
+            clock["now"] += 40.0
+
+        client.upsert.side_effect = upsert
+        with (
+            patch(_CLIENT_FACTORY, return_value=client),
+            patch(
+                "receipt_chroma.embedding.cloud_upsert.time.monotonic",
+                side_effect=lambda: clock["now"],
+            ),
+        ):
+            result = upsert_payload_to_cloud(
+                make_payload(750),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=60.0,
+            )
+
+        # First batch runs, second starts at 40s, third is past 60s.
+        assert result.deadline_exceeded is True
+        assert result.batches == 2
+        assert result.upserted == 500
+        assert result.success is False
+        assert "deadline" in result.error
+        client.close.assert_called_once()
+
+    def test_fast_batches_never_trip_the_deadline(self):
+        client = MagicMock()
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(
+                make_payload(500), "words", CLOUD_CFG, deadline_seconds=60.0
+            )
+
+        assert result.deadline_exceeded is False
+        assert result.upserted == 500
 
 
 # =============================================================================
@@ -304,16 +607,18 @@ class TestCloudDisabled:
 class TestCloudUpsertResult:
     """Result reporting."""
 
-    def test_success_requires_no_error_and_no_failed_batch(self):
+    def test_success_requires_a_completely_clean_run(self):
         assert CloudUpsertResult(collection="words").success is True
-        assert (
-            CloudUpsertResult(collection="words", failed_batches=1).success
-            is False
-        )
-        assert (
-            CloudUpsertResult(collection="words", error="boom").success
-            is False
-        )
+        for kwargs in (
+            {"failed_batches": 1},
+            {"error": "boom"},
+            {"dropped": 1},
+            {"deadline_exceeded": True},
+        ):
+            assert (
+                CloudUpsertResult(collection="words", **kwargs).success
+                is False
+            ), kwargs
 
     def test_to_dict_is_json_serializable(self):
         import json

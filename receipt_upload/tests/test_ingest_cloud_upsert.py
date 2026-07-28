@@ -1,8 +1,10 @@
 """Tests for the ingest path's non-fatal Chroma Cloud upsert.
 
 The upsert makes freshly embedded words and lines queryable immediately
-instead of waiting for compaction to merge the delta tarball. It must never
-fail ingest, and it must report itself through EMF metrics.
+instead of waiting for compaction to merge the delta tarball. Three
+properties matter and are covered here: it runs only after the delta is
+durable, it never fails ingest for any reason including telemetry, and it
+declines to publish a label snapshot too stale to be safely ordered.
 """
 
 import json
@@ -43,9 +45,24 @@ def emitted_metrics(capsys):
     return blobs
 
 
+def ok_result(**kwargs):
+    defaults = dict(
+        collection="words",
+        attempted=2,
+        upserted=2,
+        batches=1,
+        duration_seconds=0.4,
+    )
+    defaults.update(kwargs)
+    return CloudUpsertResult(**defaults)
+
+
 @pytest.fixture(autouse=True)
 def _enable_metrics(monkeypatch):
     monkeypatch.setenv("ENABLE_METRICS", "true")
+    monkeypatch.delenv(
+        "INGEST_CLOUD_UPSERT_MAX_LABEL_AGE_SECONDS", raising=False
+    )
 
 
 class TestEmitEmfMetrics:
@@ -68,7 +85,6 @@ class TestEmitEmfMetrics:
             "IngestCloudUpsertLatency": "Seconds",
         }
         assert blob["collection"] == "words"
-        assert blob["IngestCloudUpsertSuccess"] == 1
         assert blob["image_id"] == "img-1"
 
     def test_disabled_by_env(self, capsys, monkeypatch):
@@ -77,19 +93,131 @@ class TestEmitEmfMetrics:
         assert emitted_metrics(capsys) == []
 
 
+class TestDeltaBeforeCloud:
+    """The delta is the backstop, so it has to land first."""
+
+    def test_cloud_write_runs_after_a_successful_upload(self, capsys):
+        calls = []
+
+        def upload():
+            calls.append("upload")
+            return "lines/delta/run-1/"
+
+        with patch.object(
+            ep, "upsert_payload_to_cloud", return_value=ok_result()
+        ) as upsert:
+            upsert.side_effect = lambda **_kw: (
+                calls.append("cloud"),
+                ok_result(),
+            )[1]
+            prefix = ep._upload_delta_then_publish(
+                upload=upload,
+                payload=PAYLOAD,
+                collection_name="lines",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
+
+        assert prefix == "lines/delta/run-1/"
+        assert calls == ["upload", "cloud"]
+
+    def test_failed_upload_skips_the_cloud_write_entirely(self, capsys):
+        """No CompactionRun is created, so nothing may be published."""
+
+        def upload():
+            raise RuntimeError("s3 unavailable")
+
+        with patch.object(ep, "upsert_payload_to_cloud") as upsert:
+            with pytest.raises(RuntimeError, match="s3 unavailable"):
+                ep._upload_delta_then_publish(
+                    upload=upload,
+                    payload=PAYLOAD,
+                    collection_name="words",
+                    cloud_cfg=CLOUD_CFG,
+                    image_id="img-1",
+                    receipt_id=1,
+                )
+
+        upsert.assert_not_called()
+        assert emitted_metrics(capsys) == []
+
+
+class TestStalenessFence:
+    """Direct writes bypass compaction's FIFO ordering."""
+
+    def test_stale_label_snapshot_skips_the_cloud_write(self, capsys):
+        with (
+            patch.object(ep, "upsert_payload_to_cloud") as upsert,
+            patch.object(ep.time, "monotonic", return_value=1000.0),
+        ):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+                labels_fetched_at=1000.0 - 600.0,
+            )
+
+        upsert.assert_not_called()
+        (blob,) = emitted_metrics(capsys)
+        assert blob["IngestCloudUpsertSkipped"] == 1
+        assert blob["reason"] == "stale_risk"
+        assert blob["label_age_seconds"] == 600.0
+
+    def test_fresh_label_snapshot_publishes(self, capsys):
+        with (
+            patch.object(
+                ep, "upsert_payload_to_cloud", return_value=ok_result()
+            ) as upsert,
+            patch.object(ep.time, "monotonic", return_value=1000.0),
+        ):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+                labels_fetched_at=1000.0 - 5.0,
+            )
+
+        upsert.assert_called_once()
+        (blob,) = emitted_metrics(capsys)
+        assert blob["IngestCloudUpsertSuccess"] == 1
+
+    def test_threshold_is_configurable(self, capsys, monkeypatch):
+        monkeypatch.setenv("INGEST_CLOUD_UPSERT_MAX_LABEL_AGE_SECONDS", "10")
+        with (
+            patch.object(ep, "upsert_payload_to_cloud") as upsert,
+            patch.object(ep.time, "monotonic", return_value=1000.0),
+        ):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+                labels_fetched_at=1000.0 - 30.0,
+            )
+
+        upsert.assert_not_called()
+
+    def test_unparseable_threshold_falls_back_to_the_default(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv(
+            "INGEST_CLOUD_UPSERT_MAX_LABEL_AGE_SECONDS", "not-a-number"
+        )
+        assert ep._max_label_age_seconds() == 300.0
+
+
 class TestUpsertToCloudNonFatal:
     """The wrapper never raises and always reports."""
 
     def test_success_emits_success_metric(self, capsys):
-        result = CloudUpsertResult(
-            collection="words",
-            attempted=2,
-            upserted=2,
-            batches=1,
-            duration_seconds=0.4,
-        )
         with patch.object(
-            ep, "upsert_payload_to_cloud", return_value=result
+            ep, "upsert_payload_to_cloud", return_value=ok_result()
         ) as upsert:
             ep._upsert_to_cloud_nonfatal(
                 payload=PAYLOAD,
@@ -106,17 +234,17 @@ class TestUpsertToCloudNonFatal:
         assert blob["IngestCloudUpsertSuccess"] == 1
         assert "IngestCloudUpsertFailure" not in blob
         assert blob["IngestCloudUpsertRecords"] == 2
-        assert blob["collection"] == "words"
 
     def test_partial_failure_emits_failure_metric_without_raising(
         self, capsys
     ):
-        result = CloudUpsertResult(
+        result = ok_result(
             collection="lines",
             attempted=601,
             upserted=351,
             batches=3,
             failed_batches=1,
+            dropped=2,
             error="RuntimeError: cloud 503",
             duration_seconds=1.1,
         )
@@ -132,14 +260,34 @@ class TestUpsertToCloudNonFatal:
         (blob,) = emitted_metrics(capsys)
         assert blob["IngestCloudUpsertFailure"] == 1
         assert blob["IngestCloudUpsertFailedBatches"] == 1
+        assert blob["IngestCloudUpsertDropped"] == 2
         assert blob["IngestCloudUpsertRecords"] == 351
         assert blob["error"] == "RuntimeError: cloud 503"
 
+    def test_deadline_exceeded_is_reported(self, capsys):
+        result = ok_result(
+            upserted=250,
+            attempted=750,
+            batches=2,
+            deadline_exceeded=True,
+            error="deadline of 60s exceeded with 500 record(s) unwritten",
+        )
+        with patch.object(ep, "upsert_payload_to_cloud", return_value=result):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
+
+        (blob,) = emitted_metrics(capsys)
+        assert blob["IngestCloudUpsertFailure"] == 1
+        assert blob["deadline_exceeded"] is True
+
     def test_unexpected_exception_is_swallowed(self, capsys):
         with patch.object(
-            ep,
-            "upsert_payload_to_cloud",
-            side_effect=RuntimeError("boom"),
+            ep, "upsert_payload_to_cloud", side_effect=RuntimeError("boom")
         ):
             ep._upsert_to_cloud_nonfatal(
                 payload=PAYLOAD,
@@ -152,6 +300,41 @@ class TestUpsertToCloudNonFatal:
         (blob,) = emitted_metrics(capsys)
         assert blob["IngestCloudUpsertFailure"] == 1
         assert blob["error"] == "RuntimeError: boom"
+
+    def test_telemetry_failure_does_not_escape(self):
+        """A broken metric write must not fail an ingest that succeeded."""
+        with (
+            patch.object(
+                ep, "upsert_payload_to_cloud", return_value=ok_result()
+            ),
+            patch.object(
+                ep,
+                "_emit_emf_metrics",
+                side_effect=RuntimeError("stdout gone"),
+            ),
+        ):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
+
+    def test_logging_failure_does_not_escape(self):
+        with (
+            patch.object(
+                ep, "upsert_payload_to_cloud", return_value=ok_result()
+            ),
+            patch.object(ep, "_log", side_effect=RuntimeError("log gone")),
+        ):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
 
     @pytest.mark.parametrize("cloud_cfg", [None, {}], ids=["none", "empty"])
     def test_cloud_disabled_is_a_noop(self, capsys, cloud_cfg):

@@ -7,21 +7,39 @@ generators -- only once the compaction Lambda merges that delta into the
 shared snapshot, which happens under a global per-collection lock.
 
 This module writes the same vectors straight to Cloud so they are queryable
-seconds after upload. The delta tarball and ``CompactionRun`` are unchanged,
-so compaction remains the backstop and this write can fail without
-regressing today's behavior.
+seconds after upload. Callers run it *after* the delta tarball is durable,
+so the delta and its ``CompactionRun`` remain the backstop and a failure
+here costs latency rather than data.
+
+Two Chroma behaviors shape the code below:
+
+* **Metadata merges on write.** Upserting a record without a key leaves the
+  old value in place, so a key that a payload builder dropped has to be sent
+  explicitly as ``None`` to be cleared. See ``TOMBSTONE_KEYS``.
+* **Empty metadata is rejected.** ``upsert`` raises
+  ``ValueError: Expected metadata to be a non-empty dict``, which would fail
+  the whole batch, so records that sanitize down to nothing are dropped.
 """
 
 import logging
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
+from dataclasses import dataclass, field
+from typing import (
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 from receipt_chroma.compaction.dual_write import (
     CloudConfig,
-    _create_cloud_client_for_sync,
     _sanitize_metadatas,
 )
+from receipt_chroma.data.chroma_client import ChromaClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +47,68 @@ logger = logging.getLogger(__name__)
 # batch size the delta merge and bulk sync already use.
 UPSERT_BATCH_SIZE = 250
 
+# Chroma Cloud quotas (docs.trychroma.com/cloud/quotas-limits).
+MAX_METADATA_KEYS = 32
+MAX_METADATA_VALUE_BYTES = 8182
+MAX_DOCUMENT_BYTES = 16384
+MAX_ID_BYTES = 128
+
+# (connect, read) seconds for a single Cloud HTTP request.
+DEFAULT_REQUEST_TIMEOUT: Tuple[float, float] = (10.0, 30.0)
+
+# Wall clock for the whole upsert, across every batch.
+DEFAULT_DEADLINE_SECONDS = 60.0
+
+# Keys the payload builders drop rather than emit when the underlying value
+# is absent (``metadata.pop(...)`` in embedding/metadata/*.py). Chroma merges
+# on write, so each must be sent as ``None`` to clear a stale value left by
+# an earlier ingest of the same record.
+_WORD_TOMBSTONE_KEYS = (
+    "label_confidence",
+    "label_proposed_by",
+    "label_validated_at",
+    "valid_labels_array",
+    "invalid_labels_array",
+    "normalized_phone_10",
+    "normalized_full_address",
+    "normalized_url",
+)
+_LINE_TOMBSTONE_KEYS = (
+    "label_status",
+    "valid_labels_array",
+    "invalid_labels_array",
+    "section_label",
+    "merchant_name",
+    "anchor_phone",
+    "anchor_address",
+    "anchor_url",
+    "normalized_phone_10",
+    "normalized_full_address",
+    "normalized_url",
+)
+TOMBSTONE_KEYS: Dict[str, Tuple[str, ...]] = {
+    "words": _WORD_TOMBSTONE_KEYS,
+    "lines": _LINE_TOMBSTONE_KEYS,
+}
+
+# Identity and geometry keys kept first when a record somehow exceeds the
+# 32-key ceiling, so truncation is deterministic and never drops identity.
+_PRIORITY_KEYS = (
+    "image_id",
+    "receipt_id",
+    "line_id",
+    "word_id",
+    "text",
+    "source",
+    "label_status",
+    "merchant_name",
+)
+
 CloudConfigLike = Union[CloudConfig, Mapping[str, str]]
+
+
+class ColumnLengthMismatch(ValueError):
+    """Payload columns disagree on length, so records would be misaligned."""
 
 
 @dataclass
@@ -42,9 +121,13 @@ class CloudUpsertResult:
         attempted: Records the payload asked to write
         upserted: Records confirmed written
         batches: Batches the payload was split into
-        failed_batches: Batches that raised after the client's own retries
+        failed_batches: Batches that failed even after per-record fallback
+        dropped: Records skipped because they could not be made valid
+        truncated: Records whose metadata or document was shortened
+        deadline_exceeded: Whether the wall-clock budget stopped the run
         error: First error encountered, formatted as ``Type: message``
         duration_seconds: Wall clock spent in this call
+        drop_reasons: Count of dropped records keyed by reason
     """
 
     collection: str
@@ -53,13 +136,22 @@ class CloudUpsertResult:
     upserted: int = 0
     batches: int = 0
     failed_batches: int = 0
+    dropped: int = 0
+    truncated: int = 0
+    deadline_exceeded: bool = False
     error: Optional[str] = None
     duration_seconds: float = 0.0
+    drop_reasons: Dict[str, int] = field(default_factory=dict)
 
     @property
     def success(self) -> bool:
         """Whether every record reached Cloud."""
-        return self.error is None and self.failed_batches == 0
+        return (
+            self.error is None
+            and self.failed_batches == 0
+            and self.dropped == 0
+            and not self.deadline_exceeded
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a JSON-serializable dictionary."""
@@ -70,9 +162,13 @@ class CloudUpsertResult:
             "upserted": self.upserted,
             "batches": self.batches,
             "failed_batches": self.failed_batches,
+            "dropped": self.dropped,
+            "truncated": self.truncated,
+            "deadline_exceeded": self.deadline_exceeded,
             "error": self.error,
             "duration_seconds": round(self.duration_seconds, 3),
             "success": self.success,
+            "drop_reasons": dict(self.drop_reasons),
         }
 
 
@@ -98,27 +194,262 @@ def _coerce_cloud_config(
     )
 
 
-def _slice_optional(
-    values: Optional[Sequence[Any]], start: int, end: int
-) -> Optional[List[Any]]:
-    """Slice a payload column, tolerating a missing column."""
-    if values is None:
-        return None
-    return list(values[start:end])
+def _create_cloud_client(
+    cloud_config: CloudConfig,
+    collection_name: str,
+    request_timeout: Optional[Tuple[float, float]],
+) -> ChromaClient:
+    """Create a write-mode Chroma Cloud client with bounded requests."""
+    logger.debug(
+        "Creating Chroma Cloud client for ingest upsert",
+        extra={
+            "collection": collection_name,
+            "tenant": cloud_config.tenant,
+            "database": cloud_config.database,
+        },
+    )
+    return ChromaClient(
+        cloud_api_key=cloud_config.api_key,
+        cloud_tenant=cloud_config.tenant,
+        cloud_database=cloud_config.database,
+        mode="write",
+        metadata_only=False,  # Vectors are supplied; matches bulk sync
+        cloud_request_timeout=request_timeout,
+    )
 
 
-def _clean_metadatas(
-    metadatas: Optional[Sequence[Any]],
-) -> Optional[List[Dict[str, Any]]]:
-    """Drop keys Chroma Cloud rejects and normalize empties to ``{}``.
+def _value_bytes(value: Any) -> int:
+    """Approximate the wire size of a metadata value."""
+    if isinstance(value, str):
+        return len(value.encode("utf-8"))
+    if isinstance(value, list):
+        return sum(_value_bytes(item) for item in value)
+    return len(str(value).encode("utf-8"))
 
-    ``_sanitize_metadatas`` emits ``None`` for a record whose keys were all
-    oversized; ``ChromaClient.upsert`` cannot normalize ``None``.
+
+def _truncate_value(value: Any) -> Any:
+    """Shrink an oversized metadata value below the Cloud limit."""
+    if isinstance(value, str):
+        return value.encode("utf-8")[:MAX_METADATA_VALUE_BYTES].decode(
+            "utf-8", errors="ignore"
+        )
+    if isinstance(value, list):
+        kept: List[Any] = []
+        used = 0
+        for item in value:
+            size = _value_bytes(item)
+            if used + size > MAX_METADATA_VALUE_BYTES:
+                break
+            kept.append(item)
+            used += size
+        return kept
+    return value
+
+
+def _limit_keys(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep at most ``MAX_METADATA_KEYS`` keys, identity keys first."""
+    if len(metadata) <= MAX_METADATA_KEYS:
+        return metadata
+    ordered = [key for key in _PRIORITY_KEYS if key in metadata]
+    ordered += sorted(key for key in metadata if key not in _PRIORITY_KEYS)
+    return {key: metadata[key] for key in ordered[:MAX_METADATA_KEYS]}
+
+
+def _prepare_metadata(
+    metadata: Optional[Mapping[str, Any]],
+    tombstone_keys: Sequence[str],
+) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """Add tombstones and enforce Cloud limits for one record.
+
+    Returns the prepared metadata (``None`` when nothing publishable is
+    left) and whether anything had to be truncated.
     """
-    if metadatas is None:
-        return None
-    sanitized = _sanitize_metadatas(list(metadatas))
-    return [md or {} for md in (sanitized or [])]
+    prepared: Dict[str, Any] = dict(metadata or {})
+    truncated = False
+
+    for key, value in list(prepared.items()):
+        if value is None:
+            continue
+        if _value_bytes(value) > MAX_METADATA_VALUE_BYTES:
+            prepared[key] = _truncate_value(value)
+            truncated = True
+
+    # A record with no real values left is not worth a tombstone-only write.
+    if not any(value is not None for value in prepared.values()):
+        return None, truncated
+
+    for key in tombstone_keys:
+        prepared.setdefault(key, None)
+
+    limited = _limit_keys(prepared)
+    if len(limited) != len(prepared):
+        truncated = True
+    return limited, truncated
+
+
+def _prepare_document(document: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Enforce the Cloud document size limit."""
+    if not isinstance(document, str):
+        return document, False
+    encoded = document.encode("utf-8")
+    if len(encoded) <= MAX_DOCUMENT_BYTES:
+        return document, False
+    return encoded[:MAX_DOCUMENT_BYTES].decode("utf-8", errors="ignore"), True
+
+
+def _validate_column_lengths(payload: Mapping[str, Any], count: int) -> None:
+    """Chroma requires every supplied column to match ``ids`` in length."""
+    for column in ("embeddings", "documents", "metadatas"):
+        values = payload.get(column)
+        if values is not None and len(values) != count:
+            raise ColumnLengthMismatch(
+                f"payload column {column!r} has {len(values)} entries but "
+                f"ids has {count}; refusing to upsert misaligned records"
+            )
+
+
+@dataclass
+class _Record:
+    """One prepared record, ready to send."""
+
+    id: str
+    embedding: Optional[List[float]]
+    document: Optional[str]
+    metadata: Dict[str, Any]
+
+
+def _count_drop(result: CloudUpsertResult, reason: str) -> None:
+    """Record one dropped record under ``reason``."""
+    result.dropped += 1
+    result.drop_reasons[reason] = result.drop_reasons.get(reason, 0) + 1
+
+
+def _build_records(
+    payload: Mapping[str, Any],
+    ids: Sequence[str],
+    tombstone_keys: Sequence[str],
+    result: CloudUpsertResult,
+    log: Any,
+) -> List[_Record]:
+    """Sanitize every record, dropping the ones Cloud would reject."""
+    embeddings = payload.get("embeddings")
+    documents = payload.get("documents")
+    raw_metadatas = _sanitize_metadatas(
+        list(payload.get("metadatas") or []) or None
+    )
+
+    records: List[_Record] = []
+    for index, record_id in enumerate(ids):
+        if len(str(record_id).encode("utf-8")) > MAX_ID_BYTES:
+            # Truncating an ID would corrupt identity, so drop the record
+            # and let compaction publish it from the delta instead.
+            _count_drop(result, "id_too_long")
+            log.warning(
+                "Dropping record with oversized id from cloud upsert: "
+                "collection=%s id_prefix=%s",
+                result.collection,
+                str(record_id)[:40],
+            )
+            continue
+
+        metadata_in = (
+            raw_metadatas[index] if raw_metadatas is not None else None
+        )
+        metadata, meta_truncated = _prepare_metadata(
+            metadata_in, tombstone_keys
+        )
+        if metadata is None:
+            _count_drop(result, "empty_metadata")
+            log.warning(
+                "Dropping record with no publishable metadata from cloud "
+                "upsert (Chroma rejects empty metadata): collection=%s id=%s",
+                result.collection,
+                record_id,
+            )
+            continue
+
+        document, doc_truncated = _prepare_document(
+            documents[index] if documents is not None else None
+        )
+        if meta_truncated or doc_truncated:
+            result.truncated += 1
+
+        records.append(
+            _Record(
+                id=record_id,
+                embedding=(
+                    embeddings[index] if embeddings is not None else None
+                ),
+                document=document,
+                metadata=metadata,
+            )
+        )
+    return records
+
+
+def _upsert_records(
+    client: ChromaClient,
+    collection_name: str,
+    records: Sequence[_Record],
+) -> None:
+    """Send a group of prepared records in one call."""
+    client.upsert(
+        collection_name=collection_name,
+        ids=[record.id for record in records],
+        embeddings=(
+            [record.embedding for record in records]
+            if records and records[0].embedding is not None
+            else None
+        ),
+        documents=(
+            [record.document for record in records]
+            if records and records[0].document is not None
+            else None
+        ),
+        metadatas=[record.metadata for record in records],
+    )
+
+
+def _upsert_batch(
+    client: ChromaClient,
+    collection_name: str,
+    batch: Sequence[_Record],
+    result: CloudUpsertResult,
+    log: Any,
+) -> int:
+    """Upsert one batch, falling back to per-record on a validation error.
+
+    A ``ValueError`` from Chroma is a per-record validation complaint, so
+    one malformed record must not cost the other 249.
+    """
+    try:
+        _upsert_records(client, collection_name, batch)
+        return len(batch)
+    except ValueError as batch_error:
+        log.warning(
+            "Cloud upsert batch rejected, retrying per record: "
+            "collection=%s size=%d error=%s",
+            collection_name,
+            len(batch),
+            batch_error,
+        )
+
+    written = 0
+    for record in batch:
+        try:
+            _upsert_records(client, collection_name, [record])
+            written += 1
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            _count_drop(result, "rejected")
+            if result.error is None:
+                result.error = f"{type(e).__name__}: {e}"
+            log.warning(
+                "Cloud upsert rejected record: collection=%s id=%s error=%s",
+                collection_name,
+                record.id,
+                e,
+            )
+    return written
 
 
 def upsert_payload_to_cloud(
@@ -127,13 +458,15 @@ def upsert_payload_to_cloud(
     cloud_config: Optional[CloudConfigLike],
     *,
     batch_size: int = UPSERT_BATCH_SIZE,
+    deadline_seconds: float = DEFAULT_DEADLINE_SECONDS,
+    request_timeout: Optional[Tuple[float, float]] = DEFAULT_REQUEST_TIMEOUT,
     log: Optional[Any] = None,
 ) -> CloudUpsertResult:
     """Upsert a Chroma payload directly to Chroma Cloud.
 
     This never raises. Callers treat the cloud write as best effort: the
-    delta tarball and ``CompactionRun`` written alongside it are the
-    durable path, so a cloud failure costs latency, not data.
+    delta tarball and ``CompactionRun`` uploaded before it are the durable
+    path, so a cloud failure costs latency, not data.
 
     Args:
         payload: ``{"ids", "embeddings", "documents", "metadatas"}`` as built
@@ -143,12 +476,16 @@ def upsert_payload_to_cloud(
             ``database``. ``None`` (or incomplete) means cloud is disabled and
             the call is a no-op.
         batch_size: Records per upsert, capped at ``UPSERT_BATCH_SIZE``
+        deadline_seconds: Wall-clock budget across all batches. Batches not
+            started by the deadline are abandoned to the compaction backstop
+            rather than eating the caller's remaining runtime.
+        request_timeout: ``(connect, read)`` seconds per HTTP request
         log: Optional logger; defaults to this module's logger
 
     Returns:
         CloudUpsertResult describing what reached Cloud
     """
-    start = time.time()
+    start = time.monotonic()
     active_log = log or logger
     config = _coerce_cloud_config(cloud_config)
 
@@ -156,7 +493,7 @@ def upsert_payload_to_cloud(
         return CloudUpsertResult(
             collection=collection_name,
             enabled=False,
-            duration_seconds=time.time() - start,
+            duration_seconds=time.monotonic() - start,
         )
 
     ids: List[str] = list(payload.get("ids") or [])
@@ -165,31 +502,49 @@ def upsert_payload_to_cloud(
         attempted=len(ids),
     )
     if not ids:
-        result.duration_seconds = time.time() - start
+        result.duration_seconds = time.monotonic() - start
         return result
-
-    effective_batch = max(1, min(batch_size, UPSERT_BATCH_SIZE))
-    embeddings = payload.get("embeddings")
-    documents = payload.get("documents")
-    metadatas = payload.get("metadatas")
 
     client = None
     try:
-        client = _create_cloud_client_for_sync(config, collection_name)
-        for start_idx in range(0, len(ids), effective_batch):
-            end_idx = min(start_idx + effective_batch, len(ids))
+        _validate_column_lengths(payload, len(ids))
+        records = _build_records(
+            payload,
+            ids,
+            TOMBSTONE_KEYS.get(collection_name, ()),
+            result,
+            active_log,
+        )
+        if not records:
+            result.duration_seconds = time.monotonic() - start
+            return result
+
+        effective_batch = max(1, min(batch_size, UPSERT_BATCH_SIZE))
+        client = _create_cloud_client(config, collection_name, request_timeout)
+
+        for start_idx in range(0, len(records), effective_batch):
+            if time.monotonic() - start > deadline_seconds:
+                remaining = len(records) - start_idx
+                result.deadline_exceeded = True
+                if result.error is None:
+                    result.error = (
+                        f"deadline of {deadline_seconds:.0f}s exceeded with "
+                        f"{remaining} record(s) unwritten"
+                    )
+                active_log.warning(
+                    "Cloud upsert hit its wall-clock budget; leaving %d "
+                    "record(s) to compaction: collection=%s",
+                    remaining,
+                    collection_name,
+                )
+                break
+
+            batch = records[start_idx : start_idx + effective_batch]
             result.batches += 1
             try:
-                client.upsert(
-                    collection_name=collection_name,
-                    ids=ids[start_idx:end_idx],
-                    embeddings=_slice_optional(embeddings, start_idx, end_idx),
-                    documents=_slice_optional(documents, start_idx, end_idx),
-                    metadatas=_clean_metadatas(
-                        _slice_optional(metadatas, start_idx, end_idx)
-                    ),
+                result.upserted += _upsert_batch(
+                    client, collection_name, batch, result, active_log
                 )
-                result.upserted += end_idx - start_idx
             except Exception as e:  # pylint: disable=broad-exception-caught
                 result.failed_batches += 1
                 if result.error is None:
@@ -197,17 +552,15 @@ def upsert_payload_to_cloud(
                 active_log.warning(
                     "Chroma Cloud upsert batch failed "
                     "(non-fatal, compaction is the backstop): "
-                    "collection=%s batch=%d-%d error=%s",
+                    "collection=%s size=%d error=%s",
                     collection_name,
-                    start_idx,
-                    end_idx,
+                    len(batch),
                     result.error,
                 )
     except Exception as e:  # pylint: disable=broad-exception-caught
         result.error = f"{type(e).__name__}: {e}"
         active_log.warning(
-            "Chroma Cloud upsert failed before any batch was written "
-            "(non-fatal): collection=%s error=%s",
+            "Chroma Cloud upsert failed (non-fatal): collection=%s error=%s",
             collection_name,
             result.error,
         )
@@ -222,5 +575,5 @@ def upsert_payload_to_cloud(
                     exc_info=True,
                 )
 
-    result.duration_seconds = time.time() - start
+    result.duration_seconds = time.monotonic() - start
     return result

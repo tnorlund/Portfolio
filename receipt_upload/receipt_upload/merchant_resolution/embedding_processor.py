@@ -32,7 +32,7 @@ import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import boto3
 from receipt_agent.constants import CORE_LABELS
@@ -188,6 +188,12 @@ def _make_read_client(
 
 _METRICS_NAMESPACE = "EmbeddingWorkflow"
 
+# How stale a worker's label snapshot may be before the direct Cloud write is
+# skipped in favour of compaction's ordered path. Well above ingest p90
+# (40.8s) so healthy runs always publish, and far below the Lambda's 900s
+# ceiling so a stalled run cannot publish minutes-old labels.
+_DEFAULT_MAX_LABEL_AGE_SECONDS = 300.0
+
 
 def _emit_emf_metrics(
     metrics: Dict[str, Any],
@@ -231,72 +237,152 @@ def _emit_emf_metrics(
     print(json.dumps(emf))
 
 
+def _upload_delta_then_publish(
+    upload: Callable[[], str],
+    payload: Dict[str, Any],
+    collection_name: str,
+    cloud_cfg: Optional[Dict[str, str]],
+    image_id: str,
+    receipt_id: int,
+    labels_fetched_at: Optional[float] = None,
+) -> str:
+    """Upload the delta tarball, then publish the same payload to Cloud.
+
+    The order matters and is the whole contract: the delta plus its
+    CompactionRun are what make a record recoverable. Publishing to Cloud
+    first would leave records visible with nothing to reconcile them if the
+    upload then failed, because no CompactionRun is created unless both
+    collections produced a prefix. If ``upload`` raises, this propagates and
+    the Cloud write never happens.
+    """
+    prefix = upload()
+    _upsert_to_cloud_nonfatal(
+        payload=payload,
+        collection_name=collection_name,
+        cloud_cfg=cloud_cfg,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        labels_fetched_at=labels_fetched_at,
+    )
+    return prefix
+
+
+def _max_label_age_seconds() -> float:
+    """Age past which a worker's label snapshot is too stale to publish."""
+    raw = os.environ.get("INGEST_CLOUD_UPSERT_MAX_LABEL_AGE_SECONDS", "")
+    try:
+        return float(raw) if raw.strip() else _DEFAULT_MAX_LABEL_AGE_SECONDS
+    except ValueError:
+        return _DEFAULT_MAX_LABEL_AGE_SECONDS
+
+
 def _upsert_to_cloud_nonfatal(
     payload: Dict[str, Any],
     collection_name: str,
     cloud_cfg: Optional[Dict[str, str]],
     image_id: str,
     receipt_id: int,
+    labels_fetched_at: Optional[float] = None,
 ) -> None:
     """Publish freshly embedded vectors to Chroma Cloud, best effort.
 
-    Without this the vectors only become queryable once compaction merges
-    the delta tarball uploaded alongside them. That merge holds a global
-    per-collection lock, so it can lag by minutes. Failing here costs that
-    latency and nothing else -- the delta and CompactionRun still flow.
+    Call this only once the collection's delta tarball is durable in S3.
+    The delta and its CompactionRun are the backstop; this write just makes
+    the same vectors queryable now instead of after the next compaction
+    merge, which holds a global per-collection lock and can lag by minutes.
+
+    Known race (full fix is Phase 2): compaction routes a receipt's label
+    and place updates through the same FIFO group as its CompactionRun, so
+    those updates are ordered against each other. A direct write is not in
+    that order. If a label update lands in Cloud after this worker read its
+    labels, publishing here would overwrite the newer value with the older
+    snapshot, and the delta -- ordered after the already-consumed label
+    event -- would not repair it. Until records carry a revision token, the
+    mitigation is a bound on how stale the snapshot may be: past that, skip
+    the direct write and let compaction publish in FIFO order.
+
+    Nothing escapes this function; telemetry is inside the guard because a
+    failed metric write must not fail an ingest that already succeeded.
     """
     if not cloud_cfg:
         return
 
     try:
+        if labels_fetched_at is not None:
+            age = time.monotonic() - labels_fetched_at
+            max_age = _max_label_age_seconds()
+            if age > max_age:
+                _emit_emf_metrics(
+                    {"IngestCloudUpsertSkipped": 1},
+                    dimensions={"collection": collection_name},
+                    properties={
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "reason": "stale_risk",
+                        "label_age_seconds": round(age, 3),
+                    },
+                )
+                _log(
+                    f"Skipping Chroma Cloud upsert ({collection_name}): "
+                    f"label snapshot is {age:.1f}s old (limit {max_age:.0f}s); "
+                    "leaving publication to compaction's ordered path"
+                )
+                return
+
         result = upsert_payload_to_cloud(
             payload=payload,
             collection_name=collection_name,
             cloud_config=cloud_cfg,
         )
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.exception("Chroma Cloud upsert raised for %s", collection_name)
+
+        if not result.enabled:
+            return
+
+        metric_name = (
+            "IngestCloudUpsertSuccess"
+            if result.success
+            else "IngestCloudUpsertFailure"
+        )
         _emit_emf_metrics(
-            {"IngestCloudUpsertFailure": 1},
+            {
+                metric_name: 1,
+                "IngestCloudUpsertRecords": result.upserted,
+                "IngestCloudUpsertFailedBatches": result.failed_batches,
+                "IngestCloudUpsertDropped": result.dropped,
+                "IngestCloudUpsertTruncated": result.truncated,
+                "IngestCloudUpsertLatency": round(result.duration_seconds, 3),
+            },
             dimensions={"collection": collection_name},
+            units={"IngestCloudUpsertLatency": "Seconds"},
             properties={
                 "image_id": image_id,
                 "receipt_id": receipt_id,
-                "error": f"{type(e).__name__}: {e}",
+                "attempted": result.attempted,
+                "deadline_exceeded": result.deadline_exceeded,
+                "drop_reasons": result.drop_reasons,
+                "error": result.error,
             },
         )
-        return
-
-    if not result.enabled:
-        return
-
-    metric_name = (
-        "IngestCloudUpsertSuccess"
-        if result.success
-        else "IngestCloudUpsertFailure"
-    )
-    _emit_emf_metrics(
-        {
-            metric_name: 1,
-            "IngestCloudUpsertRecords": result.upserted,
-            "IngestCloudUpsertFailedBatches": result.failed_batches,
-            "IngestCloudUpsertLatency": round(result.duration_seconds, 3),
-        },
-        dimensions={"collection": collection_name},
-        units={"IngestCloudUpsertLatency": "Seconds"},
-        properties={
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "attempted": result.attempted,
-            "error": result.error,
-        },
-    )
-    _log(
-        f"Chroma Cloud upsert ({collection_name}): "
-        f"{result.upserted}/{result.attempted} records in "
-        f"{result.duration_seconds:.2f}s"
-        + (f" — FAILED: {result.error}" if not result.success else "")
-    )
+        _log(
+            f"Chroma Cloud upsert ({collection_name}): "
+            f"{result.upserted}/{result.attempted} records in "
+            f"{result.duration_seconds:.2f}s"
+            + (f" — FAILED: {result.error}" if not result.success else "")
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.exception("Chroma Cloud upsert raised for %s", collection_name)
+        try:
+            _emit_emf_metrics(
+                {"IngestCloudUpsertFailure": 1},
+                dimensions={"collection": collection_name},
+                properties={
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "error": f"{type(e).__name__}: {e}",
+                },
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Failed to emit cloud upsert failure metric")
 
 
 def _prepare_pending_core_labels(
@@ -484,6 +570,7 @@ def _run_lines_pipeline_worker(
     table_name: str,
     google_places_api_key: Optional[str],
     langsmith_headers: Optional[Dict[str, str]] = None,
+    labels_fetched_at: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Worker function for lines pipeline (runs in separate process).
@@ -714,25 +801,24 @@ def _run_lines_pipeline_worker(
             if not cloud_cfg:
                 client.upsert(collection_name="lines", **line_payload)
 
-            # Publish straight to Chroma Cloud so these rows are queryable
-            # now instead of after the next compaction merge.
-            _upsert_to_cloud_nonfatal(
+            # Upload delta to S3, then publish to Chroma Cloud so these rows
+            # are queryable without waiting for compaction.
+            import boto3
+
+            s3_client = boto3.client("s3")
+            prefix = _upload_delta_then_publish(
+                upload=lambda: upload_lines_delta(
+                    line_payload=line_payload,
+                    run_id=run_id,
+                    chromadb_bucket=chromadb_bucket,
+                    s3_client=s3_client,
+                ),
                 payload=line_payload,
                 collection_name="lines",
                 cloud_cfg=cloud_cfg,
                 image_id=image_id,
                 receipt_id=receipt_id,
-            )
-
-            # Upload delta to S3
-            import boto3
-
-            s3_client = boto3.client("s3")
-            prefix = upload_lines_delta(
-                line_payload=line_payload,
-                run_id=run_id,
-                chromadb_bucket=chromadb_bucket,
-                s3_client=s3_client,
+                labels_fetched_at=labels_fetched_at,
             )
 
             # Return serializable result
@@ -831,6 +917,7 @@ def _run_words_pipeline_worker(
     chromadb_bucket: str,
     table_name: str,
     langsmith_headers: Optional[Dict[str, str]] = None,
+    labels_fetched_at: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Worker function for words pipeline (runs in separate process).
@@ -1141,25 +1228,24 @@ def _run_words_pipeline_worker(
             if not cloud_cfg:
                 client.upsert(collection_name="words", **word_payload)
 
-            # Publish straight to Chroma Cloud so these words are queryable
-            # now instead of after the next compaction merge.
-            _upsert_to_cloud_nonfatal(
+            # Upload delta to S3, then publish to Chroma Cloud so these words
+            # are queryable without waiting for compaction.
+            import boto3
+
+            s3_client = boto3.client("s3")
+            prefix = _upload_delta_then_publish(
+                upload=lambda: upload_words_delta(
+                    word_payload=word_payload,
+                    run_id=run_id,
+                    chromadb_bucket=chromadb_bucket,
+                    s3_client=s3_client,
+                ),
                 payload=word_payload,
                 collection_name="words",
                 cloud_cfg=cloud_cfg,
                 image_id=image_id,
                 receipt_id=receipt_id,
-            )
-
-            # Upload delta to S3
-            import boto3
-
-            s3_client = boto3.client("s3")
-            prefix = upload_words_delta(
-                word_payload=word_payload,
-                run_id=run_id,
-                chromadb_bucket=chromadb_bucket,
-                s3_client=s3_client,
+                labels_fetched_at=labels_fetched_at,
             )
 
             return {
@@ -1355,8 +1441,12 @@ class MerchantResolvingEmbeddingProcessor:
         else:
             _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
-        # Get word labels for enrichment
+        # Get word labels for enrichment. The read time bounds how stale the
+        # workers' label snapshot can be when they publish to Chroma Cloud
+        # outside compaction's FIFO ordering; CLOCK_MONOTONIC is system-wide,
+        # so this stays comparable inside the pipeline subprocesses.
         word_labels: List[ReceiptWordLabel] = []
+        labels_fetched_at = time.monotonic()
         try:
             word_labels, _ = self.dynamo.list_receipt_word_labels_for_receipt(
                 image_id, receipt_id
@@ -1496,6 +1586,7 @@ class MerchantResolvingEmbeddingProcessor:
                     table_name=table_name,
                     google_places_api_key=self.google_places_api_key,
                     langsmith_headers=langsmith_headers,
+                    labels_fetched_at=labels_fetched_at,
                 )
 
                 words_future = executor.submit(
@@ -1510,6 +1601,7 @@ class MerchantResolvingEmbeddingProcessor:
                     chromadb_bucket=self.chromadb_bucket,
                     table_name=table_name,
                     langsmith_headers=langsmith_headers,
+                    labels_fetched_at=labels_fetched_at,
                 )
 
                 # Wait for both to complete
