@@ -1,0 +1,13 @@
+Round 3 complete. Committed and pushed (`26dc88f8b`).
+
+## Summary
+
+| # | Sev | Disposition | What changed / why |
+|---|-----|-------------|--------------------|
+| 1 | high | **ESCALATED** | Sender-auth enforcement / X-Original-From trust / reject-before-S3 — substantively identical to the already-escalated deadlock (`HUMAN.md` #6). Per loop rules, not implemented or re-argued; remains a human decision. |
+| 2 | med | **FIXED** | Split the Costco gas-PDF fallback: a present PDF with no `pypdf` in the Lambda runtime now sets `needs_ocr=True` instead of falling through to `non_receipt`. `classify` → `needs_ocr`; handler already persists `receipt` for that class, so metadata survives. Verified end-to-end. Permitted parser edit (genuine integration break). |
+| 3 | low | **DECLINED** (advisory) | Conditional-write scheme is non-trivial and the trivial form is harmful: `IfNoneMatch="*"` on content-addressed keys would 412 and silently break the documented re-parse-over-`raw/` workflow. Version accumulation is already mitigated by the existing `noncurrent_version_expiration` lifecycle rule. |
+
+Verification passed: all four modules `py_compile` clean, registry retains 16 groups (≥14), and the `needs_ocr` path confirmed end-to-end through `classify`.
+
+**Contracts honored:** config-gating untouched; no DNS changes; Lambda still writes only to `parsed/`; the sole parser edit is the finding-#2 integration break with the reviewer's own minimal fix, keeping the artifact `LAMBDA_DIR`-only.

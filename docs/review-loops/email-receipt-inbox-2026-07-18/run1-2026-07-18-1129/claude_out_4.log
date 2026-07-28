@@ -1,0 +1,9 @@
+All three round-4 findings resolved and pushed (commit `ca3f93174`).
+
+| # | Sev | Outcome | Change |
+|---|-----|---------|--------|
+| 1 | high | **FIXED** | `handler.py` — `_content_rejected` was called with `(virus, spam)` against a `(spam, virus)` signature, swapping the fail-closed virus check onto the spam verdict. Now called with explicit keywords; verdict matrix verified (missing/GRAY virus → quarantine, GRAY spam → allow). |
+| 2 | med | **FIXED** | `registry.py` — Venmo P2P now requires non-null `grand_total` + valid `direction` before emitting `txn_signal`, so amount-less subject matches (iMessage notifications) fall to `non_receipt`. Classifier-only; parsers untouched. |
+| 3 | low | **FIXED** | `infrastructure.py` — MX record published only when this rule set is activated (or explicitly merged via new `external_active_rule_set` opt-in), so mail isn't accepted against an unrelated active rule set. Trivial + a real correctness fix; default `activate=True` behavior unchanged. |
+
+Design contracts honored: instantiation stays config-gated (only added an inert `external_active_rule_set` param defaulting off), DNS still confined to the `in.` subdomain, the Lambda still writes only to `parsed/`, and no parser was modified. Verification command passes (`registry OK: 16 groups`); all changed files compile; `resolution_4.md` written.

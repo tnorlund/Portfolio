@@ -1,0 +1,23 @@
+Done. Round 2 complete.
+
+## Summary
+
+Reviewed all 7 findings and acted on the merits:
+
+**Fixed (findings 1–5):**
+
+1. **[med] Creation ordering** — MX record now published *last* in `__init__`, gated (via `depends_on`) on the active rule set, bucket versioning, and the S3→Lambda notification. Lifecycle depends on versioning; activation depends on versioning + notification. No delivery window before the storage/trigger graph exists.
+
+2. **[med] Parsed-object collisions** — parsed docs now keyed `parsed/<name>.<ingest_id>.json` by content digest, so an unordered older replay can't clobber a newer parse. Docstring now requires downstream idempotency on `ingest_id`.
+
+3. **[med] Forwarded-sender dispatch break** — when `X-Original-From` is present, the handler normalizes *only the parser's temp copy's* `From` to the canonical sender, so per-domain parsers dispatch to the right brand instead of the empty else-branch. Raw evidence and parsers untouched.
+
+4. **[med] Fail-open scans** — new `_content_rejected()` fails closed: virus must be explicit `PASS`; spam `FAIL`/`PROCESSING_FAILED` quarantine (spam `GRAY` still allowed with verdict recorded). New `quarantine` classification, distinct from `non_receipt`.
+
+5. **[low] SES confused-deputy** — deterministic rule/rule-set names + `aws:SourceArn` condition pinning the `raw/` PutObject grant to that one rule.
+
+**Escalated (findings 6, 7):** both `[deadlock]` — left untouched and recorded for human review per loop protocol.
+
+Verification passed (registry OK: 16 groups), all changed files compile, committed and pushed to `feat/email-receipt-inbox` (`fb615d9e2`). Resolution written to `.review-loop/resolution_2.md`.
+
+Design contracts respected: instantiation stays config-gated, DNS confined to the `in.` subdomain, Lambda still writes only to `parsed/`, and parsers were only touched via the handler-side normalization (no parser file edits).
