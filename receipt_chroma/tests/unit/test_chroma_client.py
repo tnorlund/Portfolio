@@ -733,6 +733,41 @@ def test_closing_a_cloud_client_releases_its_system_and_pool():
 
 
 @pytest.mark.unit
+def test_a_failed_cloud_constructor_leaves_nothing_registered():
+    """Chroma registers its system before the request that can fail.
+
+    ``_client`` stays None on that path, so ``close()`` has nothing to work
+    from; without eviction at the failure site a Cloud outage accumulates a
+    system and a pool per attempt in a warm Lambda.
+    """
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    with patch(
+        "chromadb.api.fastapi.FastAPI.get_user_identity",
+        side_effect=RuntimeError("cloud is down"),
+    ):
+        for cycle in range(4):
+            client = ChromaClient(
+                cloud_api_key="key",
+                cloud_tenant="tenant",
+                cloud_database="database",
+                mode="write",
+                metadata_only=False,
+            )
+            # Chroma re-wraps the transport failure as a ValueError.
+            with pytest.raises(ValueError, match="cloud is down"):
+                _ = client.client
+            client.close()
+
+            assert (
+                len(cache) == baseline
+            ), f"leaked {len(cache) - baseline} system(s) on cycle {cycle}"
+
+
+@pytest.mark.unit
 def test_release_evicts_every_identifier_the_construction_added():
     """Only the outermost identifier is reachable from the client."""
     from chromadb.api.shared_system_client import SharedSystemClient

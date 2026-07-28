@@ -214,6 +214,8 @@ class CloudUpsertResult:
         dropped: Records skipped because they could not be made valid
         truncated: Records whose metadata or document was shortened
         deadline_exceeded: Whether the wall-clock budget stopped the run
+        backpressure: Whether the attempt was refused because too many
+            earlier attempts are still in flight
         error: First error encountered, formatted as ``Type: message``
         duration_seconds: Wall clock spent in this call
         drop_reasons: Count of dropped records keyed by reason
@@ -228,6 +230,7 @@ class CloudUpsertResult:
     dropped: int = 0
     truncated: int = 0
     deadline_exceeded: bool = False
+    backpressure: bool = False
     error: Optional[str] = None
     duration_seconds: float = 0.0
     drop_reasons: Dict[str, int] = field(default_factory=dict)
@@ -240,7 +243,18 @@ class CloudUpsertResult:
             and self.failed_batches == 0
             and self.dropped == 0
             and not self.deadline_exceeded
+            and not self.backpressure
         )
+
+    @property
+    def telemetry_must_be_bounded(self) -> bool:
+        """Whether reporting this result may block on I/O.
+
+        Both states mean something upstream is stuck: the deadline expired,
+        or earlier attempts have not returned. A shared log or metric sink
+        is I/O too, so callers must report these without blocking on it.
+        """
+        return self.deadline_exceeded or self.backpressure
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a JSON-serializable dictionary."""
@@ -254,6 +268,7 @@ class CloudUpsertResult:
             "dropped": self.dropped,
             "truncated": self.truncated,
             "deadline_exceeded": self.deadline_exceeded,
+            "backpressure": self.backpressure,
             "error": self.error,
             "duration_seconds": round(self.duration_seconds, 3),
             "success": self.success,
@@ -737,15 +752,23 @@ def upsert_payload_to_cloud(
     # Backpressure: if enough previous attempts are still stuck, this one
     # would only add another thread and another session to a warm container.
     if not _orphaned_attempts.acquire(blocking=False):
+        result.backpressure = True
         result.error = (
             f"more than {MAX_ORPHANED_ATTEMPTS} cloud upsert attempts are "
             "still in flight; skipping this one"
         )
-        _count_drop(result, "orphaned_threads")
-        active_log.warning(
+        # Every prepared record is skipped, not one: this metric exists to
+        # size the incident it is reporting.
+        for _ in range(len(records)):
+            _count_drop(result, "orphaned_threads")
+        # Earlier attempts are stuck on I/O, and a shared log sink is exactly
+        # the kind of I/O that would be stuck with them.
+        emit_within_budget(
+            active_log.warning,
             "Skipping Chroma Cloud upsert: %d earlier attempt(s) have not "
-            "finished; leaving this receipt to compaction: collection=%s",
+            "finished; leaving %d record(s) to compaction: collection=%s",
             MAX_ORPHANED_ATTEMPTS,
+            len(records),
             collection_name,
         )
         result.duration_seconds = time.monotonic() - start

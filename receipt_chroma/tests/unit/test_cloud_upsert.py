@@ -822,11 +822,84 @@ class TestOrphanedThreadBackpressure:
                 )
 
             assert blocked.success is False
-            assert blocked.drop_reasons == {"orphaned_threads": 1}
+            assert blocked.backpressure is True
             assert "still in flight" in blocked.error
             assert blocked.batches == 0
         finally:
             gate.set()
+
+    def test_every_skipped_record_is_counted(self):
+        """The metric exists to size the incident it reports."""
+        gate = threading.Event()
+
+        def blocks_until_released(*_args, **_kwargs):
+            gate.wait(30)
+            raise RuntimeError("released")
+
+        try:
+            with patch(_CLIENT_FACTORY, side_effect=blocks_until_released):
+                for _ in range(MAX_ORPHANED_ATTEMPTS):
+                    upsert_payload_to_cloud(
+                        make_payload(1),
+                        "words",
+                        CLOUD_CFG,
+                        deadline_seconds=0.05,
+                    )
+
+                blocked = upsert_payload_to_cloud(
+                    make_payload(37),
+                    "words",
+                    CLOUD_CFG,
+                    deadline_seconds=5.0,
+                )
+
+            assert blocked.attempted == 37
+            assert blocked.upserted == 0
+            assert blocked.dropped == 37
+            assert blocked.drop_reasons == {"orphaned_threads": 37}
+        finally:
+            gate.set()
+
+    def test_rejection_telemetry_is_time_bounded(self):
+        """Earlier attempts are stuck on I/O; the log sink may be too."""
+        gate = threading.Event()
+
+        def blocks_until_released(*_args, **_kwargs):
+            gate.wait(30)
+            raise RuntimeError("released")
+
+        slow_log = MagicMock()
+        slow_log.warning.side_effect = lambda *a, **k: time.sleep(5)
+
+        try:
+            with patch(_CLIENT_FACTORY, side_effect=blocks_until_released):
+                for _ in range(MAX_ORPHANED_ATTEMPTS):
+                    upsert_payload_to_cloud(
+                        make_payload(1),
+                        "words",
+                        CLOUD_CFG,
+                        deadline_seconds=0.05,
+                    )
+
+                began = time.monotonic()
+                blocked = upsert_payload_to_cloud(
+                    make_payload(5),
+                    "words",
+                    CLOUD_CFG,
+                    deadline_seconds=0.05,
+                    log=slow_log,
+                )
+                elapsed = time.monotonic() - began
+
+            assert blocked.backpressure is True
+            assert elapsed < 2.0, f"rejection tail unbounded: {elapsed:.2f}s"
+        finally:
+            gate.set()
+
+    def test_backpressure_asks_callers_to_bound_their_telemetry(self):
+        result = CloudUpsertResult(collection="words", backpressure=True)
+        assert result.telemetry_must_be_bounded is True
+        assert result.success is False
 
     def test_permits_are_returned_after_a_normal_run(self):
         client = MagicMock()
@@ -894,6 +967,19 @@ class TestCloudDisabled:
 class TestCloudUpsertResult:
     """Result reporting."""
 
+    def test_telemetry_is_unbounded_only_on_a_healthy_run(self):
+        assert (
+            CloudUpsertResult(collection="words").telemetry_must_be_bounded
+            is False
+        )
+        for kwargs in ({"deadline_exceeded": True}, {"backpressure": True}):
+            assert (
+                CloudUpsertResult(
+                    collection="words", **kwargs
+                ).telemetry_must_be_bounded
+                is True
+            ), kwargs
+
     def test_success_requires_a_completely_clean_run(self):
         assert CloudUpsertResult(collection="words").success is True
         for kwargs in (
@@ -901,6 +987,7 @@ class TestCloudUpsertResult:
             {"error": "boom"},
             {"dropped": 1},
             {"deadline_exceeded": True},
+            {"backpressure": True},
         ):
             assert (
                 CloudUpsertResult(collection="words", **kwargs).success

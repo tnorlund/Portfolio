@@ -379,6 +379,63 @@ class TestUpsertToCloudNonFatal:
 
         assert elapsed < 2.0, f"telemetry tail was unbounded: {elapsed:.2f}s"
 
+    def test_backpressure_also_bounds_the_telemetry(self):
+        """A refused attempt means earlier ones are stuck on I/O."""
+        import time as _time
+
+        result = ok_result(
+            upserted=0,
+            attempted=37,
+            dropped=37,
+            backpressure=True,
+            drop_reasons={"orphaned_threads": 37},
+            error="more than 3 cloud upsert attempts are still in flight",
+        )
+        with (
+            patch.object(ep, "upsert_payload_to_cloud", return_value=result),
+            patch.object(
+                ep,
+                "_emit_emf_metrics",
+                side_effect=lambda *a, **k: _time.sleep(5),
+            ),
+            patch.object(
+                ep, "_log", side_effect=lambda *a, **k: _time.sleep(5)
+            ),
+        ):
+            began = _time.monotonic()
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
+            elapsed = _time.monotonic() - began
+
+        assert elapsed < 2.0, f"telemetry tail was unbounded: {elapsed:.2f}s"
+
+    def test_backpressure_is_reported_as_a_failure(self, capsys):
+        result = ok_result(
+            upserted=0,
+            attempted=37,
+            dropped=37,
+            backpressure=True,
+            drop_reasons={"orphaned_threads": 37},
+        )
+        with patch.object(ep, "upsert_payload_to_cloud", return_value=result):
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
+
+        (blob,) = emitted_metrics(capsys)
+        assert blob["IngestCloudUpsertFailure"] == 1
+        assert blob["IngestCloudUpsertDropped"] == 37
+        assert blob["backpressure"] is True
+
     def test_unexpected_exception_is_swallowed(self, capsys):
         with patch.object(
             ep, "upsert_payload_to_cloud", side_effect=RuntimeError("boom")

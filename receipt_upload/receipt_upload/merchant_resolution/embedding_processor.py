@@ -440,14 +440,16 @@ def _upsert_to_cloud_nonfatal(
                 "receipt_id": receipt_id,
                 "attempted": result.attempted,
                 "deadline_exceeded": result.deadline_exceeded,
+                "backpressure": result.backpressure,
                 "drop_reasons": result.drop_reasons,
                 "error": result.error,
             },
         )
 
-        if result.deadline_exceeded:
-            # The budget is already spent, so reporting it must not spend
-            # more: a blocked stdout would hand the overrun back to ingest.
+        if result.telemetry_must_be_bounded:
+            # Something upstream is stuck -- the budget is spent, or earlier
+            # attempts have not returned. Reporting that must not block on
+            # the same I/O: a stalled stdout would hand it back to ingest.
             emit_within_budget(emit_metrics)
             emit_within_budget(_log, summary)
         else:

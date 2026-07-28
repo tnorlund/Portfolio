@@ -424,11 +424,22 @@ class ChromaClient:
                 # One CloudClient registers several shared systems; capture
                 # exactly which so close() can evict all of them.
                 before_identifiers = _system_cache_identifiers()
-                self._client = chromadb.CloudClient(
-                    api_key=self._cloud_api_key,
-                    tenant=self._cloud_tenant,
-                    database=self._cloud_database,
-                )
+                try:
+                    self._client = chromadb.CloudClient(
+                        api_key=self._cloud_api_key,
+                        tenant=self._cloud_tenant,
+                        database=self._cloud_database,
+                    )
+                except BaseException:
+                    # Chroma registers its system before the identity request
+                    # it can fail on. There is no client for close() to work
+                    # from, so evict here or a Cloud outage accumulates a
+                    # system and a pool per failed attempt in a warm Lambda.
+                    _release_cloud_client(
+                        None,
+                        _system_cache_identifiers() - before_identifiers,
+                    )
+                    raise
                 self._cloud_system_identifiers = (
                     _system_cache_identifiers() - before_identifiers
                 )
