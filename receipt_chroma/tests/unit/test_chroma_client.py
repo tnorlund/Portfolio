@@ -754,3 +754,33 @@ def test_repeated_cloud_client_cycles_do_not_grow_the_cache():
         client.close()
 
         assert len(cache) == baseline, f"leaked on cycle {cycle}"
+
+
+def test_create_if_missing_uses_atomic_get_or_create(monkeypatch):
+    """Concurrent workers racing to create a collection must not fail with
+    'Collection already exists' — the create path must call the atomic
+    get_or_create_collection rather than create_collection."""
+    from unittest.mock import MagicMock
+
+    from chromadb.errors import NotFoundError
+
+    from receipt_chroma.data.chroma_client import ChromaClient
+
+    client = ChromaClient(mode="delta")
+    inner = MagicMock()
+    inner.get_collection.side_effect = NotFoundError("nope")
+    inner.create_collection.side_effect = AssertionError(
+        "must not call non-atomic create_collection"
+    )
+    sentinel = MagicMock(name="collection")
+    inner.get_or_create_collection.return_value = sentinel
+    monkeypatch.setattr(client, "_client", inner, raising=False)
+    monkeypatch.setattr(
+        type(client), "client", property(lambda self: inner), raising=False
+    )
+
+    coll = client.get_collection("words", create_if_missing=True)
+
+    assert coll is sentinel
+    inner.get_or_create_collection.assert_called_once()
+    client.close()
