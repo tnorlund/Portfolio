@@ -363,3 +363,49 @@ class TestSectionWiring:
                 sqs_queue_url=None,
             )
         assert "section_label" not in captured["metadatas"][0]
+
+
+def test_word_delta_skips_deleted_receipt_and_word(monkeypatch, caplog):
+    """Batch results referencing rows deleted between submit and poll must
+    be skipped (with a warning), not raise — raising fed the circuit
+    breaker and killed whole ingest runs (2026-07-28 prod incident)."""
+    from unittest.mock import MagicMock, patch
+
+    from receipt_chroma.embedding.delta import word_delta
+
+    results = [
+        {  # whole receipt deleted
+            "custom_id": "IMAGE#11111111-1111-4111-8111-111111111111#"
+            "RECEIPT#00001#LINE#00001#WORD#00001",
+            "embedding": [0.0] * 8,
+        },
+        {  # word deleted, receipt survives with an unrelated word
+            "custom_id": "IMAGE#22222222-2222-4222-8222-222222222222#"
+            "RECEIPT#00001#LINE#00010#WORD#00002",
+            "embedding": [0.0] * 8,
+        },
+    ]
+    surviving_word = MagicMock(line_id=99, word_id=1)
+    descriptions = {
+        "22222222-2222-4222-8222-222222222222": {
+            1: {
+                "words": [surviving_word],
+                "labels": [],
+                "place": MagicMock(merchant_name="M"),
+            }
+        }
+    }
+    with patch.object(
+        word_delta, "produce_embedding_delta", return_value={}
+    ) as produce:
+        word_delta.save_word_embeddings_as_delta(
+            results=results,
+            descriptions=descriptions,
+            batch_id="00000000-0000-4000-8000-000000000000",
+            bucket_name="b",
+            sqs_queue_url=None,
+        )
+    # nothing raised; both results skipped -> empty payload handed through
+    args, kwargs = produce.call_args
+    payload_ids = kwargs.get("ids", args[0] if args else [])
+    assert payload_ids == []

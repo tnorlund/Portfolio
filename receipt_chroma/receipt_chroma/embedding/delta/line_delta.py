@@ -156,7 +156,21 @@ def save_line_embeddings_as_delta(
         parsed.append((result, meta))
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
-        lines = descriptions[image_id][receipt_id]["lines"]
+        # A receipt deleted between submit and poll (merges, dedupe,
+        # promotions) is a skip, not a failure — treat like stale so the
+        # rest of the batch still ingests.
+        _details = descriptions.get(image_id, {}).get(receipt_id)
+        if _details is None:
+            if (image_id, receipt_id) not in stale_receipts:
+                logger.warning(
+                    "Receipt deleted since submit; skipping its results: "
+                    "image_id=%s receipt_id=%s",
+                    image_id,
+                    receipt_id,
+                )
+            stale_receipts.add((image_id, receipt_id))
+            continue
+        lines = _details["lines"]
         rows_map = get_visual_rows_map(image_id, receipt_id, lines)
         if meta["line_id"] not in rows_map:
             if (image_id, receipt_id) not in stale_receipts:
