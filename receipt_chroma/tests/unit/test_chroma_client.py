@@ -724,12 +724,34 @@ def test_closing_a_cloud_client_releases_its_system_and_pool():
     cache["id-release"] = fake._system
     before = len(cache)
 
-    _release_cloud_client(fake)
+    _release_cloud_client(fake, {"id-release"})
 
     fake._server._session.close.assert_called_once()
     fake._system.stop.assert_called_once()
     assert "id-release" not in cache
     assert len(cache) == before - 1
+
+
+@pytest.mark.unit
+def test_release_evicts_every_identifier_the_construction_added():
+    """Only the outermost identifier is reachable from the client."""
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    from receipt_chroma.data.chroma_client import _release_cloud_client
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    fake = _fake_cloud_client("id-outer")
+    extra_systems = {f"id-inner-{i}": MagicMock() for i in range(2)}
+    cache["id-outer"] = fake._system
+    cache.update(extra_systems)
+
+    _release_cloud_client(fake, {"id-outer", *extra_systems})
+
+    assert len(cache) == baseline
+    for system in extra_systems.values():
+        system.stop.assert_called_once()
 
 
 @pytest.mark.unit
@@ -751,9 +773,57 @@ def test_repeated_cloud_client_cycles_do_not_grow_the_cache():
             mode="write",
         )
         client._client = fake
+        client._cloud_system_identifiers = {fake._identifier}
         client.close()
 
         assert len(cache) == baseline, f"leaked on cycle {cycle}"
+
+
+@pytest.mark.unit
+def test_real_cloud_client_cycles_return_the_cache_to_baseline():
+    """A real CloudClient registers three systems, not one.
+
+    ``client._identifier`` names only the outermost; its internal client and
+    admin client register their own. Evicting just the first left two behind
+    every cycle. Network calls are mocked so construction runs offline.
+    """
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    identity = MagicMock(tenant="tenant", databases=["database"])
+    with (
+        patch(
+            "chromadb.api.fastapi.FastAPI.get_user_identity",
+            return_value=identity,
+        ),
+        patch("chromadb.api.fastapi.FastAPI.heartbeat", return_value=1),
+        patch("chromadb.api.fastapi.FastAPI.get_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.get_database"),
+        patch("chromadb.api.fastapi.FastAPI.create_tenant"),
+        patch("chromadb.api.fastapi.FastAPI.create_database"),
+    ):
+        for cycle in range(3):
+            client = ChromaClient(
+                cloud_api_key="key",
+                cloud_tenant="tenant",
+                cloud_database="database",
+                mode="write",
+                metadata_only=False,
+            )
+            _ = client.client
+
+            assert (
+                len(client._cloud_system_identifiers) > 1
+            ), "expected CloudClient to register more than one system"
+            assert len(cache) > baseline
+
+            client.close()
+
+            assert (
+                len(cache) == baseline
+            ), f"leaked {len(cache) - baseline} system(s) on cycle {cycle}"
 
 
 def test_create_if_missing_uses_atomic_get_or_create(monkeypatch):

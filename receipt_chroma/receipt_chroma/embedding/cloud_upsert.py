@@ -42,6 +42,8 @@ from chromadb.errors import (
     IDAlreadyExistsError,
     InvalidArgumentError,
     InvalidUUIDError,
+    QuotaError,
+    RateLimitError,
     UniqueConstraintError,
 )
 
@@ -84,6 +86,17 @@ _VALIDATION_ERRORS: Tuple[type, ...] = (
     InvalidUUIDError,
     UniqueConstraintError,
 )
+
+# Throttling means "stop asking", so it aborts a fan-out already in flight
+# rather than pushing the remaining 249 requests through a closing door.
+_THROTTLE_ERRORS: Tuple[type, ...] = (RateLimitError, QuotaError)
+
+# Cloud attempts are abandoned at their deadline but the thread behind them
+# may still be stuck in an unbounded constructor request. In a warm Lambda
+# those accumulate, so refuse to start another attempt once this many are
+# still alive and let compaction carry the load until they drain.
+MAX_ORPHANED_ATTEMPTS = 3
+_orphaned_attempts = threading.Semaphore(MAX_ORPHANED_ATTEMPTS)
 
 # Keys the payload builders drop rather than emit when the underlying value
 # is absent (``metadata.pop(...)`` in embedding/metadata/*.py). Chroma merges
@@ -136,6 +149,51 @@ _PRIORITY_KEYS = (
 )
 
 CloudConfigLike = Union[CloudConfig, Mapping[str, str]]
+
+
+# Grace allowed for one best-effort telemetry call once the budget is gone.
+TAIL_GRACE_SECONDS = 0.25
+
+
+def emit_within_budget(
+    emit: Any,
+    *args: Any,
+    grace_seconds: float = TAIL_GRACE_SECONDS,
+    **kwargs: Any,
+) -> bool:
+    """Make a telemetry call that cannot extend an overrun.
+
+    Logging and metric emission are I/O. Once the deadline is spent, a
+    blocked handler or a stalled stdout would hand the overrun straight back
+    to the caller the deadline was meant to protect, so the call runs on a
+    daemon thread and is abandoned after ``grace_seconds``.
+
+    Returns True if the call finished within the grace period.
+    """
+    done = threading.Event()
+
+    def _run() -> None:
+        try:
+            emit(*args, **kwargs)
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+        finally:
+            done.set()
+
+    threading.Thread(
+        target=_run, name="cloud-upsert-tail", daemon=True
+    ).start()
+    return done.wait(grace_seconds)
+
+
+def _log_within_budget(
+    log: Any, deadline_at: float, message: str, *args: Any
+) -> None:
+    """Log normally while there is budget, best-effort once there is not."""
+    if time.monotonic() <= deadline_at:
+        log.warning(message, *args)
+        return
+    emit_within_budget(log.warning, message, *args)
 
 
 class ColumnLengthMismatch(ValueError):
@@ -488,6 +546,26 @@ def _upsert_batch(
         try:
             _upsert_records(client, collection_name, [record])
             written += 1
+        except _THROTTLE_ERRORS as throttle_error:
+            # Keeping the fan-out going here is what turns one rejected
+            # batch into 250 throttled requests. Abandon the rest of this
+            # batch to compaction instead.
+            remaining = len(batch) - index
+            for _ in range(remaining):
+                _count_drop(result, "rate_limited_abort")
+            if result.error is None:
+                result.error = (
+                    f"{type(throttle_error).__name__}: {throttle_error}"
+                )
+            log.warning(
+                "Cloud upsert throttled during per-record fallback; "
+                "abandoning %d record(s) to compaction: "
+                "collection=%s error=%s",
+                remaining,
+                collection_name,
+                throttle_error,
+            )
+            break
         except Exception as e:  # pylint: disable=broad-exception-caught
             _count_drop(result, "rejected")
             if result.error is None:
@@ -654,6 +732,24 @@ def upsert_payload_to_cloud(
                         collection_name,
                         exc_info=True,
                     )
+            _orphaned_attempts.release()
+
+    # Backpressure: if enough previous attempts are still stuck, this one
+    # would only add another thread and another session to a warm container.
+    if not _orphaned_attempts.acquire(blocking=False):
+        result.error = (
+            f"more than {MAX_ORPHANED_ATTEMPTS} cloud upsert attempts are "
+            "still in flight; skipping this one"
+        )
+        _count_drop(result, "orphaned_threads")
+        active_log.warning(
+            "Skipping Chroma Cloud upsert: %d earlier attempt(s) have not "
+            "finished; leaving this receipt to compaction: collection=%s",
+            MAX_ORPHANED_ATTEMPTS,
+            collection_name,
+        )
+        result.duration_seconds = time.monotonic() - start
+        return result
 
     worker = threading.Thread(
         target=_connect_and_write,
@@ -670,7 +766,11 @@ def upsert_payload_to_cloud(
                 f"deadline of {deadline_seconds:.0f}s exceeded while "
                 "connecting or writing to Chroma Cloud"
             )
-        active_log.warning(
+        # The budget is spent, so this is the one line we still pay for --
+        # a blocked log sink here would put the overrun back on the caller.
+        _log_within_budget(
+            active_log,
+            deadline_at,
             "Cloud upsert abandoned at its wall-clock budget; compaction "
             "remains the backstop: collection=%s",
             collection_name,

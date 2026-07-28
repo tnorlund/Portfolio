@@ -147,6 +147,62 @@ class TestStagedPublication:
         ep._discard_staged_payload("/nonexistent/staged.pkl")
         ep._discard_staged_payload(None)
 
+    def test_a_failed_write_leaves_no_partial_file(self):
+        """A warm Lambda keeps /tmp, so a half-written file would persist."""
+        created = []
+        real_mkstemp = ep.tempfile.mkstemp
+
+        def tracking_mkstemp(*args, **kwargs):
+            handle, path = real_mkstemp(*args, **kwargs)
+            created.append(path)
+            return handle, path
+
+        with (
+            patch.object(ep.tempfile, "mkstemp", side_effect=tracking_mkstemp),
+            patch.object(
+                ep.pickle, "dump", side_effect=OSError("disk full mid-write")
+            ),
+        ):
+            assert ep._stage_cloud_payload(PAYLOAD, "words", CLOUD_CFG) is None
+
+        assert created, "expected a temp file to have been created"
+        for path in created:
+            assert not os.path.exists(path), f"{path} was left behind"
+
+    def test_a_successful_write_keeps_the_file(self):
+        path = ep._stage_cloud_payload(PAYLOAD, "words", CLOUD_CFG)
+        try:
+            assert path and os.path.exists(path)
+        finally:
+            ep._discard_staged_payload(path)
+
+
+class TestTracingRetryCleanup:
+    """The worker reruns its pipeline if the LangSmith flush fails."""
+
+    def test_first_staged_payload_is_dropped_before_the_rerun(self):
+        """Otherwise the first attempt's file is orphaned in /tmp."""
+        first = ep._stage_cloud_payload(PAYLOAD, "words", CLOUD_CFG)
+        assert first and os.path.exists(first)
+
+        # What the worker's except branch does with the discarded result.
+        ep._discard_staged_payload(
+            {"cloud_payload_path": first}.get("cloud_payload_path")
+        )
+
+        assert not os.path.exists(first)
+
+    @pytest.mark.parametrize(
+        "worker",
+        ["_run_lines_pipeline_worker", "_run_words_pipeline_worker"],
+    )
+    def test_both_workers_clean_up_before_rerunning(self, worker):
+        import inspect
+
+        source = inspect.getsource(getattr(ep, worker))
+        assert "traced_result" in source
+        assert "_discard_staged_payload(" in source
+
 
 class TestStalenessFence:
     """Direct writes bypass compaction's FIFO ordering."""
@@ -289,6 +345,39 @@ class TestUpsertToCloudNonFatal:
         (blob,) = emitted_metrics(capsys)
         assert blob["IngestCloudUpsertFailure"] == 1
         assert blob["deadline_exceeded"] is True
+
+    def test_telemetry_after_an_overrun_is_time_bounded(self):
+        """Reporting a blown budget must not blow it further."""
+        import time as _time
+
+        result = ok_result(
+            upserted=0,
+            attempted=2,
+            deadline_exceeded=True,
+            error="deadline of 60s exceeded",
+        )
+        with (
+            patch.object(ep, "upsert_payload_to_cloud", return_value=result),
+            patch.object(
+                ep,
+                "_emit_emf_metrics",
+                side_effect=lambda *a, **k: _time.sleep(5),
+            ),
+            patch.object(
+                ep, "_log", side_effect=lambda *a, **k: _time.sleep(5)
+            ),
+        ):
+            began = _time.monotonic()
+            ep._upsert_to_cloud_nonfatal(
+                payload=PAYLOAD,
+                collection_name="words",
+                cloud_cfg=CLOUD_CFG,
+                image_id="img-1",
+                receipt_id=1,
+            )
+            elapsed = _time.monotonic() - began
+
+        assert elapsed < 2.0, f"telemetry tail was unbounded: {elapsed:.2f}s"
 
     def test_unexpected_exception_is_swallowed(self, capsys):
         with patch.object(

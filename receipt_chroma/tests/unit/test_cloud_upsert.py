@@ -41,18 +41,35 @@ from chromadb.errors import (
 
 from receipt_chroma.compaction.dual_write import CloudConfig
 from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma.embedding import cloud_upsert as cu
 from receipt_chroma.embedding.cloud_upsert import (
     MAX_DOCUMENT_BYTES,
     MAX_ID_BYTES,
     MAX_METADATA_KEYS,
     MAX_METADATA_VALUE_BYTES,
+    MAX_ORPHANED_ATTEMPTS,
     TOMBSTONE_KEYS,
     UPSERT_BATCH_SIZE,
     CloudUpsertResult,
+    emit_within_budget,
     upsert_payload_to_cloud,
 )
 
 _CLIENT_FACTORY = "receipt_chroma.embedding.cloud_upsert._create_cloud_client"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_backpressure_permits(monkeypatch):
+    """Give each test its own permits.
+
+    An abandoned attempt keeps its permit until the thread behind it
+    unwinds, so without this the deadline tests would starve whichever
+    test ran next.
+    """
+    monkeypatch.setattr(
+        cu, "_orphaned_attempts", threading.Semaphore(MAX_ORPHANED_ATTEMPTS)
+    )
+
 
 CLOUD_CFG = {
     "api_key": "test-key",
@@ -584,6 +601,52 @@ class TestValidationErrorFallback:
         assert result.failed_batches == 1
         assert result.upserted == 0
 
+    @pytest.mark.parametrize(
+        "error",
+        [RateLimitError("429"), QuotaError("quota exhausted")],
+        ids=["rate_limit", "quota"],
+    )
+    def test_throttling_mid_fallback_aborts_the_rest(self, error):
+        """Excluding them from the batch catch is not enough on its own."""
+        client = MagicMock()
+
+        def upsert(**kwargs):
+            if len(kwargs["ids"]) > 1:
+                raise InvalidArgumentError("batch rejected")
+            raise error
+
+        client.upsert.side_effect = upsert
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(
+                make_payload(50), "words", CLOUD_CFG
+            )
+
+        # One batch attempt, then exactly one singleton before the abort.
+        assert client.upsert.call_count == 2
+        assert result.upserted == 0
+        assert result.drop_reasons == {"rate_limited_abort": 50}
+        assert result.success is False
+
+    def test_throttling_after_some_singletons_succeed(self):
+        client = MagicMock()
+        seen = {"singletons": 0}
+
+        def upsert(**kwargs):
+            if len(kwargs["ids"]) > 1:
+                raise InvalidArgumentError("batch rejected")
+            seen["singletons"] += 1
+            if seen["singletons"] > 2:
+                raise RateLimitError("429")
+
+        client.upsert.side_effect = upsert
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(
+                make_payload(10), "words", CLOUD_CFG
+            )
+
+        assert result.upserted == 2
+        assert result.drop_reasons == {"rate_limited_abort": 8}
+
 
 class TestDeadline:
     """A stalled Cloud must not eat the caller's remaining runtime."""
@@ -682,6 +745,97 @@ class TestDeadline:
         assert result.deadline_exceeded is True
         assert result.upserted < 10
         assert "per-record fallback" in result.error
+
+
+class TestBoundedTail:
+    """Reporting an overrun must not extend it."""
+
+    def test_a_blocked_log_sink_cannot_extend_the_overrun(self):
+        """A slow handler after the join would undo the whole budget."""
+        started = threading.Event()
+
+        def never_returns(*_args, **_kwargs):
+            started.set()
+            time.sleep(30)
+
+        slow_log = MagicMock()
+        slow_log.warning.side_effect = lambda *a, **k: time.sleep(5)
+
+        began = time.monotonic()
+        with patch(_CLIENT_FACTORY, side_effect=never_returns):
+            result = upsert_payload_to_cloud(
+                make_payload(5),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=0.1,
+                log=slow_log,
+            )
+        elapsed = time.monotonic() - began
+
+        assert started.is_set()
+        assert result.deadline_exceeded is True
+        assert elapsed < 2.0, f"tail was unbounded: {elapsed:.2f}s"
+
+    def test_emit_within_budget_reports_completion(self):
+        assert emit_within_budget(lambda: None) is True
+        assert (
+            emit_within_budget(lambda: time.sleep(2), grace_seconds=0.05)
+            is False
+        )
+
+    def test_emit_within_budget_swallows_failures(self):
+        def boom():
+            raise RuntimeError("sink is gone")
+
+        assert emit_within_budget(boom) is True
+
+
+class TestOrphanedThreadBackpressure:
+    """Abandoned attempts can pile up in a warm container."""
+
+    def test_too_many_in_flight_attempts_skip_the_write(self):
+        gate = threading.Event()
+
+        def blocks_until_released(*_args, **_kwargs):
+            gate.wait(30)
+            raise RuntimeError("released")
+
+        try:
+            with patch(_CLIENT_FACTORY, side_effect=blocks_until_released):
+                stuck = [
+                    upsert_payload_to_cloud(
+                        make_payload(1),
+                        "words",
+                        CLOUD_CFG,
+                        deadline_seconds=0.05,
+                    )
+                    for _ in range(MAX_ORPHANED_ATTEMPTS)
+                ]
+                assert all(r.deadline_exceeded for r in stuck)
+
+                # The permits are all held by threads that never finished.
+                blocked = upsert_payload_to_cloud(
+                    make_payload(1),
+                    "words",
+                    CLOUD_CFG,
+                    deadline_seconds=5.0,
+                )
+
+            assert blocked.success is False
+            assert blocked.drop_reasons == {"orphaned_threads": 1}
+            assert "still in flight" in blocked.error
+            assert blocked.batches == 0
+        finally:
+            gate.set()
+
+    def test_permits_are_returned_after_a_normal_run(self):
+        client = MagicMock()
+        for _ in range(MAX_ORPHANED_ATTEMPTS + 2):
+            with patch(_CLIENT_FACTORY, return_value=client):
+                result = upsert_payload_to_cloud(
+                    make_payload(1), "words", CLOUD_CFG
+                )
+            assert result.success is True
 
 
 # =============================================================================

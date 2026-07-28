@@ -87,13 +87,28 @@ def _apply_cloud_request_timeout(
         )
 
 
-def _release_cloud_client(client: Any) -> None:
-    """Tear down a Cloud client's HTTP pool and shared-system cache entry.
+def _system_cache_identifiers() -> set:
+    """Snapshot the identifiers currently in Chroma's shared-system cache."""
+    # pylint: disable=protected-access
+    try:
+        return set(SharedSystemClient._identifier_to_system)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Could not read Chroma system cache", exc_info=True)
+        return set()
+
+
+def _release_cloud_client(client: Any, identifiers: Optional[set]) -> None:
+    """Tear down a Cloud client's HTTP pool and shared-system cache entries.
 
     Chroma caches one ``System`` per settings identifier for the life of the
     process and never evicts it, so a create/close cycle that only drops
-    Python references leaks both the system and its httpx pool. In a warm
-    Lambda those accumulate across invocations.
+    Python references leaks both the systems and their httpx pools. In a
+    warm Lambda those accumulate across invocations.
+
+    Constructing one ``CloudClient`` registers *three* identifiers -- its own
+    plus its internal client and admin client -- so ``client._identifier``
+    alone leaves two behind. ``identifiers`` is the set the construction
+    actually added, captured by diffing the cache around it.
     """
     try:
         session = getattr(getattr(client, "_server", None), "_session", None)
@@ -102,23 +117,38 @@ def _release_cloud_client(client: Any) -> None:
     except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("Chroma Cloud session close failed", exc_info=True)
 
-    system = getattr(client, "_system", None)
-    try:
-        if system is not None:
-            system.stop()
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.debug("Chroma Cloud system stop failed", exc_info=True)
-
     # pylint: disable=protected-access
     try:
-        identifier = getattr(client, "_identifier", None)
         cache = SharedSystemClient._identifier_to_system
-        if identifier is not None and cache.get(identifier) is system:
-            del cache[identifier]
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.debug(
-            "Chroma Cloud system cache eviction failed", exc_info=True
-        )
+        logger.debug("Could not read Chroma system cache", exc_info=True)
+        return
+
+    to_evict = set(identifiers or ())
+    own_identifier = getattr(client, "_identifier", None)
+    if own_identifier is not None:
+        to_evict.add(own_identifier)
+
+    for identifier in to_evict:
+        system = cache.get(identifier)
+        if system is None:
+            continue
+        try:
+            system.stop()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "Chroma Cloud system stop failed for %s",
+                identifier,
+                exc_info=True,
+            )
+        try:
+            del cache[identifier]
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "Chroma Cloud system cache eviction failed for %s",
+                identifier,
+                exc_info=True,
+            )
 
 
 # Default retry settings for Chroma Cloud rate limits
@@ -326,6 +356,7 @@ class ChromaClient:
             cloud_database or ""
         ).strip() or None
         self._cloud_request_timeout = cloud_request_timeout
+        self._cloud_system_identifiers: set = set()
 
         # Configure embedding function
         if embedding_function:
@@ -390,10 +421,16 @@ class ChromaClient:
                         "cloud_api_key is set but cloud_database is missing. "
                         "Pass cloud_database explicitly (e.g. 'receipt_dev')."
                     )
+                # One CloudClient registers several shared systems; capture
+                # exactly which so close() can evict all of them.
+                before_identifiers = _system_cache_identifiers()
                 self._client = chromadb.CloudClient(
                     api_key=self._cloud_api_key,
                     tenant=self._cloud_tenant,
                     database=self._cloud_database,
+                )
+                self._cloud_system_identifiers = (
+                    _system_cache_identifiers() - before_identifiers
                 )
                 _apply_cloud_request_timeout(
                     self._client, self._cloud_request_timeout
@@ -476,7 +513,10 @@ class ChromaClient:
         self._closed = True
 
         if is_cloud:
-            _release_cloud_client(active_client)
+            _release_cloud_client(
+                active_client, self._cloud_system_identifiers
+            )
+            self._cloud_system_identifiers = set()
 
         if not needs_persistent_flush:
             logger.debug("ChromaDB client closed successfully")

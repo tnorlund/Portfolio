@@ -304,7 +304,6 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     """
     import boto3
     from receipt_dynamo import DynamoClient
-
     from receipt_upload.label_validation.llm_runner import apply_async_payload
 
     body = json.loads(record["body"])
@@ -488,18 +487,44 @@ def _process_single_record(
                     if merchant_found:
                         total_merchants_found += 1
 
-                    _log(
-                        "SUCCESS: Embeddings created for receipt %s: "
-                        "merchant_found=%s, merchant_name=%s",
-                        rid,
-                        merchant_found,
-                        embedding_result.get("merchant_name"),
-                    )
+                    # The processor reports False when no CompactionRun was
+                    # written. Its deltas are then orphaned in S3, nothing
+                    # will merge them, and it published nothing to Chroma
+                    # Cloud -- so this is a real failure even though no
+                    # exception was raised.
+                    receipt_ok = bool(embedding_result.get("success", True))
+                    if receipt_ok:
+                        _log(
+                            "SUCCESS: Embeddings created for receipt %s: "
+                            "merchant_found=%s, merchant_name=%s",
+                            rid,
+                            merchant_found,
+                            embedding_result.get("merchant_name"),
+                        )
+                    else:
+                        _log(
+                            "ERROR: Embeddings incomplete for receipt %s: "
+                            "no compaction run was created, so its deltas "
+                            "are orphaned and nothing was published",
+                            rid,
+                        )
+                        logger.error(
+                            "Embedding incomplete for %s#%s: "
+                            "compaction_run_created=%s",
+                            image_id,
+                            rid,
+                            embedding_result.get(
+                                "compaction_run_created", False
+                            ),
+                        )
 
                     all_embedding_results.append(
                         {
                             "receipt_id": rid,
-                            "success": True,
+                            "success": receipt_ok,
+                            "compaction_run_created": embedding_result.get(
+                                "compaction_run_created", receipt_ok
+                            ),
                             "merchant_found": merchant_found,
                             "merchant_name": embedding_result.get(
                                 "merchant_name"
@@ -531,14 +556,36 @@ def _process_single_record(
                 all_embedding_results[0] if all_embedding_results else {}
             )
 
-            _log(
-                "SUCCESS: Processed %s receipts for %s image: "
-                "merchants_found=%s, duration=%.2fs",
-                len(receipt_ids),
-                image_type,
-                total_merchants_found,
-                embedding_duration,
-            )
+            # One incomplete receipt makes the image's embedding step a
+            # failure: it feeds UploadLambdaEmbeddingFailed, which is the
+            # detection path. Nothing retries the OCR message today -- only
+            # llm-validation records are reported for redrive -- so the
+            # metric and its alarm are what surface this.
+            failed_receipts = [
+                entry["receipt_id"]
+                for entry in all_embedding_results
+                if not entry.get("success", False)
+            ]
+            embeddings_ok = not failed_receipts
+
+            if embeddings_ok:
+                _log(
+                    "SUCCESS: Processed %s receipts for %s image: "
+                    "merchants_found=%s, duration=%.2fs",
+                    len(receipt_ids),
+                    image_type,
+                    total_merchants_found,
+                    embedding_duration,
+                )
+            else:
+                _log(
+                    "ERROR: %s of %s receipts for %s image did not complete "
+                    "embedding: %s",
+                    len(failed_receipts),
+                    len(receipt_ids),
+                    image_type,
+                    failed_receipts,
+                )
 
             # Track metrics (aggregated, not per-call) - add to return dict
             return {
@@ -549,7 +596,9 @@ def _process_single_record(
                 "receipts_processed": len(receipt_ids),
                 "image_type": image_type,
                 "embeddings_created": True,
-                "embedding_success": True,
+                "embedding_success": embeddings_ok,
+                "embedding_failed": not embeddings_ok,
+                "failed_receipt_ids": failed_receipts,
                 "embedding_duration": embedding_duration,
                 "merchant_found": first_result.get("merchant_found", False),
                 "merchant_name": first_result.get("merchant_name"),

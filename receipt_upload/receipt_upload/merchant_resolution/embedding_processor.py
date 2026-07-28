@@ -34,6 +34,7 @@ import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
+from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import boto3
@@ -47,7 +48,10 @@ from receipt_chroma.embedding import (
     upload_words_delta,
     upsert_payload_to_cloud,
 )
-from receipt_chroma.embedding.cloud_upsert import DEFAULT_REQUEST_TIMEOUT
+from receipt_chroma.embedding.cloud_upsert import (
+    DEFAULT_REQUEST_TIMEOUT,
+    emit_within_budget,
+)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
@@ -263,19 +267,34 @@ def _stage_cloud_payload(
     """
     if not cloud_cfg:
         return None
+
+    handle: Optional[int] = None
+    path: Optional[str] = None
     try:
         handle, path = tempfile.mkstemp(
             prefix=f"cloud-publish-{collection_name}-", suffix=".pkl"
         )
         with os.fdopen(handle, "wb") as staged:
+            handle = None  # fdopen owns the descriptor now
             pickle.dump(payload, staged, protocol=pickle.HIGHEST_PROTOCOL)
-        return path
+        staged_path, path = path, None
+        return staged_path
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception(
             "Could not stage %s payload for Chroma Cloud publication",
             collection_name,
         )
         return None
+    finally:
+        # Anything still owned here failed partway: close the descriptor and
+        # remove the half-written file rather than leaving it in /tmp, which
+        # a warm Lambda keeps across invocations.
+        if handle is not None:
+            try:
+                os.close(handle)
+            except OSError:
+                pass
+        _discard_staged_payload(path)
 
 
 def _publish_staged_payload(
@@ -398,7 +417,14 @@ def _upsert_to_cloud_nonfatal(
             if result.success
             else "IngestCloudUpsertFailure"
         )
-        _emit_emf_metrics(
+        summary = (
+            f"Chroma Cloud upsert ({collection_name}): "
+            f"{result.upserted}/{result.attempted} records in "
+            f"{result.duration_seconds:.2f}s"
+            + (f" — FAILED: {result.error}" if not result.success else "")
+        )
+        emit_metrics = partial(
+            _emit_emf_metrics,
             {
                 metric_name: 1,
                 "IngestCloudUpsertRecords": result.upserted,
@@ -418,12 +444,15 @@ def _upsert_to_cloud_nonfatal(
                 "error": result.error,
             },
         )
-        _log(
-            f"Chroma Cloud upsert ({collection_name}): "
-            f"{result.upserted}/{result.attempted} records in "
-            f"{result.duration_seconds:.2f}s"
-            + (f" — FAILED: {result.error}" if not result.success else "")
-        )
+
+        if result.deadline_exceeded:
+            # The budget is already spent, so reporting it must not spend
+            # more: a blocked stdout would hand the overrun back to ingest.
+            emit_within_budget(emit_metrics)
+            emit_within_budget(_log, summary)
+        else:
+            emit_metrics()
+            _log(summary)
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.exception("Chroma Cloud upsert raised for %s", collection_name)
         try:
@@ -920,6 +949,7 @@ def _run_lines_pipeline_worker(
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
+    traced_result: Optional[Dict[str, Any]] = None
     if langsmith_headers:
         try:
             import logging
@@ -945,19 +975,26 @@ def _run_lines_pipeline_worker(
                 project_name=project,
                 enabled=True,
             ):
-                result = _do_lines_work()
+                traced_result = _do_lines_work()
 
             # CRITICAL: Flush traces before process exits
             # Each child process has its own LangSmith client and background thread
             log.info("[LINES_WORKER] Flushing traces before process exit")
             Client().flush()
-            return result
+            return traced_result
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception(
                 "[LINES_WORKER] ERROR in tracing: %s", e
             )
+            # The pipeline reruns below and stages a fresh payload. Drop the
+            # one this attempt staged -- its path is about to be discarded
+            # with the result, and nobody else will clean it up.
+            if traced_result:
+                _discard_staged_payload(
+                    traced_result.get("cloud_payload_path")
+                )
     return _do_lines_work()
 
 
@@ -1316,6 +1353,7 @@ def _run_words_pipeline_worker(
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
+    traced_result: Optional[Dict[str, Any]] = None
     if langsmith_headers:
         try:
             import logging
@@ -1341,19 +1379,26 @@ def _run_words_pipeline_worker(
                 project_name=project,
                 enabled=True,
             ):
-                result = _do_words_work()
+                traced_result = _do_words_work()
 
             # CRITICAL: Flush traces before process exits
             # Each child process has its own LangSmith client and background thread
             log.info("[WORDS_WORKER] Flushing traces before process exit")
             Client().flush()
-            return result
+            return traced_result
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception(
                 "[WORDS_WORKER] ERROR in tracing: %s", e
             )
+            # The pipeline reruns below and stages a fresh payload. Drop the
+            # one this attempt staged -- its path is about to be discarded
+            # with the result, and nobody else will clean it up.
+            if traced_result:
+                _discard_staged_payload(
+                    traced_result.get("cloud_payload_path")
+                )
     return _do_words_work()
 
 
