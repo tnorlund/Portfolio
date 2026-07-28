@@ -27,6 +27,101 @@ from langchain_core.tools import tool
 logger = logging.getLogger(__name__)
 
 
+# ==============================================================================
+# OCR Outlier Filtering
+# ==============================================================================
+
+# A dropped decimal point or a run-together digit turns "12.99" into
+# "1299.00" or worse, and a single such misread swamps an aggregate. These
+# ceilings sit well above any plausible value for the receipts in this
+# dataset, so anything past them is a parse artifact rather than a purchase.
+OCR_MAX_LINE_ITEM_AMOUNT = 10_000.0
+OCR_MAX_RECEIPT_TOTAL = 50_000.0
+
+# Secondary relative rule: an amount can be under the ceiling and still be
+# obvious garbage next to its peers. Both conditions must hold, and only
+# once there are enough samples for the median to mean anything.
+OCR_OUTLIER_MEDIAN_RATIO = 100.0
+OCR_OUTLIER_MIN_ABSOLUTE = 5_000.0
+OCR_OUTLIER_MIN_SAMPLES = 8
+
+
+def _coerce_amount(value: Any) -> Optional[float]:
+    """Return value as a float, or None when it isn't a usable number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def partition_ocr_outliers(
+    records: list[dict],
+    amount_key: str = "amount",
+    ceiling: float = OCR_MAX_LINE_ITEM_AMOUNT,
+) -> tuple[list[dict], list[dict]]:
+    """Split records into (kept, outliers) by their amount field.
+
+    Records with a missing or non-numeric amount are always kept — this
+    filter targets OCR misreads, not incomplete data. Negative amounts are
+    kept too, since discounts and refunds are legitimate.
+
+    Args:
+        records: Dicts carrying an amount under ``amount_key``.
+        amount_key: Field holding the dollar value.
+        ceiling: Absolute cutoff above which an amount is a misread.
+
+    Returns:
+        (kept, outliers) preserving the input order within each list.
+    """
+    amounts = [
+        amount
+        for record in records
+        if (amount := _coerce_amount(record.get(amount_key))) is not None
+        and amount > 0
+    ]
+
+    relative_threshold: Optional[float] = None
+    if len(amounts) >= OCR_OUTLIER_MIN_SAMPLES:
+        median = statistics.median(amounts)
+        if median > 0:
+            relative_threshold = max(
+                median * OCR_OUTLIER_MEDIAN_RATIO, OCR_OUTLIER_MIN_ABSOLUTE
+            )
+
+    kept: list[dict] = []
+    outliers: list[dict] = []
+    for record in records:
+        amount = _coerce_amount(record.get(amount_key))
+        is_outlier = amount is not None and (
+            amount > ceiling
+            or (relative_threshold is not None and amount > relative_threshold)
+        )
+        (outliers if is_outlier else kept).append(record)
+
+    if outliers:
+        logger.info(
+            "Dropped %d OCR outlier(s) from %d records (ceiling=%.2f)",
+            len(outliers),
+            len(records),
+            ceiling,
+        )
+
+    return kept, outliers
+
+
+def summarize_ocr_outliers(outliers: list[dict]) -> list[dict]:
+    """Describe dropped outliers compactly for the LLM."""
+    return [
+        {
+            "image_id": o.get("image_id"),
+            "receipt_id": o.get("receipt_id"),
+            "merchant": o.get("merchant") or o.get("merchant_name"),
+            "amount": o.get("amount") or o.get("grand_total"),
+            "reason": "Amount is implausibly large; likely an OCR misread",
+        }
+        for o in outliers[:10]
+    ]
+
+
 def create_qa_tools(
     dynamo_client: Any,
     chroma_client: Any,
@@ -640,8 +735,6 @@ def create_qa_tools(
                 "count": 0,
             }
 
-        total = 0.0
-        count = 0
         breakdown = []
 
         for receipt in retrieved:
@@ -667,8 +760,6 @@ def create_qa_tools(
                         continue
 
                 amount_value = amt.get("amount", 0.0)
-                total += amount_value
-                count += 1
 
                 # Get product name from the line (for breakdown)
                 line_idx = amt.get("line_idx")
@@ -716,13 +807,30 @@ def create_qa_tools(
                     }
                 )
 
-        return {
+        # Drop OCR misreads before summing — one bad parse is enough to
+        # make the reported total meaningless.
+        ceiling = (
+            OCR_MAX_RECEIPT_TOTAL
+            if label_type in ("GRAND_TOTAL", "SUBTOTAL")
+            else OCR_MAX_LINE_ITEM_AMOUNT
+        )
+        breakdown, outliers = partition_ocr_outliers(
+            breakdown, ceiling=ceiling
+        )
+
+        total = sum(item["amount"] for item in breakdown)
+
+        result = {
             "label_type": label_type,
             "filter_text": filter_text,
             "total": round(total, 2),
-            "count": count,
+            "count": len(breakdown),
             "breakdown": breakdown,
         }
+        if outliers:
+            result["excluded_outliers"] = summarize_ocr_outliers(outliers)
+            result["excluded_outlier_count"] = len(outliers)
+        return result
 
     @tool
     def list_merchants() -> dict:
@@ -1144,6 +1252,14 @@ def create_qa_tools(
                 if len(filtered) >= limit:
                     break
 
+            # Drop receipts whose totals are OCR misreads before they can
+            # skew the aggregate or reach the synthesizer as evidence.
+            filtered, outliers = partition_ocr_outliers(
+                filtered,
+                amount_key="grand_total",
+                ceiling=OCR_MAX_RECEIPT_TOTAL,
+            )
+
             # Store all summary dicts for the shape node
             for s in filtered:
                 key = (s.get("image_id"), s.get("receipt_id"))
@@ -1157,25 +1273,28 @@ def create_qa_tools(
             receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
 
             # Store aggregates for synthesizer
-            state_holder["aggregates"].append({
-                "source": (
-                    f"get_receipt_summaries("
-                    f"merchant={merchant_filter}, "
-                    f"category={category_filter}, "
-                    f"start={start_date}, "
-                    f"end={end_date})"
-                ),
-                "count": len(filtered),
-                "total_spending": round(total_spending, 2),
-                "total_tax": round(total_tax, 2),
-                "total_tip": round(total_tip, 2),
-                "receipts_with_totals": receipts_with_totals,
-                "average_receipt": (
-                    round(total_spending / receipts_with_totals, 2)
-                    if receipts_with_totals > 0
-                    else None
-                ),
-            })
+            state_holder["aggregates"].append(
+                {
+                    "source": (
+                        f"get_receipt_summaries("
+                        f"merchant={merchant_filter}, "
+                        f"category={category_filter}, "
+                        f"start={start_date}, "
+                        f"end={end_date})"
+                    ),
+                    "count": len(filtered),
+                    "total_spending": round(total_spending, 2),
+                    "total_tax": round(total_tax, 2),
+                    "total_tip": round(total_tip, 2),
+                    "receipts_with_totals": receipts_with_totals,
+                    "average_receipt": (
+                        round(total_spending / receipts_with_totals, 2)
+                        if receipts_with_totals > 0
+                        else None
+                    ),
+                    "excluded_outlier_count": len(outliers),
+                }
+            )
 
             # Auto-fetch a few sample receipts
             fetched_count = 0
@@ -1187,7 +1306,7 @@ def create_qa_tools(
                     if details:
                         fetched_count += 1
 
-            return {
+            result = {
                 "count": len(filtered),
                 "total_spending": round(total_spending, 2),
                 "total_tax": round(total_tax, 2),
@@ -1207,6 +1326,10 @@ def create_qa_tools(
                 "summaries": filtered,
                 "auto_fetched": fetched_count,
             }
+            if outliers:
+                result["excluded_outliers"] = summarize_ocr_outliers(outliers)
+                result["excluded_outlier_count"] = len(outliers)
+            return result
 
         except Exception as e:
             logger.error("Error getting receipt summaries: %s", e)

@@ -38,6 +38,8 @@ from receipt_agent.agents.question_answering.graph import (
     SYNTHESIZE_SYSTEM_PROMPT,
     answer_question,
     answer_question_sync,
+    build_date_context,
+    build_evidence,
     create_qa_graph,
 )
 
@@ -89,6 +91,8 @@ __all__ = [
     "SYNTHESIZE_PROMPT",
     "PLAN_SYSTEM_PROMPT",
     "SYNTHESIZE_SYSTEM_PROMPT",
+    "build_date_context",
+    "build_evidence",
     # State schemas
     "AmountItem",
     "AnswerWithEvidence",
