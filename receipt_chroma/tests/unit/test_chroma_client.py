@@ -665,3 +665,92 @@ def test_cloud_client_config_with_none_values():
     assert client._cloud_api_key == "test-key"
     assert client._cloud_tenant is None
     assert client._cloud_database is None
+
+
+def _fake_cloud_client(identifier):
+    """Build a stand-in for chromadb's CloudClient internals."""
+    client = MagicMock()
+    client._identifier = identifier
+    client._system = MagicMock()
+    client._server._session = MagicMock()
+    return client
+
+
+@pytest.mark.unit
+def test_cloud_request_timeout_is_applied_to_the_session():
+    """Chroma builds its Cloud session with timeout=None."""
+    import httpx
+
+    from receipt_chroma.data.chroma_client import _apply_cloud_request_timeout
+
+    client = _fake_cloud_client("id-timeout")
+    _apply_cloud_request_timeout(client, (10.0, 30.0))
+
+    applied = client._server._session.timeout
+    assert isinstance(applied, httpx.Timeout)
+    assert applied.connect == 10.0
+    assert applied.read == 30.0
+
+
+@pytest.mark.unit
+def test_missing_timeout_is_a_noop():
+    client = _fake_cloud_client("id-none")
+    original = client._server._session.timeout
+
+    from receipt_chroma.data.chroma_client import _apply_cloud_request_timeout
+
+    _apply_cloud_request_timeout(client, None)
+
+    assert client._server._session.timeout is original
+
+
+@pytest.mark.unit
+def test_unexpected_client_internals_do_not_raise():
+    """The session path is private, so a miss must stay advisory."""
+    from receipt_chroma.data.chroma_client import _apply_cloud_request_timeout
+
+    _apply_cloud_request_timeout(object(), (1.0, 2.0))
+
+
+@pytest.mark.unit
+def test_closing_a_cloud_client_releases_its_system_and_pool():
+    """Chroma never evicts its shared systems, so close() must."""
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    from receipt_chroma.data.chroma_client import _release_cloud_client
+
+    fake = _fake_cloud_client("id-release")
+    cache = SharedSystemClient._identifier_to_system
+    cache["id-release"] = fake._system
+    before = len(cache)
+
+    _release_cloud_client(fake)
+
+    fake._server._session.close.assert_called_once()
+    fake._system.stop.assert_called_once()
+    assert "id-release" not in cache
+    assert len(cache) == before - 1
+
+
+@pytest.mark.unit
+def test_repeated_cloud_client_cycles_do_not_grow_the_cache():
+    """Two create/close cycles previously grew the cache 0 -> 3 -> 6."""
+    from chromadb.api.shared_system_client import SharedSystemClient
+
+    cache = SharedSystemClient._identifier_to_system
+    baseline = len(cache)
+
+    for cycle in range(3):
+        fake = _fake_cloud_client(f"id-cycle-{cycle}")
+        cache[fake._identifier] = fake._system
+
+        client = ChromaClient(
+            cloud_api_key="key",
+            cloud_tenant="tenant",
+            cloud_database="database",
+            mode="write",
+        )
+        client._client = fake
+        client.close()
+
+        assert len(cache) == baseline, f"leaked on cycle {cycle}"

@@ -26,9 +26,18 @@ _CHROMA_ENV_VARS = [
 for _var in _CHROMA_ENV_VARS:
     os.environ.pop(_var, None)
 
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+from chromadb.errors import (
+    BatchSizeExceededError,
+    DuplicateIDError,
+    InvalidArgumentError,
+    QuotaError,
+    RateLimitError,
+)
 
 from receipt_chroma.compaction.dual_write import CloudConfig
 from receipt_chroma.data.chroma_client import ChromaClient
@@ -206,6 +215,21 @@ class TestTombstones:
         (metadata,) = sent_metadatas(client)
         assert metadata["section_label"] is None
         assert metadata["anchor_phone"] is None
+
+    def test_legacy_neighbour_fields_are_tombstoned(self):
+        """Row ids reuse the primary line id, so pre-row records persist."""
+        client = MagicMock()
+        payload = {
+            "ids": ["l1"],
+            "embeddings": [[0.1]],
+            "metadatas": [{"image_id": "img", "text": "TOTAL"}],
+        }
+        with patch(_CLIENT_FACTORY, return_value=client):
+            upsert_payload_to_cloud(payload, "lines", CLOUD_CFG)
+
+        (metadata,) = sent_metadatas(client)
+        assert metadata["prev_line"] is None
+        assert metadata["next_line"] is None
 
     def test_unknown_collection_adds_no_tombstones(self):
         client = MagicMock()
@@ -506,6 +530,61 @@ class TestUpsertFailureIsNonFatal:
         assert result.upserted == 2
 
 
+class TestValidationErrorFallback:
+    """Cloud maps validation 400s to ChromaError, not ValueError."""
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ValueError("Expected metadata to be a non-empty dict"),
+            InvalidArgumentError("metadata value too large"),
+            BatchSizeExceededError("batch too large"),
+            DuplicateIDError("duplicate id"),
+        ],
+        ids=[
+            "value_error",
+            "invalid_argument",
+            "batch_size",
+            "duplicate_id",
+        ],
+    )
+    def test_validation_errors_trigger_per_record_fallback(self, error):
+        client = MagicMock()
+        seen = []
+
+        def upsert(**kwargs):
+            seen.append(len(kwargs["ids"]))
+            if len(kwargs["ids"]) > 1:
+                raise error
+
+        client.upsert.side_effect = upsert
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(
+                make_payload(3), "words", CLOUD_CFG
+            )
+
+        assert seen == [3, 1, 1, 1]
+        assert result.upserted == 3
+
+    @pytest.mark.parametrize(
+        "error",
+        [RateLimitError("429"), QuotaError("quota exhausted")],
+        ids=["rate_limit", "quota"],
+    )
+    def test_rate_and_quota_errors_do_not_fan_out(self, error):
+        """250 retries would make a rate limit strictly worse."""
+        client = MagicMock()
+        client.upsert.side_effect = error
+        with patch(_CLIENT_FACTORY, return_value=client):
+            result = upsert_payload_to_cloud(
+                make_payload(3), "words", CLOUD_CFG
+            )
+
+        assert client.upsert.call_count == 1
+        assert result.failed_batches == 1
+        assert result.upserted == 0
+
+
 class TestDeadline:
     """A stalled Cloud must not eat the caller's remaining runtime."""
 
@@ -549,6 +628,60 @@ class TestDeadline:
 
         assert result.deadline_exceeded is False
         assert result.upserted == 500
+
+    def test_a_stalled_client_constructor_cannot_outlast_the_budget(self):
+        """Chroma's CloudClient() issues its own untimed requests."""
+        started = threading.Event()
+
+        def never_returns(*_args, **_kwargs):
+            started.set()
+            time.sleep(30)
+            raise AssertionError("should have been abandoned")
+
+        began = time.monotonic()
+        with patch(_CLIENT_FACTORY, side_effect=never_returns):
+            result = upsert_payload_to_cloud(
+                make_payload(5),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=0.5,
+            )
+        elapsed = time.monotonic() - began
+
+        assert started.is_set()
+        assert elapsed < 5.0, "returned only after the constructor stalled"
+        assert result.deadline_exceeded is True
+        assert result.success is False
+        assert result.upserted == 0
+
+    def test_per_record_fallback_checks_the_deadline(self):
+        """A rejected batch is 250 more chances to stall."""
+        client = MagicMock()
+        clock = {"now": 0.0}
+
+        def upsert(**kwargs):
+            if len(kwargs["ids"]) > 1:
+                raise ValueError("batch rejected")
+            clock["now"] += 30.0
+
+        client.upsert.side_effect = upsert
+        with (
+            patch(_CLIENT_FACTORY, return_value=client),
+            patch(
+                "receipt_chroma.embedding.cloud_upsert.time.monotonic",
+                side_effect=lambda: clock["now"],
+            ),
+        ):
+            result = upsert_payload_to_cloud(
+                make_payload(10),
+                "words",
+                CLOUD_CFG,
+                deadline_seconds=60.0,
+            )
+
+        assert result.deadline_exceeded is True
+        assert result.upserted < 10
+        assert "per-record fallback" in result.error
 
 
 # =============================================================================

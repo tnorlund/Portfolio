@@ -87,6 +87,40 @@ def _apply_cloud_request_timeout(
         )
 
 
+def _release_cloud_client(client: Any) -> None:
+    """Tear down a Cloud client's HTTP pool and shared-system cache entry.
+
+    Chroma caches one ``System`` per settings identifier for the life of the
+    process and never evicts it, so a create/close cycle that only drops
+    Python references leaks both the system and its httpx pool. In a warm
+    Lambda those accumulate across invocations.
+    """
+    try:
+        session = getattr(getattr(client, "_server", None), "_session", None)
+        if session is not None:
+            session.close()
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Chroma Cloud session close failed", exc_info=True)
+
+    system = getattr(client, "_system", None)
+    try:
+        if system is not None:
+            system.stop()
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Chroma Cloud system stop failed", exc_info=True)
+
+    # pylint: disable=protected-access
+    try:
+        identifier = getattr(client, "_identifier", None)
+        cache = SharedSystemClient._identifier_to_system
+        if identifier is not None and cache.get(identifier) is system:
+            del cache[identifier]
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug(
+            "Chroma Cloud system cache eviction failed", exc_info=True
+        )
+
+
 # Default retry settings for Chroma Cloud rate limits
 _DEFAULT_MAX_RETRIES = 4
 _DEFAULT_BASE_DELAY = 0.5  # seconds
@@ -416,6 +450,10 @@ class ChromaClient:
         A failure in either flush step is observable to callers so snapshot
         uploads cannot silently proceed with a potentially incomplete database.
 
+        Cloud clients hold an httpx connection pool and an entry in Chroma's
+        process-wide shared-system cache; both are released here so repeated
+        create/close cycles in a warm Lambda do not accumulate.
+
         Ephemeral clients and clients that were never initialized only release
         Python references; they do not need the persistent-client GC and file
         handle delay.
@@ -431,10 +469,14 @@ class ChromaClient:
         needs_persistent_flush = (
             active_client is not None and self.use_persistent_client
         )
+        is_cloud = active_client is not None and bool(self._cloud_api_key)
 
         self._collections.clear()
         self._client = None
         self._closed = True
+
+        if is_cloud:
+            _release_cloud_client(active_client)
 
         if not needs_persistent_flush:
             logger.debug("ChromaDB client closed successfully")

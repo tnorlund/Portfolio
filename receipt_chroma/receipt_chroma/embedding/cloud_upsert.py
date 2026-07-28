@@ -22,6 +22,7 @@ Two Chroma behaviors shape the code below:
 """
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import (
@@ -33,6 +34,15 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+)
+
+from chromadb.errors import (
+    BatchSizeExceededError,
+    DuplicateIDError,
+    IDAlreadyExistsError,
+    InvalidArgumentError,
+    InvalidUUIDError,
+    UniqueConstraintError,
 )
 
 from receipt_chroma.compaction.dual_write import (
@@ -59,6 +69,22 @@ DEFAULT_REQUEST_TIMEOUT: Tuple[float, float] = (10.0, 30.0)
 # Wall clock for the whole upsert, across every batch.
 DEFAULT_DEADLINE_SECONDS = 60.0
 
+# Errors that mean "this record is malformed", so retrying the batch one
+# record at a time can still land the good ones. Chroma Cloud maps
+# server-side validation and quota 400s to InvalidArgumentError, which is a
+# ChromaError and *not* a ValueError. Rate-limit and auth errors are
+# deliberately excluded: splitting one rejected batch into 250 individual
+# requests would make either of those strictly worse.
+_VALIDATION_ERRORS: Tuple[type, ...] = (
+    ValueError,
+    InvalidArgumentError,
+    BatchSizeExceededError,
+    DuplicateIDError,
+    IDAlreadyExistsError,
+    InvalidUUIDError,
+    UniqueConstraintError,
+)
+
 # Keys the payload builders drop rather than emit when the underlying value
 # is absent (``metadata.pop(...)`` in embedding/metadata/*.py). Chroma merges
 # on write, so each must be sent as ``None`` to clear a stale value left by
@@ -74,6 +100,11 @@ _WORD_TOMBSTONE_KEYS = (
     "normalized_url",
 )
 _LINE_TOMBSTONE_KEYS = (
+    # Legacy neighbour fields. Row payloads no longer emit them, but row ids
+    # reuse the primary line id (embedding/records.py), so a record written
+    # before the row rewrite still carries them until they are cleared.
+    "prev_line",
+    "next_line",
     "label_status",
     "valid_labels_array",
     "invalid_labels_array",
@@ -416,26 +447,44 @@ def _upsert_batch(
     batch: Sequence[_Record],
     result: CloudUpsertResult,
     log: Any,
+    deadline_at: Optional[float] = None,
 ) -> int:
     """Upsert one batch, falling back to per-record on a validation error.
 
-    A ``ValueError`` from Chroma is a per-record validation complaint, so
-    one malformed record must not cost the other 249.
+    A validation error means one record is malformed, so a single bad record
+    must not cost the other 249. The fallback re-checks the deadline on every
+    record: 250 individual requests are 250 chances to stall.
     """
     try:
         _upsert_records(client, collection_name, batch)
         return len(batch)
-    except ValueError as batch_error:
+    except _VALIDATION_ERRORS as batch_error:
         log.warning(
             "Cloud upsert batch rejected, retrying per record: "
-            "collection=%s size=%d error=%s",
+            "collection=%s size=%d error=%s: %s",
             collection_name,
             len(batch),
+            type(batch_error).__name__,
             batch_error,
         )
 
     written = 0
-    for record in batch:
+    for index, record in enumerate(batch):
+        if deadline_at is not None and time.monotonic() > deadline_at:
+            remaining = len(batch) - index
+            result.deadline_exceeded = True
+            if result.error is None:
+                result.error = (
+                    f"deadline exceeded during per-record fallback with "
+                    f"{remaining} record(s) unwritten"
+                )
+            log.warning(
+                "Cloud upsert per-record fallback hit the deadline; "
+                "leaving %d record(s) to compaction: collection=%s",
+                remaining,
+                collection_name,
+            )
+            break
         try:
             _upsert_records(client, collection_name, [record])
             written += 1
@@ -476,9 +525,9 @@ def upsert_payload_to_cloud(
             ``database``. ``None`` (or incomplete) means cloud is disabled and
             the call is a no-op.
         batch_size: Records per upsert, capped at ``UPSERT_BATCH_SIZE``
-        deadline_seconds: Wall-clock budget across all batches. Batches not
-            started by the deadline are abandoned to the compaction backstop
-            rather than eating the caller's remaining runtime.
+        deadline_seconds: Hard wall-clock budget covering connection setup and
+            every write. Work not finished by then is abandoned to the
+            compaction backstop rather than eating the caller's runtime.
         request_timeout: ``(connect, read)`` seconds per HTTP request
         log: Optional logger; defaults to this module's logger
 
@@ -505,7 +554,8 @@ def upsert_payload_to_cloud(
         result.duration_seconds = time.monotonic() - start
         return result
 
-    client = None
+    # Record preparation is local and cannot stall, so keep it outside the
+    # deadline thread where its errors report normally.
     try:
         _validate_column_lengths(payload, len(ids))
         records = _build_records(
@@ -515,65 +565,116 @@ def upsert_payload_to_cloud(
             result,
             active_log,
         )
-        if not records:
-            result.duration_seconds = time.monotonic() - start
-            return result
-
-        effective_batch = max(1, min(batch_size, UPSERT_BATCH_SIZE))
-        client = _create_cloud_client(config, collection_name, request_timeout)
-
-        for start_idx in range(0, len(records), effective_batch):
-            if time.monotonic() - start > deadline_seconds:
-                remaining = len(records) - start_idx
-                result.deadline_exceeded = True
-                if result.error is None:
-                    result.error = (
-                        f"deadline of {deadline_seconds:.0f}s exceeded with "
-                        f"{remaining} record(s) unwritten"
-                    )
-                active_log.warning(
-                    "Cloud upsert hit its wall-clock budget; leaving %d "
-                    "record(s) to compaction: collection=%s",
-                    remaining,
-                    collection_name,
-                )
-                break
-
-            batch = records[start_idx : start_idx + effective_batch]
-            result.batches += 1
-            try:
-                result.upserted += _upsert_batch(
-                    client, collection_name, batch, result, active_log
-                )
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                result.failed_batches += 1
-                if result.error is None:
-                    result.error = f"{type(e).__name__}: {e}"
-                active_log.warning(
-                    "Chroma Cloud upsert batch failed "
-                    "(non-fatal, compaction is the backstop): "
-                    "collection=%s size=%d error=%s",
-                    collection_name,
-                    len(batch),
-                    result.error,
-                )
     except Exception as e:  # pylint: disable=broad-exception-caught
         result.error = f"{type(e).__name__}: {e}"
         active_log.warning(
-            "Chroma Cloud upsert failed (non-fatal): collection=%s error=%s",
+            "Chroma Cloud upsert failed before any write (non-fatal): "
+            "collection=%s error=%s",
             collection_name,
             result.error,
         )
-    finally:
-        if client is not None:
-            try:
-                client.close()
-            except Exception:  # pylint: disable=broad-exception-caught
-                active_log.debug(
-                    "Chroma Cloud client close failed for %s",
-                    collection_name,
-                    exc_info=True,
-                )
+        result.duration_seconds = time.monotonic() - start
+        return result
+
+    if not records:
+        result.duration_seconds = time.monotonic() - start
+        return result
+
+    effective_batch = max(1, min(batch_size, UPSERT_BATCH_SIZE))
+    deadline_at = start + deadline_seconds
+
+    # Everything below talks to Cloud, including client construction: Chroma
+    # issues identity, tenant and database requests inside CloudClient()
+    # before our session timeout can be applied, so a stall there would be
+    # invisible to a per-request timeout. Run it on a daemon thread and join
+    # with the remaining budget; a thread we abandon dies with the process
+    # and cannot hold the Lambda open.
+    def _connect_and_write() -> None:
+        client = None
+        try:
+            client = _create_cloud_client(
+                config, collection_name, request_timeout
+            )
+            for start_idx in range(0, len(records), effective_batch):
+                if time.monotonic() > deadline_at:
+                    remaining = len(records) - start_idx
+                    result.deadline_exceeded = True
+                    if result.error is None:
+                        result.error = (
+                            f"deadline of {deadline_seconds:.0f}s exceeded "
+                            f"with {remaining} record(s) unwritten"
+                        )
+                    active_log.warning(
+                        "Cloud upsert hit its wall-clock budget; leaving %d "
+                        "record(s) to compaction: collection=%s",
+                        remaining,
+                        collection_name,
+                    )
+                    break
+
+                batch = records[start_idx : start_idx + effective_batch]
+                result.batches += 1
+                try:
+                    result.upserted += _upsert_batch(
+                        client,
+                        collection_name,
+                        batch,
+                        result,
+                        active_log,
+                        deadline_at,
+                    )
+                except Exception as e:  # pylint: disable=broad-except
+                    result.failed_batches += 1
+                    if result.error is None:
+                        result.error = f"{type(e).__name__}: {e}"
+                    active_log.warning(
+                        "Chroma Cloud upsert batch failed "
+                        "(non-fatal, compaction is the backstop): "
+                        "collection=%s size=%d error=%s",
+                        collection_name,
+                        len(batch),
+                        result.error,
+                    )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            if result.error is None:
+                result.error = f"{type(e).__name__}: {e}"
+            active_log.warning(
+                "Chroma Cloud upsert failed (non-fatal): "
+                "collection=%s error=%s",
+                collection_name,
+                result.error,
+            )
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:  # pylint: disable=broad-exception-caught
+                    active_log.debug(
+                        "Chroma Cloud client close failed for %s",
+                        collection_name,
+                        exc_info=True,
+                    )
+
+    worker = threading.Thread(
+        target=_connect_and_write,
+        name=f"cloud-upsert-{collection_name}",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(max(0.0, deadline_at - time.monotonic()))
+
+    if worker.is_alive():
+        result.deadline_exceeded = True
+        if result.error is None:
+            result.error = (
+                f"deadline of {deadline_seconds:.0f}s exceeded while "
+                "connecting or writing to Chroma Cloud"
+            )
+        active_log.warning(
+            "Cloud upsert abandoned at its wall-clock budget; compaction "
+            "remains the backstop: collection=%s",
+            collection_name,
+        )
 
     result.duration_seconds = time.monotonic() - start
     return result

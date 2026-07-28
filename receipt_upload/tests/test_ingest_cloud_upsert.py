@@ -2,12 +2,14 @@
 
 The upsert makes freshly embedded words and lines queryable immediately
 instead of waiting for compaction to merge the delta tarball. Three
-properties matter and are covered here: it runs only after the delta is
-durable, it never fails ingest for any reason including telemetry, and it
-declines to publish a label snapshot too stale to be safely ordered.
+properties matter and are covered here: a payload is staged by its worker
+and published only once the CompactionRun that can reconcile it is durable,
+publication never fails ingest for any reason including telemetry, and a
+label snapshot too stale to be safely ordered is not published at all.
 """
 
 import json
+import os
 from unittest.mock import patch
 
 import pytest
@@ -93,54 +95,57 @@ class TestEmitEmfMetrics:
         assert emitted_metrics(capsys) == []
 
 
-class TestDeltaBeforeCloud:
-    """The delta is the backstop, so it has to land first."""
+class TestStagedPublication:
+    """Workers hand payloads back; the parent publishes after the run row."""
 
-    def test_cloud_write_runs_after_a_successful_upload(self, capsys):
-        calls = []
+    def test_stage_and_publish_round_trip(self, capsys):
+        path = ep._stage_cloud_payload(PAYLOAD, "words", CLOUD_CFG)
+        assert path and os.path.exists(path)
 
-        def upload():
-            calls.append("upload")
-            return "lines/delta/run-1/"
-
-        with patch.object(
-            ep, "upsert_payload_to_cloud", return_value=ok_result()
-        ) as upsert:
-            upsert.side_effect = lambda **_kw: (
-                calls.append("cloud"),
-                ok_result(),
-            )[1]
-            prefix = ep._upload_delta_then_publish(
-                upload=upload,
-                payload=PAYLOAD,
-                collection_name="lines",
-                cloud_cfg=CLOUD_CFG,
-                image_id="img-1",
-                receipt_id=1,
-            )
-
-        assert prefix == "lines/delta/run-1/"
-        assert calls == ["upload", "cloud"]
-
-    def test_failed_upload_skips_the_cloud_write_entirely(self, capsys):
-        """No CompactionRun is created, so nothing may be published."""
-
-        def upload():
-            raise RuntimeError("s3 unavailable")
-
-        with patch.object(ep, "upsert_payload_to_cloud") as upsert:
-            with pytest.raises(RuntimeError, match="s3 unavailable"):
-                ep._upload_delta_then_publish(
-                    upload=upload,
-                    payload=PAYLOAD,
-                    collection_name="words",
-                    cloud_cfg=CLOUD_CFG,
-                    image_id="img-1",
-                    receipt_id=1,
+        try:
+            with patch.object(
+                ep, "upsert_payload_to_cloud", return_value=ok_result()
+            ) as upsert:
+                ep._publish_staged_payload(
+                    path, "words", CLOUD_CFG, "img-1", 1
                 )
+
+            assert upsert.call_args.kwargs["payload"] == PAYLOAD
+            (blob,) = emitted_metrics(capsys)
+            assert blob["IngestCloudUpsertSuccess"] == 1
+        finally:
+            ep._discard_staged_payload(path)
+
+        assert not os.path.exists(path)
+
+    def test_staging_is_skipped_when_cloud_is_disabled(self):
+        assert ep._stage_cloud_payload(PAYLOAD, "words", None) is None
+
+    def test_publishing_without_a_staged_path_is_a_noop(self, capsys):
+        with patch.object(ep, "upsert_payload_to_cloud") as upsert:
+            ep._publish_staged_payload(None, "words", CLOUD_CFG, "img-1", 1)
 
         upsert.assert_not_called()
         assert emitted_metrics(capsys) == []
+
+    def test_unreadable_staged_payload_does_not_raise(self, capsys):
+        with patch.object(ep, "upsert_payload_to_cloud") as upsert:
+            ep._publish_staged_payload(
+                "/nonexistent/staged.pkl", "words", CLOUD_CFG, "img-1", 1
+            )
+
+        upsert.assert_not_called()
+        assert emitted_metrics(capsys) == []
+
+    def test_staging_failure_degrades_to_no_publication(self):
+        with patch.object(
+            ep.tempfile, "mkstemp", side_effect=OSError("no space")
+        ):
+            assert ep._stage_cloud_payload(PAYLOAD, "words", CLOUD_CFG) is None
+
+    def test_discarding_a_missing_file_is_silent(self):
+        ep._discard_staged_payload("/nonexistent/staged.pkl")
+        ep._discard_staged_payload(None)
 
 
 class TestStalenessFence:

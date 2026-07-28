@@ -27,7 +27,9 @@ Tracing:
 import json
 import logging
 import os
+import pickle
 import shutil
+import tempfile
 import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -45,6 +47,7 @@ from receipt_chroma.embedding import (
     upload_words_delta,
     upsert_payload_to_cloud,
 )
+from receipt_chroma.embedding.cloud_upsert import DEFAULT_REQUEST_TIMEOUT
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
@@ -178,6 +181,9 @@ def _make_read_client(
             cloud_api_key=cloud_cfg["api_key"],
             cloud_tenant=cloud_cfg["tenant"],
             cloud_database=cloud_cfg["database"],
+            # Chroma leaves its Cloud session unbounded; without this a
+            # stalled read hangs until the Lambda itself times out.
+            cloud_request_timeout=DEFAULT_REQUEST_TIMEOUT,
         )
     return ChromaClient(
         persist_directory=local_dir,
@@ -237,25 +243,63 @@ def _emit_emf_metrics(
     print(json.dumps(emf))
 
 
-def _upload_delta_then_publish(
-    upload: Callable[[], str],
+def _stage_cloud_payload(
     payload: Dict[str, Any],
+    collection_name: str,
+    cloud_cfg: Optional[Dict[str, str]],
+) -> Optional[str]:
+    """Park a payload on local disk for the parent to publish later.
+
+    A record is only recoverable once its CompactionRun exists, and that row
+    is written by the parent after both workers finish. So a worker cannot
+    publish its own payload -- it hands it back instead. The handoff goes
+    through a file because Phase 2 runs on processes outside Lambda (see
+    ``_get_phase2_executor_class``), where an in-memory reference would not
+    survive; the file is local to the host either way and the parent deletes
+    it in its finally block.
+
+    Returns the path, or None when Cloud is disabled or staging failed --
+    both of which just mean this receipt waits for compaction.
+    """
+    if not cloud_cfg:
+        return None
+    try:
+        handle, path = tempfile.mkstemp(
+            prefix=f"cloud-publish-{collection_name}-", suffix=".pkl"
+        )
+        with os.fdopen(handle, "wb") as staged:
+            pickle.dump(payload, staged, protocol=pickle.HIGHEST_PROTOCOL)
+        return path
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Could not stage %s payload for Chroma Cloud publication",
+            collection_name,
+        )
+        return None
+
+
+def _publish_staged_payload(
+    path: Optional[str],
     collection_name: str,
     cloud_cfg: Optional[Dict[str, str]],
     image_id: str,
     receipt_id: int,
     labels_fetched_at: Optional[float] = None,
-) -> str:
-    """Upload the delta tarball, then publish the same payload to Cloud.
+) -> None:
+    """Publish a payload a worker staged, once its CompactionRun is durable."""
+    if not path or not cloud_cfg:
+        return
+    try:
+        with open(path, "rb") as staged:
+            payload = pickle.load(staged)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Could not read staged %s payload; leaving publication to "
+            "compaction",
+            collection_name,
+        )
+        return
 
-    The order matters and is the whole contract: the delta plus its
-    CompactionRun are what make a record recoverable. Publishing to Cloud
-    first would leave records visible with nothing to reconcile them if the
-    upload then failed, because no CompactionRun is created unless both
-    collections produced a prefix. If ``upload`` raises, this propagates and
-    the Cloud write never happens.
-    """
-    prefix = upload()
     _upsert_to_cloud_nonfatal(
         payload=payload,
         collection_name=collection_name,
@@ -264,7 +308,18 @@ def _upload_delta_then_publish(
         receipt_id=receipt_id,
         labels_fetched_at=labels_fetched_at,
     )
-    return prefix
+
+
+def _discard_staged_payload(path: Optional[str]) -> None:
+    """Remove a staged payload file, published or not."""
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.warning("Could not remove staged payload %s", path)
 
 
 def _max_label_age_seconds() -> float:
@@ -801,30 +856,30 @@ def _run_lines_pipeline_worker(
             if not cloud_cfg:
                 client.upsert(collection_name="lines", **line_payload)
 
-            # Upload delta to S3, then publish to Chroma Cloud so these rows
-            # are queryable without waiting for compaction.
+            # Upload delta to S3
             import boto3
 
             s3_client = boto3.client("s3")
-            prefix = _upload_delta_then_publish(
-                upload=lambda: upload_lines_delta(
-                    line_payload=line_payload,
-                    run_id=run_id,
-                    chromadb_bucket=chromadb_bucket,
-                    s3_client=s3_client,
-                ),
-                payload=line_payload,
-                collection_name="lines",
-                cloud_cfg=cloud_cfg,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                labels_fetched_at=labels_fetched_at,
+            prefix = upload_lines_delta(
+                line_payload=line_payload,
+                run_id=run_id,
+                chromadb_bucket=chromadb_bucket,
+                s3_client=s3_client,
+            )
+
+            # Hand the payload back for the parent to publish to Chroma Cloud
+            # once the CompactionRun exists. Publishing here would put records
+            # in Cloud that nothing can reconcile if the other pipeline or the
+            # CompactionRun write then fails.
+            cloud_payload_path = _stage_cloud_payload(
+                line_payload, "lines", cloud_cfg
             )
 
             # Return serializable result
             return {
                 "success": True,
                 "lines_prefix": prefix,
+                "cloud_payload_path": cloud_payload_path,
                 # Metrics-only observability (no behavior change): visual-row
                 # provenance and deterministic section-proposal stats.
                 "row_count": len(persisted_rows),
@@ -1228,29 +1283,29 @@ def _run_words_pipeline_worker(
             if not cloud_cfg:
                 client.upsert(collection_name="words", **word_payload)
 
-            # Upload delta to S3, then publish to Chroma Cloud so these words
-            # are queryable without waiting for compaction.
+            # Upload delta to S3
             import boto3
 
             s3_client = boto3.client("s3")
-            prefix = _upload_delta_then_publish(
-                upload=lambda: upload_words_delta(
-                    word_payload=word_payload,
-                    run_id=run_id,
-                    chromadb_bucket=chromadb_bucket,
-                    s3_client=s3_client,
-                ),
-                payload=word_payload,
-                collection_name="words",
-                cloud_cfg=cloud_cfg,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                labels_fetched_at=labels_fetched_at,
+            prefix = upload_words_delta(
+                word_payload=word_payload,
+                run_id=run_id,
+                chromadb_bucket=chromadb_bucket,
+                s3_client=s3_client,
+            )
+
+            # Hand the payload back for the parent to publish to Chroma Cloud
+            # once the CompactionRun exists. Publishing here would put records
+            # in Cloud that nothing can reconcile if the other pipeline or the
+            # CompactionRun write then fails.
+            cloud_payload_path = _stage_cloud_payload(
+                word_payload, "words", cloud_cfg
             )
 
             return {
                 "success": True,
                 "words_prefix": prefix,
+                "cloud_payload_path": cloud_payload_path,
                 "async_llm_payload": async_llm_payload,
                 **validation_stats,
             }
@@ -1518,6 +1573,9 @@ class MerchantResolvingEmbeddingProcessor:
         lines_stats: Dict[str, Any] = {}
         lines_prefix: Optional[str] = None
         words_prefix: Optional[str] = None
+        lines_cloud_payload: Optional[str] = None
+        words_cloud_payload: Optional[str] = None
+        compaction_run_created = False
 
         try:
             # =================================================================
@@ -1616,6 +1674,9 @@ class MerchantResolvingEmbeddingProcessor:
                 try:
                     lines_result = lines_future.result()
                     lines_prefix = lines_result.get("lines_prefix")
+                    lines_cloud_payload = lines_result.get(
+                        "cloud_payload_path"
+                    )
 
                     # Observability-only stats from the lines pipeline: row
                     # provenance, section proposals, verification outcomes.
@@ -1702,6 +1763,9 @@ class MerchantResolvingEmbeddingProcessor:
                 try:
                     words_result = words_future.result()
                     words_prefix = words_result.get("words_prefix")
+                    words_cloud_payload = words_result.get(
+                        "cloud_payload_path"
+                    )
                     async_llm_payload = words_result.get("async_llm_payload")
                     if words_result.get("success"):
                         validation_stats = {
@@ -1711,6 +1775,7 @@ class MerchantResolvingEmbeddingProcessor:
                             not in (
                                 "success",
                                 "words_prefix",
+                                "cloud_payload_path",
                                 "async_llm_payload",
                             )
                         }
@@ -1726,18 +1791,55 @@ class MerchantResolvingEmbeddingProcessor:
             # PHASE 3: Create compaction run (after both deltas uploaded)
             # =================================================================
             if lines_prefix and words_prefix:
-                create_compaction_run(
-                    run_id=run_id,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    lines_prefix=lines_prefix,
-                    words_prefix=words_prefix,
-                    dynamo_client=self.dynamo,
-                )
-                _log(f"Phase 3 complete: created compaction run {run_id}")
+                try:
+                    create_compaction_run(
+                        run_id=run_id,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        lines_prefix=lines_prefix,
+                        words_prefix=words_prefix,
+                        dynamo_client=self.dynamo,
+                    )
+                    compaction_run_created = True
+                    _log(f"Phase 3 complete: created compaction run {run_id}")
+                except Exception as e:
+                    _log(f"ERROR: Failed to create compaction run: {e}")
+                    logger.exception("Compaction run creation failed")
             else:
                 _log(
                     "WARNING: Skipping compaction run - missing delta prefixes"
+                )
+
+            # =================================================================
+            # PHASE 3a: Publish both collections to Chroma Cloud
+            # =================================================================
+            # Only now is every record recoverable: both deltas are in S3 and
+            # the CompactionRun that points at them is durable. Publishing
+            # earlier -- per collection, as this originally did -- could leave
+            # Cloud holding one collection, or both, with no event that would
+            # ever reconcile them. Without the run, publication waits for a
+            # later ingest rather than going out unbacked.
+            if compaction_run_created:
+                _publish_staged_payload(
+                    lines_cloud_payload,
+                    "lines",
+                    cloud_cfg,
+                    image_id,
+                    receipt_id,
+                    labels_fetched_at,
+                )
+                _publish_staged_payload(
+                    words_cloud_payload,
+                    "words",
+                    cloud_cfg,
+                    image_id,
+                    receipt_id,
+                    labels_fetched_at,
+                )
+            elif lines_cloud_payload or words_cloud_payload:
+                _log(
+                    "Skipping Chroma Cloud publication - no durable "
+                    "compaction run to reconcile the records"
                 )
 
             # =================================================================
@@ -1844,6 +1946,11 @@ class MerchantResolvingEmbeddingProcessor:
             logger.exception("Processing failed")
 
         finally:
+            # Staged Cloud payloads are consumed above; drop them whether or
+            # not they were published.
+            _discard_staged_payload(lines_cloud_payload)
+            _discard_staged_payload(words_cloud_payload)
+
             # Clean up temp directories
             # Note: ChromaClients are created and closed within worker processes
             try:
@@ -1858,7 +1965,10 @@ class MerchantResolvingEmbeddingProcessor:
                 logger.warning("Error cleaning up words_dir: %s", e)
 
         return {
-            "success": True,
+            # A receipt is only fully processed once its CompactionRun exists;
+            # without it the deltas are orphaned and nothing will merge them.
+            "success": compaction_run_created,
+            "compaction_run_created": compaction_run_created,
             "run_id": run_id,
             "lines_count": len(lines),
             "words_count": len(words),
