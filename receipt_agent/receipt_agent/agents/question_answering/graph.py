@@ -18,7 +18,9 @@ to answer questions like:
 """
 
 import asyncio
+import calendar
 import logging
+from datetime import date, datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -103,6 +105,8 @@ You have been given:
 5. Be precise with amounts — use exact numbers.
 6. For "how much" questions, always state the total.
 7. If the agent found nothing relevant, say so clearly.
+8. **If outliers were excluded**, say so in one short sentence — the totals
+   already omit them, so do not add them back.
 
 ## Evidence Format
 Include evidence array with:
@@ -110,6 +114,66 @@ Include evidence array with:
 - receipt_id: Receipt number
 - item: Relevant item/description
 - amount: Dollar amount (if applicable)
+"""
+
+
+# ==============================================================================
+# Date Anchoring
+# ==============================================================================
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Return the first and last calendar day of a month."""
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
+
+
+def build_date_context(today: Optional[date] = None) -> str:
+    """Build the prompt block that anchors relative date phrases.
+
+    Without this, the LLM falls back on its training cutoff and resolves
+    "last month" to whatever year it believes the present to be. Every
+    prompt that can produce or consume a date filter gets this block.
+
+    Args:
+        today: Date to anchor against. Defaults to the local current date,
+            so the value is resolved per invocation rather than at import.
+
+    Returns:
+        A markdown block listing today's date and the ISO ranges for the
+        relative phrases that show up in receipt questions.
+    """
+    if today is None:
+        today = datetime.now().date()
+
+    this_month_start, this_month_end = _month_bounds(today.year, today.month)
+    if today.month == 1:
+        last_month_start, last_month_end = _month_bounds(today.year - 1, 12)
+    else:
+        last_month_start, last_month_end = _month_bounds(
+            today.year, today.month - 1
+        )
+
+    quarter = (today.month - 1) // 3
+    quarter_start, _ = _month_bounds(today.year, quarter * 3 + 1)
+    _, quarter_end = _month_bounds(today.year, quarter * 3 + 3)
+
+    return f"""
+
+## Today's Date
+Today is {today.strftime("%A")}, {today.isoformat()}.
+
+Resolve relative time phrases against that date, NOT against any date you
+may assume from training data. Use these ISO ranges for start_date/end_date:
+- "today" -> {today.isoformat()} to {today.isoformat()}
+- "this month" -> {this_month_start.isoformat()} to {this_month_end.isoformat()}
+- "last month" -> {last_month_start.isoformat()} to {last_month_end.isoformat()}
+- "this quarter" -> {quarter_start.isoformat()} to {quarter_end.isoformat()}
+- "this year" -> {today.year}-01-01 to {today.year}-12-31
+- "last year" -> {today.year - 1}-01-01 to {today.year - 1}-12-31
+
+When the question has no explicit year, assume the most recent occurrence
+on or before today.
 """
 
 
@@ -128,9 +192,10 @@ def create_plan_node(llm: Any) -> Callable:
         """Classify the question and determine retrieval strategy."""
         question = state.question
 
-        # Build prompt for classification
+        # Build prompt for classification. The date block is rebuilt per
+        # call so long-lived Lambda containers don't answer with a stale day.
         messages = [
-            SystemMessage(content=PLAN_SYSTEM_PROMPT),
+            SystemMessage(content=PLAN_SYSTEM_PROMPT + build_date_context()),
             HumanMessage(content=f"Classify this question: {question}"),
         ]
 
@@ -480,6 +545,82 @@ def create_shape_node(state_holder: dict) -> Callable:
 # ==============================================================================
 
 
+MAX_EVIDENCE_ITEMS = 200
+
+
+def build_evidence(summaries: list[ReceiptSummary]) -> list[dict]:
+    """Build the evidence array from every shaped receipt.
+
+    Evidence rows are what the trace viewer joins against
+    receipts-lookup.json to render thumbnails, so a receipt that never
+    appears here is invisible in the UI. Summary-tier receipts carry no
+    line items, so emitting only line-item rows dropped every receipt that
+    came from get_receipt_summaries — the common case for aggregation
+    questions. Each summary now contributes at least one row.
+    """
+    # Grouped per receipt so the size cap below can never cost a receipt
+    # its only row.
+    per_receipt: list[list[dict]] = []
+
+    for summary in summaries:
+        if not summary.image_id:
+            continue
+
+        base = {
+            "image_id": summary.image_id,
+            "receipt_id": summary.receipt_id,
+            "merchant": summary.merchant,
+        }
+
+        if summary.line_items:
+            per_receipt.append(
+                [
+                    {
+                        **base,
+                        "item": item.item_text or "",
+                        "amount": item.amount,
+                    }
+                    for item in summary.line_items
+                ]
+            )
+            continue
+
+        # Summary-tier receipt: describe it at the receipt level so it
+        # still carries an imageId into the trace.
+        if summary.item_count:
+            item_text = (
+                f"{summary.item_count} item"
+                f"{'' if summary.item_count == 1 else 's'}"
+            )
+        else:
+            item_text = "Receipt total"
+
+        per_receipt.append(
+            [{**base, "item": item_text, "amount": summary.grand_total}]
+        )
+
+    total_rows = sum(len(rows) for rows in per_receipt)
+    if total_rows <= MAX_EVIDENCE_ITEMS:
+        return [row for rows in per_receipt for row in rows]
+
+    logger.info(
+        "Trimming evidence from %d to %d rows across %d receipts",
+        total_rows,
+        MAX_EVIDENCE_ITEMS,
+        len(per_receipt),
+    )
+
+    # One row per receipt first, then top up with the remaining line items.
+    evidence = [rows[0] for rows in per_receipt[:MAX_EVIDENCE_ITEMS]]
+    for rows in per_receipt:
+        for row in rows[1:]:
+            if len(evidence) >= MAX_EVIDENCE_ITEMS:
+                return evidence
+            evidence.append(row)
+
+    return evidence
+
+
 def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
     """Create the answer synthesis node.
 
@@ -563,9 +704,14 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                     if agg.get("average_receipt")
                     else ""
                 )
+                excluded = agg.get("excluded_outlier_count") or 0
+                outlier_str = (
+                    f", {excluded} OCR outlier(s) excluded" if excluded else ""
+                )
                 agg_parts.append(
                     f"  {agg['source']}: {agg['count']} receipts, "
                     f"total=${agg['total_spending']:.2f}{avg_str}"
+                    f"{outlier_str}"
                 )
             context_str += "\n".join(agg_parts)
 
@@ -575,7 +721,9 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             agent_section = f"Agent Analysis:\n{agent_reasoning}\n\n"
 
         messages = [
-            SystemMessage(content=SYNTHESIZE_SYSTEM_PROMPT),
+            SystemMessage(
+                content=SYNTHESIZE_SYSTEM_PROMPT + build_date_context()
+            ),
             HumanMessage(
                 content=f"Question: {state.question}\n\n"
                 f"{agent_section}"
@@ -595,18 +743,12 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             total_amount = aggregated.get("total")
 
         # Build evidence from structured summaries
-        evidence = []
-        for summary in summaries:
-            for item in summary.line_items:
-                evidence.append(
-                    {
-                        "image_id": summary.image_id,
-                        "receipt_id": summary.receipt_id,
-                        "merchant": summary.merchant,
-                        "item": item.item_text or "",
-                        "amount": item.amount,
-                    }
-                )
+        evidence = build_evidence(summaries)
+        logger.info(
+            "Captured %d evidence rows from %d receipt summaries",
+            len(evidence),
+            len(summaries),
+        )
 
         # Store in state_holder for extraction
         state_holder["answer"] = {
@@ -668,9 +810,12 @@ def route_after_agent(state: QAState, state_holder: dict) -> str:
                     )
                     return "shape"
             else:
-                # No tool calls - LLM responded with text
-                # Check if we have retrieved anything
-                if state_holder.get("retrieved_receipts"):
+                # No tool calls - LLM responded with text.
+                # Shape whenever either tier holds receipts; skipping on
+                # summary-only retrievals ended the run with no evidence.
+                if state_holder.get("retrieved_receipts") or state_holder.get(
+                    "summary_receipts"
+                ):
                     return "shape"
                 else:
                     # Extract answer from content
@@ -857,11 +1002,12 @@ async def answer_question(
     state_holder["searches"] = []
     state_holder["fetched_receipt_keys"] = set()
 
-    # Create initial state
+    # Create initial state. Date context is resolved here, at question
+    # time, so a warm Lambda container never reuses yesterday's anchor.
     initial_state = QAState(
         question=question,
         messages=[
-            SystemMessage(content=SYSTEM_PROMPT),
+            SystemMessage(content=SYSTEM_PROMPT + build_date_context()),
             HumanMessage(content=question),
         ],
     )
