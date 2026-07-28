@@ -481,7 +481,10 @@ class ChromaClient:
 
             except (NotFoundError, ValueError) as e:
                 if create_if_missing and self.mode != "read":
-                    # Create new collection
+                    # get_or_create is atomic server-side; a plain
+                    # create_collection here raced with concurrent workers
+                    # ("Collection [x] already exists"), and each benign
+                    # collision fed circuit-breaker failure counts.
                     create_args = {
                         "name": name,
                         "metadata": metadata
@@ -493,9 +496,9 @@ class ChromaClient:
                         )
 
                     self._collections[name] = _retry_with_backoff(
-                        self.client.create_collection, **create_args
+                        self.client.get_or_create_collection, **create_args
                     )
-                    logger.info("Created new collection: %s", name)
+                    logger.info("Got or created collection: %s", name)
                 else:
                     raise ValueError(
                         f"Collection '{name}' not found and "
