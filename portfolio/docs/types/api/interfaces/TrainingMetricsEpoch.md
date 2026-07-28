@@ -6,7 +6,7 @@
 
 # Interface: TrainingMetricsEpoch
 
-Defined in: [types/api.ts:369](https://github.com/tnorlund/Portfolio/blob/0ad17c502d5066aad84de6eb99f1ad40b53b4d78/portfolio/types/api.ts#L369)
+Defined in: [types/api.ts:369](https://github.com/tnorlund/Portfolio/blob/1bb3bcfcdd758484a3c587d8f8eee56b45719195/portfolio/types/api.ts#L369)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:369](https://github.com/tnorlund/Portfolio/blob/0ad17c
 
 > **epoch**: `number`
 
-Defined in: [types/api.ts:370](https://github.com/tnorlund/Portfolio/blob/0ad17c502d5066aad84de6eb99f1ad40b53b4d78/portfolio/types/api.ts#L370)
+Defined in: [types/api.ts:370](https://github.com/tnorlund/Portfolio/blob/1bb3bcfcdd758484a3c587d8f8eee56b45719195/portfolio/types/api.ts#L370)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:370](https://github.com/tnorlund/Portfolio/blob/0ad17c
 
 > **is\_best**: `boolean`
 
-Defined in: [types/api.ts:371](https://github.com/tnorlund/Portfolio/blob/0ad17c502d5066aad84de6eb99f1ad40b53b4d78/portfolio/types/api.ts#L371)
+Defined in: [types/api.ts:371](https://github.com/tnorlund/Portfolio/blob/1bb3bcfcdd758484a3c587d8f8eee56b45719195/portfolio/types/api.ts#L371)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:371](https://github.com/tnorlund/Portfolio/blob/0ad17c
 
 > **metrics**: `object`
 
-Defined in: [types/api.ts:372](https://github.com/tnorlund/Portfolio/blob/0ad17c502d5066aad84de6eb99f1ad40b53b4d78/portfolio/types/api.ts#L372)
+Defined in: [types/api.ts:372](https://github.com/tnorlund/Portfolio/blob/1bb3bcfcdd758484a3c587d8f8eee56b45719195/portfolio/types/api.ts#L372)
 
 #### val\_f1
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:372](https://github.com/tnorlund/Portfolio/blob/0ad17c
 
 > **per\_label**: `Record`\<`string`, \{ `f1`: `number`; `precision`: `number`; `recall`: `number`; `support`: `number`; \}\>
 
-Defined in: [types/api.ts:384](https://github.com/tnorlund/Portfolio/blob/0ad17c502d5066aad84de6eb99f1ad40b53b4d78/portfolio/types/api.ts#L384)
+Defined in: [types/api.ts:384](https://github.com/tnorlund/Portfolio/blob/1bb3bcfcdd758484a3c587d8f8eee56b45719195/portfolio/types/api.ts#L384)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:384](https://github.com/tnorlund/Portfolio/blob/0ad17c
 
 > `optional` **confusion\_matrix**: `object`
 
-Defined in: [types/api.ts:380](https://github.com/tnorlund/Portfolio/blob/0ad17c502d5066aad84de6eb99f1ad40b53b4d78/portfolio/types/api.ts#L380)
+Defined in: [types/api.ts:380](https://github.com/tnorlund/Portfolio/blob/1bb3bcfcdd758484a3c587d8f8eee56b45719195/portfolio/types/api.ts#L380)
 
 #### labels
 
