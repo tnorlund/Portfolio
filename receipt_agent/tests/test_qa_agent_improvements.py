@@ -238,7 +238,9 @@ def test_detail_retrieval_still_routes_to_shape():
     )
 
 
-def test_no_receipts_ends_without_shaping():
+def test_no_receipts_still_routes_to_shape():
+    # A correct "nothing found" must reach synthesize so the trace carries
+    # a final answer; ending early left the viz with an empty Result panel.
     from receipt_agent.agents.question_answering.graph import (
         route_after_agent,
     )
@@ -247,9 +249,9 @@ def test_no_receipts_ends_without_shaping():
 
     assert (
         route_after_agent(_agent_state_with_text_reply(), state_holder)
-        == "end"
+        == "shape"
     )
-    assert state_holder["answer"]["evidence"] == []
+    assert "answer" not in state_holder
 
 
 # ==============================================================================
