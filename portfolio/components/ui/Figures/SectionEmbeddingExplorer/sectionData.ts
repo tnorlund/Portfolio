@@ -26,13 +26,13 @@ export const SECTIONS: SectionDefinition[] = [
   },
   {
     id: "SUMMARY",
-    shortLabel: "SUM",
+    shortLabel: "SUMMARY",
     label: "Summary",
     color: "var(--color-orange)",
   },
   {
     id: "PAYMENT",
-    shortLabel: "PAY",
+    shortLabel: "PAYMENT",
     label: "Payment",
     color: "var(--color-green)",
   },
@@ -50,10 +50,7 @@ export interface ReceiptRow {
   baseline: SectionId;
 }
 
-/**
- * A compact, intentionally schematic receipt. The row text makes the evidence
- * legible; the held-out metrics shown by the figure are the measured values.
- */
+/** A compact held-out receipt with two deliberately wrong baseline boundaries. */
 export const RECEIPT_ROWS: ReceiptRow[] = [
   {
     id: "merchant",
@@ -129,138 +126,72 @@ export const RECEIPT_ROWS: ReceiptRow[] = [
   },
 ];
 
-export interface QueryScenario {
-  id: "subtotal" | "visa" | "milk";
-  label: string;
-  rowId: string;
-  x: number;
-  y: number;
-  votes: Record<SectionId, number>;
-  baseline: SectionId;
-  decoded: SectionId;
+export const CHANGED_ROW_IDS = new Set(["subtotal", "visa"]);
+
+export interface ReferenceReceiptRow {
+  id: string;
+  text: string;
+  amount?: string;
+  section: SectionId;
+  matches?: "subtotal" | "visa";
 }
 
-export const QUERY_SCENARIOS: QueryScenario[] = [
-  {
-    id: "subtotal",
-    label: "SUBTOTAL 9.07",
-    rowId: "subtotal",
-    x: 64,
-    y: 57,
-    votes: {
-      TRANSACTION_INFO: 0.03,
-      ITEMS: 0.16,
-      SUMMARY: 0.76,
-      PAYMENT: 0.05,
-    },
-    baseline: "ITEMS",
-    decoded: "SUMMARY",
-  },
-  {
-    id: "visa",
-    label: "VISA •••• 1234",
-    rowId: "visa",
-    x: 78,
-    y: 78,
-    votes: {
-      TRANSACTION_INFO: 0.02,
-      ITEMS: 0.03,
-      SUMMARY: 0.1,
-      PAYMENT: 0.85,
-    },
-    baseline: "SUMMARY",
-    decoded: "PAYMENT",
-  },
-  {
-    id: "milk",
-    label: "WHOLE MILK 4.99",
-    rowId: "milk",
-    x: 30,
-    y: 48,
-    votes: {
-      TRANSACTION_INFO: 0.02,
-      ITEMS: 0.92,
-      SUMMARY: 0.05,
-      PAYMENT: 0.01,
-    },
-    baseline: "ITEMS",
-    decoded: "ITEMS",
-  },
-];
-
-export const QUERY_BY_ID = Object.fromEntries(
-  QUERY_SCENARIOS.map((scenario) => [scenario.id, scenario]),
-) as Record<QueryScenario["id"], QueryScenario>;
-
-export interface ProjectionPoint {
+export interface ReferenceReceipt {
   id: string;
   merchant: string;
-  section: SectionId;
-  x: number;
-  y: number;
+  rows: ReferenceReceiptRow[];
 }
 
-const CLUSTER_CENTERS: Record<SectionId, { x: number; y: number }> = {
-  TRANSACTION_INFO: { x: 23, y: 23 },
-  ITEMS: { x: 31, y: 52 },
-  SUMMARY: { x: 64, y: 55 },
-  PAYMENT: { x: 78, y: 79 },
-};
-
-const POINT_OFFSETS = [
-  [-8, -2],
-  [-5, 6],
-  [-2, -7],
-  [1, 3],
-  [4, -4],
-  [6, 5],
-  [9, 0],
-  [0, 9],
-] as const;
-
-const MERCHANTS = [
-  "Costco",
-  "Vons",
-  "Target",
-  "CVS",
-  "Trader Joe's",
-  "In-N-Out",
-  "Wild Fork",
-  "Ralphs",
+/** Representative labeled receipts. Four of the 15 searched neighbors are drawn. */
+export const REFERENCE_RECEIPTS: ReferenceReceipt[] = [
+  {
+    id: "costco",
+    merchant: "COSTCO",
+    rows: [
+      { id: "costco-info", text: "COSTCO #117", section: "TRANSACTION_INFO" },
+      { id: "costco-item", text: "ORG WHOLE MILK", amount: "4.69", section: "ITEMS" },
+      { id: "costco-subtotal", text: "SUBTOTAL", amount: "12.47", section: "SUMMARY", matches: "subtotal" },
+      { id: "costco-pay", text: "VISA •••• 8472", section: "PAYMENT" },
+    ],
+  },
+  {
+    id: "vons",
+    merchant: "VONS",
+    rows: [
+      { id: "vons-info", text: "VONS STORE 2091", section: "TRANSACTION_INFO" },
+      { id: "vons-item", text: "BANANAS", amount: "1.92", section: "ITEMS" },
+      { id: "vons-summary", text: "TOTAL", amount: "18.39", section: "SUMMARY" },
+      { id: "vons-visa", text: "VISA •••• 0064", section: "PAYMENT", matches: "visa" },
+    ],
+  },
+  {
+    id: "target",
+    merchant: "TARGET",
+    rows: [
+      { id: "target-info", text: "TARGET T-1329", section: "TRANSACTION_INFO" },
+      { id: "target-item", text: "OAT MILK", amount: "5.49", section: "ITEMS" },
+      { id: "target-subtotal", text: "SUBTOTAL", amount: "27.18", section: "SUMMARY", matches: "subtotal" },
+      { id: "target-pay", text: "CARD APPROVED", section: "PAYMENT" },
+    ],
+  },
+  {
+    id: "cvs",
+    merchant: "CVS",
+    rows: [
+      { id: "cvs-info", text: "CVS/PHARMACY", section: "TRANSACTION_INFO" },
+      { id: "cvs-item", text: "COUGH DROPS", amount: "6.99", section: "ITEMS" },
+      { id: "cvs-summary", text: "TOTAL", amount: "7.61", section: "SUMMARY" },
+      { id: "cvs-visa", text: "VISA •••• 4418", section: "PAYMENT", matches: "visa" },
+    ],
+  },
 ];
 
-export const PROJECTION_POINTS: ProjectionPoint[] = SECTIONS.flatMap(
-  (section) => {
-    const center = CLUSTER_CENTERS[section.id];
-    return POINT_OFFSETS.map(([dx, dy], index) => ({
-      id: `${section.id}-${index}`,
-      merchant: MERCHANTS[index],
-      section: section.id,
-      x: center.x + dx,
-      y: center.y + dy,
-    }));
-  },
-);
-
-/** Return the 15 visible cross-receipt neighbors closest in the 2-D explainer. */
-export const nearestProjectionPoints = (
-  scenario: QueryScenario,
-  count = 15,
-): ProjectionPoint[] =>
-  PROJECTION_POINTS.map((point) => ({
-    point,
-    distance: Math.hypot(point.x - scenario.x, point.y - scenario.y),
-  }))
-    .sort((a, b) => a.distance - b.distance)
-    .slice(0, count)
-    .map(({ point }) => point);
-
 export type ExplorerActId =
-  | "receipt"
-  | "projection"
+  | "ocr"
+  | "baseline"
   | "neighbors"
-  | "decode"
-  | "result";
+  | "corrected"
+  | "final";
 
 export interface ExplorerAct {
   id: ExplorerActId;
@@ -272,54 +203,48 @@ export interface ExplorerAct {
 
 export const EXPLORER_ACTS: ExplorerAct[] = [
   {
-    id: "receipt",
+    id: "ocr",
     index: 0,
-    label: "Read the rows",
-    accessibleLabel: "Step 1: read the receipt as an ordered row sequence",
+    label: "Apple OCR rows",
+    accessibleLabel: "Step 1: show Apple OCR rows before section assignment",
     dwellMs: 5200,
   },
   {
-    id: "projection",
+    id: "baseline",
     index: 1,
-    label: "Project meaning",
-    accessibleLabel: "Step 2: project rows into embedding space",
-    dwellMs: 7000,
+    label: "Baseline sections",
+    accessibleLabel: "Step 2: show baseline row sections and incorrect boundaries",
+    dwellMs: 6800,
   },
   {
     id: "neighbors",
     index: 2,
-    label: "Let neighbors vote",
-    accessibleLabel: "Step 3: collect cosine-weighted cross-receipt votes",
-    dwellMs: 8000,
-  },
-  {
-    id: "decode",
-    index: 3,
-    label: "Decode the sequence",
-    accessibleLabel: "Step 4: decode one contiguous receipt sequence",
+    label: "Chroma neighbors",
+    accessibleLabel: "Step 3: let Chroma neighbors vote across labeled receipts",
     dwellMs: 7600,
   },
   {
-    id: "result",
+    id: "corrected",
+    index: 3,
+    label: "Move boundaries",
+    accessibleLabel: "Step 4: correct downstream row labels and section boundaries",
+    dwellMs: 7200,
+  },
+  {
+    id: "final",
     index: 4,
-    label: "Check the holdout",
-    accessibleLabel: "Step 5: compare held-out accuracy",
-    dwellMs: 9000,
+    label: "Contiguous result",
+    accessibleLabel: "Step 5: show contiguous section bands and changed rows",
+    dwellMs: 8200,
   },
 ];
 
 export const EXPERIMENT_METRICS = {
   receipts: 167,
   rows: 4214,
-  baselineCorrect: 3622,
-  hybridCorrect: 3828,
   baselineAgreement: 85.95,
   hybridAgreement: 90.84,
   deltaPoints: 4.89,
   fixed: 236,
   regressed: 30,
-  coverage: 99.87,
-  bootstrapLow: 3.87,
-  bootstrapHigh: 5.94,
 } as const;
-

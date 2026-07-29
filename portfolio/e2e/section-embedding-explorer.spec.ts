@@ -1,8 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, Page, test } from "@playwright/test";
 
 const PAGE = process.env.BASE_URL ? "/receipt" : "/receipt.html";
 
-test("section embedding explainer survives every act and remains usable on mobile", async ({
+const ACTS = ["ocr", "baseline", "neighbors", "corrected", "final"] as const;
+
+async function findFigure(page: Page) {
+  const figure = page.getByTestId("section-embedding-explorer");
+  for (let i = 0; i < 50 && (await figure.count()) === 0; i += 1) {
+    await page.mouse.wheel(0, 700);
+    await page.waitForTimeout(150);
+  }
+  await expect(figure).toBeVisible({ timeout: 15_000 });
+  await figure.scrollIntoViewIfNeeded();
+  return figure;
+}
+
+test("every resolved section-assignment step remains stable and keyboard accessible", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -16,54 +29,102 @@ test("section embedding explainer survives every act and remains usable on mobil
   });
 
   await page.goto(PAGE, { waitUntil: "networkidle" });
-
-  const figure = page.getByTestId("section-embedding-explorer");
-  for (let i = 0; i < 50 && (await figure.count()) === 0; i += 1) {
-    await page.mouse.wheel(0, 700);
-    await page.waitForTimeout(150);
-  }
-  await expect(figure).toBeVisible({ timeout: 15_000 });
-  await figure.scrollIntoViewIfNeeded();
-
+  const figure = await findFigure(page);
   const stage = page.getByTestId("section-explorer-stage");
   const boxBefore = await stage.boundingBox();
   const dots = page.locator('[data-testid^="section-act-dot-"]');
   await expect(dots).toHaveCount(5);
-  for (let index = 0; index < 5; index += 1) {
+
+  const expectedAssignments = [
+    [null, null],
+    ["ITEMS", "SUMMARY"],
+    ["ITEMS", "SUMMARY"],
+    ["SUMMARY", "PAYMENT"],
+    ["SUMMARY", "PAYMENT"],
+  ] as const;
+
+  for (let index = 0; index < ACTS.length; index += 1) {
     await dots.nth(index).click();
     await page.waitForTimeout(420);
+    await expect(page.getByTestId(`section-act-${ACTS[index]}`)).toBeVisible();
+    await expect(dots.nth(index)).toHaveAttribute("aria-pressed", "true");
+
+    const [subtotal, visa] = expectedAssignments[index];
+    const subtotalRow = page.getByTestId("section-row-subtotal");
+    const visaRow = page.getByTestId("section-row-visa");
+    if (subtotal) {
+      await expect(subtotalRow).toHaveAttribute("data-section", subtotal);
+      await expect(visaRow).toHaveAttribute("data-section", visa);
+    } else {
+      await expect(subtotalRow).not.toHaveAttribute("data-section");
+      await expect(visaRow).not.toHaveAttribute("data-section");
+    }
+
     const box = await stage.boundingBox();
     expect(Math.round(box?.height ?? 0)).toBe(Math.round(boxBefore?.height ?? 0));
   }
 
-  await dots.nth(2).click();
-  const visa = page.getByRole("button", { name: "VISA •••• 1234" });
-  await visa.click();
-  await expect(visa).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("85%")).toBeVisible();
+  await dots.nth(0).focus();
+  await dots.nth(0).press("End");
+  await expect(dots.nth(4)).toBeFocused();
+  await expect(dots.nth(4)).toHaveAttribute("aria-pressed", "true");
+  await dots.nth(4).press("ArrowLeft");
+  await expect(dots.nth(3)).toBeFocused();
+  await expect(dots.nth(3)).toHaveAttribute("aria-pressed", "true");
 
-  await page.setViewportSize({ width: 390, height: 844 });
   await figure.scrollIntoViewIfNeeded();
+  expect(errors, errors.join("\n")).toHaveLength(0);
+});
+
+test("mobile keeps the current receipt readable and shows fewer background receipts", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(PAGE, { waitUntil: "networkidle" });
+  const figure = await findFigure(page);
+  await page.getByTestId("section-act-dot-2").click();
+  await page.waitForTimeout(420);
+
   const viewportOverflow = await page.evaluate(() =>
     Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
   );
   expect(viewportOverflow).toBe(0);
-  await expect(visa).toBeVisible();
 
-  expect(errors, errors.join("\n")).toHaveLength(0);
+  const stageMetrics = await page.getByTestId("section-explorer-stage").evaluate((node) => ({
+    clientWidth: node.clientWidth,
+    scrollWidth: node.scrollWidth,
+    clientHeight: node.clientHeight,
+    scrollHeight: node.scrollHeight,
+  }));
+  expect(stageMetrics.scrollWidth).toBe(stageMetrics.clientWidth);
+  expect(stageMetrics.scrollHeight).toBe(stageMetrics.clientHeight);
+
+  const currentReceipt = page.getByTestId("section-current-receipt");
+  await expect(currentReceipt).toBeVisible();
+  const currentBox = await currentReceipt.boundingBox();
+  expect(currentBox?.width ?? 0).toBeGreaterThanOrEqual(280);
+
+  await expect(page.locator('[data-testid^="section-reference-receipt-"]:visible')).toHaveCount(2);
+  const neighborAct = page.getByTestId("section-act-neighbors");
+  await expect(neighborAct.getByText(/OpenAI creates row embeddings/)).toBeVisible();
+  await expect(neighborAct.getByText(/2-D map is schematic, not literal/)).toBeVisible();
+  await figure.scrollIntoViewIfNeeded();
 });
 
-test("reduced motion exposes a resolved static stack", async ({ browser }) => {
+test("reduced motion exposes every resolved state without animation", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce" });
   const page = await context.newPage();
   await page.goto(PAGE, { waitUntil: "networkidle" });
-  const figure = page.getByTestId("section-embedding-explorer");
-  for (let i = 0; i < 50 && (await figure.count()) === 0; i += 1) {
-    await page.mouse.wheel(0, 700);
-    await page.waitForTimeout(150);
-  }
+  const figure = await findFigure(page);
   await expect(figure).toHaveAttribute("data-mode", "static");
-  await expect(page.getByTestId("section-act-result")).toBeAttached();
+  for (const act of ACTS) {
+    await expect(page.getByTestId(`section-act-${act}`)).toBeAttached();
+  }
+  const animationName = await page
+    .getByTestId("section-act-neighbors")
+    .locator("path")
+    .first()
+    .evaluate((node) => getComputedStyle(node).animationName);
+  expect(animationName).toBe("none");
   await context.close();
 });
-

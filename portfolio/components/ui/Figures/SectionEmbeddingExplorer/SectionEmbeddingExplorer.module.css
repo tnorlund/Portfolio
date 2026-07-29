@@ -23,13 +23,10 @@
   overflow: hidden;
 }
 
-.interactiveStage {
-  height: min(60vh, 520px);
-  min-height: 440px;
-}
-
+.interactiveStage,
 .staticStage {
-  height: 500px;
+  height: 520px;
+  min-height: 520px;
 }
 
 .actLayer {
@@ -52,29 +49,22 @@
   animation: layer-out 380ms ease both;
 }
 
-.receiptAct,
-.projectionAct,
-.neighborsAct,
-.decodeAct,
-.resultAct {
+.scene {
   position: relative;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .actAnnotation {
   position: absolute;
   top: 0.35rem;
   left: 0.25rem;
-  z-index: 4;
+  z-index: 20;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   column-gap: 0.65rem;
-  max-width: 30rem;
+  width: min(100% - 0.5rem, 36rem);
   pointer-events: none;
 }
 
@@ -101,65 +91,10 @@
   letter-spacing: -0.08em;
 }
 
-.stageNote {
+.stackField {
   position: absolute;
-  right: 0.25rem;
-  bottom: 0.1rem;
-  margin: 0;
-  color: rgba(var(--text-color-rgb), 0.42);
-  font-size: 0.66rem;
-}
-
-/* Receipt ----------------------------------------------------------- */
-
-.receiptPaper {
-  position: relative;
-  width: min(76%, 430px);
-  padding: 1rem 4.75rem 1rem 1rem;
-  border-top: 1px solid rgba(var(--text-color-rgb), 0.1);
-  border-bottom: 1px solid rgba(var(--text-color-rgb), 0.1);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(0.61rem, 1.25vw, 0.78rem);
-  letter-spacing: 0.012em;
-}
-
-.receiptPaper::before,
-.receiptPaper::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 20px;
-  opacity: 0.3;
-  background: repeating-linear-gradient(
-    135deg,
-    transparent 0 7px,
-    rgba(var(--text-color-rgb), 0.12) 7px 8px
-  );
-}
-
-.receiptPaper::before { top: -20px; }
-.receiptPaper::after { bottom: -20px; transform: rotate(180deg); }
-
-.receiptRow {
-  position: relative;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  height: 24px;
-  white-space: nowrap;
-  transition: color 240ms ease;
-}
-
-.receiptRow::before {
-  content: "";
-  position: absolute;
-  left: -0.85rem;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--section-color);
+  inset: 4.45rem 0 1.85rem;
+  isolation: isolate;
 }
 
 .container [data-section="TRANSACTION_INFO"] { --section-color: var(--color-blue); }
@@ -167,442 +102,351 @@
 .container [data-section="SUMMARY"] { --section-color: var(--color-orange); }
 .container [data-section="PAYMENT"] { --section-color: var(--color-green); }
 
-.receiptSectionRail {
+/* Receipt stack ---------------------------------------------------- */
+
+.receiptCard {
   position: absolute;
-  top: 1rem;
-  right: 0;
-  width: 4rem;
-  height: calc(100% - 2rem);
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid rgba(var(--text-color-rgb), 0.16);
+  border-radius: 3px;
+  color: var(--text-color);
+  background:
+    linear-gradient(rgba(var(--text-color-rgb), 0.025), rgba(var(--text-color-rgb), 0.008)),
+    var(--background-color);
+  box-shadow: 0 9px 26px rgba(0, 0, 0, 0.22);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  transition:
+    opacity 420ms ease,
+    transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 420ms ease;
 }
 
-.railSegment {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  border-left: 2px solid var(--section-color);
-  transition: opacity 220ms ease;
+.receiptHeader,
+.receiptFooter {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 0.7rem;
+  border-bottom: 1px solid rgba(var(--text-color-rgb), 0.11);
+  color: rgba(var(--text-color-rgb), 0.48);
+  font-family: system-ui, sans-serif;
+  font-size: 0.54rem;
+  letter-spacing: 0.06em;
 }
 
-.railSegment::before,
-.railSegment::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  width: 6px;
-  height: 2px;
-  background: var(--section-color);
+.receiptHeader {
+  height: 27px;
+  text-transform: uppercase;
 }
 
-.railSegment::before { top: 0; }
-.railSegment::after { bottom: 0; }
+.receiptHeader strong {
+  overflow: hidden;
+  color: rgba(var(--text-color-rgb), 0.78);
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.railSegment span {
+.receiptFooter {
+  height: 20px;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.09);
+  border-bottom: 0;
+  font-size: 0.5rem;
+  text-transform: uppercase;
+}
+
+.currentReceipt {
+  --row-height: 21px;
+  top: 3.5rem;
+  left: 9%;
+  z-index: 10;
+  width: 360px;
+  transform: translateY(calc((1 - var(--act-progress)) * 10px));
+}
+
+.referenceReceipt {
+  --row-height: 29px;
+  z-index: calc(7 - var(--reference-index));
+  width: 185px;
+  opacity: 0.24;
+  transform: translateY(-8px) rotate(var(--receipt-rotation)) scale(0.94);
+  transform-origin: center bottom;
+}
+
+.referenceReceipt[data-reference-index="0"] {
+  top: 2.8rem;
+  left: 46%;
+  --receipt-rotation: -2.2deg;
+}
+
+.referenceReceipt[data-reference-index="1"] {
+  top: 4.2rem;
+  left: 59%;
+  --receipt-rotation: 2deg;
+}
+
+.referenceReceipt[data-reference-index="2"] {
+  top: 5.9rem;
+  left: 71%;
+  --receipt-rotation: -1.6deg;
+}
+
+.referenceReceipt[data-reference-index="3"] {
+  top: 7.8rem;
+  left: 78%;
+  --receipt-rotation: 2.2deg;
+}
+
+.scene[data-act="ocr"] .referenceReceipt {
+  opacity: 0.12;
+  transform: translateY(-18px) rotate(var(--receipt-rotation)) scale(0.9);
+}
+
+.scene[data-act="baseline"] .referenceReceipt {
+  opacity: 0.23;
+}
+
+.scene[data-act="neighbors"] .referenceReceipt {
+  opacity: 0.96;
+  transform: translateY(0) rotate(var(--receipt-rotation)) scale(1);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+}
+
+.scene[data-act="corrected"] .referenceReceipt {
+  opacity: 0.42;
+  transform: translateY(4px) rotate(var(--receipt-rotation)) scale(0.97);
+}
+
+.scene[data-act="final"] .referenceReceipt {
+  opacity: 0.26;
+  transform: translateY(7px) rotate(var(--receipt-rotation)) scale(0.94);
+}
+
+.receiptRows {
+  position: relative;
+}
+
+.receiptRow {
+  position: relative;
+  z-index: 3;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: var(--row-height);
+  padding: 0 0.6rem 0 4.8rem;
+  color: rgba(var(--text-color-rgb), 0.8);
+  font-size: 0.62rem;
+  letter-spacing: 0.008em;
+  transition:
+    color 300ms ease,
+    background 340ms ease,
+    box-shadow 340ms ease,
+    opacity 240ms ease,
+    transform 240ms ease;
+}
+
+.receiptRow > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receiptRow > span:last-child:not(:first-child) {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.referenceReceipt .receiptRow {
+  padding-right: 0.45rem;
+  padding-left: 3.5rem;
+  font-size: 0.47rem;
+}
+
+.sectionBands {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.sectionBand {
+  position: absolute;
+  top: calc(var(--band-start) * var(--row-height));
+  right: 0.35rem;
+  left: 0.35rem;
+  height: calc(var(--band-length) * var(--row-height));
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--section-color) 28%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--section-color) 28%, transparent);
+  border-left: 3px solid var(--section-color);
+  background: color-mix(in srgb, var(--section-color) 9%, transparent);
+  transition:
+    top 480ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 480ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 300ms ease;
+}
+
+.sectionBand span {
   position: absolute;
   top: 50%;
-  left: 0.55rem;
+  left: 0.48rem;
+  width: 3.5rem;
   transform: translateY(-50%);
   color: var(--section-color);
   font-family: system-ui, sans-serif;
-  font-size: 0.56rem;
+  font-size: 0.5rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.035em;
 }
 
-/* Projection -------------------------------------------------------- */
-
-.projectionAct,
-.neighborsAct,
-.decodeAct {
-  padding-top: 2.7rem;
-  padding-bottom: 3rem;
+.sectionBand[data-compact="true"] span {
+  left: 0.35rem;
+  width: 2.7rem;
+  font-size: 0.38rem;
 }
 
-.projectionSvg {
-  width: min(92%, 740px);
-  max-height: 100%;
-  overflow: visible;
+.scene[data-act="baseline"] .currentReceipt .receiptRow[data-row-id="subtotal"],
+.scene[data-act="baseline"] .currentReceipt .receiptRow[data-row-id="visa"] {
+  box-shadow: inset 3px 0 var(--color-red);
 }
 
-.axes path,
-.decodeColumn {
-  fill: none;
-  stroke: rgba(var(--text-color-rgb), 0.12);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.axes text {
-  fill: rgba(var(--text-color-rgb), 0.42);
-  font-size: 9px;
-  letter-spacing: 0.03em;
-}
-
-.clusterHalo,
-.projectionPoint,
-.queryPoint circle:first-child,
-.correctionHalo {
-  fill: var(--section-color);
-}
-
-.clusterHalo {
-  stroke: var(--section-color);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.clusterLabel {
-  fill: var(--section-color);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.projectionPoint {
-  stroke: var(--background-color);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-}
-
-.projectionPoint[data-neighbor="true"] {
-  stroke: var(--text-color);
-  stroke-width: 1.2;
-}
-
-.queryPoint {
-  --section-color: var(--text-color);
-}
-
-.queryPoint circle:first-child {
-  stroke: var(--background-color);
-  stroke-width: 3;
-  vector-effect: non-scaling-stroke;
-}
-
-.queryPulse {
-  fill: none;
-  stroke: var(--text-color);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: query-pulse 1.8s ease-in-out infinite;
-}
-
-.queryPoint text {
-  fill: var(--text-color);
-  paint-order: stroke;
-  stroke: var(--background-color);
-  stroke-width: 4px;
-  stroke-linejoin: round;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.neighborLine {
-  stroke: var(--section-color);
-  stroke-width: 1.25;
-  vector-effect: non-scaling-stroke;
-}
-
-.queryControl {
-  position: absolute;
-  right: 0;
-  bottom: 0.25rem;
-  left: 0;
-  z-index: 5;
-  display: flex;
-  justify-content: center;
-  gap: 0.42rem;
-}
-
-.queryButton {
-  min-height: 32px;
-  padding: 0.34rem 0.72rem;
-  border: 1px solid rgba(var(--text-color-rgb), 0.16);
-  border-radius: 999px;
-  color: rgba(var(--text-color-rgb), 0.56);
-  background: transparent;
-  font: inherit;
-  font-size: 0.67rem;
-  cursor: pointer;
-  transition: border-color 180ms ease, color 180ms ease, background 180ms ease, transform 180ms ease;
-}
-
-.queryButton:hover,
-.queryButton:focus-visible {
+.receiptRow[data-neighbor="true"] {
+  z-index: 6;
   color: var(--text-color);
-  border-color: rgba(var(--text-color-rgb), 0.42);
+  background: color-mix(in srgb, var(--section-color) 14%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--section-color) 72%, transparent),
+    0 0 15px color-mix(in srgb, var(--section-color) 22%, transparent);
 }
 
-.queryButton:active { transform: scale(0.97); }
-
-.queryButton[data-active="true"] {
-  color: var(--background-color);
-  border-color: var(--text-color);
-  background: var(--text-color);
+.currentReceipt .receiptRow[data-neighbor="true"] {
+  animation: neighbor-glow 1.8s ease-in-out infinite;
 }
 
-/* Neighbors --------------------------------------------------------- */
-
-.neighborLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(180px, 0.55fr);
-  align-items: center;
-  width: 100%;
-  min-height: 0;
-}
-
-.neighborLayout .projectionSvg {
-  width: 100%;
-}
-
-.votePanel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.58rem;
-  padding-right: 0.25rem;
-}
-
-.voteHeader {
-  display: flex;
-  flex-direction: column;
-  color: rgba(var(--text-color-rgb), 0.5);
-  font-size: 0.64rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.voteHeader strong {
+.receiptRow[data-changed="true"] {
+  z-index: 6;
   color: var(--text-color);
-  font-size: 0.72rem;
+  background: rgba(var(--text-color-rgb), 0.035);
+  box-shadow: inset 0 0 0 1px rgba(var(--text-color-rgb), 0.74);
 }
 
-.voteRow {
-  display: grid;
-  grid-template-columns: 3.2rem minmax(60px, 1fr) 2rem;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--section-color);
-  font-size: 0.62rem;
-  font-weight: 700;
+.scene[data-act="corrected"] .receiptRow[data-changed="true"] {
+  animation: corrected-row 820ms ease both;
 }
 
-.voteRow > strong { text-align: right; }
+/* Neighbor vote connections + schematic map ----------------------- */
 
-.voteTrack,
-.resultTrack {
-  position: relative;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(var(--text-color-rgb), 0.1);
-}
-
-.voteTrack span {
+.neighborConnections {
   position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: inherit;
-  background: var(--section-color);
-  transition: width 120ms linear;
-}
-
-.weightEquation {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.3rem;
-  color: rgba(var(--text-color-rgb), 0.52);
-  font-size: 0.62rem;
-}
-
-.weightEquation span {
-  padding: 0.24rem 0.4rem;
-  border: 1px solid rgba(var(--text-color-rgb), 0.12);
-  border-radius: 4px;
-}
-
-.weightEquation strong { color: var(--text-color); }
-
-/* Decode ------------------------------------------------------------ */
-
-.decodeChart {
-  position: relative;
-  width: min(94%, 720px);
-  height: min(100%, 350px);
-  margin-top: 0.5rem;
-}
-
-.decodeChart svg {
-  display: block;
+  inset: 0;
+  z-index: 11;
   width: 100%;
   height: 100%;
   overflow: visible;
+  pointer-events: none;
 }
 
-.decodeHeader {
-  fill: var(--section-color);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
-.decodeRowLabel {
-  fill: rgba(var(--text-color-rgb), 0.5);
-  font-size: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.baselinePath,
-.decodedPath {
+.neighborConnections path {
   fill: none;
+  stroke: var(--section-color);
+  stroke-width: 2.2;
   stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-dasharray: 8 6;
+  opacity: 1;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--section-color) 34%, transparent));
+  vector-effect: non-scaling-stroke;
+  animation: connection-flow 1.6s linear infinite;
+}
+
+.neighborConnections circle {
+  fill: var(--section-color);
+  stroke: var(--background-color);
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
-.baselinePath {
-  stroke: var(--color-red);
-  stroke-width: 1.4;
-  stroke-dasharray: 4 5 !important;
-  opacity: 0.58;
-}
-
-.decodedPath {
-  stroke: var(--text-color);
-  stroke-width: 2.5;
-}
-
-.correctionHalo {
-  opacity: 0.22;
-  animation: correction-glow 1.8s ease-in-out infinite;
-}
-
-.decodeComparison {
+.embeddingInset {
   position: absolute;
-  right: 0;
+  right: 0.65rem;
+  bottom: 0.3rem;
+  z-index: 12;
+  width: 220px;
+  color: rgba(var(--text-color-rgb), 0.48);
+  transition: opacity 280ms ease;
+}
+
+.embeddingInset svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.embeddingInset g > circle:first-child {
+  fill: color-mix(in srgb, var(--section-color) 12%, transparent);
+  stroke: color-mix(in srgb, var(--section-color) 36%, transparent);
+  stroke-width: 1;
+}
+
+.embeddingInset g > circle:not(:first-child) {
+  fill: var(--section-color);
+}
+
+.embeddingInset path {
+  fill: none;
+  stroke: rgba(var(--text-color-rgb), 0.34);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.embeddingInset .insetQuery {
+  fill: var(--text-color);
+  stroke: var(--background-color);
+  stroke-width: 2;
+}
+
+.embeddingInset span {
+  display: block;
+  margin-top: -0.1rem;
+  font-size: 0.56rem;
+  text-align: right;
+}
+
+.evidenceLine {
+  position: absolute;
+  right: 0.25rem;
   bottom: 0.25rem;
+  left: 0.25rem;
+  z-index: 20;
   display: flex;
   align-items: center;
-  gap: 0.38rem;
-  color: rgba(var(--text-color-rgb), 0.5);
-  font-size: 0.62rem;
-}
-
-.sectionPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.22rem 0.38rem;
-  border: 1px solid color-mix(in srgb, var(--section-color) 45%, transparent);
-  border-radius: 4px;
-  color: var(--section-color);
-  font-weight: 700;
-}
-
-.sectionPill[data-muted="true"] {
-  text-decoration: line-through;
-  opacity: 0.55;
-}
-
-.sectionDot {
-  width: 0.38rem;
-  height: 0.38rem;
-  border-radius: 50%;
-  background: var(--section-color);
-}
-
-.decodeArrow { color: var(--text-color); }
-
-/* Result ------------------------------------------------------------ */
-
-.resultAct {
-  flex-direction: column;
-  gap: 1.4rem;
-  padding: 4.4rem 0.25rem 1rem;
-}
-
-.resultBars {
-  display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-  width: min(88%, 650px);
-}
-
-.resultRow {
-  display: grid;
-  grid-template-columns: 7.2rem minmax(120px, 1fr) 4rem;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.76rem;
-}
-
-.resultRow > span { color: rgba(var(--text-color-rgb), 0.58); }
-.resultRow > strong { font-size: 1.02rem; text-align: right; }
-
-.resultTrack { height: 8px; }
-.resultTrack > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: inherit;
-  transition: width 120ms linear;
-}
-.baselineFill { background: rgba(var(--text-color-rgb), 0.34); }
-.hybridFill { background: var(--color-green); }
-
-.deltaCallout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.55rem;
-}
-
-.deltaCallout strong {
-  color: var(--color-green);
-  font-size: clamp(2.25rem, 8vw, 4.3rem);
-  line-height: 1;
-  letter-spacing: -0.055em;
-}
-
-.deltaCallout span {
-  color: rgba(var(--text-color-rgb), 0.54);
-  font-size: 0.78rem;
-}
-
-.pairedCounts {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-}
-
-.pairedCounts > div {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-}
-
-.pairedCounts strong { font-size: 1.5rem; }
-.pairedCounts > div:first-child strong { color: var(--color-green); }
-.pairedCounts > div:last-child strong { color: var(--color-red); }
-.pairedCounts span { color: rgba(var(--text-color-rgb), 0.54); font-size: 0.7rem; }
-
-.pairedRule {
-  width: 1px;
-  height: 1.8rem;
-  background: rgba(var(--text-color-rgb), 0.14);
-}
-
-.resultFootnote {
-  margin: 0;
-  color: rgba(var(--text-color-rgb), 0.4);
+  justify-content: flex-start;
+  gap: 0.5rem;
+  color: rgba(var(--text-color-rgb), 0.48);
   font-size: 0.64rem;
-  text-align: center;
+  line-height: 1.3;
 }
 
-/* Step controls ----------------------------------------------------- */
+.evidenceRule {
+  width: 1.7rem;
+  height: 1px;
+  flex: 0 0 auto;
+  background: rgba(var(--text-color-rgb), 0.24);
+}
+
+/* Step controls ---------------------------------------------------- */
 
 .progress {
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   gap: 0.08rem;
   margin: 0.1rem 0 0;
   padding: 0;
@@ -630,15 +474,34 @@
 }
 
 .progressButton:hover span,
-.progressButton:focus-visible span { transform: scale(1.35); }
-.progressButton:focus-visible { outline: 2px solid var(--color-blue); outline-offset: -4px; border-radius: 50%; }
-.progressButton[data-done="true"] span { background: rgba(var(--text-color-rgb), 0.48); }
-.progressButton[data-active="true"] span { background: var(--text-color); transform: scale(1.18); }
+.progressButton:focus-visible span {
+  transform: scale(1.35);
+}
+
+.progressButton:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid var(--color-blue);
+  outline-offset: -4px;
+}
+
+.progressButton[data-done="true"] span {
+  background: rgba(var(--text-color-rgb), 0.48);
+}
+
+.progressButton[data-active="true"] span {
+  transform: scale(1.18);
+  background: var(--text-color);
+}
 
 .staticStack {
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
+}
+
+.staticAct + .staticAct {
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.1);
 }
 
 @keyframes layer-in {
@@ -651,91 +514,151 @@
   to { opacity: 0; transform: translateY(-12px); }
 }
 
-@keyframes query-pulse {
-  0%, 100% { transform: scale(0.78); opacity: 0.12; }
-  50% { transform: scale(1.18); opacity: 0.55; }
+@keyframes neighbor-glow {
+  0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--section-color) 58%, transparent), 0 0 8px transparent; }
+  50% { box-shadow: inset 0 0 0 1px var(--section-color), 0 0 18px color-mix(in srgb, var(--section-color) 28%, transparent); }
 }
 
-@keyframes correction-glow {
-  0%, 100% { transform: scale(0.76); opacity: 0.1; }
-  50% { transform: scale(1.18); opacity: 0.3; }
+@keyframes connection-flow {
+  to { stroke-dashoffset: -14; }
+}
+
+@keyframes corrected-row {
+  0% { transform: translateX(-5px); opacity: 0.55; }
+  55% { transform: translateX(2px); opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
 }
 
 @media (max-width: 700px) {
-  .interactiveStage { height: 540px; min-height: 540px; }
-  .staticStage { height: 540px; }
-  .actAnnotation { right: 0.25rem; max-width: none; }
-  .actAnnotation strong { font-size: 0.86rem; }
-  .actAnnotation > span:last-child { font-size: 0.66rem; }
-  .actNumber { font-size: 1.4rem; }
-
-  .receiptPaper {
-    width: min(88%, 390px);
-    padding-right: 3.85rem;
-    font-size: clamp(0.52rem, 2.25vw, 0.68rem);
-  }
-  .receiptSectionRail { width: 3.2rem; }
-  .railSegment span { font-size: 0.48rem; }
-
-  .projectionAct,
-  .neighborsAct,
-  .decodeAct { padding-top: 3.35rem; padding-bottom: 4.1rem; }
-  .projectionSvg { width: 100%; }
-
-  .neighborLayout {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) auto;
-    height: 100%;
-    padding-top: 0.2rem;
+  .interactiveStage,
+  .staticStage {
+    height: 560px;
+    min-height: 560px;
   }
 
-  .neighborLayout .projectionSvg { min-height: 0; }
-  .votePanel {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.42rem 0.7rem;
-    padding: 0 0.45rem;
+  .actAnnotation {
+    right: 0.25rem;
+    width: auto;
   }
-  .voteHeader,
-  .weightEquation { grid-column: 1 / -1; }
-  .voteRow { grid-template-columns: 2.55rem minmax(42px, 1fr) 1.8rem; }
-  .weightEquation { margin-top: 0; }
 
-  .queryControl { flex-wrap: nowrap; gap: 0.3rem; }
-  .queryButton { min-height: 34px; padding: 0.3rem 0.58rem; font-size: 0.61rem; }
+  .actAnnotation strong {
+    font-size: 0.86rem;
+  }
 
-  .decodeChart { width: 100%; height: 340px; }
-  .decodeComparison { right: 0.2rem; bottom: -0.3rem; }
-  .resultAct { gap: 1.7rem; padding-top: 4.7rem; }
-  .resultBars { width: 96%; }
-  .resultRow { grid-template-columns: 5.5rem minmax(86px, 1fr) 3.6rem; gap: 0.45rem; font-size: 0.68rem; }
-  .deltaCallout { flex-direction: column; align-items: center; gap: 0.15rem; }
-  .pairedCounts { gap: 0.85rem; }
-  .pairedCounts > div { flex-direction: column; align-items: center; gap: 0; }
-  .resultFootnote { max-width: 19rem; line-height: 1.45; }
+  .actAnnotation > span:last-child {
+    font-size: 0.66rem;
+  }
+
+  .actNumber {
+    font-size: 1.4rem;
+  }
+
+  .stackField {
+    inset: 5.25rem 0 2.2rem;
+  }
+
+  .currentReceipt {
+    --row-height: 19px;
+    top: 7.25rem;
+    left: 1rem;
+    width: min(290px, calc(100% - 2rem));
+  }
+
+  .currentReceipt .receiptRow {
+    padding-left: 4rem;
+    font-size: 0.54rem;
+  }
+
+  .currentReceipt .sectionBand span {
+    width: 3rem;
+    font-size: 0.43rem;
+  }
+
+  .referenceReceipt {
+    --row-height: 24px;
+    width: 145px;
+  }
+
+  .referenceReceipt .receiptRow {
+    padding-left: 2.8rem;
+    font-size: 0.4rem;
+  }
+
+  .referenceReceipt .sectionBand span {
+    width: 2.2rem;
+    font-size: 0.32rem;
+  }
+
+  .referenceReceipt[data-reference-index="0"] {
+    top: 1.5rem;
+    left: 28%;
+  }
+
+  .referenceReceipt[data-reference-index="1"] {
+    top: 3rem;
+    left: 59%;
+  }
+
+  .referenceReceipt[data-reference-index="2"],
+  .referenceReceipt[data-reference-index="3"] {
+    display: none;
+  }
+
+  .neighborConnections,
+  .embeddingInset {
+    display: none;
+  }
+
+  .evidenceLine {
+    font-size: 0.58rem;
+  }
 }
 
 @media (max-width: 390px) {
-  .decodeRowLabel { font-size: 7px; }
-  .decodeHeader { font-size: 8px; }
-  .receiptPaper { width: 94%; }
+  .currentReceipt {
+    left: 0.75rem;
+    width: calc(100% - 1.5rem);
+  }
+
+  .referenceReceipt[data-reference-index="0"] {
+    left: 23%;
+  }
+
+  .referenceReceipt[data-reference-index="1"] {
+    left: 57%;
+  }
 }
 
 @media (max-width: 350px) {
   .interactiveStage,
-  .staticStage { height: 575px; min-height: 575px; }
-  .queryControl { flex-wrap: wrap; align-content: flex-end; }
+  .staticStage {
+    height: 585px;
+    min-height: 585px;
+  }
+
+  .currentReceipt {
+    top: 7.9rem;
+  }
+
+  .evidenceLine {
+    align-items: flex-start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .actLayer.entering,
   .actLayer.leaving,
-  .queryPulse,
-  .correctionHalo { animation: none; }
+  .currentReceipt .receiptRow[data-neighbor="true"],
+  .scene[data-act="corrected"] .receiptRow[data-changed="true"],
+  .neighborConnections path {
+    animation: none;
+  }
+
+  .receiptCard,
   .receiptRow,
-  .railSegment,
-  .queryButton,
+  .sectionBand,
   .progressButton span,
-  .voteTrack span,
-  .resultTrack > span { transition: none; }
+  .embeddingInset {
+    transition: none;
+  }
 }

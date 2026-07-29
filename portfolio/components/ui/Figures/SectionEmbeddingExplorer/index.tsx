@@ -1,19 +1,22 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useInView } from "react-intersection-observer";
 import { useActTransition } from "../SynthesisPipeline/actTransition";
 import styles from "./SectionEmbeddingExplorer.module.css";
 import {
+  CHANGED_ROW_IDS,
   EXPLORER_ACTS,
   EXPERIMENT_METRICS,
   ExplorerActId,
-  nearestProjectionPoints,
-  PROJECTION_POINTS,
-  QUERY_BY_ID,
-  QUERY_SCENARIOS,
-  QueryScenario,
   RECEIPT_ROWS,
+  REFERENCE_RECEIPTS,
+  ReferenceReceipt,
   SECTION_BY_ID,
-  SECTIONS,
   SectionId,
 } from "./sectionData";
 
@@ -21,6 +24,7 @@ const AUTOPLAY_IDLE_RESUME_MS = 10_000;
 
 const usePrefersReducedMotion = (): boolean => {
   const [reduced, setReduced] = useState(false);
+
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -29,6 +33,7 @@ const usePrefersReducedMotion = (): boolean => {
     media.addEventListener?.("change", onChange);
     return () => media.removeEventListener?.("change", onChange);
   }, []);
+
   return reduced;
 };
 
@@ -47,6 +52,7 @@ export const advanceExplorerAutoplay = (
   if (dwellMs <= 0 || actCount <= 0) {
     return { activeAct, actProgress: 1 };
   }
+
   let progress = Math.max(0, actProgress + dtMs / dwellMs);
   let act = activeAct;
   while (progress >= 1) {
@@ -63,74 +69,154 @@ const phase = (value: number, start: number, end: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-const rowY = (index: number): number => 52 + index * 24;
-const sectionX = (section: SectionId): number =>
-  190 + SECTIONS.findIndex((candidate) => candidate.id === section) * 110;
+type Assignment = SectionId | null;
 
-interface ScenarioControlProps {
-  selected: QueryScenario["id"];
-  onSelect: (id: QueryScenario["id"]) => void;
+interface SectionSpan {
+  section: SectionId;
+  start: number;
+  length: number;
 }
 
-const ScenarioControl: React.FC<ScenarioControlProps> = ({
-  selected,
-  onSelect,
+const sectionSpans = (assignments: Assignment[]): SectionSpan[] => {
+  const spans: SectionSpan[] = [];
+  assignments.forEach((section, index) => {
+    if (!section) return;
+    const previous = spans[spans.length - 1];
+    if (previous?.section === section && previous.start + previous.length === index) {
+      previous.length += 1;
+      return;
+    }
+    spans.push({ section, start: index, length: 1 });
+  });
+  return spans;
+};
+
+const assignmentsForAct = (
+  actId: ExplorerActId,
+  progress: number,
+): Assignment[] => {
+  if (actId === "ocr") return RECEIPT_ROWS.map(() => null);
+  if (actId === "baseline" || actId === "neighbors") {
+    return RECEIPT_ROWS.map((row) => row.baseline);
+  }
+  if (actId === "final") return RECEIPT_ROWS.map((row) => row.truth);
+
+  return RECEIPT_ROWS.map((row) => {
+    if (row.id === "subtotal" && progress >= 0.38) return row.truth;
+    if (row.id === "visa" && progress >= 0.67) return row.truth;
+    return row.baseline;
+  });
+};
+
+const ACT_COPY: Record<
+  ExplorerActId,
+  { title: string; detail: string; evidence: string; sceneLabel: string }
+> = {
+  ocr: {
+    title: "Start with complete Apple OCR rows.",
+    detail: "LayoutLM labels words separately. This pass assigns one section to each complete row.",
+    evidence: "LayoutLM → words · section decoder → rows",
+    sceneLabel: "Apple OCR rows are visible on the current receipt without section assignments.",
+  },
+  baseline: {
+    title: "Let the fair baseline draw its boundaries.",
+    detail: "Two row-by-row guesses push ITEMS and SUMMARY one row too far.",
+    evidence: "merchant identity · helpful, optional",
+    sceneLabel: "Baseline section bands contain incorrect boundaries at subtotal and Visa rows.",
+  },
+  neighbors: {
+    title: "Search labeled rows from other receipts.",
+    detail: "OpenAI creates row embeddings; Chroma finds the nearest labeled rows.",
+    evidence: "4 of 15 neighbors shown · 2-D map is schematic, not literal",
+    sceneLabel: "Similar subtotal and payment rows are highlighted across the labeled receipt stack.",
+  },
+  corrected: {
+    title: "Move the assignments downstream.",
+    detail: "Neighbor votes and sequence order correct rows, then redraw contiguous boundaries.",
+    evidence: "experimental geometry ×0.0 · receipt math ×0.0",
+    sceneLabel: "Subtotal moves from items to summary and Visa moves from summary to payment.",
+  },
+  final: {
+    title: "Finish with one clean section sequence.",
+    detail: "The outlined rows changed; every section is contiguous on the front receipt.",
+    evidence: `held-out row agreement +${EXPERIMENT_METRICS.deltaPoints} pp · ${EXPERIMENT_METRICS.fixed} fixed`,
+    sceneLabel: "The current receipt has clean contiguous bands and highlights the two changed rows.",
+  },
+};
+
+interface SectionBandsProps {
+  assignments: Assignment[];
+  opacity: number;
+  compact?: boolean;
+}
+
+const SectionBands: React.FC<SectionBandsProps> = ({
+  assignments,
+  opacity,
+  compact = false,
 }) => (
-  <div className={styles.queryControl} aria-label="Row to classify">
-    {QUERY_SCENARIOS.map((scenario) => (
-      <button
-        key={scenario.id}
-        type="button"
-        className={styles.queryButton}
-        data-active={selected === scenario.id}
-        aria-pressed={selected === scenario.id}
-        onClick={() => onSelect(scenario.id)}
+  <div className={styles.sectionBands} aria-hidden="true">
+    {sectionSpans(assignments).map((span, index) => (
+      <div
+        key={`${span.section}-${span.start}-${index}`}
+        className={styles.sectionBand}
+        data-section={span.section}
+        data-compact={compact || undefined}
+        style={
+          {
+            "--band-start": span.start,
+            "--band-length": span.length,
+            opacity,
+          } as React.CSSProperties
+        }
       >
-        {scenario.label}
-      </button>
+        <span>{SECTION_BY_ID[span.section].shortLabel}</span>
+      </div>
     ))}
   </div>
 );
 
-const SectionPill: React.FC<{ section: SectionId; muted?: boolean }> = ({
-  section,
-  muted = false,
-}) => (
-  <span
-    className={styles.sectionPill}
-    data-section={section}
-    data-muted={muted || undefined}
-  >
-    <span className={styles.sectionDot} aria-hidden="true" />
-    {SECTION_BY_ID[section].shortLabel}
-  </span>
-);
-
-interface ActProps extends ScenarioControlProps {
+interface CurrentReceiptProps {
+  actId: ExplorerActId;
   progress: number;
-  reducedMotion: boolean;
 }
 
-const ReceiptAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
-  const p = reducedMotion ? 1 : progress;
+const CurrentReceipt: React.FC<CurrentReceiptProps> = ({ actId, progress }) => {
+  const assignments = assignmentsForAct(actId, progress);
+  const bandsVisible = actId === "ocr" ? phase(progress, 1.1, 1.2) : phase(progress, 0.08, 0.42);
+  const rowReveal = actId === "ocr" ? progress : 1;
+  const showNeighbors = actId === "neighbors";
+  const showChanges = actId === "corrected" || actId === "final";
+
   return (
-    <div className={styles.receiptAct} data-testid="section-act-receipt">
-      <div className={styles.actAnnotation}>
-        <span className={styles.actNumber}>01</span>
-        <strong>Keep the receipt in reading order.</strong>
-        <span>Each line is one row the decoder must place.</span>
+    <div
+      className={`${styles.receiptCard} ${styles.currentReceipt}`}
+      data-testid="section-current-receipt"
+      data-assignment={actId}
+      aria-hidden="true"
+    >
+      <div className={styles.receiptHeader}>
+        <strong>SPROUTS</strong>
+        <span>{actId === "ocr" ? "APPLE OCR" : "CURRENT"}</span>
       </div>
-      <div className={styles.receiptPaper} aria-hidden="true">
+      <div className={styles.receiptRows}>
+        <SectionBands assignments={assignments} opacity={bandsVisible} />
         {RECEIPT_ROWS.map((row, index) => {
-          const reveal = phase(p, index * 0.045, 0.32 + index * 0.045);
+          const reveal = phase(rowReveal, index * 0.035, 0.3 + index * 0.04);
+          const assignment = assignments[index];
+          const corrected = assignment === row.truth && row.baseline !== row.truth;
           return (
             <div
               key={row.id}
               className={styles.receiptRow}
-              data-section={row.truth}
+              data-row-id={row.id}
+              data-section={assignment ?? undefined}
+              data-neighbor={showNeighbors && CHANGED_ROW_IDS.has(row.id) || undefined}
+              data-changed={showChanges && corrected || undefined}
+              data-testid={`section-row-${row.id}`}
               style={{
                 opacity: reveal,
-                transform: `translateY(${(1 - reveal) * 8}px)`,
+                transform: `translateY(${(1 - reveal) * 5}px)`,
               }}
             >
               <span>{row.text}</span>
@@ -138,369 +224,143 @@ const ReceiptAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
             </div>
           );
         })}
-        <div className={styles.receiptSectionRail}>
-          {SECTIONS.map((section) => {
-            const rows = RECEIPT_ROWS.filter((row) => row.truth === section.id);
-            const first = RECEIPT_ROWS.findIndex(
-              (row) => row.truth === section.id,
-            );
-            return (
-              <div
-                key={section.id}
-                className={styles.railSegment}
-                data-section={section.id}
-                style={{
-                  top: `${first * 24 + 7}px`,
-                  height: `${rows.length * 24 - 5}px`,
-                  opacity: phase(p, 0.52, 0.85),
-                }}
-              >
-                <span>{section.shortLabel}</span>
-              </div>
-            );
-          })}
-        </div>
       </div>
-      <p className={styles.stageNote}>Schematic receipt · section order is real</p>
+      <div className={styles.receiptFooter}>
+        <span>11 complete rows</span>
+        <span>{actId === "ocr" ? "unassigned" : "ordered"}</span>
+      </div>
     </div>
   );
 };
 
-const ProjectionSvg: React.FC<{
-  scenario: QueryScenario;
-  progress: number;
+const ReferenceReceiptCard: React.FC<{
+  receipt: ReferenceReceipt;
+  index: number;
   showNeighbors: boolean;
-}> = ({ scenario, progress, showNeighbors }) => {
-  const neighbors = nearestProjectionPoints(scenario);
-  const settle = phase(progress, 0.05, 0.72);
-  const lineReveal = phase(progress, 0.18, 0.82);
-  const queryX = 72 + scenario.x * 5.55;
-  const queryY = 326 - scenario.y * 2.8;
+  progress: number;
+}> = ({ receipt, index, showNeighbors, progress }) => {
+  const assignments = receipt.rows.map((row) => row.section);
+  return (
+    <div
+      className={`${styles.receiptCard} ${styles.referenceReceipt}`}
+      data-reference-index={index}
+      data-testid={`section-reference-receipt-${index}`}
+      aria-hidden="true"
+      style={{ "--reference-index": index } as React.CSSProperties}
+    >
+      <div className={styles.receiptHeader}>
+        <strong>{receipt.merchant}</strong>
+        <span>LABELED</span>
+      </div>
+      <div className={styles.receiptRows}>
+        <SectionBands assignments={assignments} opacity={1} compact />
+        {receipt.rows.map((row) => {
+          const isNeighbor = showNeighbors && Boolean(row.matches);
+          const reveal = phase(progress, 0.14 + index * 0.06, 0.62 + index * 0.06);
+          return (
+            <div
+              key={row.id}
+              className={styles.receiptRow}
+              data-section={row.section}
+              data-neighbor={isNeighbor || undefined}
+              data-neighbor-kind={row.matches}
+              style={{ opacity: showNeighbors ? 0.46 + reveal * 0.54 : 1 }}
+            >
+              <span>{row.text}</span>
+              {row.amount ? <span>{row.amount}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const NeighborConnections: React.FC<{ progress: number }> = ({ progress }) => {
+  const reveal = phase(progress, 0.14, 0.78);
   return (
     <svg
-      className={styles.projectionSvg}
-      viewBox="0 0 680 350"
-      role="img"
-      aria-label={
-        showNeighbors
-          ? `Fifteen cross-receipt neighbors vote on ${scenario.label}`
-          : `${scenario.label} projected among labeled receipt row clusters`
-      }
+      className={styles.neighborConnections}
+      viewBox="0 0 900 450"
+      aria-hidden="true"
+      style={{ opacity: reveal }}
     >
-      <g className={styles.axes}>
-        <path d="M72 24V326H642" />
-        <text x="78" y="42">semantic row embeddings</text>
-        <text x="638" y="342" textAnchor="end">schematic 2-D view</text>
-      </g>
-
-      {showNeighbors
-        ? neighbors.map((neighbor, index) => {
-            const x = 72 + neighbor.x * 5.55;
-            const y = 326 - neighbor.y * 2.8;
-            const reveal = phase(lineReveal, index / 22, 0.5 + index / 30);
-            return (
-              <line
-                key={`line-${neighbor.id}`}
-                className={styles.neighborLine}
-                data-section={neighbor.section}
-                x1={queryX}
-                y1={queryY}
-                x2={queryX + (x - queryX) * reveal}
-                y2={queryY + (y - queryY) * reveal}
-                opacity={0.12 + reveal * 0.34}
-              />
-            );
-          })
-        : null}
-
-      {SECTIONS.map((section) => {
-        const points = PROJECTION_POINTS.filter(
-          (point) => point.section === section.id,
-        );
-        const cx = points.reduce((sum, point) => sum + point.x, 0) / points.length;
-        const cy = points.reduce((sum, point) => sum + point.y, 0) / points.length;
-        return (
-          <g key={section.id} data-section={section.id}>
-            <ellipse
-              className={styles.clusterHalo}
-              cx={72 + cx * 5.55}
-              cy={326 - cy * 2.8}
-              rx={58 * settle}
-              ry={34 * settle}
-              opacity={0.08 + settle * 0.09}
-            />
-            <text
-              className={styles.clusterLabel}
-              x={72 + cx * 5.55}
-              y={326 - cy * 2.8 - 42}
-              textAnchor="middle"
-              opacity={settle}
-            >
-              {section.shortLabel}
-            </text>
-          </g>
-        );
-      })}
-
-      {PROJECTION_POINTS.map((point, index) => {
-        const destinationX = 72 + point.x * 5.55;
-        const destinationY = 326 - point.y * 2.8;
-        const localSettle = phase(
-          progress,
-          0.03 + (index % 8) * 0.018,
-          0.5 + (index % 8) * 0.018,
-        );
-        const isNeighbor = showNeighbors && neighbors.some((n) => n.id === point.id);
-        return (
-          <circle
-            key={point.id}
-            className={styles.projectionPoint}
-            data-section={point.section}
-            data-neighbor={isNeighbor || undefined}
-            cx={340 + (destinationX - 340) * localSettle}
-            cy={175 + (destinationY - 175) * localSettle}
-            r={isNeighbor ? 5 : 3.5}
-            opacity={showNeighbors && !isNeighbor ? 0.18 : 0.76}
-          >
-            <title>{`${point.merchant} · ${SECTION_BY_ID[point.section].label}`}</title>
-          </circle>
-        );
-      })}
-
-      <g
-        className={styles.queryPoint}
-        transform={`translate(${340 + (queryX - 340) * settle} ${
-          175 + (queryY - 175) * settle
-        })`}
-      >
-        <circle r="10" />
-        <circle className={styles.queryPulse} r="16" opacity={showNeighbors ? 0.7 : 0.35} />
-        <text x="14" y="-14">{scenario.label}</text>
-      </g>
+      <path data-section="SUMMARY" d="M441 236 C474 226 486 166 507 155" pathLength="1" />
+      <path data-section="PAYMENT" d="M441 303 C510 321 560 226 624 210" pathLength="1" />
+      <path data-section="SUMMARY" d="M441 236 C551 276 640 216 732 208" pathLength="1" />
+      <path data-section="PAYMENT" d="M441 303 C610 350 715 290 804 272" pathLength="1" />
+      <circle data-section="SUMMARY" cx="441" cy="236" r="4" />
+      <circle data-section="PAYMENT" cx="441" cy="303" r="4" />
+      <circle data-section="SUMMARY" cx="507" cy="155" r="4" />
+      <circle data-section="PAYMENT" cx="624" cy="210" r="4" />
+      <circle data-section="SUMMARY" cx="732" cy="208" r="4" />
+      <circle data-section="PAYMENT" cx="804" cy="272" r="4" />
     </svg>
   );
 };
 
-const ProjectionAct: React.FC<ActProps> = ({
-  progress,
-  reducedMotion,
-  selected,
-  onSelect,
-}) => {
-  const scenario = QUERY_BY_ID[selected];
+const EmbeddingInset: React.FC<{ progress: number }> = ({ progress }) => {
+  const reveal = phase(progress, 0.36, 0.9);
   return (
-    <div className={styles.projectionAct} data-testid="section-act-projection">
-      <div className={styles.actAnnotation}>
-        <span className={styles.actNumber}>02</span>
-        <strong>Project wording and context into Chroma.</strong>
-        <span>Nearby rows have been used in the same kind of section.</span>
-      </div>
-      <ProjectionSvg
-        scenario={scenario}
-        progress={reducedMotion ? 1 : progress}
-        showNeighbors={false}
-      />
-      <ScenarioControl selected={selected} onSelect={onSelect} />
+    <div className={styles.embeddingInset} style={{ opacity: reveal }} aria-hidden="true">
+      <svg viewBox="0 0 180 78">
+        <g data-section="TRANSACTION_INFO"><circle cx="25" cy="54" r="12" /><circle cx="20" cy="51" r="2" /><circle cx="30" cy="58" r="2" /></g>
+        <g data-section="ITEMS"><circle cx="63" cy="31" r="15" /><circle cx="58" cy="28" r="2" /><circle cx="69" cy="35" r="2" /></g>
+        <g data-section="SUMMARY"><circle cx="118" cy="48" r="14" /><circle cx="113" cy="44" r="2" /><circle cx="124" cy="51" r="2" /></g>
+        <g data-section="PAYMENT"><circle cx="154" cy="21" r="13" /><circle cx="150" cy="18" r="2" /><circle cx="159" cy="24" r="2" /></g>
+        <path d="M103 38L116 46M103 38L148 23" />
+        <circle className={styles.insetQuery} cx="103" cy="38" r="4" />
+      </svg>
+      <span>schematic 2-D map · not literal</span>
     </div>
   );
 };
 
-const VoteBars: React.FC<{ scenario: QueryScenario; progress: number }> = ({
-  scenario,
-  progress,
-}) => (
-  <div className={styles.votePanel} aria-label="Cosine-weighted neighbor votes">
-    <div className={styles.voteHeader}>
-      <span>15 neighbors</span>
-      <strong>cosine-weighted vote</strong>
-    </div>
-    {SECTIONS.map((section, index) => {
-      const value = scenario.votes[section.id];
-      const reveal = phase(progress, 0.36 + index * 0.06, 0.78 + index * 0.04);
-      return (
-        <div key={section.id} className={styles.voteRow} data-section={section.id}>
-          <span>{section.shortLabel}</span>
-          <div className={styles.voteTrack}>
-            <span style={{ width: `${value * reveal * 100}%` }} />
-          </div>
-          <strong>{Math.round(value * 100)}%</strong>
-        </div>
-      );
-    })}
-    <div className={styles.weightEquation}>
-      <span>KNN × <strong>1.0</strong></span>
-      <span>centroid × <strong>0.5</strong></span>
-    </div>
-  </div>
-);
-
-const NeighborsAct: React.FC<ActProps> = ({
-  progress,
-  reducedMotion,
-  selected,
-  onSelect,
-}) => {
-  const scenario = QUERY_BY_ID[selected];
+const ReceiptStackScene: React.FC<{
+  actId: ExplorerActId;
+  progress: number;
+  reducedMotion: boolean;
+}> = ({ actId, progress, reducedMotion }) => {
   const p = reducedMotion ? 1 : progress;
+  const copy = ACT_COPY[actId];
+  const showNeighbors = actId === "neighbors";
+
   return (
-    <div className={styles.neighborsAct} data-testid="section-act-neighbors">
+    <div
+      className={styles.scene}
+      data-act={actId}
+      data-testid={`section-act-${actId}`}
+      role="img"
+      aria-label={copy.sceneLabel}
+      style={{ "--act-progress": p } as React.CSSProperties}
+    >
       <div className={styles.actAnnotation}>
-        <span className={styles.actNumber}>03</span>
-        <strong>Ask labeled rows from other receipts.</strong>
-        <span>Same-receipt rows are excluded; closer cosine matches vote harder.</span>
+        <span className={styles.actNumber}>{String(EXPLORER_ACTS.findIndex((act) => act.id === actId) + 1).padStart(2, "0")}</span>
+        <strong>{copy.title}</strong>
+        <span>{copy.detail}</span>
       </div>
-      <div className={styles.neighborLayout}>
-        <ProjectionSvg scenario={scenario} progress={p} showNeighbors />
-        <VoteBars scenario={scenario} progress={p} />
+
+      <div className={styles.stackField} data-testid="section-receipt-stack">
+        {REFERENCE_RECEIPTS.map((receipt, index) => (
+          <ReferenceReceiptCard
+            key={receipt.id}
+            receipt={receipt}
+            index={index}
+            showNeighbors={showNeighbors}
+            progress={p}
+          />
+        ))}
+        <CurrentReceipt actId={actId} progress={p} />
+        {showNeighbors ? <NeighborConnections progress={p} /> : null}
+        {showNeighbors ? <EmbeddingInset progress={p} /> : null}
       </div>
-      <ScenarioControl selected={selected} onSelect={onSelect} />
+
+      <div className={styles.evidenceLine} data-testid="section-evidence-line">
+        <span className={styles.evidenceRule} aria-hidden="true" />
+        <span>{copy.evidence}</span>
+      </div>
     </div>
   );
-};
-
-const DecodeAct: React.FC<ActProps> = ({
-  progress,
-  reducedMotion,
-  selected,
-  onSelect,
-}) => {
-  const p = reducedMotion ? 1 : progress;
-  const selectedScenario = QUERY_BY_ID[selected];
-  const scan = phase(p, 0.05, 0.9);
-  const correctedRows = new Set(["subtotal", "visa"]);
-  const baselinePath = RECEIPT_ROWS.map((row, index) =>
-    `${index === 0 ? "M" : "L"}${sectionX(row.baseline)} ${rowY(index)}`,
-  ).join(" ");
-  const decodedPath = RECEIPT_ROWS.map((row, index) =>
-    `${index === 0 ? "M" : "L"}${sectionX(row.truth)} ${rowY(index)}`,
-  ).join(" ");
-  return (
-    <div className={styles.decodeAct} data-testid="section-act-decode">
-      <div className={styles.actAnnotation}>
-        <span className={styles.actNumber}>04</span>
-        <strong>Decode the whole receipt, not isolated rows.</strong>
-        <span>
-          Transition and duration priors prefer contiguous spans. Added
-          geometry/math stayed at ×0.0.
-        </span>
-      </div>
-      <div className={styles.decodeChart}>
-        <svg
-          viewBox="0 0 660 330"
-          role="img"
-          aria-label="Baseline row guesses compared with the contiguous semi-Markov decoded path"
-        >
-          {SECTIONS.map((section) => (
-            <g key={section.id} data-section={section.id}>
-              <text className={styles.decodeHeader} x={sectionX(section.id)} y="22" textAnchor="middle">
-                {section.shortLabel}
-              </text>
-              <line className={styles.decodeColumn} x1={sectionX(section.id)} y1="34" x2={sectionX(section.id)} y2="306" />
-            </g>
-          ))}
-          {RECEIPT_ROWS.map((row, index) => {
-            const y = rowY(index);
-            const revealed = scan >= (index + 1) / RECEIPT_ROWS.length;
-            return (
-              <g key={row.id} opacity={revealed ? 1 : 0.16}>
-                <text className={styles.decodeRowLabel} x="8" y={y + 4}>
-                  {row.id === "merchant" ? "merchant" : row.text.slice(0, 14)}
-                </text>
-                {correctedRows.has(row.id) ? (
-                  <circle
-                    className={styles.correctionHalo}
-                    data-section={row.truth}
-                    cx={sectionX(row.truth)}
-                    cy={y}
-                    r="11"
-                  />
-                ) : null}
-              </g>
-            );
-          })}
-          <path className={styles.baselinePath} d={baselinePath} pathLength="1" strokeDasharray="1" strokeDashoffset={1 - scan} />
-          <path className={styles.decodedPath} d={decodedPath} pathLength="1" strokeDasharray="1" strokeDashoffset={1 - phase(p, 0.32, 1)} />
-        </svg>
-        <div className={styles.decodeComparison}>
-          <span>row alone</span>
-          <SectionPill section={selectedScenario.baseline} muted />
-          <span className={styles.decodeArrow} aria-hidden="true">→</span>
-          <span>full sequence</span>
-          <SectionPill section={selectedScenario.decoded} />
-        </div>
-      </div>
-      <ScenarioControl selected={selected} onSelect={onSelect} />
-    </div>
-  );
-};
-
-const ResultAct: React.FC<ActProps> = ({ progress, reducedMotion }) => {
-  const p = reducedMotion ? 1 : progress;
-  const baseline = phase(p, 0.08, 0.5);
-  const hybrid = phase(p, 0.28, 0.82);
-  return (
-    <div className={styles.resultAct} data-testid="section-act-result">
-      <div className={styles.actAnnotation}>
-        <span className={styles.actNumber}>05</span>
-        <strong>Then make the holdout decide.</strong>
-        <span>167 unseen receipts · 4,214 rows · receipt-grouped split</span>
-      </div>
-      <div className={styles.resultBars}>
-        <div className={styles.resultRow}>
-          <span>fair baseline</span>
-          <div className={styles.resultTrack}>
-            <span className={styles.baselineFill} style={{ width: `${EXPERIMENT_METRICS.baselineAgreement * baseline}%` }} />
-          </div>
-          <strong>{EXPERIMENT_METRICS.baselineAgreement}%</strong>
-        </div>
-        <div className={styles.resultRow}>
-          <span>Chroma hybrid</span>
-          <div className={styles.resultTrack}>
-            <span className={styles.hybridFill} style={{ width: `${EXPERIMENT_METRICS.hybridAgreement * hybrid}%` }} />
-          </div>
-          <strong>{EXPERIMENT_METRICS.hybridAgreement}%</strong>
-        </div>
-      </div>
-      <div className={styles.deltaCallout} style={{ opacity: phase(p, 0.48, 0.78) }}>
-        <strong>+{EXPERIMENT_METRICS.deltaPoints} pp</strong>
-        <span>row agreement</span>
-      </div>
-      <div className={styles.pairedCounts} style={{ opacity: phase(p, 0.62, 0.94) }}>
-        <div>
-          <strong>{EXPERIMENT_METRICS.fixed}</strong>
-          <span>rows fixed</span>
-        </div>
-        <span className={styles.pairedRule} aria-hidden="true" />
-        <div>
-          <strong>{EXPERIMENT_METRICS.regressed}</strong>
-          <span>rows regressed</span>
-        </div>
-      </div>
-      <p className={styles.resultFootnote}>
-        95% receipt bootstrap: +{EXPERIMENT_METRICS.bootstrapLow} to +{EXPERIMENT_METRICS.bootstrapHigh} pp · embedding coverage {EXPERIMENT_METRICS.coverage}%
-      </p>
-    </div>
-  );
-};
-
-const ActView: React.FC<ActProps & { actId: ExplorerActId }> = ({
-  actId,
-  ...props
-}) => {
-  switch (actId) {
-    case "receipt":
-      return <ReceiptAct {...props} />;
-    case "projection":
-      return <ProjectionAct {...props} />;
-    case "neighbors":
-      return <NeighborsAct {...props} />;
-    case "decode":
-      return <DecodeAct {...props} />;
-    case "result":
-      return <ResultAct {...props} />;
-    default:
-      return null;
-  }
 };
 
 const SectionEmbeddingExplorer: React.FC = () => {
@@ -512,14 +372,15 @@ const SectionEmbeddingExplorer: React.FC = () => {
   const [activeAct, setActiveAct] = useState(0);
   const [actProgress, setActProgress] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [selected, setSelected] = useState<QueryScenario["id"]>("subtotal");
   const activeRef = useRef(0);
   const progressRef = useRef(0);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressButtons = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     activeRef.current = activeAct;
   }, [activeAct]);
+
   useEffect(() => {
     progressRef.current = actProgress;
   }, [actProgress]);
@@ -531,6 +392,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
     let last = performance.now();
     let act = activeRef.current;
     let progress = progressRef.current;
+
     const tick = (time: number) => {
       const next = advanceExplorerAutoplay(
         act,
@@ -548,6 +410,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
       setActProgress(progress);
       raf = requestAnimationFrame(tick);
     };
+
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing]);
@@ -562,10 +425,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
   const pauseForInteraction = useCallback(() => {
     setPaused(true);
     if (resumeTimer.current) clearTimeout(resumeTimer.current);
-    resumeTimer.current = setTimeout(
-      () => setPaused(false),
-      AUTOPLAY_IDLE_RESUME_MS,
-    );
+    resumeTimer.current = setTimeout(() => setPaused(false), AUTOPLAY_IDLE_RESUME_MS);
   }, []);
 
   const jumpToAct = useCallback(
@@ -579,22 +439,30 @@ const SectionEmbeddingExplorer: React.FC = () => {
     [pauseForInteraction],
   );
 
-  const selectScenario = useCallback(
-    (id: QueryScenario["id"]) => {
-      setSelected(id);
-      pauseForInteraction();
+  const onProgressKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+      let next = index;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        next = (index + 1) % EXPLORER_ACTS.length;
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        next = (index - 1 + EXPLORER_ACTS.length) % EXPLORER_ACTS.length;
+      } else if (event.key === "Home") {
+        next = 0;
+      } else if (event.key === "End") {
+        next = EXPLORER_ACTS.length - 1;
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      jumpToAct(next);
+      progressButtons.current[next]?.focus();
     },
-    [pauseForInteraction],
+    [jumpToAct],
   );
 
   const transition = useActTransition(activeAct, !reducedMotion);
   const activeMeta = EXPLORER_ACTS[activeAct] ?? EXPLORER_ACTS[0];
-  const actProps = (progress: number): ActProps => ({
-    progress,
-    reducedMotion,
-    selected,
-    onSelect: selectScenario,
-  });
 
   if (reducedMotion) {
     return (
@@ -607,13 +475,13 @@ const SectionEmbeddingExplorer: React.FC = () => {
         aria-labelledby="section-explorer-title"
       >
         <h3 id="section-explorer-title" className={styles.srOnly}>
-          How cross-receipt embeddings improve receipt section classification
+          How row embeddings correct receipt section boundaries
         </h3>
         <div className={styles.staticStack}>
           {EXPLORER_ACTS.map((act) => (
             <section key={act.id} className={styles.staticAct}>
               <div className={`${styles.stage} ${styles.staticStage}`}>
-                <ActView actId={act.id} {...actProps(1)} />
+                <ReceiptStackScene actId={act.id} progress={1} reducedMotion />
               </div>
             </section>
           ))}
@@ -627,6 +495,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
     phase: "entering" | "active" | "leaving";
     progress: number;
   }> = [];
+
   if (transition.leaving !== null) {
     layers.push({
       id: EXPLORER_ACTS[transition.leaving].id,
@@ -634,6 +503,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
       progress: 1,
     });
   }
+
   layers.push({
     id: EXPLORER_ACTS[transition.current].id,
     phase: transition.leaving !== null ? "entering" : "active",
@@ -652,16 +522,10 @@ const SectionEmbeddingExplorer: React.FC = () => {
       aria-describedby="section-explorer-description"
     >
       <h3 id="section-explorer-title" className={styles.srOnly}>
-        How cross-receipt embeddings improve receipt section classification
+        How row embeddings correct receipt section boundaries
       </h3>
       <p id="section-explorer-description" className={styles.srOnly}>
-        An animated five-step explainer. Receipt rows are projected into Chroma
-        embedding space. Fifteen labeled rows from other receipts cast
-        cosine-weighted section votes. A semi-Markov decoder combines those
-        votes with the ordered receipt sequence. On 167 held-out receipts, row
-        agreement rises from 85.95 to 90.84 percent. Geometry and arithmetic
-        evidence was tested separately and received weight zero because it did
-        not improve validation results.
+        A five-step explainer. Apple OCR provides complete rows. LayoutLM labels individual words, while this visualization assigns sections to complete rows. OpenAI creates row embeddings and Chroma searches labeled rows from other receipts. The two-dimensional map is schematic. Merchant identity is optional. Experimental geometry and receipt math currently have zero weight.
       </p>
       <p className={styles.srOnly} aria-live="polite" data-testid="section-act-label">
         {activeMeta.accessibleLabel}
@@ -675,17 +539,18 @@ const SectionEmbeddingExplorer: React.FC = () => {
             data-phase={layer.phase}
             aria-hidden={layer.phase === "leaving"}
           >
-            <ActView actId={layer.id} {...actProps(layer.progress)} />
+            <ReceiptStackScene actId={layer.id} progress={layer.progress} reducedMotion={false} />
           </div>
         ))}
       </div>
 
-      <ol className={styles.progress} aria-label="Section classifier steps">
+      <ol className={styles.progress} aria-label="Section assignment steps">
         {EXPLORER_ACTS.map((act) => {
           const isActive = act.index === activeAct;
           return (
             <li key={act.id}>
               <button
+                ref={(node) => { progressButtons.current[act.index] = node; }}
                 type="button"
                 className={styles.progressButton}
                 data-active={isActive}
@@ -694,6 +559,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
                 aria-label={act.accessibleLabel}
                 title={act.label}
                 onClick={() => jumpToAct(act.index)}
+                onKeyDown={(event) => onProgressKeyDown(event, act.index)}
                 data-testid={`section-act-dot-${act.index}`}
               >
                 <span aria-hidden="true" />
