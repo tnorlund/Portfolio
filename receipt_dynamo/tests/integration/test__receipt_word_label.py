@@ -35,7 +35,7 @@ CORRECT_RECEIPT_WORD_LABEL_PARAMS: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 10,
     "word_id": 5,
-    "label": "ITEM",
+    "label": "PRODUCT_NAME",
     "reasoning": "This word appears to be an item description",
     "timestamp_added": "2024-03-20T12:00:00+00:00",
     "validation_status": ValidationStatus.VALID,
@@ -56,7 +56,7 @@ def _another_receipt_word_label() -> ReceiptWordLabel:
         image_id="4a63915c-22f5-4f11-a3d9-c684eb4b9ef4",
         line_id=20,
         word_id=10,
-        label="PRICE",
+        label="LINE_TOTAL",
         reasoning="This word appears to be a price",
         timestamp_added="2024-03-20T13:00:00+00:00",
         validation_status=ValidationStatus.VALID,
@@ -76,7 +76,7 @@ def _batch_receipt_word_labels() -> List[ReceiptWordLabel]:
                 image_id=str(uuid4()),
                 line_id=(i % 10) + 1,
                 word_id=(i % 5) + 1,
-                label="ITEM" if i % 2 == 0 else "PRICE",
+                label="PRODUCT_NAME" if i % 2 == 0 else "LINE_TOTAL",
                 reasoning=f"Test label {i}",
                 timestamp_added=base_time.isoformat(),
                 validation_status=ValidationStatus.VALID,
@@ -599,7 +599,7 @@ def test_list_receipt_word_labels_for_image_success(
             image_id=sample_receipt_word_label.image_id,
             line_id=i + 1,
             word_id=i + 1,
-            label="ITEM" if i % 2 == 0 else "PRICE",
+            label="PRODUCT_NAME" if i % 2 == 0 else "LINE_TOTAL",
             reasoning=f"Label {i}",
             timestamp_added=sample_receipt_word_label.timestamp_added,
         )
@@ -653,7 +653,7 @@ def test_list_receipt_word_labels_for_image_with_pagination(
             image_id=image_id,
             line_id=(i % 3) + 1,  # 3 lines per receipt
             word_id=(i % 2) + 1,  # 2 words per line
-            label="ITEM" if i % 2 == 0 else "PRICE",
+            label="PRODUCT_NAME" if i % 2 == 0 else "LINE_TOTAL",
             reasoning=f"Label {i}",
             timestamp_added="2024-03-20T12:00:00+00:00",
         )
@@ -702,7 +702,7 @@ def test_list_receipt_word_labels_success(
             image_id=str(uuid4()),
             line_id=i + 1,
             word_id=i + 1,
-            label="ITEM",
+            label="PRODUCT_NAME",
             reasoning=f"Receipt label {i}",
             timestamp_added="2024-03-20T12:00:00+00:00",
         )
@@ -734,7 +734,7 @@ def test_list_receipt_word_labels_for_receipt_success(
             image_id=image_id,
             line_id=i + 1,
             word_id=i + 1,
-            label="ITEM" if i % 2 == 0 else "PRICE",
+            label="PRODUCT_NAME" if i % 2 == 0 else "LINE_TOTAL",
             reasoning=f"Receipt 1 label {i}",
             timestamp_added="2024-03-20T12:00:00+00:00",
         )
@@ -813,7 +813,7 @@ def test_list_receipt_word_labels_for_receipt_with_pagination(
                 image_id=image_id,
                 line_id=line_id,
                 word_id=word_id,
-                label="ITEM" if word_id == 1 else "PRICE",
+                label="PRODUCT_NAME" if word_id == 1 else "LINE_TOTAL",
                 reasoning=f"Line {line_id} word {word_id}",
                 timestamp_added="2024-03-20T12:00:00+00:00",
             )
@@ -892,41 +892,177 @@ def test_list_receipt_word_labels_for_receipt_validation(
 
 
 # -------------------------------------------------------------------
-#                   BATCH OPERATIONS WITH UNPROCESSED ITEMS
+#                   CONDITIONAL BATCH ADD SAFETY
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_add_receipt_word_labels_batch_with_unprocessed(
+def test_add_receipt_word_labels_uses_conditional_transactions(
     dynamodb_table: Literal["MyMockedTable"],
     batch_receipt_word_labels: List[ReceiptWordLabel],
     mocker: MockerFixture,
 ) -> None:
-    """Tests that add_receipt_word_labels handles unprocessed items correctly."""
+    """Batch adds use create-only puts rather than unconditional writes."""
     client = DynamoClient(dynamodb_table)
     labels_to_add = batch_receipt_word_labels[:5]
 
-    # Mock batch_write_item to return unprocessed items on first call
     # pylint: disable=protected-access
-    mock_batch = mocker.patch.object(
+    mock_transact = mocker.patch.object(
         client._client,
-        "batch_write_item",
-        side_effect=[
-            {
-                "UnprocessedItems": {
-                    dynamodb_table: [
-                        {"PutRequest": {"Item": labels_to_add[0].to_item()}}
-                    ]
-                }
-            },
-            {},  # Success on retry
-        ],
+        "transact_write_items",
+        return_value={},
     )
 
     client.add_receipt_word_labels(labels_to_add)
 
-    # Should be called twice (initial + retry)
-    assert mock_batch.call_count == 2
+    mock_transact.assert_called_once()
+    transact_items = mock_transact.call_args.kwargs["TransactItems"]
+    assert len(transact_items) == len(labels_to_add)
+    assert all(
+        item["Put"]["ConditionExpression"]
+        == "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+        for item in transact_items
+    )
+
+
+@pytest.mark.integration
+def test_add_receipt_word_labels_does_not_overwrite_existing_label(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+) -> None:
+    """A bulk add cannot clobber a human-reviewed label on a rerun."""
+    client = DynamoClient(dynamodb_table)
+    existing = sample_receipt_word_label
+    existing.validation_status = ValidationStatus.VALID.value
+    existing.reasoning = "Reviewed by a human"
+    client.add_receipt_word_label(existing)
+
+    replacement = ReceiptWordLabel(
+        image_id=existing.image_id,
+        receipt_id=existing.receipt_id,
+        line_id=existing.line_id,
+        word_id=existing.word_id,
+        label=existing.label,
+        reasoning="Machine-generated replacement",
+        timestamp_added=existing.timestamp_added,
+        validation_status=ValidationStatus.PENDING.value,
+    )
+
+    with pytest.raises(EntityAlreadyExistsError, match="already exist"):
+        client.add_receipt_word_labels([replacement])
+
+    stored = client.get_receipt_word_label(
+        existing.image_id,
+        existing.receipt_id,
+        existing.line_id,
+        existing.word_id,
+        existing.label,
+    )
+    assert stored.validation_status == ValidationStatus.VALID.value
+    assert stored.reasoning == "Reviewed by a human"
+
+
+@pytest.mark.integration
+def test_add_receipt_word_labels_maps_conditional_transaction_failure(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    mocker: MockerFixture,
+) -> None:
+    """Conditional transaction cancellation has a domain-level error."""
+    client = DynamoClient(dynamodb_table)
+    # pylint: disable=protected-access
+    mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "TransactionCanceledException",
+                    "Message": "Transaction cancelled [ConditionalCheckFailed]",
+                },
+                "CancellationReasons": [
+                    {"Code": "ConditionalCheckFailed", "Message": "exists"}
+                ],
+            },
+            "TransactWriteItems",
+        ),
+    )
+
+    with pytest.raises(EntityAlreadyExistsError, match="already exist"):
+        client.add_receipt_word_labels([sample_receipt_word_label])
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "invalid_label",
+    [
+        "SUBTOTAL SHOULD BE 50.63 OR FIX THE DISCOUNTS",
+        "7829.53",
+        "LOYAULTY_ID",
+    ],
+)
+def test_add_receipt_word_label_rejects_non_core_label(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    invalid_label: str,
+) -> None:
+    """Application/model writes cannot mint arbitrary label keys."""
+    client = DynamoClient(dynamodb_table)
+    sample_receipt_word_label.label = invalid_label
+
+    with pytest.raises(
+        EntityValidationError,
+        match="Cannot add non-core receipt word label",
+    ):
+        client.add_receipt_word_label(sample_receipt_word_label)
+
+
+@pytest.mark.integration
+def test_add_receipt_word_labels_rejects_non_core_batch_before_write(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    mocker: MockerFixture,
+) -> None:
+    """One polluted value rejects the batch before DynamoDB is called."""
+    client = DynamoClient(dynamodb_table)
+    sample_receipt_word_label.label = "ITEM_PRICE"
+    # pylint: disable=protected-access
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+    )
+
+    with pytest.raises(
+        EntityValidationError,
+        match="Cannot add non-core receipt word label",
+    ):
+        client.add_receipt_word_labels([sample_receipt_word_label])
+
+    mock_transact.assert_not_called()
+
+
+@pytest.mark.integration
+def test_add_receipt_word_label_allows_explicit_legacy_restoration(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+) -> None:
+    """Controlled restore paths can preserve a historical non-core key."""
+    client = DynamoClient(dynamodb_table)
+    sample_receipt_word_label.label = "ITEM_NAME"
+
+    client.add_receipt_word_label(
+        sample_receipt_word_label,
+        allow_non_core_labels=True,
+    )
+
+    stored = client.get_receipt_word_label(
+        sample_receipt_word_label.image_id,
+        sample_receipt_word_label.receipt_id,
+        sample_receipt_word_label.line_id,
+        sample_receipt_word_label.word_id,
+        sample_receipt_word_label.label,
+    )
+    assert stored.label == "ITEM_NAME"
 
 
 @pytest.mark.integration
@@ -967,7 +1103,7 @@ def test_list_receipt_word_labels_with_validation_status(
             image_id=image_id,
             line_id=i + 1,
             word_id=1,
-            label="ITEM",
+            label="PRODUCT_NAME",
             reasoning="Valid label",
             timestamp_added="2024-03-20T12:00:00+00:00",
             validation_status=ValidationStatus.VALID,
@@ -980,7 +1116,7 @@ def test_list_receipt_word_labels_with_validation_status(
             image_id=image_id,
             line_id=i + 1,
             word_id=2,
-            label="PRICE",
+            label="LINE_TOTAL",
             reasoning="Invalid label",
             timestamp_added="2024-03-20T12:00:00+00:00",
             validation_status=ValidationStatus.INVALID,

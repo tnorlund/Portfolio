@@ -1072,7 +1072,7 @@ def test_apply_reverifies_source_fingerprint_before_commit(monkeypatch):
         real_stage(**kwargs)
         # A concurrent writer edits a source label between the up-front
         # fingerprint check and the commit transaction.
-        client.add_receipt_word_labels(
+        client.update_receipt_word_labels(
             [
                 ReceiptWordLabel(
                     image_id=image_id,
