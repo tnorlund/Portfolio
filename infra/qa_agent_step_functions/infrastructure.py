@@ -21,10 +21,6 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-
-# Import shared components
-from codebuild_docker_image import CodeBuildDockerImage
-from lambda_layer import dynamo_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -33,6 +29,10 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
+
+# Import shared components
+from codebuild_docker_image import CodeBuildDockerImage
+from lambda_layer import dynamo_layer
 
 # Load secrets
 config = Config("portfolio")
@@ -290,7 +290,7 @@ class QAAgentStepFunction(ComponentResource):
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_MODEL": "x-ai/grok-4.5",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
