@@ -121,21 +121,31 @@ test.describe("WordSimilarity", () => {
 
     // Wait for page to be ready
     await expect(
-      page.locator("h1", { hasText: "Introduction" })
+      page
+        .getByRole("heading", { name: "Introduction", exact: true })
+        .filter({ visible: true })
     ).toBeVisible({ timeout: 15000 });
 
     // Scroll to the milk section
-    const milkHeading = page.locator("h1", { hasText: "Asking About the $$$ Spent on Milk" });
+    const milkHeading = page
+      .getByRole("heading", { name: "Asking About the $$$ Spent on Milk" })
+      .filter({ visible: true });
     await milkHeading.scrollIntoViewIfNeeded();
 
     // Wait for timing breakdown to be visible
     // The timing breakdown shows "Document Retrieval" as the header
-    const timingSection = page.locator("text=Document Retrieval");
+    const timingSection = page
+      .getByText(/^Document Retrieval:/)
+      .filter({ visible: true });
     await expect(timingSection).toBeVisible({ timeout: 15000 });
 
     // Check for Chroma-related timing labels
-    await expect(page.locator("text=Chroma Init")).toBeVisible();
-    await expect(page.locator("text=Chroma Fetch")).toBeVisible();
+    const timingFigure = page
+      .locator('[data-testid="word-similarity"]')
+      .filter({ visible: true });
+    await expect(timingFigure.getByText("Open Chroma", { exact: true })).toBeVisible();
+    await expect(timingFigure.getByText("Chroma Fetch", { exact: true })).toBeVisible();
+    await expect(timingFigure.getByText("Filter Lines", { exact: true })).toHaveCount(0);
   });
 
   test("handles missing commentary gracefully", async ({ page }) => {

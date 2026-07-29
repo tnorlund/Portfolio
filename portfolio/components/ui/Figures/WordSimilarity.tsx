@@ -710,9 +710,8 @@ const TimingBreakdown: React.FC<{
   }
 
   steps.push(
-    { name: "Chroma Init", ms: timing.chromadb_init_ms, color: "var(--color-blue)" },
+    { name: "Open Chroma", ms: timing.chromadb_init_ms, color: "var(--color-blue)" },
     { name: "Chroma Fetch", ms: timing.chromadb_fetch_all_ms, color: "var(--color-purple)" },
-    { name: "Filter Lines", ms: timing.filter_lines_ms, color: "var(--color-yellow)" },
     { name: "Fetch Receipts", ms: timing.dynamo_fetch_total_ms, color: "var(--color-orange)" },
   );
 
