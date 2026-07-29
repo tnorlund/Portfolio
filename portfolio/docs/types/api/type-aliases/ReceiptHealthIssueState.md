@@ -8,4 +8,4 @@
 
 > **ReceiptHealthIssueState** = `"open"` \| `"claimed"` \| `"awaiting_validation"` \| `"resolved"` \| `"blocked"` \| `"manual_review"` \| `"known_limitation"`
 
-Defined in: [types/api.ts:1092](https://github.com/tnorlund/Portfolio/blob/0c9669e3e11ad55a18ff853054816f4a02e07389/portfolio/types/api.ts#L1092)
+Defined in: [types/api.ts:1092](https://github.com/tnorlund/Portfolio/blob/8a7f94620ba4597e2898d661de6ac1940a1c009b/portfolio/types/api.ts#L1092)
