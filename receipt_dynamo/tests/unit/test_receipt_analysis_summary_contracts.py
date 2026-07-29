@@ -83,6 +83,16 @@ def test_extract_amount(text: str, expected: float | None):
         ("05/15/49", datetime(2049, 5, 15)),
         ("05/15/50", datetime(1950, 5, 15)),
         ("02/30/2023", None),
+        # Month-name formats, as printed on receipts and as OCR words
+        # joined per line
+        ("JUL 25, 2026", datetime(2026, 7, 25)),
+        ("July 25 2026", datetime(2026, 7, 25)),
+        ("25 JUL 26", datetime(2026, 7, 25)),
+        ("Jul 25 '26", datetime(2026, 7, 25)),
+        ("25th July 2026", datetime(2026, 7, 25)),
+        ("JUL 25 2026 10:15 AM", datetime(2026, 7, 25)),
+        ("MAYO 5.99", None),
+        ("FEB 30 2026", None),
     ],
 )
 def test_parse_date(text: str, expected: datetime | None):

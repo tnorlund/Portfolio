@@ -93,6 +93,48 @@ DATE_PATTERNS = [
     re.compile(r"(\d{4})-(\d{2})-(\d{2})"),
 ]
 
+_MONTHS = {
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
+}
+
+# Month-name dates ("JUL 25, 2026", "25 Jul '26", "July 25 2026").
+# Receipts print these at least as often as numeric forms, and they
+# arrive split across multiple OCR words — parse_date accepts joined
+# line text as well as single words.
+_MONTH_NAME_PATTERNS = [
+    # Month first: JUL 25, 2026 / July 25 '26
+    re.compile(
+        r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
+        r"(\d{1,2})(?:st|nd|rd|th)?,?\s+'?(\d{4}|\d{2})\b",
+        re.IGNORECASE,
+    ),
+    # Day first: 25 JUL 2026 / 25 July '26
+    re.compile(
+        r"\b(\d{1,2})(?:st|nd|rd|th)?\.?\s+"
+        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+"
+        r"'?(\d{4}|\d{2})\b",
+        re.IGNORECASE,
+    ),
+]
+
+
+def _expand_year(value: int) -> int:
+    """Two-digit years follow the same 00-49/50-99 window as numeric dates."""
+    if value >= 100:
+        return value
+    return 2000 + value if value < 50 else 1900 + value
+
 
 def extract_amount(text: str) -> float | None:
     """Extract a monetary amount from text.
@@ -165,6 +207,23 @@ def parse_date(text: str) -> datetime | None:
                 return datetime(year, month, day)
             except ValueError:
                 continue
+
+    for pattern in _MONTH_NAME_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        groups = match.groups()
+        try:
+            if groups[0].isdigit():
+                day = int(groups[0])
+                month = _MONTHS[groups[1][:3].lower()]
+            else:
+                month = _MONTHS[groups[0][:3].lower()]
+                day = int(groups[1])
+            year = _expand_year(int(groups[2]))
+            return datetime(year, month, day)
+        except (ValueError, KeyError):
+            continue
 
     return None
 
@@ -257,6 +316,7 @@ def _extract_summary_fields(
         Tuple of (totals, date, item_count).
     """
     state = _ExtractionState()
+    date_words_by_line: dict[int, list[tuple[int, str]]] = {}
 
     for label in word_labels:
         # Skip labels that didn't pass validation — they're usually OCR
@@ -267,6 +327,21 @@ def _extract_summary_fields(
         if handler:
             text = word_text_lookup.get((label.line_id, label.word_id), "")
             handler(text, state)
+            if label.label == "DATE":
+                date_words_by_line.setdefault(label.line_id, []).append(
+                    (label.word_id, text)
+                )
+
+    # OCR splits dates across words ("JUL" "25" "2026"), so no single
+    # word parses on its own. When per-word parsing found nothing, join
+    # each line's DATE words in word order and parse the whole phrase.
+    if state.date is None:
+        for _line_id, entries in sorted(date_words_by_line.items()):
+            joined = " ".join(t for _, t in sorted(entries) if t)
+            parsed = parse_date(joined)
+            if parsed is not None:
+                state.date = parsed
+                break
 
     totals = MonetaryTotals(
         grand_total=state.grand_total,
