@@ -21,10 +21,6 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-
-# Import shared components
-from codebuild_docker_image import CodeBuildDockerImage
-from lambda_layer import dynamo_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -33,6 +29,10 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
+
+# Import shared components
+from codebuild_docker_image import CodeBuildDockerImage
+from lambda_layer import dynamo_layer
 
 # Load secrets
 config = Config("portfolio")
