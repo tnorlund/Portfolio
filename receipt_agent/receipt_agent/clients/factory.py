@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any, Optional
 
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.exceptions import ReceiptAgentConfigurationError
 
 try:
     from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -98,6 +99,9 @@ def create_chroma_client(
     Returns:
         ChromaClient instance from receipt_chroma, or DualChromaClient if
         separate directories are set
+
+    Raises:
+        ReceiptAgentConfigurationError: If no Chroma connection is configured
     """
     if settings is None:
         settings = get_settings()
@@ -262,7 +266,7 @@ def create_chroma_client(
         client = ChromaClient(persist_directory=persist_dir, mode=mode)
         logger.info("Created ChromaDB client at: %s", persist_dir)
     else:
-        raise ValueError(
+        raise ReceiptAgentConfigurationError(
             "No ChromaDB backend configured. Set CHROMA_CLOUD_API_KEY, "
             "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
             "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
@@ -366,6 +370,9 @@ def create_embed_fn(
 
     Returns:
         Function that takes list of strings and returns list of embeddings
+
+    Raises:
+        ReceiptAgentConfigurationError: If the OpenAI API key is missing
     """
     if settings is None:
         settings = get_settings()
@@ -374,7 +381,7 @@ def create_embed_fn(
     key = api_key or settings.openai_api_key.get_secret_value()
 
     if not key:
-        raise ValueError(
+        raise ReceiptAgentConfigurationError(
             "OpenAI API key required for embeddings. "
             "Set RECEIPT_AGENT_OPENAI_API_KEY"
         )

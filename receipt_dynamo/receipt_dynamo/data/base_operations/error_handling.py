@@ -12,9 +12,12 @@ from typing import Any
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
     DynamoDBError,
+    DynamoDBResourceNotFoundError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    DynamoDBValidationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
@@ -207,17 +210,23 @@ class ErrorHandler:
             if "add_" in operation:
                 entity_type = operation.replace("add_", "")
                 # Keep snake_case to match parameter naming convention
-                raise EntityAlreadyExistsError(f"{entity_type} already exists")
+                raise EntityAlreadyExistsError(
+                    f"{entity_type} already exists"
+                ) from error
             if any(op in operation for op in ["update_", "delete_"]):
-                self._raise_not_found_error(operation, context_kwargs)
+                self._raise_not_found_error(
+                    operation, context_kwargs, cause=error
+                )
                 return
 
             raise EntityValidationError(
                 f"Conditional check failed: {error_message}"
-            )
+            ) from error
 
         if error_code == "ValidationException":
-            raise EntityValidationError(f"Validation error: {error_message}")
+            raise DynamoDBValidationError(
+                f"Validation error: {error_message}"
+            ) from error
 
         if error_code in [
             "ProvisionedThroughputExceededException",
@@ -225,28 +234,43 @@ class ErrorHandler:
         ]:
             raise DynamoDBThroughputError(
                 f"Throughput exceeded for {operation}: " f"{error_message}"
-            )
+            ) from error
 
         if error_code in ["InternalServerError", "ServiceUnavailable"]:
             raise DynamoDBServerError(
                 f"DynamoDB server error during {operation}: "
                 f"{error_message}"
-            )
+            ) from error
 
         if error_code == "ResourceNotFoundException":
-            raise OperationError(
+            raise DynamoDBResourceNotFoundError(
                 f"DynamoDB resource not found during {operation}: "
                 f"{error_message}"
-            )
+            ) from error
+
+        if error_code in {
+            "AccessDeniedException",
+            "IncompleteSignatureException",
+            "InvalidSignatureException",
+            "UnrecognizedClientException",
+        }:
+            raise DynamoDBAccessError(
+                f"DynamoDB error during {operation}: {error_code} - "
+                f"{error_message}"
+            ) from error
 
         # Generic DynamoDB error
         raise DynamoDBError(
             f"DynamoDB error during {operation}: {error_code} - "
             f"{error_message}"
-        )
+        ) from error
 
     def _raise_not_found_error(
-        self, operation: str, context: dict[str, Any]
+        self,
+        operation: str,
+        context: dict[str, Any],
+        *,
+        cause: Exception | None = None,
     ) -> None:
         """Raise EntityNotFoundError with operation-specific message."""
         if operation in self.config.ENTITY_NOT_FOUND_PATTERNS:
@@ -266,7 +290,7 @@ class ErrorHandler:
                 message = f"{entity_name} not found during {operation}"
             else:
                 message = f"entity not found during {operation}"
-        raise EntityNotFoundError(message)
+        raise EntityNotFoundError(message) from cause
 
 
 # =============================================================================

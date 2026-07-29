@@ -12,6 +12,7 @@ The adapter maintains type safety using Pydantic models.
 import logging
 from typing import Optional
 
+from receipt_places.exceptions import PlaceAdaptationError
 from receipt_places.types import (
     Candidate,
     Geometry,
@@ -183,12 +184,14 @@ def adapt_v1_to_legacy(place_v1: PlaceV1) -> Place:
         Legacy Place object with equivalent data
 
     Raises:
-        ValueError: If critical fields are missing or invalid
+        PlaceAdaptationError: If a critical identity field is missing
     """
     # Extract place_id from the resource name if id is not directly available
     place_id = place_v1.id
     if not place_id:
-        raise ValueError("Place v1 has no id field - critical field missing")
+        raise PlaceAdaptationError(
+            "Cannot adapt Places v1 response: missing required place id"
+        )
 
     # Extract merchant name from display_name
     name = None
@@ -204,8 +207,9 @@ def adapt_v1_to_legacy(place_v1: PlaceV1) -> Place:
         )
 
     if not name:
-        raise ValueError(
-            "Place v1 has no name field - cannot resolve merchant name"
+        raise PlaceAdaptationError(
+            f"Cannot adapt Places v1 place {place_id!r}: "
+            "missing display name and resource name"
         )
 
     # Adapt geometry

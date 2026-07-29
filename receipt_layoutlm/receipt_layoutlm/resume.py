@@ -15,6 +15,14 @@ import posixpath
 from pathlib import Path
 from urllib.parse import urlparse
 
+from receipt_layoutlm.exceptions import (
+    InvalidResumeURIError,
+    ResumeDestinationError,
+    ResumeDownloadError,
+    ResumeListingError,
+    UnsafeResumeDestinationError,
+)
+
 logger = logging.getLogger(__name__)
 
 LOCAL_OUTPUT_ROOT = Path("/tmp/receipt_layoutlm")
@@ -28,7 +36,7 @@ def _parse_s3_uri(uri: str) -> tuple[str, str]:
     """
     parsed = urlparse(uri)
     if parsed.scheme != "s3" or not parsed.netloc:
-        raise ValueError(f"Not a valid s3:// URI: {uri!r}")
+        raise InvalidResumeURIError(f"Not a valid s3:// URI: {uri!r}")
     prefix = parsed.path.lstrip("/")
     if prefix and not prefix.endswith("/"):
         prefix += "/"
@@ -58,12 +66,17 @@ def sync_resume_checkpoint(
     Returns:
         The local directory the files were synced into.
     """
-    if s3_client is None:
-        import boto3
-
-        s3_client = boto3.client("s3")
-
     bucket, prefix = _parse_s3_uri(resume_from_s3)
+
+    if s3_client is None:
+        try:
+            import boto3
+
+            s3_client = boto3.client("s3")
+        except Exception as exc:
+            raise ResumeListingError(
+                f"Unable to create an S3 client for checkpoint {resume_from_s3}"
+            ) from exc
 
     # Resolve local_root once so we can verify every path we write lands
     # inside it. job_name comes from a hyperparameter and S3 keys come from
@@ -72,45 +85,69 @@ def sync_resume_checkpoint(
     root = local_root.resolve()
     dest = (root / job_name).resolve()
     if dest == root or root not in dest.parents:
-        raise ValueError(
+        raise UnsafeResumeDestinationError(
             f"Invalid job_name {job_name!r}: would escape {root}"
         )
-    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ResumeDestinationError(dest) from exc
 
-    logger.info(
-        "Resume: syncing s3://%s/%s -> %s", bucket, prefix, dest
-    )
-    paginator = s3_client.get_paginator("list_objects_v2")
+    logger.info("Resume: syncing s3://%s/%s -> %s", bucket, prefix, dest)
+    try:
+        paginator = s3_client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+    except Exception as exc:
+        uri = f"s3://{bucket}/{prefix}"
+        raise ResumeListingError(
+            f"Failed to list checkpoint objects at {uri}"
+        ) from exc
     count = 0
     skipped = 0
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []) or []:
-            key = obj["Key"]
-            # Skip the "directory placeholder" objects S3 sometimes returns.
-            if key.endswith("/"):
-                continue
-            rel = key[len(prefix):] if prefix else key
-            # Normalize using POSIX semantics since S3 keys use forward
-            # slashes regardless of host platform.
-            rel = posixpath.normpath(rel.lstrip("/"))
-            if rel.startswith("..") or rel.startswith("/") or rel == ".":
-                logger.warning(
-                    "Resume: skipping suspicious key %r", key
-                )
-                skipped += 1
-                continue
-            local_path = (dest / rel).resolve()
-            if dest not in local_path.parents and local_path != dest:
-                logger.warning(
-                    "Resume: skipping key %r — resolved path escapes %s",
-                    key,
-                    dest,
-                )
-                skipped += 1
-                continue
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            s3_client.download_file(bucket, key, str(local_path))
-            count += 1
+    try:
+        for page in pages:
+            for obj in page.get("Contents", []) or []:
+                key = obj["Key"]
+                # Skip the "directory placeholder" objects S3 sometimes returns.
+                if key.endswith("/"):
+                    continue
+                rel = key[len(prefix) :] if prefix else key
+                # Normalize using POSIX semantics since S3 keys use forward
+                # slashes regardless of host platform.
+                rel = posixpath.normpath(rel.lstrip("/"))
+                if rel.startswith("..") or rel.startswith("/") or rel == ".":
+                    logger.warning("Resume: skipping suspicious key %r", key)
+                    skipped += 1
+                    continue
+                local_path = (dest / rel).resolve()
+                if dest not in local_path.parents and local_path != dest:
+                    logger.warning(
+                        "Resume: skipping key %r — resolved path escapes %s",
+                        key,
+                        dest,
+                    )
+                    skipped += 1
+                    continue
+                try:
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise ResumeDestinationError(local_path.parent) from exc
+                try:
+                    s3_client.download_file(bucket, key, str(local_path))
+                except Exception as exc:
+                    raise ResumeDownloadError(
+                        bucket=bucket,
+                        key=key,
+                        destination=local_path,
+                    ) from exc
+                count += 1
+    except (ResumeDestinationError, ResumeDownloadError):
+        raise
+    except Exception as exc:
+        uri = f"s3://{bucket}/{prefix}"
+        raise ResumeListingError(
+            f"Failed while listing checkpoint objects at {uri}"
+        ) from exc
 
     logger.info("Resume: downloaded %d files into %s", count, dest)
     if count == 0:

@@ -162,19 +162,38 @@ except ModuleNotFoundError:
     JobService = _ServicePlaceholder  # type: ignore
     QueueService = _ServicePlaceholder  # type: ignore
 
+# =============================================================================
+# Exception and utility imports (explicit, no star imports)
+# =============================================================================
+from receipt_dynamo.data.shared_exceptions import (
+    BatchOperationError,
+    DynamoCriticalErrorException,
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBResourceNotFoundError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    DynamoRetryableException,
+    EntityAlreadyExistsError,
+    EntityError,
+    EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
+    ReceiptDynamoError,
+    ResilienceError,
+    TransactionError,
+)
 from receipt_dynamo.merchant_truth_loader import (
     MerchantTruthArtifact,
     MerchantTruthLoader,
     TruthResolutionMode,
 )
-
-# =============================================================================
-# Utility imports (explicit, no star imports)
-# =============================================================================
 from receipt_dynamo.utils import (
     BatchQueue,
     CircuitBreaker,
     CircuitBreakerOpenError,
+    RetryExhaustedError,
     RetryManager,
     retry_with_backoff,
 )
@@ -377,11 +396,30 @@ __all__ = [
     "BatchQueue",
     "CircuitBreaker",
     "CircuitBreakerOpenError",
+    "RetryExhaustedError",
     "RetryManager",
     "retry_with_backoff",
     "MerchantTruthArtifact",
     "MerchantTruthLoader",
     "TruthResolutionMode",
+    # Exceptions
+    "BatchOperationError",
+    "DynamoCriticalErrorException",
+    "DynamoDBAccessError",
+    "DynamoDBError",
+    "DynamoDBResourceNotFoundError",
+    "DynamoDBServerError",
+    "DynamoDBThroughputError",
+    "DynamoDBValidationError",
+    "DynamoRetryableException",
+    "EntityAlreadyExistsError",
+    "EntityError",
+    "EntityNotFoundError",
+    "EntityValidationError",
+    "OperationError",
+    "ReceiptDynamoError",
+    "ResilienceError",
+    "TransactionError",
     # DynamoDB clients
     "DynamoClient",
     "ResilientDynamoClient",

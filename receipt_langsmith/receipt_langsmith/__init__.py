@@ -54,13 +54,22 @@ __version__ = "0.3.0"  # Remove pyarrow dependency, cleanup dead code
 # Client (always available)
 from receipt_langsmith.client import (
     BulkExportDestination,
+    BulkExportError,
     BulkExportManager,
     BulkExportRequest,
     BulkExportResponse,
+    BulkExportResponseError,
+    BulkExportTimeoutError,
     ExportJob,
     ExportStatus,
+    LangSmithAPIError,
     LangSmithClient,
+    LangSmithConfigurationError,
+    LangSmithRequestError,
+    LangSmithResponseError,
+    LangSmithTransportError,
     Project,
+    ReceiptLangSmithError,
 )
 
 # Core entities (always available)
@@ -252,6 +261,15 @@ __all__ = [
     "BulkExportDestination",
     "BulkExportRequest",
     "BulkExportResponse",
+    "ReceiptLangSmithError",
+    "LangSmithConfigurationError",
+    "LangSmithRequestError",
+    "LangSmithAPIError",
+    "LangSmithTransportError",
+    "LangSmithResponseError",
+    "BulkExportError",
+    "BulkExportResponseError",
+    "BulkExportTimeoutError",
     "Project",
     # Parsers
     "TraceTreeBuilder",

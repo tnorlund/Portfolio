@@ -6,6 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from receipt_agent.exceptions import (
+    AgentExecutionError,
+    LLMError,
+    ReceiptAgentConfigurationError,
+    ReceiptAgentError,
+)
 from receipt_agent.utils.llm_factory import (  # Primary exports; Backward compatibility aliases
     EmptyResponseError,
     LLMInvoker,
@@ -32,6 +38,9 @@ class TestLLMRateLimitError:
         assert str(error) == "Rate limit hit"
         assert error.consecutive_errors == 0
         assert error.total_errors == 0
+        assert isinstance(error, LLMError)
+        assert isinstance(error, AgentExecutionError)
+        assert isinstance(error, ReceiptAgentError)
 
     def test_creation_with_stats(self):
         """Test creating error with error counts."""
@@ -186,10 +195,14 @@ class TestCreateLLM:
             os.environ.pop("OPENROUTER_API_KEY", None)
             os.environ.pop("RECEIPT_AGENT_OPENROUTER_API_KEY", None)
 
-            with pytest.raises(
-                ValueError, match="OpenRouter API key is required"
-            ):
+            with pytest.raises(ReceiptAgentConfigurationError) as exc_info:
                 create_llm()
+
+            assert str(exc_info.value) == (
+                "OpenRouter API key is required. Set OPENROUTER_API_KEY or "
+                "RECEIPT_AGENT_OPENROUTER_API_KEY environment variable."
+            )
+            assert isinstance(exc_info.value, ValueError)
 
     @patch("langchain_openai.ChatOpenAI")
     def test_uses_receipt_agent_prefix_env_vars(self, mock_chat_openai):

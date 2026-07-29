@@ -18,6 +18,13 @@ from receipt_dynamo.entities import (
     Word,
 )
 
+from receipt_upload.exceptions import (
+    OCRExecutionError,
+    OCRInputError,
+    OCRResultError,
+    OCRStorageError,
+    OCRUnavailableError,
+)
 from receipt_upload.ocr import (
     _download_image_from_s3,
     _upload_json_to_s3,
@@ -356,10 +363,12 @@ class TestAppleVisionOCRJob:
             temp_path = Path(temp_dir)
             non_existent = temp_path / "missing.jpg"
 
-            with pytest.raises(
-                FileNotFoundError, match="Image file not found"
-            ):
+            with pytest.raises(OCRInputError) as raised:
                 apple_vision_ocr_job([non_existent], temp_path)
+            assert str(raised.value) == (
+                f"OCR input image not found: {non_existent}"
+            )
+            assert raised.value.__cause__ is None
 
     @pytest.mark.unit
     def test_apple_vision_ocr_job_not_darwin(self):
@@ -372,11 +381,38 @@ class TestAppleVisionOCRJob:
             with patch(
                 "receipt_upload.ocr.platform.system", return_value="Linux"
             ):
-                with pytest.raises(
-                    ValueError,
-                    match="Vision Framework can only be run on a Mac",
-                ):
+                with pytest.raises(OCRUnavailableError) as raised:
                     apple_vision_ocr_job([img_path], temp_path)
+            assert str(raised.value) == (
+                "Apple Vision OCR requires macOS; "
+                "current platform is 'Linux'"
+            )
+            assert raised.value.__cause__ is None
+
+    @pytest.mark.unit
+    def test_apple_vision_ocr_job_reports_missing_output(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            image_path = temp_path / "image.jpg"
+            image_path.write_text("fake", encoding="utf-8")
+            expected_output = temp_path / "image.json"
+
+            with (
+                patch(
+                    "receipt_upload.ocr.platform.system",
+                    return_value="Darwin",
+                ),
+                patch("receipt_upload.ocr.subprocess.run") as run,
+            ):
+                run.return_value = Mock(stdout="", stderr="", returncode=0)
+                with pytest.raises(OCRResultError) as raised:
+                    apple_vision_ocr_job([image_path], temp_path)
+
+            assert str(raised.value) == (
+                f"OCR output missing for input {image_path}: "
+                f"expected {expected_output}"
+            )
+            assert raised.value.__cause__ is None
 
     @pytest.mark.unit
     @pytest.mark.skip(reason="Complex mocking of Swift integration")
@@ -503,6 +539,26 @@ class TestS3Functions:
                 )
 
     @pytest.mark.unit
+    def test_download_image_from_s3_wraps_service_failure(self):
+        cause = RuntimeError("access denied")
+        with (
+            patch("boto3.client") as mock_boto,
+            patch("tempfile.mkdtemp", return_value="test-dir"),
+        ):
+            mock_boto.return_value.download_file.side_effect = cause
+
+            with pytest.raises(OCRStorageError) as raised:
+                _download_image_from_s3(
+                    "image-123", "my-bucket", "images/test.jpg"
+                )
+
+        assert str(raised.value) == (
+            "Failed to download OCR input "
+            "s3://my-bucket/images/test.jpg to test-dir/image-123.jpg"
+        )
+        assert raised.value.__cause__ is cause
+
+    @pytest.mark.unit
     def test_upload_json_to_s3(self):
         """Test uploading JSON to S3."""
         with patch("boto3.client") as mock_boto:
@@ -516,6 +572,23 @@ class TestS3Functions:
             mock_s3.upload_file.assert_called_once_with(
                 "test.json", "my-bucket", "ocr/test.json"
             )
+
+    @pytest.mark.unit
+    def test_upload_json_to_s3_wraps_service_failure(self):
+        cause = RuntimeError("network timeout")
+        with patch("boto3.client") as mock_boto:
+            mock_boto.return_value.upload_file.side_effect = cause
+
+            with pytest.raises(OCRStorageError) as raised:
+                _upload_json_to_s3(
+                    Path("test.json"), "my-bucket", "ocr/test.json"
+                )
+
+        assert str(raised.value) == (
+            "Failed to upload OCR result test.json "
+            "to s3://my-bucket/ocr/test.json"
+        )
+        assert raised.value.__cause__ is cause
 
 
 class TestAppleVisionOCR:
@@ -582,10 +655,12 @@ class TestAppleVisionOCR:
     def test_apple_vision_ocr_not_darwin(self):
         """Test error on non-macOS systems."""
         with patch("platform.system", return_value="Windows"):
-            with pytest.raises(
-                ValueError, match="Vision Framework can only be run on a Mac"
-            ):
+            with pytest.raises(OCRUnavailableError) as raised:
                 apple_vision_ocr(["/path/image.jpg"])
+        assert str(raised.value) == (
+            "Apple Vision OCR requires macOS; " "current platform is 'Windows'"
+        )
+        assert raised.value.__cause__ is None
 
     @pytest.mark.unit
     def test_apple_vision_ocr_subprocess_error(self):
@@ -597,7 +672,11 @@ class TestAppleVisionOCR:
                         1, ["swift"], stderr="Error"
                     )
 
-                    with pytest.raises(
-                        ValueError, match="Error running Swift script"
-                    ):
+                    with pytest.raises(OCRExecutionError) as raised:
                         apple_vision_ocr(["/path/image.jpg"])
+        assert str(raised.value) == (
+            "Apple Vision OCR failed with exit code 1: Error"
+        )
+        assert isinstance(
+            raised.value.__cause__, subprocess.CalledProcessError
+        )

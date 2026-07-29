@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from receipt_chroma import ChromaClient
+from receipt_chroma.exceptions import ChromaCollectionNotFoundError
 
 
 @pytest.mark.unit
@@ -450,9 +451,7 @@ def test_closed_client_raises_error():
 def test_collection_not_found_without_create():
     """Error when collection missing and create_if_missing=False."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        with pytest.raises(
-            ValueError, match="Collection 'nonexistent' not found"
-        ):
+        with pytest.raises(ChromaCollectionNotFoundError):
             client.get_collection("nonexistent", create_if_missing=False)
 
 

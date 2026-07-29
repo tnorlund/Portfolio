@@ -7,6 +7,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from receipt_layoutlm.exceptions import (
+    InvalidResumeURIError,
+    ResumeDestinationError,
+    ResumeDownloadError,
+    ResumeListingError,
+    UnsafeResumeDestinationError,
+)
 from receipt_layoutlm.resume import (
     _make_torch_load_trust_checkpoints,
     _parse_s3_uri,
@@ -29,8 +36,10 @@ def test_parse_s3_uri(uri, expected):
 
 @pytest.mark.parametrize("bad", ["http://bucket/key", "bucket/key", ""])
 def test_parse_s3_uri_rejects_non_s3(bad):
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidResumeURIError) as raised:
         _parse_s3_uri(bad)
+    assert str(raised.value) == f"Not a valid s3:// URI: {bad!r}"
+    assert raised.value.__cause__ is None
 
 
 def _build_fake_s3_client(objects):
@@ -85,9 +94,7 @@ def test_sync_resume_checkpoint_creates_intermediate_dirs(tmp_path):
         local_root=tmp_path,
     )
 
-    expected_local = (
-        tmp_path / "job/checkpoint-100/sub/deep/file.bin"
-    )
+    expected_local = tmp_path / "job/checkpoint-100/sub/deep/file.bin"
     # The parent dirs were created so download_file can write the file.
     assert expected_local.parent.exists()
     s3.download_file.assert_called_once_with(
@@ -103,14 +110,82 @@ def test_sync_resume_checkpoint_rejects_traversal_job_name(
 ):
     """job_name must resolve to a subdirectory of local_root."""
     s3 = _build_fake_s3_client([])
-    with pytest.raises(ValueError, match="Invalid job_name"):
+    with pytest.raises(UnsafeResumeDestinationError) as raised:
         sync_resume_checkpoint(
             "s3://bucket/runs/v4/",
             job_name=bad_job_name,
             s3_client=s3,
             local_root=tmp_path,
         )
+    assert str(raised.value) == (
+        f"Invalid job_name {bad_job_name!r}: would escape "
+        f"{tmp_path.resolve()}"
+    )
+    assert raised.value.__cause__ is None
     s3.download_file.assert_not_called()
+
+
+def test_sync_resume_checkpoint_wraps_listing_failure(tmp_path):
+    cause = RuntimeError("S3 is unavailable")
+    s3 = MagicMock(name="s3_client")
+    s3.get_paginator.side_effect = cause
+
+    with pytest.raises(ResumeListingError) as raised:
+        sync_resume_checkpoint(
+            "s3://bucket/runs/v4/",
+            job_name="job",
+            s3_client=s3,
+            local_root=tmp_path,
+        )
+
+    assert str(raised.value) == (
+        "Failed to list checkpoint objects at s3://bucket/runs/v4/"
+    )
+    assert raised.value.__cause__ is cause
+
+
+def test_sync_resume_checkpoint_wraps_destination_failure(tmp_path):
+    blocked_root = tmp_path / "blocked"
+    blocked_root.write_text("not a directory", encoding="utf-8")
+
+    with pytest.raises(ResumeDestinationError) as raised:
+        sync_resume_checkpoint(
+            "s3://bucket/runs/v4/",
+            job_name="job",
+            s3_client=_build_fake_s3_client([]),
+            local_root=blocked_root,
+        )
+
+    destination = blocked_root / "job"
+    assert str(raised.value) == (
+        f"Unable to prepare local checkpoint destination {destination}"
+    )
+    assert raised.value.destination == destination
+    assert isinstance(raised.value.__cause__, NotADirectoryError)
+
+
+def test_sync_resume_checkpoint_wraps_download_failure(tmp_path):
+    s3 = _build_fake_s3_client([{"Key": "runs/v4/checkpoint-100/model.bin"}])
+    cause = OSError("disk full")
+    s3.download_file.side_effect = cause
+
+    with pytest.raises(ResumeDownloadError) as raised:
+        sync_resume_checkpoint(
+            "s3://bucket/runs/v4/",
+            job_name="job",
+            s3_client=s3,
+            local_root=tmp_path,
+        )
+
+    expected_path = tmp_path / "job/checkpoint-100/model.bin"
+    assert str(raised.value) == (
+        "Failed to download checkpoint object "
+        f"s3://bucket/runs/v4/checkpoint-100/model.bin to {expected_path}"
+    )
+    assert raised.value.bucket == "bucket"
+    assert raised.value.key == "runs/v4/checkpoint-100/model.bin"
+    assert raised.value.destination == expected_path
+    assert raised.value.__cause__ is cause
 
 
 def test_sync_resume_checkpoint_skips_traversal_keys(tmp_path, caplog):
@@ -196,9 +271,9 @@ def test_make_torch_load_trust_checkpoints_is_idempotent():
         first_patched = torch.load
         _make_torch_load_trust_checkpoints()
         second_patched = torch.load
-        assert first_patched is second_patched, (
-            "second call should be a no-op, not double-wrap torch.load"
-        )
+        assert (
+            first_patched is second_patched
+        ), "second call should be a no-op, not double-wrap torch.load"
     finally:
         torch.load = orig_load
 
@@ -243,9 +318,9 @@ def test_sync_resume_checkpoint_patches_torch_load_when_files_downloaded(
             s3_client=s3,
             local_root=tmp_path,
         )
-        assert getattr(torch.load, "_layoutlm_resume_patched", False), (
-            "torch.load should carry the patch marker after sync"
-        )
+        assert getattr(
+            torch.load, "_layoutlm_resume_patched", False
+        ), "torch.load should carry the patch marker after sync"
     finally:
         torch.load = orig_load
 
@@ -269,8 +344,8 @@ def test_sync_resume_checkpoint_skips_patch_when_empty(tmp_path):
             s3_client=s3,
             local_root=tmp_path,
         )
-        assert torch.load is sentinel, (
-            "no-download path must not patch torch.load"
-        )
+        assert (
+            torch.load is sentinel
+        ), "no-download path must not patch torch.load"
     finally:
         torch.load = orig_load

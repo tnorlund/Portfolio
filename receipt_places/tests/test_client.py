@@ -7,7 +7,9 @@ import responses
 
 from receipt_places.cache import CacheManager
 from receipt_places.client import PlacesClient
+from receipt_places.client_v1 import PlacesClientV1
 from receipt_places.config import PlacesConfig
+from receipt_places.exceptions import PlacesConfigurationError
 from receipt_places.types import Place
 from tests.conftest import (
     SAMPLE_DETAILS_RESPONSE,
@@ -43,10 +45,37 @@ class TestPlacesClientInit:
             cache_enabled=False,
         )
 
-        with pytest.raises(ValueError, match="API key required"):
+        with pytest.raises(PlacesConfigurationError) as exc_info:
             PlacesClient(
                 api_key="", config=config, cache_manager=cache_manager
             )
+
+        assert str(exc_info.value) == (
+            "Google Places API key required. "
+            "Set RECEIPT_PLACES_API_KEY environment variable."
+        )
+        assert isinstance(exc_info.value, ValueError)
+
+    def test_v1_init_without_api_key_raises_same_configuration_error(
+        self,
+        cache_manager: CacheManager,
+    ) -> None:
+        """Both API implementations expose one configuration contract."""
+        config = PlacesConfig(
+            api_key="",
+            table_name="test",
+            cache_enabled=False,
+        )
+
+        with pytest.raises(PlacesConfigurationError) as exc_info:
+            PlacesClientV1(
+                api_key="", config=config, cache_manager=cache_manager
+            )
+
+        assert str(exc_info.value) == (
+            "Google Places API key required. "
+            "Set RECEIPT_PLACES_API_KEY environment variable."
+        )
 
 
 class TestSearchByPhone:

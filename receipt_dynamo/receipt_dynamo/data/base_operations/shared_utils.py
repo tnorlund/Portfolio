@@ -8,7 +8,10 @@ base operations classes to eliminate code duplication.
 import time
 from typing import Any, Dict
 
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
+from receipt_dynamo.data.shared_exceptions import (
+    BatchOperationError,
+    EntityValidationError,
+)
 
 # Default geometry values for creating temporary entities (e.g., for deletion)
 DEFAULT_GEOMETRY_FIELDS: Dict[str, Any] = {
@@ -291,8 +294,10 @@ def batch_write_with_retry(
             formatted_items = unprocessed_items
         else:
             # Final attempt failed, log unprocessed items
-            raise RuntimeError(
-                f"Failed to process all items after {max_retries} retries"
+            raise BatchOperationError(
+                f"Failed to process all items after {max_retries} retries",
+                attempts=max_retries + 1,
+                unprocessed_items=unprocessed_items,
             )
 
 
@@ -327,6 +332,8 @@ def batch_write_with_retry_dict(
             request_items = unprocessed_items
         else:
             # Final attempt failed, log unprocessed items
-            raise RuntimeError(
-                f"Failed to process all items after {max_retries} retries"
+            raise BatchOperationError(
+                f"Failed to process all items after {max_retries} retries",
+                attempts=max_retries + 1,
+                unprocessed_items=unprocessed_items,
             )

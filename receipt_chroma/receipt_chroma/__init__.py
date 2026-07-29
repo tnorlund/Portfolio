@@ -2,6 +2,15 @@
 
 from typing import TYPE_CHECKING, Any
 
+from receipt_chroma.exceptions import (
+    ChromaClientClosedError,
+    ChromaClientStateError,
+    ChromaCollectionNotFoundError,
+    ChromaConfigurationError,
+    ChromaDeltaUploadError,
+    ChromaReadOnlyError,
+    ReceiptChromaError,
+)
 from receipt_chroma.section_propagation import Propagation, propagate_knn
 
 __version__ = "0.2.0"
@@ -13,8 +22,15 @@ if TYPE_CHECKING:
 __all__ = [
     "__version__",
     "ChromaClient",
+    "ChromaClientClosedError",
+    "ChromaClientStateError",
+    "ChromaCollectionNotFoundError",
+    "ChromaConfigurationError",
+    "ChromaDeltaUploadError",
+    "ChromaReadOnlyError",
     "LockManager",
     "Propagation",
+    "ReceiptChromaError",
     "propagate_knn",
 ]
 

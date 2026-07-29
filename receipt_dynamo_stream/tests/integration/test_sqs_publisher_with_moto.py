@@ -16,6 +16,7 @@ from receipt_dynamo_stream import (
     StreamRecordContext,
     publish_messages,
 )
+from receipt_dynamo_stream.exceptions import QueueConfigurationError
 
 
 @pytest.fixture
@@ -197,9 +198,11 @@ def test_batches_above_ten_messages(
     assert len(words_msgs) == 10
 
 
-def test_missing_queue_env_returns_zero(moto_sqs: Any) -> None:
+def test_missing_queue_env_raises_configuration_error(moto_sqs: Any) -> None:
     os.environ.pop("LINES_QUEUE_URL", None)
     os.environ.pop("WORDS_QUEUE_URL", None)
     msg = _sample_place_message()
-    sent = publish_messages([msg])
-    assert sent == 0
+    with pytest.raises(QueueConfigurationError) as caught:
+        publish_messages([msg])
+    assert type(caught.value) is QueueConfigurationError
+    assert caught.value.environment_variable == "LINES_QUEUE_URL"

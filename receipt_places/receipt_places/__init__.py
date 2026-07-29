@@ -24,6 +24,13 @@ Example:
 from receipt_places.cache import CacheManager
 from receipt_places.client import PlacesClient, create_places_client
 from receipt_places.config import PlacesConfig
+from receipt_places.exceptions import (
+    PlaceAdaptationError,
+    PlacesAPIError,
+    PlacesConfigurationError,
+    PlacesResponseError,
+    ReceiptPlacesError,
+)
 from receipt_places.parsers import APIError, ParseError
 from receipt_places.types import (
     Candidate,
@@ -55,6 +62,12 @@ __all__ = [
     "PlacesClient",
     "CacheManager",
     "PlacesConfig",
+    # Package errors
+    "ReceiptPlacesError",
+    "PlacesConfigurationError",
+    "PlacesResponseError",
+    "PlaceAdaptationError",
+    "PlacesAPIError",
     # Typed models
     "Place",
     "LatLng",

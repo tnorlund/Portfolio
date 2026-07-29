@@ -28,6 +28,7 @@ from tenacity import (
 from receipt_places.adapter import adapt_v1_to_legacy
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
+from receipt_places.exceptions import PlacesConfigurationError
 from receipt_places.parsers import APIError, ParseError
 from receipt_places.types import Place
 from receipt_places.types_v1 import (
@@ -104,12 +105,15 @@ class PlacesClientV1:
             api_key: Google Places API key (defaults to config)
             config: Configuration settings
             cache_manager: Optional pre-configured cache manager
+
+        Raises:
+            PlacesConfigurationError: If no Google Places API key is configured
         """
         self._config = config or get_config()
         self._api_key = api_key or self._config.api_key.get_secret_value()
 
         if not self._api_key:
-            raise ValueError(
+            raise PlacesConfigurationError(
                 "Google Places API key required. "
                 "Set RECEIPT_PLACES_API_KEY environment variable."
             )

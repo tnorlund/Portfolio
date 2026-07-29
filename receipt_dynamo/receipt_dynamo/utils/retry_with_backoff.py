@@ -7,15 +7,9 @@ import time
 from functools import wraps
 from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
 
+from receipt_dynamo.data.shared_exceptions import RetryExhaustedError
+
 T = TypeVar("T")
-
-
-class RetryExhaustedError(Exception):
-    """Raised when all retry attempts are exhausted."""
-
-    def __init__(self, message: str, last_exception: Exception):
-        super().__init__(message)
-        self.last_exception = last_exception
 
 
 def exponential_backoff_with_jitter(
@@ -90,10 +84,13 @@ def retry_with_backoff(
                         time.sleep(delay)
 
             # All attempts exhausted
-            raise RetryExhaustedError(
+            exhausted_error = RetryExhaustedError(
                 f"Failed after {max_attempts} attempts",
                 last_exception or Exception("Unknown error"),
+                attempts=max_attempts,
+                operation=func.__qualname__,
             )
+            raise exhausted_error from exhausted_error.last_exception
 
         return wrapper
 
@@ -136,9 +133,12 @@ class RetryManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if not self.succeeded and self.last_exception:
-            raise RetryExhaustedError(
-                f"Failed after {self.attempt} attempts", self.last_exception
+            exhausted_error = RetryExhaustedError(
+                f"Failed after {self.attempt} attempts",
+                self.last_exception,
+                attempts=self.attempt,
             )
+            raise exhausted_error from self.last_exception
         return False
 
     def should_retry(self) -> bool:

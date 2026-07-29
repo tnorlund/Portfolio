@@ -19,6 +19,13 @@ from receipt_dynamo_stream.change_detection.detector import (
     CHROMADB_RELEVANT_FIELDS,
     get_chromadb_relevant_changes,
 )
+from receipt_dynamo_stream.exceptions import (
+    QueueBatchFailureError,
+    QueueConfigurationError,
+    QueuePublishError,
+    QueueServiceError,
+    ReceiptDynamoStreamError,
+)
 from receipt_dynamo_stream.message_builder import build_messages_from_records
 from receipt_dynamo_stream.models import (
     ChromaDBCollection,
@@ -64,6 +71,11 @@ __all__ = [
     "FieldChange",
     "LambdaResponse",
     "ParsedStreamRecord",
+    "QueueBatchFailureError",
+    "QueueConfigurationError",
+    "QueuePublishError",
+    "QueueServiceError",
+    "ReceiptDynamoStreamError",
     "StreamMessage",
     "StreamRecordContext",
     "TargetQueue",

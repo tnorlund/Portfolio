@@ -11,29 +11,13 @@ import numpy as np
 import torch
 from torch import nn
 
+from receipt_layoutlm.exceptions import (
+    CoreMLExportError,
+    MissingDependencyError,
+    NaNWeightsError,
+)
 
-class CoreMLExportError(Exception):
-    """Base exception for CoreML export errors."""
-
-
-class MissingDependencyError(CoreMLExportError):
-    """Raised when required dependencies are not installed."""
-
-
-class NaNWeightsError(CoreMLExportError):
-    """Raised when exported CoreML model contains NaN or Inf weight values.
-
-    Typically caused by float16 quantization overflowing large weight
-    values (FP16 max is 65504). Re-export without ``--quantize float16``.
-    """
-
-    def __init__(self, bad_count: int, weight_path: Path):
-        self.bad_count = bad_count
-        self.weight_path = weight_path
-        super().__init__(
-            f"Exported CoreML model contains {bad_count} NaN/Inf values "
-            f"in weight.bin ({weight_path})."
-        )
+__all__ = ["CoreMLExportError", "MissingDependencyError", "NaNWeightsError"]
 
 
 class LayoutLMWrapper(nn.Module):
@@ -141,7 +125,9 @@ def export_coreml(
 
     # Load the trained model and tokenizer
     if model_version == "v3":
-        model = LayoutLMv3ForTokenClassification.from_pretrained(checkpoint_path)
+        model = LayoutLMv3ForTokenClassification.from_pretrained(
+            checkpoint_path
+        )
         tokenizer = LayoutLMv3TokenizerFast.from_pretrained(checkpoint_path)
     else:
         model = LayoutLMForTokenClassification.from_pretrained(checkpoint_path)
@@ -319,8 +305,12 @@ def export_coreml(
     vocab_src = checkpoint_path / "vocab.txt"
     vocab_dst = output_path / "vocab.txt"
     if model_version == "v3":
-        print("WARNING: v3 uses RoBERTa BPE tokenizer — vocab.txt is not compatible with Swift BertTokenizer")
-        print("         v3 Swift inference requires a BPE tokenizer implementation (follow-up PR)")
+        print(
+            "WARNING: v3 uses RoBERTa BPE tokenizer — vocab.txt is not compatible with Swift BertTokenizer"
+        )
+        print(
+            "         v3 Swift inference requires a BPE tokenizer implementation (follow-up PR)"
+        )
         # Still write it for reference, but save the full tokenizer too
         tokenizer.save_pretrained(str(output_path))
         print(f"Saved v3 tokenizer files to {output_path}")

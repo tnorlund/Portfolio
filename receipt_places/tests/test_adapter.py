@@ -17,6 +17,7 @@ from receipt_places.adapter import (
     adapt_v1_to_legacy,
     adapt_v1_viewport_to_legacy,
 )
+from receipt_places.exceptions import PlaceAdaptationError
 from receipt_places.types import (
     Candidate,
     Geometry,
@@ -319,6 +320,30 @@ class TestFullPlaceAdapterWithMocks:
         # Optional fields should be None
         assert legacy_place.rating is None
         assert legacy_place.formatted_phone_number is None
+
+    def test_missing_place_id_raises_adaptation_error(self) -> None:
+        """A response without its stable identity cannot be adapted."""
+        v1_place = PlaceV1(display_name=LocalizedText(text="Test Place"))
+
+        with pytest.raises(PlaceAdaptationError) as exc_info:
+            adapt_v1_to_legacy(v1_place)
+
+        assert str(exc_info.value) == (
+            "Cannot adapt Places v1 response: missing required place id"
+        )
+        assert isinstance(exc_info.value, ValueError)
+
+    def test_missing_place_name_includes_place_id(self) -> None:
+        """Adaptation errors identify the malformed upstream place."""
+        v1_place = PlaceV1(id="ChIJmissing-name")
+
+        with pytest.raises(PlaceAdaptationError) as exc_info:
+            adapt_v1_to_legacy(v1_place)
+
+        assert str(exc_info.value) == (
+            "Cannot adapt Places v1 place 'ChIJmissing-name': "
+            "missing display name and resource name"
+        )
 
     def test_adapt_rating_validation(self) -> None:
         """Test that rating is validated during adaptation."""

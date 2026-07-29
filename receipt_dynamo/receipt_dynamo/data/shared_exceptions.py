@@ -1,59 +1,25 @@
-"""Custom exceptions for receipt_dynamo data layer operations."""
+"""Custom exceptions for :mod:`receipt_dynamo` operations."""
+
+from typing import Any
 
 
 class ReceiptDynamoError(Exception):
     """Base exception for all receipt_dynamo errors."""
 
 
-# DynamoDB specific exceptions
+# Broad categories ---------------------------------------------------------
 class DynamoDBError(ReceiptDynamoError):
-    """Base exception for DynamoDB operations."""
+    """Base exception for failures reported by DynamoDB."""
 
 
 class DynamoRetryableException(DynamoDBError):
-    """
-    Exception raised for retryable errors in DynamoDB operations.
-
-    This exception should be raised when an operation fails due to a temporary
-    issue
-    such as a provisioned throughput exceeded error, which could succeed if
-    retried later.
-    """
+    """Base for transient DynamoDB failures that may succeed when retried."""
 
 
 class DynamoCriticalErrorException(DynamoDBError):
-    """
-    Exception raised for critical errors in DynamoDB operations.
-
-    This exception should be raised when an operation fails due to a permanent
-    issue
-    such as a resource not found or permission denied error, which would not
-    succeed
-    if retried without addressing the underlying issue.
-    """
+    """Base for non-retryable DynamoDB failures requiring intervention."""
 
 
-class DynamoDBThroughputError(DynamoRetryableException):
-    """Raised when DynamoDB provisioned throughput is exceeded."""
-
-
-class DynamoDBServerError(DynamoRetryableException):
-    """Raised when DynamoDB has an internal server error."""
-
-
-class DynamoDBAccessError(DynamoCriticalErrorException):
-    """Raised when access to DynamoDB is denied."""
-
-
-class DynamoDBResourceNotFoundError(DynamoCriticalErrorException):
-    """Raised when a DynamoDB resource is not found."""
-
-
-class DynamoDBValidationError(DynamoCriticalErrorException):
-    """Raised when DynamoDB request validation fails."""
-
-
-# Entity specific exceptions
 class EntityError(ReceiptDynamoError):
     """Base exception for entity operations."""
 
@@ -70,19 +36,94 @@ class EntityValidationError(EntityError, ValueError):
     """Raised when entity validation fails."""
 
 
-# Operation specific exceptions
 class OperationError(ReceiptDynamoError):
     """Base exception for operation failures."""
 
 
 class BatchOperationError(OperationError):
-    """Raised when a batch operation fails."""
+    """Raised when a batch operation leaves items unprocessed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempts: int | None = None,
+        unprocessed_items: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+        self.unprocessed_items = unprocessed_items or {}
 
 
 class TransactionError(OperationError):
     """Raised when a transaction operation fails."""
 
 
+class ResilienceError(ReceiptDynamoError):
+    """Base exception for retry and circuit-breaker failures."""
+
+
+class CircuitBreakerOpenError(ResilienceError):
+    """Raised when an open circuit breaker blocks an operation."""
+
+    def __init__(
+        self, message: str, *, retry_after_seconds: float | None = None
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class RetryExhaustedError(ResilienceError):
+    """Raised when an operation still fails after all retry attempts."""
+
+    def __init__(
+        self,
+        message: str,
+        last_exception: Exception,
+        *,
+        attempts: int | None = None,
+        operation: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.last_exception = last_exception
+        self.attempts = attempts
+        self.operation = operation
+
+
+# DynamoDB failure kinds ---------------------------------------------------
+class DynamoDBThroughputError(DynamoRetryableException):
+    """Raised when DynamoDB provisioned throughput is exceeded."""
+
+
+class DynamoDBServerError(DynamoRetryableException):
+    """Raised when DynamoDB reports an internal or unavailable service."""
+
+
+class DynamoDBAccessError(DynamoCriticalErrorException):
+    """Raised when credentials are invalid or DynamoDB denies access."""
+
+
+class DynamoDBResourceNotFoundError(
+    DynamoCriticalErrorException, OperationError
+):
+    """Raised when the requested DynamoDB table or index does not exist.
+
+    ``OperationError`` remains a base class for backward compatibility with
+    callers that previously handled this less-specific category.
+    """
+
+
+class DynamoDBValidationError(
+    DynamoCriticalErrorException, EntityValidationError
+):
+    """Raised when DynamoDB rejects a malformed request.
+
+    This is also an ``EntityValidationError`` so existing callers that group
+    local and service-side validation failures continue to work.
+    """
+
+
+# Merchant-truth contract failures ----------------------------------------
 class MerchantTruthError(ReceiptDynamoError):
     """Base exception for merchant-truth contract violations."""
 

@@ -43,6 +43,14 @@ from receipt_chroma.chroma_types import (
     ChromaMetadataInput,
     to_chroma_metadata_dict,
 )
+from receipt_chroma.exceptions import (
+    ChromaClientClosedError,
+    ChromaClientStateError,
+    ChromaCollectionNotFoundError,
+    ChromaConfigurationError,
+    ChromaDeltaUploadError,
+    ChromaReadOnlyError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +404,7 @@ class ChromaClient:
     def __enter__(self) -> "ChromaClient":
         """Enter context manager."""
         if self._closed:
-            raise RuntimeError("Cannot use closed ChromaClient")
+            raise ChromaClientClosedError("Cannot use closed ChromaClient")
         return self
 
     def __exit__(
@@ -466,20 +474,20 @@ class ChromaClient:
     def _ensure_client(self) -> Any:
         """Get or create ChromaDB client."""
         if self._closed:
-            raise RuntimeError("Cannot use closed ChromaClient")
+            raise ChromaClientClosedError("Cannot use closed ChromaClient")
 
         if self._client is None:
             # Chroma Cloud takes precedence over other client types
             if self._cloud_api_key:
                 # Create Chroma Cloud client for multi-tenant cloud database
                 if not self._cloud_tenant:
-                    raise ValueError(
+                    raise ChromaConfigurationError(
                         "cloud_api_key is set but cloud_tenant is missing. "
                         "Pass cloud_tenant explicitly (the tenant UUID from "
                         "Chroma Cloud, e.g. 'cf5b7019-...')."
                     )
                 if not self._cloud_database:
-                    raise ValueError(
+                    raise ChromaConfigurationError(
                         "cloud_api_key is set but cloud_database is missing. "
                         "Pass cloud_database explicitly (e.g. 'receipt_dev')."
                     )
@@ -642,7 +650,7 @@ class ChromaClient:
             ChromaDB Collection instance
         """
         if self._closed:
-            raise RuntimeError("Cannot use closed ChromaClient")
+            raise ChromaClientClosedError("Cannot use closed ChromaClient")
 
         if name not in self._collections:
             try:
@@ -684,10 +692,7 @@ class ChromaClient:
                     )
                     logger.info("Got or created collection: %s", name)
                 else:
-                    raise ValueError(
-                        f"Collection '{name}' not found and "
-                        f"create_if_missing=False. Error: {e}"
-                    ) from e
+                    raise ChromaCollectionNotFoundError(name) from e
 
         return self._collections[name]  # type: ignore[return-value]
         # ChromaDB returns Any, but matches Protocol
@@ -695,7 +700,7 @@ class ChromaClient:
     def _assert_writeable(self) -> None:
         """Ensure the client is in a writeable mode."""
         if self.mode == "read":
-            raise RuntimeError("This client is read-only (mode='read')")
+            raise ChromaReadOnlyError("This client is read-only (mode='read')")
 
     def upsert(  # pylint: disable=too-many-positional-arguments
         self,
@@ -892,15 +897,19 @@ class ChromaClient:
             S3 prefix where the delta was uploaded
 
         Raises:
-            RuntimeError: If not in delta mode or no files to upload
+            ChromaClientStateError: If the client is not in delta mode.
+            ChromaConfigurationError: If no persistence directory is set.
+            ChromaDeltaUploadError: If no files exist or S3 transfer fails.
         """
         if self.mode != "delta":
-            raise RuntimeError(
+            raise ChromaClientStateError(
                 "persist_and_upload_delta requires mode='delta'"
             )
 
         if not self.persist_directory:
-            raise RuntimeError("persist_directory required for delta uploads")
+            raise ChromaConfigurationError(
+                "persist_directory required for delta uploads"
+            )
 
         if s3_client is None:
             # pylint: disable=import-outside-toplevel
@@ -925,11 +934,24 @@ class ChromaClient:
                 relative = file_path.relative_to(self.persist_directory)
                 # Include delta_id in the S3 key to ensure uniqueness
                 s3_key = f"{s3_prefix.rstrip('/')}/{delta_id}/{relative}"
-                s3_client.upload_file(str(file_path), bucket, s3_key)
+                try:
+                    s3_client.upload_file(str(file_path), bucket, s3_key)
+                # Translate SDK-specific failures at the package boundary.
+                # pylint: disable=broad-exception-caught
+                except Exception as exc:
+                    raise ChromaDeltaUploadError(
+                        f"Failed to upload Chroma delta file to "
+                        f"s3://{bucket}/{s3_key}",
+                        bucket=bucket,
+                        key=s3_key,
+                    ) from exc
                 uploaded_files.append(s3_key)
 
         if not uploaded_files:
-            raise RuntimeError("No files to upload")
+            raise ChromaDeltaUploadError(
+                f"No files to upload from {self.persist_directory}",
+                bucket=bucket,
+            )
 
         # The actual delta key is the prefix + delta_id
         actual_delta_key = f"{s3_prefix.rstrip('/')}/{delta_id}/"
@@ -942,7 +964,17 @@ class ChromaClient:
                 # Download one key file to validate
                 test_key = uploaded_files[0]
                 local_file = Path(temp_dir) / Path(test_key).name
-                s3_client.download_file(bucket, test_key, str(local_file))
+                try:
+                    s3_client.download_file(bucket, test_key, str(local_file))
+                # Translate SDK-specific failures at the package boundary.
+                # pylint: disable=broad-exception-caught
+                except Exception as exc:
+                    raise ChromaDeltaUploadError(
+                        f"Failed to verify Chroma delta file at "
+                        f"s3://{bucket}/{test_key}",
+                        bucket=bucket,
+                        key=test_key,
+                    ) from exc
                 # If we can download, the upload was successful
 
         logger.info(

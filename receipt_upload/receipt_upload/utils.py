@@ -23,6 +23,8 @@ from receipt_dynamo.entities import (
     Word,
 )
 
+from receipt_upload.exceptions import AVIFError
+
 
 @dataclass
 class NoiseDetectionConfig:
@@ -302,10 +304,6 @@ def upload_webp_to_s3(
             Body=buffer.getvalue(),
             ContentType="image/webp",
         )
-
-
-class AVIFError(Exception):
-    """Custom exception for AVIF-related errors."""
 
 
 def upload_avif_to_s3(
