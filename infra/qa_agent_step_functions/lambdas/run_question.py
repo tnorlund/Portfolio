@@ -62,7 +62,12 @@ QUESTIONS = [
     "Find receipts with handwritten notes",
 ]
 
-CONCURRENCY = 10
+# All 32 questions must finish inside one Lambda invocation, and 900s is
+# the AWS hard ceiling — there is no bigger timeout to reach for. At 10,
+# questions run in ~3 stacked waves and a slow model risks the ceiling;
+# at 32 every question runs in a single wave, so wall time is the slowest
+# question rather than the sum of the slowest per wave.
+CONCURRENCY = 32
 
 
 class CostTrackingCallback(BaseCallbackHandler):

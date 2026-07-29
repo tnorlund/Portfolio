@@ -43,6 +43,13 @@ chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
 chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
 chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
+# Model is a stack config so per-stack experiments (e.g. a pricier model on
+# one stack) live in IaC instead of hand-edited Lambda env that the next
+# deploy silently reverts. Override: pulumi config set portfolio:QA_OPENROUTER_MODEL <slug>
+qa_openrouter_model = (
+    config.get("QA_OPENROUTER_MODEL") or "openai/gpt-oss-120b"
+)
+
 HANDLERS_DIR = os.path.join(os.path.dirname(__file__), "handlers")
 
 
@@ -290,7 +297,7 @@ class QAAgentStepFunction(ComponentResource):
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_MODEL": qa_openrouter_model,
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
@@ -567,9 +574,11 @@ def _build_state_machine_definition(
                     "langchain_project.$": "$.Payload.langchain_project",
                 },
                 "ResultPath": "$.questions_result",
-                # 900s was knife-edge for 32 questions (cold starts + provider
-                # variance timed out an entire healthy run on 2026-07-28).
-                "TimeoutSeconds": 2400,
+                # The Lambda's own timeout is 900s — the AWS hard maximum —
+                # so this state can never legitimately run longer than that.
+                # Small margin covers invoke/retry overhead; anything past
+                # it means the task is already dead.
+                "TimeoutSeconds": 960,
                 "Retry": [
                     {
                         "ErrorEquals": [
