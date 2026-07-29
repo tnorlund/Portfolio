@@ -53,6 +53,9 @@ import pytest
 from handler.ocr_processor import OCRProcessor
 from moto import mock_aws
 from receipt_agent.constants import CORE_LABELS
+from receipt_chroma.embedding.formatting.line_format import (
+    get_row_embedding_inputs,
+)
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
 
@@ -128,6 +131,30 @@ def test_receipt_lines_words_letters_parse(parser, swift_payload):
     assert all(
         (letter.line_id, letter.word_id) == (1, 1) for letter in letters
     )
+
+
+def test_shared_fixture_row_embedding_text_matches_swift(
+    parser, swift_payload
+):
+    """Pin the byte-exact row text consumed by both embedding clients."""
+    receipt = swift_payload["receipts"][0]
+    lines, _, _ = parser._parse_receipt_ocr_from_swift(
+        IMAGE_ID, receipt["cluster_id"], receipt["lines"]
+    )
+
+    assert get_row_embedding_inputs(lines) == [
+        (
+            "<EDGE>\nSPROUTS FARMERS MARKET\nORGANIC BANANAS 3.99",
+            [1],
+        ),
+        (
+            "SPROUTS FARMERS MARKET\n"
+            "ORGANIC BANANAS 3.99\n"
+            "TOTAL 3.99",
+            [3],
+        ),
+        ("ORGANIC BANANAS 3.99\nTOTAL 3.99\n<EDGE>", [4]),
+    ]
 
 
 def test_first_pass_lines_parse(parser, swift_payload):

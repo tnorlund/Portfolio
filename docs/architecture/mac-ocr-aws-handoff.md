@@ -22,12 +22,13 @@ evaluation).
                                       │ 5. cluster + warp receipts      │
                                       │ 6. Vision OCR (warped crops)    │
                                       │ 7. LayoutLM (CoreML) per line   │
-                                      │ 8. upload warped crops → S3     │
-                                      │ 9. PENDING ReceiptWordLabels    │
+                                      │ 8. retain shadow input          │
+                                      │ 9. upload warped crops → S3     │
+                                      │10. PENDING ReceiptWordLabels    │
                                       │    → DynamoDB (direct write)    │
-                                      │10. upload OCR JSON → S3         │
-                                      │11. OCRRoutingDecision → Dynamo  │
- ┌────────────────────────┐  SQS      │12. send ocr-results message     │
+                                      │11. upload OCR JSON → S3         │
+                                      │12. OCRRoutingDecision → Dynamo  │
+ ┌────────────────────────┐  SQS      │13. send result, complete + ack  │
  │ process-OCR-results    │◄──────────┴──────────────────────────────────┘
  │ Lambda (container)     │
  │  A. parse Swift JSON → Receipt, Line/Word/Letter,                     │
@@ -45,6 +46,9 @@ evaluation).
  └───────────────────────────────────────────────────────────────────────┘
 ```
 
+After step 13, the Mac runs the optional read-only shadow analysis before its
+next queue poll.
+
 ## Where each stage executes
 
 | Stage | Executes on | Code |
@@ -52,6 +56,7 @@ evaluation).
 | Receipt detection, warp, Vision OCR | Mac | `receipt_ocr_swift/Sources/ReceiptOCRCore/{OCR,ReceiptProcessing,Clustering}` |
 | Image classification (NATIVE/PHOTO/SCAN) | Mac | `Classification/ImageClassifier.swift` |
 | LayoutLM word-label inference | Mac (CoreML) | `LayoutLM/LayoutLMInference.swift` |
+| First-pass understanding comparison | Mac, opt-in shadow only | `Understanding/` + `Worker/OCRWorker.swift` |
 | OCR JSON parse → Dynamo entities | AWS Lambda | `infra/upload_images/container_ocr/handler/ocr_processor.py` |
 | Visual-row materialization (ReceiptRow) | AWS Lambda | `receipt_upload/receipt_processing/rows.py` |
 | Row/word embeddings (OpenAI) | AWS Lambda | `receipt_chroma.embedding.download_and_embed_parallel` |
@@ -61,11 +66,19 @@ evaluation).
 | Label validation (Chroma KNN + LLM) | AWS Lambda (words pipeline) | `receipt_upload/label_validation/` |
 | Chroma compaction (snapshot merge) | AWS, async | triggered by `CompactionRun` Dynamo stream |
 
-Section segmentation is deliberately **not** ported to Swift. The Mac worker
-ships evidence (OCR geometry + LayoutLM labels); every merchant-conditioned
-or cross-receipt decision (merchant resolution, sections, verification,
-validation) runs in AWS where the priors, Chroma index, and DynamoDB state
-live.
+Production merchant, section, verification, and validation ownership remains
+in AWS. The Mac worker now has an opt-in shadow implementation for
+same-receipt comparisons: it reproduces visual rows and OpenAI inputs, reads
+Chroma plus VALID DynamoDB evidence, resolves merchant/location
+conservatively, applies the packaged deterministic section decoder, and emits
+consistency checks and candidate payloads. The shadow has no candidate writer,
+never mutates production receipt entities, and is disabled by default.
+
+The Swift decoder intentionally keeps LayoutLM as a word-label model; it does
+not assume the CoreML bundle has a section head. The research branch did not
+contain a deployable section-centroid artifact, so shadow neighbor evidence is
+the directly reproducible cosine-weighted VALID-receipt KNN signal rather than
+an invented centroid model.
 
 ## Artifacts crossing the boundary
 
@@ -85,7 +98,10 @@ Returned to AWS by the Swift worker:
 - warped receipt crops → `raw-bucket/receipts/{image_id}/{file}` (S3);
 - one OCR JSON per image → `raw-bucket/ocr_results/{image}-{job}.json` (S3);
 - `ReceiptWordLabel` items (PENDING, `label_proposed_by="auto-inference"`)
-  written directly to DynamoDB. **This write is best-effort**: a failure of
+  written directly to DynamoDB with a create-only condition. Existing
+  PENDING, NEEDS_REVIEW, or human-VALID keys are never replaced, and a
+  conditional collision is an idempotent success. **This write is
+  best-effort**: a failure of
   `addReceiptWordLabels` is logged (`failed_upload_labels`) and the worker
   still sends the results message, completes the job, and deletes the SQS
   message — so a transient DynamoDB failure permanently drops that
@@ -95,6 +111,47 @@ Returned to AWS by the Swift worker:
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:
   `{image_id, job_id, s3_key, s3_bucket, receipt_count}`.
+
+The optional understanding shadow returns no artifact to AWS. After the
+production handoff and input acknowledgement, it writes a text-free structured
+timing summary. A complete JSON comparison report is written only when
+`RECEIPT_UNDERSTANDING_REPORT_DIR` is configured; its directory and files are
+restricted to the worker account (0700 and 0600). Candidate payloads are
+PENDING or NEEDS_REVIEW, carry confidence/model/provenance and a create-only
+condition, and exist only for parity inspection in this mode.
+
+## Mac understanding shadow contract
+
+Set `RECEIPT_UNDERSTANDING_SHADOW=1` to run the comparison pipeline for
+first-pass jobs. The worker retains the in-memory OCR result, completes every
+production upload and notification, acknowledges the input SQS message, and
+only then runs shadow analysis before its next poll. This prevents comparison
+latency or retries from extending the production message's visibility window.
+Configure
+`RECEIPT_SECTION_PRIOR_PATH` when the packaged
+`receipt_upload/receipt_upload/assets/section_order_priors_v2.json` cannot be
+resolved from the worker directory. OpenAI and Chroma use
+`OPENAI_API_KEY`, `CHROMA_CLOUD_API_KEY`, `CHROMA_CLOUD_TENANT`, and
+`CHROMA_CLOUD_DATABASE`; Places is optional through
+`GOOGLE_PLACES_API_KEY`. Set `RECEIPT_UNDERSTANDING_REPORT_DIR` only on a
+comparison worker that should retain full local reports.
+
+Compatibility invariants:
+
+- visual row union, ordering, row IDs, text joining, and
+  `<EDGE>\nTARGET\n<EDGE>` context formatting match Python;
+- embeddings use `text-embedding-3-small` at its native 1,536 dimensions;
+- Chroma uses the Python `lines` IDs/metadata and excludes the current receipt
+  in both the server filter and a defensive client check;
+- Chroma `section_label` metadata is never accepted as truth: neighboring
+  receipt sections are strongly read from DynamoDB and must be VALID;
+- known-receipt merchant votes are capped per receipt; conflicting LayoutLM,
+  known-receipt, or Places evidence causes abstention;
+- Places is consulted only when no reliable known-receipt result or identity
+  conflict exists;
+- missing embeddings and OpenAI/Chroma/Places failures fall back to the
+  deterministic decoder without affecting OCR publication;
+- every stage and total wall time are included in the shadow report.
 
 ## The OCR JSON schema (Swift → Python)
 

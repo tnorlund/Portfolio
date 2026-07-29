@@ -9,6 +9,7 @@ let package = Package(
     products: [
         .executable(name: "receipt-ocr", targets: ["ReceiptOCRCLI"]),
         .library(name: "ReceiptOCRCore", targets: ["ReceiptOCRCore"]),
+        .library(name: "ReceiptChroma", targets: ["ReceiptChroma"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
@@ -19,9 +20,16 @@ let package = Package(
         .target(
             name: "ReceiptOCRCore",
             dependencies: [
+                "ReceiptChroma",
                 .product(name: "SotoS3", package: "soto"),
                 .product(name: "SotoSQS", package: "soto"),
                 .product(name: "SotoDynamoDB", package: "soto"),
+                .product(name: "Logging", package: "swift-log"),
+            ]
+        ),
+        .target(
+            name: "ReceiptChroma",
+            dependencies: [
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
@@ -35,8 +43,12 @@ let package = Package(
         ),
         .testTarget(
             name: "ReceiptOCRCoreTests",
-            dependencies: ["ReceiptOCRCore"],
+            dependencies: ["ReceiptOCRCore", "ReceiptChroma"],
             resources: [.copy("Fixtures")]
+        ),
+        .testTarget(
+            name: "ReceiptChromaTests",
+            dependencies: ["ReceiptChroma"]
         ),
         .testTarget(
             name: "IntegrationTests",
@@ -49,5 +61,3 @@ let package = Package(
         ),
     ]
 )
-
-

@@ -1,5 +1,6 @@
 import Foundation
 import Logging
+import ReceiptChroma
 #if os(macOS)
 import AppKit
 import CoreGraphics
@@ -135,6 +136,9 @@ public final class OCRWorker {
     private let sqs: SQSClientProtocol
     private let s3: S3ClientProtocol
     private let dynamo: DynamoClientProtocol
+    #if os(macOS)
+    private var understandingAnalyzer: (any ReceiptUnderstandingAnalyzing)? = nil
+    #endif
     // Hold factory to manage AWSClient lifecycle when using Soto-backed clients
     private let sotoFactory: SotoAWSFactory?
 
@@ -156,6 +160,28 @@ public final class OCRWorker {
         logger.logLevel = .from(string: config.logLevel)
         self.logger = logger
     }
+
+    #if os(macOS)
+    public convenience init(
+        config: Config,
+        ocr: OCREngineProtocol,
+        sqs: SQSClientProtocol,
+        s3: S3ClientProtocol,
+        dynamo: DynamoClientProtocol,
+        sotoFactory: SotoAWSFactory? = nil,
+        understandingAnalyzer: any ReceiptUnderstandingAnalyzing
+    ) {
+        self.init(
+            config: config,
+            ocr: ocr,
+            sqs: sqs,
+            s3: s3,
+            dynamo: dynamo,
+            sotoFactory: sotoFactory
+        )
+        self.understandingAnalyzer = understandingAnalyzer
+    }
+    #endif
 
     public static func make(config: Config, stubOCR: Bool) async throws -> OCRWorker {
         let factory = SotoAWSFactory(config: config)
@@ -195,18 +221,128 @@ public final class OCRWorker {
         let engine: OCREngineProtocol = StubOCREngine()
         #endif
 
-        let worker = OCRWorker(
+        let dynamoClient = SotoDynamoClient(
+            dynamo: factory.makeDynamo(),
+            tableName: config.dynamoTableName
+        )
+        #if os(macOS)
+        do {
+            if let analyzer = try makeShadowUnderstandingAnalyzer(
+                dynamo: dynamoClient,
+                logger: modelLogger
+            ) {
+                return OCRWorker(
+                    config: config,
+                    ocr: engine,
+                    sqs: SotoSQSClient(sqs: factory.makeSQS()),
+                    s3: s3Client,
+                    dynamo: dynamoClient,
+                    sotoFactory: factory,
+                    understandingAnalyzer: analyzer
+                )
+            }
+        } catch {
+            let message =
+                "receipt_understanding_shadow_setup_failed "
+                + "shadow_disabled=true error=\(error)"
+            modelLogger.warning("\(message)")
+        }
+        #endif
+        return OCRWorker(
             config: config,
             ocr: engine,
             sqs: SotoSQSClient(sqs: factory.makeSQS()),
             s3: s3Client,
-            dynamo: SotoDynamoClient(dynamo: factory.makeDynamo(), tableName: config.dynamoTableName),
+            dynamo: dynamoClient,
             sotoFactory: factory
         )
-        return worker
     }
 
     #if os(macOS)
+    private static func makeShadowUnderstandingAnalyzer(
+        dynamo: SotoDynamoClient,
+        logger: Logger
+    ) throws -> (any ReceiptUnderstandingAnalyzing)? {
+        let environment = ProcessInfo.processInfo.environment
+        let enabled = ["1", "true", "yes"].contains(
+            (environment["RECEIPT_UNDERSTANDING_SHADOW"] ?? "").lowercased()
+        )
+        guard enabled else { return nil }
+
+        let explicitPath = environment["RECEIPT_SECTION_PRIOR_PATH"]
+        let workingDirectory = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        )
+        let candidates = [
+            explicitPath.map { URL(fileURLWithPath: $0) },
+            workingDirectory.appendingPathComponent(
+                "receipt_upload/receipt_upload/assets/"
+                    + "section_order_priors_v2.json"
+            ),
+            workingDirectory.appendingPathComponent(
+                "../receipt_upload/receipt_upload/assets/"
+                    + "section_order_priors_v2.json"
+            )
+        ].compactMap { $0 }
+        guard let priorURL = candidates.first(where: {
+            FileManager.default.fileExists(atPath: $0.path)
+        }) else {
+            throw ConfigError.invalid(
+                "RECEIPT_UNDERSTANDING_SHADOW requires "
+                    + "RECEIPT_SECTION_PRIOR_PATH"
+            )
+        }
+
+        var embedder: (any RowEmbeddingProviding)?
+        if let key = environment["OPENAI_API_KEY"], !key.isEmpty {
+            embedder = try OpenAIRowEmbeddingProvider(apiKey: key)
+        } else {
+            let message =
+                "receipt_understanding_shadow_openai_unavailable "
+                + "offline_fallback=true"
+            logger.warning("\(message)")
+        }
+
+        var neighborQuery: (any ReceiptNeighborQuerying)?
+        let chromaKey = environment["CHROMA_CLOUD_API_KEY"]
+        let chromaTenant = environment["CHROMA_CLOUD_TENANT"]
+        let chromaDatabase = environment["CHROMA_CLOUD_DATABASE"]
+        if let chromaKey, let chromaTenant, let chromaDatabase,
+           !chromaKey.isEmpty, !chromaTenant.isEmpty, !chromaDatabase.isEmpty {
+            let configuration = try ChromaConfiguration(
+                apiKey: chromaKey,
+                tenant: chromaTenant,
+                database: chromaDatabase,
+                mode: .read
+            )
+            neighborQuery = ChromaRowNeighborQuery(
+                client: ChromaClient(configuration: configuration)
+            )
+        } else {
+            let message =
+                "receipt_understanding_shadow_chroma_unavailable "
+                + "offline_fallback=true"
+            logger.warning("\(message)")
+        }
+
+        var places: (any PlacesLookingUp)?
+        if let key = environment["GOOGLE_PLACES_API_KEY"], !key.isEmpty {
+            places = try GooglePlacesLookup(apiKey: key)
+        }
+        let message =
+            "receipt_understanding_shadow_enabled prior=\(priorURL.path) "
+            + "production_writes=false"
+        logger.info("\(message)")
+        return try ReceiptUnderstandingPipeline(
+            priorURL: priorURL,
+            embedder: embedder,
+            neighborQuery: neighborQuery,
+            knownEvidenceProvider: dynamo,
+            places: places
+        )
+    }
+
     private func cropImageData(_ imageData: Data, region: ReOCRRegion) throws -> Data {
         // trigger_reocr always sends full-width (x=0..1) with line-based
         // vertical padding. Use the region directly so crop and overlay
@@ -262,6 +398,9 @@ public final class OCRWorker {
         }
         var imageURLs: [URL] = []
         var contexts: [Context] = []
+        #if os(macOS)
+        var shadowInputs: [(jsonData: Data, imageID: String)] = []
+        #endif
 
         for msg in messages {
             guard let data = msg.body.data(using: .utf8),
@@ -364,6 +503,11 @@ public final class OCRWorker {
             // Parse the OCR result JSON to get receipt info.
             // Regional re-OCR jobs should not upload warped receipt images.
             let jsonData = try Data(contentsOf: resultURL)
+            #if os(macOS)
+            if ctx.jobType == .firstPass {
+                shadowInputs.append((jsonData: jsonData, imageID: ctx.imageId))
+            }
+            #endif
             let receipts: [ParsedReceiptInfo]
             if ctx.jobType == .regionalReocr {
                 receipts = []
@@ -485,7 +629,125 @@ public final class OCRWorker {
         let entries = contexts.map { SQSDeleteEntry(id: $0.message.messageId, receiptHandle: $0.message.receiptHandle) }
         logger.info("sqs_delete_batch count=\(entries.count)")
         try await Retry.withBackoff { try await self.sqs.deleteMessages(queueURL: self.config.ocrJobQueueURL, entries: entries) }
+
+        // Shadow network work starts only after OCR results are durably
+        // published, jobs are completed, and source messages are acknowledged.
+        // Its latency can delay the next poll but cannot expose the current
+        // messages for duplicate production processing.
+        #if os(macOS)
+        await withTaskGroup(of: Void.self) { group in
+            for input in shadowInputs {
+                group.addTask {
+                    await self.runShadowUnderstanding(
+                        jsonData: input.jsonData,
+                        imageID: input.imageID
+                    )
+                }
+            }
+        }
+        #endif
         
         return true
     }
+
+    #if os(macOS)
+    private func runShadowUnderstanding(
+        jsonData: Data,
+        imageID: String
+    ) async {
+        guard let understandingAnalyzer else { return }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        do {
+            let output = try decoder.decode(ImageResult.self, from: jsonData)
+            for receipt in output.receipts ?? [] {
+                guard let lines = receipt.lines, !lines.isEmpty else { continue }
+                let report = await understandingAnalyzer.analyze(
+                    reference: ReceiptReference(
+                        imageID: imageID,
+                        receiptID: receipt.clusterId
+                    ),
+                    lines: lines,
+                    predictions: receipt.layoutlmPredictions ?? []
+                )
+                let summary =
+                    "receipt_understanding_shadow_complete "
+                    + "image_id=\(imageID) receipt_id=\(receipt.clusterId) "
+                    + "rows=\(report.rows.count) "
+                    + "sections=\(report.sections.count) "
+                    + "candidates=\(report.candidates.count) "
+                    + "issues=\(report.consistencyIssues.count) "
+                    + "offline_fallback=\(report.offlineFallback) "
+                    + "total_ms=\(report.totalMilliseconds)"
+                logger.info("\(summary)")
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                if let data = try? encoder.encode(report) {
+                    do {
+                        if let url = try persistShadowReport(
+                            data,
+                            imageID: imageID,
+                            receiptID: receipt.clusterId
+                        ) {
+                            let reportMessage =
+                                "receipt_understanding_shadow_report_saved "
+                                + "image_id=\(imageID) "
+                                + "receipt_id=\(receipt.clusterId) "
+                                + "path=\(url.path)"
+                            logger.info("\(reportMessage)")
+                        }
+                    } catch {
+                        let reportErrorMessage =
+                            "receipt_understanding_shadow_report_failed "
+                            + "image_id=\(imageID) "
+                            + "receipt_id=\(receipt.clusterId) "
+                            + "error=\(error)"
+                        logger.warning("\(reportErrorMessage)")
+                    }
+                }
+            }
+        } catch {
+            // Understanding is best effort: it must never fail OCR publication,
+            // routing, job completion, or SQS deletion.
+            let message =
+                "receipt_understanding_shadow_failed image_id=\(imageID) "
+                + "error=\(error)"
+            logger.warning("\(message)")
+        }
+    }
+
+    private func persistShadowReport(
+        _ data: Data,
+        imageID: String,
+        receiptID: Int
+    ) throws -> URL? {
+        let environment = ProcessInfo.processInfo.environment
+        guard let rawDirectory = environment["RECEIPT_UNDERSTANDING_REPORT_DIR"],
+              !rawDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        let directory = URL(fileURLWithPath: rawDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: directory.path
+        )
+        let safeImageID = imageID.map {
+            $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_"
+        }
+        let fileName =
+            "receipt-understanding-\(String(safeImageID))-"
+            + String(format: "%05d", receiptID) + ".json"
+        let url = directory.appendingPathComponent(fileName)
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: url.path
+        )
+        return url
+    }
+    #endif
 }

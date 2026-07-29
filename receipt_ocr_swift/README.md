@@ -6,6 +6,7 @@ A Swift implementation of the receipt OCR processing pipeline, replacing the Pyt
 
 - **Native macOS OCR**: Uses Apple Vision framework for high-quality text recognition
 - **AWS Integration**: Full integration with SQS, S3, and DynamoDB using Soto SDK
+- **Chroma Cloud client**: Typed, async read/write access through the `ReceiptChroma` library
 - **Retry Logic**: Exponential backoff for resilient AWS operations
 - **Structured Logging**: Comprehensive logging with configurable levels
 - **Continuous Processing**: Process all messages in queue until empty
@@ -48,6 +49,7 @@ swift build --product receipt-ocr
 ```bash
 # Unit tests only
 swift test --filter ReceiptOCRCoreTests
+swift test --filter ReceiptChromaTests
 
 # Integration tests with LocalStack
 docker-compose -f Tests/IntegrationTests/docker-compose.yml up -d
@@ -70,6 +72,80 @@ swift run -c release receipt-ocr --env dev --region us-east-1 --continuous
 # Process with custom log level
 swift run -c release receipt-ocr --env dev --region us-east-1 --log-level debug
 ```
+
+### ReceiptChroma library
+
+`ReceiptChroma` is a separate, low-level library product in this package. It
+implements the Chroma Cloud v2 transport boundary without coupling Chroma
+credentials or embedding generation to the OCR worker:
+
+```swift
+import ReceiptChroma
+
+let configuration = try ChromaConfiguration(
+    apiKey: chromaAPIKey,
+    tenant: chromaTenant,
+    database: "receipt_dev",
+    mode: .read
+)
+let chroma = ChromaClient(configuration: configuration)
+
+let result = try await chroma.query(
+    collectionName: "lines",
+    queryEmbeddings: [embedding],
+    nResults: 10,
+    where: ["merchant_name": ["$eq": "Trader Joe's"]]
+)
+await chroma.close()
+```
+
+The client provides collection lookup/listing, atomic get-or-create in write
+mode, batched upserts, vector queries, filtered gets/deletes, counts, typed
+errors, request timeouts, and 429-only exponential retry. Metadata supports
+explicit `null` tombstones so callers can clear keys that Chroma would
+otherwise retain during a merge. Receipt-specific callers must provide the
+complete tombstone set required by their collection.
+
+Callers must provide embeddings. Local persistent databases, OpenAI embedding
+jobs, S3 deltas/snapshots, DynamoDB locks, and compaction remain owned by the
+Python `receipt_chroma` pipeline so its durability ordering is unchanged. This
+library is not a replacement for `upsert_payload_to_cloud` and does not provide
+its receipt sanitization, per-record fallback, or whole-operation deadline.
+
+### Receipt understanding shadow mode
+
+The macOS worker can run an opt-in, read-only first-pass understanding pipeline
+after Vision OCR and LayoutLM inference. It reconstructs the same visual rows
+and embedding inputs as Python, queries the `lines` collection while excluding
+the current receipt, hydrates only VALID known-receipt evidence from DynamoDB,
+resolves merchant/location conservatively, and applies the existing
+semi-Markov section decoder with cosine-weighted neighbor evidence.
+
+Shadow mode runs only after the production OCR handoff is durable and the
+input SQS message is acknowledged. It emits a text-free timing summary. A
+complete PENDING or NEEDS_REVIEW comparison report is written only when
+`RECEIPT_UNDERSTANDING_REPORT_DIR` is set; the worker creates access-controlled
+local files and never uploads them. Shadow mode has no candidate writer and
+cannot change production receipt entities.
+
+Enable it only on comparison workers:
+
+```bash
+export RECEIPT_UNDERSTANDING_SHADOW=1
+export RECEIPT_SECTION_PRIOR_PATH=/absolute/path/to/section_order_priors_v2.json
+export OPENAI_API_KEY=...
+export CHROMA_CLOUD_API_KEY=...
+export CHROMA_CLOUD_TENANT=...
+export CHROMA_CLOUD_DATABASE=...
+# Optional, used only when no reliable known-receipt match exists:
+export GOOGLE_PLACES_API_KEY=...
+# Optional local comparison artifacts; directory is 0700 and reports are 0600:
+export RECEIPT_UNDERSTANDING_REPORT_DIR=/absolute/private/path
+```
+
+Without OpenAI or Chroma credentials, the decoder runs its deterministic
+offline fallback. OpenAI, Chroma, Places, and analysis failures do not affect
+OCR publication. `RECEIPT_UNDERSTANDING_SHADOW` defaults to disabled.
 
 ### Local Image Processing
 
@@ -144,6 +220,7 @@ receipt_ocr_swift/
 │       ├── Config/             # Configuration management
 │       ├── Models/              # Data models
 │       ├── OCR/                 # OCR engine implementations
+│       ├── Understanding/       # Shadow receipt-understanding pipeline
 │       ├── Util/                # Utilities (retry, date formatting)
 │       └── Worker/              # Main OCR worker
 ├── Tests/
