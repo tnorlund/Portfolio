@@ -2,6 +2,8 @@
 Tests for PlacesClient with mocked HTTP requests and DynamoDB.
 """
 
+from unittest.mock import Mock
+
 import pytest
 import responses
 
@@ -440,6 +442,48 @@ class TestGetPlaceDetails:
         """Test empty place_id returns None."""
         result = places_client.get_place_details("")
         assert result is None
+
+
+class TestV1AdaptationErrors:
+    """V1 identity failures retain the client's documented None contract."""
+
+    @staticmethod
+    def _client(test_config: PlacesConfig) -> PlacesClientV1:
+        return PlacesClientV1(
+            api_key="test-api-key",
+            config=test_config,
+            cache_manager=Mock(),
+        )
+
+    def test_get_place_details_returns_none_on_adaptation_error(
+        self, test_config: PlacesConfig
+    ) -> None:
+        client = self._client(test_config)
+        client._make_request = Mock(  # pylint: disable=protected-access
+            return_value={"formattedAddress": "123 Test St"}
+        )
+
+        assert client.get_place_details("ChIJtest123") is None
+
+    def test_cached_phone_returns_none_on_adaptation_error(
+        self, test_config: PlacesConfig
+    ) -> None:
+        client = self._client(test_config)
+        client._cache.get.return_value = {  # pylint: disable=protected-access
+            "formattedAddress": "123 Test St"
+        }
+
+        assert client._try_cached_phone_result("5551234567") is None
+
+    def test_cached_address_returns_none_on_adaptation_error(
+        self, test_config: PlacesConfig
+    ) -> None:
+        client = self._client(test_config)
+        client._cache.get.return_value = {  # pylint: disable=protected-access
+            "formattedAddress": "123 Test St"
+        }
+
+        assert client._try_cached_address_result("123 TEST ST") is None
 
 
 class TestAutocomplete:

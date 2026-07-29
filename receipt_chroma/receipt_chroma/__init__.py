@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from receipt_chroma.lock_manager import LockManager
 
 __all__ = [
-    "__version__",
     "ChromaClient",
     "ChromaClientClosedError",
     "ChromaClientStateError",
@@ -31,6 +30,7 @@ __all__ = [
     "LockManager",
     "Propagation",
     "ReceiptChromaError",
+    "__version__",
     "propagate_knn",
 ]
 

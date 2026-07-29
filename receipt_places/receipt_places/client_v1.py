@@ -28,7 +28,10 @@ from tenacity import (
 from receipt_places.adapter import adapt_v1_to_legacy
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
-from receipt_places.exceptions import PlacesConfigurationError
+from receipt_places.exceptions import (
+    PlaceAdaptationError,
+    PlacesConfigurationError,
+)
 from receipt_places.parsers import APIError, ParseError
 from receipt_places.types import Place
 from receipt_places.types_v1 import (
@@ -261,7 +264,7 @@ class PlacesClientV1:
             logger.debug("✅ Retrieved place details: %s", place.name)
             return place
 
-        except (APIError, ParseError) as e:
+        except (APIError, ParseError, PlaceAdaptationError) as e:
             logger.warning(
                 "Failed to get place details for %s: %s", place_id, e
             )
@@ -330,7 +333,7 @@ class PlacesClientV1:
             place = adapt_v1_to_legacy(place_v1)
             logger.debug("✅ Cache hit for phone: %s", digits)
             return place
-        except (APIError, ParseError) as e:
+        except (APIError, ParseError, PlaceAdaptationError) as e:
             logger.warning("Failed to parse cached phone result: %s", e)
             return None
 
@@ -489,7 +492,7 @@ class PlacesClientV1:
             place = adapt_v1_to_legacy(place_v1)
             logger.debug("✅ Cache hit for address: %s", cache_key)
             return place
-        except (APIError, ParseError) as e:
+        except (APIError, ParseError, PlaceAdaptationError) as e:
             logger.warning("Failed to parse cached address result: %s", e)
             return None
 

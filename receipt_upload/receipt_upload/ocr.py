@@ -21,9 +21,11 @@ from receipt_dynamo.entities import (
 from receipt_upload.exceptions import (
     OCRExecutionError,
     OCRInputError,
+    OCROutputNotFoundError,
+    OCRPlatformError,
     OCRResultError,
+    OCRScriptNotFoundError,
     OCRStorageError,
-    OCRUnavailableError,
 )
 
 # from receipt_label.utils.noise_detection import is_noise_text
@@ -179,12 +181,12 @@ def apple_vision_ocr_job(
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     # Check to see that the swift script exists
     if not swift_script.exists():
-        raise OCRUnavailableError(
+        raise OCRScriptNotFoundError(
             f"Apple Vision OCR script not found: {swift_script}"
         )
     # Check to see that this is a Mac
     if not platform.system() == "Darwin":
-        raise OCRUnavailableError(
+        raise OCRPlatformError(
             "Apple Vision OCR requires macOS; "
             f"current platform is {platform.system()!r}"
         )
@@ -218,7 +220,7 @@ def apple_vision_ocr_job(
         base_name = image_path.stem
         expected_json_path = temp_dir / f"{base_name}.json"
         if not expected_json_path.exists():
-            raise OCRResultError(
+            raise OCROutputNotFoundError(
                 f"OCR output missing for input {image_path}: "
                 f"expected {expected_json_path}"
             )
@@ -281,12 +283,12 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     # Check to see that the swift script exists
     if not swift_script.exists():
-        raise OCRUnavailableError(
+        raise OCRScriptNotFoundError(
             f"Apple Vision OCR script not found: {swift_script}"
         )
     # Check to see that this is a Mac
     if not platform.system() == "Darwin":
-        raise OCRUnavailableError(
+        raise OCRPlatformError(
             "Apple Vision OCR requires macOS; "
             f"current platform is {platform.system()!r}"
         )
@@ -303,7 +305,7 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
                 swift_args,
                 check=True,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
         except subprocess.CalledProcessError as exc:
             raise OCRExecutionError(_format_ocr_process_error(exc)) from exc

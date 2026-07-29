@@ -210,6 +210,12 @@ class ResilientDynamoClient(DynamoClient):
                     # retain the existing best-effort behavior with a typed
                     # error available to synchronous flushes.
                     print(f"Automatic metric flush failed: {error}")
+                except Exception as error:  # pylint: disable=W0718
+                    # Keep the daemon alive even if an unexpected dependency
+                    # error escapes the batch writer.
+                    print(
+                        f"Unexpected automatic metric flush failure: {error}"
+                    )
 
     def _prepare_flush(self) -> list[AIUsageMetric] | None:
         """Prepare metrics for flushing (must be called with lock held).
@@ -246,19 +252,6 @@ class ResilientDynamoClient(DynamoClient):
                 failed_metrics = super().batch_put_ai_usage_metrics(
                     remaining_metrics
                 )
-
-                if not failed_metrics:
-                    self._record_success()
-                    return
-
-                # Update remaining metrics for retry
-                remaining_metrics = failed_metrics
-                raise BatchOperationError(
-                    f"{len(failed_metrics)} metrics failed to write",
-                    attempts=attempt + 1,
-                    unprocessed_items={"metrics": failed_metrics},
-                )
-
             except (
                 ReceiptDynamoError,
                 RuntimeError,
@@ -267,9 +260,21 @@ class ResilientDynamoClient(DynamoClient):
             ) as e:
                 self._record_failure()
                 last_exception = e
+            else:
+                if not failed_metrics:
+                    self._record_success()
+                    return
 
-                if attempt < self.max_retry_attempts - 1:
-                    time.sleep(self._exponential_backoff(attempt))
+                remaining_metrics = failed_metrics
+                self._record_failure()
+                last_exception = BatchOperationError(
+                    f"{len(failed_metrics)} metrics failed to write",
+                    attempts=attempt + 1,
+                    unprocessed_items={"metrics": failed_metrics},
+                )
+
+            if attempt < self.max_retry_attempts - 1:
+                time.sleep(self._exponential_backoff(attempt))
 
         if remaining_metrics:
             cause = last_exception or BatchOperationError(

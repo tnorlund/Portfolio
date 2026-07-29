@@ -19,9 +19,13 @@ from receipt_dynamo.entities import (
 )
 
 from receipt_upload.exceptions import (
+    OCRError,
     OCRExecutionError,
     OCRInputError,
+    OCROutputNotFoundError,
+    OCRPlatformError,
     OCRResultError,
+    OCRScriptNotFoundError,
     OCRStorageError,
     OCRUnavailableError,
 )
@@ -368,6 +372,7 @@ class TestAppleVisionOCRJob:
             assert str(raised.value) == (
                 f"OCR input image not found: {non_existent}"
             )
+            assert isinstance(raised.value, FileNotFoundError)
             assert raised.value.__cause__ is None
 
     @pytest.mark.unit
@@ -381,12 +386,14 @@ class TestAppleVisionOCRJob:
             with patch(
                 "receipt_upload.ocr.platform.system", return_value="Linux"
             ):
-                with pytest.raises(OCRUnavailableError) as raised:
+                with pytest.raises(OCRPlatformError) as raised:
                     apple_vision_ocr_job([img_path], temp_path)
             assert str(raised.value) == (
                 "Apple Vision OCR requires macOS; "
                 "current platform is 'Linux'"
             )
+            assert isinstance(raised.value, OCRUnavailableError)
+            assert isinstance(raised.value, ValueError)
             assert raised.value.__cause__ is None
 
     @pytest.mark.unit
@@ -405,13 +412,15 @@ class TestAppleVisionOCRJob:
                 patch("receipt_upload.ocr.subprocess.run") as run,
             ):
                 run.return_value = Mock(stdout="", stderr="", returncode=0)
-                with pytest.raises(OCRResultError) as raised:
+                with pytest.raises(OCROutputNotFoundError) as raised:
                     apple_vision_ocr_job([image_path], temp_path)
 
             assert str(raised.value) == (
                 f"OCR output missing for input {image_path}: "
                 f"expected {expected_output}"
             )
+            assert isinstance(raised.value, OCRResultError)
+            assert isinstance(raised.value, FileNotFoundError)
             assert raised.value.__cause__ is None
 
     @pytest.mark.unit
@@ -595,6 +604,17 @@ class TestAppleVisionOCR:
     """Test cases for apple_vision_ocr function."""
 
     @pytest.mark.unit
+    def test_apple_vision_ocr_missing_script(self):
+        with patch("receipt_upload.ocr.Path.exists", return_value=False):
+            with pytest.raises(OCRScriptNotFoundError) as raised:
+                apple_vision_ocr(["/path/image.jpg"])
+
+        assert "Apple Vision OCR script not found" in str(raised.value)
+        assert isinstance(raised.value, OCRUnavailableError)
+        assert isinstance(raised.value, FileNotFoundError)
+        assert raised.value.__cause__ is None
+
+    @pytest.mark.unit
     def test_apple_vision_ocr_success(self):
         """Test successful OCR processing."""
         with patch("platform.system", return_value="Darwin"):
@@ -655,11 +675,13 @@ class TestAppleVisionOCR:
     def test_apple_vision_ocr_not_darwin(self):
         """Test error on non-macOS systems."""
         with patch("platform.system", return_value="Windows"):
-            with pytest.raises(OCRUnavailableError) as raised:
+            with pytest.raises(OCRPlatformError) as raised:
                 apple_vision_ocr(["/path/image.jpg"])
         assert str(raised.value) == (
             "Apple Vision OCR requires macOS; " "current platform is 'Windows'"
         )
+        assert isinstance(raised.value, OCRUnavailableError)
+        assert isinstance(raised.value, ValueError)
         assert raised.value.__cause__ is None
 
     @pytest.mark.unit
@@ -680,3 +702,21 @@ class TestAppleVisionOCR:
         assert isinstance(
             raised.value.__cause__, subprocess.CalledProcessError
         )
+        assert isinstance(raised.value, ValueError)
+        assert mock_run.call_args.kwargs["stderr"] is subprocess.PIPE
+
+
+@pytest.mark.parametrize(
+    "error,legacy_type",
+    [
+        (OCRInputError("missing input"), FileNotFoundError),
+        (OCRScriptNotFoundError("missing script"), FileNotFoundError),
+        (OCROutputNotFoundError("missing output"), FileNotFoundError),
+        (OCRPlatformError("unsupported platform"), ValueError),
+        (OCRExecutionError("process failed"), ValueError),
+        (OCRResultError("invalid process result"), ValueError),
+    ],
+)
+def test_ocr_exceptions_preserve_legacy_builtin_contracts(error, legacy_type):
+    assert isinstance(error, OCRError)
+    assert isinstance(error, legacy_type)

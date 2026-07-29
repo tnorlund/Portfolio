@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from chromadb.errors import NotFoundError
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.exceptions import (
@@ -40,7 +41,7 @@ def test_write_on_read_only_client_raises_exact_state_error() -> None:
 def test_missing_collection_preserves_chroma_cause() -> None:
     client = ChromaClient(mode="write", metadata_only=True)
     chroma_client = Mock()
-    cause = ValueError("collection is absent")
+    cause = NotFoundError("collection is absent")
     chroma_client.get_collection.side_effect = cause
     client._client = chroma_client  # pylint: disable=protected-access
 
@@ -53,6 +54,7 @@ def test_missing_collection_preserves_chroma_cause() -> None:
     )
     assert caught.value.collection_name == "receipts"
     assert caught.value.__cause__ is cause
+    assert isinstance(caught.value, ValueError)
 
 
 def test_delta_upload_error_includes_s3_target_and_cause(tmp_path) -> None:

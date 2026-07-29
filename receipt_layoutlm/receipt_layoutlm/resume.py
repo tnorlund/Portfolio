@@ -149,7 +149,12 @@ def sync_resume_checkpoint(
             f"Failed while listing checkpoint objects at {uri}"
         ) from exc
 
-    logger.info("Resume: downloaded %d files into %s", count, dest)
+    logger.info(
+        "Resume: downloaded %d files into %s (%d suspicious keys skipped)",
+        count,
+        dest,
+        skipped,
+    )
     if count == 0:
         logger.warning(
             "Resume: no objects found at s3://%s/%s — trainer will start "

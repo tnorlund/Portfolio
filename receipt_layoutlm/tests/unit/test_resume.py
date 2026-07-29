@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -144,6 +144,23 @@ def test_sync_resume_checkpoint_wraps_listing_failure(tmp_path):
     assert raised.value.__cause__ is cause
 
 
+def test_sync_resume_checkpoint_wraps_client_creation_failure(tmp_path):
+    cause = RuntimeError("no AWS region configured")
+    with patch("boto3.client", side_effect=cause) as client_factory:
+        with pytest.raises(ResumeListingError) as raised:
+            sync_resume_checkpoint(
+                "s3://bucket/runs/v4/",
+                job_name="job",
+                local_root=tmp_path,
+            )
+
+    assert str(raised.value) == (
+        "Unable to create an S3 client for checkpoint " "s3://bucket/runs/v4/"
+    )
+    assert raised.value.__cause__ is cause
+    client_factory.assert_called_once_with("s3")
+
+
 def test_sync_resume_checkpoint_wraps_destination_failure(tmp_path):
     blocked_root = tmp_path / "blocked"
     blocked_root.write_text("not a directory", encoding="utf-8")
@@ -197,7 +214,7 @@ def test_sync_resume_checkpoint_skips_traversal_keys(tmp_path, caplog):
     ]
     s3 = _build_fake_s3_client(objects)
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         sync_resume_checkpoint(
             "s3://bucket/runs/v4/",
             job_name="job",
@@ -215,6 +232,11 @@ def test_sync_resume_checkpoint_skips_traversal_keys(tmp_path, caplog):
     )
     warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
     assert any("suspicious key" in m or "escapes" in m for m in warnings)
+    assert any(
+        "1 files" in r.message and "2 suspicious keys skipped" in r.message
+        for r in caplog.records
+        if r.levelname == "INFO"
+    )
 
 
 def test_sync_resume_checkpoint_empty_prefix_is_warning_not_error(

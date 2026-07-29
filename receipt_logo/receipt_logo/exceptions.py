@@ -13,11 +13,11 @@ class LogoSourceError(LogoVectorizationError):
     """Raised when a source logo cannot be opened or decoded."""
 
 
-class EmptyLogoError(LogoVectorizationError):
+class EmptyLogoError(LogoVectorizationError, ValueError):
     """Raised when a source has no pixels eligible for vectorization."""
 
 
-class PaletteExtractionError(LogoVectorizationError):
+class PaletteExtractionError(LogoVectorizationError, ValueError):
     """Raised when no visible color palette can be extracted."""
 
 

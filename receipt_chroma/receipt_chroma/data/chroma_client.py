@@ -671,7 +671,7 @@ class ChromaClient:
 
                 logger.debug("Retrieved existing collection: %s", name)
 
-            except (NotFoundError, ValueError) as e:
+            except NotFoundError as e:
                 if create_if_missing and self.mode != "read":
                     # get_or_create is atomic server-side; a plain
                     # create_collection here raced with concurrent workers

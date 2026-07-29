@@ -10,6 +10,8 @@ from receipt_logo.exceptions import (
     InvalidAssetSlugError,
     LogoAssetWriteError,
     LogoSourceError,
+    LogoVectorizationError,
+    PaletteExtractionError,
 )
 from receipt_logo.receipt_fixture import inspect_receipt_fixture
 from receipt_logo.vectorize import (
@@ -62,6 +64,19 @@ def test_vectorize_logo_rejects_fully_transparent_source(
         f"Logo source {source} has no pixels above alpha threshold 20"
     )
     assert raised.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [EmptyLogoError, PaletteExtractionError],
+)
+def test_vectorization_validation_errors_retain_value_error(
+    error_type,
+) -> None:
+    error = error_type("invalid logo")
+
+    assert isinstance(error, LogoVectorizationError)
+    assert isinstance(error, ValueError)
 
 
 def test_write_vector_asset_rejects_unusable_slug(tmp_path: Path) -> None:

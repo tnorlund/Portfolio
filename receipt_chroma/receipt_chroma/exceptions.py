@@ -23,7 +23,7 @@ class ChromaReadOnlyError(ChromaClientStateError):
     """A write operation was attempted with a read-only client."""
 
 
-class ChromaCollectionNotFoundError(ReceiptChromaError, LookupError):
+class ChromaCollectionNotFoundError(ReceiptChromaError, ValueError):
     """A requested Chroma collection does not exist."""
 
     def __init__(self, collection_name: str) -> None:
@@ -50,11 +50,11 @@ class ChromaDeltaUploadError(ReceiptChromaError, RuntimeError):
 
 
 __all__ = [
-    "ReceiptChromaError",
-    "ChromaConfigurationError",
-    "ChromaClientStateError",
     "ChromaClientClosedError",
-    "ChromaReadOnlyError",
+    "ChromaClientStateError",
     "ChromaCollectionNotFoundError",
+    "ChromaConfigurationError",
     "ChromaDeltaUploadError",
+    "ChromaReadOnlyError",
+    "ReceiptChromaError",
 ]

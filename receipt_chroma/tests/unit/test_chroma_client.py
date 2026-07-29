@@ -9,6 +9,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+from chromadb.errors import NotFoundError
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.exceptions import ChromaCollectionNotFoundError
@@ -453,6 +454,26 @@ def test_collection_not_found_without_create():
     with ChromaClient(mode="write", metadata_only=True) as client:
         with pytest.raises(ChromaCollectionNotFoundError):
             client.get_collection("nonexistent", create_if_missing=False)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("create_if_missing", [False, True])
+def test_unrelated_value_error_does_not_look_like_missing_collection(
+    create_if_missing: bool,
+) -> None:
+    """SDK validation failures must propagate without creating a collection."""
+    client = ChromaClient(mode="delta")
+    inner = MagicMock()
+    cause = ValueError("invalid collection metadata")
+    inner.get_collection.side_effect = cause
+    client._client = inner  # pylint: disable=protected-access
+
+    with pytest.raises(ValueError) as caught:
+        client.get_collection("receipts", create_if_missing=create_if_missing)
+
+    assert caught.value is cause
+    inner.get_or_create_collection.assert_not_called()
+    client.close()
 
 
 @pytest.mark.unit
@@ -943,8 +964,6 @@ def test_create_if_missing_uses_atomic_get_or_create(monkeypatch):
     'Collection already exists' — the create path must call the atomic
     get_or_create_collection rather than create_collection."""
     from unittest.mock import MagicMock
-
-    from chromadb.errors import NotFoundError
 
     from receipt_chroma.data.chroma_client import ChromaClient
 

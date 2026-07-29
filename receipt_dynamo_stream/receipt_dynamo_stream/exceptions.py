@@ -56,9 +56,9 @@ class QueueBatchFailureError(QueuePublishError):
 
 
 __all__ = [
-    "ReceiptDynamoStreamError",
-    "QueuePublishError",
-    "QueueConfigurationError",
-    "QueueServiceError",
     "QueueBatchFailureError",
+    "QueueConfigurationError",
+    "QueuePublishError",
+    "QueueServiceError",
+    "ReceiptDynamoStreamError",
 ]
