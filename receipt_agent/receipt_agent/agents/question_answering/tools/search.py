@@ -26,6 +26,11 @@ from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 
+# Chroma Cloud rejects queries requesting more than 300 results per call
+# ("NumResults" quota). Requests above it fail outright, which sends the
+# agent into retry loops, so every n_results must stay at or under this.
+CHROMA_MAX_N_RESULTS = 300
+
 
 # ==============================================================================
 # OCR Outlier Filtering
@@ -471,7 +476,7 @@ def create_qa_tools(
 
                 results = lines_collection.query(
                     query_embeddings=query_embeddings,
-                    n_results=limit * 2,
+                    n_results=min(limit * 2, CHROMA_MAX_N_RESULTS),
                     include=["metadatas", "distances"],
                 )
 
@@ -631,7 +636,7 @@ def create_qa_tools(
 
             results = lines_collection.query(
                 query_embeddings=query_embeddings,
-                n_results=limit * 3,
+                n_results=min(limit * 3, CHROMA_MAX_N_RESULTS),
                 include=["metadatas", "distances", "documents"],
             )
 
@@ -968,7 +973,7 @@ def create_qa_tools(
 
                 results = lines_collection.query(
                     query_embeddings=query_embeddings,
-                    n_results=limit * 3,
+                    n_results=min(limit * 3, CHROMA_MAX_N_RESULTS),
                     include=["metadatas", "distances"],
                 )
 
