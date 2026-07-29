@@ -1014,7 +1014,13 @@ async def answer_question(
         )
 
         config = {
-            "recursion_limit": 30,
+            # Must exceed the route_after_agent 15-iteration guard with
+            # room for plan/shape/synthesize: at exactly 2x15=30 steps the
+            # graph raised GraphRecursionError in the same superstep where
+            # the guard would have routed to shape, killing the whole
+            # answer (prod Q31, 2026-07-29). The guard is the intended
+            # stop; this is only a backstop against infinite loops.
+            "recursion_limit": 48,
             "metadata": {
                 "ls_provider": provider,
                 "ls_model_name": model_name,
