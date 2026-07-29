@@ -133,7 +133,13 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_word_labels"]:
         # type: ignore[arg-type]
-        dynamo_client.add_receipt_word_labels(entities["receipt_word_labels"])
+        # Imports restore an existing snapshot rather than minting new labels.
+        # Preserve legacy keys verbatim; ordinary application/model writes
+        # remain restricted to CORE_LABELS by the default add policy.
+        dynamo_client.add_receipt_word_labels(
+            entities["receipt_word_labels"],
+            allow_non_core_labels=True,
+        )
 
     if entities["receipt_places"]:
         # type: ignore[arg-type]

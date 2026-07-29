@@ -9,11 +9,10 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
+    TransactWriteItemTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.base_operations.shared_utils import (
@@ -47,7 +46,10 @@ class _ReceiptWordLabel(
     """
 
     def _validate_receipt_word_labels_for_add(
-        self, receipt_word_labels: list[ReceiptWordLabel]
+        self,
+        receipt_word_labels: list[ReceiptWordLabel],
+        *,
+        allow_non_core_labels: bool = False,
     ) -> None:
         """Custom validation for add operation with specific error messages"""
         if receipt_word_labels is None:
@@ -66,13 +68,41 @@ class _ReceiptWordLabel(
                     "ReceiptWordLabel class."
                 )
 
+        if not isinstance(allow_non_core_labels, bool):
+            raise EntityValidationError(
+                "allow_non_core_labels must be a boolean"
+            )
+
+        if allow_non_core_labels:
+            return
+
+        invalid_labels = sorted(
+            {item.label for item in receipt_word_labels} - set(CORE_LABELS)
+        )
+        if invalid_labels:
+            rendered = ", ".join(repr(label) for label in invalid_labels)
+            raise EntityValidationError(
+                "Cannot add non-core receipt word label(s): "
+                f"{rendered}. New labels must be present in CORE_LABELS; "
+                "allow_non_core_labels=True is reserved for controlled "
+                "legacy restoration."
+            )
+
     @handle_dynamodb_errors("add_receipt_word_label")
-    def add_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
-        """Adds a receipt word label to the database
+    def add_receipt_word_label(
+        self,
+        receipt_word_label: ReceiptWordLabel,
+        *,
+        allow_non_core_labels: bool = False,
+    ):
+        """Add a canonical receipt word label to the database.
 
         Args:
             receipt_word_label (ReceiptWordLabel): The receipt word label to
                 add to the database
+            allow_non_core_labels: Permit historical labels outside
+                ``CORE_LABELS``. This is intended only for controlled legacy
+                restoration, never model or application writes.
 
         Raises:
             ValueError: When a receipt word label with the same ID
@@ -80,6 +110,10 @@ class _ReceiptWordLabel(
         """
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "receipt_word_label"
+        )
+        self._validate_receipt_word_labels_for_add(
+            [receipt_word_label],
+            allow_non_core_labels=allow_non_core_labels,
         )
         self._add_entity(
             receipt_word_label, condition_expression="attribute_not_exists(PK)"
@@ -125,28 +159,74 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
-        self, receipt_word_labels: list[ReceiptWordLabel]
+        self,
+        receipt_word_labels: list[ReceiptWordLabel],
+        *,
+        allow_non_core_labels: bool = False,
     ):
-        """Adds a list of receipt word labels to the database
+        """Add receipt word labels without overwriting existing rows.
+
+        DynamoDB ``BatchWriteItem`` does not support condition expressions.
+        Using it for an add operation would turn a retry into an overwrite and
+        could replace a reviewed label's status or reasoning.  Conditional
+        transactional puts preserve the same create-only contract as
+        :meth:`add_receipt_word_label`.
 
         Args:
             receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to add to the database
+            allow_non_core_labels: Permit historical labels outside
+                ``CORE_LABELS``. This is intended only for controlled legacy
+                restoration, never model or application writes.
 
         Raises:
-            ValueError: When a receipt word label with the same ID
-                already exists
+            EntityAlreadyExistsError: When any receipt word label in a
+                transaction chunk already exists.
         """
         # Custom validation for add operation with specific error messages
-        self._validate_receipt_word_labels_for_add(receipt_word_labels)
+        self._validate_receipt_word_labels_for_add(
+            receipt_word_labels,
+            allow_non_core_labels=allow_non_core_labels,
+        )
 
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=label.to_item())
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put={
+                    "TableName": self.table_name,
+                    "Item": label.to_item(),
+                    "ConditionExpression": (
+                        "attribute_not_exists(PK) AND "
+                        "attribute_not_exists(SK)"
+                    ),
+                }
             )
             for label in receipt_word_labels
         ]
-        self._batch_write_with_retry(request_items)
+
+        try:
+            self._transact_write_with_chunking(transact_items)
+        except ClientError as error:
+            error_code = error.response.get("Error", {}).get("Code", "")
+            cancellation_reasons = error.response.get(
+                "CancellationReasons", []
+            )
+            error_message = error.response.get("Error", {}).get("Message", "")
+            conditional_failure = (
+                any(
+                    reason.get("Code") == "ConditionalCheckFailed"
+                    for reason in cancellation_reasons
+                )
+                or "ConditionalCheckFailed" in error_message
+            )
+
+            if (
+                error_code == "TransactionCanceledException"
+                and conditional_failure
+            ):
+                raise EntityAlreadyExistsError(
+                    "One or more receipt word labels already exist"
+                ) from error
+            raise
 
     def _handle_add_receipt_word_labels_error(self, error: ClientError):
         """Handle errors specific to add_receipt_word_labels"""
