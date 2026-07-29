@@ -7,9 +7,14 @@ import React, {
 } from "react";
 import { useInView } from "react-intersection-observer";
 import { useActTransition } from "../SynthesisPipeline/actTransition";
+import { getCdnBaseUrl } from "../../../../utils/cdnBase";
 import styles from "./SectionEmbeddingExplorer.module.css";
 import {
+  BoundingBox,
   CHANGED_ROW_IDS,
+  CORPUS_SNAPSHOT,
+  CORRECTED_ROW_IDS,
+  CURRENT_RECEIPT,
   EXPLORER_ACTS,
   EXPERIMENT_METRICS,
   ExplorerActId,
@@ -18,6 +23,7 @@ import {
   ReferenceReceipt,
   SECTION_BY_ID,
   SectionId,
+  UNRESOLVED_ROW_IDS,
 } from "./sectionData";
 
 const AUTOPLAY_IDLE_RESUME_MS = 10_000;
@@ -74,19 +80,49 @@ type Assignment = SectionId | null;
 interface SectionSpan {
   section: SectionId;
   start: number;
-  length: number;
+  end: number;
+  top: number;
+  height: number;
 }
 
-const sectionSpans = (assignments: Assignment[]): SectionSpan[] => {
+const topForBox = (box: BoundingBox): number => 1 - box.yMax;
+const bottomForBox = (box: BoundingBox): number => 1 - box.yMin;
+const percent = (value: number): string => `${Math.max(0, Math.min(1, value)) * 100}%`;
+
+const boxStyle = (box: BoundingBox): React.CSSProperties => ({
+  left: percent(box.xMin),
+  top: percent(topForBox(box)),
+  width: percent(Math.min(1, box.xMax) - Math.max(0, box.xMin)),
+  height: percent(box.yMax - box.yMin),
+});
+
+const receiptImageUrl = (key: string): string =>
+  `${getCdnBaseUrl().replace(/\/$/, "")}/${key}`;
+
+const sectionSpans = (
+  assignments: Assignment[],
+  boxes: BoundingBox[],
+): SectionSpan[] => {
   const spans: SectionSpan[] = [];
   assignments.forEach((section, index) => {
     if (!section) return;
     const previous = spans[spans.length - 1];
-    if (previous?.section === section && previous.start + previous.length === index) {
-      previous.length += 1;
+    const rowTop = topForBox(boxes[index]);
+    const rowBottom = bottomForBox(boxes[index]);
+    if (previous?.section === section && previous.end + 1 === index) {
+      const previousBottom = previous.top + previous.height;
+      previous.end = index;
+      previous.top = Math.min(previous.top, rowTop);
+      previous.height = Math.max(previousBottom, rowBottom) - previous.top;
       return;
     }
-    spans.push({ section, start: index, length: 1 });
+    spans.push({
+      section,
+      start: index,
+      end: index,
+      top: rowTop,
+      height: rowBottom - rowTop,
+    });
   });
   return spans;
 };
@@ -99,11 +135,14 @@ const assignmentsForAct = (
   if (actId === "baseline" || actId === "neighbors") {
     return RECEIPT_ROWS.map((row) => row.baseline);
   }
-  if (actId === "final") return RECEIPT_ROWS.map((row) => row.truth);
+  if (actId === "final") return RECEIPT_ROWS.map((row) => row.hybrid);
 
+  const changedRows = RECEIPT_ROWS.filter((row) => CHANGED_ROW_IDS.has(row.id));
   return RECEIPT_ROWS.map((row) => {
-    if (row.id === "subtotal" && progress >= 0.38) return row.truth;
-    if (row.id === "visa" && progress >= 0.67) return row.truth;
+    const changedIndex = changedRows.findIndex((candidate) => candidate.id === row.id);
+    if (changedIndex >= 0 && progress >= 0.24 + changedIndex * 0.085) {
+      return row.hybrid;
+    }
     return row.baseline;
   });
 };
@@ -113,59 +152,62 @@ const ACT_COPY: Record<
   { title: string; detail: string; evidence: string; sceneLabel: string }
 > = {
   ocr: {
-    title: "Start with complete Apple OCR rows.",
-    detail: "LayoutLM labels words separately. This pass assigns one section to each complete row.",
-    evidence: "LayoutLM → words · section decoder → rows",
-    sceneLabel: "Apple OCR rows are visible on the current receipt without section assignments.",
+    title: "Start with rows from a real test receipt.",
+    detail: "LayoutLM labels words separately. This pass assigns one section to each complete Apple OCR row.",
+    evidence: `${CURRENT_RECEIPT.merchant} · ${CURRENT_RECEIPT.sourceId} · ${CURRENT_RECEIPT.visibleRows} stored OCR row boxes shown`,
+    sceneLabel: "Real Apple OCR rows from a Salt and Straw test receipt are visible without section assignments.",
   },
   baseline: {
-    title: "Let the fair baseline draw its boundaries.",
-    detail: "Two row-by-row guesses push ITEMS and SUMMARY one row too far.",
+    title: "Run the measured baseline on those rows.",
+    detail: "Seven visible rows land in the wrong band, splitting INFO, ITEMS, and SUMMARY.",
     evidence: "merchant identity · helpful, optional",
-    sceneLabel: "Baseline section bands contain incorrect boundaries at subtotal and Visa rows.",
+    sceneLabel: "Measured baseline assignments contain seven incorrect rows and fragmented section boundaries.",
   },
   neighbors: {
-    title: "Search labeled rows from other receipts.",
-    detail: "OpenAI creates row embeddings; Chroma finds the nearest labeled rows.",
-    evidence: "4 of 15 neighbors shown · 2-D map is schematic, not literal",
-    sceneLabel: "Similar subtotal and payment rows are highlighted across the labeled receipt stack.",
+    title: "Search actual labeled rows from the corpus.",
+    detail: "OpenAI created the row embeddings; Chroma returned these QA-valid neighbors and cosine scores.",
+    evidence: "4 real receipts shown · cosine 0.840–0.901 · 2-D map is schematic",
+    sceneLabel: "Real summary and payment neighbors are highlighted with measured cosine similarity scores.",
   },
   corrected: {
-    title: "Move the assignments downstream.",
-    detail: "Neighbor votes and sequence order correct rows, then redraw contiguous boundaries.",
+    title: "Apply the hybrid assignments downstream.",
+    detail: "Seven rows move. Six reach QA truth; the $6.48 total remains an honest miss.",
     evidence: "experimental geometry ×0.0 · receipt math ×0.0",
-    sceneLabel: "Subtotal moves from items to summary and Visa moves from summary to payment.",
+    sceneLabel: "Seven measured assignments move, six are corrected, and the six dollar forty-eight total remains unresolved.",
   },
   final: {
-    title: "Finish with one clean section sequence.",
-    detail: "The outlined rows changed; every section is contiguous on the front receipt.",
-    evidence: `held-out row agreement +${EXPERIMENT_METRICS.deltaPoints} pp · ${EXPERIMENT_METRICS.fixed} fixed`,
-    sceneLabel: "The current receipt has clean contiguous bands and highlights the two changed rows.",
+    title: "Finish with one contiguous hybrid sequence.",
+    detail: "Outlined rows changed. FIX marks six corrections; MISS keeps the unresolved total visible.",
+    evidence: `this receipt: 6 fixed · 1 unresolved · held-out agreement +${EXPERIMENT_METRICS.deltaPoints} pp`,
+    sceneLabel: "The real receipt has contiguous hybrid bands, with six corrected rows and one unresolved row highlighted.",
   },
 };
 
 interface SectionBandsProps {
   assignments: Assignment[];
+  boxes: BoundingBox[];
   opacity: number;
   compact?: boolean;
 }
 
 const SectionBands: React.FC<SectionBandsProps> = ({
   assignments,
+  boxes,
   opacity,
   compact = false,
 }) => (
   <div className={styles.sectionBands} aria-hidden="true">
-    {sectionSpans(assignments).map((span, index) => (
+    {sectionSpans(assignments, boxes).map((span, index) => (
       <div
         key={`${span.section}-${span.start}-${index}`}
         className={styles.sectionBand}
+        data-testid="section-band"
         data-section={span.section}
         data-compact={compact || undefined}
         style={
           {
-            "--band-start": span.start,
-            "--band-length": span.length,
+            top: percent(span.top),
+            height: percent(span.height),
             opacity,
           } as React.CSSProperties
         }
@@ -193,41 +235,70 @@ const CurrentReceipt: React.FC<CurrentReceiptProps> = ({ actId, progress }) => {
       className={`${styles.receiptCard} ${styles.currentReceipt}`}
       data-testid="section-current-receipt"
       data-assignment={actId}
-      aria-hidden="true"
+      data-source-id={CURRENT_RECEIPT.sourceId}
+      aria-label={`${CURRENT_RECEIPT.merchant} receipt image with stored OCR row bounding boxes`}
     >
       <div className={styles.receiptHeader}>
-        <strong>SPROUTS</strong>
-        <span>{actId === "ocr" ? "APPLE OCR" : "CURRENT"}</span>
+        <strong>{CURRENT_RECEIPT.merchant}</strong>
+        <span>{actId === "ocr" ? "APPLE OCR BOXES" : "TEST RECEIPT"}</span>
       </div>
-      <div className={styles.receiptRows}>
-        <SectionBands assignments={assignments} opacity={bandsVisible} />
+      <div
+        className={styles.imagePlane}
+        style={{ aspectRatio: `${CURRENT_RECEIPT.width} / ${CURRENT_RECEIPT.height}` }}
+      >
+        <img
+          src={receiptImageUrl(CURRENT_RECEIPT.imageKey)}
+          width={CURRENT_RECEIPT.width}
+          height={CURRENT_RECEIPT.height}
+          alt=""
+          data-testid="section-current-image"
+        />
+        <div className={styles.imageShade} aria-hidden="true" />
+        <SectionBands
+          assignments={assignments}
+          boxes={RECEIPT_ROWS.map((row) => row.bbox)}
+          opacity={bandsVisible}
+        />
         {RECEIPT_ROWS.map((row, index) => {
           const reveal = phase(rowReveal, index * 0.035, 0.3 + index * 0.04);
           const assignment = assignments[index];
-          const corrected = assignment === row.truth && row.baseline !== row.truth;
+          const changed = assignment === row.hybrid && row.baseline !== row.hybrid;
+          const corrected = changed && CORRECTED_ROW_IDS.has(row.id);
+          const unresolved = changed && UNRESOLVED_ROW_IDS.has(row.id);
           return (
             <div
               key={row.id}
-              className={styles.receiptRow}
+              className={styles.rowBox}
               data-row-id={row.id}
               data-section={assignment ?? undefined}
               data-neighbor={showNeighbors && CHANGED_ROW_IDS.has(row.id) || undefined}
-              data-changed={showChanges && corrected || undefined}
+              data-baseline-error={actId === "baseline" && row.baseline !== row.truth || undefined}
+              data-changed={showChanges && changed || undefined}
+              data-corrected={showChanges && corrected || undefined}
+              data-unresolved={showChanges && unresolved || undefined}
+              data-source-truth={row.sourceTruth}
+              data-source-baseline={row.sourceBaseline}
+              data-source-hybrid={row.sourceHybrid}
               data-testid={`section-row-${row.id}`}
+              aria-label={`OCR row ${row.rowId}: ${row.text}`}
+              title={row.text}
               style={{
+                ...boxStyle(row.bbox),
                 opacity: reveal,
-                transform: `translateY(${(1 - reveal) * 5}px)`,
+                transform: `translateY(${(1 - reveal) * 4}px)`,
               }}
             >
-              <span>{row.text}</span>
-              {row.amount ? <span>{row.amount}</span> : null}
+              <span className={styles.srOnly}>{row.text}</span>
+              {showChanges && changed ? (
+                <span className={styles.rowStatus}>{unresolved ? "MISS" : "FIX"}</span>
+              ) : null}
             </div>
           );
         })}
       </div>
       <div className={styles.receiptFooter}>
-        <span>11 complete rows</span>
-        <span>{actId === "ocr" ? "unassigned" : "ordered"}</span>
+        <span>{CURRENT_RECEIPT.visibleRows} stored row boxes</span>
+        <span>{CURRENT_RECEIPT.sourceId}</span>
       </div>
     </div>
   );
@@ -245,32 +316,60 @@ const ReferenceReceiptCard: React.FC<{
       className={`${styles.receiptCard} ${styles.referenceReceipt}`}
       data-reference-index={index}
       data-testid={`section-reference-receipt-${index}`}
-      aria-hidden="true"
+      data-source-id={receipt.sourceId}
+      aria-label={`${receipt.merchant} labeled neighbor receipt image`}
       style={{ "--reference-index": index } as React.CSSProperties}
     >
       <div className={styles.receiptHeader}>
         <strong>{receipt.merchant}</strong>
-        <span>LABELED</span>
+        <span>LABELED IMAGE</span>
       </div>
-      <div className={styles.receiptRows}>
-        <SectionBands assignments={assignments} opacity={1} compact />
+      <div
+        className={styles.imagePlane}
+        style={{ aspectRatio: `${receipt.width} / ${receipt.height}` }}
+      >
+        <img
+          src={receiptImageUrl(receipt.imageKey)}
+          width={receipt.width}
+          height={receipt.height}
+          alt=""
+          data-testid={`section-reference-image-${index}`}
+        />
+        <div className={styles.imageShade} aria-hidden="true" />
+        <SectionBands
+          assignments={assignments}
+          boxes={receipt.rows.map((row) => row.bbox)}
+          opacity={1}
+          compact
+        />
         {receipt.rows.map((row) => {
           const isNeighbor = showNeighbors && Boolean(row.matches);
           const reveal = phase(progress, 0.14 + index * 0.06, 0.62 + index * 0.06);
           return (
             <div
               key={row.id}
-              className={styles.receiptRow}
+              className={styles.rowBox}
               data-section={row.section}
               data-neighbor={isNeighbor || undefined}
-              data-neighbor-kind={row.matches}
-              style={{ opacity: showNeighbors ? 0.46 + reveal * 0.54 : 1 }}
+              data-neighbor-kind={row.matches ? receipt.neighborSection : undefined}
+              aria-label={row.text}
+              title={row.text}
+              style={{
+                ...boxStyle(row.bbox),
+                opacity: showNeighbors ? 0.46 + reveal * 0.54 : 1,
+              }}
             >
-              <span>{row.text}</span>
-              {row.amount ? <span>{row.amount}</span> : null}
+              <span className={styles.srOnly}>{row.text}</span>
+              {isNeighbor && row.similarity ? (
+                <span className={styles.neighborScore}>{row.similarity.toFixed(3)}</span>
+              ) : null}
             </div>
           );
         })}
+      </div>
+      <div className={styles.receiptFooter}>
+        <span>{receipt.sourceId}</span>
+        <span>cos {receipt.bestSimilarity.toFixed(3)}</span>
       </div>
     </div>
   );
@@ -285,16 +384,16 @@ const NeighborConnections: React.FC<{ progress: number }> = ({ progress }) => {
       aria-hidden="true"
       style={{ opacity: reveal }}
     >
-      <path data-section="SUMMARY" d="M441 236 C474 226 486 166 507 155" pathLength="1" />
-      <path data-section="PAYMENT" d="M441 303 C510 321 560 226 624 210" pathLength="1" />
-      <path data-section="SUMMARY" d="M441 236 C551 276 640 216 732 208" pathLength="1" />
-      <path data-section="PAYMENT" d="M441 303 C610 350 715 290 804 272" pathLength="1" />
-      <circle data-section="SUMMARY" cx="441" cy="236" r="4" />
-      <circle data-section="PAYMENT" cx="441" cy="303" r="4" />
-      <circle data-section="SUMMARY" cx="507" cy="155" r="4" />
-      <circle data-section="PAYMENT" cx="624" cy="210" r="4" />
-      <circle data-section="SUMMARY" cx="732" cy="208" r="4" />
-      <circle data-section="PAYMENT" cx="804" cy="272" r="4" />
+      <path data-section="SUMMARY" d="M300 248 C348 243 390 248 435 250" pathLength="1" />
+      <path data-section="PAYMENT" d="M300 308 C392 302 466 228 550 213" pathLength="1" />
+      <path data-section="SUMMARY" d="M300 248 C420 238 540 175 658 160" pathLength="1" />
+      <path data-section="PAYMENT" d="M300 308 C466 347 616 332 758 316" pathLength="1" />
+      <circle data-section="SUMMARY" cx="300" cy="248" r="4" />
+      <circle data-section="PAYMENT" cx="300" cy="308" r="4" />
+      <circle data-section="SUMMARY" cx="435" cy="250" r="4" />
+      <circle data-section="PAYMENT" cx="550" cy="213" r="4" />
+      <circle data-section="SUMMARY" cx="658" cy="160" r="4" />
+      <circle data-section="PAYMENT" cx="758" cy="316" r="4" />
     </svg>
   );
 };
@@ -358,6 +457,7 @@ const ReceiptStackScene: React.FC<{
       <div className={styles.evidenceLine} data-testid="section-evidence-line">
         <span className={styles.evidenceRule} aria-hidden="true" />
         <span>{copy.evidence}</span>
+        <span className={styles.snapshotTag}>real snapshot · {CORPUS_SNAPSHOT.receipts} receipts</span>
       </div>
     </div>
   );
@@ -525,7 +625,7 @@ const SectionEmbeddingExplorer: React.FC = () => {
         How row embeddings correct receipt section boundaries
       </h3>
       <p id="section-explorer-description" className={styles.srOnly}>
-        A five-step explainer. Apple OCR provides complete rows. LayoutLM labels individual words, while this visualization assigns sections to complete rows. OpenAI creates row embeddings and Chroma searches labeled rows from other receipts. The two-dimensional map is schematic. Merchant identity is optional. Experimental geometry and receipt math currently have zero weight.
+        A five-step explainer using genuine receipt images, stored Apple OCR row bounding boxes, and QA-valid labels from the July 29 dev snapshot. LayoutLM labels individual words, while this visualization assigns sections to complete rows. OpenAI creates row embeddings and Chroma searches labeled rows from other receipts. The two-dimensional map is schematic. Merchant identity is optional. Experimental geometry and receipt math currently have zero weight.
       </p>
       <p className={styles.srOnly} aria-live="polite" data-testid="section-act-label">
         {activeMeta.accessibleLabel}

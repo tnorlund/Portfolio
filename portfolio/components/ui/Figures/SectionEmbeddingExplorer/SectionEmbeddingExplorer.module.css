@@ -25,8 +25,8 @@
 
 .interactiveStage,
 .staticStage {
-  height: 520px;
-  min-height: 520px;
+  height: 590px;
+  min-height: 590px;
 }
 
 .actLayer {
@@ -111,9 +111,7 @@
   border: 1px solid rgba(var(--text-color-rgb), 0.16);
   border-radius: 3px;
   color: var(--text-color);
-  background:
-    linear-gradient(rgba(var(--text-color-rgb), 0.025), rgba(var(--text-color-rgb), 0.008)),
-    var(--background-color);
+  background: #111;
   box-shadow: 0 9px 26px rgba(0, 0, 0, 0.22);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   transition:
@@ -160,44 +158,42 @@
 }
 
 .currentReceipt {
-  --row-height: 21px;
-  top: 3.5rem;
-  left: 9%;
+  top: 0.25rem;
+  left: 10.5%;
   z-index: 10;
-  width: 360px;
+  width: 205px;
   transform: translateY(calc((1 - var(--act-progress)) * 10px));
 }
 
 .referenceReceipt {
-  --row-height: 29px;
   z-index: calc(7 - var(--reference-index));
-  width: 185px;
+  width: 118px;
   opacity: 0.24;
   transform: translateY(-8px) rotate(var(--receipt-rotation)) scale(0.94);
   transform-origin: center bottom;
 }
 
 .referenceReceipt[data-reference-index="0"] {
-  top: 2.8rem;
-  left: 46%;
+  top: 0.9rem;
+  left: 48%;
   --receipt-rotation: -2.2deg;
 }
 
 .referenceReceipt[data-reference-index="1"] {
-  top: 4.2rem;
-  left: 59%;
+  top: 3.2rem;
+  left: 61%;
   --receipt-rotation: 2deg;
 }
 
 .referenceReceipt[data-reference-index="2"] {
-  top: 5.9rem;
-  left: 71%;
+  top: 1.8rem;
+  left: 73%;
   --receipt-rotation: -1.6deg;
 }
 
 .referenceReceipt[data-reference-index="3"] {
-  top: 7.8rem;
-  left: 78%;
+  top: 4.8rem;
+  left: 84%;
   --receipt-rotation: 2.2deg;
 }
 
@@ -226,47 +222,81 @@
   transform: translateY(7px) rotate(var(--receipt-rotation)) scale(0.94);
 }
 
-.receiptRows {
+.imagePlane {
   position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #ece8dd;
 }
 
-.receiptRow {
-  position: relative;
+.imagePlane > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.imageShade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(8, 10, 13, 0.06);
+  pointer-events: none;
+}
+
+.rowBox {
+  position: absolute;
   z-index: 3;
   box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  height: var(--row-height);
-  padding: 0 0.6rem 0 4.8rem;
-  color: rgba(var(--text-color-rgb), 0.8);
-  font-size: 0.62rem;
-  letter-spacing: 0.008em;
+  min-width: 2px;
+  min-height: 2px;
+  border: 1px solid color-mix(in srgb, var(--section-color, white) 88%, transparent);
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--section-color, white) 9%, transparent);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.28);
   transition:
-    color 300ms ease,
+    top 480ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 480ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 300ms ease,
     background 340ms ease,
     box-shadow 340ms ease,
     opacity 240ms ease,
     transform 240ms ease;
 }
 
-.receiptRow > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.rowBox .rowStatus,
+.rowBox .neighborScore {
+  position: absolute;
+  top: -8px;
+  right: -1px;
+  z-index: 8;
+  border-radius: 999px;
+  font-family: system-ui, sans-serif;
+  font-size: 0.38rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1;
   white-space: nowrap;
 }
 
-.receiptRow > span:last-child:not(:first-child) {
-  flex: 0 0 auto;
-  font-variant-numeric: tabular-nums;
+.rowBox .rowStatus {
+  padding: 0.14rem 0.23rem;
+  color: var(--section-color);
+  background: color-mix(in srgb, var(--section-color) 18%, #161616);
 }
 
-.referenceReceipt .receiptRow {
-  padding-right: 0.45rem;
-  padding-left: 3.5rem;
-  font-size: 0.47rem;
+.rowBox .neighborScore {
+  top: -9px;
+  padding: 0.13rem 0.22rem;
+  color: var(--section-color);
+  background: color-mix(in srgb, var(--section-color) 18%, #161616);
+}
+
+.referenceReceipt .rowBox {
+  border-width: 0.75px;
 }
 
 .sectionBands {
@@ -278,10 +308,9 @@
 
 .sectionBand {
   position: absolute;
-  top: calc(var(--band-start) * var(--row-height));
-  right: 0.35rem;
-  left: 0.35rem;
-  height: calc(var(--band-length) * var(--row-height));
+  right: 0.18rem;
+  left: 0.18rem;
+  min-height: 2px;
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--section-color) 28%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--section-color) 28%, transparent);
@@ -295,49 +324,58 @@
 
 .sectionBand span {
   position: absolute;
-  top: 50%;
-  left: 0.48rem;
-  width: 3.5rem;
-  transform: translateY(-50%);
+  top: 0.16rem;
+  left: 0.3rem;
   color: var(--section-color);
   font-family: system-ui, sans-serif;
-  font-size: 0.5rem;
+  font-size: 0.41rem;
   font-weight: 700;
   letter-spacing: 0.035em;
+  line-height: 1;
+  text-shadow: 0 1px 2px #fff, 0 0 2px #fff;
 }
 
 .sectionBand[data-compact="true"] span {
-  left: 0.35rem;
-  width: 2.7rem;
-  font-size: 0.38rem;
+  top: 0.1rem;
+  left: 0.18rem;
+  font-size: 0.28rem;
 }
 
-.scene[data-act="baseline"] .currentReceipt .receiptRow[data-row-id="subtotal"],
-.scene[data-act="baseline"] .currentReceipt .receiptRow[data-row-id="visa"] {
-  box-shadow: inset 3px 0 var(--color-red);
+.scene[data-act="baseline"] .currentReceipt .rowBox[data-baseline-error="true"] {
+  border-color: var(--color-red);
+  box-shadow: 0 0 0 1px var(--color-red), 0 0 9px color-mix(in srgb, var(--color-red) 46%, transparent);
 }
 
-.receiptRow[data-neighbor="true"] {
+.rowBox[data-neighbor="true"] {
   z-index: 6;
-  color: var(--text-color);
-  background: color-mix(in srgb, var(--section-color) 14%, transparent);
+  background: color-mix(in srgb, var(--section-color) 20%, transparent);
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--section-color) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--section-color) 88%, transparent),
     0 0 15px color-mix(in srgb, var(--section-color) 22%, transparent);
 }
 
-.currentReceipt .receiptRow[data-neighbor="true"] {
+.currentReceipt .rowBox[data-neighbor="true"] {
   animation: neighbor-glow 1.8s ease-in-out infinite;
 }
 
-.receiptRow[data-changed="true"] {
+.rowBox[data-changed="true"] {
   z-index: 6;
-  color: var(--text-color);
-  background: rgba(var(--text-color-rgb), 0.035);
-  box-shadow: inset 0 0 0 1px rgba(var(--text-color-rgb), 0.74);
+  background: color-mix(in srgb, var(--section-color) 15%, transparent);
+  box-shadow: 0 0 0 1px rgba(var(--text-color-rgb), 0.88), 0 0 9px rgba(0, 0, 0, 0.3);
 }
 
-.scene[data-act="corrected"] .receiptRow[data-changed="true"] {
+.rowBox[data-unresolved="true"] {
+  background: color-mix(in srgb, var(--color-red) 8%, transparent);
+  border-color: var(--color-red);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-red) 78%, transparent);
+}
+
+.rowBox[data-unresolved="true"] .rowStatus {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 13%, var(--background-color));
+}
+
+.scene[data-act="corrected"] .rowBox[data-changed="true"] {
   animation: corrected-row 820ms ease both;
 }
 
@@ -432,6 +470,15 @@
   color: rgba(var(--text-color-rgb), 0.48);
   font-size: 0.64rem;
   line-height: 1.3;
+}
+
+.snapshotTag {
+  margin-left: auto;
+  color: rgba(var(--text-color-rgb), 0.34);
+  font-size: 0.55rem;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .evidenceRule {
@@ -532,8 +579,8 @@
 @media (max-width: 700px) {
   .interactiveStage,
   .staticStage {
-    height: 560px;
-    min-height: 560px;
+    height: 650px;
+    min-height: 650px;
   }
 
   .actAnnotation {
@@ -558,45 +605,23 @@
   }
 
   .currentReceipt {
-    --row-height: 19px;
-    top: 7.25rem;
-    left: 1rem;
-    width: min(290px, calc(100% - 2rem));
-  }
-
-  .currentReceipt .receiptRow {
-    padding-left: 4rem;
-    font-size: 0.54rem;
-  }
-
-  .currentReceipt .sectionBand span {
-    width: 3rem;
-    font-size: 0.43rem;
+    top: 2.75rem;
+    left: 0.9rem;
+    width: min(220px, calc(100% - 2rem));
   }
 
   .referenceReceipt {
-    --row-height: 24px;
-    width: 145px;
-  }
-
-  .referenceReceipt .receiptRow {
-    padding-left: 2.8rem;
-    font-size: 0.4rem;
-  }
-
-  .referenceReceipt .sectionBand span {
-    width: 2.2rem;
-    font-size: 0.32rem;
+    width: 104px;
   }
 
   .referenceReceipt[data-reference-index="0"] {
-    top: 1.5rem;
-    left: 28%;
+    top: 0.7rem;
+    left: 44%;
   }
 
   .referenceReceipt[data-reference-index="1"] {
-    top: 3rem;
-    left: 59%;
+    top: 2.4rem;
+    left: 69%;
   }
 
   .referenceReceipt[data-reference-index="2"],
@@ -612,32 +637,37 @@
   .evidenceLine {
     font-size: 0.58rem;
   }
+
+  .snapshotTag {
+    display: none;
+  }
 }
 
 @media (max-width: 390px) {
   .currentReceipt {
     left: 0.75rem;
-    width: calc(100% - 1.5rem);
+    width: min(220px, calc(100% - 1.5rem));
   }
 
   .referenceReceipt[data-reference-index="0"] {
-    left: 23%;
+    left: 43%;
   }
 
   .referenceReceipt[data-reference-index="1"] {
-    left: 57%;
+    left: 68%;
   }
 }
 
 @media (max-width: 350px) {
   .interactiveStage,
   .staticStage {
-    height: 585px;
-    min-height: 585px;
+    height: 665px;
+    min-height: 665px;
   }
 
   .currentReceipt {
-    top: 7.9rem;
+    top: 3.2rem;
+    width: 205px;
   }
 
   .evidenceLine {
@@ -648,14 +678,14 @@
 @media (prefers-reduced-motion: reduce) {
   .actLayer.entering,
   .actLayer.leaving,
-  .currentReceipt .receiptRow[data-neighbor="true"],
-  .scene[data-act="corrected"] .receiptRow[data-changed="true"],
+  .currentReceipt .rowBox[data-neighbor="true"],
+  .scene[data-act="corrected"] .rowBox[data-changed="true"],
   .neighborConnections path {
     animation: none;
   }
 
   .receiptCard,
-  .receiptRow,
+  .rowBox,
   .sectionBand,
   .progressButton span,
   .embeddingInset {

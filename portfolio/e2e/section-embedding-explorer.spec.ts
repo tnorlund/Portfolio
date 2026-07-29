@@ -37,8 +37,8 @@ test("every resolved section-assignment step remains stable and keyboard accessi
 
   const expectedAssignments = [
     [null, null],
-    ["ITEMS", "SUMMARY"],
-    ["ITEMS", "SUMMARY"],
+    ["TRANSACTION_INFO", "TRANSACTION_INFO"],
+    ["TRANSACTION_INFO", "TRANSACTION_INFO"],
     ["SUMMARY", "PAYMENT"],
     ["SUMMARY", "PAYMENT"],
   ] as const;
@@ -49,20 +49,54 @@ test("every resolved section-assignment step remains stable and keyboard accessi
     await expect(page.getByTestId(`section-act-${ACTS[index]}`)).toBeVisible();
     await expect(dots.nth(index)).toHaveAttribute("aria-pressed", "true");
 
-    const [subtotal, visa] = expectedAssignments[index];
-    const subtotalRow = page.getByTestId("section-row-subtotal");
-    const visaRow = page.getByTestId("section-row-visa");
+    const [subtotal, paymentTime] = expectedAssignments[index];
+    const subtotalRow = page.getByTestId("section-row-row-11");
+    const paymentTimeRow = page.getByTestId("section-row-row-34");
     if (subtotal) {
       await expect(subtotalRow).toHaveAttribute("data-section", subtotal);
-      await expect(visaRow).toHaveAttribute("data-section", visa);
+      await expect(paymentTimeRow).toHaveAttribute("data-section", paymentTime);
     } else {
       await expect(subtotalRow).not.toHaveAttribute("data-section");
-      await expect(visaRow).not.toHaveAttribute("data-section");
+      await expect(paymentTimeRow).not.toHaveAttribute("data-section");
     }
 
     const box = await stage.boundingBox();
     expect(Math.round(box?.height ?? 0)).toBe(Math.round(boxBefore?.height ?? 0));
   }
+
+  await expect(page.getByTestId("section-current-receipt")).toHaveAttribute(
+    "data-source-id",
+    "d47b0f01 · R1",
+  );
+  const currentImage = page.getByTestId("section-current-image");
+  await expect(currentImage).toHaveAttribute(
+    "src",
+    /assets\/d47b0f01-859d-499b-a9b0-4feb312b4d27\/1\.webp/,
+  );
+  await expect
+    .poll(() => currentImage.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(425);
+
+  const imageBox = await currentImage.boundingBox();
+  const subtotalBox = await page.getByTestId("section-row-row-11").boundingBox();
+  expect((subtotalBox?.x ?? 0) - (imageBox?.x ?? 0)).toBeCloseTo(
+    (imageBox?.width ?? 0) * 0.0845921503955299,
+    0,
+  );
+  expect((subtotalBox?.y ?? 0) - (imageBox?.y ?? 0)).toBeCloseTo(
+    (imageBox?.height ?? 0) * (1 - 0.49709302306590664),
+    0,
+  );
+  await dots.nth(4).click();
+  await expect(page.locator('[data-testid="section-act-final"] [data-corrected="true"]')).toHaveCount(6);
+  await expect(page.locator('[data-testid="section-act-final"] [data-unresolved="true"]')).toHaveCount(1);
+  await expect(page.getByTestId("section-row-row-31")).toHaveAttribute(
+    "data-section",
+    "PAYMENT",
+  );
+  await expect(
+    page.getByTestId("section-act-final").getByTestId("section-current-receipt").getByTestId("section-band"),
+  ).toHaveCount(4);
 
   await dots.nth(0).focus();
   await dots.nth(0).press("End");
@@ -102,12 +136,16 @@ test("mobile keeps the current receipt readable and shows fewer background recei
   const currentReceipt = page.getByTestId("section-current-receipt");
   await expect(currentReceipt).toBeVisible();
   const currentBox = await currentReceipt.boundingBox();
-  expect(currentBox?.width ?? 0).toBeGreaterThanOrEqual(280);
+  expect(currentBox?.width ?? 0).toBeGreaterThanOrEqual(200);
+  const image = page.getByTestId("section-current-image");
+  await expect
+    .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalHeight))
+    .toBe(884);
 
   await expect(page.locator('[data-testid^="section-reference-receipt-"]:visible')).toHaveCount(2);
   const neighborAct = page.getByTestId("section-act-neighbors");
-  await expect(neighborAct.getByText(/OpenAI creates row embeddings/)).toBeVisible();
-  await expect(neighborAct.getByText(/2-D map is schematic, not literal/)).toBeVisible();
+  await expect(neighborAct.getByText(/OpenAI created the row embeddings/)).toBeVisible();
+  await expect(neighborAct.getByText(/2-D map is schematic/)).toBeVisible();
   await figure.scrollIntoViewIfNeeded();
 });
 
