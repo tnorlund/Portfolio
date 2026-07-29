@@ -18,6 +18,16 @@ from receipt_dynamo.entities import (
     Word,
 )
 
+from receipt_upload.exceptions import (
+    OCRExecutionError,
+    OCRInputError,
+    OCROutputNotFoundError,
+    OCRPlatformError,
+    OCRResultError,
+    OCRScriptNotFoundError,
+    OCRStorageError,
+)
+
 # from receipt_label.utils.noise_detection import is_noise_text
 from receipt_upload.utils import is_noise_text
 
@@ -167,14 +177,19 @@ def apple_vision_ocr_job(
     # Check to make sure the files exist
     for image_path in image_paths:
         if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
+            raise OCRInputError(f"OCR input image not found: {image_path}")
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     # Check to see that the swift script exists
     if not swift_script.exists():
-        raise FileNotFoundError(f"Swift script not found: {swift_script}")
+        raise OCRScriptNotFoundError(
+            f"Apple Vision OCR script not found: {swift_script}"
+        )
     # Check to see that this is a Mac
     if not platform.system() == "Darwin":
-        raise ValueError("Apple's Vision Framework can only be run on a Mac")
+        raise OCRPlatformError(
+            "Apple Vision OCR requires macOS; "
+            f"current platform is {platform.system()!r}"
+        )
 
     swift_args = [
         "swift",
@@ -193,8 +208,8 @@ def apple_vision_ocr_job(
         if result.stderr:
             print("Swift OCR Errors:")
             print(result.stderr)
-    except subprocess.CalledProcessError as e:
-        raise ValueError(f"Error running Swift script: {e}") from e
+    except subprocess.CalledProcessError as exc:
+        raise OCRExecutionError(_format_ocr_process_error(exc)) from exc
 
     # Return JSON files in the same order as input image_paths
     # Swift script creates JSON files with same base name as images
@@ -205,8 +220,9 @@ def apple_vision_ocr_job(
         base_name = image_path.stem
         expected_json_path = temp_dir / f"{base_name}.json"
         if not expected_json_path.exists():
-            raise FileNotFoundError(
-                f"Expected OCR output file not found: {expected_json_path}"
+            raise OCROutputNotFoundError(
+                f"OCR output missing for input {image_path}: "
+                f"expected {expected_json_path}"
             )
         ordered_json_files.append(expected_json_path)
 
@@ -224,9 +240,10 @@ def apple_vision_ocr_job(
         print(f"Produced JSON files: {produced_json_names}")
         print(f"Failed images: {failed_images}")
 
-        raise ValueError(
-            f"Expected {len(image_paths)} JSON files, but found "
-            f"{len(all_json_files)} total. Failed images: {failed_images}"
+        raise OCRResultError(
+            f"OCR produced {len(all_json_files)} JSON files for "
+            f"{len(image_paths)} inputs; missing outputs: "
+            f"{sorted(failed_images)}"
         )
 
     return ordered_json_files
@@ -236,17 +253,29 @@ def _download_image_from_s3(
     image_id: str, s3_bucket: str, s3_key: str
 ) -> Path:
     """Download image from S3 to local temporary file."""
-    s3_client = boto3.client("s3")
     temp_dir = Path(tempfile.mkdtemp())
     image_path = temp_dir / f"{image_id}.jpg"
-    s3_client.download_file(s3_bucket, s3_key, str(image_path))
+    try:
+        s3_client = boto3.client("s3")
+        s3_client.download_file(s3_bucket, s3_key, str(image_path))
+    except Exception as exc:
+        raise OCRStorageError(
+            f"Failed to download OCR input s3://{s3_bucket}/{s3_key} "
+            f"to {image_path}"
+        ) from exc
     return image_path
 
 
 def _upload_json_to_s3(image_path: Path, s3_bucket: str, s3_key: str) -> None:
     """Upload JSON file to S3."""
-    s3_client = boto3.client("s3")
-    s3_client.upload_file(str(image_path), s3_bucket, s3_key)
+    try:
+        s3_client = boto3.client("s3")
+        s3_client.upload_file(str(image_path), s3_bucket, s3_key)
+    except Exception as exc:
+        raise OCRStorageError(
+            f"Failed to upload OCR result {image_path} "
+            f"to s3://{s3_bucket}/{s3_key}"
+        ) from exc
 
 
 def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
@@ -254,10 +283,15 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     # Check to see that the swift script exists
     if not swift_script.exists():
-        raise FileNotFoundError(f"Swift script not found: {swift_script}")
+        raise OCRScriptNotFoundError(
+            f"Apple Vision OCR script not found: {swift_script}"
+        )
     # Check to see that this is a Mac
     if not platform.system() == "Darwin":
-        raise ValueError("Apple's Vision Framework can only be run on a Mac")
+        raise OCRPlatformError(
+            "Apple Vision OCR requires macOS; "
+            f"current platform is {platform.system()!r}"
+        )
     # Make a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -271,10 +305,10 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
                 swift_args,
                 check=True,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
-        except subprocess.CalledProcessError as e:
-            raise ValueError(f"Error running Swift script: {e}") from e
+        except subprocess.CalledProcessError as exc:
+            raise OCRExecutionError(_format_ocr_process_error(exc)) from exc
 
         ocr_dict = {}
         # Iterate over the JSON files in the output directory
@@ -282,9 +316,25 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
             # Get the image ID from the JSON file name
             image_id = str(uuid4())
             # Read the JSON file
-            with open(json_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, json.JSONDecodeError) as exc:
+                raise OCRResultError(
+                    f"Unable to read OCR result {json_file}"
+                ) from exc
             # Add the image ID to the return dictionary
             ocr_dict[image_id] = process_ocr_dict_as_image(data, image_id)
 
         return ocr_dict
+
+
+def _format_ocr_process_error(exc: subprocess.CalledProcessError) -> str:
+    """Build a stable, useful message for a failed Swift OCR process."""
+    message = f"Apple Vision OCR failed with exit code {exc.returncode}"
+    stderr = exc.stderr
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode(errors="replace")
+    if stderr and str(stderr).strip():
+        message += f": {str(stderr).strip()}"
+    return message

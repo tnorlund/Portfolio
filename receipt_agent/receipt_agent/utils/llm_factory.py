@@ -51,68 +51,18 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Optional
 
+from receipt_agent.exceptions import (
+    EmptyResponseError,
+    LLMRateLimitError,
+    ReceiptAgentConfigurationError,
+)
+
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# Custom Exceptions
-# =============================================================================
-
-
-class LLMRateLimitError(Exception):
-    """
-    Raised when OpenRouter returns rate limit or server errors after retries.
-
-    This exception is caught by AWS Step Functions retry logic, which applies
-    a longer delay (30s) and more retry attempts (5) compared to standard errors.
-
-    The Step Function ASL should include:
-    ```json
-    {
-        "Retry": [
-            {
-                "ErrorEquals": ["LLMRateLimitError"],
-                "IntervalSeconds": 30,
-                "MaxAttempts": 5,
-                "BackoffRate": 1.5
-            }
-        ]
-    }
-    ```
-    """
-
-    def __init__(
-        self,
-        message: str,
-        consecutive_errors: int = 0,
-        total_errors: int = 0,
-    ):
-        super().__init__(message)
-        self.consecutive_errors = consecutive_errors
-        self.total_errors = total_errors
-
-
-class EmptyResponseError(Exception):
-    """
-    Raised when the LLM returns an empty response.
-
-    This can happen when providers are under heavy load and return
-    successful HTTP responses but with empty content.
-    """
-
-    def __init__(
-        self,
-        provider: str = "OpenRouter",
-        message: str = "LLM returned empty response",
-    ):
-        super().__init__(f"{provider}: {message}")
-        self.provider = provider
-
-
-# =============================================================================
 # Error Detection Functions
 # =============================================================================
 
@@ -250,7 +200,7 @@ def create_llm(
         Configured ChatOpenAI instance for OpenRouter
 
     Raises:
-        ValueError: If OpenRouter API key is not provided
+        ReceiptAgentConfigurationError: If the OpenRouter API key is missing
     """
     from langchain_openai import ChatOpenAI
 
@@ -275,7 +225,7 @@ def create_llm(
     )
 
     if not _api_key:
-        raise ValueError(
+        raise ReceiptAgentConfigurationError(
             "OpenRouter API key is required. Set OPENROUTER_API_KEY or "
             "RECEIPT_AGENT_OPENROUTER_API_KEY environment variable."
         )
@@ -714,9 +664,7 @@ class LLMInvoker:
 
             try:
                 response = await asyncio.wait_for(
-                    self.llm.ainvoke(
-                        messages, config=merged_config, **kwargs
-                    ),
+                    self.llm.ainvoke(messages, config=merged_config, **kwargs),
                     timeout=self.invoke_timeout,
                 )
 

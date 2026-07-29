@@ -22,17 +22,14 @@ from tenacity import (
 )
 
 from receipt_langsmith.client.models import Project
+from receipt_langsmith.exceptions import (
+    LangSmithAPIError,
+    LangSmithConfigurationError,
+    LangSmithResponseError,
+    LangSmithTransportError,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class LangSmithAPIError(Exception):
-    """Error from LangSmith API."""
-
-    def __init__(self, status_code: int, message: str):
-        self.status_code = status_code
-        self.message = message
-        super().__init__(f"LangSmith API error {status_code}: {message}")
 
 
 @dataclass(frozen=True)
@@ -88,7 +85,7 @@ class LangSmithClient:
         self.base_url = base_url or self.BASE_URL
 
         if not self.api_key:
-            raise ValueError(
+            raise LangSmithConfigurationError(
                 "LangSmith API key required. Set LANGCHAIN_API_KEY env var "
                 "or pass api_key parameter."
             )
@@ -160,7 +157,8 @@ class LangSmithClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(httpx.HTTPError),
+        retry=retry_if_exception_type(LangSmithTransportError),
+        reraise=True,
     )
     async def arequest(
         self,
@@ -171,12 +169,39 @@ class LangSmithClient:
     ) -> dict[str, Any] | list[Any]:
         """Make an async API request with retry logic."""
         client = await self._get_async_client()
-        response = await client.request(method, path, params=params, json=json)
+        try:
+            response = await client.request(
+                method, path, params=params, json=json
+            )
+        except httpx.HTTPError as exc:
+            raise LangSmithTransportError(method=method, path=path) from exc
 
         if response.status_code >= 400:
-            raise LangSmithAPIError(response.status_code, response.text)
+            raise LangSmithAPIError(
+                response.status_code,
+                response.text,
+                method=method,
+                path=path,
+            )
 
-        return cast(dict[str, Any] | list[Any], response.json())
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise LangSmithResponseError(
+                method=method,
+                path=path,
+                detail="response body is not valid JSON",
+            ) from exc
+        if not isinstance(payload, (dict, list)):
+            raise LangSmithResponseError(
+                method=method,
+                path=path,
+                detail=(
+                    "expected a JSON object or array, got "
+                    f"{type(payload).__name__}"
+                ),
+            )
+        return cast(dict[str, Any] | list[Any], payload)
 
     async def alist_projects(self) -> list[Project]:
         """List all projects (sessions) in the workspace.

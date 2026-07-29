@@ -14,6 +14,15 @@ from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_api,
 )
+from receipt_agent.exceptions import (
+    AgentExecutionError,
+    EmptyResponseError,
+    LLMError,
+    LLMInvocationError,
+    LLMRateLimitError,
+    ReceiptAgentConfigurationError,
+    ReceiptAgentError,
+)
 from receipt_agent.state.models import (
     ValidationResult,
     ValidationState,
@@ -21,7 +30,6 @@ from receipt_agent.state.models import (
     VerificationStep,
 )
 from receipt_agent.utils.llm_factory import (
-    LLMRateLimitError,
     is_rate_limit_error,
     is_service_error,
     is_timeout_error,
@@ -45,8 +53,15 @@ __all__ = [
     "create_dynamo_client",
     "create_embed_fn",
     "create_places_api",
-    # LLM utilities
+    # Package errors
+    "ReceiptAgentError",
+    "ReceiptAgentConfigurationError",
+    "AgentExecutionError",
+    "LLMError",
+    "LLMInvocationError",
     "LLMRateLimitError",
+    "EmptyResponseError",
+    # LLM utilities
     "is_rate_limit_error",
     "is_service_error",
     "is_timeout_error",

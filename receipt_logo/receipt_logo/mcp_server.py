@@ -9,9 +9,14 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from receipt_logo.exceptions import UnknownLogoToolError
 from receipt_logo.proof import DEFAULT_SPROUTS_SOURCE, build_sprouts_proof
 from receipt_logo.receipt_fixture import inspect_receipt_fixture
-from receipt_logo.vectorize import VectorizeOptions, vectorize_logo, write_vector_asset
+from receipt_logo.vectorize import (
+    VectorizeOptions,
+    vectorize_logo,
+    write_vector_asset,
+)
 
 server = Server("logo-to-path")
 
@@ -95,7 +100,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             arguments["source_path"],
             VectorizeOptions(
                 max_colors=int(arguments.get("max_colors", 4)),
-                simplify_tolerance=float(arguments.get("simplify_tolerance", 1.25)),
+                simplify_tolerance=float(
+                    arguments.get("simplify_tolerance", 1.25)
+                ),
                 title=str(arguments["slug"]).replace("_", " "),
             ),
         )
@@ -126,7 +133,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         )
         return [_json_text(match.to_dict() if match else None)]
 
-    raise ValueError(f"unknown tool: {name}")
+    raise UnknownLogoToolError(f"Unknown receipt-logo tool: {name!r}")
 
 
 def _json_text(payload: Any) -> TextContent:

@@ -1,5 +1,31 @@
 """Receipt LayoutLM training package."""
 
+from receipt_layoutlm.exceptions import (
+    CheckpointResumeError,
+    CoreMLExportError,
+    InvalidResumeURIError,
+    MissingDependencyError,
+    NaNWeightsError,
+    ReceiptLayoutLMError,
+    ResumeDestinationError,
+    ResumeDownloadError,
+    ResumeListingError,
+    UnsafeResumeDestinationError,
+)
+
+__all__ = [
+    "CheckpointResumeError",
+    "CoreMLExportError",
+    "InvalidResumeURIError",
+    "MissingDependencyError",
+    "NaNWeightsError",
+    "ReceiptLayoutLMError",
+    "ResumeDestinationError",
+    "ResumeDownloadError",
+    "ResumeListingError",
+    "UnsafeResumeDestinationError",
+]
+
 
 # Lazy attribute access to avoid import errors if optional deps aren't installed
 def __getattr__(name):

@@ -5,6 +5,7 @@
 import pytest
 from pydantic import ValidationError
 
+from receipt_places.exceptions import PlacesResponseError, ReceiptPlacesError
 from receipt_places.parsers import (
     APIError,
     ParseError,
@@ -397,6 +398,8 @@ def test_api_error_is_parse_error():
     """Test that APIError is a ParseError."""
     error = APIError("API error")
     assert isinstance(error, ParseError)
+    assert isinstance(error, PlacesResponseError)
+    assert isinstance(error, ReceiptPlacesError)
 
 
 @pytest.mark.unit

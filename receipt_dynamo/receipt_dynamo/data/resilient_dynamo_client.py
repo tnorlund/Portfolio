@@ -5,6 +5,13 @@ import threading
 import time
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    BatchOperationError,
+    CircuitBreakerOpenError,
+    OperationError,
+    ReceiptDynamoError,
+    RetryExhaustedError,
+)
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
@@ -113,6 +120,13 @@ class ResilientDynamoClient(DynamoClient):
         # Add jitter
         return float(delay * (1 + random.random() * 0.25))
 
+    def _circuit_retry_after(self) -> float:
+        """Return seconds until the open circuit may transition."""
+        if self.last_failure_time is None:
+            return self.circuit_breaker_timeout
+        elapsed = time.time() - self.last_failure_time
+        return max(0.0, self.circuit_breaker_timeout - elapsed)
+
     def put_ai_usage_metric(self, metric: AIUsageMetric) -> None:
         """
         Store AI usage metric with resilience patterns.
@@ -143,20 +157,35 @@ class ResilientDynamoClient(DynamoClient):
 
         for attempt in range(self.max_retry_attempts):
             if not self._check_circuit_breaker():
-                raise RuntimeError("Circuit breaker is OPEN")
+                raise CircuitBreakerOpenError(
+                    "Circuit breaker is OPEN; metric write was blocked",
+                    retry_after_seconds=self._circuit_retry_after(),
+                )
 
             try:
                 super().put_ai_usage_metric(metric)
                 self._record_success()
                 return
-            except (RuntimeError, ValueError, KeyError) as e:
+            except (
+                ReceiptDynamoError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+            ) as e:
                 self._record_failure()
                 last_exception = e
 
                 if attempt < self.max_retry_attempts - 1:
                     time.sleep(self._exponential_backoff(attempt))
 
-        raise last_exception or RuntimeError("Failed to store metric")
+        cause = last_exception or OperationError("Failed to store metric")
+        error = RetryExhaustedError(
+            f"Failed to store metric after {self.max_retry_attempts} attempts",
+            cause,
+            attempts=self.max_retry_attempts,
+            operation="put_ai_usage_metric",
+        )
+        raise error from cause
 
     def _auto_flush_worker(self) -> None:
         """Background worker for auto-flushing metrics."""
@@ -174,9 +203,21 @@ class ResilientDynamoClient(DynamoClient):
 
             # Execute batch write outside of lock
             if metrics_to_flush:
-                self._batch_write_metrics_with_retry(metrics_to_flush)
+                try:
+                    self._batch_write_metrics_with_retry(metrics_to_flush)
+                except ReceiptDynamoError as error:
+                    # A background worker cannot report the error to a caller;
+                    # retain the existing best-effort behavior with a typed
+                    # error available to synchronous flushes.
+                    print(f"Automatic metric flush failed: {error}")
+                except Exception as error:  # pylint: disable=W0718
+                    # Keep the daemon alive even if an unexpected dependency
+                    # error escapes the batch writer.
+                    print(
+                        f"Unexpected automatic metric flush failure: {error}"
+                    )
 
-    def _prepare_flush(self) -> list[AIUsageMetric | None]:
+    def _prepare_flush(self) -> list[AIUsageMetric] | None:
         """Prepare metrics for flushing (must be called with lock held).
 
         Returns:
@@ -196,44 +237,59 @@ class ResilientDynamoClient(DynamoClient):
     ) -> None:
         """Batch write metrics with retry logic."""
         remaining_metrics = metrics.copy()
+        last_exception: Exception | None = None
 
         for attempt in range(self.max_retry_attempts):
             if not self._check_circuit_breaker():
-                # Circuit breaker is open, skip
-                print(
-                    f"Circuit breaker OPEN, skipping "
-                    f"{len(remaining_metrics)} metrics"
+                raise CircuitBreakerOpenError(
+                    "Circuit breaker is OPEN; "
+                    f"{len(remaining_metrics)} metric writes were blocked",
+                    retry_after_seconds=self._circuit_retry_after(),
                 )
-                return
 
             try:
                 # Use parent's batch write method
                 failed_metrics = super().batch_put_ai_usage_metrics(
                     remaining_metrics
                 )
-
+            except (
+                ReceiptDynamoError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+            ) as e:
+                self._record_failure()
+                last_exception = e
+            else:
                 if not failed_metrics:
                     self._record_success()
                     return
 
-                # Update remaining metrics for retry
                 remaining_metrics = failed_metrics
-                raise RuntimeError(
-                    f"{len(failed_metrics)} metrics failed to write"
+                self._record_failure()
+                last_exception = BatchOperationError(
+                    f"{len(failed_metrics)} metrics failed to write",
+                    attempts=attempt + 1,
+                    unprocessed_items={"metrics": failed_metrics},
                 )
 
-            except (RuntimeError, ValueError, KeyError):
-                self._record_failure()
+            if attempt < self.max_retry_attempts - 1:
+                time.sleep(self._exponential_backoff(attempt))
 
-                if attempt < self.max_retry_attempts - 1:
-                    time.sleep(self._exponential_backoff(attempt))
-
-        # Log final failure
         if remaining_metrics:
-            print(
-                f"Failed to write {len(remaining_metrics)} metrics after "
-                f"{self.max_retry_attempts} attempts"
+            cause = last_exception or BatchOperationError(
+                f"{len(remaining_metrics)} metrics failed to write",
+                attempts=self.max_retry_attempts,
+                unprocessed_items={"metrics": remaining_metrics},
             )
+            error = RetryExhaustedError(
+                f"Failed to write {len(remaining_metrics)} metrics after "
+                f"{self.max_retry_attempts} attempts",
+                cause,
+                attempts=self.max_retry_attempts,
+                operation="batch_put_ai_usage_metrics",
+            )
+            raise error from cause
 
     def flush(self) -> None:
         """Manually flush any pending metrics."""
@@ -243,7 +299,7 @@ class ResilientDynamoClient(DynamoClient):
 
         # Execute batch write outside of lock
         if metrics_to_flush:
-            self._batch_write_with_retry(metrics_to_flush)
+            self._batch_write_metrics_with_retry(metrics_to_flush)
 
     def close(self) -> None:
         """Clean up resources."""

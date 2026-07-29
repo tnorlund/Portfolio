@@ -11,6 +11,14 @@ from typing import Iterable
 import numpy as np
 from PIL import Image
 
+from receipt_logo.exceptions import (
+    EmptyLogoError,
+    InvalidAssetSlugError,
+    LogoAssetWriteError,
+    LogoSourceError,
+    PaletteExtractionError,
+)
+
 Point = tuple[int, int]
 Edge = tuple[Point, Point]
 
@@ -70,13 +78,19 @@ def vectorize_logo(
 
     opts = options or VectorizeOptions()
     source = Path(source_path).expanduser().resolve()
-    image = Image.open(source).convert("RGBA")
+    try:
+        image = Image.open(source).convert("RGBA")
+    except (OSError, SyntaxError) as exc:
+        raise LogoSourceError(f"Unable to read logo source {source}") from exc
     arr = np.asarray(image)
     alpha = arr[:, :, 3]
     visible = alpha > opts.alpha_threshold
 
     if not bool(visible.any()):
-        raise ValueError(f"{source} has no pixels above alpha threshold")
+        raise EmptyLogoError(
+            f"Logo source {source} has no pixels above alpha threshold "
+            f"{opts.alpha_threshold}"
+        )
 
     palette = _dominant_palette(arr, visible, opts)
     layer_ids = _assign_palette_layers(arr, visible, palette)
@@ -139,21 +153,26 @@ def write_vector_asset(
     slug: str,
 ) -> tuple[Path, Path]:
     out = Path(output_dir).expanduser().resolve()
-    out.mkdir(parents=True, exist_ok=True)
     # A slug with separators or dot-segments must not escape output_dir
     # (the MCP/CLI accept arbitrary strings here).
     safe_slug = re.sub(r"[^A-Za-z0-9._-]", "_", Path(slug).name).strip(".")
     if not safe_slug:
-        raise ValueError(f"unusable slug: {slug!r}")
+        raise InvalidAssetSlugError(f"Unusable logo asset slug: {slug!r}")
     svg_path = (out / f"{safe_slug}.svg").resolve()
     manifest_path = (out / f"{safe_slug}.manifest.json").resolve()
     for candidate in (svg_path, manifest_path):
         candidate.relative_to(out)
-    svg_path.write_text(result.svg, encoding="utf-8")
-    manifest_path.write_text(
-        json.dumps(result.manifest(str(svg_path)), indent=2) + "\n",
-        encoding="utf-8",
-    )
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        svg_path.write_text(result.svg, encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(result.manifest(str(svg_path)), indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise LogoAssetWriteError(
+            f"Unable to write logo assets for slug {safe_slug!r} to {out}"
+        ) from exc
     return svg_path, manifest_path
 
 
@@ -322,7 +341,9 @@ def _dominant_palette(
             break
 
     if not palette:
-        raise ValueError("could not extract a visible color palette")
+        raise PaletteExtractionError(
+            "Could not extract a visible color palette"
+        )
     return palette
 
 

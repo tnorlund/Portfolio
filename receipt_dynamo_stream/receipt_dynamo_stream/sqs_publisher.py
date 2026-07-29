@@ -16,6 +16,11 @@ from typing import Any, Iterable, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+from receipt_dynamo_stream.exceptions import (
+    QueueBatchFailureError,
+    QueueConfigurationError,
+    QueueServiceError,
+)
 from receipt_dynamo_stream.models import (
     ChromaDBCollection,
     StreamMessage,
@@ -140,13 +145,21 @@ def send_batch_to_queue(
     collection: ChromaDBCollection | TargetQueue,
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
-    """Send a batch of messages to a specific queue."""
+    """Send a batch of messages to a specific queue.
+
+    Raises:
+        QueueConfigurationError: If the queue URL is not configured.
+        QueueServiceError: If SQS cannot process the batch request.
+        QueueBatchFailureError: If SQS rejects entries within the batch.
+    """
     sent_count = 0
     queue_url = os.environ.get(queue_env_var)
 
     if not queue_url:
         logger.error("Queue URL not found: %s", queue_env_var)
-        return 0
+        raise QueueConfigurationError(
+            queue_env_var, queue_name=collection.value
+        )
 
     for i in range(0, len(messages), 10):
         batch = messages[i : i + 10]
@@ -160,6 +173,9 @@ def send_batch_to_queue(
                 QueueUrl=queue_url, Entries=entries
             )
             successful = len(response.get("Successful", []))
+            failed_entries = [
+                dict(entry) for entry in response.get("Failed", [])
+            ]
             sent_count += successful
 
             logger.info(
@@ -173,6 +189,15 @@ def send_batch_to_queue(
                     {"collection": collection.value},
                 )
 
+            if failed_entries:
+                if metrics:
+                    metrics.count(
+                        "SQSMessagesFailed",
+                        len(failed_entries),
+                        {"collection": collection.value},
+                    )
+                raise QueueBatchFailureError(collection.value, failed_entries)
+
         except (ClientError, BotoCoreError) as exc:
             logger.exception(
                 "Failed to send messages to %s queue: %s",
@@ -185,6 +210,7 @@ def send_batch_to_queue(
                     len(batch),
                     {"collection": collection.value},
                 )
+            raise QueueServiceError(collection.value, len(batch)) from exc
 
     return sent_count
 

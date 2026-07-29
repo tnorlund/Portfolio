@@ -9,6 +9,7 @@ import pytest
 from moto import mock_aws
 
 from receipt_chroma import ChromaClient
+from receipt_chroma.exceptions import ChromaConfigurationError
 
 
 @pytest.fixture
@@ -359,13 +360,15 @@ class TestPersistAndUploadDelta:
             metadata_only=True,
         )
 
-        with pytest.raises(
-            RuntimeError, match="persist_directory required for delta uploads"
-        ):
+        with pytest.raises(ChromaConfigurationError) as caught:
             client.persist_and_upload_delta(
                 bucket="test-bucket",
                 s3_prefix="deltas/test/",
             )
+        assert type(caught.value) is ChromaConfigurationError
+        assert str(caught.value) == (
+            "persist_directory required for delta uploads"
+        )
 
     @pytest.mark.parametrize("s3_bucket", ["test-delta-bucket"], indirect=True)
     def test_persist_and_upload_delta_no_files(

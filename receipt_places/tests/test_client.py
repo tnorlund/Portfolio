@@ -2,12 +2,16 @@
 Tests for PlacesClient with mocked HTTP requests and DynamoDB.
 """
 
+from unittest.mock import Mock
+
 import pytest
 import responses
 
 from receipt_places.cache import CacheManager
 from receipt_places.client import PlacesClient
+from receipt_places.client_v1 import PlacesClientV1
 from receipt_places.config import PlacesConfig
+from receipt_places.exceptions import PlacesConfigurationError
 from receipt_places.types import Place
 from tests.conftest import (
     SAMPLE_DETAILS_RESPONSE,
@@ -43,10 +47,37 @@ class TestPlacesClientInit:
             cache_enabled=False,
         )
 
-        with pytest.raises(ValueError, match="API key required"):
+        with pytest.raises(PlacesConfigurationError) as exc_info:
             PlacesClient(
                 api_key="", config=config, cache_manager=cache_manager
             )
+
+        assert str(exc_info.value) == (
+            "Google Places API key required. "
+            "Set RECEIPT_PLACES_API_KEY environment variable."
+        )
+        assert isinstance(exc_info.value, ValueError)
+
+    def test_v1_init_without_api_key_raises_same_configuration_error(
+        self,
+        cache_manager: CacheManager,
+    ) -> None:
+        """Both API implementations expose one configuration contract."""
+        config = PlacesConfig(
+            api_key="",
+            table_name="test",
+            cache_enabled=False,
+        )
+
+        with pytest.raises(PlacesConfigurationError) as exc_info:
+            PlacesClientV1(
+                api_key="", config=config, cache_manager=cache_manager
+            )
+
+        assert str(exc_info.value) == (
+            "Google Places API key required. "
+            "Set RECEIPT_PLACES_API_KEY environment variable."
+        )
 
 
 class TestSearchByPhone:
@@ -411,6 +442,48 @@ class TestGetPlaceDetails:
         """Test empty place_id returns None."""
         result = places_client.get_place_details("")
         assert result is None
+
+
+class TestV1AdaptationErrors:
+    """V1 identity failures retain the client's documented None contract."""
+
+    @staticmethod
+    def _client(test_config: PlacesConfig) -> PlacesClientV1:
+        return PlacesClientV1(
+            api_key="test-api-key",
+            config=test_config,
+            cache_manager=Mock(),
+        )
+
+    def test_get_place_details_returns_none_on_adaptation_error(
+        self, test_config: PlacesConfig
+    ) -> None:
+        client = self._client(test_config)
+        client._make_request = Mock(  # pylint: disable=protected-access
+            return_value={"formattedAddress": "123 Test St"}
+        )
+
+        assert client.get_place_details("ChIJtest123") is None
+
+    def test_cached_phone_returns_none_on_adaptation_error(
+        self, test_config: PlacesConfig
+    ) -> None:
+        client = self._client(test_config)
+        client._cache.get.return_value = {  # pylint: disable=protected-access
+            "formattedAddress": "123 Test St"
+        }
+
+        assert client._try_cached_phone_result("5551234567") is None
+
+    def test_cached_address_returns_none_on_adaptation_error(
+        self, test_config: PlacesConfig
+    ) -> None:
+        client = self._client(test_config)
+        client._cache.get.return_value = {  # pylint: disable=protected-access
+            "formattedAddress": "123 Test St"
+        }
+
+        assert client._try_cached_address_result("123 TEST ST") is None
 
 
 class TestAutocomplete:

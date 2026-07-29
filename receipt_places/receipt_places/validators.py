@@ -9,12 +9,13 @@ These validators enforce that:
 
 import logging
 
+from receipt_places.exceptions import ReceiptPlacesError
 from receipt_places.types import Place
 
 logger = logging.getLogger(__name__)
 
 
-class PlacesValidationError(ValueError):
+class PlacesValidationError(ValueError, ReceiptPlacesError):
     """Base error for Places data validation failures."""
 
 

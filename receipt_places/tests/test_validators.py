@@ -4,6 +4,7 @@
 
 import pytest
 
+from receipt_places.exceptions import ReceiptPlacesError
 from receipt_places.types import Geometry, LatLng, Place, Viewport
 from receipt_places.validators import (
     DataQualityError,
@@ -278,6 +279,7 @@ def test_validation_error_hierarchy():
     assert issubclass(MissingExpectedFieldsError, PlacesValidationError)
     assert issubclass(DataQualityError, PlacesValidationError)
     assert issubclass(PlacesValidationError, ValueError)
+    assert issubclass(PlacesValidationError, ReceiptPlacesError)
 
 
 @pytest.mark.unit

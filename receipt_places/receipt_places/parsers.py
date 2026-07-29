@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from receipt_places.exceptions import APIError, ParseError
 from receipt_places.types import (
     LegacyAutocompleteResponse,
     LegacyCandidatesResponse,
@@ -24,14 +25,6 @@ from receipt_places.validators import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class ParseError(Exception):
-    """Base error for response parsing failures."""
-
-
-class APIError(ParseError):
-    """Raised when the API returns an error status."""
 
 
 def _check_api_status(status: str, error_message: str | None = None) -> None:

@@ -13,6 +13,10 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
 from receipt_langsmith.client.models import BulkExportResponse, ExportStatus
+from receipt_langsmith.exceptions import (
+    BulkExportResponseError,
+    BulkExportTimeoutError,
+)
 
 if TYPE_CHECKING:
     from receipt_langsmith.client.api import LangSmithClient
@@ -54,32 +58,39 @@ class BulkExportManager:
         self.client = client
         self.destination_id = destination_id
 
-    def _parse_export_job(self, data: dict[str, Any]) -> ExportJob:
+    def _parse_export_job(
+        self, data: dict[str, Any], *, operation: str
+    ) -> ExportJob:
         """Parse API response into ExportJob."""
-        return ExportJob(
-            id=data["id"],
-            bulk_export_destination_id=data["bulk_export_destination_id"],
-            session_id=data.get("session_id"),
-            status=ExportStatus(data["status"]),
-            start_time=datetime.fromisoformat(
-                data["start_time"].replace("Z", "+00:00")
-            ),
-            end_time=datetime.fromisoformat(
-                data["end_time"].replace("Z", "+00:00")
-            ),
-            created_at=datetime.fromisoformat(
-                data["created_at"].replace("Z", "+00:00")
-            ),
-            completed_at=(
-                datetime.fromisoformat(
-                    data["completed_at"].replace("Z", "+00:00")
-                )
-                if data.get("completed_at")
-                else None
-            ),
-            error_message=data.get("error_message"),
-            runs_exported=data.get("runs_exported"),
-        )
+        try:
+            return ExportJob(
+                id=data["id"],
+                bulk_export_destination_id=data["bulk_export_destination_id"],
+                session_id=data.get("session_id"),
+                status=ExportStatus(data["status"]),
+                start_time=datetime.fromisoformat(
+                    data["start_time"].replace("Z", "+00:00")
+                ),
+                end_time=datetime.fromisoformat(
+                    data["end_time"].replace("Z", "+00:00")
+                ),
+                created_at=datetime.fromisoformat(
+                    data["created_at"].replace("Z", "+00:00")
+                ),
+                completed_at=(
+                    datetime.fromisoformat(
+                        data["completed_at"].replace("Z", "+00:00")
+                    )
+                    if data.get("completed_at")
+                    else None
+                ),
+                error_message=data.get("error_message"),
+                runs_exported=data.get("runs_exported"),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BulkExportResponseError(
+                operation, "missing or invalid required fields"
+            ) from exc
 
     async def atrigger_export(
         self,
@@ -128,8 +139,10 @@ class BulkExportManager:
             json=request_body,
         )
         if not isinstance(data, dict):
-            raise ValueError("Unexpected response payload for bulk export")
-        job = self._parse_export_job(data)
+            raise BulkExportResponseError(
+                "trigger", f"expected object, got {type(data).__name__}"
+            )
+        job = self._parse_export_job(data, operation="trigger")
 
         logger.info("Export job created: %s (status=%s)", job.id, job.status)
         return job
@@ -148,8 +161,10 @@ class BulkExportManager:
             f"/api/v1/bulk-exports/{export_id}",
         )
         if not isinstance(data, dict):
-            raise ValueError("Unexpected response payload for export status")
-        return self._parse_export_job(data)
+            raise BulkExportResponseError(
+                "status", f"expected object, got {type(data).__name__}"
+            )
+        return self._parse_export_job(data, operation="status")
 
     async def await_completion(
         self,
@@ -168,7 +183,7 @@ class BulkExportManager:
             ExportJob with final status.
 
         Raises:
-            TimeoutError: If export doesn't complete within timeout.
+            BulkExportTimeoutError: If export doesn't complete within timeout.
         """
         start = time.monotonic()
         while (time.monotonic() - start) < timeout:
@@ -197,9 +212,7 @@ class BulkExportManager:
             )
             await asyncio.sleep(poll_interval)
 
-        raise TimeoutError(
-            f"Export {export_id} did not complete within {timeout}s"
-        )
+        raise BulkExportTimeoutError(export_id, timeout)
 
     async def alist_exports(self, limit: int = 20) -> list[ExportJob]:
         """List recent bulk exports.
@@ -216,8 +229,18 @@ class BulkExportManager:
             params={"limit": limit},
         )
         if not isinstance(data, list):
-            return []
-        return [self._parse_export_job(item) for item in data]
+            raise BulkExportResponseError(
+                "list", f"expected array, got {type(data).__name__}"
+            )
+        jobs: list[ExportJob] = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise BulkExportResponseError(
+                    "list item",
+                    f"expected object, got {type(item).__name__}",
+                )
+            jobs.append(self._parse_export_job(item, operation="list item"))
+        return jobs
 
     # Sync wrappers
 

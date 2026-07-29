@@ -11,6 +11,8 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from receipt_agent.exceptions import LLMInvocationError, LLMRateLimitError
+
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
@@ -80,7 +82,7 @@ def create_agent_node_with_retry(
                         f"Rate limit detected in {agent_name} (attempt {attempt + 1}): "
                         f"{error_str[:200]}. Failing immediately to trigger circuit breaker."
                     )
-                    raise RuntimeError(
+                    raise LLMRateLimitError(
                         f"Rate limit error in {agent_name}: {error_str}"
                     ) from e
 
@@ -144,12 +146,12 @@ def create_agent_node_with_retry(
                             f"LLM call failed after {max_retries} attempts "
                             f"in {agent_name}: {error_str}"
                         )
-                    raise RuntimeError(
+                    raise LLMInvocationError(
                         f"Failed to get LLM response in {agent_name}: {error_str}"
                     ) from e
 
         # Should never reach here
-        raise RuntimeError(
+        raise LLMInvocationError(
             f"Unexpected error: Failed to get LLM response in {agent_name}"
         ) from last_error
 

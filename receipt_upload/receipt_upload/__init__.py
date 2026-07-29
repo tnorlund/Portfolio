@@ -1,4 +1,17 @@
 from .cluster import dbscan_lines
+from .exceptions import (
+    AVIFError,
+    OCRError,
+    OCRExecutionError,
+    OCRInputError,
+    OCROutputNotFoundError,
+    OCRPlatformError,
+    OCRResultError,
+    OCRScriptNotFoundError,
+    OCRStorageError,
+    OCRUnavailableError,
+    ReceiptUploadError,
+)
 from .font_analysis import (
     FontCluster,
     FontSimilarityMatch,
@@ -29,6 +42,7 @@ from .route_images import classify_image_layout
 from .utils import send_message_to_sqs
 
 __all__ = [
+    "AVIFError",
     "FontCluster",
     "FontSimilarityMatch",
     "FontStyleSample",
@@ -38,12 +52,23 @@ __all__ = [
     "LineFontAnalysis",
     "LineFontCluster",
     "LineFontSample",
+    "OCRError",
+    "OCRExecutionError",
+    "OCRInputError",
+    "OCROutputNotFoundError",
+    "OCRPlatformError",
+    "OCRResultError",
+    "OCRScriptNotFoundError",
+    "OCRStorageError",
+    "OCRUnavailableError",
     "ReceiptFontAnalysis",
+    "ReceiptUploadError",
     "analyze_dynamo_image_fonts",
     "analyze_receipt_fonts",
     "build_font_style_samples",
     "build_letter_image_samples",
     "build_line_font_samples",
+    "classify_image_layout",
     "cluster_letter_styles",
     "cluster_line_font_styles",
     "dbscan_lines",
@@ -51,7 +76,6 @@ __all__ = [
     "load_raw_image_from_s3",
     "min_area_rect",
     "query_similar_letters",
-    "classify_image_layout",
     "send_message_to_sqs",
     "upsert_letter_samples_to_chroma",
 ]

@@ -20,6 +20,10 @@ from tenacity import (
 
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
+from receipt_places.exceptions import PlacesAPIError as PlacesAPIError
+from receipt_places.exceptions import (
+    PlacesConfigurationError,
+)
 from receipt_places.parsers import (
     APIError,
     ParseError,
@@ -31,14 +35,6 @@ from receipt_places.parsers import (
 from receipt_places.types import Place
 
 logger = logging.getLogger(__name__)
-
-
-class PlacesAPIError(Exception):
-    """Exception raised for Places API errors."""
-
-    def __init__(self, message: str, status: str | None = None):
-        super().__init__(message)
-        self.status = status
 
 
 class PlacesClient:
@@ -83,12 +79,15 @@ class PlacesClient:
             api_key: Google Places API key (defaults to config)
             config: Configuration settings
             cache_manager: Optional pre-configured cache manager
+
+        Raises:
+            PlacesConfigurationError: If no Google Places API key is configured
         """
         self._config = config or get_config()
         self._api_key = api_key or self._config.api_key.get_secret_value()
 
         if not self._api_key:
-            raise ValueError(
+            raise PlacesConfigurationError(
                 "Google Places API key required. "
                 "Set RECEIPT_PLACES_API_KEY environment variable."
             )

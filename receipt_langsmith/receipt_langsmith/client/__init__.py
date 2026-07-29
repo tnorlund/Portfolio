@@ -17,6 +17,17 @@ from receipt_langsmith.client.models import (
     ExportStatus,
     Project,
 )
+from receipt_langsmith.exceptions import (
+    BulkExportError,
+    BulkExportResponseError,
+    BulkExportTimeoutError,
+    LangSmithAPIError,
+    LangSmithConfigurationError,
+    LangSmithRequestError,
+    LangSmithResponseError,
+    LangSmithTransportError,
+    ReceiptLangSmithError,
+)
 
 # Public re-export list is intentionally duplicated to keep a stable API.
 # pylint: disable=duplicate-code
@@ -29,5 +40,14 @@ __all__ = [
     "BulkExportRequest",
     "BulkExportResponse",
     "Project",
+    "ReceiptLangSmithError",
+    "LangSmithConfigurationError",
+    "LangSmithRequestError",
+    "LangSmithAPIError",
+    "LangSmithTransportError",
+    "LangSmithResponseError",
+    "BulkExportError",
+    "BulkExportResponseError",
+    "BulkExportTimeoutError",
 ]
 # pylint: enable=duplicate-code

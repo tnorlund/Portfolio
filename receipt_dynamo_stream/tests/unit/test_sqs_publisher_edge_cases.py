@@ -7,6 +7,11 @@ from unittest.mock import Mock, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from receipt_dynamo_stream.exceptions import (
+    QueueBatchFailureError,
+    QueueConfigurationError,
+    QueueServiceError,
+)
 from receipt_dynamo_stream.models import (
     ChromaDBCollection,
     FieldChange,
@@ -276,14 +281,21 @@ def test_send_batch_to_queue_missing_queue_url() -> None:
     """Test when queue URL is not in environment."""
     mock_sqs = Mock()
 
-    sent = send_batch_to_queue(
-        mock_sqs,
-        [],
-        "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
-    )
+    with pytest.raises(QueueConfigurationError) as caught:
+        send_batch_to_queue(
+            mock_sqs,
+            [],
+            "TEST_QUEUE_URL",
+            ChromaDBCollection.LINES,
+        )
 
-    assert sent == 0
+    assert type(caught.value) is QueueConfigurationError
+    assert str(caught.value) == (
+        "Queue URL for 'lines' is not configured; set TEST_QUEUE_URL"
+    )
+    assert caught.value.environment_variable == "TEST_QUEUE_URL"
+    assert caught.value.queue_name == "lines"
+    assert caught.value.__cause__ is None
     mock_sqs.send_message_batch.assert_not_called()
 
 
@@ -470,17 +482,48 @@ def test_send_batch_to_queue_failure_with_metrics(
     msg = _create_test_message()
     msg_dict = _message_to_dict(msg)
 
-    sent = send_batch_to_queue(
-        mock_sqs,
-        [(msg_dict, ChromaDBCollection.LINES)],
-        "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
-        metrics,
-    )
+    with pytest.raises(QueueServiceError) as caught:
+        send_batch_to_queue(
+            mock_sqs,
+            [(msg_dict, ChromaDBCollection.LINES)],
+            "TEST_QUEUE_URL",
+            ChromaDBCollection.LINES,
+            metrics,
+        )
 
-    assert sent == 0
+    assert type(caught.value) is QueueServiceError
+    assert str(caught.value) == (
+        "Failed to send batch of 1 message(s) to 'lines' queue"
+    )
+    assert isinstance(caught.value.__cause__, ClientError)
     metric_names = [m[0] for m in metrics.counts]
     assert "SQSMessagesFailed" in metric_names
+
+
+def test_send_batch_to_queue_surfaces_partial_failure(
+    env_test_queue: None,
+) -> None:
+    """SQS batch-level failures must not look like partial success."""
+    mock_sqs = Mock()
+    failed = [{"Id": "0", "Code": "Throttled", "SenderFault": False}]
+    mock_sqs.send_message_batch.return_value = {
+        "Successful": [],
+        "Failed": failed,
+    }
+    msg_dict = _message_to_dict(_create_test_message())
+
+    with pytest.raises(QueueBatchFailureError) as caught:
+        send_batch_to_queue(
+            mock_sqs,
+            [(msg_dict, ChromaDBCollection.LINES)],
+            "TEST_QUEUE_URL",
+            ChromaDBCollection.LINES,
+        )
+
+    assert type(caught.value) is QueueBatchFailureError
+    assert str(caught.value) == "SQS rejected 1 message(s) for 'lines' queue"
+    assert caught.value.failed_entries == failed
+    assert caught.value.__cause__ is None
 
 
 def test_send_batch_to_queue_message_attributes(

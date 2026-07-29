@@ -6,6 +6,8 @@ import time
 from enum import Enum
 from typing import Any, Callable, Dict, Optional, TypeVar, Union
 
+from receipt_dynamo.data.shared_exceptions import CircuitBreakerOpenError
+
 
 class CircuitBreakerState(Enum):
     """States of the circuit breaker."""
@@ -13,10 +15,6 @@ class CircuitBreakerState(Enum):
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Blocking calls due to failures
     HALF_OPEN = "half_open"  # Testing if service recovered
-
-
-class CircuitBreakerOpenError(Exception):
-    """Raised when circuit breaker is open and blocking calls."""
 
 
 T = TypeVar("T")
@@ -105,9 +103,10 @@ class CircuitBreaker:
 
         # Block calls if circuit is OPEN
         if self.state == CircuitBreakerState.OPEN:
+            elapsed = time.time() - (self.last_failure_time or 0)
             raise CircuitBreakerOpenError(
-                f"Circuit breaker is OPEN. Last failure: "
-                f"{time.time() - (self.last_failure_time or 0):.1f}s ago"
+                f"Circuit breaker is OPEN. Last failure: {elapsed:.1f}s ago",
+                retry_after_seconds=max(0.0, self.timeout_seconds - elapsed),
             )
 
         # Attempt the call
