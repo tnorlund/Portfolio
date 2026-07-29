@@ -810,23 +810,12 @@ def route_after_agent(state: QAState, state_holder: dict) -> str:
                     )
                     return "shape"
             else:
-                # No tool calls - LLM responded with text.
-                # Shape whenever either tier holds receipts; skipping on
-                # summary-only retrievals ended the run with no evidence.
-                if state_holder.get("retrieved_receipts") or state_holder.get(
-                    "summary_receipts"
-                ):
-                    return "shape"
-                else:
-                    # Extract answer from content
-                    if last_message.content:
-                        state_holder["answer"] = {
-                            "answer": str(last_message.content),
-                            "total_amount": None,
-                            "receipt_count": 0,
-                            "evidence": [],
-                        }
-                    return "end"
+                # No tool calls - LLM responded with text. Always shape:
+                # even a correct "nothing found" must reach synthesize so
+                # the trace carries a final answer — ending here left the
+                # viz with an empty Result panel (2026-07-29 scorecard,
+                # Q24, where 10 tool calls rightly found no pet food).
+                return "shape"
 
     return "end"
 

@@ -1049,16 +1049,32 @@ def create_qa_tools(
 
                 _track_search(query, "semantic", len(items))
 
-                return {
+                result = {
                     "query": query,
                     "search_type": "semantic",
                     "total_matches": len(results["ids"][0]),
                     "unique_items": len(items),
                     "items": items,
-                    "raw_total": round(total, 2),
                     "auto_fetched": fetched_count,
                     "note": "Review items for relevance before summing prices.",
                 }
+                # A summable total next to nothing-but-noise invites the
+                # model to report it. When even the best hit is weak, the
+                # matches are almost certainly irrelevant — say so instead
+                # of offering a number.
+                max_sim = max(
+                    (i.get("similarity", 0) for i in items), default=0
+                )
+                if max_sim >= 0.5:
+                    result["raw_total"] = round(total, 2)
+                else:
+                    result["raw_total"] = None
+                    result["note"] = (
+                        f"All matches are weak (best similarity "
+                        f"{max_sim:.2f}); they are likely irrelevant. "
+                        "Do not sum or cite these prices."
+                    )
+                return result
 
             else:
                 # Text search
@@ -1213,6 +1229,10 @@ def create_qa_tools(
                     break
 
             filtered = []
+            undated_excluded = 0
+            undated_spending = 0.0
+            uncategorized_excluded = 0
+            uncategorized_spending = 0.0
             for record in all_summaries:
                 place_key = f"{record.image_id}_{record.receipt_id}"
                 place = places_by_key.get(place_key)
@@ -1228,6 +1248,15 @@ def create_qa_tools(
                         continue
 
                 if category_filter:
+                    # A third of receipts have no category at all; count
+                    # them out loud so percentages keep an honest
+                    # denominator instead of silently vanishing.
+                    if not merchant_category and not (
+                        place and place.merchant_types
+                    ):
+                        uncategorized_excluded += 1
+                        uncategorized_spending += record.grand_total or 0
+                        continue
                     category_match = False
                     if (
                         merchant_category
@@ -1243,6 +1272,15 @@ def create_qa_tools(
                     if not category_match:
                         continue
 
+                # A date filter must not pass receipts with no date at
+                # all — asserting "spent $X in July" while citing undated
+                # receipts was the largest wrong-number source in the
+                # 2026-07-29 scorecard. They are counted and reported
+                # separately instead of silently included.
+                if (start_dt or end_dt) and not record.date:
+                    undated_excluded += 1
+                    undated_spending += record.grand_total or 0
+                    continue
                 if start_dt and record.date:
                     if record.date < start_dt:
                         continue
@@ -1298,6 +1336,8 @@ def create_qa_tools(
                         else None
                     ),
                     "excluded_outlier_count": len(outliers),
+                    "undated_excluded": undated_excluded,
+                    "uncategorized_excluded": uncategorized_excluded,
                 }
             )
 
@@ -1331,6 +1371,26 @@ def create_qa_tools(
                 "summaries": filtered,
                 "auto_fetched": fetched_count,
             }
+            if undated_excluded:
+                result["undated_excluded"] = {
+                    "count": undated_excluded,
+                    "total_spending": round(undated_spending, 2),
+                    "note": (
+                        "Receipts with no date cannot satisfy a date "
+                        "filter and are NOT included above. State this "
+                        "coverage gap when answering."
+                    ),
+                }
+            if uncategorized_excluded:
+                result["uncategorized_excluded"] = {
+                    "count": uncategorized_excluded,
+                    "total_spending": round(uncategorized_spending, 2),
+                    "note": (
+                        "Receipts with no category are NOT included "
+                        "above. Include this bucket in any percentage "
+                        "or breakdown denominator."
+                    ),
+                }
             if outliers:
                 result["excluded_outliers"] = summarize_ocr_outliers(outliers)
                 result["excluded_outlier_count"] = len(outliers)
@@ -1358,6 +1418,7 @@ def create_qa_tools(
         """
         try:
             category_counts: dict[str, int] = defaultdict(int)
+            categorized = 0
             last_key = None
 
             while True:
@@ -1369,7 +1430,22 @@ def create_qa_tools(
                 for place in places:
                     if place.merchant_category:
                         category_counts[place.merchant_category] += 1
+                        categorized += 1
 
+                if last_key is None:
+                    break
+
+            # Receipts without a category hold a third of all spend; a
+            # breakdown that omits them reports percentages against a
+            # fictional denominator.
+            total_receipts = 0
+            last_key = None
+            while True:
+                records, last_key = dynamo_client.list_receipt_summaries(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+                total_receipts += len(records)
                 if last_key is None:
                     break
 
@@ -1381,6 +1457,12 @@ def create_qa_tools(
 
             return {
                 "total_categories": len(sorted_categories),
+                "total_receipts": total_receipts,
+                "uncategorized_receipts": max(total_receipts - categorized, 0),
+                "note": (
+                    "Uncategorized receipts match NO category filter; "
+                    "include them in any breakdown denominator."
+                ),
                 "categories": [
                     {"category": cat, "receipt_count": count}
                     for cat, count in sorted_categories
@@ -1456,6 +1538,22 @@ A separate step will format your answer with supporting receipt details.
 
 **For merchant/date aggregation**:
 - Use get_receipt_summaries (pre-computed, fast)
+
+**For merchant totals** ("total at Costco", "gas stations"):
+- Merchant names have case and suffix variants ("Speedway"/"SPEEDWAY",
+  three CVS spellings). Call list_merchants() FIRST and aggregate over
+  EVERY variant that is the same real merchant — a single-pass search
+  under one spelling badly undercounts.
+- For merchant-type questions (gas stations, pharmacies), enumerate the
+  merchants of that type from list_merchants(), then aggregate each.
+
+**Partial data is not a refusal.** Many receipts have no date or no
+category. If a question needs dates or categories, answer over the
+receipts that HAVE them and state the coverage (e.g. "among the 680
+dated receipts..."). Tool results report excluded undated/uncategorized
+buckets — cite them. Never answer "cannot be determined" when a covered
+subset supports a direct answer, and never assert a date range that the
+cited receipts do not actually carry.
 
 ## When to Stop
 
