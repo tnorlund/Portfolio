@@ -77,6 +77,9 @@ class PlacesClientV1:
         "viewport",
         "plusCode",
         "types",
+        # Without primaryType in the mask the API omits it entirely, which
+        # left every newly resolved place with an empty merchant_category.
+        "primaryType",
         "businessStatus",
         "nationalPhoneNumber",
         "internationalPhoneNumber",

@@ -88,13 +88,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities import ReceiptPlace
-
 from receipt_agent.subagents.place_finder import (
     create_receipt_place_finder_graph,
     run_receipt_place_finder,
 )
+
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities import ReceiptPlace
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +152,31 @@ class AgenticSearchRequirementsError(ValueError):
 # ======================================================================
 # Helper functions
 # ======================================================================
+
+
+# Types that say nothing about what kind of business a place is. Google
+# omits primaryType for some places, and for those the specific entries
+# in `types` (if any) are the only category signal available.
+_GENERIC_PLACE_TYPES = {
+    "establishment",
+    "point_of_interest",
+    "store",
+    "food",
+    "finance",
+    "health",
+}
+
+
+def _derive_category(
+    primary_type: Optional[str], types: Optional[list[str]]
+) -> str:
+    """Best-available merchant category from a Places v1 response."""
+    if primary_type:
+        return primary_type
+    for t in types or []:
+        if t not in _GENERIC_PLACE_TYPES:
+            return t
+    return ""
 
 
 def _looks_like_address(name: str) -> bool:
@@ -1018,7 +1043,9 @@ class ReceiptPlaceFinder:
                 receipt_id=match.receipt.receipt_id,
                 place_id=match.place_id,
                 merchant_name=merchant_name,
-                merchant_category=place_v1.primary_type or "",
+                merchant_category=_derive_category(
+                    place_v1.primary_type, place_v1.types
+                ),
                 merchant_types=place_v1.types or [],
                 formatted_address=place_v1.formatted_address or "",
                 short_address=place_v1.short_formatted_address or "",
