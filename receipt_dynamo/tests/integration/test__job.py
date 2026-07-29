@@ -7,7 +7,9 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
     DynamoDBError,
+    DynamoDBResourceNotFoundError,
     DynamoDBServerError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
@@ -826,7 +828,7 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
         (
             "ResourceNotFoundException",
             "Table not found",
-            OperationError,
+            DynamoDBResourceNotFoundError,
             "DynamoDB resource not found during query_by_parent: Table not found",
         ),
         (
@@ -838,7 +840,7 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
         (
             "AccessDeniedException",
             "Access denied",
-            DynamoDBError,
+            DynamoDBAccessError,
             (
                 "DynamoDB error during query_by_parent: "
                 "AccessDeniedException - Access denied"
