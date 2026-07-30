@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
+from receipt_chroma.section_labels import non_item_section_filter
 
 logger = logging.getLogger(__name__)
 
@@ -974,6 +975,7 @@ def create_qa_tools(
                 results = lines_collection.query(
                     query_embeddings=query_embeddings,
                     n_results=min(limit * 3, CHROMA_MAX_N_RESULTS),
+                    where=non_item_section_filter(),
                     include=["metadatas", "distances"],
                 )
 
@@ -1080,6 +1082,7 @@ def create_qa_tools(
                 # Text search
                 results = lines_collection.get(
                     where_document={"$contains": query.upper()},
+                    where=non_item_section_filter(),
                     include=["metadatas"],
                 )
 

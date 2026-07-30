@@ -61,4 +61,44 @@ def row_section_from_map(
     return None
 
 
-__all__ = ["row_section_from_map", "sections_to_line_map"]
+#: Sections that never contain a purchased product line. Product search
+#: excludes these rather than requiring ``section_label == "ITEMS"``.
+#:
+#: Measured on the dev LINES collection (34k rows): 30% of rows carry NO
+#: ``section_label`` at all, and of the 516 hand-verified product lines in
+#: the golden set only 90.9% are labeled ITEMS -- 7% sit in no section at
+#: all. Those unlabeled rows are overwhelmingly real products
+#: ("RAW WHOLE MILK 10.99 F", "ORGANIC POPCORN 6.49"), so an ``$in ITEMS``
+#: filter silently drops them. Chroma metadata filters do not match rows
+#: whose key is absent, but ``$nin`` DOES retain them -- verified against
+#: Chroma Cloud -- which is why the exclusion form is used here.
+NON_ITEM_SECTION_LABELS = (
+    "ADDRESS",
+    "BARCODE",
+    "FOOTER",
+    "PAYMENT",
+    "SECTION_HEADER",
+    "STOREFRONT",
+    "SUMMARY",
+    "SURVEY",
+    "TOTAL_LINE",
+    "TRANSACTION_INFO",
+)
+
+
+def non_item_section_filter() -> Dict[str, Any]:
+    """Chroma ``where`` clause excluding sections that hold no products.
+
+    Use for product/line-item search over the LINES collection. Rows with no
+    ``section_label`` are deliberately KEPT: on under-sectioned receipts the
+    product lines are exactly the unlabeled ones.
+    """
+    return {"section_label": {"$nin": list(NON_ITEM_SECTION_LABELS)}}
+
+
+__all__ = [
+    "NON_ITEM_SECTION_LABELS",
+    "non_item_section_filter",
+    "row_section_from_map",
+    "sections_to_line_map",
+]
