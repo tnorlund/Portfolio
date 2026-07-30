@@ -47,7 +47,9 @@ def test_skew_drift_does_not_chain_rows():
     for i in range(6):
         words += row(i + 1, 0.1 + i * 0.011, f"ITEM{i}", f"{i + 1}.99")
     bands = band_words(words)
-    assert len(bands) >= 3, f"skew chained {6 - len(bands) + 1} rows into one band"
+    assert (
+        len(bands) >= 3
+    ), f"skew chained {6 - len(bands) + 1} rows into one band"
 
 
 def test_echo_dedup_requires_sku_signature():

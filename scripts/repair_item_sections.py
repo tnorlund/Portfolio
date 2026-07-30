@@ -52,7 +52,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, "/Users/tnorlund/Portfolio/receipt_dynamo")
 
 import boto3  # noqa: E402
-
 from extract_line_items import (  # noqa: E402
     band_words,
     extract_items,
@@ -60,6 +59,7 @@ from extract_line_items import (  # noqa: E402
     parse_band,
     reconcile,
 )
+
 from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 from receipt_dynamo.entities.receipt_section import (  # noqa: E402
     ReceiptSection,
@@ -79,10 +79,31 @@ SUMMARY_SECTIONS = ("SUMMARY", "TOTAL_LINE", "PAYMENT")
 # OCR-tolerant arithmetic-row detector (lifted from the review's guard.py —
 # plain keyword matching misses OCR-mangled rows like "Sustota.: $15.00").
 ARITH_VOCAB = (
-    "subtotal", "total", "tax", "balance", "amount", "change", "savings",
-    "saving", "payment", "tender", "tip", "gratuity", "due", "cash",
-    "credit", "debit", "refund", "deposit", "fee", "surcharge", "rounding",
-    "grand", "net", "visa", "mastercard",
+    "subtotal",
+    "total",
+    "tax",
+    "balance",
+    "amount",
+    "change",
+    "savings",
+    "saving",
+    "payment",
+    "tender",
+    "tip",
+    "gratuity",
+    "due",
+    "cash",
+    "credit",
+    "debit",
+    "refund",
+    "deposit",
+    "fee",
+    "surcharge",
+    "rounding",
+    "grand",
+    "net",
+    "visa",
+    "mastercard",
 )
 _SHORT = {"bal", "tax", "tot", "sub", "amt", "chg", "tip", "due", "net"}
 _PCT_RE = re.compile(r"\d+\s*%")
@@ -95,7 +116,9 @@ def _lev(a: str, b: str) -> int:
     for i, ca in enumerate(a, 1):
         cur = [i]
         for j, cb in enumerate(b, 1):
-            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+            cur.append(
+                min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+            )
         prev = cur
     return prev[-1]
 
@@ -243,7 +266,8 @@ class Journal:
             BACKUP_DIR, f"section_repair_{cls}_{mode}_{stamp}.jsonl.gz"
         )
         self.proposal_path = os.path.join(
-            BACKUP_DIR, f"section_repair_{cls}_{mode}_{stamp}_proposals.jsonl.gz"
+            BACKUP_DIR,
+            f"section_repair_{cls}_{mode}_{stamp}_proposals.jsonl.gz",
         )
         self._backup = gzip.open(self.backup_path, "wt")
         self._props = gzip.open(self.proposal_path, "wt")
@@ -282,9 +306,7 @@ def check_invariants(
         section.image_id, section.receipt_id
     )
     if section.row_ids is not None or rows:
-        covering = [
-            r for r in rows if set(r.line_ids) & new_lids
-        ]
+        covering = [r for r in rows if set(r.line_ids) & new_lids]
         union = set()
         for r in covering:
             union |= set(int(x) for x in r.line_ids)
@@ -320,7 +342,9 @@ def main() -> None:
     ap.add_argument("--classes", default="B,C", help="comma list of B,C,A,D")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--allow-create", action="store_true")
-    ap.add_argument("--allowlist", help="file of image_id:receipt_id lines (class A)")
+    ap.add_argument(
+        "--allowlist", help="file of image_id:receipt_id lines (class A)"
+    )
     args = ap.parse_args()
 
     if PROD_MARKER in args.table:
@@ -349,7 +373,9 @@ def main() -> None:
             m = re.match(r"IMAGE#(.+)", item["PK"])
             m2 = re.match(r"RECEIPT#(\d+)#", item["SK"])
             if m and m2:
-                sections_by_receipt[(m.group(1), int(m2.group(1)))].append(item)
+                sections_by_receipt[(m.group(1), int(m2.group(1)))].append(
+                    item
+                )
         if "LastEvaluatedKey" not in resp:
             break
         kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
@@ -414,7 +440,10 @@ def main() -> None:
                 if cls == "C" and st0 in ("match", "near"):
                     continue
                 _, cands = candidate_bands(
-                    words, live_secs, summary, "items" if cls == "C" else "zone"
+                    words,
+                    live_secs,
+                    summary,
+                    "items" if cls == "C" else "zone",
                 )
                 delta = round(base0 - (sum0 or 0), 2)
                 tol = max(0.02, base0 * 0.01)
@@ -425,9 +454,7 @@ def main() -> None:
                     journal.propose(rec)
                     stats[f"{cls}-no-fit"] += 1
                     continue
-                added = sorted(
-                    {l for i in combo for l in cands[i]["lids"]}
-                )
+                added = sorted({l for i in combo for l in cands[i]["lids"]})
                 proposed_lids |= set(added)
                 rec["added_line_ids"] = added
                 rec["added_texts"] = [cands[i]["text"] for i in combo]
@@ -514,8 +541,11 @@ def main() -> None:
                     dynamo.update_receipt_section(section)
                 else:
                     journal.backup(
-                        {"action": "class-A-create", "pre_image": None,
-                         "key": f"{img}:{rid}"}
+                        {
+                            "action": "class-A-create",
+                            "pre_image": None,
+                            "key": f"{img}:{rid}",
+                        }
                     )
                     dynamo.add_receipt_section(section)
                 stats[f"{cls}-applied"] += 1

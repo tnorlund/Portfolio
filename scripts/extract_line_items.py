@@ -101,9 +101,7 @@ def fetch_receipt_records(client, table: str, image_id: str, receipt_id: int):
     ):
         t = raw.get("TYPE", {}).get("S")
         if t == "RECEIPT_WORD":
-            m = re.match(
-                r"RECEIPT#\d+#LINE#(\d+)#WORD#(\d+)$", raw["SK"]["S"]
-            )
+            m = re.match(r"RECEIPT#\d+#LINE#(\d+)#WORD#(\d+)$", raw["SK"]["S"])
             if not m:
                 continue
             item = _deser(raw)
@@ -187,9 +185,7 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
     # not line prices even though they parse as amounts.
     amounts: list[tuple[int, float]] = []
     for i, t in enumerate(texts):
-        if looks_like_receipt_amount(t) and re.search(
-            r"\d[.,]\d{2}(?!\d)", t
-        ):
+        if looks_like_receipt_amount(t) and re.search(r"\d[.,]\d{2}(?!\d)", t):
             v = parse_receipt_amount(t)
             if v is not None and abs(v) < 100000:
                 amounts.append((i, v))
@@ -259,9 +255,9 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
             qty = float(first)
             name_idxs.pop(0)
 
-    name = re.sub(
-        r"\s{2,}", " ", " ".join(texts[i] for i in name_idxs)
-    ).strip(" @$-")
+    name = re.sub(r"\s{2,}", " ", " ".join(texts[i] for i in name_idxs)).strip(
+        " @$-"
+    )
 
     return {
         "name": name,
@@ -293,9 +289,27 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
 
 # Tokens that don't count as product-name content (units, tax flags, SKU-ish)
 UNIT_WORDS = {
-    "EA", "LB", "KG", "OZ", "CT", "PK", "X", "C", "F", "T", "N", "O",
-    "A", "B", "TX", "FS", "QTY", "EACH",
+    "EA",
+    "LB",
+    "KG",
+    "OZ",
+    "CT",
+    "PK",
+    "X",
+    "C",
+    "F",
+    "T",
+    "N",
+    "O",
+    "A",
+    "B",
+    "TX",
+    "FS",
+    "QTY",
+    "EACH",
 }
+
+
 def _name_is_real(name: str) -> bool:
     tokens = re.findall(r"[A-Za-z]{2,}", name or "")
     real = [t for t in tokens if t.upper() not in UNIT_WORDS]
@@ -325,11 +339,7 @@ def extract_items(
         lids = sorted({w["line_id"] for w in band})
         y_mid = sum(w["y_mid"] for w in band) / len(band)
         parsed = parse_band(band)
-        if (
-            parsed is not None
-            and parsed["n_amounts"] >= 3
-            and len(text) > 80
-        ):
+        if parsed is not None and parsed["n_amounts"] >= 3 and len(text) > 80:
             collapsed = True
         if parsed is None:
             if _name_is_real(text):
@@ -497,7 +507,9 @@ def main() -> None:
     ap.add_argument("--table", default="ReceiptsTable-dc5be22")
     ap.add_argument("--out", default=None)
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--receipt", help="IMAGE_ID:RECEIPT_ID single-receipt mode")
+    ap.add_argument(
+        "--receipt", help="IMAGE_ID:RECEIPT_ID single-receipt mode"
+    )
     args = ap.parse_args()
 
     client = boto3.client("dynamodb", region_name="us-east-1")

@@ -42,18 +42,19 @@ for _package in ("receipt_dynamo", "receipt_chroma", "receipt_upload"):
     sys.path.insert(0, str(_REPO_ROOT / _package))
 
 from receipt_chroma import ChromaClient  # noqa: E402
-from receipt_dynamo import (  # noqa: E402
-    item_to_receipt_line,
-    item_to_receipt_row,
-    item_to_receipt_section,
-)
-from receipt_dynamo.constants import ValidationStatus  # noqa: E402
 from receipt_upload.section_assignment import (  # noqa: E402
     RowFeatures,
     assign_feature_sections,
     extract_row_features,
     learn_prior,
 )
+
+from receipt_dynamo import (  # noqa: E402
+    item_to_receipt_line,
+    item_to_receipt_row,
+    item_to_receipt_section,
+)
+from receipt_dynamo.constants import ValidationStatus  # noqa: E402
 
 _AMOUNT_RE = re.compile(
     r"^\(?\s*([-+])?\s*\$?\s*([\d,]+(?:\.\d{1,2})?)\s*([-])?\s*\)?$"
@@ -158,7 +159,8 @@ def _wire_items(
         clauses.append("receipt_id = ?")
         parameters.append(receipt_id)
     rows = connection.execute(
-        "SELECT dynamodb_json FROM dynamo_items WHERE " + " AND ".join(clauses),
+        "SELECT dynamodb_json FROM dynamo_items WHERE "
+        + " AND ".join(clauses),
         parameters,
     ).fetchall()
     return [json.loads(row[0]) for row in rows]
@@ -174,7 +176,9 @@ def _row_label(row: Any, line_sections: Mapping[int, set[str]]) -> str | None:
     if not votes:
         return None
     maximum = max(votes.values())
-    leaders = sorted(label for label, count in votes.items() if count == maximum)
+    leaders = sorted(
+        label for label, count in votes.items() if count == maximum
+    )
     return leaders[0] if len(leaders) == 1 else None
 
 
@@ -202,13 +206,17 @@ def _structure_matrix(features: Sequence[RowFeatures]) -> np.ndarray:
     )
     typical_height = max(float(median(heights.tolist())), _EPSILON)
     amounts = [_parse_amount(row.amount_text) for row in rows]
-    maximum_amount = max((abs(value) for value in amounts if value), default=1.0)
+    maximum_amount = max(
+        (abs(value) for value in amounts if value), default=1.0
+    )
     amount_flags = np.asarray(
         [float(value is not None) for value in amounts], dtype=np.float32
     )
     matrix: list[list[float]] = []
     prior_amounts: list[float] = []
-    for index, (feature, amount) in enumerate(zip(features, amounts, strict=True)):
+    for index, (feature, amount) in enumerate(
+        zip(features, amounts, strict=True)
+    ):
         row = feature.row
         gap_above = 0.0
         if index:
@@ -224,14 +232,17 @@ def _structure_matrix(features: Sequence[RowFeatures]) -> np.ndarray:
             ]
             arithmetic_fit = min(
                 min(
-                    abs(abs(amount) - candidate) / max(abs(amount), candidate, _EPSILON)
+                    abs(abs(amount) - candidate)
+                    / max(abs(amount), candidate, _EPSILON)
                     for candidate in window_sums
                 ),
                 1.0,
             )
         radius_start = max(0, index - 2)
         radius_end = min(len(rows), index + 3)
-        local_amount_density = float(np.mean(amount_flags[radius_start:radius_end]))
+        local_amount_density = float(
+            np.mean(amount_flags[radius_start:radius_end])
+        )
         price_offset = 0.0
         if row.price_column_x is not None:
             price_offset = row.x_max - row.price_column_x
@@ -264,7 +275,9 @@ def _structure_matrix(features: Sequence[RowFeatures]) -> np.ndarray:
     return np.asarray(matrix, dtype=np.float32)
 
 
-def load_cases(db_path: Path, max_receipts: int | None = None) -> list[ReceiptCase]:
+def load_cases(
+    db_path: Path, max_receipts: int | None = None
+) -> list[ReceiptCase]:
     """Load the QA-VALID receipt corpus from the SQLite mirror."""
 
     uri = f"file:{db_path}?mode=ro"
@@ -275,9 +288,13 @@ def load_cases(db_path: Path, max_receipts: int | None = None) -> list[ReceiptCa
             if item.get("validation_status", {}).get("S")
             == ValidationStatus.VALID.value
         ]
-        sections_by_receipt: dict[tuple[str, int], list[Any]] = defaultdict(list)
+        sections_by_receipt: dict[tuple[str, int], list[Any]] = defaultdict(
+            list
+        )
         for section in valid_sections:
-            sections_by_receipt[(section.image_id, section.receipt_id)].append(section)
+            sections_by_receipt[(section.image_id, section.receipt_id)].append(
+                section
+            )
         keys = sorted(sections_by_receipt)
         if max_receipts is not None:
             keys = keys[:max_receipts]
@@ -320,7 +337,9 @@ def load_cases(db_path: Path, max_receipts: int | None = None) -> list[ReceiptCa
             ).fetchall()
             merchant = ""
             if place_rows:
-                merchant = str(json.loads(place_rows[0][0]).get("merchant_name", ""))
+                merchant = str(
+                    json.loads(place_rows[0][0]).get("merchant_name", "")
+                )
             features = tuple(extract_row_features(rows, lines))
             result.append(
                 ReceiptCase(
@@ -356,10 +375,13 @@ def repair_metadata_only_vector_lag(db_path: Path) -> dict[str, int]:
                FROM segments s JOIN max_seq_id m ON m.segment_id = s.id
                WHERE s.scope IN ('VECTOR', 'METADATA')""").fetchall()
         by_scope = {
-            scope: (segment_id, int(seq_id)) for segment_id, scope, seq_id in segments
+            scope: (segment_id, int(seq_id))
+            for segment_id, scope, seq_id in segments
         }
         if set(by_scope) != {"VECTOR", "METADATA"}:
-            raise RuntimeError("Expected exactly one VECTOR and METADATA checkpoint")
+            raise RuntimeError(
+                "Expected exactly one VECTOR and METADATA checkpoint"
+            )
         vector_id, vector_seq = by_scope["VECTOR"]
         _, metadata_seq = by_scope["METADATA"]
         if vector_seq >= metadata_seq:
@@ -380,7 +402,9 @@ def repair_metadata_only_vector_lag(db_path: Path) -> dict[str, int]:
             int(seq_id) != vector_seq + index
             or int(operation) != 1
             or int(vector_is_null) != 1
-            for index, (seq_id, operation, vector_is_null) in enumerate(rows, start=1)
+            for index, (seq_id, operation, vector_is_null) in enumerate(
+                rows, start=1
+            )
         ):
             raise RuntimeError(
                 "Unsafe Chroma repair: lag contains a vector write, delete, "
@@ -391,7 +415,9 @@ def repair_metadata_only_vector_lag(db_path: Path) -> dict[str, int]:
             (metadata_seq, vector_id, vector_seq),
         )
         if cursor.rowcount != 1:
-            raise RuntimeError("Chroma vector checkpoint changed during repair")
+            raise RuntimeError(
+                "Chroma vector checkpoint changed during repair"
+            )
         connection.commit()
         return {
             "from_seq": vector_seq,
@@ -400,7 +426,9 @@ def repair_metadata_only_vector_lag(db_path: Path) -> dict[str, int]:
         }
 
 
-def prepare_chroma_lines(source: Path, working: Path) -> tuple[Path, dict[str, Any]]:
+def prepare_chroma_lines(
+    source: Path, working: Path
+) -> tuple[Path, dict[str, Any]]:
     """Return a readable line snapshot, repairing only a separate copy."""
 
     try:
@@ -426,7 +454,10 @@ def prepare_chroma_lines(source: Path, working: Path) -> tuple[Path, dict[str, A
 
 
 def _chroma_id(case: ReceiptCase, row_id: int) -> str:
-    return f"IMAGE#{case.image_id}#RECEIPT#{case.receipt_id:05d}" f"#LINE#{row_id:05d}"
+    return (
+        f"IMAGE#{case.image_id}#RECEIPT#{case.receipt_id:05d}"
+        f"#LINE#{row_id:05d}"
+    )
 
 
 def load_embeddings(
@@ -453,8 +484,12 @@ def load_embeddings(
             embeddings = payload.get("embeddings")
             if embeddings is None:
                 continue
-            for chroma_id, embedding in zip(payload["ids"], embeddings, strict=True):
-                result[requested[chroma_id]] = np.asarray(embedding, dtype=np.float32)
+            for chroma_id, embedding in zip(
+                payload["ids"], embeddings, strict=True
+            ):
+                result[requested[chroma_id]] = np.asarray(
+                    embedding, dtype=np.float32
+                )
     return result, {"requested": len(ids), "found": len(result)}
 
 
@@ -507,7 +542,9 @@ def fit_evidence_model(
     """Fit regularized class geometry and embedding centroids."""
 
     section_tuple = tuple(sections)
-    section_index = {section: index for index, section in enumerate(section_tuple)}
+    section_index = {
+        section: index for index, section in enumerate(section_tuple)
+    }
     structures: list[np.ndarray] = []
     labels: list[int] = []
     embedding_rows: list[np.ndarray] = []
@@ -530,25 +567,31 @@ def fit_evidence_model(
     label_values = np.asarray(labels, dtype=np.int32)
     structure_mean = structure_values.mean(axis=0)
     structure_scale = np.maximum(structure_values.std(axis=0), 0.05)
-    normalized_structure = (structure_values - structure_mean) / structure_scale
+    normalized_structure = (
+        structure_values - structure_mean
+    ) / structure_scale
     pooled_variance = np.maximum(normalized_structure.var(axis=0), 0.05)
     class_means = []
     class_scales = []
     for index in range(len(section_tuple)):
         selected = normalized_structure[label_values == index]
         if not len(selected):
-            raise RuntimeError(f"No structure training rows for {section_tuple[index]}")
+            raise RuntimeError(
+                f"No structure training rows for {section_tuple[index]}"
+            )
         class_means.append(selected.mean(axis=0))
-        variance = (selected.var(axis=0) * len(selected) + pooled_variance * 8) / (
-            len(selected) + 8
-        )
+        variance = (
+            selected.var(axis=0) * len(selected) + pooled_variance * 8
+        ) / (len(selected) + 8)
         class_scales.append(np.sqrt(np.maximum(variance, 0.05)))
 
     embedding_centroids = None
     train_embeddings = None
     train_embedding_labels = None
     if embedding_rows:
-        train_embeddings = _normalize_rows(np.asarray(embedding_rows, dtype=np.float32))
+        train_embeddings = _normalize_rows(
+            np.asarray(embedding_rows, dtype=np.float32)
+        )
         train_embedding_labels = np.asarray(embedding_labels, dtype=np.int32)
         centroids = []
         for index in range(len(section_tuple)):
@@ -585,12 +628,15 @@ def case_evidence(
 ) -> CaseEvidence:
     """Project one receipt onto the learned structure and embedding spaces."""
 
-    normalized = (case.structure - model.structure_mean) / model.structure_scale
+    normalized = (
+        case.structure - model.structure_mean
+    ) / model.structure_scale
     residual = (
         normalized[:, None, :] - model.class_structure_mean[None, :, :]
     ) / model.class_structure_scale[None, :, :]
     geometry = -0.5 * np.mean(
-        residual * residual + 2 * np.log(model.class_structure_scale[None, :, :]),
+        residual * residual
+        + 2 * np.log(model.class_structure_scale[None, :, :]),
         axis=2,
     )
     geometry = _center_clip(geometry)
@@ -603,7 +649,9 @@ def case_evidence(
         else 0
     )
     for feature in case.features:
-        embedding = embeddings.get((case.image_id, case.receipt_id, feature.row.row_id))
+        embedding = embeddings.get(
+            (case.image_id, case.receipt_id, feature.row.row_id)
+        )
         available.append(embedding is not None)
         row_embeddings.append(
             embedding
@@ -611,7 +659,9 @@ def case_evidence(
             else np.zeros(dimension, dtype=np.float32)
         )
     available_array = np.asarray(available, dtype=bool)
-    projection = np.zeros((len(case.features), len(model.sections)), dtype=np.float32)
+    projection = np.zeros(
+        (len(case.features), len(model.sections)), dtype=np.float32
+    )
     knn = np.zeros_like(projection)
     if (
         model.embedding_centroids is not None
@@ -633,7 +683,9 @@ def case_evidence(
         )
         for query_index, neighbor_indices in enumerate(indices):
             for neighbor_index in neighbor_indices:
-                weight = max(float(similarities[query_index, neighbor_index]), 0.0)
+                weight = max(
+                    float(similarities[query_index, neighbor_index]), 0.0
+                )
                 probabilities[
                     query_index, model.train_embedding_labels[neighbor_index]
                 ] += weight
@@ -666,7 +718,11 @@ def _predict(
     evidence: CaseEvidence | None = None,
     weights: EvidenceWeights | None = None,
 ) -> dict[int, str]:
-    if evidence is None or weights is None or not any(weights.as_dict().values()):
+    if (
+        evidence is None
+        or weights is None
+        or not any(weights.as_dict().values())
+    ):
         features = case.features
     else:
         sections = tuple(decoder_model["global"]["sections"])
@@ -678,10 +734,12 @@ def _predict(
                         sections,
                         (
                             _lexical_scores(feature, decoder_model, sections)
-                            + weights.geometry_math * evidence.geometry_math[index]
+                            + weights.geometry_math
+                            * evidence.geometry_math[index]
                             + weights.embedding_projection
                             * evidence.embedding_projection[index]
-                            + weights.embedding_knn * evidence.embedding_knn[index]
+                            + weights.embedding_knn
+                            * evidence.embedding_knn[index]
                         ).tolist(),
                         strict=True,
                     )
@@ -737,7 +795,9 @@ def score_cases(
         "agreement": matched / total if total else 0.0,
         "mean_receipt_agreement": fmean(case_scores) if case_scores else 0.0,
         "macro_recall": (
-            fmean(item["recall"] for item in per_type.values()) if per_type else 0.0
+            fmean(item["recall"] for item in per_type.values())
+            if per_type
+            else 0.0
         ),
         "per_type": per_type,
     }
@@ -786,7 +846,9 @@ def _metric_delta(
 ) -> dict[str, float]:
     result = {
         "agreement": float(candidate["agreement"] - baseline["agreement"]),
-        "macro_recall": float(candidate["macro_recall"] - baseline["macro_recall"]),
+        "macro_recall": float(
+            candidate["macro_recall"] - baseline["macro_recall"]
+        ),
     }
     all_types = set(baseline["per_type"]) | set(candidate["per_type"])
     for section in sorted(all_types):
@@ -830,7 +892,9 @@ def paired_comparison(
                 after_only += 1
             else:
                 both_wrong += 1
-        receipt_outcomes.append((baseline_matched, hybrid_matched, len(case.truth)))
+        receipt_outcomes.append(
+            (baseline_matched, hybrid_matched, len(case.truth))
+        )
 
     discordant = before_only + after_only
     tail = min(before_only, after_only)
@@ -848,9 +912,9 @@ def paired_comparison(
     for sample in range(bootstrap_samples):
         indices = generator.integers(0, len(values), size=len(values))
         selected = values[indices]
-        deltas[sample] = (selected[:, 1].sum() - selected[:, 0].sum()) / selected[
-            :, 2
-        ].sum()
+        deltas[sample] = (
+            selected[:, 1].sum() - selected[:, 0].sum()
+        ) / selected[:, 2].sum()
     lower, upper = np.quantile(deltas, [0.025, 0.975])
     return {
         "both_correct": both_correct,
@@ -867,8 +931,13 @@ def paired_comparison(
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     manifest = json.loads((args.cache_root / "manifest.json").read_text())
     for component in ("dynamodb", "chroma"):
-        if manifest.get("components", {}).get(component, {}).get("valid") is not True:
-            raise RuntimeError(f"Local analytics {component} component is not valid")
+        if (
+            manifest.get("components", {}).get(component, {}).get("valid")
+            is not True
+        ):
+            raise RuntimeError(
+                f"Local analytics {component} component is not valid"
+            )
     cases = load_cases(args.cache_root / "dynamodb.sqlite3", args.max_receipts)
     train, validation, test = split_cases(cases, args.seed)
     if not train or not validation or not test:
@@ -884,7 +953,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
 
     tuning_decoder = _decoder_model(train)
     tuning_sections = tuning_decoder["global"]["sections"]
-    tuning_evidence_model = fit_evidence_model(train, embeddings, tuning_sections)
+    tuning_evidence_model = fit_evidence_model(
+        train, embeddings, tuning_sections
+    )
     validation_evidence = {
         case.key: case_evidence(
             case, tuning_evidence_model, embeddings, args.knn_neighbors
@@ -902,7 +973,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     training = train + validation
     final_decoder = _decoder_model(training)
     final_sections = final_decoder["global"]["sections"]
-    final_evidence_model = fit_evidence_model(training, embeddings, final_sections)
+    final_evidence_model = fit_evidence_model(
+        training, embeddings, final_sections
+    )
     test_evidence = {
         case.key: case_evidence(
             case, final_evidence_model, embeddings, args.knn_neighbors
@@ -926,7 +999,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "experiment": "section-geometry-embedding-v1",
         "cache": {
-            "dynamodb_synced_at": manifest["components"]["dynamodb"]["synced_at"],
+            "dynamodb_synced_at": manifest["components"]["dynamodb"][
+                "synced_at"
+            ],
             "dynamodb_rows": manifest["components"]["dynamodb"]["row_count"],
             "chroma_versions": {
                 name: value["version_id"]

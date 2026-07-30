@@ -23,7 +23,11 @@ def slugify_merchant(merchant_name: str) -> str:
 
 def normalize_product_text(name: str) -> str:
     """Normalize a product name for grouping in GSI1SK."""
-    return re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ]+", " ", name)).strip().upper()
+    return (
+        re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ]+", " ", name))
+        .strip()
+        .upper()
+    )
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -152,9 +156,7 @@ class ReceiptLineItem:
             value = getattr(self, fname)
             if value is None:
                 continue
-            if isinstance(value, bool) or not isinstance(
-                value, (int, float)
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"{fname} must be a number or None")
             if not math.isfinite(value) or value < 0:
                 raise ValueError(f"{fname} must be finite and non-negative")
@@ -215,7 +217,9 @@ class ReceiptLineItem:
         if self.name_quality == "low" or not self.merchant_name:
             return None
         return {
-            "GSI1PK": {"S": f"MERCHANT#{slugify_merchant(self.merchant_name)}"},
+            "GSI1PK": {
+                "S": f"MERCHANT#{slugify_merchant(self.merchant_name)}"
+            },
             "GSI1SK": {
                 "S": (
                     f"LINE_ITEM#{normalize_product_text(self.name)}#"
@@ -361,9 +365,7 @@ class ReceiptLineItem:
                 price=item["price"]["S"],
                 line_ids=[int(li["N"]) for li in item["line_ids"]["L"]],
                 extractor_version=item["extractor_version"]["S"],
-                extracted_at=datetime.fromisoformat(
-                    item["extracted_at"]["S"]
-                ),
+                extracted_at=datetime.fromisoformat(item["extracted_at"]["S"]),
                 quantity=opt_n("quantity"),
                 unit_price=opt_n("unit_price"),
                 is_discount=item.get("is_discount", {}).get("BOOL", False),

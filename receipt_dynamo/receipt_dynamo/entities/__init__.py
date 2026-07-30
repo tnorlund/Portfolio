@@ -143,6 +143,10 @@ from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
 )
 from receipt_dynamo.entities.receipt_line import ReceiptLine  # noqa: F401
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
+from receipt_dynamo.entities.receipt_line_item import (
+    ReceiptLineItem,
+    item_to_receipt_line_item,
+)
 from receipt_dynamo.entities.receipt_line_item_analysis import (  # noqa: F401
     ReceiptLineItemAnalysis,
     item_to_receipt_line_item_analysis,
@@ -154,10 +158,6 @@ from receipt_dynamo.entities.receipt_metadata import (
 from receipt_dynamo.entities.receipt_place import (
     ReceiptPlace,
     item_to_receipt_place,
-)
-from receipt_dynamo.entities.receipt_line_item import (
-    ReceiptLineItem,
-    item_to_receipt_line_item,
 )
 from receipt_dynamo.entities.receipt_row import (
     ReceiptRow,

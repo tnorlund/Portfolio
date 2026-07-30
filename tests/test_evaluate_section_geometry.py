@@ -6,9 +6,9 @@ import sqlite3
 from datetime import datetime, timezone
 
 import numpy as np
+from receipt_upload.section_assignment import RowFeatures
 
 from receipt_dynamo.entities import ReceiptRow
-from receipt_upload.section_assignment import RowFeatures
 from scripts.evaluate_section_geometry import (
     EvidenceWeights,
     _metric_delta,

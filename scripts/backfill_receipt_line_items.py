@@ -28,12 +28,12 @@ sys.path.insert(0, "/Users/tnorlund/Portfolio/receipt_dynamo")
 
 import boto3  # noqa: E402
 from boto3.dynamodb.types import TypeDeserializer  # noqa: E402
-
 from extract_line_items import (  # noqa: E402
     extract_items,
     fetch_receipt_records,
     reconcile,
 )
+
 from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 from receipt_dynamo.entities.receipt_line_item import (  # noqa: E402
     ReceiptLineItem,
@@ -102,7 +102,9 @@ def main() -> None:
         entities = []
         for idx, it in enumerate(items):
             name = it.get("name") or ""
-            quality = "low" if it.get("name_quality") == "low" or not name else "ok"
+            quality = (
+                "low" if it.get("name_quality") == "low" or not name else "ok"
+            )
             entities.append(
                 ReceiptLineItem(
                     receipt_id=rid,

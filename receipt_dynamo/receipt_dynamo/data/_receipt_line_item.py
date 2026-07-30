@@ -55,9 +55,7 @@ class _ReceiptLineItem(FlattenedStandardMixin):
     ) -> None:
         """Adds multiple ReceiptLineItems in batches (no condition —
         intended for the delete-then-put rewrite path only)."""
-        self._validate_entity_list(
-            line_items, ReceiptLineItem, "line_items"
-        )
+        self._validate_entity_list(line_items, ReceiptLineItem, "line_items")
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=li.to_item())
@@ -73,9 +71,7 @@ class _ReceiptLineItem(FlattenedStandardMixin):
         """Retrieves a single ReceiptLineItem by IDs."""
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=(
-                f"RECEIPT#{receipt_id:05d}#LINE_ITEM#{item_index:05d}"
-            ),
+            sort_key=(f"RECEIPT#{receipt_id:05d}#LINE_ITEM#{item_index:05d}"),
             entity_class=ReceiptLineItem,
             converter_func=item_to_receipt_line_item,
         )
@@ -106,9 +102,7 @@ class _ReceiptLineItem(FlattenedStandardMixin):
                     ),
                     "ExpressionAttributeValues": {
                         ":pk": {"S": f"IMAGE#{image_id}"},
-                        ":sk": {
-                            "S": f"RECEIPT#{receipt_id:05d}#LINE_ITEM#"
-                        },
+                        ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE_ITEM#"},
                     },
                     # Strongly consistent: callers verify a rewrite
                     # immediately after delete-then-put.
@@ -208,8 +202,7 @@ class _ReceiptLineItem(FlattenedStandardMixin):
                 query_kwargs["ExclusiveStartKey"] = last_evaluated_key
             response = self._client.query(**query_kwargs)
             items = [
-                item_to_receipt_line_item(item)
-                for item in response["Items"]
+                item_to_receipt_line_item(item) for item in response["Items"]
             ]
             return items, response.get("LastEvaluatedKey")
         except ClientError as e:
