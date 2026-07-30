@@ -355,3 +355,34 @@ class TestEnrichRowMetadataWithLabels:
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
         assert enriched["label_status"] == "unvalidated"
+
+
+def test_non_item_section_filter_keeps_items_and_unlabeled() -> None:
+    """Product search must exclude non-item sections, not require ITEMS.
+
+    Measured on the dev LINES collection: 30% of rows carry no
+    ``section_label``, and 7% of hand-verified product lines sit in no
+    section at all. Chroma's ``$nin`` retains rows whose key is absent,
+    so the exclusion form keeps those real products while still dropping
+    totals/payment/footer rows. An ``$in ["ITEMS"]`` filter would silently
+    discard them.
+    """
+    from receipt_chroma.section_labels import (
+        NON_ITEM_SECTION_LABELS,
+        non_item_section_filter,
+    )
+
+    clause = non_item_section_filter()
+    excluded = clause["section_label"]["$nin"]
+
+    # the sections that genuinely never hold a product
+    assert "TOTAL_LINE" in excluded
+    assert "SUMMARY" in excluded
+    assert "PAYMENT" in excluded
+    assert "SECTION_HEADER" in excluded
+
+    # ITEMS and its deprecated aliases must never be excluded
+    for keep in ("ITEMS", "ITEMS_VALUE", "ITEMS_DESCRIPTION"):
+        assert keep not in excluded
+
+    assert set(excluded) == set(NON_ITEM_SECTION_LABELS)
