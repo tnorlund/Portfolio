@@ -6,15 +6,21 @@ import sqlite3
 from datetime import datetime, timezone
 
 import numpy as np
-from receipt_upload.section_assignment import RowFeatures
 
+# isort: off
+# receipt_upload lands in a different import group depending on whether
+# the venv has it installed (the receipt_agent CI job does not), so the
+# grouping here is not reproducible across environments. Pin it.
 from receipt_dynamo.entities import ReceiptRow
+from receipt_upload.section_assignment import RowFeatures
 from scripts.evaluate_section_geometry import (
     EvidenceWeights,
     _metric_delta,
     _structure_matrix,
     repair_metadata_only_vector_lag,
 )
+
+# isort: on
 
 
 def _feature(row_id: int, *, amount: str | None = None) -> RowFeatures:
