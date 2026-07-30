@@ -491,11 +491,13 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
 
     assert plan["image"]["image_type"] == "PHOTO"
     assert plan["revision"] == 1
-    assert plan["applicable"] is False
+    # Layered PHOTO plans are applicable since masked output rendering:
+    # LAYERED_MASKED_APPLY is a WARNING, not a blocker.
+    assert plan["applicable"] is True
     assert plan["preview_urls"]["contact_sheet"]
     assert set(plan["visualizations"]["segments"]) == {"card", "guest"}
     assert {finding["code"] for finding in plan["findings"]} >= {
-        "LAYERED_APPLY_NOT_SUPPORTED"
+        "LAYERED_MASKED_APPLY"
     }
     for artifact_name in ("overlay", "contact_sheet"):
         artifact = plan["visualizations"][artifact_name]
@@ -573,15 +575,6 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             chromadb_bucket=chromadb_bucket,
         )
 
-    with pytest.raises(ValueError, match="blocking findings"):
-        apply_plan(
-            {"plan_id": revised["plan_id"], "plan_hash": revised["plan_hash"]},
-            dynamo_client=client,
-            s3_client=s3_client,
-            raw_bucket=raw_bucket,
-            site_bucket=site_bucket,
-            chromadb_bucket=chromadb_bucket,
-        )
 
     scan_image = client.get_image(image_id)
     scan_image.image_type = "SCAN"
@@ -600,6 +593,31 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
         )
+    scan_image.image_type = "PHOTO"
+    client.update_image(scan_image)
+
+    # Layered PHOTO plans apply with masked output rendering: pixels
+    # outside each segment's visible mask are whited out in the crop.
+    layered_result = apply_plan(
+        {
+            "plan_id": revised["plan_id"],
+            "plan_hash": revised["plan_hash"],
+            "create_embeddings": False,
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        site_bucket=site_bucket,
+        chromadb_bucket=chromadb_bucket,
+    )
+    assert layered_result["status"] == "APPLIED"
+    assert client.get_receipt_item_type_counts(image_id, 1) == {}
+    for output_id in layered_result["output_receipt_ids"]:
+        output_receipt = client.get_receipt(image_id, output_id)
+        stored_crop = s3_client.get_object(
+            Bucket=raw_bucket, Key=output_receipt.raw_s3_key
+        )
+        assert stored_crop["Body"].read()
 
 
 def _seed_two_line_receipt(table_name, raw_bucket, image_bucket):
