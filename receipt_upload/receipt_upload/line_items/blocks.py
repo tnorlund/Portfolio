@@ -66,6 +66,11 @@ def _line_amounts(words: list[dict]) -> list[float]:
         t = w["text"]
         if t.endswith(")") and "(" not in t:
             continue  # OCR carcass ("80.00)" from "@0.00)"), never a price
+        # OCR fuses trailing taxability flags onto amounts ("0.38N",
+        # "0.20N" on Home Depot fee lines); strip a single trailing letter
+        # when what remains is an amount shape.
+        if re.fullmatch(r"\$?\d[\d.,]*\d[A-Z]", t):
+            t = t[:-1]
         if looks_like_receipt_amount(t) and re.search(r"\d[.,]\d{2}(?!\d)", t):
             v = parse_receipt_amount(t)
             if v is not None:
@@ -140,3 +145,155 @@ def derive_block_labels(golden_receipt: dict, ocr_receipt: dict) -> list[dict]:
             }
         )
     return out
+
+
+def build_role_priors(labeled: list[list[dict]]) -> dict:
+    """Template -> role frequency table from derived labels.
+
+    ``labeled`` is a list of per-receipt outputs of derive_block_labels.
+    Templates are digit-collapsed shapes, so "MAX REFUND VALUE $ #.#"
+    learned on one receipt applies to every other receipt printing it.
+    """
+    from collections import Counter as _C
+
+    table: dict[str, Any] = {}
+    counts: dict[str, _C] = {}
+    for rows in labeled:
+        for r in rows:
+            counts.setdefault(r["template"], _C())[r["role"]] += 1
+    for tpl, c in counts.items():
+        total = sum(c.values())
+        role, n = c.most_common(1)[0]
+        table[tpl] = {"role": role, "support": total, "purity": n / total}
+    return table
+
+
+def decode_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
+    """Segment the ITEMS zone into item blocks and emit items.
+
+    Role per line: the learned template table when it has seen the shape
+    (purity >= 0.75, support >= 2), else structural fallback -- a line
+    whose amounts reach the zone's right-most amount column is PRICE, an
+    alpha-bearing line is MEMBER, else OUTSIDE. Blocks: each PRICE line
+    seeds a block; MEMBER lines attach to the nearer adjacent PRICE line
+    in reading order, with the receipt-wide orientation rule from
+    extract_items reused for ties. The item's name prefers alpha-rich
+    member text over SKU-heavy text; price is the PRICE line's rightmost
+    amount.
+    """
+    words_by_line: dict[int, list[dict]] = defaultdict(list)
+    for w in ocr_receipt["words"]:
+        words_by_line[w["line_id"]].append(w)
+    for ws in words_by_line.values():
+        ws.sort(key=lambda w: w["x"])
+    zone = set(ocr_receipt["items_line_ids"])
+    line_order = sorted(
+        (lid for lid in words_by_line if lid in zone),
+        key=lambda lid: -(
+            sum(w["y_mid"] for w in words_by_line[lid])
+            / len(words_by_line[lid])
+        ),
+    )
+    if not line_order:
+        return []
+
+    # zone price column = right-most x of any amount word, minus tolerance
+    amt_x = []
+    for lid in line_order:
+        for w in words_by_line[lid]:
+            t = w["text"]
+            if re.fullmatch(r"\$?\d[\d.,]*\d[A-Z]", t):
+                t = t[:-1]
+            if looks_like_receipt_amount(t) and re.search(
+                r"\d[.,]\d{2}(?!\d)", t
+            ):
+                amt_x.append(w["x"])
+    col_x = max(amt_x) if amt_x else None
+
+    lines = []
+    for lid in line_order:
+        ws = words_by_line[lid]
+        text = " ".join(w["text"] for w in ws)
+        tpl = templatize(text)
+        amounts = _line_amounts(ws)
+        prior = priors.get(tpl)
+        if prior and prior["purity"] >= 0.75 and prior["support"] >= 2:
+            role = prior["role"]
+        elif (
+            amounts
+            and col_x is not None
+            and any(
+                abs(w["x"] - col_x) < 0.15 for w in ws if _line_amounts([w])
+            )
+        ):
+            role = "PRICE"
+        elif re.search(r"[A-Za-z]{3,}", text):
+            role = "MEMBER"
+        else:
+            role = "MEMBER" if amounts else "OUTSIDE"
+        lines.append(
+            {
+                "line_id": lid,
+                "text": text,
+                "template": tpl,
+                "role": role,
+                "amounts": amounts,
+            }
+        )
+
+    price_idx = [i for i, l in enumerate(lines) if l["role"] == "PRICE"]
+    if not price_idx:
+        return []
+    # attach members to the nearer adjacent PRICE line (index distance in
+    # reading order; ties go up, matching how metadata precedes totals)
+    blocks: dict[int, list[int]] = {p: [] for p in price_idx}
+    for i, l in enumerate(lines):
+        if l["role"] != "MEMBER":
+            continue
+        prev_p = max((p for p in price_idx if p < i), default=None)
+        next_p = min((p for p in price_idx if p > i), default=None)
+        if prev_p is None and next_p is None:
+            continue
+        if prev_p is None:
+            blocks[next_p].append(i)
+        elif next_p is None:
+            blocks[prev_p].append(i)
+        else:
+            blocks[prev_p if (i - prev_p) <= (next_p - i) else next_p].append(
+                i
+            )
+
+    items = []
+    for p in price_idx:
+        pl = lines[p]
+        if not pl["amounts"]:
+            continue
+        price = pl["amounts"][-1]
+        # name: alpha-rich member text, SKU-stripped; fall back to the
+        # PRICE line's own non-amount text
+        cands = []
+        for i in blocks[p]:
+            t = lines[i]["text"]
+            stripped = re.sub(r"\d{4,}", " ", t)
+            toks = re.findall(r"[A-Za-z]{2,}", stripped)
+            if len(toks) >= 2:
+                cands.append((len(" ".join(toks)), t))
+        if cands:
+            name = max(cands)[1]
+        else:
+            name = " ".join(
+                w["text"]
+                for w in words_by_line[pl["line_id"]]
+                if not _line_amounts([w])
+            )
+        items.append(
+            {
+                "name": name.strip(),
+                "price": price,
+                "quantity": None,
+                "line_ids": sorted(
+                    {pl["line_id"]} | {lines[i]["line_id"] for i in blocks[p]}
+                ),
+            }
+        )
+    return items
