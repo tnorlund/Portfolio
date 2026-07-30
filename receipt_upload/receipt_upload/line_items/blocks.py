@@ -507,3 +507,12 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         )
         items.append(parsed)
     return items
+
+
+def load_default_priors() -> dict:
+    """The committed template->role prior asset (golden-set trained)."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).parent / "assets" / "block_role_priors_v1.json"
+    return json.load(open(path))["templates"]

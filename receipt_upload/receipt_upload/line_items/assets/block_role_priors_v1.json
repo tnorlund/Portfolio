@@ -1,0 +1,981 @@
+{
+ "_README": "Template->role priors for item-block decoding, trained on the 25-receipt hand-labeled golden set (line_items_golden.json). Regenerate with scripts/build_block_role_priors.py when the golden set grows. Ships like section_order_priors_v2.json; the Swift worker loads the same asset.",
+ "templates": {
+  "#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "# # # STRAWBERRIES SEAWEED SALJ #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# # #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 12
+  },
+  "# # CHICKN HNY RSTD SALAD MIX #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# # COCKTAIL BUFALA MOZZ TOM #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# # FAST SET <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# # GA STR <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# # IN. DOWN S <A* #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #\" SEWER/DRA <A=": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# #\" SEWER/DRA <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# ##WATERSTOP <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #$#.#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# #' S COLICORNIA MONDELUKE #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #'-#GA STD <A= #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #-GAL GRID <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# #-VOLT MAX <A,S\u00bb #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #-VOLT MAX <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #-VOLT MAX =A , SA #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 3
+  },
+  "# #/# COP EL# <A=": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# #/# COP EL# <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# #/#CRDWSC## <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #/#FNDWSC## <A* #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #/#IN X #FT STEEL TRACK # GA": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# #/#X#MX# <A= #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #X#/# # PK <A- #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #X#/# IN MIN =A= #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# #X#X#PRIME <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# @ $#.#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# ABC BURGER[BEEL! $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# ADJUSTABOX# <A\u00bb #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# ALBACORE SUSHI #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# AMAZON #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# ANIMAL FRY #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# ASSORTED (YE <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# BEHR CAULK <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# BERRIES NF $# #.#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# BERRIES NF $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 3
+  },
+  "# CAULK GUN =A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# CHL COUPLG <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# CRISPY PORK BELLY BASIL #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# CUT FRUIT NF $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# D ULTRA #.# <A=": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# D/W SCREW <A*": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# DOWNSPT ADPT <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# FINGERJOINT <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# FINGERJOINT \u00abA> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# GAL BUCKET-HOMER LOGO (ORANGE)": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# GG BACON NF $# #.#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# GG WATER NF P $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# GHIRARDELLI NF $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# GLAD CLING WRAP #.# #.# T": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# HAMBURGER #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# HOMER BUCKET <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# HSKY #GMIXR \u00abA=": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# IN. DOWN SPOUT CATCH BASIN KIT": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# JAPANESE SCALLOP SUSHI #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# JT COMPOUND <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# LARGE BOTTLED BEER #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# LT COMPOUND <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# MACH SCR <A-": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# MACH SCR <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# MANGO STICKY RICE #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# MEAT PATTY #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# MELAMINE \u2264A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# METAL TRIM <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# NAKED WINGS": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# ONION RINGS|LO] $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# PAINT SHIELD <A\u00bb": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# PONZU SAUCE #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# REG CHOCOLATE SHK #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# STEAMED WHITE RICE #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# STL TRACK <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# TARGET BAG T P $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# TITEBOND# # <A> #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# UITIMATE EGG $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "# VERSABOND <A=": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "# WINGS #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#\" SEWER/DRAIN EL #D D# PVC": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "#\"\u0425\u0417\"X#\" DOWNSPOUT ADPTR PVC": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#'# ORG HORIZON ATAULFO #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#-#-# #X#X#PRIME <A>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#-# CA LBR FEE <A, U>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#-# CA LBR FEE <A,U\u00bb #.#N": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#-#-# CA_ LBR FEE \u00abA,U=": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#-# CA_LBR FEE <A, U>": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#-# CA_LBR FEE \u00abA, U= #.#N": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#-#-# SP#-D CHANNEL #' CHANNEL ARAIN <A> # WITH GRATES": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#/# X # STEEL STUD # GA": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#/#\" COARSE DRYWALL SCREW # LB": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#-#/#\" FINE DRYWALL SCREW # LB": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#.#": {
+   "purity": 0.6666666666666666,
+   "role": "OUTSIDE",
+   "support": 3
+  },
+  "#.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 9
+  },
+  "#.# #.#N": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#.#INX#. #INX#IN WHT MEL": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#/#\" COP EL # DEG CXC": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "#/#INX#FT L-METAL TRIM": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#@#.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 8
+  },
+  "#@#.# #.#N": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#IN X #.#IN X #IN PRMD FJ": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#LB BAG BABY CARROT #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "#LB QUIKRETE WATER-STOP CEMENT": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#X#-#/#\" TRIM HEAD SCREW # LB": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "#X#-#FT PRIMED FJ S#S BOARD": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "+ FRIED MUSTARD": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "- -PRO XTRA PREFERRED PRICING--": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "- PRO XTRA PREFERRED PRICING": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "- PRO XTRA PREFERRED PRICING-": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "-- PRO XTRA PREFERRED PRICING--.": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "------PRO XTRA PREFERRED PRICIN": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "-----PRO XTRA PREFERRED PRICING-----": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "----PRO XTRA PREFERRED PRICING-": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "---PRO XTRA PREFERRED PRICING": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "---PRO XTRA PREFERRED PRICING-": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "---PRO XTRA PREFERRED PRICING--": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "-PRO XTRA PREFERRED PRICING-": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "-PRO XTRA PREFERRED PRICING.-": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  ". #IN X #.#IN X #IN PRMD FJ BOARD": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  ".#": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "ARNOLD PALMER #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "ASSTD (Y&R> WNGD WIRE CONN #PK": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "AVOCADO MASH #OZ TRAY": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "BEANS GREEN ORGANIC #LB $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "BEHR MULTI-PURP CAULK #.# OZ WHITE": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "BEST # X #/# IN SHEDLESS KNIT ASSEM": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "BETTER # X #/# IN KNIT MINI GPK": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "BLACK TRUFFLE FIOCCHETTI": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "BLSL CHICKEN THIGHS #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "BOTTLE DEPOSIT FEE $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "BROCCOLI FLORETS #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "BURGER[BEEF]": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "BUTTER CHARDONNAY #.# T": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "CA LUMBER FEE": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 4
+  },
+  "CARLON NEW WORK #G #CU ADJUSTABLE": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "CHICKEN GYOZA $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 2
+  },
+  "CLOROX DISINFECTING BLEAC... $#.# T": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "DESCRIPTION": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 2
+  },
+  "DW # FV ADV BL. COMBO KIT": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "DW #V XR BL #-#/#\" GRINDER": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "DW #V XR BL (#) #AH HMR COMBO KIT": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "DW BACKWALL BOGO -#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "DYNAFLEX ULTRA #.# OZ BLACK ADVANCE": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "E # # AHI BAGEL TUNA CH #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "E # BEEF FLANK #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "E #H# BAGUETTE #, #. # #": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "EGG BITES UNEXPECTED CHE $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "GROCERY": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "GUAVA NECTAR JUICE ORG # $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "HALF & HALF PINT $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "HDX # GA ET STRAINER - # PK": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "HOT SMOKED SALMON CLASSIC": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "HOT SMOKED SALMON PEPPER": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "HUSKY NARROW PAINT MIXER # GALLON": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "HW FAST SET LITE # MIN # LB BAG": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "HW RED DOT ALL PURP JC BOX #.# GAL": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "I: IFS # LB. #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "IF $#.#/#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "ITEM QTY PRICE TOTAL": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "ITEM UTY PRICE TOTAL": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "LARGE ALFRESCO EGGS #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "LOBSTER MAC AND CHEESE #C": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "LOBSTER RAVIOLI #OZ FW": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "MANGO NECTAR JUICE ORG # $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "MAX REFUND VALUE $#.#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 15
+  },
+  "MAX REFUND VALUE $#.#/#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 7
+  },
+  "MCH SCRW ZINC PHL FLT ## X #-#/#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "MCH SCRW ZINC PHL FLT ## X #.": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "MEDIUM RARE": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 2
+  },
+  "MILK QUART WHOLE $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "MKE MX# SDS+ #/#\" X #\" DRILL BIT": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "MULTI-FLORAL AND CLOVER $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "NLP SAVINGS $#.#": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 3
+  },
+  "OL IPOP GRAPE #.# F": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "OLIPOP SPRKL TONIC #.# F": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "OR # '# BLUEBERRI! S&P PISTACH #.# #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "ORG # CNT GARLIC #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "ORG A#/A# #% FAT MLK #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "ORG GINGER ROOT #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "ORGANIC GREEN ONIONS #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "OUTY # GALLON BUCKET GRID": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "PRICING -#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "PRO XTRA MEMBER STATEMENT": {
+   "purity": 1.0,
+   "role": "OUTSIDE",
+   "support": 1
+  },
+  "PRO XTRA PREFERRED PRICING -#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 11
+  },
+  "R-ARUGULA LEMON BASIL CO $#,#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "R-SALAD COMPLETE CAESAR $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "RANCH": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "ROCKENWAGNER FRENCH LOAF $#.# F": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "SALAD CHICKEN APPLE WALD $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "SOUR CREAM #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "SPEE-D CHANNEL DRAIN COUPLING": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "SPICY SPUDS $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 3
+  },
+  "SUPER SPINACH SALAD $#.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  },
+  "TRIM # IN CARDBOARD PAINT SHIELD": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "VERSABOND BONDING MORTAR-WHITE #LB": {
+   "purity": 1.0,
+   "role": "MEMBER",
+   "support": 1
+  },
+  "WATER (# #.#) #.#": {
+   "purity": 1.0,
+   "role": "PRICE",
+   "support": 1
+  }
+ },
+ "version": "block-role-priors-v1"
+}
