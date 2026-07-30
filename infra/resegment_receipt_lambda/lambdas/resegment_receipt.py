@@ -73,6 +73,19 @@ SUPPORTED_SOURCE_TYPES = {
     "RECEIPT_WORD_LABEL",
 }
 
+# Machine-derived, recomputable entity types (rows/sections/summaries/line
+# items are rebuilt by their own pipelines — ReceiptRow even self-heals via
+# the Dynamo stream within seconds of deletion). Their presence must not
+# block PLANNING: a plan is review-only and touches no receipt data. They
+# DO still block APPLY (see apply_plan) until an explicit migration policy
+# exists, because the commit/cleanup path does not migrate or delete them.
+DERIVED_RECOMPUTED_TYPES = {
+    "RECEIPT_LINE_ITEM",
+    "RECEIPT_ROW",
+    "RECEIPT_SECTION",
+    "RECEIPT_SUMMARY",
+}
+
 
 _PLAN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
@@ -409,7 +422,10 @@ def create_plan(
     type_counts = dynamo_client.get_receipt_item_type_counts(
         image_id, source_receipt_id
     )
-    unsupported = sorted(set(type_counts) - SUPPORTED_SOURCE_TYPES)
+    derived_present = sorted(set(type_counts) & DERIVED_RECOMPUTED_TYPES)
+    unsupported = sorted(
+        set(type_counts) - SUPPORTED_SOURCE_TYPES - DERIVED_RECOMPUTED_TYPES
+    )
     if unsupported:
         raise ValueError(
             "This receipt has unsupported dependent entity types: "
@@ -661,6 +677,21 @@ def create_plan(
                     ContentType="image/png",
                 )
                 plan_segment["preview_s3_key"] = preview_key
+
+    if derived_present:
+        plan.setdefault("findings", [])
+        plan["findings"] = list(plan["findings"]) + [
+            {
+                "code": "DERIVED_ENTITIES_PRESENT",
+                "severity": "WARNING",
+                "message": (
+                    "Source receipt has derived entities "
+                    f"({', '.join(derived_present)}). Planning and review "
+                    "are unaffected, but APPLY is blocked until a "
+                    "migration policy deletes them for recompute."
+                ),
+            }
+        ]
 
     plan["plan_hash"] = compute_plan_hash(plan)
     if persist_plan:
@@ -1151,6 +1182,18 @@ def apply_plan(
         raise ValueError(
             "The reviewed plan has blocking findings and cannot be applied: "
             f"{sorted(blockers)}"
+        )
+    derived_in_plan = sorted(
+        set(plan.get("source_type_counts", {})) & DERIVED_RECOMPUTED_TYPES
+    )
+    if derived_in_plan:
+        # Planning allows these with a warning; apply must not proceed until
+        # the commit path migrates or deletes them for recompute (the
+        # cleanup path neither migrates nor removes derived rows today).
+        raise ValueError(
+            "This plan's source receipt has derived entities "
+            f"({derived_in_plan}) and cannot be applied until a migration "
+            "policy exists for them."
         )
     if (
         plan.get("visualization", {}).get("effective_strategy")
