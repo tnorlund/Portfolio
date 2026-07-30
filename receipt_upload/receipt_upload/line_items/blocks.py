@@ -310,3 +310,142 @@ def decode_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         parsed["line_ids"] = sorted({pl["line_id"], *member_ids})
         items.append(parsed)
     return items
+
+
+def _zone_bands(ocr_receipt: dict) -> list[dict]:
+    """Deskewed visual bands over the zone, as decode units.
+
+    Bands restore same-visual-row joining (name left, price right as two
+    OCR lines) that line-level decode measurably lost -- In-N-Out /
+    The Stand / Smith's / Target names went to 0-25% on lines and their
+    layouts never let name meet price in one parse_band call.
+    """
+    from receipt_upload.line_items.geometry import band_words
+
+    zone = set(ocr_receipt["items_line_ids"])
+    words = [w for w in ocr_receipt["words"] if w["line_id"] in zone]
+    out = []
+    for band in band_words(words):
+        text = " ".join(w["text"] for w in band)
+        out.append(
+            {
+                "words": band,
+                "line_ids": sorted({w["line_id"] for w in band}),
+                "text": text,
+                "template": templatize(text),
+                "amounts": _line_amounts(band),
+                "y": sum(w["y_mid"] for w in band) / len(band),
+            }
+        )
+    out.sort(key=lambda b: -b["y"])  # reading order
+    return out
+
+
+def derive_band_labels(golden_receipt: dict, ocr_receipt: dict) -> list[dict]:
+    """Band-granularity roles lifted from the line-level derivation."""
+    line_roles = {
+        r["line_id"]: r
+        for r in derive_block_labels(golden_receipt, ocr_receipt)
+    }
+    out = []
+    for b in _zone_bands(ocr_receipt):
+        roles = [line_roles.get(lid) for lid in b["line_ids"]]
+        roles = [r for r in roles if r]
+        if any(r["role"] == "PRICE" for r in roles):
+            role, blk = "PRICE", next(
+                r["block_index"] for r in roles if r["role"] == "PRICE"
+            )
+        elif any(r["role"] == "MEMBER" for r in roles):
+            role = "MEMBER"
+            blk = next(
+                r["block_index"] for r in roles if r["role"] == "MEMBER"
+            )
+        else:
+            role, blk = "OUTSIDE", None
+        out.append(
+            {
+                **{k: b[k] for k in ("text", "template")},
+                "role": role,
+                "block_index": blk,
+            }
+        )
+    return out
+
+
+def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
+    """Block decode over deskewed visual bands (the corrected unit)."""
+    from receipt_upload.line_items.geometry import parse_band
+
+    bands = _zone_bands(ocr_receipt)
+    if not bands:
+        return []
+    for b in bands:
+        prior = priors.get(b["template"])
+        if prior and prior["purity"] >= 0.75 and prior["support"] >= 2:
+            b["role"] = prior["role"]
+        elif b["amounts"]:
+            b["role"] = "PRICE"
+        elif re.search(r"[A-Za-z]{3,}", b["text"]):
+            b["role"] = "MEMBER"
+        else:
+            b["role"] = "OUTSIDE"
+
+    price_idx = [i for i, b in enumerate(bands) if b["role"] == "PRICE"]
+    blocks: dict[int, list[int]] = {p: [] for p in price_idx}
+    for i, b in enumerate(bands):
+        if b["role"] != "MEMBER":
+            continue
+        prev_p = max((p for p in price_idx if p < i), default=None)
+        next_p = min((p for p in price_idx if p > i), default=None)
+        if prev_p is None and next_p is None:
+            continue
+        if prev_p is None:
+            blocks[next_p].append(i)
+        elif next_p is None:
+            blocks[prev_p].append(i)
+        else:
+            blocks[prev_p if (i - prev_p) <= (next_p - i) else next_p].append(
+                i
+            )
+
+    def _sku_dominated(name: str) -> bool:
+        stripped = re.sub(r"\d{4,}", " ", name or "")
+        return len(re.findall(r"[A-Za-z]{2,}", stripped)) < 2
+
+    items = []
+    for p in price_idx:
+        parsed = parse_band(list(bands[p]["words"]))
+        if parsed is None or parsed.get("price") is None:
+            continue
+        if parsed.get("quantity") is None:
+            for i in blocks[p]:
+                mp = parse_band(list(bands[i]["words"]))
+                if (
+                    mp
+                    and mp.get("quantity") is not None
+                    and mp.get("unit_price") is not None
+                    and abs(
+                        mp["quantity"] * mp["unit_price"] - parsed["price"]
+                    )
+                    <= 0.02
+                ):
+                    parsed["quantity"] = mp["quantity"]
+                    parsed["unit_price"] = mp["unit_price"]
+                    break
+        if _sku_dominated(parsed.get("name") or ""):
+            cands = [
+                (len(bands[i]["text"]), bands[i]["text"])
+                for i in blocks[p]
+                if not _sku_dominated(bands[i]["text"])
+            ]
+            if cands:
+                parsed["name"] = max(cands)[1].strip()
+        parsed["line_ids"] = sorted(
+            set(bands[p]["line_ids"]).union(
+                *(bands[i]["line_ids"] for i in blocks[p])
+            )
+            if blocks[p]
+            else set(bands[p]["line_ids"])
+        )
+        items.append(parsed)
+    return items
