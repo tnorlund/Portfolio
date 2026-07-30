@@ -41,6 +41,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 for _package in ("receipt_dynamo", "receipt_chroma", "receipt_upload"):
     sys.path.insert(0, str(_REPO_ROOT / _package))
 
+# isort: off
+# These imports must follow the sys.path inserts above, and isort groups
+# them differently depending on which sibling packages happen to be
+# installed in the current venv (receipt_upload is absent from the
+# receipt_agent CI job). Pin the order so the lint gate is reproducible.
 from receipt_chroma import ChromaClient  # noqa: E402
 from receipt_upload.section_assignment import (  # noqa: E402
     RowFeatures,
@@ -55,6 +60,8 @@ from receipt_dynamo import (  # noqa: E402
     item_to_receipt_section,
 )
 from receipt_dynamo.constants import ValidationStatus  # noqa: E402
+
+# isort: on
 
 _AMOUNT_RE = re.compile(
     r"^\(?\s*([-+])?\s*\$?\s*([\d,]+(?:\.\d{1,2})?)\s*([-])?\s*\)?$"
