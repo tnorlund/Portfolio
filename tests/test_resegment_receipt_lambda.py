@@ -5,6 +5,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
+# isort: off
+# receipt_upload and infra are first-party to isort in jobs that do not
+# install them (receipt_agent) and third-party in jobs that do
+# (repository tests), so the two CI jobs demand opposite groupings for
+# this block. Pin it rather than let one of them fail on every push.
 import boto3
 import pytest
 import receipt_upload.utils
@@ -31,6 +36,8 @@ from receipt_dynamo import (
     ReceiptWordLabel,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+# isort: on
 
 
 @pytest.fixture(autouse=True)
