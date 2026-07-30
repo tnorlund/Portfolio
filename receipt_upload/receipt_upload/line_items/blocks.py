@@ -263,37 +263,50 @@ def decode_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
                 i
             )
 
+    # Hybrid emit (composition rule): the decoder decided GROUPING only.
+    # Per-line parsing/naming is parse_band, the mature component -- v1
+    # rebuilt naming and regressed every single-row format while fixing
+    # the multi-row ones. Member text replaces the parsed name only when
+    # the PRICE line's own name is missing or SKU-dominated.
+    from receipt_upload.line_items.geometry import parse_band
+
+    def _sku_dominated(name: str) -> bool:
+        stripped = re.sub(r"\d{4,}", " ", name or "")
+        toks = re.findall(r"[A-Za-z]{2,}", stripped)
+        return len(toks) < 2
+
     items = []
     for p in price_idx:
         pl = lines[p]
-        if not pl["amounts"]:
+        parsed = parse_band(list(words_by_line[pl["line_id"]]))
+        if parsed is None or parsed.get("price") is None:
             continue
-        price = pl["amounts"][-1]
-        # name: alpha-rich member text, SKU-stripped; fall back to the
-        # PRICE line's own non-amount text
-        cands = []
-        for i in blocks[p]:
-            t = lines[i]["text"]
-            stripped = re.sub(r"\d{4,}", " ", t)
-            toks = re.findall(r"[A-Za-z]{2,}", stripped)
-            if len(toks) >= 2:
-                cands.append((len(" ".join(toks)), t))
-        if cands:
-            name = max(cands)[1]
-        else:
-            name = " ".join(
-                w["text"]
-                for w in words_by_line[pl["line_id"]]
-                if not _line_amounts([w])
-            )
-        items.append(
-            {
-                "name": name.strip(),
-                "price": price,
-                "quantity": None,
-                "line_ids": sorted(
-                    {pl["line_id"]} | {lines[i]["line_id"] for i in blocks[p]}
-                ),
-            }
-        )
+        member_ids = [lines[i]["line_id"] for i in blocks[p]]
+        # qty metadata on a member line ("2@7.97") explains this price
+        if parsed.get("quantity") is None:
+            for i in blocks[p]:
+                mp = parse_band(list(words_by_line[lines[i]["line_id"]]))
+                if (
+                    mp
+                    and mp.get("quantity") is not None
+                    and mp.get("unit_price") is not None
+                    and abs(
+                        mp["quantity"] * mp["unit_price"] - parsed["price"]
+                    )
+                    <= 0.02
+                ):
+                    parsed["quantity"] = mp["quantity"]
+                    parsed["unit_price"] = mp["unit_price"]
+                    break
+        if _sku_dominated(parsed.get("name") or ""):
+            cands = []
+            for i in blocks[p]:
+                t = lines[i]["text"]
+                if _sku_dominated(t):
+                    continue
+                cands.append((len(t), t))
+            if cands:
+                parsed["name"] = max(cands)[1].strip()
+        parsed["line_ids"] = sorted({pl["line_id"], *member_ids})
+        items.append(parsed)
     return items
