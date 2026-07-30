@@ -476,11 +476,13 @@ def build_preview_bundle(
     if strategy == "LAYERED_MULTI_REGION":
         findings.append(
             {
-                "code": "LAYERED_APPLY_NOT_SUPPORTED",
-                "severity": "BLOCKER",
+                "code": "LAYERED_MASKED_APPLY",
+                "severity": "WARNING",
                 "message": (
-                    "Layered PHOTO plans can be reviewed and revised, but apply "
-                    "is blocked until masked output rendering is enabled."
+                    "Layered PHOTO apply renders masked outputs: pixels "
+                    "outside each segment's visible mask are whited out in "
+                    "the output crop. Review the visible crops before "
+                    "applying."
                 ),
             }
         )

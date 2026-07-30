@@ -14,6 +14,7 @@ from receipt_dynamo import (
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
+    ReceiptWordLabel,
     Word,
     delete_image_data,
     export_image,
@@ -286,6 +287,17 @@ def test_export_and_import_image(dynamodb_table, export_dir):
             confidence=1,
         )
     ]
+    legacy_receipt_word_labels = [
+        ReceiptWordLabel(
+            image_id=image.image_id,
+            receipt_id=receipts[0].receipt_id,
+            line_id=receipt_lines[0].line_id,
+            word_id=receipt_words[0].word_id,
+            label="ITEM_NAME",
+            reasoning="Historical label preserved by snapshot restore",
+            timestamp_added=datetime.datetime.now(datetime.timezone.utc),
+        )
+    ]
 
     client.add_image(image)
     client.add_lines(lines)
@@ -295,6 +307,10 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.add_receipt_lines(receipt_lines)
     client.add_receipt_words(receipt_words)
     client.add_receipt_letters(receipt_letters)
+    client.add_receipt_word_labels(
+        legacy_receipt_word_labels,
+        allow_non_core_labels=True,
+    )
     # Act
     export_image(dynamodb_table, image.image_id, output_dir=export_dir)
 
@@ -310,6 +326,7 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.delete_receipt_lines(receipt_lines)
     client.delete_receipt_words(receipt_words)
     client.delete_receipt_letters(receipt_letters)
+    client.delete_receipt_word_labels(legacy_receipt_word_labels)
 
     # Assert
     assert len(client.list_images()[0]) == 0
@@ -320,6 +337,7 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert len(client.list_receipt_lines()[0]) == 0
     assert len(client.list_receipt_words()[0]) == 0
     assert len(client.list_receipt_letters()[0]) == 0
+    assert len(client.list_receipt_word_labels()[0]) == 0
 
     # Act
     import_image(dynamodb_table, f"{export_dir}/{image.image_id}.json")
@@ -344,6 +362,9 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert client.list_receipt_words()[0][0].text == "Hello"
     assert len(client.list_receipt_letters()[0]) == 1
     assert client.list_receipt_letters()[0][0].text == "H"
+    restored_labels = client.list_receipt_word_labels()[0]
+    assert len(restored_labels) == 1
+    assert restored_labels[0].label == "ITEM_NAME"
 
 
 @pytest.mark.integration

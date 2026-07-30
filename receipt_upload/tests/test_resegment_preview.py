@@ -103,9 +103,15 @@ def test_photo_preview_preserves_disconnected_underlay_and_inline_sheet():
         "LETTER_CORNERS"
     )
     assert {finding["code"] for finding in bundle["findings"]} >= {
-        "LAYERED_APPLY_NOT_SUPPORTED",
+        "LAYERED_MASKED_APPLY",
         "DISCONNECTED_VISIBLE_REGIONS",
     }
+    layered_findings = [
+        finding
+        for finding in bundle["findings"]
+        if finding["code"] == "LAYERED_MASKED_APPLY"
+    ]
+    assert layered_findings[0]["severity"] == "WARNING"
 
 
 def test_scan_rectangular_preview_blocks_foreign_word_capture():

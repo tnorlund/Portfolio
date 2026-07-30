@@ -114,6 +114,17 @@ class LayoutLMInference:
             self._parse_run_json(local_run_json)
             return
 
+        # Checkpoint dirs are children of the run output dir, which holds
+        # run.json (e.g. <output>/run.json vs <output>/checkpoint-1234/).
+        # Without this, in-process evals of a just-saved checkpoint load no
+        # label_merges and score merged runs against unmerged gold labels.
+        parent_run_json = os.path.join(
+            os.path.dirname(self._model_dir.rstrip(os.sep)), "run.json"
+        )
+        if os.path.exists(parent_run_json):
+            self._parse_run_json(parent_run_json)
+            return
+
         if not s3_uri or not s3_uri.startswith("s3://"):
             return
 
@@ -419,7 +430,9 @@ class LayoutLMInference:
                     first_logits = seq_logits[token_idxs[0]]
                     probs = softmax(first_logits, dim=-1)
                     conf, pred_id = torch.max(probs, dim=-1)
-                    labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
+                    labels_per_word.append(
+                        id2label.get(int(pred_id.item()), "O")
+                    )
                     confidences_per_word.append(float(conf.item()))
                     probs_list = probs.tolist()
                     all_probabilities_per_word.append(
@@ -435,7 +448,9 @@ class LayoutLMInference:
                     all_probabilities=all_probabilities_per_word,
                 )
 
-        return [r if r is not None else _empty(i) for i, r in enumerate(results)]
+        return [
+            r if r is not None else _empty(i) for i, r in enumerate(results)
+        ]
 
     def predict_receipt_from_dynamo(
         self,
@@ -611,7 +626,9 @@ class LayoutLMInference:
 
         # Finalize each word, then regroup into per-line predictions ordered by
         # word_id (the order downstream token→word matching expects).
-        by_line: Dict[int, List[Tuple[int, str, str, float, Dict[str, float]]]] = {}
+        by_line: Dict[
+            int, List[Tuple[int, str, str, float, Dict[str, float]]]
+        ] = {}
         for oi in range(n):
             lid, wid, text, _box = ordered[oi]
             sums = prob_sums[oi]

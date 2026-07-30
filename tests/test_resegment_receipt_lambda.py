@@ -5,23 +5,14 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
+# isort: off
+# receipt_upload and infra are first-party to isort in jobs that do not
+# install them (receipt_agent) and third-party in jobs that do
+# (repository tests), so the two CI jobs demand opposite groupings for
+# this block. Pin it rather than let one of them fail on every push.
 import boto3
 import pytest
-import receipt_dynamo
 import receipt_upload.utils
-from moto import mock_aws
-from PIL import Image as PILImage
-from receipt_dynamo import (
-    DynamoClient,
-    Image,
-    Receipt,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_upload.resegment import compute_plan_hash
-
 from infra.resegment_receipt_lambda.lambdas import resegment_receipt
 from infra.resegment_receipt_lambda.lambdas.resegment_receipt import (
     _segment_geometry,
@@ -31,6 +22,22 @@ from infra.resegment_receipt_lambda.lambdas.resegment_receipt import (
     get_plan,
     revise_plan,
 )
+from moto import mock_aws
+from PIL import Image as PILImage
+from receipt_upload.resegment import compute_plan_hash
+
+import receipt_dynamo
+from receipt_dynamo import (
+    DynamoClient,
+    Image,
+    Receipt,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+# isort: on
 
 
 @pytest.fixture(autouse=True)
@@ -112,8 +119,12 @@ def test_handler_does_not_expose_test_only_apply_controls(monkeypatch):
     monkeypatch.setenv("RAW_BUCKET", "raw")
     monkeypatch.setenv("SITE_BUCKET", "site")
     monkeypatch.setenv("CHROMADB_BUCKET", "chroma")
-    monkeypatch.setattr(receipt_dynamo, "DynamoClient", lambda table_name: object())
-    monkeypatch.setattr(resegment_receipt.boto3, "client", lambda service: object())
+    monkeypatch.setattr(
+        receipt_dynamo, "DynamoClient", lambda table_name: object()
+    )
+    monkeypatch.setattr(
+        resegment_receipt.boto3, "client", lambda service: object()
+    )
 
     def fake_apply(event, **kwargs):
         del kwargs
@@ -154,7 +165,9 @@ def test_segment_geometry_records_requested_padding_at_image_edge():
 
 
 def test_stage_outputs_tracks_partial_cdn_uploads_for_rollback(monkeypatch):
-    monkeypatch.setattr(receipt_upload.utils, "upload_png_to_s3", lambda *args: None)
+    monkeypatch.setattr(
+        receipt_upload.utils, "upload_png_to_s3", lambda *args: None
+    )
 
     def fail_mid_upload(*args, **kwargs):
         del args, kwargs
@@ -478,15 +491,19 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
 
     assert plan["image"]["image_type"] == "PHOTO"
     assert plan["revision"] == 1
-    assert plan["applicable"] is False
+    # Layered PHOTO plans are applicable since masked output rendering:
+    # LAYERED_MASKED_APPLY is a WARNING, not a blocker.
+    assert plan["applicable"] is True
     assert plan["preview_urls"]["contact_sheet"]
     assert set(plan["visualizations"]["segments"]) == {"card", "guest"}
     assert {finding["code"] for finding in plan["findings"]} >= {
-        "LAYERED_APPLY_NOT_SUPPORTED"
+        "LAYERED_MASKED_APPLY"
     }
     for artifact_name in ("overlay", "contact_sheet"):
         artifact = plan["visualizations"][artifact_name]
-        stored = s3_client.get_object(Bucket=raw_bucket, Key=artifact["s3_key"])
+        stored = s3_client.get_object(
+            Bucket=raw_bucket, Key=artifact["s3_key"]
+        )
         assert stored["Body"].read()
 
     fetched = get_plan(
@@ -558,16 +575,6 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             chromadb_bucket=chromadb_bucket,
         )
 
-    with pytest.raises(ValueError, match="blocking findings"):
-        apply_plan(
-            {"plan_id": revised["plan_id"], "plan_hash": revised["plan_hash"]},
-            dynamo_client=client,
-            s3_client=s3_client,
-            raw_bucket=raw_bucket,
-            site_bucket=site_bucket,
-            chromadb_bucket=chromadb_bucket,
-        )
-
     scan_image = client.get_image(image_id)
     scan_image.image_type = "SCAN"
     client.update_image(scan_image)
@@ -585,13 +592,43 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
         )
+    scan_image.image_type = "PHOTO"
+    client.update_image(scan_image)
+
+    # Layered PHOTO plans apply with masked output rendering: pixels
+    # outside each segment's visible mask are whited out in the crop.
+    layered_result = apply_plan(
+        {
+            "plan_id": revised["plan_id"],
+            "plan_hash": revised["plan_hash"],
+            "create_embeddings": False,
+        },
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        site_bucket=site_bucket,
+        chromadb_bucket=chromadb_bucket,
+    )
+    assert layered_result["status"] == "APPLIED"
+    assert client.get_receipt_item_type_counts(image_id, 1) == {}
+    for output_id in layered_result["output_receipt_ids"]:
+        output_receipt = client.get_receipt(image_id, output_id)
+        stored_crop = s3_client.get_object(
+            Bucket=raw_bucket, Key=output_receipt.raw_s3_key
+        )
+        assert stored_crop["Body"].read()
 
 
 def _seed_two_line_receipt(table_name, raw_bucket, image_bucket):
     """Create the table, buckets, image, and a two-line source receipt."""
     _create_table(table_name)
     s3_client = boto3.client("s3", region_name="us-east-1")
-    for bucket in (raw_bucket, "resegment-site", image_bucket, "resegment-chroma"):
+    for bucket in (
+        raw_bucket,
+        "resegment-site",
+        image_bucket,
+        "resegment-chroma",
+    ):
         s3_client.create_bucket(Bucket=bucket)
 
     image_id = str(uuid4())
@@ -729,10 +766,14 @@ def test_apply_retries_after_transient_commit_failure(monkeypatch):
         "chromadb_bucket": "resegment-chroma",
     }
 
-    with pytest.raises(RuntimeError, match="simulated transient commit failure"):
+    with pytest.raises(
+        RuntimeError, match="simulated transient commit failure"
+    ):
         apply_plan(apply_event, **apply_kwargs)
 
-    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored = resegment_receipt._load_plan(
+        s3_client, raw_bucket, plan["plan_id"]
+    )
     assert stored["status"] == "PLANNED"
     # The rollback released the reservations and staged children.
     for output_id in (2, 3):
@@ -770,7 +811,9 @@ def test_apply_recovers_from_crash_during_committing(monkeypatch):
     # Simulate the crash: reservations exist and the stored plan says
     # COMMITTING, but the commit transaction never ran.
     client.reserve_receipt_ids(image_id, [2, 3], plan["plan_id"])
-    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored = resegment_receipt._load_plan(
+        s3_client, raw_bucket, plan["plan_id"]
+    )
     stored["status"] = "COMMITTING"
     resegment_receipt._save_plan(s3_client, raw_bucket, stored)
 
@@ -821,7 +864,9 @@ def test_apply_survives_commit_exception_after_transaction_landed(monkeypatch):
         real_commit(*args, **kwargs)
         raise RuntimeError("simulated lost commit response")
 
-    monkeypatch.setattr(client, "commit_receipt_resegmentation", commit_then_raise)
+    monkeypatch.setattr(
+        client, "commit_receipt_resegmentation", commit_then_raise
+    )
 
     result = apply_plan(
         {
@@ -963,9 +1008,7 @@ def _stale_etag_loader(monkeypatch):
         loaded, _etag = real_load(s3_client, bucket, plan_id)
         return loaded, "0" * 32
 
-    monkeypatch.setattr(
-        resegment_receipt, "_load_plan_with_etag", stale_load
-    )
+    monkeypatch.setattr(resegment_receipt, "_load_plan_with_etag", stale_load)
 
 
 @mock_aws
@@ -1023,7 +1066,9 @@ def test_apply_recovery_serializes_on_stale_etag(monkeypatch):
     )
     # Simulate a crash mid-commit: reservations exist and status is COMMITTING.
     client.reserve_receipt_ids(image_id, [2, 3], plan["plan_id"])
-    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored = resegment_receipt._load_plan(
+        s3_client, raw_bucket, plan["plan_id"]
+    )
     stored["status"] = "COMMITTING"
     resegment_receipt._save_plan(s3_client, raw_bucket, stored)
 
@@ -1072,7 +1117,7 @@ def test_apply_reverifies_source_fingerprint_before_commit(monkeypatch):
         real_stage(**kwargs)
         # A concurrent writer edits a source label between the up-front
         # fingerprint check and the commit transaction.
-        client.add_receipt_word_labels(
+        client.update_receipt_word_labels(
             [
                 ReceiptWordLabel(
                     image_id=image_id,
@@ -1128,7 +1173,9 @@ def test_apply_rejects_visible_regions_on_rectangular_stored_plan():
     )
     assert plan["visualization"]["effective_strategy"] == "RECTANGULAR"
 
-    stored = resegment_receipt._load_plan(s3_client, raw_bucket, plan["plan_id"])
+    stored = resegment_receipt._load_plan(
+        s3_client, raw_bucket, plan["plan_id"]
+    )
     stored["segments"][0]["visible_regions"] = [
         {
             "region_id": "smuggled",

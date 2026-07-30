@@ -73,6 +73,34 @@ SUPPORTED_SOURCE_TYPES = {
     "RECEIPT_WORD_LABEL",
 }
 
+# Machine-derived, recomputable entity types (rows/sections/summaries/line
+# items are rebuilt by their own pipelines — ReceiptRow even self-heals via
+# the Dynamo stream within seconds of deletion). Their presence must not
+# block PLANNING: a plan is review-only and touches no receipt data. They
+# DO still block APPLY (see apply_plan) until an explicit migration policy
+# exists, because the commit/cleanup path does not migrate or delete them.
+DERIVED_RECOMPUTED_TYPES = {
+    "RECEIPT_LINE_ITEM",
+    "RECEIPT_ROW",
+    "RECEIPT_SECTION",
+    "RECEIPT_SUMMARY",
+}
+
+
+def _stable_type_counts(counts: Mapping[str, Any]) -> dict[str, Any]:
+    """Type counts minus derived recomputable types.
+
+    Derived rows churn independently of the source content (ReceiptRow
+    self-heals off the Dynamo stream; section/summary/line-item backfills
+    rewrite them), so fingerprints and plan/apply consistency checks must
+    not key on them. Cleanup deletes them with the source receipt
+    (delete_receipt_items sweeps the full SK prefix) and their pipelines
+    regenerate them for the outputs.
+    """
+    return {
+        k: v for k, v in counts.items() if k not in DERIVED_RECOMPUTED_TYPES
+    }
+
 
 _PLAN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
@@ -93,7 +121,8 @@ def _plan_key(plan_id: str) -> str:
 
 def _revision_key(plan_id: str, revision: int) -> str:
     return (
-        f"{PLAN_PREFIX}/{_validate_plan_id(plan_id)}/revisions/" f"{revision:04d}.json"
+        f"{PLAN_PREFIX}/{_validate_plan_id(plan_id)}/revisions/"
+        f"{revision:04d}.json"
     )
 
 
@@ -125,7 +154,9 @@ def _artifact_record(
     kind: str,
     mime_type: str = "image/png",
 ) -> dict[str, Any]:
-    body = _jpeg_bytes(image) if mime_type == "image/jpeg" else _png_bytes(image)
+    body = (
+        _jpeg_bytes(image) if mime_type == "image/jpeg" else _png_bytes(image)
+    )
     s3_client.put_object(
         Bucket=bucket,
         Key=key,
@@ -242,12 +273,17 @@ def _load_plan_with_etag(
 def _load_revision(
     s3_client: "S3Client", bucket: str, plan_id: str, revision: int
 ) -> dict[str, Any]:
-    response = s3_client.get_object(Bucket=bucket, Key=_revision_key(plan_id, revision))
+    response = s3_client.get_object(
+        Bucket=bucket, Key=_revision_key(plan_id, revision)
+    )
     return json.loads(response["Body"].read())
 
 
 def _word_ref_set(segment: dict[str, Any]) -> set[tuple[int, int]]:
-    return {(int(ref["line_id"]), int(ref["word_id"])) for ref in segment["word_refs"]}
+    return {
+        (int(ref["line_id"]), int(ref["word_id"]))
+        for ref in segment["word_refs"]
+    }
 
 
 def _combined_words_by_ref(
@@ -331,13 +367,17 @@ def _preview_delivery(
             if segment.get("preview_s3_key")
         }
     delivery: dict[str, Any] = {
-        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "expires_at": (
+            datetime.now(timezone.utc) + timedelta(hours=1)
+        ).isoformat(),
         "segments": {},
     }
     for name in ("overlay", "contact_sheet"):
         artifact = manifest.get(name)
         if artifact:
-            delivery[name] = _plan_preview_url(s3_client, bucket, artifact["s3_key"])
+            delivery[name] = _plan_preview_url(
+                s3_client, bucket, artifact["s3_key"]
+            )
     for segment_key, artifacts in manifest.get("segments", {}).items():
         delivery["segments"][segment_key] = {
             name: _plan_preview_url(s3_client, bucket, artifact["s3_key"])
@@ -391,9 +431,13 @@ def create_plan(
         raise ValueError("assignments require schema_version=2")
 
     visualization = dict(event.get("visualization") or {})
-    padding_px = float(visualization.get("padding_px", event.get("padding_px", 12.0)))
+    padding_px = float(
+        visualization.get("padding_px", event.get("padding_px", 12.0))
+    )
     if not math.isfinite(padding_px) or not 0 <= padding_px <= 256:
-        raise ValueError("padding_px must be a finite number between 0 and 256")
+        raise ValueError(
+            "padding_px must be a finite number between 0 and 256"
+        )
     persist_plan = bool(event.get("persist_plan", True))
     if event.get("rerun_ocr", False):
         raise ValueError("rerun_ocr is not supported in the first release")
@@ -402,21 +446,28 @@ def create_plan(
     image_entity = dynamo_client.get_image(image_id)
     image_type = str(image_entity.image_type)
     letters = (
-        dynamo_client.list_receipt_letters_from_receipt(image_id, source_receipt_id)
+        dynamo_client.list_receipt_letters_from_receipt(
+            image_id, source_receipt_id
+        )
         if schema_version == 2
         else []
     )
     type_counts = dynamo_client.get_receipt_item_type_counts(
         image_id, source_receipt_id
     )
-    unsupported = sorted(set(type_counts) - SUPPORTED_SOURCE_TYPES)
+    derived_present = sorted(set(type_counts) & DERIVED_RECOMPUTED_TYPES)
+    unsupported = sorted(
+        set(type_counts) - SUPPORTED_SOURCE_TYPES - DERIVED_RECOMPUTED_TYPES
+    )
     if unsupported:
         raise ValueError(
             "This receipt has unsupported dependent entity types: "
             f"{unsupported}. Add an explicit migration policy before splitting."
         )
     if details.barcodes:
-        raise ValueError("Receipt barcodes need an explicit segment assignment policy")
+        raise ValueError(
+            "Receipt barcodes need an explicit segment assignment policy"
+        )
 
     if schema_version == 2:
         normalized = normalize_line_resegmentation_plan(
@@ -435,7 +486,9 @@ def create_plan(
             discard_line_ids=event.get("discard_line_ids", ()),
             discard_word_refs=event.get("discard_word_refs", ()),
             discard_reason=event.get("discard_reason"),
-            allow_labeled_discard=bool(event.get("allow_labeled_discard", False)),
+            allow_labeled_discard=bool(
+                event.get("allow_labeled_discard", False)
+            ),
         )
 
     original_image = None
@@ -456,7 +509,7 @@ def create_plan(
         # fingerprint that omitted it could not detect a same-key overwrite
         # of the underlying image between plan and apply.
         source_object=source_object,
-        source_type_counts=type_counts,
+        source_type_counts=_stable_type_counts(type_counts),
     )
     if (
         expected_source_fingerprint is not None
@@ -478,7 +531,9 @@ def create_plan(
     )
     words_by_ref = _combined_words_by_ref(combined_words, source_receipt_id)
     if len(words_by_ref) != normalized["totals"]["source_words"]:
-        raise ValueError("Not every source word could be transformed to image space")
+        raise ValueError(
+            "Not every source word could be transformed to image space"
+        )
 
     plan_id = plan_id or str(uuid.uuid4())
     plan_segments = []
@@ -499,7 +554,11 @@ def create_plan(
         plan_segments.append(plan_segment)
 
     requested_strategy = str(visualization.get("strategy", "AUTO")).upper()
-    if requested_strategy not in {"AUTO", "RECTANGULAR", "LAYERED_MULTI_REGION"}:
+    if requested_strategy not in {
+        "AUTO",
+        "RECTANGULAR",
+        "LAYERED_MULTI_REGION",
+    }:
         raise ValueError(
             "visualization.strategy must be AUTO, RECTANGULAR, or "
             "LAYERED_MULTI_REGION"
@@ -522,13 +581,17 @@ def create_plan(
     else:
         effective_strategy = requested_strategy
     if image_type == "NATIVE" and effective_strategy == "LAYERED_MULTI_REGION":
-        raise ValueError("NATIVE images do not support layered re-segmentation")
+        raise ValueError(
+            "NATIVE images do not support layered re-segmentation"
+        )
     if (
         image_type == "SCAN"
         and effective_strategy == "LAYERED_MULTI_REGION"
         and not visualization.get("confirm_stacked_scan", False)
     ):
-        raise ValueError("SCAN layered segmentation requires confirm_stacked_scan=true")
+        raise ValueError(
+            "SCAN layered segmentation requires confirm_stacked_scan=true"
+        )
     if effective_strategy == "RECTANGULAR" and any(
         segment.get("visible_regions") for segment in plan_segments
     ):
@@ -643,7 +706,9 @@ def create_plan(
             plan["findings"] = bundle["findings"]
             plan["evidence"] = bundle["evidence"]
         else:
-            for segment, plan_segment in zip(normalized["segments"], plan_segments):
+            for segment, plan_segment in zip(
+                normalized["segments"], plan_segments
+            ):
                 geometry = plan_segment["geometry"]
                 preview = create_warped_receipt_image(
                     original_image,
@@ -662,6 +727,22 @@ def create_plan(
                 )
                 plan_segment["preview_s3_key"] = preview_key
 
+    if derived_present:
+        plan.setdefault("findings", [])
+        plan["findings"] = list(plan["findings"]) + [
+            {
+                "code": "DERIVED_ENTITIES_PRESENT",
+                "severity": "WARNING",
+                "message": (
+                    "Source receipt has derived entities "
+                    f"({', '.join(derived_present)}). They are deleted with "
+                    "the source at apply cleanup and regenerated by their "
+                    "pipelines for the outputs; consistency checks ignore "
+                    "their churn."
+                ),
+            }
+        ]
+
     plan["plan_hash"] = compute_plan_hash(plan)
     if persist_plan:
         _save_revision(s3_client, raw_bucket, plan, if_none_match=True)
@@ -674,7 +755,8 @@ def create_plan(
     return {
         **plan,
         "applicable": not any(
-            finding.get("severity") == "BLOCKER" for finding in plan.get("findings", ())
+            finding.get("severity") == "BLOCKER"
+            for finding in plan.get("findings", ())
         ),
         "preview_urls": preview_urls,
     }
@@ -695,7 +777,9 @@ def get_plan(
     ):
         plan = head
     else:
-        plan = _load_revision(s3_client, raw_bucket, plan_id, int(requested_revision))
+        plan = _load_revision(
+            s3_client, raw_bucket, plan_id, int(requested_revision)
+        )
     blockers = [
         finding
         for finding in plan.get("findings", ())
@@ -703,7 +787,8 @@ def get_plan(
     ]
     return {
         **plan,
-        "is_latest": int(plan.get("revision", 1)) == int(head.get("revision", 1)),
+        "is_latest": int(plan.get("revision", 1))
+        == int(head.get("revision", 1)),
         "applicable": not blockers
         and int(plan.get("revision", 1)) == int(head.get("revision", 1))
         and plan.get("status") == "PLANNED",
@@ -739,7 +824,9 @@ def revise_plan(
         "assignments": event["assignments"],
         "visualization": event.get("visualization")
         or {
-            "strategy": previous_visualization.get("requested_strategy", "AUTO"),
+            "strategy": previous_visualization.get(
+                "requested_strategy", "AUTO"
+            ),
             "padding_px": previous_visualization.get("padding_px", 12),
             "confirm_stacked_scan": previous_visualization.get(
                 "confirm_stacked_scan", False
@@ -830,6 +917,7 @@ def _build_outputs(
     dynamo_client: Any,
     raw_bucket: str,
     site_bucket: str,
+    segment_masks: dict[str, PILImage.Image] | None = None,
 ) -> list[dict[str, Any]]:
     from receipt_upload.combine import (
         combine_receipt_letters_to_image_coords,
@@ -844,7 +932,9 @@ def _build_outputs(
     outputs = []
     for segment in plan["segments"]:
         output_receipt_id = int(segment["output_receipt_id"])
-        segment_words = [words_by_ref[ref] for ref in sorted(_word_ref_set(segment))]
+        segment_words = [
+            words_by_ref[ref] for ref in sorted(_word_ref_set(segment))
+        ]
         geometry = _segment_geometry(
             segment_words,
             image_entity.width,
@@ -852,10 +942,32 @@ def _build_outputs(
             float(plan["padding_px"]),
         )
         if geometry != segment["geometry"]:
-            raise ValueError(f"Geometry changed for segment {segment['segment_key']}")
+            raise ValueError(
+                f"Geometry changed for segment {segment['segment_key']}"
+            )
         src_corners = [tuple(point) for point in geometry["src_corners"]]
+        warp_source = original_image
+        if segment_masks is not None:
+            mask = segment_masks.get(segment["segment_key"])
+            if mask is None:
+                raise ValueError(
+                    "Missing mask for layered segment "
+                    f"{segment['segment_key']}"
+                )
+            if mask.size != original_image.size:
+                raise ValueError(
+                    "Mask dimensions do not match the source image for "
+                    f"segment {segment['segment_key']}"
+                )
+            # White-out everything outside the segment's visible region so
+            # occluding content inside the warp quad never ships in the
+            # output crop (CDN formats are opaque, so white, not alpha).
+            white = PILImage.new("RGB", original_image.size, (255, 255, 255))
+            warp_source = PILImage.composite(
+                original_image.convert("RGB"), white, mask
+            )
         warped_image = create_warped_receipt_image(
-            original_image,
+            warp_source,
             src_corners,
             geometry["warped_width"],
             geometry["warped_height"],
@@ -905,7 +1017,9 @@ def _build_outputs(
             place = copy.deepcopy(details.place)
             place.receipt_id = output_receipt_id
         elif segment.get("place_policy") not in {"inherit", "none"}:
-            raise ValueError(f"Unsupported place_policy: {segment.get('place_policy')}")
+            raise ValueError(
+                f"Unsupported place_policy: {segment.get('place_policy')}"
+            )
 
         raw_key = (
             f"receipts/{plan['image_id']}/"
@@ -991,14 +1105,19 @@ def _embed_outputs(
         )
         result = create_embeddings_and_compaction_run(
             receipt_lines=output["lines"],
-            receipt_words=[word for word in output["words"] if not word.is_noise]
+            receipt_words=[
+                word for word in output["words"] if not word.is_noise
+            ]
             or output["words"],
             config=config,
         )
         try:
             run_ids.append(result.compaction_run.run_id)
-            if wait_for_embeddings and not result.wait_for_compaction_to_finish(
-                dynamo_client, max_wait_seconds=300
+            if (
+                wait_for_embeddings
+                and not result.wait_for_compaction_to_finish(
+                    dynamo_client, max_wait_seconds=300
+                )
             ):
                 raise RuntimeError(
                     f"Embedding compaction failed for receipt {receipt.receipt_id}"
@@ -1028,8 +1147,12 @@ def _finish_cleanup(
     deleted_items = dynamo_client.delete_receipt_items(
         plan["image_id"], int(plan["source_receipt_id"]), include_parent=True
     )
-    output_ids = [int(segment["output_receipt_id"]) for segment in plan["segments"]]
-    remaining_receipts = dynamo_client.get_receipts_from_image(plan["image_id"])
+    output_ids = [
+        int(segment["output_receipt_id"]) for segment in plan["segments"]
+    ]
+    remaining_receipts = dynamo_client.get_receipts_from_image(
+        plan["image_id"]
+    )
     visible_ids = {receipt.receipt_id for receipt in remaining_receipts}
     if not set(output_ids).issubset(visible_ids):
         raise RuntimeError("Committed output receipts are not visible")
@@ -1058,7 +1181,9 @@ def _commit_landed(
     )
 
     try:
-        dynamo_client.get_receipt(plan["image_id"], int(plan["source_receipt_id"]))
+        dynamo_client.get_receipt(
+            plan["image_id"], int(plan["source_receipt_id"])
+        )
         return False
     except EntityNotFoundError:
         pass
@@ -1109,7 +1234,7 @@ def _current_source_fingerprint(
         lines=details.lines if schema_version == 2 else (),
         letters=letters,
         source_object=source_object,
-        source_type_counts=type_counts,
+        source_type_counts=_stable_type_counts(type_counts),
     )
 
 
@@ -1152,14 +1277,10 @@ def apply_plan(
             "The reviewed plan has blocking findings and cannot be applied: "
             f"{sorted(blockers)}"
         )
-    if (
-        plan.get("visualization", {}).get("effective_strategy")
-        == "LAYERED_MULTI_REGION"
-    ):
-        raise ValueError(
-            "LAYERED_MULTI_REGION plans cannot be applied until masked output "
-            "rendering is enabled"
-        )
+    # Derived recomputable entities (rows/sections/summary/line items) need
+    # no explicit migration: delete_receipt_items sweeps the full SK prefix
+    # at cleanup and their pipelines regenerate them for the outputs, so
+    # they are deliberately excluded from the consistency checks below.
     # Defense-in-depth (M3): a RECTANGULAR apply writes the min-area crop and
     # ignores visible_regions, so a stored plan that pairs them would apply an
     # artifact its preview never showed. create_plan already rejects this, but
@@ -1175,11 +1296,15 @@ def apply_plan(
         )
 
     image_entity = dynamo_client.get_image(plan["image_id"])
-    output_ids = [int(segment["output_receipt_id"]) for segment in plan["segments"]]
+    output_ids = [
+        int(segment["output_receipt_id"]) for segment in plan["segments"]
+    ]
 
     if plan["status"] in {"COMMITTING", "CLEANUP_PENDING"}:
         try:
-            dynamo_client.get_receipt(plan["image_id"], int(plan["source_receipt_id"]))
+            dynamo_client.get_receipt(
+                plan["image_id"], int(plan["source_receipt_id"])
+            )
             source_exists = True
         except EntityNotFoundError:
             source_exists = False
@@ -1230,8 +1355,12 @@ def apply_plan(
     current_type_counts = dynamo_client.get_receipt_item_type_counts(
         plan["image_id"], int(plan["source_receipt_id"])
     )
-    if current_type_counts != plan["source_type_counts"]:
-        raise ValueError("The source receipt dependents changed; create a new plan")
+    if _stable_type_counts(current_type_counts) != _stable_type_counts(
+        plan["source_type_counts"]
+    ):
+        raise ValueError(
+            "The source receipt dependents changed; create a new plan"
+        )
     schema_version = int(plan.get("schema_version", plan.get("version", 1)))
     current_letters = (
         dynamo_client.list_receipt_letters_from_receipt(
@@ -1240,8 +1369,8 @@ def apply_plan(
         if schema_version == 2
         else []
     )
-    original_image, current_source_object = _download_original_image_with_identity(
-        s3_client, image_entity
+    original_image, current_source_object = (
+        _download_original_image_with_identity(s3_client, image_entity)
     )
     current_fingerprint = build_source_fingerprint(
         receipt=details.receipt,
@@ -1253,10 +1382,40 @@ def apply_plan(
         letters=current_letters,
         # Bind the source image object identity for v1 plans too (M4).
         source_object=current_source_object,
-        source_type_counts=current_type_counts,
+        source_type_counts=_stable_type_counts(current_type_counts),
     )
     if current_fingerprint != plan["source_fingerprint"]:
         raise ValueError("The source receipt changed; create a new plan")
+
+    # Layered PHOTO plans render masked outputs: load each segment's
+    # persisted mask artifact (integrity-checked against the plan) so
+    # pixels outside the visible region are whited out in the output crop
+    # instead of shipping occluding trash (other slips, menus).
+    segment_masks: dict[str, PILImage.Image] | None = None
+    if (
+        plan.get("visualization", {}).get("effective_strategy")
+        == "LAYERED_MULTI_REGION"
+    ):
+        segment_masks = {}
+        stored_segments = (plan.get("visualizations") or {}).get(
+            "segments"
+        ) or {}
+        for segment in plan["segments"]:
+            key = str(segment["segment_key"])
+            record = (stored_segments.get(key) or {}).get("mask")
+            if not record:
+                raise ValueError(
+                    f"Layered plan is missing the mask artifact for "
+                    f"segment {key}; revise the plan to regenerate it"
+                )
+            body = s3_client.get_object(
+                Bucket=raw_bucket, Key=record["s3_key"]
+            )["Body"].read()
+            if hashlib.sha256(body).hexdigest() != record["sha256"]:
+                raise ValueError(
+                    f"Mask artifact integrity check failed for segment {key}"
+                )
+            segment_masks[key] = PILImage.open(io.BytesIO(body)).convert("L")
 
     combined_words = combine_receipt_words_to_image_coords(
         dynamo_client,
@@ -1275,10 +1434,13 @@ def apply_plan(
         dynamo_client=dynamo_client,
         raw_bucket=raw_bucket,
         site_bucket=site_bucket,
+        segment_masks=segment_masks,
     )
     migrated_label_count = sum(len(output["labels"]) for output in outputs)
     if migrated_label_count != plan["totals"]["preserved_labels"]:
-        raise RuntimeError("Label preservation invariant failed before staging")
+        raise RuntimeError(
+            "Label preservation invariant failed before staging"
+        )
 
     # Execution lock (C2): transition PLANNED -> COMMITTING with a conditional
     # S3 write BEFORE any destructive DynamoDB operation. This compare-and-swap
@@ -1318,7 +1480,9 @@ def apply_plan(
                 outputs=outputs,
                 dynamo_client=dynamo_client,
                 chromadb_bucket=chromadb_bucket,
-                wait_for_embeddings=bool(event.get("wait_for_embeddings", True)),
+                wait_for_embeddings=bool(
+                    event.get("wait_for_embeddings", True)
+                ),
             )
 
         # Re-verify the source fingerprint immediately before the commit (M2):

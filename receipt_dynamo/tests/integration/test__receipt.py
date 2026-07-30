@@ -131,7 +131,7 @@ def _sample_receipt_word_labels(
             receipt_id=1,
             line_id=1,
             word_id=2,
-            label="store_name",
+            label="MERCHANT_NAME",
             reasoning="This is a store name",
             timestamp_added=datetime.now().isoformat(),
         ),

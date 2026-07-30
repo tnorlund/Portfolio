@@ -41,6 +41,7 @@ from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
+from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
 from receipt_dynamo.data._receipt_line_item_analysis import (
     _ReceiptLineItemAnalysis,
 )
@@ -124,6 +125,7 @@ class DynamoClient(
     _MerchantTruth,
     _MerchantTruthGate,
     _OCRJob,
+    _ReceiptLineItem,
     _ReceiptRow,
     _ReceiptSection,
     _OCRRoutingDecision,
