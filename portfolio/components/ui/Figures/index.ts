@@ -182,3 +182,10 @@ export const SynthesisPipeline = dynamic(
     loading: () => loadingShell("within"),
   }
 );
+export const SectionEmbeddingExplorer = dynamic(
+  () => import("./SectionEmbeddingExplorer"),
+  {
+    ssr: false,
+    loading: () => loadingShell("within"),
+  }
+);

@@ -27,6 +27,7 @@ import {
   ReceiptHealthExplorer,
   ReceiptBoundingBoxGrid,
   ReceiptStack,
+  SectionEmbeddingExplorer,
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
   UploadDiagram,
@@ -516,6 +517,24 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary name="synthesis-pipeline" intrinsicSize="640px">
         <ClientOnly>
           <SynthesisPipeline />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        Word labels are only half the problem. The receipt still has to decide
+        where the item list stops, the totals start, and the payment record
+        begins. I tested more geometry and receipt math, then tried asking
+        Chroma which labeled rows from other receipts looked like each row.
+        The embeddings helped. The extra geometry didn&apos;t.
+      </p>
+
+      <FigureBoundary
+        name="section-embedding-explorer"
+        intrinsicSize="640px"
+        mobileIntrinsicSize="620px"
+      >
+        <ClientOnly>
+          <SectionEmbeddingExplorer />
         </ClientOnly>
       </FigureBoundary>
 
