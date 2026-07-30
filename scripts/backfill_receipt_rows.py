@@ -58,8 +58,15 @@ for _pkg in ("receipt_dynamo", "receipt_chroma"):
     if _path.is_dir():
         sys.path.insert(0, str(_path))
 
-GROUPING_VERSION = "visual-rows-v1"
+# NOTE: the grouping version is owned by the canonical row builder in
+# receipt_chroma.embedding.formatting.receipt_rows. It is deliberately NOT
+# duplicated here -- a local copy would silently drift from the value the
+# builder actually stamps on each row.
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+class PairingRegressionError(RuntimeError):
+    """A rebuild would strip label/amount pairing from already-stored rows."""
 
 
 def _is_local_endpoint(endpoint: str | None) -> bool:
@@ -112,7 +119,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--limit", type=int, default=None, help="Process at most N receipts"
     )
-    parser.add_argument("--image-id", default=None, help="Only process this image_id")
+    parser.add_argument(
+        "--image-id", default=None, help="Only process this image_id"
+    )
     parser.add_argument(
         "--report-json",
         default=None,
@@ -121,50 +130,45 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_receipt_rows(client: Any, image_id: str, receipt_id: int):
+def build_rows_for_receipt(client: Any, image_id: str, receipt_id: int):
     """Group a receipt's lines into visual rows -> ReceiptRow entities.
+
+    Row construction is delegated to the canonical builder in
+    ``receipt_chroma.embedding.formatting.receipt_rows``, which reads the
+    receipt's WORDS to populate ``price_column_x``/``label_text``/
+    ``amount_text`` -- the product-to-price pairing that line-item
+    extraction consumes.
+
+    This function previously rebuilt rows from lines alone and constructed
+    ``ReceiptRow`` without any of those fields. Because rows are batch-put
+    unconditionally, every run silently stripped the pairing from every row
+    it touched; a corpus audit found only 154 of 28,919 stored rows still
+    carried a label/amount pair. Re-running the canonical builder over the
+    same receipts pairs 98% of them, so the data was recoverable but the
+    grouping_version never changed, which is why the loss stayed invisible.
+    Do not reintroduce a local row constructor here.
 
     Returns (rows_entities, grouped_rows) where grouped_rows is the raw
     list-of-lists of ReceiptLine from group_lines_into_visual_rows (top to
-    bottom, each row left to right).
+    bottom, each row left to right), parallel to rows_entities.
     """
+    # Import via the public facade, not receipt_chroma.embedding.formatting
+    # .receipt_rows -- tests/unit/test_public_api.py enforces that external
+    # callers use the facade.
     from receipt_chroma.embedding.formatting import (
-        get_primary_line_id,
+        build_receipt_rows as build_paired_receipt_rows,
+    )
+    from receipt_chroma.embedding.formatting import (
         group_lines_into_visual_rows,
     )
-    from receipt_dynamo.entities.receipt_row import ReceiptRow
 
     lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+    if not lines:
+        return [], []
+    words = client.list_receipt_words_from_receipt(image_id, receipt_id)
     grouped = group_lines_into_visual_rows(lines)
     now = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
-
-    entities = []
-    for row in grouped:
-        line_ids = [ln.line_id for ln in row]
-        y_min = min(ln.bounding_box.get("y", 0.0) for ln in row)
-        y_max = max(
-            ln.bounding_box.get("y", 0.0) + ln.bounding_box.get("height", 0.0)
-            for ln in row
-        )
-        x_min = min(ln.bounding_box.get("x", 0.0) for ln in row)
-        x_max = max(
-            ln.bounding_box.get("x", 0.0) + ln.bounding_box.get("width", 0.0)
-            for ln in row
-        )
-        entities.append(
-            ReceiptRow(
-                receipt_id=receipt_id,
-                image_id=image_id,
-                row_id=get_primary_line_id(row),
-                line_ids=line_ids,
-                grouping_version=GROUPING_VERSION,
-                y_min=y_min,
-                y_max=y_max,
-                x_min=x_min,
-                x_max=x_max,
-                created_at=now,
-            )
-        )
+    entities = build_paired_receipt_rows(lines, words, created_at=now)
     return entities, grouped
 
 
@@ -224,18 +228,35 @@ def process_receipt(
         validate_section_row_coverage,
     )
 
-    row_entities, grouped = build_receipt_rows(client, image_id, receipt_id)
+    row_entities, grouped = build_rows_for_receipt(
+        client, image_id, receipt_id
+    )
     row_text = {
         entity.row_id: " ".join(ln.text for ln in row)
         for entity, row in zip(row_entities, grouped)
     }
     sections = client.get_receipt_sections_from_receipt(image_id, receipt_id)
 
+    # Regression guard: rows are batch-put unconditionally, so a rebuild that
+    # produces fewer label/amount pairs than what is already stored would
+    # destroy data. That is exactly how the pairing was lost before; refuse
+    # rather than repeat it.
+    stored_rows = client.get_receipt_rows_from_receipt(image_id, receipt_id)
+    stored_paired = sum(1 for r in stored_rows if r.amount_text)
+    rebuilt_paired = sum(1 for r in row_entities if r.amount_text)
+    if rebuilt_paired < stored_paired:
+        raise PairingRegressionError(
+            f"{image_id}#{receipt_id}: rebuild would drop label/amount "
+            f"pairing from {stored_paired} row(s) to {rebuilt_paired}; "
+            "refusing to overwrite. Investigate before re-running."
+        )
+
     stats: dict[str, Any] = {
         "image_id": image_id,
         "receipt_id": receipt_id,
         "lines": sum(len(r.line_ids) for r in row_entities),
         "rows": len(row_entities),
+        "rows_paired": rebuilt_paired,
         "sections": len(sections),
         "sectioned_rows": 0,
         "straddle_rows": 0,
@@ -310,7 +331,9 @@ def process_receipt(
                 + "\n"
             )
             continue
-        new_line_ids = sorted(lid for rid in row_ids for lid in lines_by_row[rid])
+        new_line_ids = sorted(
+            lid for rid in row_ids for lid in lines_by_row[rid]
+        )
         if new_line_ids != sorted(set(section.line_ids)):
             stats["sections_line_ids_changed"] += 1
         section.row_ids = row_ids
@@ -369,7 +392,9 @@ def main() -> int:
 
     client = DynamoClient(args.table)
 
-    cache_dir = Path(args.cache_dir or _REPO_ROOT / ".row_backfill_cache" / args.table)
+    cache_dir = Path(
+        args.cache_dir or _REPO_ROOT / ".row_backfill_cache" / args.table
+    )
     cache_dir.mkdir(parents=True, exist_ok=True)
     straddle_path = cache_dir / "straddle_resolutions.jsonl"
 
@@ -377,7 +402,9 @@ def main() -> int:
     receipts = []
     last_key = None
     while True:
-        page, last_key = client.list_receipts(limit=1000, last_evaluated_key=last_key)
+        page, last_key = client.list_receipts(
+            limit=1000, last_evaluated_key=last_key
+        )
         receipts.extend(page)
         if last_key is None:
             break
@@ -395,11 +422,13 @@ def main() -> int:
 
     totals: Counter = Counter()
     straddle_methods: Counter = Counter()
-    processed = skipped = failed = 0
+    processed = skipped = failed = regressions = 0
 
     with open(straddle_path, "a", encoding="utf-8") as straddle_log:
         for i, receipt in enumerate(receipts, 1):
-            marker = cache_dir / f"{receipt.image_id}_{receipt.receipt_id:05d}.json"
+            marker = (
+                cache_dir / f"{receipt.image_id}_{receipt.receipt_id:05d}.json"
+            )
             if marker.exists() and not args.force:
                 skipped += 1
                 continue
@@ -411,14 +440,23 @@ def main() -> int:
                     args.apply,
                     straddle_log,
                 )
+            except PairingRegressionError as exc:
+                # Data-loss guard tripped: report loudly and leave the stored
+                # rows untouched rather than folding this into generic FAILs.
+                regressions += 1
+                print(f"  PAIRING REGRESSION (not written): {exc}")
+                continue
             except Exception as exc:  # noqa: BLE001 - keep the sweep going
                 failed += 1
-                print(f"  FAIL {receipt.image_id} r{receipt.receipt_id}: {exc}")
+                print(
+                    f"  FAIL {receipt.image_id} r{receipt.receipt_id}: {exc}"
+                )
                 continue
             processed += 1
             for key in (
                 "lines",
                 "rows",
+                "rows_paired",
                 "sections",
                 "sectioned_rows",
                 "straddle_rows",
@@ -444,7 +482,9 @@ def main() -> int:
         "receipts_processed": processed,
         "receipts_skipped_cached": skipped,
         "receipts_failed": failed,
+        "receipts_pairing_regression_skipped": regressions,
         "rows_created": totals["rows"],
+        "rows_with_label_amount_pair": totals["rows_paired"],
         "lines_covered": totals["lines"],
         "sections_seen": totals["sections"],
         "sections_updated_with_row_ids": totals["sections_updated"],
