@@ -127,18 +127,72 @@ def fetch_receipt_records(client, table: str, image_id: str, receipt_id: int):
     return words, sections, summary
 
 
+def estimate_skew(words: list[dict]) -> float:
+    """Residual baseline slope (dy/dx) of the receipt, from the words alone.
+
+    Some warped crops keep a degree or so of rotation, and the stored
+    ``angle_degrees`` is 0.0 on exactly those receipts, so it cannot be used
+    to correct for it. Each OCR line is a horizontal run of text, so the
+    drift of its own words against x measures the residual slope directly.
+
+    Only lines spanning a meaningful width vote (a two-word line covering 2%
+    of the receipt gives a slope dominated by glyph noise), and the median
+    rejects the outliers that price-column-only or wrapped lines produce.
+    """
+    by_line: dict[int, list[tuple[float, float]]] = {}
+    for w in words:
+        by_line.setdefault(w["line_id"], []).append((w["x"], w["y_mid"]))
+    slopes: list[float] = []
+    for pts in by_line.values():
+        if len(pts) < 2:
+            continue
+        pts.sort()
+        dx = pts[-1][0] - pts[0][0]
+        if dx > 0.15:
+            slopes.append((pts[-1][1] - pts[0][1]) / dx)
+    if not slopes:
+        return 0.0
+    slopes.sort()
+    return slopes[len(slopes) // 2]
+
+
 def band_words(words: list[dict]) -> list[list[dict]]:
-    """Cluster words into visual bands by y-center gaps."""
+    """Cluster words into visual bands by y-center gaps.
+
+    Banding runs on a de-skewed y so that a product name on the left and its
+    price on the right land in the same band. Without this, ~1.3 degrees of
+    residual skew moves the price column a full row out of alignment across
+    the receipt's width, and every item silently pairs with the price of its
+    neighbour -- measured at 0% name accuracy on Trader Joe's receipts while
+    recall stayed at 100%, because the items were all found, just mislabeled.
+    """
     if not words:
         return []
-    ws = sorted(words, key=lambda w: w["y_mid"])
-    med_h = sorted(w["h"] for w in ws)[len(ws) // 2] or 0.01
+    med_h = sorted(w["h"] for w in words)[len(words) // 2] or 0.01
+
+    # INTERIM GUARD -- this is a tuned heuristic, not a principled rule.
+    # Applying deskew unconditionally cost one line item on a receipt whose
+    # drift was inside the band gap, and this condition was chosen to make
+    # that regression disappear. It is acceptable only because banding
+    # itself is scheduled for replacement by price-anchored assignment
+    # (with a structural stranded-ends check instead of thresholds), at
+    # which point this guard is deleted along with band_words.
+    slope = estimate_skew(words)
+    xs = [w["x"] for w in words]
+    span = (max(xs) - min(xs)) if xs else 0.0
+    if abs(slope) * span < med_h * 0.6:
+        slope = 0.0
+
+    def y_flat(w: dict) -> float:
+        return w["y_mid"] - slope * w["x"]
+
+    ws = sorted(words, key=y_flat)
     bands: list[list[dict]] = [[ws[0]]]
     for w in ws[1:]:
         # Anchor the gap test to the band's FIRST word, not its last:
         # single-linkage lets slow y-drift on skewed receipts chain many
         # rows into one band, silently merging items.
-        if w["y_mid"] - bands[-1][0]["y_mid"] < med_h * 0.6:
+        if y_flat(w) - y_flat(bands[-1][0]) < med_h * 0.6:
             bands[-1].append(w)
         else:
             bands.append([w])
