@@ -391,6 +391,64 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
             b["role"] = "OUTSIDE"
 
     price_idx = [i for i, b in enumerate(bands) if b["role"] == "PRICE"]
+
+    # META absorption, ported from extract_items -- the corpus sweep vetoed
+    # the decoder without it (match 415->389, +70 items): qty bands
+    # ("2 @ 8.99") and price echoes emitted as their own items on formats
+    # outside the golden set. A PRICE band with no real name is absorbed by
+    # an ADJACENT price band when its qty*unit explains that neighbor's
+    # price, or when it merely echoes the neighbor's price with SKU/qty
+    # signature. Absorbed bands transplant quantity and stop being items.
+    from receipt_upload.line_items.geometry import (
+        SKU_LIKE_RE,
+        _name_is_real,
+    )
+
+    parsed_cache: dict[int, dict | None] = {
+        p: parse_band(list(bands[p]["words"])) for p in price_idx
+    }
+    absorbed: set[int] = set()
+    for pos, p in enumerate(price_idx):
+        mp = parsed_cache[p]
+        if mp is None or _name_is_real(mp.get("name") or ""):
+            continue
+        qty, unit = mp.get("quantity"), mp.get("unit_price")
+        for npos in (pos - 1, pos + 1):
+            if not 0 <= npos < len(price_idx):
+                continue
+            q = price_idx[npos]
+            if q in absorbed:
+                continue
+            nb = parsed_cache[q]
+            if nb is None or nb.get("price") is None:
+                continue
+            if (
+                qty is not None
+                and unit is not None
+                and abs(qty * unit - nb["price"]) <= 0.02
+            ):
+                if nb.get("quantity") is None:
+                    nb["quantity"], nb["unit_price"] = qty, unit
+                absorbed.add(p)
+                break
+            # Echo absorption ONLY into a real-named neighbor -- the same
+            # constraint extract_items enforces via kind==ITEM. Without it,
+            # Wild Fork's genuinely distinct same-priced SKU rows (two
+            # items at 8.98) absorb each other: measured recall 100->45%.
+            if (
+                mp.get("price") is not None
+                and _name_is_real(nb.get("name") or "")
+                and abs(mp["price"]) == abs(nb["price"])
+                and (
+                    SKU_LIKE_RE.search(mp.get("raw_text") or "")
+                    or qty is not None
+                )
+            ):
+                if qty is not None and nb.get("quantity") is None:
+                    nb["quantity"], nb["unit_price"] = qty, unit
+                absorbed.add(p)
+                break
+    price_idx = [p for p in price_idx if p not in absorbed]
     blocks: dict[int, list[int]] = {p: [] for p in price_idx}
     for i, b in enumerate(bands):
         if b["role"] != "MEMBER":
@@ -414,7 +472,7 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
 
     items = []
     for p in price_idx:
-        parsed = parse_band(list(bands[p]["words"]))
+        parsed = parsed_cache.get(p) or parse_band(list(bands[p]["words"]))
         if parsed is None or parsed.get("price") is None:
             continue
         if parsed.get("quantity") is None:
