@@ -575,7 +575,6 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             chromadb_bucket=chromadb_bucket,
         )
 
-
     scan_image = client.get_image(image_id)
     scan_image.image_type = "SCAN"
     client.update_image(scan_image)

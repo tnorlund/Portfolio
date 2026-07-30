@@ -254,9 +254,7 @@ def handler(_event, _context):
         # print whose state abbreviations fooled a labeling pass) must not
         # seed or render in the similarity viz.
         address_labels = [
-            lbl
-            for lbl in address_labels
-            if lbl.validation_status == "VALID"
+            lbl for lbl in address_labels if lbl.validation_status == "VALID"
         ]
 
         if not address_labels:
