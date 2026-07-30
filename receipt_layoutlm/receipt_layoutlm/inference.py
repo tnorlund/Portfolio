@@ -114,6 +114,17 @@ class LayoutLMInference:
             self._parse_run_json(local_run_json)
             return
 
+        # Checkpoint dirs are children of the run output dir, which holds
+        # run.json (e.g. <output>/run.json vs <output>/checkpoint-1234/).
+        # Without this, in-process evals of a just-saved checkpoint load no
+        # label_merges and score merged runs against unmerged gold labels.
+        parent_run_json = os.path.join(
+            os.path.dirname(self._model_dir.rstrip(os.sep)), "run.json"
+        )
+        if os.path.exists(parent_run_json):
+            self._parse_run_json(parent_run_json)
+            return
+
         if not s3_uri or not s3_uri.startswith("s3://"):
             return
 
