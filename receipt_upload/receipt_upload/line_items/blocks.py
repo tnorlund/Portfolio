@@ -312,6 +312,66 @@ def decode_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
     return items
 
 
+def merge_price_fragments(words: list[dict]) -> list[dict]:
+    """Concatenate OCR-shattered price fragments within a band.
+
+    Vision splits some prices into adjacent tokens -- "1." + "99" for 1.99
+    (Costco), "5," + "90" (comma for period). Textract read the same
+    pixels whole, which is a large part of its 90% vs our 85% recall.
+    Merge an x-adjacent pair when the left token is digits ending in a
+    separator and the right is exactly two digits, yielding a valid
+    amount. Digit MISREADS (4.89 read as 1.89) are left alone: no
+    geometry can recover a digit OCR never produced -- that class is the
+    re-OCR trigger's job.
+    """
+    if len(words) < 2:
+        return words
+    ws = sorted(words, key=lambda w: w["x"])
+    out: list[dict] = []
+    i = 0
+    while i < len(ws):
+        w = ws[i]
+        if i + 1 < len(ws):
+            nxt = ws[i + 1]
+            gap = nxt["x"] - w["x"]
+            if (
+                re.fullmatch(r"\$?\d{1,4}[.,]", w["text"])
+                and re.fullmatch(r"\d{2}", nxt["text"])
+                and 0 <= gap < 0.08
+            ):
+                merged = dict(w)
+                merged["text"] = w["text"].replace(",", ".") + nxt["text"]
+                out.append(merged)
+                i += 2
+                continue
+        out.append(w)
+        i += 1
+    return out
+
+
+def should_reocr_items_zone(
+    items: list[dict], printed_subtotal: float | None
+) -> bool:
+    """Reconciliation-triggered re-OCR decision (pure; wiring is the
+    pipeline's REGIONAL_REOCR job).
+
+    Fires when the decoded items exist but do not sum to the receipt's own
+    printed subtotal beyond the reconcile tolerance -- the signature of
+    digit-level OCR misreads (4.89 -> 1.89) that no downstream logic can
+    recover. Deliberately does NOT fire on empty zones (nothing to
+    re-read) or on match/near (re-OCR spends time to fix nothing; most
+    receipts are already right). Known limit, verified on Twin Peaks: some
+    glyphs are unreadable at any resolution; the caller must cap attempts.
+    """
+    if not items or printed_subtotal is None or printed_subtotal <= 0:
+        return False
+    total = sum(
+        i["price"] for i in items if isinstance(i.get("price"), (int, float))
+    )
+    diff = abs(round(total, 2) - printed_subtotal)
+    return diff > max(1.0, printed_subtotal * 0.10)
+
+
 def _zone_bands(ocr_receipt: dict) -> list[dict]:
     """Deskewed visual bands over the zone, as decode units.
 
@@ -326,6 +386,11 @@ def _zone_bands(ocr_receipt: dict) -> list[dict]:
     words = [w for w in ocr_receipt["words"] if w["line_id"] in zone]
     out = []
     for band in band_words(words):
+        # merge_price_fragments is deliberately NOT applied here: run
+        # unconditionally it manufactured a plausible-but-wrong 5.90 from
+        # "5,"+"90" (truth 5.99 -- shattered AND digit-misread) and failed
+        # Costco's precision floor. Fragment reconstruction is a REPAIR
+        # action for the reconciliation-triggered path, alongside re-OCR.
         text = " ".join(w["text"] for w in band)
         out.append(
             {
