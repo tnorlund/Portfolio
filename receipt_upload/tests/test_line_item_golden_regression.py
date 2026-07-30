@@ -70,18 +70,22 @@ def _score_receipt(
     return matched, name_ok, len(truth)
 
 
-# (recall_floor, name_floor) per merchant, from the measured post-deskew
-# baseline (2026-07-30), rounded DOWN slightly for run-to-run stability.
+# (recall_floor, name_floor, precision_floor) per merchant, from the
+# measured post-deskew baseline (2026-07-30), rounded DOWN slightly for
+# run-to-run stability. Precision floors added after the corpus sweep
+# vetoed a decoder that PASSED recall/name floors while over-generating
+# (+70 items corpus-wide): over-generation is invisible to recall and
+# names, so it must be gated explicitly.
 _FLOORS = {
-    "Sprouts Farmers Market": (1.00, 0.85),
-    "Roast & Rice Asian Fusion": (1.00, 1.00),
-    "TRADER JOE'S": (1.00, 1.00),
-    "Trader Joe's": (1.00, 1.00),
-    "In-N-Out Burger": (1.00, 1.00),
-    "Wild Fork": (1.00, 0.60),
-    "The Home Depot": (0.80, 0.25),
-    "Costco Wholesale": (0.40, 0.00),
-    "Target": (0.65, 0.10),
+    "Sprouts Farmers Market": (1.00, 0.85, 0.95),
+    "Roast & Rice Asian Fusion": (1.00, 1.00, 0.95),
+    "TRADER JOE'S": (1.00, 1.00, 0.95),
+    "Trader Joe's": (1.00, 1.00, 0.95),
+    "In-N-Out Burger": (1.00, 1.00, 0.75),
+    "Wild Fork": (1.00, 0.60, 0.95),
+    "The Home Depot": (0.80, 0.25, 0.50),
+    "Costco Wholesale": (0.40, 0.00, 0.85),
+    "Target": (0.65, 0.10, 0.90),
 }
 
 
@@ -106,22 +110,25 @@ def test_golden_set_per_merchant_floors() -> None:
         items, _ = extract_items(o["words"], set(o["items_line_ids"]))
         truth = [t for t in g["true_items"] if not t.get("is_discount")]
         m, n, tc = _score_receipt(truth, items)
-        agg = per.setdefault(g["merchant"], [0, 0, 0])
+        agg = per.setdefault(g["merchant"], [0, 0, 0, 0])
         agg[0] += m
         agg[1] += n
         agg[2] += tc
+        agg[3] += len(items)
 
     failures = []
-    for merchant, (m, n, tc) in sorted(per.items()):
+    for merchant, (m, n, tc, np_) in sorted(per.items()):
         recall = m / tc if tc else 0.0
         names = n / m if m else 0.0
+        precision = m / np_ if np_ else 0.0
         floor = _FLOORS.get(merchant)
         if floor is None:
             continue
-        rf, nf = floor
-        if recall < rf or names < nf:
+        rf, nf, pf = floor
+        if recall < rf or names < nf or precision < pf:
             failures.append(
                 f"{merchant}: recall {recall:.0%} (floor {rf:.0%}), "
-                f"names {names:.0%} (floor {nf:.0%})"
+                f"names {names:.0%} (floor {nf:.0%}), "
+                f"precision {precision:.0%} (floor {pf:.0%})"
             )
     assert not failures, "golden regression:\n  " + "\n  ".join(failures)

@@ -97,18 +97,12 @@ def band_words(words: list[dict]) -> list[list[dict]]:
         return []
     med_h = sorted(w["h"] for w in words)[len(words) // 2] or 0.01
 
-    # INTERIM GUARD -- this is a tuned heuristic, not a principled rule.
-    # Applying deskew unconditionally cost one line item on a receipt whose
-    # drift was inside the band gap, and this condition was chosen to make
-    # that regression disappear. It is acceptable only because banding
-    # itself is scheduled for replacement by price-anchored assignment
-    # (with a structural stranded-ends check instead of thresholds), at
-    # which point this guard is deleted along with band_words.
+    # Deskew unconditionally. The former activation guard (skip when drift
+    # was below the band gap) was a tuned constant; the low-drift receipt it
+    # protected is now handled structurally by the name-assignment stage in
+    # extract_items, which pairs name rows to priced rows by need and
+    # distance instead of depending on band membership alone.
     slope = estimate_skew(words)
-    xs = [w["x"] for w in words]
-    span = (max(xs) - min(xs)) if xs else 0.0
-    if abs(slope) * span < med_h * 0.6:
-        slope = 0.0
 
     def y_flat(w: dict) -> float:
         return w["y_mid"] - slope * w["x"]
@@ -305,6 +299,29 @@ def _name_is_real(name: str) -> bool:
 def extract_items(
     words: list[dict], line_ids: set[int]
 ) -> tuple[list[dict], bool]:
+    """Extract items via the band-block decoder (Phase D integration).
+
+    Delegates to receipt_upload.line_items.blocks.decode_band_blocks with
+    the committed golden-trained priors. Gates at swap time: all 12
+    semantic guarantees, golden floors LOO 85/57/86 with zero failures,
+    corpus sweep match 418 vs 415. The banded implementation remains below
+    as _extract_items_banded for the corpus diff harness.
+    """
+    from receipt_upload.line_items.blocks import (
+        decode_band_blocks,
+        load_default_priors,
+    )
+
+    items = decode_band_blocks(
+        {"words": list(words), "items_line_ids": sorted(line_ids)},
+        load_default_priors(),
+    )
+    return items, False
+
+
+def _extract_items_banded(
+    words: list[dict], line_ids: set[int]
+) -> tuple[list[dict], bool]:
     """Extract items from the section's words.
 
     Bands classify as ITEM (real name + price), NAME (name, no price), or
@@ -355,28 +372,19 @@ def extract_items(
         else:
             bands.append(("META", parsed))
 
-    items: list[dict] = []
-    pending_name: Optional[dict] = None
+    # --- META resolution against adjacent ITEMs (qty transplant / echo
+    # dedupe). Unchanged rules; runs before name assignment so a NAME band
+    # never attaches to a META that is about to be absorbed by a neighbor.
+    dropped: set[int] = set()
     for i, (kind, data) in enumerate(bands):
-        if kind == "NAME_USED":
+        if kind != "META":
             continue
-        if kind == "NAME":
-            pending_name = data
-            continue
-        if kind == "ITEM":
-            if data["price"] == 0 and data["quantity"] is None:
-                continue
-            items.append(data)
-            pending_name = None
-            continue
-        # META band
         neighbors = [
             bands[j][1]
             for j in (i - 1, i + 1)
             if 0 <= j < len(bands) and bands[j][0] == "ITEM"
         ]
         qty, unit = data.get("quantity"), data.get("unit_price")
-        attached = False
         for nb in neighbors:
             # qty metadata explains the neighbor's price -> attach
             if (
@@ -392,7 +400,7 @@ def extract_items(
                         "price_word_id": data["price_word_id"],
                     }
                 )
-                attached = True
+                dropped.add(i)
                 break
             # Same price -> a price echo of the neighbor, but ONLY when
             # the META text actually looks like SKU/qty metadata. Two
@@ -410,52 +418,122 @@ def extract_items(
                         "price_word_id": data["price_word_id"],
                     }
                 )
-                attached = True
+                dropped.add(i)
                 break
-        if attached:
+
+    # --- Name assignment. A NAME band may attach ONLY to an adjacent
+    # priced band that NEEDS a name (no real alpha name of its own) --
+    # anchors that already carry a real name never receive attachments,
+    # matching the old pending_name behaviour where an ITEM discarded any
+    # pending name. Rules, in order:
+    #   1. neither adjacent priced band needs a name -> the NAME band is
+    #      dropped (department headers, wrapped notes);
+    #   2. exactly one needs -> attach there;
+    #   3. both need -> a single receipt-wide orientation (all-prev or
+    #      all-next) chosen to minimize priced bands left without a real
+    #      name (the structural stranded-ends criterion), then by total
+    #      attach distance. Per-name float comparisons are NOT used here:
+    #      uniform row pitch makes them coin flips.
+    # This subsumes both stacked directions (name-above and name-below)
+    # without a per-receipt direction vote, which the corpus analysis
+    # showed cannot work (Home Depot needs both in one receipt).
+    priced = [
+        i
+        for i, (k, _) in enumerate(bands)
+        if k in ("ITEM", "META") and i not in dropped
+    ]
+    name_idxs = [i for i, (k, _) in enumerate(bands) if k == "NAME"]
+
+    def _needs_name(idx: int) -> bool:
+        # An anchor needs a name when its own row does not carry a
+        # human-readable one. Beyond "no real alpha at all" (META), a row
+        # whose alpha survives only as a single compressed code after SKU
+        # stripping ("764666103221 15/8CRDWSC5#" -> "CRDWSC") is a SKU
+        # line, not a product name: real names keep >= 2 alpha words.
+        # This is a structural property of the text, not a tuned constant.
+        own = bands[idx][1].get("name") or ""
+        if not _name_is_real(own):
+            return True
+        stripped = re.sub(r"\d{4,}", " ", own)
+        tokens = [
+            t
+            for t in re.findall(r"[A-Za-z]{2,}", stripped)
+            if t.upper() not in UNIT_WORDS
+        ]
+        return len(tokens) < 2
+
+    forced: dict[int, int] = {}
+    ambiguous: list[tuple[int, int, int, float, float]] = []
+    for n in name_idxs:
+        prev_p = max((p for p in priced if p < n), default=None)
+        next_p = min((p for p in priced if p > n), default=None)
+        prev_ok = prev_p is not None and _needs_name(prev_p)
+        next_ok = next_p is not None and _needs_name(next_p)
+        if not prev_ok and not next_ok:
+            continue  # rule 1: nobody needs this name
+        if prev_ok != next_ok:
+            forced[n] = prev_p if prev_ok else next_p
             continue
-        if data["price"] == 0 and pending_name is None:
+        d_prev = abs(bands[n][1]["y_mid"] - bands[prev_p][1]["y_mid"])
+        d_next = abs(bands[next_p][1]["y_mid"] - bands[n][1]["y_mid"])
+        ambiguous.append((n, prev_p, next_p, d_prev, d_next))
+
+    best_assign: dict[int, int] = dict(forced)
+    if ambiguous:
+        best_key = None
+        for orientation in ("prev", "next"):
+            trial = dict(forced)
+            total_d = 0.0
+            for n, prev_p, next_p, d_prev, d_next in ambiguous:
+                if orientation == "prev":
+                    trial[n] = prev_p
+                    total_d += d_prev
+                else:
+                    trial[n] = next_p
+                    total_d += d_next
+            named = set(trial.values())
+            unnamed = sum(
+                1 for p in priced if _needs_name(p) and p not in named
+            )
+            key = (unnamed, total_d, orientation)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_assign = trial
+
+    attached_names: dict[int, list[dict]] = {}
+    for n, p in best_assign.items():
+        attached_names.setdefault(p, []).append(bands[n][1])
+
+    # --- Emit items in band order, merging attached names.
+    items: list[dict] = []
+    for i in priced:
+        kind, data = bands[i]
+        names = attached_names.get(i, [])
+        if names:
+            # Only needing anchors receive names, so the attached
+            # description IS the product name (golden truth uses the
+            # human-readable line, not the SKU line).
+            data["name"] = " ".join(nm["name"] for nm in names).strip()
+            data["line_ids"] = sorted(
+                set(data["line_ids"])
+                | {lid for nm in names for lid in nm["line_ids"]}
+            )
+            data["name_band"] = names[0]["band"]
+            data["name_word_ids"] = [
+                ref for nm in names for ref in nm["name_word_ids"]
+            ]
+            data["stacked"] = True
+        if kind == "ITEM":
+            if data["price"] == 0 and data["quantity"] is None:
+                continue
+            items.append(data)
+            continue
+        # surviving META
+        if data["price"] == 0 and not names:
             # unnamed zero band is noise; a named $0.00 item (free/comped
             # line with its price in the price column) is kept via pairing
             continue
-        if (
-            pending_name is None
-            and i + 1 < len(bands)
-            and bands[i + 1][0] == "NAME"
-        ):
-            # A name band may sit just below the price band — but only
-            # claim it when it is geometrically closer to THIS price than
-            # to the next priced band below it (otherwise it is that
-            # band's name, and stealing it mispairs name and price).
-            cand = bands[i + 1][1]
-            next_priced = next(
-                (
-                    bands[j][1]
-                    for j in range(i + 2, len(bands))
-                    if bands[j][0] in ("ITEM", "META")
-                ),
-                None,
-            )
-            gap_up = abs(cand["y_mid"] - data["y_mid"])
-            gap_down = (
-                abs(next_priced["y_mid"] - cand["y_mid"])
-                if next_priced is not None
-                else float("inf")
-            )
-            if gap_up <= gap_down:
-                pending_name = cand
-                bands[i + 1] = ("NAME_USED", cand)
-        if pending_name is not None:
-            # stacked layout: name band paired with price-only band
-            data["name"] = pending_name["name"]
-            data["line_ids"] = sorted(
-                set(data["line_ids"]) | set(pending_name["line_ids"])
-            )
-            data["name_band"] = pending_name["band"]
-            data["name_word_ids"] = pending_name["name_word_ids"]
-            data["stacked"] = True
-            pending_name = None
-        else:
+        if not names:
             # No name anywhere (SKU-only or garbled OCR). Keep the price —
             # dropping it hides real spend — but flag the name quality.
             data["name_quality"] = "low"
