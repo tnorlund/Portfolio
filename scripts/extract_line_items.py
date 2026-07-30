@@ -185,6 +185,11 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
     # not line prices even though they parse as amounts.
     amounts: list[tuple[int, float]] = []
     for i, t in enumerate(texts):
+        # A close-paren with no opening paren is not an accounting negative
+        # but an OCR carcass of a quantity annotation ("(2 @0.00)" reads as
+        # "(2" + "80.00)") — never a price.
+        if t.endswith(")") and "(" not in t:
+            continue
         if looks_like_receipt_amount(t) and re.search(r"\d[.,]\d{2}(?!\d)", t):
             v = parse_receipt_amount(t)
             if v is not None and abs(v) < 100000:
@@ -426,7 +431,11 @@ def extract_items(
                 )
                 attached = True
                 break
-        if attached or data["price"] == 0:
+        if attached:
+            continue
+        if data["price"] == 0 and pending_name is None:
+            # unnamed zero band is noise; a named $0.00 item (free/comped
+            # line with its price in the price column) is kept via pairing
             continue
         if (
             pending_name is None

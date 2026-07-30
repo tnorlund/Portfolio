@@ -141,6 +141,16 @@ def test_one_decimal_and_bare_thousands_are_not_prices():
     assert parsed["price"] == 11.62
 
 
+def test_close_paren_orphan_is_not_a_price():
+    # "(2 @0.00)" OCRs as "(2" + "80.00)": the close-paren orphan must not
+    # become the price; the band pairs with the price-column META instead.
+    words = row(1, 0.10, "Water", "(2", "80.00)") + row(2, 0.13, "0.00")
+    items, _ = items_for(words)
+    assert len(items) == 1
+    assert items[0]["price"] == 0.0 or items[0]["price"] == 0
+    assert "Water" in items[0]["name"]
+
+
 def test_word_ids_retained_for_label_projection():
     band = row(1, 0.1, "COLD", "BREW", "6.49")
     parsed = parse_band(band)
