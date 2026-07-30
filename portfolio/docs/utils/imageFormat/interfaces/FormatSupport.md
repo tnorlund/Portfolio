@@ -6,7 +6,7 @@
 
 # Interface: FormatSupport
 
-Defined in: [utils/imageFormat.ts:4](https://github.com/tnorlund/Portfolio/blob/6a6e362ebf01d3c36b05b851c068110373deaf8f/portfolio/utils/imageFormat.ts#L4)
+Defined in: [utils/imageFormat.ts:4](https://github.com/tnorlund/Portfolio/blob/2b25b636609b3333d2c5ba463718bf424cd1ceb0/portfolio/utils/imageFormat.ts#L4)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/imageFormat.ts:4](https://github.com/tnorlund/Portfolio/blob/
 
 > **supportsAVIF**: `boolean`
 
-Defined in: [utils/imageFormat.ts:5](https://github.com/tnorlund/Portfolio/blob/6a6e362ebf01d3c36b05b851c068110373deaf8f/portfolio/utils/imageFormat.ts#L5)
+Defined in: [utils/imageFormat.ts:5](https://github.com/tnorlund/Portfolio/blob/2b25b636609b3333d2c5ba463718bf424cd1ceb0/portfolio/utils/imageFormat.ts#L5)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [utils/imageFormat.ts:5](https://github.com/tnorlund/Portfolio/blob/
 
 > **supportsWebP**: `boolean`
 
-Defined in: [utils/imageFormat.ts:6](https://github.com/tnorlund/Portfolio/blob/6a6e362ebf01d3c36b05b851c068110373deaf8f/portfolio/utils/imageFormat.ts#L6)
+Defined in: [utils/imageFormat.ts:6](https://github.com/tnorlund/Portfolio/blob/2b25b636609b3333d2c5ba463718bf424cd1ceb0/portfolio/utils/imageFormat.ts#L6)

@@ -8,7 +8,7 @@
 
 > **AnalyticsEventMeta** = `object`
 
-Defined in: [utils/analytics.ts:71](https://github.com/tnorlund/Portfolio/blob/6a6e362ebf01d3c36b05b851c068110373deaf8f/portfolio/utils/analytics.ts#L71)
+Defined in: [utils/analytics.ts:71](https://github.com/tnorlund/Portfolio/blob/2b25b636609b3333d2c5ba463718bf424cd1ceb0/portfolio/utils/analytics.ts#L71)
 
 ## Properties
 
@@ -16,7 +16,7 @@ Defined in: [utils/analytics.ts:71](https://github.com/tnorlund/Portfolio/blob/6
 
 > **eventId**: `string`
 
-Defined in: [utils/analytics.ts:73](https://github.com/tnorlund/Portfolio/blob/6a6e362ebf01d3c36b05b851c068110373deaf8f/portfolio/utils/analytics.ts#L73)
+Defined in: [utils/analytics.ts:73](https://github.com/tnorlund/Portfolio/blob/2b25b636609b3333d2c5ba463718bf424cd1ceb0/portfolio/utils/analytics.ts#L73)
 
 ***
 
@@ -24,4 +24,4 @@ Defined in: [utils/analytics.ts:73](https://github.com/tnorlund/Portfolio/blob/6
 
 > **sessionId**: `string`
 
-Defined in: [utils/analytics.ts:72](https://github.com/tnorlund/Portfolio/blob/6a6e362ebf01d3c36b05b851c068110373deaf8f/portfolio/utils/analytics.ts#L72)
+Defined in: [utils/analytics.ts:72](https://github.com/tnorlund/Portfolio/blob/2b25b636609b3333d2c5ba463718bf424cd1ceb0/portfolio/utils/analytics.ts#L72)
