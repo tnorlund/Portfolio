@@ -153,3 +153,63 @@ def test_build_receipt_rows_rejects_mixed_receipts() -> None:
 
     with pytest.raises(ValueError, match="exactly one receipt"):
         build_receipt_rows(lines, [])
+
+
+def test_build_receipt_rows_recovers_label_right_of_amount() -> None:
+    """Amount-left layouts keep the product name.
+
+    Sprouts and several restaurant formats print the price first
+    ("2.49 SOUR CREAM"). The label is assembled from words left of the
+    amount, which is empty for these rows, so the name used to be dropped.
+    """
+    lines = [
+        FakeLine(
+            1,
+            "2.49 SOUR CREAM",
+            {"x": 0.05, "y": 0.60, "width": 0.90, "height": 0.04},
+        ),
+        FakeLine(
+            2,
+            "3.99 WHOLE MILK",
+            {"x": 0.05, "y": 0.50, "width": 0.90, "height": 0.04},
+        ),
+    ]
+    words = [
+        FakeWord(1, 1, "2.49", {"x": 0.05, "width": 0.12}),
+        FakeWord(1, 2, "SOUR", {"x": 0.25, "width": 0.14}),
+        FakeWord(1, 3, "CREAM", {"x": 0.42, "width": 0.16}),
+        FakeWord(2, 1, "3.99", {"x": 0.05, "width": 0.12}),
+        FakeWord(2, 2, "WHOLE", {"x": 0.25, "width": 0.15}),
+        FakeWord(2, 3, "MILK", {"x": 0.43, "width": 0.13}),
+    ]
+
+    rows = build_receipt_rows(lines, words)
+
+    assert [r.label_text for r in rows] == ["SOUR CREAM", "WHOLE MILK"]
+    assert [r.amount_text for r in rows] == ["2.49", "3.99"]
+
+
+def test_build_receipt_rows_prefers_label_left_of_amount() -> None:
+    """The right-side fallback must not fire when a left label exists.
+
+    Trailing tokens after the price (tax flags like "T", "<A>") must not be
+    appended to, or replace, a perfectly good left-hand label.
+    """
+    lines = [
+        FakeLine(
+            1,
+            "ORGANIC APPLES $4.99 T",
+            {"x": 0.05, "y": 0.60, "width": 0.92, "height": 0.04},
+        )
+    ]
+    words = [
+        FakeWord(1, 1, "ORGANIC", {"x": 0.05, "width": 0.18}),
+        FakeWord(1, 2, "APPLES", {"x": 0.25, "width": 0.16}),
+        FakeWord(1, 3, "$4.99", {"x": 0.75, "width": 0.16}),
+        FakeWord(1, 4, "T", {"x": 0.93, "width": 0.04}),
+    ]
+
+    rows = build_receipt_rows(lines, words)
+
+    assert rows[0].label_text == "ORGANIC APPLES"
+    assert rows[0].amount_text == "$4.99"

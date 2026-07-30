@@ -136,6 +136,20 @@ def pair_row_label_amount(
         for word in row_words
         if _right_edge(word) <= amount_x and not is_amount_text(word.text)
     ).strip()
+    if not label_text:
+        # Amount-left layouts put the product name to the RIGHT of the price
+        # ("2.49 SOUR CREAM", "$14.00 Spicy Salame Sandwich"). The left-side
+        # scan above yields nothing for those rows, and the name used to be
+        # dropped entirely -- a corpus audit found 208 stored rows carrying an
+        # amount with an empty label. Only consult the right side when the
+        # left side is empty, so normal label-left rows are untouched.
+        amount_right = _right_edge(amount)
+        label_text = " ".join(
+            word.text.strip()
+            for word in row_words
+            if float(word.bounding_box.get("x", 0.0)) >= amount_right
+            and not is_amount_text(word.text)
+        ).strip()
     return LabelAmountPair(
         label_text=label_text,
         amount_text=amount.text,
