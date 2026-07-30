@@ -132,10 +132,19 @@ def score(golden: dict, predictions: dict, label: str) -> None:
                 )
             if money(t.get("price")) == money(p.get("price")):
                 m["price_exact"] += 1
-            if t.get("quantity") is not None:
-                m["qty_total"] += 1
-                if str(t.get("quantity")) == str(p.get("quantity")):
-                    m["qty_exact"] += 1
+            # Quantities compare NUMERICALLY. They round-trip DynamoDB as
+            # float-derived strings ("2.0"), so a string compare against the
+            # golden "2" reports 0% even when every parse is right -- which
+            # is exactly what the first scoring run did. An unprinted
+            # quantity means one unit, so absent values on either side
+            # compare as 1.
+            tq = money(t.get("quantity"))
+            pq = money(p.get("quantity"))
+            m["qty_total"] += 1
+            if (tq if tq is not None else Decimal(1)) == (
+                pq if pq is not None else Decimal(1)
+            ):
+                m["qty_exact"] += 1
 
     print(f"\n{'='*104}\n{label}\n{'='*104}")
     hdr = (
