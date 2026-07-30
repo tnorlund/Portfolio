@@ -152,11 +152,14 @@ def build_rows_for_receipt(client: Any, image_id: str, receipt_id: int):
     list-of-lists of ReceiptLine from group_lines_into_visual_rows (top to
     bottom, each row left to right), parallel to rows_entities.
     """
+    # Import via the public facade, not receipt_chroma.embedding.formatting
+    # .receipt_rows -- tests/unit/test_public_api.py enforces that external
+    # callers use the facade.
+    from receipt_chroma.embedding.formatting import (
+        build_receipt_rows as build_paired_receipt_rows,
+    )
     from receipt_chroma.embedding.formatting import (
         group_lines_into_visual_rows,
-    )
-    from receipt_chroma.embedding.formatting.receipt_rows import (
-        build_receipt_rows as build_paired_receipt_rows,
     )
 
     lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
