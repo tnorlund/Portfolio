@@ -3,15 +3,16 @@
 Covers the failure modes found in the 2026-07-29 adversarial review:
 skew chaining, echo false-dedupe, cross-boundary name pairing, negative
 amounts, 1x quantities, fuel bands, and bare "2 3.99" qty bands.
-Run: /usr/local/bin/python3.12 -m pytest scripts/tests/ -q
+
+Relocated from scripts/tests/, where the repository-tests CI job never
+collected them (find scripts -maxdepth 1); here they run on every PR.
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from extract_line_items import band_words, extract_items, parse_band
+from receipt_upload.line_items.geometry import (
+    band_words,
+    extract_items,
+    parse_band,
+)
 
 
 def W(line_id, word_id, text, x, y, h=0.02):
