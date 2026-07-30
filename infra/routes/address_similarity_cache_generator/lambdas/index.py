@@ -250,6 +250,14 @@ def handler(_event, _context):
         address_labels, _ = dynamo_client.get_receipt_word_labels_by_label(
             "ADDRESS_LINE", limit=100
         )
+        # Only VALID labels: invalidated ADDRESS_LINE rows (e.g. promo fine
+        # print whose state abbreviations fooled a labeling pass) must not
+        # seed or render in the similarity viz.
+        address_labels = [
+            lbl
+            for lbl in address_labels
+            if lbl.validation_status == "VALID"
+        ]
 
         if not address_labels:
             logger.warning("No address labels found")
@@ -285,6 +293,7 @@ def handler(_event, _context):
             label
             for label in original_receipt.labels
             if label.label.upper() == "ADDRESS_LINE"
+            and label.validation_status == "VALID"
         ]
 
         # Group address labels by line_id
@@ -520,6 +529,7 @@ def handler(_event, _context):
                     label
                     for label in similar_receipt.labels
                     if label.label.upper() == "ADDRESS_LINE"
+                    and label.validation_status == "VALID"
                 ]
 
                 if not similar_labels:
