@@ -299,6 +299,29 @@ def _name_is_real(name: str) -> bool:
 def extract_items(
     words: list[dict], line_ids: set[int]
 ) -> tuple[list[dict], bool]:
+    """Extract items via the band-block decoder (Phase D integration).
+
+    Delegates to receipt_upload.line_items.blocks.decode_band_blocks with
+    the committed golden-trained priors. Gates at swap time: all 12
+    semantic guarantees, golden floors LOO 85/57/86 with zero failures,
+    corpus sweep match 418 vs 415. The banded implementation remains below
+    as _extract_items_banded for the corpus diff harness.
+    """
+    from receipt_upload.line_items.blocks import (
+        decode_band_blocks,
+        load_default_priors,
+    )
+
+    items = decode_band_blocks(
+        {"words": list(words), "items_line_ids": sorted(line_ids)},
+        load_default_priors(),
+    )
+    return items, False
+
+
+def _extract_items_banded(
+    words: list[dict], line_ids: set[int]
+) -> tuple[list[dict], bool]:
     """Extract items from the section's words.
 
     Bands classify as ITEM (real name + price), NAME (name, no price), or

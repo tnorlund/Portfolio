@@ -276,7 +276,11 @@ def decode_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         return len(toks) < 2
 
     items = []
-    for p in price_idx:
+    # Emission order matches the banded implementation (ascending y,
+    # bottom of the receipt first): item order is a pinned guarantee --
+    # backfill derives item_index from list position, and the echo-dedup
+    # fixture asserts positional semantics.
+    for p in reversed(price_idx):
         pl = lines[p]
         parsed = parse_band(list(words_by_line[pl["line_id"]]))
         if parsed is None or parsed.get("price") is None:
@@ -536,7 +540,9 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         return len(re.findall(r"[A-Za-z]{2,}", stripped)) < 2
 
     items = []
-    for p in price_idx:
+    # Emission order matches the banded implementation (ascending y --
+    # bottom of the receipt first): item order is a pinned guarantee.
+    for p in reversed(price_idx):
         parsed = parsed_cache.get(p) or parse_band(list(bands[p]["words"]))
         if parsed is None or parsed.get("price") is None:
             continue
@@ -556,13 +562,23 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
                     parsed["unit_price"] = mp["unit_price"]
                     break
         if _sku_dominated(parsed.get("name") or ""):
+            # Donor criterion is _name_is_real (>=3 alpha chars), NOT the
+            # two-token SKU test: single-word product names ("BREAD",
+            # "YOGURT") are real names, and requiring two tokens silently
+            # discarded them -- the boundary-steal guarantee failure the
+            # first integration attempt was reverted on.
             cands = [
                 (len(bands[i]["text"]), bands[i]["text"])
                 for i in blocks[p]
-                if not _sku_dominated(bands[i]["text"])
+                if _name_is_real(bands[i]["text"])
             ]
             if cands:
                 parsed["name"] = max(cands)[1].strip()
+                parsed["stacked"] = True
+        if not _name_is_real(parsed.get("name") or ""):
+            # No name anywhere: keep the price, flag the quality --
+            # identical semantics to the banded path.
+            parsed["name_quality"] = "low"
         parsed["line_ids"] = sorted(
             set(bands[p]["line_ids"]).union(
                 *(bands[i]["line_ids"] for i in blocks[p])
