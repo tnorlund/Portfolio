@@ -157,11 +157,105 @@ def update_receipt_line_items(
     )
     if entities:
         dynamo_client.add_receipt_line_items(entities)
+
+    reocr = _maybe_trigger_items_reocr(
+        image_id, receipt_id, items, summary_dict, word_dicts
+    )
     return {
         "items": len(entities),
         "deleted": deleted,
         "reconciliation": status,
+        "reocr_triggered": reocr,
     }
+
+
+REOCR_REASON = "line_items_recon"
+REOCR_MAX_ATTEMPTS = 2
+
+
+def _maybe_trigger_items_reocr(
+    image_id: str,
+    receipt_id: int,
+    items: list[dict],
+    summary_dict: dict | None,
+    zone_words: list[dict],
+) -> bool:
+    """Fire a capped REGIONAL_REOCR of the ITEMS zone on reconciliation
+    mismatch (the digit-misread signature no downstream logic can fix).
+
+    Failure here must never fail the message: line-item rows are already
+    written, and re-OCR is an improvement pass, not a correctness
+    requirement. The attempt cap exists because some glyphs are
+    unreadable at any resolution (Twin Peaks) -- without it, every
+    recompute of a permanently-mismatched receipt would re-fire.
+    """
+    fn = os.environ.get("TRIGGER_REOCR_FUNCTION_NAME")
+    if not fn or dynamo_client is None:
+        return False
+    try:
+        from receipt_upload.line_items.blocks import should_reocr_items_zone
+
+        subtotal = None
+        if summary_dict and summary_dict.get("subtotal") is not None:
+            subtotal = float(summary_dict["subtotal"])
+        if not should_reocr_items_zone(items, subtotal):
+            return False
+
+        jobs, _ = dynamo_client.list_ocr_jobs_for_image(image_id)
+        prior = [
+            j
+            for j in jobs
+            if getattr(j, "job_type", "") == "REGIONAL_REOCR"
+            and getattr(j, "receipt_id", None) == receipt_id
+            and getattr(j, "reocr_reason", "") == REOCR_REASON
+        ]
+        if len(prior) >= REOCR_MAX_ATTEMPTS:
+            logger.info(
+                "re-OCR cap reached for %s:%d (%d attempts)",
+                image_id[:8],
+                receipt_id,
+                len(prior),
+            )
+            return False
+
+        from receipt_upload.line_items.reocr import items_zone_reocr_region
+
+        receipt = dynamo_client.get_receipt(image_id, receipt_id)
+        image = dynamo_client.get_image(image_id)
+        region = items_zone_reocr_region(
+            zone_words, receipt, image.width, image.height
+        )
+        if region is None:
+            return False
+
+        import boto3
+
+        boto3.client("lambda").invoke(
+            FunctionName=fn,
+            InvocationType="Event",
+            Payload=json.dumps(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "reocr_region": region,
+                    "reocr_reason": REOCR_REASON,
+                }
+            ).encode(),
+        )
+        logger.info(
+            "triggered items-zone re-OCR for %s:%d region=%s",
+            image_id[:8],
+            receipt_id,
+            region,
+        )
+        return True
+    except Exception:  # noqa: BLE001 - best-effort improvement pass
+        logger.exception(
+            "re-OCR trigger failed for %s:%d (non-fatal)",
+            image_id[:8],
+            receipt_id,
+        )
+        return False
 
 
 def deduplicate_messages(

@@ -11,6 +11,7 @@ Handles:
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
@@ -39,6 +40,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
@@ -1185,6 +1187,38 @@ class OCRProcessor:
         ocr_routing_decision.receipt_count = 1
         ocr_routing_decision.updated_at = datetime.now(timezone.utc)
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
+
+        # Close the correction loop: recompute the receipt summary so its
+        # timestamp_computed changes, which fires the summary stream and
+        # regenerates RECEIPT_LINE_ITEM rows from the corrected words.
+        # Label revalidation above only covers LABELED words; items-zone
+        # digits are usually unlabeled, so without this the re-OCR'd text
+        # never reaches line items.
+        summary_queue_url = os.environ.get("RECEIPT_SUMMARY_QUEUE_URL")
+        if summary_queue_url:
+            try:
+                import boto3 as _boto3
+
+                _boto3.client("sqs").send_message(
+                    QueueUrl=summary_queue_url,
+                    MessageBody=json.dumps(
+                        {
+                            "entity_data": {
+                                "image_id": ocr_job.image_id,
+                                "receipt_id": ocr_job.receipt_id,
+                            }
+                        }
+                    ),
+                )
+                logger.info(
+                    "Enqueued summary recompute for %s#%s after re-OCR",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception(
+                    "Failed to enqueue summary recompute (non-fatal)"
+                )
 
         # Re-embed the full receipt so ChromaDB reflects corrected text.
         # Same pattern as the merge receipt lambda: generate embeddings,

@@ -347,6 +347,10 @@ upload_images = UploadImages(
     vpc_subnet_ids=upload_images_subnets,
     security_group_id=security.sg_lambda_id,
     label_validation_project_name=label_validation_project_name,
+    # Post-re-OCR line-item refresh (summary recompute -> stream ->
+    # LINE_ITEMS stage)
+    summary_queue_url=chromadb_infrastructure.chromadb_queues.summary_queue_url,
+    summary_queue_arn=chromadb_infrastructure.chromadb_queues.summary_queue_arn,
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
