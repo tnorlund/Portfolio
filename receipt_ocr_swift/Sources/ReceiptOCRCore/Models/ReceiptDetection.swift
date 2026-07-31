@@ -129,6 +129,13 @@ public struct ReceiptOutput: Codable {
     /// the warped crop, matching `lines`).
     public var barcodes: [Barcode]?
 
+    /// Deterministic row-to-section predictions emitted by the Mac worker.
+    public let sections: [ReceiptSectionPayload]
+
+    /// Deterministic line items decoded from this receipt's predicted ITEMS
+    /// section and reconciled against its own printed subtotal.
+    public let lineItems: [ReceiptLineItemPayload]
+
     /// True when this crop probably contains multiple overlapping receipts that
     /// couldn't be confidently split — flag for human review.
     public let needsReview: Bool
@@ -143,8 +150,18 @@ public struct ReceiptOutput: Codable {
         lines: [Line]? = nil,
         layoutlmPredictions: [LinePrediction]? = nil,
         barcodes: [Barcode]? = nil,
+        sections: [ReceiptSectionPayload]? = nil,
+        lineItems: [ReceiptLineItemPayload]? = nil,
         needsReview: Bool = false
     ) {
+        let structure = lines.flatMap {
+            try? buildOnDeviceReceiptStructure(
+                lines: $0, receiptId: clusterId,
+                merchantName: merchantNameFromLayoutPredictions(
+                    layoutlmPredictions
+                )
+            )
+        }
         self.clusterId = clusterId
         self.bounds = bounds
         self.warpedWidth = warpedWidth
@@ -154,11 +171,29 @@ public struct ReceiptOutput: Codable {
         self.lines = lines
         self.layoutlmPredictions = layoutlmPredictions
         self.barcodes = barcodes
+        self.sections = sections ?? structure?.sections ?? []
+        self.lineItems = lineItems ?? structure?.lineItems ?? []
         self.needsReview = needsReview
     }
 
     /// Create from a ProcessedReceipt
-    public init(from processed: ProcessedReceipt, s3Key: String? = nil, lines: [Line]? = nil, layoutlmPredictions: [LinePrediction]? = nil, barcodes: [Barcode]? = nil) {
+    public init(
+        from processed: ProcessedReceipt,
+        s3Key: String? = nil,
+        lines: [Line]? = nil,
+        layoutlmPredictions: [LinePrediction]? = nil,
+        barcodes: [Barcode]? = nil,
+        sections: [ReceiptSectionPayload]? = nil,
+        lineItems: [ReceiptLineItemPayload]? = nil
+    ) {
+        let structure = lines.flatMap {
+            try? buildOnDeviceReceiptStructure(
+                lines: $0, receiptId: processed.clusterId,
+                merchantName: merchantNameFromLayoutPredictions(
+                    layoutlmPredictions
+                )
+            )
+        }
         self.clusterId = processed.clusterId
         self.bounds = processed.bounds
         self.warpedWidth = processed.warpedWidth
@@ -168,6 +203,8 @@ public struct ReceiptOutput: Codable {
         self.lines = lines
         self.layoutlmPredictions = layoutlmPredictions
         self.barcodes = barcodes
+        self.sections = sections ?? structure?.sections ?? []
+        self.lineItems = lineItems ?? structure?.lineItems ?? []
         self.needsReview = processed.needsReview
     }
 
@@ -181,6 +218,8 @@ public struct ReceiptOutput: Codable {
         case lines
         case layoutlmPredictions = "layoutlm_predictions"
         case barcodes
+        case sections
+        case lineItems = "line_items"
         case needsReview = "needs_review"
     }
 }

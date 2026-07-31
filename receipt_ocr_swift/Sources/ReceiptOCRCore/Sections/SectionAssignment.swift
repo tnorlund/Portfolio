@@ -791,10 +791,13 @@ public func sectionsFromAssignments(
 public func makeSectionLines(
     _ lines: [Line], imageId: String, receiptId: Int
 ) -> [SectionLine] {
-    lines.enumerated().map { lineOffset, line in
+    lines.enumerated().compactMap { lineOffset, line -> SectionLine? in
+        guard !line.text.isEmpty else { return nil }
         let lineId = lineOffset + 1
-        let words = line.words.enumerated().map { wordOffset, word in
-            SectionWord(
+        let words = line.words.enumerated().compactMap {
+            wordOffset, word -> SectionWord? in
+            guard !word.text.isEmpty, word.confidence > 0 else { return nil }
+            return SectionWord(
                 lineId: lineId, wordId: wordOffset + 1, text: word.text,
                 boundingBox: SectionRect(
                     x: Double(word.boundingBox.x),
