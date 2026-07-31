@@ -210,6 +210,8 @@ def main() -> None:
     client = DynamoClient(TABLE)
     stored = defaultdict(list)
     for key in golden:
+        if golden[key].get("local_only"):
+            continue  # fixture-only receipts have no stored entities
         for it in client.get_receipt_line_items_from_receipt(*key):
             stored[key].append(
                 {
