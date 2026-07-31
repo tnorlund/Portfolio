@@ -11,6 +11,7 @@ import math
 from types import SimpleNamespace
 
 import pytest
+from botocore.exceptions import ClientError
 from PIL import Image as PIL_Image
 from PIL import ImageDraw
 
@@ -214,6 +215,131 @@ def test_conflicts_reported_for_legacy_key_layout():
     base = rw._derive_base_key(receipt)
     conflicts = rw._expected_key_conflicts(receipt, base)
     assert [name for name, _, _ in conflicts] == ["cdn_thumbnail_s3_key"]
+
+
+# --------------------------------------------------------------------- #
+# Backup before overwrite                                               #
+# --------------------------------------------------------------------- #
+
+
+class FakeS3:
+    """Records copy_object calls; optionally fails one key."""
+
+    def __init__(self, missing=(), fail_key=None):
+        self.copies: list[tuple[str, str]] = []
+        self.missing = set(missing)
+        self.fail_key = fail_key
+
+    def copy_object(self, Bucket, Key, CopySource):  # noqa: N803
+        source = CopySource["Key"]
+        if source in self.missing:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "CopyObject")
+        if source == self.fail_key:
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied"}}, "CopyObject"
+            )
+        self.copies.append((source, Key))
+
+
+def test_backup_copies_every_populated_variant():
+    receipt = make_receipt(866, 2688)
+    s3 = FakeS3()
+    copied, error = rw._backup_existing_variants(
+        s3, "site-bucket", receipt, "backups/run/"
+    )
+    assert error is None
+    # Only the two keys this fixture populates.
+    assert copied == [f"assets/{IMG}/1.jpg", f"assets/{IMG}/1_thumbnail.jpg"]
+    assert s3.copies == [
+        (f"assets/{IMG}/1.jpg", f"backups/run/assets/{IMG}/1.jpg"),
+        (
+            f"assets/{IMG}/1_thumbnail.jpg",
+            f"backups/run/assets/{IMG}/1_thumbnail.jpg",
+        ),
+    ]
+
+
+def test_backup_tolerates_missing_objects():
+    """A key with nothing published has nothing to lose."""
+    receipt = make_receipt(866, 2688)
+    s3 = FakeS3(missing={f"assets/{IMG}/1.jpg"})
+    copied, error = rw._backup_existing_variants(
+        s3, "site-bucket", receipt, "backups/run/"
+    )
+    assert error is None
+    assert copied == [f"assets/{IMG}/1_thumbnail.jpg"]
+
+
+def test_backup_failure_is_reported_so_caller_can_abort():
+    receipt = make_receipt(866, 2688)
+    s3 = FakeS3(fail_key=f"assets/{IMG}/1.jpg")
+    _copied, error = rw._backup_existing_variants(
+        s3, "site-bucket", receipt, "backups/run/"
+    )
+    assert error is not None
+    assert "AccessDenied" in error
+
+
+def test_rewarp_aborts_when_backup_fails(monkeypatch):
+    """A failed backup must stop the overwrite, not just warn."""
+    uploaded = []
+    monkeypatch.setattr(
+        rw,
+        "upload_all_cdn_formats",
+        lambda *a, **k: uploaded.append(a),
+    )
+    monkeypatch.setattr(
+        rw,
+        "_backup_existing_variants",
+        lambda *a, **k: ([], "backup_failed:boom"),
+    )
+    # Same aspect as the image entity below, so the run reaches the
+    # backup step rather than stopping at the aspect guard.
+    monkeypatch.setattr(
+        rw,
+        "_load_original",
+        lambda *a, **k: (PIL_Image.new("RGB", (100, 200)), []),
+    )
+    monkeypatch.setattr(
+        rw, "warp_receipt_crop", lambda *a, **k: PIL_Image.new("RGB", (8, 8))
+    )
+    monkeypatch.setattr(rw, "text_alignment_score", lambda *a, **k: (99.0, 5))
+
+    dynamo = SimpleNamespace(
+        list_receipt_words_from_receipt=lambda *a, **k: []
+    )
+    image_entity = SimpleNamespace(
+        width=100, height=200, raw_s3_bucket="raw", raw_s3_key="raw.png"
+    )
+    record = rw.rewarp_receipt(
+        dynamo,
+        None,
+        make_receipt(866, 2688),
+        image_entity,
+        darkness_margin=6.0,
+        dry_run=False,
+        backup_prefix="backups/run/",
+    )
+    assert record["status"] == "skipped_backup_failed"
+    assert uploaded == []
+
+
+# --------------------------------------------------------------------- #
+# Exclusions                                                            #
+# --------------------------------------------------------------------- #
+
+
+def test_parse_excludes():
+    assert rw._parse_excludes([f"{IMG}:3", f"{IMG}:11"]) == {
+        (IMG, 3),
+        (IMG, 11),
+    }
+
+
+@pytest.mark.parametrize("bad", ["no-colon", f"{IMG}:", f"{IMG}:abc", ":3"])
+def test_parse_excludes_rejects_malformed(bad):
+    with pytest.raises(ValueError):
+        rw._parse_excludes([bad])
 
 
 def test_close_is_symmetric():

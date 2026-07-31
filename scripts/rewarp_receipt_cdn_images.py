@@ -51,6 +51,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import boto3
@@ -530,6 +531,45 @@ def _load_original(
     return oriented, notes
 
 
+def _backup_existing_variants(
+    s3_client: Any,
+    bucket: str,
+    receipt: Receipt,
+    backup_prefix: str,
+) -> tuple[list[str], Optional[str]]:
+    """Server-side copy the live CDN objects aside before overwriting.
+
+    The site bucket has no versioning, so a republish is otherwise
+    unrecoverable. Copies are server-side (no download) and land at
+    ``{backup_prefix}{original_key}``, which is also exactly the
+    argument order ``aws s3 cp`` needs to put them back.
+
+    Returns ``(copied keys, error)``; a non-None error means the caller
+    must not overwrite anything for this receipt.
+    """
+    copied: list[str] = []
+    for field_name, _dict_key in CDN_KEY_FIELDS:
+        key = getattr(receipt, field_name, None)
+        if not key:
+            continue
+        try:
+            s3_client.copy_object(
+                Bucket=bucket,
+                Key=f"{backup_prefix}{key}",
+                CopySource={"Bucket": bucket, "Key": key},
+            )
+            copied.append(key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in ("NoSuchKey", "404"):
+                # Nothing published at this key yet; nothing to lose.
+                continue
+            return copied, f"backup_failed:{key}:{code or exc}"
+        except BotoCoreError as exc:
+            return copied, f"backup_failed:{key}:{exc}"
+    return copied, None
+
+
 def rewarp_receipt(
     dynamo: DynamoClient,
     s3_client: Any,
@@ -537,6 +577,7 @@ def rewarp_receipt(
     image_entity: ImageEntity,
     darkness_margin: float,
     dry_run: bool,
+    backup_prefix: Optional[str] = None,
 ) -> dict[str, Any]:
     """Rebuild and republish one receipt's CDN variants.
 
@@ -614,6 +655,18 @@ def rewarp_receipt(
         record["status"] = "would_apply"
         return record
 
+    # Back up before the first overwrite, never after: a partial upload
+    # with no backup is the one outcome there is no way back from.
+    if backup_prefix:
+        copied, error = _backup_existing_variants(
+            s3_client, receipt.cdn_s3_bucket, receipt, backup_prefix
+        )
+        record["backed_up"] = len(copied)
+        if error:
+            record["status"] = "skipped_backup_failed"
+            record["notes"].append(error)
+            return record
+
     try:
         upload_all_cdn_formats(
             warped,
@@ -628,6 +681,19 @@ def rewarp_receipt(
 
     record["status"] = "applied"
     return record
+
+
+def _parse_excludes(raw: list[str]) -> set[tuple[str, int]]:
+    """Parse ``image_id:receipt_id`` exclusions into a lookup set."""
+    excludes: set[tuple[str, int]] = set()
+    for item in raw:
+        image_id, _, receipt_id = item.partition(":")
+        if not image_id or not receipt_id.isdigit():
+            raise ValueError(
+                f"--exclude expects IMAGE_ID:RECEIPT_ID, got {item!r}"
+            )
+        excludes.add((image_id, int(receipt_id)))
+    return excludes
 
 
 def _load_receipts(
@@ -706,6 +772,41 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Restrict to this image id. Repeatable.",
     )
     parser.add_argument(
+        "--image-ids-file",
+        help=(
+            "File of image ids, one per line (blank lines and '#' "
+            "comments ignored). Merged with any --image-id values."
+        ),
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        dest="excludes",
+        default=[],
+        metavar="IMAGE_ID:RECEIPT_ID",
+        help=(
+            "Never repair this receipt, even if it scans as mismatched. "
+            "Repeatable. Use for receipts whose entity geometry is known "
+            "to be wrong, where a re-warp would bake in the error."
+        ),
+    )
+    parser.add_argument(
+        "--backup-prefix",
+        help=(
+            "S3 key prefix (same bucket) to copy live CDN objects to "
+            "before overwriting them. Defaults to a timestamped "
+            "'backups/rewarp-<UTC>/' prefix."
+        ),
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help=(
+            "Overwrite without backing up first. The site bucket is not "
+            "versioned, so this makes --apply unrecoverable."
+        ),
+    )
+    parser.add_argument(
         "--report-json",
         help="Write the full scan/apply report to this path.",
     )
@@ -743,13 +844,40 @@ def main(argv: Optional[list[str]] = None) -> int:
     for noisy in ("boto3", "botocore", "urllib3", "s3transfer"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    if args.apply and not args.image_ids and not args.apply_all:
+    if (
+        args.apply
+        and not args.image_ids
+        and not args.image_ids_file
+        and not args.apply_all
+    ):
         logger.error(
-            "--apply without --image-id requires --apply-all; refusing to "
-            "rewrite every receipt in %s by accident.",
+            "--apply without an image filter requires --apply-all; "
+            "refusing to rewrite every receipt in %s by accident.",
             args.table,
         )
         return 2
+
+    try:
+        excludes = _parse_excludes(args.excludes)
+    except ValueError as exc:
+        logger.error("%s", exc)
+        return 2
+
+    backup_prefix: Optional[str] = None
+    if args.apply and not args.no_backup:
+        backup_prefix = args.backup_prefix or (
+            "backups/rewarp-"
+            + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            + "/"
+        )
+        if not backup_prefix.endswith("/"):
+            backup_prefix += "/"
+        logger.info("Backing up replaced objects under %s", backup_prefix)
+    elif args.apply:
+        logger.warning(
+            "--no-backup: overwrites will be unrecoverable on an "
+            "unversioned bucket."
+        )
 
     dynamo = DynamoClient(args.table)
     s3_client = boto3.client(
@@ -757,7 +885,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         config=BotoConfig(max_pool_connections=max(args.workers, 10)),
     )
 
-    image_ids = set(args.image_ids) if args.image_ids else None
+    image_ids = set(args.image_ids or [])
+    if args.image_ids_file:
+        with open(args.image_ids_file, encoding="utf-8") as handle:
+            for line in handle:
+                entry = line.split("#", 1)[0].strip()
+                if entry:
+                    image_ids.add(entry)
+    if not image_ids:
+        image_ids = None
+    else:
+        logger.info("Restricted to %d image ids", len(image_ids))
     receipts = _load_receipts(dynamo, image_ids)
     images = _load_images(dynamo)
     logger.info("Scanning %d receipts in %s", len(receipts), args.table)
@@ -838,6 +976,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         by_key = {(r.image_id, r.receipt_id): r for r in receipts}
         applied: list[dict[str, Any]] = []
         for result in mismatches:
+            if (result.image_id, result.receipt_id) in excludes:
+                applied.append(
+                    {
+                        "image_id": result.image_id,
+                        "receipt_id": result.receipt_id,
+                        "status": "skipped_excluded",
+                        "notes": ["excluded on the command line"],
+                    }
+                )
+                continue
             receipt = by_key.get((result.image_id, result.receipt_id))
             image_entity = images.get(result.image_id)
             if receipt is None or image_entity is None:
@@ -856,6 +1004,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 image_entity,
                 args.darkness_margin,
                 dry_run=args.dry_run_apply,
+                backup_prefix=backup_prefix,
             )
             logger.info(
                 "%s %s/%d gap=%s %s",
