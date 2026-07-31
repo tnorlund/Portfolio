@@ -21,6 +21,10 @@ CHROMADB_RELEVANT_FIELDS = {
         "label_proposed_by",
         "label_consolidated_from",
     ],
+    "RECEIPT_SUMMARY": [
+        "summary",
+        "timestamp_computed",
+    ],
     "RECEIPT_SECTION": [
         "section_type",
         "line_ids",

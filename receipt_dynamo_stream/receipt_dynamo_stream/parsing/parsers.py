@@ -15,6 +15,9 @@ from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
 from receipt_dynamo.entities.receipt_section import item_to_receipt_section
+from receipt_dynamo.entities.receipt_summary_record import (
+    item_to_receipt_summary_record,
+)
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
@@ -32,6 +35,8 @@ logger = logging.getLogger(__name__)
 # SK pattern matchers in order of specificity (most specific first)
 _SK_PATTERN_MATCHERS: list[tuple[Callable[[str], bool], str]] = [
     (lambda sk: "#PLACE" in sk, "RECEIPT_PLACE"),
+    # RECEIPT#00001#SUMMARY; the "#SUMMARY" suffix appears in no other SK
+    (lambda sk: sk.endswith("#SUMMARY"), "RECEIPT_SUMMARY"),
     (lambda sk: "#LABEL#" in sk, "RECEIPT_WORD_LABEL"),
     # RECEIPT#00001#SECTION#{TYPE}; "#SECTION#" appears in no other
     # entity SK (receipt_section.py is the only entity emitting it)
@@ -47,6 +52,7 @@ _ENTITY_PARSERS: dict[
     str, Callable[[dict[str, dict[str, object]]], StreamEntity]
 ] = {
     "RECEIPT_PLACE": item_to_receipt_place,
+    "RECEIPT_SUMMARY": item_to_receipt_summary_record,
     "RECEIPT_WORD_LABEL": item_to_receipt_word_label,
     "RECEIPT_SECTION": item_to_receipt_section,
     "RECEIPT": item_to_receipt,
