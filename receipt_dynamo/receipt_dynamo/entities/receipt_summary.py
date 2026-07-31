@@ -32,6 +32,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Allowed values for the optional tender / bank-match fields.
+VALID_TENDER_CLASSES = frozenset({"cash", "card", "unknown"})
+VALID_LEDGERS = frozenset({"chase", "apple", "none"})
+
+_LAST4_RE = re.compile(r"^\d{4}$")
+
 
 @dataclass
 class MonetaryTotals:
@@ -371,6 +377,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         date: Date of the receipt (parsed from DATE label).
         totals: Grouped monetary totals (grand_total, subtotal, tax, tip).
         item_count: Number of line items (count of LINE_TOTAL labels).
+        tender_class: How the receipt was paid -- ``cash``, ``card`` or
+            ``unknown`` (None when tender was never classified).
+        card_network: Card network printed on the receipt
+            (e.g. ``VISA``, ``MASTERCARD``), when card-tendered.
+        card_last4: Last four PAN digits printed on the receipt.
+        ledger: Which bank ledger this receipt's card belongs to --
+            ``chase``, ``apple`` or ``none`` (None when unknown).
+        bank_amount: Settled amount from the matched bank transaction.
+        bank_match_confidence: Confidence of the bank match in [0, 1].
     """
 
     image_id: str
@@ -379,6 +394,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
     date: datetime | None = None
     totals: MonetaryTotals = field(default_factory=MonetaryTotals)
     item_count: int = 0
+    tender_class: str | None = None
+    card_network: str | None = None
+    card_last4: str | None = None
+    ledger: str | None = None
+    bank_amount: float | None = None
+    bank_match_confidence: float | None = None
 
     def __post_init__(self) -> None:
         """Validate identifiers and computed summary fields."""
@@ -392,6 +413,50 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         if not isinstance(self.totals, MonetaryTotals):
             raise ValueError("totals must be a MonetaryTotals object")
         validate_non_negative_int("item_count", self.item_count)
+        self._validate_tender_fields()
+
+    def _validate_tender_fields(self) -> None:
+        """Validate the optional tender / bank-match fields."""
+        if (
+            self.tender_class is not None
+            and self.tender_class not in VALID_TENDER_CLASSES
+        ):
+            raise ValueError(
+                "tender_class must be one of "
+                f"{sorted(VALID_TENDER_CLASSES)} or None"
+            )
+        if self.card_network is not None and not isinstance(
+            self.card_network, str
+        ):
+            raise ValueError("card_network must be a string or None")
+        if self.card_last4 is not None and (
+            not isinstance(self.card_last4, str)
+            or not _LAST4_RE.match(self.card_last4)
+        ):
+            raise ValueError("card_last4 must be a 4-digit string or None")
+        if self.ledger is not None and self.ledger not in VALID_LEDGERS:
+            raise ValueError(
+                f"ledger must be one of {sorted(VALID_LEDGERS)} or None"
+            )
+        for field_name in ("bank_amount", "bank_match_confidence"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
+            if not isfinite(value):
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
+            setattr(self, field_name, float(value))
+        if self.bank_match_confidence is not None and not (
+            0.0 <= self.bank_match_confidence <= 1.0
+        ):
+            raise ValueError(
+                "bank_match_confidence must be within [0, 1] or None"
+            )
 
     # Convenience properties for backwards compatibility
     @property
@@ -465,6 +530,13 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         merchant_name: str | None,
         word_labels: list["ReceiptWordLabel"],
         words: list["ReceiptWord"],
+        *,
+        tender_class: str | None = None,
+        card_network: str | None = None,
+        card_last4: str | None = None,
+        ledger: str | None = None,
+        bank_amount: float | None = None,
+        bank_match_confidence: float | None = None,
     ) -> "ReceiptSummary":
         """Compute a summary from word labels and words directly.
 
@@ -477,6 +549,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             merchant_name: Merchant name (if known).
             word_labels: List of ReceiptWordLabel records.
             words: List of ReceiptWord records.
+            tender_class: Optional tender class (cash/card/unknown).
+            card_network: Optional card network.
+            card_last4: Optional last four PAN digits.
+            ledger: Optional bank ledger (chase/apple/none).
+            bank_amount: Optional matched bank transaction amount.
+            bank_match_confidence: Optional match confidence in [0, 1].
 
         Returns:
             A ReceiptSummary with computed fields.
@@ -498,6 +576,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             date=date,
             totals=totals,
             item_count=item_count,
+            tender_class=tender_class,
+            card_network=card_network,
+            card_last4=card_last4,
+            ledger=ledger,
+            bank_amount=bank_amount,
+            bank_match_confidence=bank_match_confidence,
         )
 
     def to_dict(self) -> dict:
@@ -512,6 +596,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             "merchant_name": self.merchant_name,
             "date": self.date.isoformat() if self.date else None,
             "item_count": self.item_count,
+            "tender_class": self.tender_class,
+            "card_network": self.card_network,
+            "card_last4": self.card_last4,
+            "ledger": self.ledger,
+            "bank_amount": self.bank_amount,
+            "bank_match_confidence": self.bank_match_confidence,
         }
         result.update(self.totals.to_dict())
         return result
