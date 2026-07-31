@@ -7,6 +7,75 @@ from typing import Any
 
 _CURRENCY_SYMBOLS = r"$€£¥₹"
 
+# ---------------------------------------------------------------------------
+# Shared summary-line keyword patterns.
+#
+# These are the canonical copies of the keyword patterns used to recognize
+# receipt summary rows ("Total:", "BALANCE DUE", "Subtotal", ...). They are
+# defined here (rather than in receipt_upload) because receipt_dynamo sits at
+# the bottom of the dependency graph, so both receipt_upload's amount
+# classifier and receipt_dynamo's ReceiptSummary printed-total fallback can
+# import them without forking the regexes.
+# ---------------------------------------------------------------------------
+
+TOTAL_KEYWORD_RE = re.compile(
+    r"\b(total|amount\s+due|balance|authorized)\b", re.I
+)
+SUBTOTAL_KEYWORD_RE = re.compile(r"\bsub[-\s]?total\b", re.I)
+TAX_KEYWORD_RE = re.compile(r"\b(tax|vat)\b", re.I)
+NON_PAYMENT_SUMMARY_RE = re.compile(
+    r"\b("
+    r"savings?|discounts?|refunds?|returns?|coupons?|promos?|"
+    r"promotion|rewards?|loyalty|cash\s+back|cashback|store\s+credit"
+    r")\b",
+    re.I,
+)
+# Tokens that turn a "total" row into a non-monetary count/summary row
+# (e.g. "TOTAL NUMBER OF ITEMS SOLD"), which must NOT be read as a
+# grand-total row.
+GRAND_TOTAL_DISQUALIFIER_TOKENS = frozenset(
+    {
+        "number",
+        "items",
+        "item",
+        "qty",
+        "quantity",
+        "count",
+        "sold",
+        "transactions",
+        "transaction",
+        "pieces",
+        "units",
+        "lines",
+        "savings",
+        "saved",
+    }
+)
+
+
+def is_grand_total_line(line_text: str) -> bool:
+    """Return whether joined line text reads as a grand-total row.
+
+    A grand-total row carries a total/balance/amount-due keyword, is not a
+    subtotal or tax row, is not a non-payment summary row (savings,
+    discounts, ...), and is not an item-count row ("TOTAL NUMBER OF ITEMS
+    SOLD").
+    """
+    if not line_text:
+        return False
+    if not TOTAL_KEYWORD_RE.search(line_text):
+        return False
+    if SUBTOTAL_KEYWORD_RE.search(line_text):
+        return False
+    if TAX_KEYWORD_RE.search(line_text):
+        return False
+    if NON_PAYMENT_SUMMARY_RE.search(line_text):
+        return False
+    tokens = {
+        token for token in re.split(r"[^a-z]+", line_text.lower()) if token
+    }
+    return not (tokens & GRAND_TOTAL_DISQUALIFIER_TOKENS)
+
 
 def parse_receipt_amount(text: Any) -> float | None:
     """Parse receipt currency/amount text without changing the OCR text.

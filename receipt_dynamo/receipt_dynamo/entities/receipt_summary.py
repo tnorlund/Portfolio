@@ -20,6 +20,14 @@ from datetime import datetime
 from math import isfinite
 from typing import TYPE_CHECKING
 
+from receipt_dynamo.amounts import (
+    NON_PAYMENT_SUMMARY_RE,
+    SUBTOTAL_KEYWORD_RE,
+    TAX_KEYWORD_RE,
+    is_grand_total_line,
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.identifier_mixins import ReceiptIdentifierMixin
 from receipt_dynamo.entities.util import validate_non_negative_int
@@ -353,6 +361,157 @@ def _extract_summary_fields(
 
 
 # =============================================================================
+# Label-independent printed-total fallback
+# =============================================================================
+
+# Minimum same-row y tolerance (normalized units). Receipt OCR splits a
+# summary row into separate "lines" per column ("Total:" on one line,
+# "USD$ 42.54" on another), so row membership is decided by y-band overlap
+# rather than line_id adjacency.
+_MIN_ROW_BAND = 0.005
+
+
+def _word_y_center(word: "ReceiptWord") -> float | None:
+    """Return the normalized y-center of a word, or None without geometry."""
+    box = getattr(word, "bounding_box", None)
+    if not box:
+        return None
+    y = box.get("y")
+    if y is None:
+        return None
+    return y + (box.get("height") or 0.0) / 2.0
+
+
+def _word_height(word: "ReceiptWord") -> float:
+    """Return the normalized height of a word (0.0 without geometry)."""
+    box = getattr(word, "bounding_box", None)
+    if not box:
+        return 0.0
+    return box.get("height") or 0.0
+
+
+def _positive_amount(text: str) -> float | None:
+    """Parse text as a positive printed amount, else None.
+
+    Requires amount-like punctuation (decimals or a currency symbol) so
+    bare integers such as store numbers never qualify.
+    """
+    if not looks_like_receipt_amount(text):
+        return None
+    value = parse_receipt_amount(text)
+    if value is None or value <= 0:
+        return None
+    return value
+
+
+def _is_summary_noise_line(line_text: str) -> bool:
+    """Return whether a line is a subtotal/tax/non-payment summary row."""
+    return bool(
+        SUBTOTAL_KEYWORD_RE.search(line_text)
+        or TAX_KEYWORD_RE.search(line_text)
+        or NON_PAYMENT_SUMMARY_RE.search(line_text)
+    )
+
+
+def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
+    """Find the printed grand total from receipt words, without labels.
+
+    Deterministic fallback for receipts whose GRAND_TOTAL labels are
+    missing or attached to the wrong words (the evaluator then rejects
+    them and the summary is left with no total even though one is
+    printed). Sprouts is the canonical case: it prints "Total:" /
+    "BALANCE DUE" and "USD$ 42.54" as separate OCR lines in the same
+    visual row.
+
+    Strategy:
+    1. Find anchor lines whose joined text reads as a grand-total row
+       (shared ``is_grand_total_line`` keywords).
+    2. Take amounts printed on the anchor line itself; otherwise pair the
+       anchor with amount words on other lines whose y-center falls in
+       the anchor's row band (skipping subtotal/tax/savings rows).
+    3. Return the largest anchored amount, mirroring the GRAND_TOTAL
+       label handler's largest-value semantics.
+
+    Args:
+        words: ReceiptWord records (text + normalized bounding boxes).
+
+    Returns:
+        The printed grand total, or None when no anchored amount exists.
+    """
+    lines: dict[int, list["ReceiptWord"]] = {}
+    for word in words:
+        line_id = getattr(word, "line_id", None)
+        if line_id is None:
+            continue
+        lines.setdefault(line_id, []).append(word)
+    for line_words in lines.values():
+        line_words.sort(key=lambda w: getattr(w, "word_id", 0))
+    line_texts = {
+        line_id: " ".join(str(getattr(w, "text", "")) for w in line_words)
+        for line_id, line_words in lines.items()
+    }
+
+    anchor_ids = [
+        line_id
+        for line_id, text in line_texts.items()
+        if is_grand_total_line(text)
+    ]
+    if not anchor_ids:
+        return None
+
+    anchored: list[float] = []
+    for anchor_id in anchor_ids:
+        anchor_words = lines[anchor_id]
+
+        # Amounts printed on the anchor line itself win outright.
+        same_line = [
+            amount
+            for w in anchor_words
+            if (amount := _positive_amount(str(getattr(w, "text", ""))))
+            is not None
+        ]
+        if same_line:
+            anchored.extend(same_line)
+            continue
+
+        # Pair with amount words in the anchor's y-band on other lines.
+        centers = [
+            c for w in anchor_words if (c := _word_y_center(w)) is not None
+        ]
+        if not centers:
+            continue
+        anchor_y = sum(centers) / len(centers)
+        anchor_height = max(_word_height(w) for w in anchor_words)
+        band = max(0.6 * anchor_height, _MIN_ROW_BAND)
+
+        for line_id, line_words in lines.items():
+            if line_id == anchor_id:
+                continue
+            if _is_summary_noise_line(line_texts[line_id]):
+                continue
+            for w in line_words:
+                center = _word_y_center(w)
+                if center is None or abs(center - anchor_y) > band:
+                    continue
+                amount = _positive_amount(str(getattr(w, "text", "")))
+                if amount is not None:
+                    anchored.append(amount)
+
+    return max(anchored) if anchored else None
+
+
+def _apply_printed_total_fallback(
+    totals: MonetaryTotals, words: list["ReceiptWord"]
+) -> None:
+    """Fill grand_total from the printed total when labels produced none."""
+    if totals.grand_total is not None and totals.grand_total > 0:
+        return
+    printed = find_printed_grand_total(words)
+    if printed is not None:
+        totals.grand_total = printed
+
+
+# =============================================================================
 # ReceiptSummary dataclass
 # =============================================================================
 
@@ -447,6 +606,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         totals, date, item_count = _extract_summary_fields(
             word_labels, word_text_lookup
         )
+        _apply_printed_total_fallback(totals, words)
 
         return cls(
             image_id=receipt.image_id,
@@ -490,6 +650,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         totals, date, item_count = _extract_summary_fields(
             word_labels, word_text_lookup
         )
+        _apply_printed_total_fallback(totals, words)
 
         return cls(
             image_id=image_id,
