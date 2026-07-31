@@ -889,6 +889,57 @@
           "confidence": 0.9
         }
       ],
+      "sections": [
+        {
+          "section_type": "ITEMS",
+          "line_ids": [
+            3
+          ],
+          "row_ids": [
+            3
+          ],
+          "confidence": 0.9999816459913875,
+          "model_source": "swift-worker-v1"
+        },
+        {
+          "section_type": "STOREFRONT",
+          "line_ids": [
+            1
+          ],
+          "row_ids": [
+            1
+          ],
+          "confidence": 0.9068789909517392,
+          "model_source": "swift-worker-v1"
+        },
+        {
+          "section_type": "TOTAL_LINE",
+          "line_ids": [
+            4
+          ],
+          "row_ids": [
+            4
+          ],
+          "confidence": 0.9565566777426845,
+          "model_source": "swift-worker-v1"
+        }
+      ],
+      "line_items": [
+        {
+          "item_index": 0,
+          "name": "ORGANIC",
+          "price": 3.99,
+          "quantity": null,
+          "unit_price": null,
+          "is_discount": false,
+          "name_quality": "ok",
+          "line_ids": [
+            3
+          ],
+          "reconciliation_status": "no-baseline",
+          "model_source": "swift-worker-v1"
+        }
+      ],
       "needs_review": false
     }
   ],

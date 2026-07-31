@@ -144,6 +144,17 @@ final class OCRResultContractTests: XCTestCase {
         XCTAssertEqual(barcodeDict["symbology"] as? String, "EAN13")
         XCTAssertEqual(barcodeDict["payload"] as? String, "0123456789012")
         XCTAssertNotNil(barcodeDict["bounding_box"] as? [String: Any])
+
+        // On-device deterministic structure is additive to the established
+        // receipt contract, including empty arrays when no items are decoded.
+        let sections = try XCTUnwrap(json["sections"] as? [[String: Any]])
+        XCTAssertFalse(sections.isEmpty)
+        for section in sections {
+            XCTAssertEqual(
+                section["model_source"] as? String, "swift-worker-v1"
+            )
+        }
+        XCTAssertNotNil(json["line_items"] as? [[String: Any]])
     }
 
     func test_classification_encodes_python_parser_contract_keys() throws {
@@ -481,6 +492,19 @@ final class OCRResultContractTests: XCTestCase {
                 )
                 XCTAssertEqual(tokens.count, labels.count)
                 XCTAssertEqual(tokens.count, confidences.count)
+            }
+            let sections = try XCTUnwrap(
+                receipt["sections"] as? [[String: Any]]
+            )
+            let lineItems = try XCTUnwrap(
+                receipt["line_items"] as? [[String: Any]]
+            )
+            XCTAssertFalse(sections.isEmpty)
+            XCTAssertFalse(lineItems.isEmpty)
+            for entity in sections + lineItems {
+                XCTAssertEqual(
+                    entity["model_source"] as? String, "swift-worker-v1"
+                )
             }
         }
     }

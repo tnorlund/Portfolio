@@ -38,7 +38,11 @@ from receipt_dynamo.amounts import (
     parse_receipt_amount,
 )
 
-__all__ = ["derive_block_labels", "templatize"]
+__all__ = [
+    "derive_block_labels",
+    "filter_summary_figure_items",
+    "templatize",
+]
 
 
 def templatize(text: str) -> str:
@@ -441,9 +445,105 @@ def derive_band_labels(golden_receipt: dict, ocr_receipt: dict) -> list[dict]:
     return out
 
 
-def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
-    """Block decode over deskewed visual bands (the corrected unit)."""
+def filter_summary_figure_items(
+    items: list[dict], summary: dict | None
+) -> list[dict]:
+    """Drop non-product bands whose price equals a printed summary figure.
+
+    Mode A/F of the failure-mode analysis: receipts that print their
+    subtotal / tax / grand total INSIDE the ITEMS zone (Mob Museum's bare
+    "57.90" == grand total; In-N-Out's "DRIVE-Thru Eat Out 14.50" order
+    line == subtotal) emit that figure as an item and double the sum.
+
+    Guards, all load-bearing:
+      * Runs only when the receipt does NOT already reconcile -- a
+        matching receipt is never touched, so the filter cannot lose a
+        currently-matching receipt.
+      * n_items >= 2: at least 2 other non-discount items must survive
+        every drop. Single-item receipts legitimately have item price ==
+        total (Barnes & Noble / CVS / Target / LA County in the report).
+      * An UNNAMED band (no real name) matching subtotal / tax /
+        grand_total is dropped only when the drop strictly improves the
+        reconciliation delta.
+      * A NAMED band may match only subtotal / grand_total (a product
+        coincidentally priced at the tax amount must survive) and is
+        dropped only when the remaining items then reconcile to a match
+        -- the self-verifying "apply, then re-reconcile" rule.
+    """
+    from receipt_upload.line_items.geometry import _name_is_real
+
+    if not summary or not items:
+        return items
+
+    def _f(key: str) -> float | None:
+        v = summary.get(key)
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    subtotal, tax, grand = _f("subtotal"), _f("tax"), _f("grand_total")
+    baseline = subtotal
+    if baseline is None and grand is not None:
+        baseline = grand - (tax or 0.0)
+    if baseline is None or baseline <= 0:
+        return items
+
+    non_disc = [i for i in items if not i.get("is_discount")]
+    cur = round(sum(i["price"] for i in non_disc), 2)
+    tol = max(0.02, baseline * 0.01)
+    if abs(cur - baseline) <= tol:
+        return items  # already reconciles; never touch a match
+
+    drop: set[int] = set()
+    changed = True
+    while changed:
+        changed = False
+        for idx, it in enumerate(items):
+            if idx in drop or it.get("is_discount"):
+                continue
+            price = it.get("price")
+            if not isinstance(price, (int, float)) or price <= 0:
+                continue
+            unnamed = not _name_is_real(it.get("name") or "")
+            figures = [subtotal, grand] + ([tax] if unnamed else [])
+            # 1% figure tolerance (same shape as reconcile's match band):
+            # the printed figure itself carries OCR jitter -- Trader Joe's
+            # 0e75127f prints "$16.41" for a summary total read as 16.47.
+            if not any(
+                f is not None and abs(price - f) <= max(0.02, f * 0.01)
+                for f in figures
+            ):
+                continue
+            if len(non_disc) - len(drop) - 1 < 2:
+                continue  # at least 2 other items must survive
+            new_diff = abs(round(cur - price, 2) - baseline)
+            if unnamed:
+                ok = new_diff < abs(cur - baseline) - 0.005
+            else:
+                ok = new_diff <= tol
+            if ok:
+                drop.add(idx)
+                cur = round(cur - price, 2)
+                changed = True
+    if not drop:
+        return items
+    return [it for i, it in enumerate(items) if i not in drop]
+
+
+def decode_band_blocks(
+    ocr_receipt: dict, priors: dict, summary: dict | None = None
+) -> list[dict]:
+    """Block decode over deskewed visual bands (the corrected unit).
+
+    ``summary`` (optional {subtotal, tax, grand_total}) enables the
+    non-product band filter: printed summary figures leaking into the
+    ITEMS zone are dropped via filter_summary_figure_items. Callers
+    without a summary (golden gate, ingest paths before the summary
+    exists) pass None and get the unfiltered decode.
+    """
     from receipt_upload.line_items.geometry import (
+        NON_PRODUCT_NOTE_RE,
         SALE_PRICE_RE,
         SETTLEMENT_RE,
         WAS_PRICE_RE,
@@ -464,6 +564,7 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
             SETTLEMENT_RE.match(bare)
             or WAS_PRICE_RE.search(b["text"])
             or SALE_PRICE_RE.search(b["text"])
+            or NON_PRODUCT_NOTE_RE.search(b["text"])
         ):
             b["role"] = "OUTSIDE"
             continue
@@ -646,7 +747,7 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
             else set(bands[p]["line_ids"])
         )
         items.append(parsed)
-    return items
+    return filter_summary_figure_items(items, summary)
 
 
 def load_default_priors() -> dict:
