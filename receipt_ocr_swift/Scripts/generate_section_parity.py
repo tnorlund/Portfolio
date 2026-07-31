@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from receipt_chroma.embedding.formatting.receipt_rows import build_receipt_rows
+from receipt_chroma.embedding.formatting import build_receipt_rows
 from receipt_upload.section_assignment import (
     assign_row_sections,
     load_prior_model,
@@ -69,13 +69,14 @@ def reconstruct(
 
     lines = []
     for line_id, members in sorted(by_line.items()):
-        ordered = sorted(members, key=lambda word: (word.bounding_box["x"], word.word_id))
+        ordered = sorted(
+            members, key=lambda word: (word.bounding_box["x"], word.word_id)
+        )
         x_min = min(word.bounding_box["x"] for word in members)
         x_max = max(word.bounding_box["x"] for word in members)
         y_min = min(word.bounding_box["y"] for word in members)
         y_max = max(
-            word.bounding_box["y"] + word.bounding_box["height"]
-            for word in members
+            word.bounding_box["y"] + word.bounding_box["height"] for word in members
         )
         lines.append(
             FixtureLine(
@@ -102,8 +103,7 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=Path,
-        default=repo_root
-        / "receipt_upload/tests/fixtures/line_items_golden_ocr.json",
+        default=repo_root / "receipt_upload/tests/fixtures/line_items_golden_ocr.json",
     )
     parser.add_argument(
         "--output",
@@ -119,9 +119,7 @@ def main() -> None:
     for receipt in fixture["receipts"]:
         lines, words = reconstruct(receipt)
         rows = build_receipt_rows(lines, words)
-        assignments = assign_row_sections(
-            rows, lines, model, receipt.get("merchant")
-        )
+        assignments = assign_row_sections(rows, lines, model, receipt.get("merchant"))
         sections = sections_from_assignments(assignments)
         expected.append(
             {
@@ -139,9 +137,7 @@ def main() -> None:
 
     if len(expected) != 33:
         raise RuntimeError(f"expected 33 receipts, got {len(expected)}")
-    args.output.write_text(
-        json.dumps(expected, indent=2) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {len(expected)}/33 receipts to {args.output}")
 
 
