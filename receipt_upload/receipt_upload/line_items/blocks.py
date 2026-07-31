@@ -443,12 +443,25 @@ def derive_band_labels(golden_receipt: dict, ocr_receipt: dict) -> list[dict]:
 
 def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
     """Block decode over deskewed visual bands (the corrected unit)."""
-    from receipt_upload.line_items.geometry import parse_band
+    from receipt_upload.line_items.geometry import (
+        SETTLEMENT_RE,
+        WAS_PRICE_RE,
+        parse_band,
+    )
 
     bands = _zone_bands(ocr_receipt)
     if not bands:
         return []
     for b in bands:
+        # Settlement (BALANCE DUE / CREDIT / CHANGE / Balance to pay) and
+        # price-comparison ("WAS: $3.59 each") bands are never items, even
+        # when a broken ITEMS section includes them and regardless of any
+        # template prior. Strip amounts before the settlement test so
+        # "CHANGE 0.00" reduces to its vocabulary.
+        bare = re.sub(r"\$?\d[\d.,]*", " ", b["text"]).strip()
+        if SETTLEMENT_RE.match(bare) or WAS_PRICE_RE.search(b["text"]):
+            b["role"] = "OUTSIDE"
+            continue
         prior = priors.get(b["template"])
         if prior and prior["purity"] >= 0.75 and prior["support"] >= 2:
             b["role"] = prior["role"]

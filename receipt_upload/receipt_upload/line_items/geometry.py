@@ -33,8 +33,28 @@ QTY_AT_RE = re.compile(
     r"(?:\s*/\s*\w+)?",
     re.IGNORECASE,
 )
+# Grocery multiples deal: "4 FOR 1.00", "2 @ 2 FOR 3.00" (leading qty
+# optional; deal is M-for-X so unit = X/M, qty = leading qty else M)
+QTY_FOR_RE = re.compile(
+    r"(?:(\d{1,2})\s*@\s*)?(\d{1,2})\s+FOR\s+\$?(\d+\.\d{2})",
+    re.IGNORECASE,
+)
+# OCR reads "@" as "g" in "4 @ $1.79"; the explicit $ keeps this from
+# matching real gram weights
+QTY_AT_OCR_RE = re.compile(r"(\d+(?:\.\d+)?)\s*g\s*\$(\d+\.\d{2,3})")
 # Leading "1x" / "2X" multiplier
 QTY_MULT_RE = re.compile(r"^(\d{1,2})[xX]$")
+# Settlement lines are never items even when a broken ITEMS section
+# includes them (BALANCE DUE / Balance to pay / CREDIT / CHANGE ...)
+SETTLEMENT_RE = re.compile(
+    r"^\W*(?:BALANCE(?:\s+DUE|\s+TO\s+PAY)?|TO\s+PAY|CREDIT|DEBIT"
+    r"|CHANGE(?:\s+DUE)?|CASH(?:\s+BACK)?|TENDER(?:ED)?"
+    r"|SUB\s*TOTAL|TOTAL|(?:SALES\s+)?TAX)\W*$",
+    re.IGNORECASE,
+)
+# Price-comparison metadata ("SALE 2 @ $1.89, WAS: $3.59 each"): the WAS
+# amount is not a line price and the real item price is on its own band
+WAS_PRICE_RE = re.compile(r"\b(?:WAS|REG)\b[:.]?\s*\$?\d", re.IGNORECASE)
 # Standalone leading quantity: "2 BURRITO ..." only when integer < 100
 LEAD_QTY_RE = re.compile(r"^(\d{1,2})\s+(?=[A-Za-z])")
 TAX_FLAG_RE = re.compile(r"\s+[TFNOAB]X?$")
@@ -170,15 +190,25 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
             if v is not None and abs(v) < 100000:
                 amounts.append((i, v))
 
-    # Quantity forms, joined-text (they straddle word boundaries)
+    # Quantity forms, joined-text (they straddle word boundaries).
+    # The M-FOR-X deal runs first: QTY_AT_RE cannot match its "@ 2 FOR"
+    # interior (no decimals after the @), but checking FOR first keeps
+    # that invariant explicit.
     qty = unit_price = None
     qty_word_idxs: set[int] = set()
-    m = QTY_AT_RE.search(joined)
+    m = QTY_FOR_RE.search(joined)
     if m:
-        qty = float(m.group(1))
-        unit_price = float(m.group(2))
+        deal_n = float(m.group(2))
+        qty = float(m.group(1)) if m.group(1) else deal_n
+        unit_price = round(float(m.group(3)) / deal_n, 2)
         qty_word_idxs = words_in_span(m.start(), m.end())
-    else:
+    if qty is None:
+        m = QTY_AT_RE.search(joined) or QTY_AT_OCR_RE.search(joined)
+        if m:
+            qty = float(m.group(1))
+            unit_price = float(m.group(2))
+            qty_word_idxs = words_in_span(m.start(), m.end())
+    if qty is None:
         # bare "2 3.99" (qty + unit price, no @)
         m2 = re.fullmatch(
             r"(\d{1,2})\s+\$?(\d+\.\d{2})", joined.replace("$", "").strip()
