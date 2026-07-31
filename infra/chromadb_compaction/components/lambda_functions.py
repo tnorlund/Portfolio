@@ -497,8 +497,12 @@ class HybridLambdaDeployment(ComponentResource):
                     "# deploy-time stub: only line_items is bundled; the real\n"
                     "# receipt_upload __init__ pulls PIL and the full package.\n"
                 ),
+                # Must be non-empty: an empty StringAsset serializes with no
+                # "text" field and crashes the Python SDK when the engine
+                # echoes the archive back ("Invalid asset encountered when
+                # unmarshalling resource property").
                 "receipt_upload/line_items/__init__.py": pulumi.StringAsset(
-                    ""
+                    "# namespace stub\n"
                 ),
                 "receipt_upload/line_items/geometry.py": pulumi.FileAsset(
                     _repo_root
@@ -591,7 +595,10 @@ class HybridLambdaDeployment(ComponentResource):
             batch_size=50,
             maximum_batching_window_in_seconds=5,
             function_response_types=["ReportBatchItemFailures"],
-            opts=ResourceOptions(parent=self),
+            # The inline sqs_policy grants receive/delete on the queue;
+            # without the explicit dependency AWS can reject the mapping
+            # when it is created before the IAM update lands.
+            opts=ResourceOptions(parent=self, depends_on=[self.sqs_policy]),
         )
 
         # Export useful properties
@@ -651,6 +658,9 @@ class HybridLambdaDeployment(ComponentResource):
                                     "dynamodb:PutItem",
                                     "dynamodb:UpdateItem",
                                     "dynamodb:DeleteItem",
+                                    # line-item updater writes rows via
+                                    # batch_write_item
+                                    "dynamodb:BatchWriteItem",
                                     "dynamodb:Query",
                                     "dynamodb:DescribeTable",
                                 ],

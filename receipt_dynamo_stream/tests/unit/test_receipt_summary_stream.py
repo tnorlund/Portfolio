@@ -26,7 +26,10 @@ from receipt_dynamo_stream.parsing import detect_entity_type
 IMAGE_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 
-def _make_record(subtotal: float = 10.55) -> ReceiptSummaryRecord:
+def _make_record(
+    subtotal: float = 10.55,
+    ts: str = "2026-07-30T12:00:00+00:00",
+) -> ReceiptSummaryRecord:
     summary = ReceiptSummary(
         image_id=IMAGE_ID,
         receipt_id=1,
@@ -36,7 +39,7 @@ def _make_record(subtotal: float = 10.55) -> ReceiptSummaryRecord:
             tax=0.88,
         ),
     )
-    return ReceiptSummaryRecord(summary=summary)
+    return ReceiptSummaryRecord(summary=summary, timestamp_computed=ts)
 
 
 def _stream_record(
@@ -68,6 +71,12 @@ def test_summary_sk_does_not_shadow_others() -> None:
     assert (
         detect_entity_type("RECEIPT#00001#SECTION#ITEMS") == "RECEIPT_SECTION"
     )
+    # SectionType.SUMMARY also ends in "#SUMMARY": the section matcher
+    # must win or these records get misparsed as summary records.
+    assert (
+        detect_entity_type("RECEIPT#00001#SECTION#SUMMARY")
+        == "RECEIPT_SECTION"
+    )
 
 
 def test_summary_routes_to_line_items_queue() -> None:
@@ -86,7 +95,56 @@ def test_summary_insert_produces_message() -> None:
 
 
 def test_summary_modify_produces_message() -> None:
-    record = _stream_record("MODIFY", _make_record(10.55), _make_record(12.00))
+    record = _stream_record(
+        "MODIFY",
+        _make_record(10.55, ts="2026-07-30T12:00:00+00:00"),
+        _make_record(12.00, ts="2026-07-30T12:05:00+00:00"),
+    )
     messages = build_messages_from_records([record])
     assert len(messages) == 1
     assert TargetQueue.LINE_ITEMS in messages[0].collections
+
+
+def test_summary_message_is_json_serializable() -> None:
+    """The nested ReceiptSummary dataclass must never reach the SQS
+    payload: change detection tracks timestamp_computed only."""
+    import json
+
+    from receipt_dynamo_stream.sqs_publisher import _message_to_dict
+
+    record = _stream_record(
+        "MODIFY",
+        _make_record(10.55, ts="2026-07-30T12:00:00+00:00"),
+        _make_record(12.00, ts="2026-07-30T12:05:00+00:00"),
+    )
+    (message,) = build_messages_from_records([record])
+    json.dumps(_message_to_dict(message))  # must not raise
+
+
+def test_items_section_routes_to_line_items() -> None:
+    """Invalidating or editing an ITEMS section must recompute line
+    items even when no summary rewrite follows."""
+    from datetime import datetime, timezone
+
+    from receipt_dynamo.entities.receipt_section import ReceiptSection
+
+    created = datetime(2026, 7, 30, 12, 0, 0, tzinfo=timezone.utc)
+    section = ReceiptSection(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        section_type="ITEMS",
+        line_ids=[4, 5, 6],
+        created_at=created,
+    )
+    _, targets = _extract_entity_data("RECEIPT_SECTION", section)
+    assert TargetQueue.LINE_ITEMS in targets
+
+    header = ReceiptSection(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        section_type="HEADER",
+        line_ids=[1, 2],
+        created_at=created,
+    )
+    _, targets = _extract_entity_data("RECEIPT_SECTION", header)
+    assert TargetQueue.LINE_ITEMS not in targets
