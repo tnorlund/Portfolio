@@ -6,7 +6,7 @@
 
 # Interface: EpochEvaluationReceiptRecord
 
-Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L646)
+Defined in: [types/api.ts:575](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L575)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **checkpoint**: `string`
 
-Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L649)
+Defined in: [types/api.ts:578](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L578)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **epoch**: `number` \| `null`
 
-Defined in: [types/api.ts:648](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L648)
+Defined in: [types/api.ts:577](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L577)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:648](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **inference\_time\_ms**: `number`
 
-Defined in: [types/api.ts:656](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L656)
+Defined in: [types/api.ts:585](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L585)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:656](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **label\_list**: `string`[]
 
-Defined in: [types/api.ts:650](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L650)
+Defined in: [types/api.ts:579](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L579)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:650](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **original**: `object`
 
-Defined in: [types/api.ts:651](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L651)
+Defined in: [types/api.ts:580](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L580)
 
 #### predictions
 
@@ -110,4 +110,4 @@ Defined in: [types/api.ts:651](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **receipt\_id**: `string`
 
-Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L647)
+Defined in: [types/api.ts:576](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L576)

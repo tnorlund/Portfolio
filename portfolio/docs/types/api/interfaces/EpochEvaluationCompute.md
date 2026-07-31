@@ -6,7 +6,7 @@
 
 # Interface: EpochEvaluationCompute
 
-Defined in: [types/api.ts:610](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L610)
+Defined in: [types/api.ts:539](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L539)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:610](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **device**: `string`
 
-Defined in: [types/api.ts:611](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L611)
+Defined in: [types/api.ts:540](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L540)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:611](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **gpu\_name**: `string` \| `null`
 
-Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L612)
+Defined in: [types/api.ts:541](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L541)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/e36a64
 
 > **instance\_type**: `string` \| `null`
 
-Defined in: [types/api.ts:613](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L613)
+Defined in: [types/api.ts:542](https://github.com/tnorlund/Portfolio/blob/ee6c522829c1574ac13d05d2b9228396325c199e/portfolio/types/api.ts#L542)
