@@ -518,6 +518,25 @@ class HybridLambdaDeployment(ComponentResource):
                     / "line_items"
                     / "blocks.py"
                 ),
+                "receipt_upload/line_items/reocr.py": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "reocr.py"
+                ),
+                # reocr.py imports geometry.transformations directly; the
+                # real geometry __init__ pulls the full package.
+                "receipt_upload/geometry/__init__.py": pulumi.StringAsset(
+                    "# namespace stub\n"
+                ),
+                "receipt_upload/geometry/transformations.py": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "geometry"
+                    / "transformations.py"
+                ),
                 "receipt_upload/line_items/assets/block_role_priors_v1.json": pulumi.FileAsset(
                     _repo_root
                     / "receipt_upload"
@@ -564,6 +583,14 @@ class HybridLambdaDeployment(ComponentResource):
                         dynamodb_table_arn
                     ).apply(lambda args: args[0].split("/")[-1]),
                     "LOG_LEVEL": "INFO",
+                    # Deterministic name (trigger_reocr_lambda is created
+                    # later in __main__, so no resource ref is possible):
+                    # TriggerReOCRLambda names it
+                    # "{component}-{stack}-trigger-reocr" with
+                    # component="trigger-reocr".
+                    "TRIGGER_REOCR_FUNCTION_NAME": (
+                        f"trigger-reocr-{stack}-trigger-reocr"
+                    ),
                 }
             },
             description=(
@@ -586,6 +613,30 @@ class HybridLambdaDeployment(ComponentResource):
                 ],
                 ignore_changes=["layers"],
             ),
+        )
+
+        # Reconciliation-mismatch re-OCR: the updater invokes the trigger
+        # Lambda (deterministic name, wildcard account/region — the
+        # resource is created later in __main__).
+        aws.iam.RolePolicy(
+            f"{name}-line-item-invoke-reocr-policy",
+            role=self.lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "lambda:InvokeFunction",
+                            "Resource": (
+                                "arn:aws:lambda:*:*:function:"
+                                f"trigger-reocr-{stack}-trigger-reocr"
+                            ),
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
         )
 
         self.line_item_event_source_mapping = aws.lambda_.EventSourceMapping(

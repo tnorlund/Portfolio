@@ -444,6 +444,7 @@ def derive_band_labels(golden_receipt: dict, ocr_receipt: dict) -> list[dict]:
 def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
     """Block decode over deskewed visual bands (the corrected unit)."""
     from receipt_upload.line_items.geometry import (
+        SALE_PRICE_RE,
         SETTLEMENT_RE,
         WAS_PRICE_RE,
         parse_band,
@@ -459,7 +460,11 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         # template prior. Strip amounts before the settlement test so
         # "CHANGE 0.00" reduces to its vocabulary.
         bare = re.sub(r"\$?\d[\d.,]*", " ", b["text"]).strip()
-        if SETTLEMENT_RE.match(bare) or WAS_PRICE_RE.search(b["text"]):
+        if (
+            SETTLEMENT_RE.match(bare)
+            or WAS_PRICE_RE.search(b["text"])
+            or SALE_PRICE_RE.search(b["text"])
+        ):
             b["role"] = "OUTSIDE"
             continue
         prior = priors.get(b["template"])
@@ -485,6 +490,13 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         SKU_LIKE_RE,
         _name_is_real,
     )
+
+    # zone price column (same convention as decode_blocks: right-most
+    # amount-word x; "in column" = within 0.15)
+    _zone_amt_x = [
+        w["x"] for b in bands for w in b["words"] if _line_amounts([w])
+    ]
+    zone_col_x = max(_zone_amt_x) if _zone_amt_x else None
 
     parsed_cache: dict[int, dict | None] = {
         p: parse_band(list(bands[p]["words"])) for p in price_idx
@@ -530,6 +542,40 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
                     nb["quantity"], nb["unit_price"] = qty, unit
                 absorbed.add(p)
                 break
+            # Unit-price echo with the qty prefix lost to OCR ("2 @ 3.49"
+            # reads as bare "3.49" under a 6.98 item): a bare-amount band
+            # (no name, no qty, no SKU) whose amount divides a real-named
+            # neighbor's price by an integer 2..12 is that neighbor's
+            # unit price. The multiple recovers the quantity.
+            #
+            # Column gate: only LEFT-column amounts are echoes. A bare
+            # amount sitting IN the price column is a real (unnamed) item
+            # -- the corpus vetoed the arithmetic test alone: $7.00 next
+            # to a $14.00 pizza and $11.99 popcorn next to 3x$11.99
+            # tickets are coincidental multiples, both price-column.
+            in_price_col = zone_col_x is not None and any(
+                abs(w["x"] - zone_col_x) < 0.15
+                for w in bands[p]["words"]
+                if _line_amounts([w])
+            )
+            if (
+                mp.get("price") is not None
+                and qty is None
+                and not in_price_col
+                and not (mp.get("name") or "").strip()
+                and not SKU_LIKE_RE.search(mp.get("raw_text") or "")
+                and _name_is_real(nb.get("name") or "")
+                and mp["price"] > 0
+                and nb["price"] > 0
+            ):
+                ratio = nb["price"] / mp["price"]
+                k = round(ratio)
+                if 2 <= k <= 12 and abs(nb["price"] - k * mp["price"]) <= 0.02:
+                    if nb.get("quantity") is None:
+                        nb["quantity"] = float(k)
+                        nb["unit_price"] = mp["price"]
+                    absorbed.add(p)
+                    break
     price_idx = [p for p in price_idx if p not in absorbed]
     blocks: dict[int, list[int]] = {p: [] for p in price_idx}
     for i, b in enumerate(bands):

@@ -2834,6 +2834,232 @@
      "is_discount": false
     }
    ]
+  },
+  {
+   "image_id": "63243f38-61e2-4079-9c08-490825a7aff7",
+   "receipt_id": 2,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "32.74",
+   "items_sum": "32.74",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "BOGO structure: PENNE 3.99 + BOGO -2.00 + 'Sale Price 1.99' ANNOTATION (echo of the post-discount price, NOT a purchase - with it the sum is 34.73 != printed 32.74; without, exact). Annotation lines folded into the first PENNE's line_ids.",
+   "true_items": [
+    {
+     "name": "ORGANIC SHALLOTS",
+     "price": "3.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      34,
+      47,
+      69
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "PENNE RIGATE PAST",
+     "price": "3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      36,
+      48,
+      70,
+      38,
+      50,
+      71
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BOGO 50% OFF GROC",
+     "price": "-2.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      37,
+      49
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "PENNE RIGATE PASTA",
+     "price": "3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      39,
+      51,
+      72
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HEAVY WHIPPING CREAM",
+     "price": "4.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      41,
+      52
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG A2/A2 6% FAT MLK",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      42,
+      53
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SPROUTS LRG EGGS",
+     "price": "3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      43,
+      54
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ROLLED OATS",
+     "price": "7.00",
+     "quantity": 1,
+     "unit_price": "7.00",
+     "line_ids": [
+      45,
+      46,
+      55,
+      73
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "8d089201-9f33-42ec-bad8-a2482777c958",
+   "receipt_id": 1,
+   "merchant": "Gelson's Westlake Village",
+   "printed_subtotal": null,
+   "printed_total": "29.40",
+   "items_sum": "29.40",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "no tax; items sum equals BALANCE DUE exactly. Three weighted items and two 2-FOR deals. 'BAG SALE PAPER EA' contains the word SALE - annotation guards must match 'SALE PRICE' as a phrase, never bare SALE.",
+   "true_items": [
+    {
+     "name": "PENNE RIGATE #41",
+     "price": "3.50",
+     "quantity": 1,
+     "unit_price": "3.50",
+     "line_ids": [
+      35,
+      36,
+      37,
+      40,
+      41
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CRUSHED TOMATOES",
+     "price": "5.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      38,
+      39,
+      42
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "GELSON'S EGGS",
+     "price": "4.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      45,
+      49,
+      50
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BAG SALE PAPER EA",
+     "price": "0.10",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      48,
+      51
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "POTATO-RUSSET",
+     "price": "9.74",
+     "quantity": 3.91,
+     "unit_price": "2.49",
+     "line_ids": [
+      53,
+      54,
+      55,
+      66
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ITAL PARSLEY ORG",
+     "price": "2.00",
+     "quantity": 1,
+     "unit_price": "2.00",
+     "line_ids": [
+      56,
+      57,
+      58,
+      67,
+      68
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "GARLIC-BULK",
+     "price": "2.24",
+     "quantity": 0.28,
+     "unit_price": "7.99",
+     "line_ids": [
+      59,
+      60,
+      61,
+      69,
+      70
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SHALLOTS",
+     "price": "0.84",
+     "quantity": 0.21,
+     "unit_price": "3.99",
+     "line_ids": [
+      62,
+      63,
+      64,
+      65,
+      71,
+      72,
+      73
+     ],
+     "is_discount": false
+    }
+   ]
   }
  ]
 }

@@ -55,6 +55,10 @@ SETTLEMENT_RE = re.compile(
 # Price-comparison metadata ("SALE 2 @ $1.89, WAS: $3.59 each"): the WAS
 # amount is not a line price and the real item price is on its own band
 WAS_PRICE_RE = re.compile(r"\b(?:WAS|REG)\b[:.]?\s*\$?\d", re.IGNORECASE)
+# BOGO annotation echo: "PENNE RIGATE PAST Sale Price 1.99" restates the
+# post-discount unit price already carried by the discount line; counting
+# it double-counts. Exact phrase only — "BAG SALE PAPER EA" is a real item.
+SALE_PRICE_RE = re.compile(r"\bSALE\s+PRICE\b", re.IGNORECASE)
 # Standalone leading quantity: "2 BURRITO ..." only when integer < 100
 LEAD_QTY_RE = re.compile(r"^(\d{1,2})\s+(?=[A-Za-z])")
 TAX_FLAG_RE = re.compile(r"\s+[TFNOAB]X?$")

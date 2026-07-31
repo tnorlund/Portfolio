@@ -65,6 +65,8 @@ class UploadImages(ComponentResource):
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         label_validation_project_name: pulumi.Input[str] | None = None,
+        summary_queue_url: pulumi.Input[str] | None = None,
+        summary_queue_arn: pulumi.Input[str] | None = None,
         opts: ResourceOptions | None = None,
     ):  # pylint: disable=too-many-positional-arguments
         super().__init__(
@@ -348,6 +350,7 @@ class UploadImages(ComponentResource):
                 artifacts_bucket.arn,
                 pulumi.Output.from_input(chromadb_bucket_name),
                 self.llm_validation_queue.arn,
+                pulumi.Output.from_input(summary_queue_arn or ""),
             ).apply(
                 lambda args: (
                     json.dumps(
@@ -424,7 +427,14 @@ class UploadImages(ComponentResource):
                                     "Resource": [
                                         args[4],  # ocr_queue.arn
                                         args[7],  # llm_validation_queue.arn
-                                    ],
+                                    ]
+                                    + (
+                                        # summary queue (post-re-OCR
+                                        # line-item refresh)
+                                        [args[8]]
+                                        if args[8]
+                                        else []
+                                    ),
                                 },
                                 {
                                     "Effect": "Allow",
@@ -524,6 +534,12 @@ class UploadImages(ComponentResource):
                 # Async LLM validation: producer enqueues here, same Lambda consumes.
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
+                # Post-re-OCR line-item refresh: the overlay enqueues a
+                # summary recompute here (fresh timestamp_computed fires
+                # the LINE_ITEMS stream stage).
+                "RECEIPT_SUMMARY_QUEUE_URL": pulumi.Output.from_input(
+                    summary_queue_url or ""
+                ),
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 # Chroma Cloud: the upload path reads from Cloud (skipping the
                 # S3 snapshot) and upserts freshly embedded vectors straight to
