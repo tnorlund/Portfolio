@@ -45,11 +45,15 @@ QTY_AT_OCR_RE = re.compile(r"(\d+(?:\.\d+)?)\s*g\s*\$(\d+\.\d{2,3})")
 # Leading "1x" / "2X" multiplier
 QTY_MULT_RE = re.compile(r"^(\d{1,2})[xX]$")
 # Settlement lines are never items even when a broken ITEMS section
-# includes them (BALANCE DUE / Balance to pay / CREDIT / CHANGE ...)
+# includes them (BALANCE DUE / Balance to pay / CREDIT / CHANGE ...).
+# OCR sometimes scrambles word order ("17.98 DUE BALANCE") or prefixes an
+# item count ("[1 item] Sub Total 16.00"); both forms are covered here.
 SETTLEMENT_RE = re.compile(
-    r"^\W*(?:BALANCE(?:\s+DUE|\s+TO\s+PAY)?|TO\s+PAY|CREDIT|DEBIT"
+    r"^\W*(?:ITEMS?\W+)?"
+    r"(?:BALANCE(?:\s+DUE|\s+TO\s+PAY)?|DUE\s+BALANCE"
+    r"|(?:AMOUNT|TOTAL)\s+(?:DUE|TO\s+PAY)|TO\s+PAY|CREDIT|(?:AUTH\s+)?DEBIT"
     r"|CHANGE(?:\s+DUE)?|CASH(?:\s+BACK)?|TENDER(?:ED)?"
-    r"|SUB\s*TOTAL|TOTAL|(?:SALES\s+)?TAX)\W*$",
+    r"|SUB\W{0,2}T(?:OTA|T)L|TOTAL|(?:SALES\s+)?TAX)\W*$",
     re.IGNORECASE,
 )
 # Price-comparison metadata ("SALE 2 @ $1.89, WAS: $3.59 each"): the WAS
@@ -57,8 +61,25 @@ SETTLEMENT_RE = re.compile(
 WAS_PRICE_RE = re.compile(r"\b(?:WAS|REG)\b[:.]?\s*\$?\d", re.IGNORECASE)
 # BOGO annotation echo: "PENNE RIGATE PAST Sale Price 1.99" restates the
 # post-discount unit price already carried by the discount line; counting
-# it double-counts. Exact phrase only — "BAG SALE PAPER EA" is a real item.
-SALE_PRICE_RE = re.compile(r"\bSALE\s+PRICE\b", re.IGNORECASE)
+# it double-counts. Target prints the same echo as "Regular Price $22.99"
+# under each discounted item (mode D in the failure-mode report: dropping
+# that one band closes the delta exactly), and Nordstrom Rack prints it as
+# "Comparable Value 59.95". Exact phrases only — "BAG SALE PAPER EA" is a
+# real item.
+SALE_PRICE_RE = re.compile(
+    r"\b(?:(?:SALE|REG(?:ULAR)?\.?)\s+PRICE|COMPARABLE\s+VALUE)\b",
+    re.IGNORECASE,
+)
+# Non-product annotations that carry an amount but are never items:
+# tip-suggestion footers ("22% Tip = 4.40", "15% = 10.73", "18%: (Tip
+# Total 9.27)") and transaction-count notes ("Items in Transaction: 5").
+# The %-sign / exact-phrase anchors keep product names ("6% FAT MLK",
+# "STEAK TIPS") out of reach.
+NON_PRODUCT_NOTE_RE = re.compile(
+    r"\d{1,3}\s*%\s*[:=]|%\s*TIP\b|\bTIP\s+TOTAL\b"
+    r"|\bITEMS?\s+IN\s+TRANSACTION\b",
+    re.IGNORECASE,
+)
 # Standalone leading quantity: "2 BURRITO ..." only when integer < 100
 LEAD_QTY_RE = re.compile(r"^(\d{1,2})\s+(?=[A-Za-z])")
 TAX_FLAG_RE = re.compile(r"\s+[TFNOAB]X?$")
@@ -331,7 +352,9 @@ def _name_is_real(name: str) -> bool:
 
 
 def extract_items(
-    words: list[dict], line_ids: set[int]
+    words: list[dict],
+    line_ids: set[int],
+    summary: Optional[dict] = None,
 ) -> tuple[list[dict], bool]:
     """Extract items via the band-block decoder (Phase D integration).
 
@@ -340,6 +363,12 @@ def extract_items(
     semantic guarantees, golden floors LOO 85/57/86 with zero failures,
     corpus sweep match 418 vs 415. The banded implementation remains below
     as _extract_items_banded for the corpus diff harness.
+
+    ``summary`` (optional {subtotal, tax, grand_total}) activates the
+    non-product band filter: bands whose price merely restates a printed
+    summary figure are dropped (see blocks.filter_summary_figure_items
+    for the guards). Default None preserves the unfiltered decode for
+    callers that have no summary.
     """
     from receipt_upload.line_items.blocks import (
         decode_band_blocks,
@@ -349,6 +378,7 @@ def extract_items(
     items = decode_band_blocks(
         {"words": list(words), "items_line_ids": sorted(line_ids)},
         load_default_priors(),
+        summary=summary,
     )
     return items, False
 
