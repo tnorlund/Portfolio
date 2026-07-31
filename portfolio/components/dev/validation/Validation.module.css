@@ -1,0 +1,454 @@
+/* Workstation chrome: dense, quiet, no marketing shell. */
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 400px;
+  gap: 12px;
+  height: 100vh;
+  padding: 12px;
+  box-sizing: border-box;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1000px) {
+  .layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    height: auto;
+  }
+}
+
+.merchantPanel,
+.centerPanel,
+.truthPanel {
+  border: 1px solid color-mix(in srgb, var(--text-color) 16%, transparent);
+  border-radius: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 10px;
+}
+
+.panelHead,
+.truthHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--text-color) 22%, transparent);
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chip[data-active="true"] {
+  background: var(--color-blue);
+  border-color: var(--color-blue);
+  color: #fff;
+}
+
+.merchantList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.merchantList li {
+  margin: 0;
+}
+
+.merchantButton {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 6px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: inherit;
+  padding: 5px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.merchantButton:hover,
+.merchantButton[data-active="true"] {
+  background: color-mix(in srgb, var(--text-color) 9%, transparent);
+}
+
+.merchantName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merchantCount {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.rateBar {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-color) 14%, transparent);
+  overflow: hidden;
+}
+
+.rateFill {
+  display: block;
+  height: 100%;
+  background: var(--color-green);
+}
+
+/* Center: receipt viewer */
+
+.centerPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rotationBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rotationBar button {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--text-color) 22%, transparent);
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.rotationBar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.position {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.toggles {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+}
+
+.canvasInner {
+  position: relative;
+  align-self: flex-start;
+}
+
+.canvasImage {
+  display: block;
+  max-height: 78vh;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.canvasLoading {
+  padding: 40px;
+  opacity: 0.6;
+}
+
+/* Right: truth panel */
+
+.statusBadge,
+.miniStatus {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.statusBadge[data-status="match"],
+.miniStatus[data-status="match"] {
+  background: color-mix(in srgb, var(--color-green) 22%, transparent);
+  color: var(--color-green);
+}
+
+.statusBadge[data-status="near"],
+.miniStatus[data-status="near"] {
+  background: color-mix(in srgb, var(--color-yellow) 26%, transparent);
+  color: var(--color-yellow);
+}
+
+.statusBadge[data-status="mismatch"],
+.miniStatus[data-status="mismatch"] {
+  background: color-mix(in srgb, var(--color-red, #e5484d) 20%, transparent);
+  color: var(--color-red, #e5484d);
+}
+
+.statusBadge[data-status="no-baseline"],
+.miniStatus[data-status="no-baseline"] {
+  background: color-mix(in srgb, var(--text-color) 12%, transparent);
+  opacity: 0.75;
+}
+
+.tenderRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.tenderBadge {
+  border: 1px solid color-mix(in srgb, var(--text-color) 20%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.itemsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.itemsTable th {
+  text-align: left;
+  font-weight: 500;
+  opacity: 0.55;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-color) 16%, transparent);
+  padding-bottom: 3px;
+}
+
+.itemsTable td {
+  padding: 3px 4px 3px 0;
+  vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-color) 7%, transparent);
+}
+
+.itemsTable tbody tr:hover {
+  background: color-mix(in srgb, var(--color-blue) 12%, transparent);
+}
+
+.discountRow {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.quantityChip {
+  margin-left: 6px;
+  opacity: 0.6;
+}
+
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.chainRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border-left: 3px solid transparent;
+  background: color-mix(in srgb, var(--text-color) 5%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.chainRow[data-agreement="agree"] {
+  border-left-color: var(--color-green);
+}
+
+.chainRow[data-agreement="near"] {
+  border-left-color: var(--color-yellow);
+}
+
+.chainRow[data-agreement="disagree"] {
+  border-left-color: var(--color-red, #e5484d);
+  background: color-mix(in srgb, var(--color-red, #e5484d) 10%, transparent);
+}
+
+.chainRow[data-agreement="unknown"] {
+  border-left-color: color-mix(in srgb, var(--text-color) 25%, transparent);
+  opacity: 0.6;
+}
+
+.chainLabel {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.chainValue {
+  font-weight: 600;
+}
+
+.chainDelta {
+  font-size: 11px;
+  opacity: 0.7;
+  min-width: 62px;
+  text-align: right;
+}
+
+.deltaLine {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--text-color) 14%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+.reviewBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.noteInput {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--text-color) 20%, transparent);
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+}
+
+.reviewButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.confirmButton,
+.flagButton {
+  margin: 0;
+  flex: 1;
+  border-radius: 6px;
+  padding: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.confirmButton {
+  background: var(--color-green);
+  color: #fff;
+}
+
+.flagButton {
+  background: var(--color-red, #e5484d);
+  color: #fff;
+}
+
+.confirmButton:disabled,
+.flagButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.reviewLog {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reviewLog li {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: baseline;
+  opacity: 0.8;
+}
+
+.error {
+  padding: 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-red, #e5484d) 14%, transparent);
+  margin-bottom: 8px;
+}
+
+.empty {
+  padding: 24px;
+  opacity: 0.6;
+}

@@ -33,6 +33,18 @@ module.exports = (phase) => {
     config.rewrites = async function () {
       return [
         {
+          // DEV-ONLY review harness: the line_item_decode route is not
+          // deployed; portfolio/dev-harness/validation_shim.py serves it
+          // from the dev table instead.
+          source: "/api/line_item_decode",
+          destination: "http://127.0.0.1:8787/line_item_decode",
+        },
+        {
+          // DEV-ONLY /dev/validation workstation; same local shim.
+          source: "/api/validation/:path*",
+          destination: "http://127.0.0.1:8787/:path*",
+        },
+        {
           source: "/api/:path*",
           destination: "https://dev-api.tylernorlund.com/:path*",
         },

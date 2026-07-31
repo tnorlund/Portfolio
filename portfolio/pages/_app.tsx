@@ -60,6 +60,9 @@ class ErrorBoundary extends React.Component<
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
+  // /dev/* are local review harnesses, not site pages: they own the whole
+  // viewport and the site chrome only gets in the way.
+  const isDevHarness = router.pathname.startsWith("/dev/");
   const hasTrackedInitialPageView = useRef(false);
   // One QueryClient per app instance (not per render) so the cache survives
   // page navigations but is never shared across SSR requests
@@ -158,14 +161,18 @@ export default function App({ Component, pageProps }: AppProps) {
         <PerformanceProvider>
         <Suspense fallback={<div>Loading...</div>}>
           <div>
-            <header>
-              <h1>
-                <Link href="/">Tyler Norlund</Link>
-              </h1>
-            </header>
+            {isDevHarness ? null : (
+              <header>
+                <h1>
+                  <Link href="/">Tyler Norlund</Link>
+                </h1>
+              </header>
+            )}
             <Component {...pageProps} />
-            <ReaderInsight />
-            {process.env.NODE_ENV === "development" && <PerformanceOverlay />}
+            {isDevHarness ? null : <ReaderInsight />}
+            {process.env.NODE_ENV === "development" && !isDevHarness && (
+              <PerformanceOverlay />
+            )}
           </div>
         </Suspense>
         </PerformanceProvider>

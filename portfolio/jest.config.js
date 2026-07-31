@@ -28,6 +28,8 @@ const customJestConfig = {
     "!pages/_app.tsx", // App shell, hard to test
     "!pages/index.tsx", // Static page
     "!pages/receipt.tsx", // Large page component
+    "!pages/dev/**", // DEV-ONLY local review harness, never shipped
+    "!components/dev/**", // DEV-ONLY local review harness, never shipped
     "!components/ui/Figures/**", // Complex visualization components
     "!components/ui/animations/**", // Animation components
     "!components/layout/**", // Layout components
