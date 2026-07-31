@@ -1909,6 +1909,142 @@ WARNING: This WRITES to DynamoDB and is irreversible for that row.""",
                 "required": ["image_id", "receipt_id", "section_type"],
             },
         ),
+        Tool(
+            name="get_receipt_line_items",
+            description="""Diagnostic view of a receipt's decoded line items.
+
+Returns the RECEIPT_LINE_ITEM rows the deterministic geometric extractor
+wrote for this receipt (name, price, quantity, unit_price, is_discount,
+line_ids, name_quality, reconciliation_status, extractor_version), the
+summary baseline figures (subtotal / tax / grand_total / merchant_name),
+items_sum (sum of non-discount item prices, matching reconcile()), and
+delta = items_sum - baseline, where baseline is the printed subtotal,
+else grand_total - tax. Also returns the ITEMS section's line_ids so
+you can see which lines the extractor was allowed to read.
+
+Use this FIRST when investigating a reconciliation mismatch: it shows
+what was decoded versus what the printed baseline says. Follow up with
+get_receipt (line text) to find priced lines outside the zone, then
+extend_items_section to repair the boundary.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
+        Tool(
+            name="extend_items_section",
+            description="""Arithmetic-VERIFIED extension of the ITEMS section.
+
+Simulates adding add_line_ids to the receipt's ITEMS section by running
+the real geometric extractor (receipt_upload.line_items.geometry) over
+both the current zone and the extended zone, reconciling each against
+the summary baseline. The extension is applied ONLY when BOTH hold:
+  1. |delta| strictly shrinks (delta = non-discount item sum minus
+     baseline), and
+  2. reconciliation status improves (mismatch -> near/match, or
+     near -> match).
+Otherwise the tool refuses and returns both evaluations.
+
+Defaults to dry_run=true (report only). With dry_run=false it updates
+the ITEMS ReceiptSection line_ids, PRESERVING its validation_status (a
+reconciliation-verified extension never demotes VALID), then rewrites
+the receipt summary with a fresh timestamp_computed so the stream stage
+regenerates the RECEIPT_LINE_ITEM rows automatically.
+
+This is the guarded repair path for zone-gap shortfall mismatches:
+real priced lines exist but the ITEMS zone does not reach them.
+
+WARNING: with dry_run=false this WRITES to DynamoDB (section update +
+summary rewrite) and triggers async line-item regeneration.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "add_line_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "minItems": 1,
+                        "description": (
+                            "Line IDs to add to the ITEMS section"
+                        ),
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": (
+                            "true (default): evaluate only. false: apply "
+                            "when the arithmetic guard passes."
+                        ),
+                    },
+                },
+                "required": ["image_id", "receipt_id", "add_line_ids"],
+            },
+        ),
+        Tool(
+            name="list_reconciliation_worklist",
+            description="""Queue of receipts whose line items fail reconciliation.
+
+Scans RECEIPT_LINE_ITEM rows, groups them by receipt, and keeps the
+receipts whose receipt-level status matches `status` (a receipt is
+"mismatch" when any of its items is mismatch, etc.). Optionally filters
+by case-insensitive merchant substring. For each receipt it returns
+image_id, receipt_id, merchant, item count, items_sum (non-discount),
+subtotal (the reconcile baseline: printed subtotal, else
+grand_total - tax) and delta — sorted by |delta| descending, so the
+worst arithmetic failures come first.
+
+Use this to build a repair queue, then get_receipt_line_items on each
+receipt to diagnose, and extend_items_section to fix zone-gap cases.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "merchant_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional case-insensitive merchant substring "
+                            "filter"
+                        ),
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "mismatch",
+                            "near",
+                            "match",
+                            "no-baseline",
+                        ],
+                        "default": "mismatch",
+                        "description": (
+                            "Receipt-level reconciliation status to list"
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 25,
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": "Max receipts to return",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -2142,6 +2278,27 @@ async def call_tool(
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 section_type=arguments["section_type"],
+            )
+        elif name == "get_receipt_line_items":
+            result = await get_receipt_line_items_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+            )
+        elif name == "extend_items_section":
+            result = await extend_items_section_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                add_line_ids=arguments["add_line_ids"],
+                dry_run=arguments.get("dry_run", True),
+            )
+        elif name == "list_reconciliation_worklist":
+            result = await list_reconciliation_worklist_impl(
+                dynamo_client,
+                merchant_name=arguments.get("merchant_name"),
+                status=arguments.get("status", "mismatch"),
+                limit=arguments.get("limit", 25),
             )
         elif name == "list_training_jobs":
             result = await list_training_jobs_impl(
@@ -4537,6 +4694,554 @@ async def delete_receipt_section_impl(
 
     except Exception as e:
         logger.exception("Error deleting receipt section")
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Line-item reconciliation tools — deterministic extraction diagnostics
+# plus arithmetic-verified ITEMS-section repair. The extraction/reconcile
+# logic is imported from receipt_upload.line_items.geometry (the same code
+# the ingest stream runs), so what these tools simulate is exactly what
+# production recomputes after a summary rewrite.
+# ---------------------------------------------------------------------------
+
+# Receipt-level severity used to roll item statuses up to one receipt
+# status (worst wins) in the worklist.
+_RECON_SEVERITY = {"match": 0, "near": 1, "no-baseline": 2, "mismatch": 3}
+
+
+def _extraction_words(details) -> list[dict]:
+    """ReceiptWord entities -> word dicts the geometric extractor eats.
+
+    Mirrors scripts/extract_line_items.fetch_receipt_records: line_id,
+    word_id, text, x, y_mid (= bbox y + height/2), h — all in the stored
+    receipt-normalized coordinate space.
+    """
+    words: list[dict] = []
+    for word in details.words or []:
+        bb = word.bounding_box or {}
+        try:
+            words.append(
+                {
+                    "line_id": int(word.line_id),
+                    "word_id": int(word.word_id),
+                    "text": str(word.text or ""),
+                    "x": float(bb.get("x", 0)),
+                    "y_mid": float(bb.get("y", 0))
+                    + float(bb.get("height", 0)) / 2,
+                    "h": float(bb.get("height", 0)),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return words
+
+
+def _summary_baseline(record) -> tuple[dict, Optional[float]]:
+    """ReceiptSummaryRecord -> (reconcile() summary dict, baseline).
+
+    Baseline mirrors receipt_upload.line_items.geometry.reconcile: the
+    printed subtotal, else grand_total - tax; None when unusable.
+    """
+    summary = {
+        "subtotal": record.subtotal,
+        "grand_total": record.grand_total,
+        "tax": record.tax,
+    }
+    baseline = record.subtotal
+    if baseline is None and record.grand_total is not None:
+        baseline = record.grand_total - (record.tax or 0.0)
+    if baseline is not None and baseline <= 0:
+        baseline = None
+    return summary, baseline
+
+
+def _evaluate_items_zone(words: list[dict], summary: dict, line_ids) -> dict:
+    """Run the real extractor over a line set and reconcile.
+
+    Discounts are excluded from the sum, matching the stream stage and
+    scripts/repair_item_sections.evaluate.
+    """
+    from receipt_upload.line_items.geometry import extract_items, reconcile
+
+    items, collapsed = extract_items(words, set(line_ids))
+    status, items_sum, baseline = reconcile(
+        [x for x in items if not x["is_discount"]], summary
+    )
+    delta = (
+        round(items_sum - baseline, 2)
+        if items_sum is not None and baseline is not None
+        else None
+    )
+    return {
+        "status": status,
+        "items_sum": items_sum,
+        "baseline": baseline,
+        "delta": delta,
+        "n_items": len(items),
+        "collapsed_banding": collapsed,
+    }
+
+
+async def get_receipt_line_items_impl(
+    dynamo_client, image_id: str, receipt_id: int
+) -> dict:
+    """Diagnostic view: decoded line items vs the summary baseline."""
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    try:
+        line_items = dynamo_client.get_receipt_line_items_from_receipt(
+            image_id, receipt_id
+        )
+
+        try:
+            record = dynamo_client.get_receipt_summary(image_id, receipt_id)
+        except EntityNotFoundError:
+            record = None
+
+        items_section_line_ids = None
+        items_section_status = None
+        try:
+            sections = dynamo_client.get_receipt_sections_from_receipt(
+                image_id, receipt_id
+            )
+        except EntityNotFoundError:
+            sections = []
+        for section in sections or []:
+            if section.section_type == "ITEMS":
+                items_section_line_ids = sorted(
+                    int(x) for x in section.line_ids or []
+                )
+                items_section_status = section.validation_status or "NONE"
+                break
+
+        items = [
+            {
+                "item_index": li.item_index,
+                "name": li.name,
+                "price": float(li.price),
+                "quantity": li.quantity,
+                "unit_price": li.unit_price,
+                "is_discount": li.is_discount,
+                "line_ids": li.line_ids,
+                "name_quality": li.name_quality,
+                "reconciliation_status": li.reconciliation_status,
+                "extractor_version": li.extractor_version,
+            }
+            for li in line_items
+        ]
+        # Discounts excluded from the sum, matching reconcile()'s callers
+        # (the stream stage and repair_item_sections.evaluate).
+        items_sum = round(
+            sum(float(li.price) for li in line_items if not li.is_discount),
+            2,
+        )
+
+        summary = None
+        baseline = None
+        if record is not None:
+            figures, baseline = _summary_baseline(record)
+            summary = {**figures, "merchant_name": record.merchant_name}
+        delta = (
+            round(items_sum - baseline, 2) if baseline is not None else None
+        )
+
+        statuses = {
+            li.reconciliation_status
+            for li in line_items
+            if li.reconciliation_status
+        }
+        receipt_status = (
+            max(statuses, key=lambda s: _RECON_SEVERITY.get(s, -1))
+            if statuses
+            else None
+        )
+
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "item_count": len(items),
+            "items": items,
+            "summary": summary,
+            "items_sum": items_sum,
+            "delta": delta,
+            "reconciliation_status": receipt_status,
+            "items_section_line_ids": items_section_line_ids,
+            "items_section_status": items_section_status,
+        }
+
+    except Exception as e:
+        logger.exception("Error getting receipt line items")
+        return {"error": str(e)}
+
+
+async def extend_items_section_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    add_line_ids: list,
+    dry_run: bool = True,
+) -> dict:
+    """Extend the ITEMS section, gated on reconciliation arithmetic.
+
+    Apply happens ONLY when the extended zone strictly shrinks |delta|
+    AND improves the reconciliation status (mismatch -> near/match, or
+    near -> match). On apply, the section keeps its validation_status (a
+    verified extension never demotes VALID — the repair_item_sections
+    lesson) and the receipt summary is rewritten with a fresh
+    timestamp_computed so the stream stage regenerates line items.
+    """
+    from datetime import datetime, timezone
+
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+    from receipt_dynamo.entities.receipt_section import ReceiptSection
+    from receipt_dynamo.entities.receipt_summary_record import (
+        ReceiptSummaryRecord,
+    )
+
+    # Guard ranking (strict improvement required to apply). Distinct from
+    # _RECON_SEVERITY: "no-baseline" is never rankable here.
+    guard_rank = {"match": 0, "near": 1, "mismatch": 2}
+
+    try:
+        try:
+            added = sorted({int(lid) for lid in (add_line_ids or [])})
+        except (TypeError, ValueError):
+            return {"error": "add_line_ids must be a list of integers"}
+        if not added:
+            return {
+                "error": "add_line_ids must be a non-empty list of integers"
+            }
+
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} not found for image {image_id}"
+                )
+            }
+
+        receipt_line_ids = {line.line_id for line in details.lines or []}
+        unknown = sorted(set(added) - receipt_line_ids)
+        if unknown:
+            return {
+                "error": (
+                    f"line_ids {unknown} do not exist on receipt "
+                    f"{receipt_id} (image {image_id})"
+                )
+            }
+
+        try:
+            sections = dynamo_client.get_receipt_sections_from_receipt(
+                image_id, receipt_id
+            )
+        except EntityNotFoundError:
+            sections = []
+        items_section = next(
+            (s for s in sections or [] if s.section_type == "ITEMS"), None
+        )
+        if items_section is None:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} (image {image_id}) has no ITEMS "
+                    "section to extend. Use create_receipt_section instead."
+                )
+            }
+
+        current_lids = sorted(int(x) for x in items_section.line_ids or [])
+        already = sorted(set(added) & set(current_lids))
+        if already:
+            return {
+                "error": (
+                    f"line_ids {already} are already in the ITEMS section"
+                )
+            }
+
+        # Lines claimed by another section are exactly how summary/payment
+        # rows leak into ITEMS — refuse rather than double-claim them.
+        for section in sections or []:
+            if section.section_type == "ITEMS":
+                continue
+            overlap = sorted(
+                set(added) & {int(x) for x in section.line_ids or []}
+            )
+            if overlap:
+                return {
+                    "error": (
+                        f"line_ids {overlap} already belong to section "
+                        f"{section.section_type}; refusing to double-claim"
+                    )
+                }
+
+        try:
+            record = dynamo_client.get_receipt_summary(image_id, receipt_id)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    "No RECEIPT_SUMMARY baseline for this receipt; an "
+                    "extension cannot be arithmetic-verified. Refusing."
+                )
+            }
+        summary, baseline = _summary_baseline(record)
+        if baseline is None:
+            return {
+                "error": (
+                    "Summary has no usable baseline (no subtotal and no "
+                    "grand_total); an extension cannot be verified."
+                )
+            }
+
+        # When the section is row-anchored, keep the anchor consistent:
+        # every line must be covered by a ReceiptRow, and rows are the
+        # authoritative grouping (widen line_ids to the covering union).
+        extended_lids = sorted(set(current_lids) | set(added))
+        final_lids = extended_lids
+        new_row_ids = items_section.row_ids
+        if items_section.row_ids is not None:
+            rows = (
+                dynamo_client.get_receipt_rows_from_receipt(
+                    image_id, receipt_id
+                )
+                or []
+            )
+            covering = [
+                r
+                for r in rows
+                if set(int(x) for x in r.line_ids) & set(extended_lids)
+            ]
+            union: set[int] = set()
+            for r in covering:
+                union |= {int(x) for x in r.line_ids}
+            uncovered = sorted(set(extended_lids) - union)
+            if uncovered:
+                return {
+                    "error": (
+                        f"line_ids {uncovered} map to no ReceiptRow; "
+                        "refusing to break the section's row anchor"
+                    )
+                }
+            new_row_ids = sorted({int(r.row_id) for r in covering})
+            if union != set(extended_lids):
+                final_lids = sorted(union)
+
+        words = _extraction_words(details)
+        before = _evaluate_items_zone(words, summary, current_lids)
+        after = _evaluate_items_zone(words, summary, final_lids)
+
+        result: dict[str, Any] = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "added_line_ids": added,
+            "current_line_ids": current_lids,
+            "extended_line_ids": final_lids,
+            "before": before,
+            "after": after,
+            "dry_run": dry_run,
+            "applied": False,
+        }
+
+        if before["status"] == "match":
+            result["verified"] = False
+            result["refusal"] = (
+                "Current ITEMS zone already reconciles (match); nothing "
+                "to repair."
+            )
+            return result
+        if (
+            before["status"] not in guard_rank
+            or after["status"] not in guard_rank
+            or before["delta"] is None
+            or after["delta"] is None
+        ):
+            result["verified"] = False
+            result["refusal"] = (
+                "Cannot verify the extension: reconciliation did not "
+                "produce comparable deltas for both zones."
+            )
+            return result
+
+        shrinks = abs(after["delta"]) < abs(before["delta"])
+        improves = guard_rank[after["status"]] < guard_rank[before["status"]]
+        if not (shrinks and improves):
+            result["verified"] = False
+            result["refusal"] = (
+                "Arithmetic guard failed: extension must strictly shrink "
+                f"|delta| (before {before['delta']}, after "
+                f"{after['delta']}) AND improve status (before "
+                f"{before['status']!r}, after {after['status']!r})."
+            )
+            return result
+
+        result["verified"] = True
+        if dry_run:
+            result["note"] = (
+                "Arithmetic guard passed; re-run with dry_run=false to "
+                "apply."
+            )
+            return result
+
+        model_source = items_section.model_source or ""
+        if "mcp-extend-items-v1" not in model_source:
+            model_source = (
+                f"{model_source}+mcp-extend-items-v1"
+                if model_source
+                else "mcp-extend-items-v1"
+            )
+        updated = ReceiptSection(
+            receipt_id=items_section.receipt_id,
+            image_id=items_section.image_id,
+            section_type="ITEMS",
+            line_ids=final_lids,
+            created_at=items_section.created_at,
+            confidence=items_section.confidence,
+            model_source=model_source,
+            # Preserve the prior status: the extension is reconciliation-
+            # verified, and demoting VALID would hide the section from the
+            # extractor's VALID gate (the repair_item_sections lesson).
+            validation_status=items_section.validation_status,
+            row_ids=new_row_ids,
+        )
+        dynamo_client.update_receipt_section(updated)
+
+        # Rewrite the summary with a fresh timestamp_computed so the
+        # stream stage regenerates the receipt's line items over the
+        # extended section.
+        refreshed = ReceiptSummaryRecord(
+            summary=record.summary,
+            timestamp_computed=datetime.now(timezone.utc).isoformat(),
+        )
+        dynamo_client.update_receipt_summary(refreshed)
+
+        result["applied"] = True
+        result["summary_rewritten"] = True
+        result["validation_status"] = items_section.validation_status or "NONE"
+        result["model_source"] = model_source
+        return result
+
+    except Exception as e:
+        logger.exception("Error extending items section")
+        return {"error": str(e)}
+
+
+async def list_reconciliation_worklist_impl(
+    dynamo_client,
+    merchant_name: Optional[str] = None,
+    status: str = "mismatch",
+    limit: int = 25,
+) -> dict:
+    """Queue of receipts failing reconciliation, worst |delta| first."""
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    page_size = 1000
+    max_pages = 25  # scan cap: 25k RECEIPT_LINE_ITEM rows
+    max_summary_fetches = 300
+
+    try:
+        normalized_status = str(status or "mismatch").strip().lower()
+        if normalized_status not in _RECON_SEVERITY:
+            return {
+                "error": (
+                    f"Invalid status {status!r}; expected one of "
+                    f"{sorted(_RECON_SEVERITY)}"
+                )
+            }
+        try:
+            limit = max(1, min(int(limit), 100))
+        except (TypeError, ValueError):
+            return {"error": "limit must be an integer"}
+
+        receipts: dict[tuple, dict] = {}
+        last_key = None
+        pages = 0
+        scan_truncated = False
+        while True:
+            batch, last_key = dynamo_client.list_receipt_line_items(
+                limit=page_size, last_evaluated_key=last_key
+            )
+            pages += 1
+            for li in batch:
+                bucket = receipts.setdefault(
+                    (li.image_id, li.receipt_id),
+                    {
+                        "merchant": None,
+                        "items": 0,
+                        "items_sum": 0.0,
+                        "statuses": set(),
+                    },
+                )
+                bucket["items"] += 1
+                if not li.is_discount:
+                    bucket["items_sum"] += float(li.price)
+                if li.merchant_name and not bucket["merchant"]:
+                    bucket["merchant"] = li.merchant_name
+                if li.reconciliation_status:
+                    bucket["statuses"].add(li.reconciliation_status)
+            if last_key is None:
+                break
+            if pages >= max_pages:
+                scan_truncated = True
+                break
+
+        needle = (merchant_name or "").strip().lower()
+        candidates = []
+        for (img, rid), bucket in receipts.items():
+            statuses = bucket["statuses"]
+            receipt_status = (
+                max(statuses, key=lambda s: _RECON_SEVERITY[s])
+                if statuses
+                else "no-baseline"
+            )
+            if receipt_status != normalized_status:
+                continue
+            if needle and needle not in (bucket["merchant"] or "").lower():
+                continue
+            candidates.append(
+                {
+                    "image_id": img,
+                    "receipt_id": rid,
+                    "merchant": bucket["merchant"],
+                    "items": bucket["items"],
+                    "items_sum": round(bucket["items_sum"], 2),
+                }
+            )
+
+        for i, cand in enumerate(candidates):
+            baseline = None
+            if i < max_summary_fetches:
+                try:
+                    record = dynamo_client.get_receipt_summary(
+                        cand["image_id"], cand["receipt_id"]
+                    )
+                    _, baseline = _summary_baseline(record)
+                except EntityNotFoundError:
+                    baseline = None
+            cand["subtotal"] = baseline
+            cand["delta"] = (
+                round(cand["items_sum"] - baseline, 2)
+                if baseline is not None
+                else None
+            )
+
+        candidates.sort(
+            key=lambda c: (
+                c["delta"] is None,
+                -abs(c["delta"]) if c["delta"] is not None else 0.0,
+            )
+        )
+
+        return {
+            "status": normalized_status,
+            "merchant_filter": merchant_name,
+            "receipts_scanned": len(receipts),
+            "matching": len(candidates),
+            "worklist": candidates[:limit],
+            "scan_truncated": scan_truncated,
+            "summaries_truncated": len(candidates) > max_summary_fetches,
+        }
+
+    except Exception as e:
+        logger.exception("Error listing reconciliation worklist")
         return {"error": str(e)}
 
 
