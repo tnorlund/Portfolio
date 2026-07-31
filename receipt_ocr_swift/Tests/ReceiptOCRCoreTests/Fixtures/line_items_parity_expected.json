@@ -1,0 +1,2909 @@
+[
+ {
+  "image_id": "b50ba18b-7511-4a85-87cd-74aa5e147e10",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "Rockenwagner French Loaf",
+    "price": 4.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     11
+    ]
+   },
+   {
+    "name": "Clorox Disinfecting Bleac...",
+    "price": 8.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     10
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "165b9d15-9fa1-4a3c-a568-1b4e98170ab5",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "i: IFS 3 LB.",
+    "price": 7.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     45,
+     47,
+     48
+    ]
+   },
+   {
+    "name": "E 1391546 29827 AHI BAGEL TUNA CH",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     35,
+     37,
+     38,
+     39,
+     40,
+     41,
+     42,
+     43,
+     44
+    ]
+   },
+   {
+    "name": "1113319 15' S COLICORNIA MONDELUKE",
+    "price": 1.89,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     33,
+     34,
+     35,
+     36
+    ]
+   },
+   {
+    "name": "003 137 003 STRAWBERRIES SEAWEED SALJ",
+    "price": 1.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     26,
+     29,
+     30,
+     31,
+     32
+    ]
+   },
+   {
+    "name": "or 57554 '917 BLUEBERRI! S&P PISTACH",
+    "price": 5.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     22,
+     24,
+     25,
+     26,
+     28
+    ]
+   },
+   {
+    "name": "709616 25595 COCKTAIL BUFALA MOZZ TOM",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     18,
+     20,
+     21,
+     22,
+     23
+    ]
+   },
+   {
+    "name": "1055663 1131563 CHICKN HNY RSTD SALAD MIX",
+    "price": 8.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     16,
+     17,
+     18,
+     19
+    ]
+   },
+   {
+    "name": "10'8249 ORG HORIZON ATAULFO",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     13,
+     14,
+     15
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "5cef2e7e-baad-4c29-9e5f-6a3d5ec20885",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "E 33977 BEEF FLANK",
+    "price": 46.28,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     11,
+     15
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "659623a5-5989-4e61-b153-9cda1331cc8e",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "BUTTER CHARDONNAY",
+    "price": 17.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     37,
+     40
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "2360d36e-8211-46c4-9bc8-106766d80038",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "",
+    "price": 6.8,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     19
+    ]
+   },
+   {
+    "name": "Reg Chocolate Shk",
+    "price": 3.05,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     18
+    ]
+   },
+   {
+    "name": "Hamburger",
+    "price": 3.75,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     7,
+     17
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "6b4b3394-cb57-4ce6-9782-751563165946",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "Animal Fry",
+    "price": 4.75,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     21
+    ]
+   },
+   {
+    "name": "Meat Patty",
+    "price": 9.75,
+    "quantity": 5.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     12,
+     20
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "1f68d3a7-6835-4e4d-845c-bab6c4eb8280",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "Ponzu Sauce",
+    "price": 1.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     23,
+     33
+    ]
+   },
+   {
+    "name": "Steamed White Rice",
+    "price": 3.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     22,
+     32
+    ]
+   },
+   {
+    "name": "Albacore Sushi",
+    "price": 10.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     7,
+     21,
+     31
+    ]
+   },
+   {
+    "name": "Japanese Scallop Sushi",
+    "price": 12.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     6,
+     20,
+     30
+    ]
+   },
+   {
+    "name": "Mango Sticky Rice",
+    "price": 14.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     5,
+     19,
+     29
+    ]
+   },
+   {
+    "name": "Crispy Pork Belly Basil",
+    "price": 20.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     17,
+     28
+    ]
+   },
+   {
+    "name": "Large Bottled Beer",
+    "price": 13.0,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     14,
+     27
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "abb331f5-5fdb-4868-9e63-331a385dc012",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "OLIPOP SPRKL TONIC",
+    "price": 1.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     12
+    ]
+   },
+   {
+    "name": "OL IPOP GRAPE",
+    "price": 2.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     7,
+     11
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "887079fa-bb3e-480a-8202-e759afe63f1a",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "BLSL CHICKEN THIGHS",
+    "price": 8.76,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     17,
+     18
+    ]
+   },
+   {
+    "name": "ORG A2/A2 6% FAT MLK",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     15
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "c2bb8fff-fc28-4c2d-ab98-13300c3b4c2e",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "SOUR CREAM",
+    "price": 2.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     19,
+     20
+    ]
+   },
+   {
+    "name": "BROCCOLI FLORETS",
+    "price": 3.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     17
+    ]
+   },
+   {
+    "name": "1LB BAG BABY CARROT",
+    "price": 1.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     16
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "c2c5aadf-58e8-4276-95ae-0f46039946da",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "LARGE ALFRESCO EGGS",
+    "price": 10.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     22,
+     23
+    ]
+   },
+   {
+    "name": "ORGANIC GREEN ONIONS",
+    "price": 1.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     17,
+     20
+    ]
+   },
+   {
+    "name": "ORG GINGER ROOT",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     19
+    ]
+   },
+   {
+    "name": "ORG 3 CNT GARLIC",
+    "price": 2.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     18
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "5dcf582e-cdfe-40f8-89f4-53b1cf3fc893",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "GUAVA NECTAR JUICE ORG 3",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     18,
+     27
+    ]
+   },
+   {
+    "name": "MANGO NECTAR JUICE ORG 6",
+    "price": 5.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     17,
+     26
+    ]
+   },
+   {
+    "name": "MULTI-FLORAL AND CLOVER",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     25
+    ]
+   },
+   {
+    "name": "SUPER SPINACH SALAD",
+    "price": 4.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     24
+    ]
+   },
+   {
+    "name": "SPICY SPUDS",
+    "price": 8.98,
+    "quantity": 2.0,
+    "unit_price": 4.49,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     23
+    ]
+   },
+   {
+    "name": "SALAD CHICKEN APPLE WALD",
+    "price": 5.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     22
+    ]
+   },
+   {
+    "name": "EGG BITES UNEXPECTED CHE",
+    "price": 7.58,
+    "quantity": 2.0,
+    "unit_price": 3.79,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     21
+    ]
+   },
+   {
+    "name": "MILK QUART WHOLE",
+    "price": 1.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     20
+    ]
+   },
+   {
+    "name": "HALF & HALF PINT",
+    "price": 1.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     19
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "6d820865-13fd-4b9f-b2e0-6b81e6a2fff2",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "004100019 TARGET BAG P",
+    "price": 0.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     34
+    ]
+   },
+   {
+    "name": "Bottle Deposit Fee",
+    "price": 1.2,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     33
+    ]
+   },
+   {
+    "name": "203600096 GG WATER NF P",
+    "price": 3.59,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     32
+    ]
+   },
+   {
+    "name": "210100025 GG BACON NF",
+    "price": 1.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     29,
+     30,
+     31
+    ]
+   },
+   {
+    "name": "211350249 CUT FRUIT NF",
+    "price": 5.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     26,
+     28
+    ]
+   },
+   {
+    "name": "266080008 BERRIES NF",
+    "price": 1.89,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     24,
+     25,
+     27
+    ]
+   },
+   {
+    "name": "266080007 BERRIES NF",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     22,
+     23
+    ]
+   },
+   {
+    "name": "266085239 BERRIES NF",
+    "price": 5.69,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     20,
+     21
+    ]
+   },
+   {
+    "name": "266087500 BERRIES NF",
+    "price": 6.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     7,
+     18,
+     19
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "7ca97b51-7369-4321-bd01-0211f2bf2557",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "261050176 GHIRARDELLI NF",
+    "price": 4.69,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     11,
+     16,
+     17
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "1bfb07b7-aefd-4579-b721-df597471b96b",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.64,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     72,
+     73,
+     74
+    ]
+   },
+   {
+    "name": "1-5/8\" COARSE DRYWALL SCREW 5 LB",
+    "price": 25.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     68,
+     69,
+     70,
+     71
+    ]
+   },
+   {
+    "name": "1-5/8\" FINE DRYWALL SCREW 1 LB",
+    "price": 5.97,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     65,
+     66,
+     67
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -1.27,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     61,
+     62,
+     63,
+     64
+    ]
+   },
+   {
+    "name": "20LB QUIKRETE WATER-STOP CEMENT",
+    "price": 25.45,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     58,
+     59,
+     60
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.12,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     53,
+     54,
+     55,
+     56,
+     57
+    ]
+   },
+   {
+    "name": "------Pro Xtra Preferred Pricin",
+    "price": 15.94,
+    "quantity": 2.0,
+    "unit_price": 7.97,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     49,
+     50,
+     51,
+     52
+    ]
+   },
+   {
+    "name": "",
+    "price": 50.94,
+    "quantity": 3.0,
+    "unit_price": 16.98,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     45,
+     46
+    ]
+   },
+   {
+    "name": "820909095569 CAULK GUN =A>",
+    "price": 19.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     40,
+     41
+    ]
+   },
+   {
+    "name": "037083014143 TITEBOND3 16 <A>",
+    "price": 9.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     37,
+     38
+    ]
+   },
+   {
+    "name": "DYNAFLEX ULTRA 10.1 OZ BLACK ADVANCE",
+    "price": 17.56,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     34,
+     35,
+     36
+    ]
+   },
+   {
+    "name": "070798182202 D ULTRA 10.1 <A=",
+    "price": 31.02,
+    "quantity": 2.0,
+    "unit_price": 15.51,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     30,
+     31,
+     32,
+     33
+    ]
+   },
+   {
+    "name": "5/8INX10FT L-METAL TRIM",
+    "price": 22.86,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     25,
+     26,
+     27
+    ]
+   },
+   {
+    "name": "2 1/2IN X 10FT STEEL TRACK 25 GA",
+    "price": 45.84,
+    "quantity": 3.0,
+    "unit_price": 15.28,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     21,
+     22,
+     23,
+     24
+    ]
+   },
+   {
+    "name": "751361004144 10'-25GA STD <A=",
+    "price": 14.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     17,
+     18,
+     19,
+     20
+    ]
+   },
+   {
+    "name": "000516315018 JT COMPOUND <A>",
+    "price": 12.52,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     15
+    ]
+   },
+   {
+    "name": "HW RED DOT ALL PURP JC BOX 3.5 GAL",
+    "price": 29.22,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     12,
+     13
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "879b0fa6-c951-461b-a937-1bee74190b0a",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.6,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     70,
+     71,
+     86
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 7.342,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     68
+    ]
+   },
+   {
+    "name": "3/4\" COP EL 45 DEG CXC",
+    "price": 7.72,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     66,
+     67,
+     69
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 4.002,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     64,
+     65
+    ]
+   },
+   {
+    "name": "1/2\" COP EL 45 DEG CXC",
+    "price": 4.22,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     61,
+     62,
+     63
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.53,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     56,
+     57,
+     58,
+     59,
+     60
+    ]
+   },
+   {
+    "name": "MKE MX4 SDS+ 5/8\" X 8\" DRILL BIT",
+    "price": 17.77,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     53,
+     54,
+     55
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.9,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     50,
+     51,
+     52
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 44.013,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     48
+    ]
+   },
+   {
+    "name": "VERSABOND BONDING MORTAR-WHITE 50LB",
+    "price": 44.91,
+    "quantity": 3.0,
+    "unit_price": 14.97,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     45,
+     46,
+     47,
+     49
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.82,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     40,
+     41,
+     42,
+     43,
+     44
+    ]
+   },
+   {
+    "name": "1X5-8FT PRIMED FJ S4S BOARD",
+    "price": 10.97,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     37,
+     38,
+     39
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 29.305,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     36
+    ]
+   },
+   {
+    "name": ". 719IN X 1.5IN X 96IN PRMD FJ BOARD",
+    "price": 29.9,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     32,
+     33,
+     34,
+     35
+    ]
+   },
+   {
+    "name": "000516311010 LT COMPOUND <A>",
+    "price": 14.61,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     28,
+     29,
+     30,
+     31
+    ]
+   },
+   {
+    "name": "CARLON NEW WORK 3G 49CU ADJUSTABLE",
+    "price": 13.4,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     25,
+     26,
+     27
+    ]
+   },
+   {
+    "name": "000516221654 20 FAST SET <A>",
+    "price": 15.51,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     21,
+     22,
+     23,
+     24
+    ]
+   },
+   {
+    "name": "CA LUMBER FEE",
+    "price": 0.0,
+    "quantity": 5.0,
+    "unit_price": 0.05,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     18,
+     19,
+     20
+    ]
+   },
+   {
+    "name": "0.750INX23. 75INX97IN WHT MEL",
+    "price": 38.97,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     9,
+     10
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "ccfbeaca-6f40-4e9f-ba5e-6a30a643f0aa",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "",
+    "price": 23.48,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     125
+    ]
+   },
+   {
+    "name": "Pricing",
+    "price": -0.26,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     122,
+     124
+    ]
+   },
+   {
+    "name": "IF",
+    "price": 8.502,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     121
+    ]
+   },
+   {
+    "name": "OUTY 5 GALLON BUCKET GRID",
+    "price": 8.76,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     120,
+     123
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.54,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     115,
+     116,
+     117,
+     118,
+     119
+    ]
+   },
+   {
+    "name": "077089375060 6X3/4 IN MIN =A=",
+    "price": 6.37,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     111,
+     112,
+     113,
+     114
+    ]
+   },
+   {
+    "name": "BETTER 6 X 3/8 IN KNIT MINI GPK",
+    "price": 11.54,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     108,
+     109,
+     110
+    ]
+   },
+   {
+    "name": "DW Backwall BOGO",
+    "price": -199.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     104,
+     105,
+     106,
+     107
+    ]
+   },
+   {
+    "name": "885911677202 20-VOLT MAX <A>",
+    "price": 199.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     100,
+     101,
+     102,
+     103
+    ]
+   },
+   {
+    "name": "885911881135 20-VOLT MAX <A,S\u00bb",
+    "price": 299.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     97,
+     98,
+     99
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -1.96,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     95,
+     96
+    ]
+   },
+   {
+    "name": "1X5-8FT PRIMED FJ S4S BOARD",
+    "price": 21.94,
+    "quantity": 2.0,
+    "unit_price": 10.97,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     91,
+     92,
+     94
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 72.328,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     89,
+     90
+    ]
+   },
+   {
+    "name": "719IN X 3.5IN X 96IN PRMD FJ",
+    "price": 73.84,
+    "quantity": 8.0,
+    "unit_price": 9.23,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     86,
+     87,
+     88
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -7.89,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     81,
+     82,
+     83,
+     84,
+     85
+    ]
+   },
+   {
+    "name": "052063061313 9 IN. DOWN S <A*",
+    "price": 44.97,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     77,
+     78,
+     79,
+     80
+    ]
+   },
+   {
+    "name": "052063059891 DOWNSPT ADPT <A>",
+    "price": 4.74,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     74,
+     75,
+     76
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 10.222,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     73
+    ]
+   },
+   {
+    "name": "3\" SEWER/DRAIN EL 90D D3034 PVC",
+    "price": 10.54,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     70,
+     71,
+     72
+    ]
+   },
+   {
+    "name": "MAX REFUND VALUE",
+    "price": 27.606,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     68,
+     69
+    ]
+   },
+   {
+    "name": "3\" SEWER/DRAIN EL 45D D3034 PVC",
+    "price": 28.44,
+    "quantity": 6.0,
+    "unit_price": 4.74,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     63,
+     64,
+     65,
+     66,
+     67
+    ]
+   },
+   {
+    "name": "052063402482 CHL COUPLG <A>",
+    "price": 5.47,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     57,
+     58,
+     59,
+     60,
+     61,
+     62
+    ]
+   },
+   {
+    "name": "Pro Xtra Preferred Pricing",
+    "price": -0.27,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     52,
+     53,
+     54,
+     55,
+     56
+    ]
+   },
+   {
+    "name": "887480310610 MACH SCR <A>",
+    "price": 1.38,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     46,
+     47,
+     48,
+     49,
+     50,
+     51
+    ]
+   },
+   {
+    "name": "811108037139 ASSORTED (YE <A>",
+    "price": 14.48,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     42,
+     43,
+     44,
+     45
+    ]
+   },
+   {
+    "name": "BEHR MULTI-PURP CAULK 10.1 OZ WHITE",
+    "price": 13.44,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     39,
+     40,
+     41
+    ]
+   },
+   {
+    "name": "047034115737 5 GA STR <A>",
+    "price": 4.27,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     35,
+     36,
+     37,
+     38
+    ]
+   },
+   {
+    "name": "NLP Savings",
+    "price": 0.5,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     33,
+     34
+    ]
+   },
+   {
+    "name": "084305355546 HOMER BUCKET <A>",
+    "price": 3.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     30,
+     31,
+     32
+    ]
+   },
+   {
+    "name": "NLP Savings",
+    "price": 0.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     25,
+     28,
+     29
+    ]
+   },
+   {
+    "name": "NLP Savings",
+    "price": 0.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     21,
+     22,
+     24
+    ]
+   },
+   {
+    "name": "CA LUMBER FEE",
+    "price": 200.1,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     19,
+     20,
+     23
+    ]
+   },
+   {
+    "name": "TRIM 31 IN CARDBOARD PAINT SHIELD",
+    "price": 1.96,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     16,
+     17,
+     18
+    ]
+   },
+   {
+    "name": "885911724890 20-VOLT MAX =A , Sa",
+    "price": 299.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     11,
+     12,
+     13,
+     14
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "291cfd80-5b29-428e-b650-5e4505c4cbd7",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "Onion Rings|LO]",
+    "price": 8.99,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     20,
+     21,
+     22,
+     25
+    ]
+   },
+   {
+    "name": "Uitimate Egg",
+    "price": 12.75,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     18,
+     19,
+     24
+    ]
+   },
+   {
+    "name": "ABC Burger[Beel!",
+    "price": 13.25,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     16,
+     17,
+     23
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "84bf7d03-b76f-419a-8579-cdea86fbb374",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "R-SALAD COMPLETE CAESAR",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     25
+    ]
+   },
+   {
+    "name": "SPICY SPUDS",
+    "price": 4.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     24
+    ]
+   },
+   {
+    "name": "SPICY SPUDS",
+    "price": 4.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     23
+    ]
+   },
+   {
+    "name": "R-ARUGULA LEMON BASIL CO",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     22
+    ]
+   },
+   {
+    "name": "BEANS GREEN ORGANIC 1LB",
+    "price": 3.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     21
+    ]
+   },
+   {
+    "name": "CHICKEN GYOZA",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     20
+    ]
+   },
+   {
+    "name": "CHICKEN GYOZA",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     19
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "01024cab-3c61-4aac-b1ec-e9ce56947fe3",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "Arnold Palmer",
+    "price": 3.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     17
+    ]
+   },
+   {
+    "name": "12 Naked Wings",
+    "price": 18.49,
+    "quantity": 12.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     13,
+     16
+    ]
+   },
+   {
+    "name": "Water (2",
+    "price": 0.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     15
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "6f2f1d08-af1e-4716-a26c-dea4c065ab62",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "79936653722 AMAZON",
+    "price": 50.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "78e5a740-8f66-495c-b4d3-2e1c40498995",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "1258700020 GLAD CLING WRAP",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     10,
+     14,
+     16
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "758cbedf-f1dd-4466-98ec-faf86e82d422",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "6164 1",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     18,
+     24,
+     27,
+     28
+    ]
+   },
+   {
+    "name": "6164 1",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     17,
+     23,
+     25,
+     26
+    ]
+   },
+   {
+    "name": "Item Uty Price Total",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     12,
+     13,
+     14,
+     16,
+     19,
+     20
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "9ed1103e-0b4e-4089-8fa4-6f29b6dc198b",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "6164 1",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     36,
+     37,
+     46,
+     58
+    ]
+   },
+   {
+    "name": "Hot Smoked Salmon Pepper",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     34,
+     35,
+     45,
+     57
+    ]
+   },
+   {
+    "name": "Hot Smoked Salmon Classic",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     30,
+     32,
+     33,
+     44,
+     56
+    ]
+   },
+   {
+    "name": "Hot Smoked Salmon Classic",
+    "price": 6.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     28,
+     29,
+     31,
+     43,
+     55
+    ]
+   },
+   {
+    "name": "Avocado Mash 8oz Tray",
+    "price": 3.97,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     25,
+     26,
+     27,
+     42,
+     54
+    ]
+   },
+   {
+    "name": "Avocado Mash 8oz Tray",
+    "price": 3.97,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     22,
+     23,
+     24,
+     41,
+     53
+    ]
+   },
+   {
+    "name": "Black Truffle Fiocchetti",
+    "price": 7.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     19,
+     20,
+     21,
+     40,
+     52
+    ]
+   },
+   {
+    "name": "Lobster Mac and Cheese 2c",
+    "price": 18.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     15,
+     16,
+     17,
+     18,
+     38,
+     51
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "fb588a3b-49ab-4ee7-accd-f1953b7378c3",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "Lobster Ravioli 12oz FW",
+    "price": 14.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     21,
+     28,
+     29,
+     37
+    ]
+   },
+   {
+    "name": "8129 1",
+    "price": 14.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     19,
+     26,
+     27,
+     36
+    ]
+   },
+   {
+    "name": "6255 1",
+    "price": 44.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     17,
+     24,
+     25,
+     35
+    ]
+   },
+   {
+    "name": "Item Qty Price Total",
+    "price": 44.98,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     13,
+     15,
+     22,
+     23,
+     33,
+     34
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "a7fef2ca-b84d-5405-a0f5-cbefe598a2dc",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "Tare Weight lb",
+    "price": 0.05,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9
+    ]
+   },
+   {
+    "name": "HOT BAR",
+    "price": 10.55,
+    "quantity": 0.88,
+    "unit_price": 11.99,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     5,
+     6,
+     7
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "0951426f-b7f9-5435-8569-7319cf0db1f4",
+  "receipt_id": 1,
+  "items": []
+ },
+ {
+  "image_id": "cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "CHALLAH MINI KNOTS",
+    "price": 5.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     61,
+     76,
+     100
+    ]
+   },
+   {
+    "name": "ORGANIC SOUR CREAM",
+    "price": 3.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     59,
+     75,
+     99
+    ]
+   },
+   {
+    "name": "ORG LRG GRADE EGGS",
+    "price": 11.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     58,
+     74,
+     98
+    ]
+   },
+   {
+    "name": "ORG A2/A2 6% FAT MLK",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     57,
+     73,
+     97
+    ]
+   },
+   {
+    "name": "KOREAN BBQ SAUCE",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     55,
+     72,
+     96
+    ]
+   },
+   {
+    "name": "*CRV FS 05",
+    "price": 0.1,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     52,
+     71
+    ]
+   },
+   {
+    "name": "100% COCONUT H20 WIT",
+    "price": 4.0,
+    "quantity": 2.0,
+    "unit_price": 2.0,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     50,
+     70,
+     95
+    ]
+   },
+   {
+    "name": "WHITE ONIONS",
+    "price": 1.59,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     46,
+     69,
+     94
+    ]
+   },
+   {
+    "name": "RED BELL PEPPERS",
+    "price": 3.0,
+    "quantity": 2.0,
+    "unit_price": 1.5,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     44,
+     68,
+     93
+    ]
+   },
+   {
+    "name": "ORGANIC GREEN ONIONS",
+    "price": 1.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     43,
+     67,
+     92
+    ]
+   },
+   {
+    "name": "ORG SLICED CRIMINI",
+    "price": 6.98,
+    "quantity": 2.0,
+    "unit_price": 3.49,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     41,
+     66,
+     91
+    ]
+   },
+   {
+    "name": "ORG GINGER ROOT",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     40,
+     65,
+     90
+    ]
+   },
+   {
+    "name": "ORG 2 LB CARROTS",
+    "price": 2.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     39,
+     64,
+     89
+    ]
+   },
+   {
+    "name": "JALAPENO PEPPERS",
+    "price": 1.0,
+    "quantity": 4.0,
+    "unit_price": 0.25,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     37,
+     63,
+     88
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "4d0bdfd5-4d5f-4c01-8f20-7f21090ab361",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "BRIOCHE BURGER BUNS",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     45,
+     57
+    ]
+   },
+   {
+    "name": "RAW MILK",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     43,
+     56
+    ]
+   },
+   {
+    "name": "SWEET CHILI SAUCE",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     41,
+     55
+    ]
+   },
+   {
+    "name": "SEEDLESS LEMONS BAG",
+    "price": 4.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     39,
+     54
+    ]
+   },
+   {
+    "name": "ORGANIC GREEN ONIONS",
+    "price": 1.5,
+    "quantity": 1.0,
+    "unit_price": 1.5,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     37,
+     53
+    ]
+   },
+   {
+    "name": "ORG GINGER ROOT",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     36,
+     52
+    ]
+   },
+   {
+    "name": "CRISPY ONIONS",
+    "price": 2.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     35,
+     51
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "f1844265-90f3-4c5c-81a0-5944f1c6fe9a",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "LEMON EACH",
+    "price": 0.98,
+    "quantity": 2.0,
+    "unit_price": 0.49,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     21,
+     37
+    ]
+   },
+   {
+    "name": "A-AVOCADO HASS LARGE EAC",
+    "price": 7.16,
+    "quantity": 4.0,
+    "unit_price": 1.79,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     19,
+     36
+    ]
+   },
+   {
+    "name": "POTATO SWEET EACH",
+    "price": 1.98,
+    "quantity": 2.0,
+    "unit_price": 0.99,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     17,
+     35
+    ]
+   },
+   {
+    "name": "TUNA SOLID WHITE ALBACOR",
+    "price": 1.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     34
+    ]
+   },
+   {
+    "name": "TUNA SOLID WHITE ALBACOR",
+    "price": 3.98,
+    "quantity": 2.0,
+    "unit_price": 1.99,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     33
+    ]
+   },
+   {
+    "name": "SALSA AUTENTICA",
+    "price": 2.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     32
+    ]
+   },
+   {
+    "name": "SALMON FILLET SKIN ON",
+    "price": 6.69,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     31
+    ]
+   },
+   {
+    "name": "SALMON FILLET SKIN ON",
+    "price": 9.39,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     30
+    ]
+   },
+   {
+    "name": "MANGO NECTAR JUICE ORG 6",
+    "price": 5.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     10,
+     29
+    ]
+   },
+   {
+    "name": "ORG KOSHER DILL PICKLE S",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     28
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "b4c2a475-d739-4a42-afbf-6b5e06443ba1",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "Blueberries, 1 Pint now",
+    "price": 2.39,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     23,
+     24,
+     30,
+     32,
+     51,
+     52
+    ]
+   },
+   {
+    "name": "365 Everyday Value, Orgar.. now",
+    "price": 2.09,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     20,
+     21,
+     29,
+     31
+    ]
+   },
+   {
+    "name": "Amazon Fresh Brand, Stopl. now",
+    "price": 3.78,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     17,
+     18,
+     28
+    ]
+   },
+   {
+    "name": "Amazon Fresh, Greek Nonfa.. not",
+    "price": 1.89,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     13,
+     14,
+     15,
+     27
+    ]
+   },
+   {
+    "name": "Amazon Fresh, Small Curd nOW",
+    "price": 950.93,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     8,
+     9,
+     10,
+     26
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "63243f38-61e2-4079-9c08-490825a7aff7",
+  "receipt_id": 2,
+  "items": [
+   {
+    "name": "ROLLED OATS",
+    "price": 7.0,
+    "quantity": 1.0,
+    "unit_price": 7.0,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     45,
+     55,
+     73
+    ]
+   },
+   {
+    "name": "SPROUTS LRG EGGS",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     43,
+     54
+    ]
+   },
+   {
+    "name": "ORG A2/A2 6% FAT MLK",
+    "price": 7.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     42,
+     53
+    ]
+   },
+   {
+    "name": "HEAVY WHIPPING CREAM",
+    "price": 4.29,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     41,
+     52
+    ]
+   },
+   {
+    "name": "PENNE RIGATE PASTA",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     39,
+     51,
+     72
+    ]
+   },
+   {
+    "name": "BOGO 50% OFF GROC",
+    "price": -2.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     37,
+     49
+    ]
+   },
+   {
+    "name": "PENNE RIGATE PAST",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     36,
+     48,
+     70
+    ]
+   },
+   {
+    "name": "ORGANIC SHALLOTS",
+    "price": 3.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     34,
+     47,
+     69
+    ]
+   }
+  ]
+ },
+ {
+  "image_id": "8d089201-9f33-42ec-bad8-a2482777c958",
+  "receipt_id": 1,
+  "items": [
+   {
+    "name": "SHALLOTS",
+    "price": 0.84,
+    "quantity": 0.21,
+    "unit_price": 3.99,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     63,
+     71,
+     72
+    ]
+   },
+   {
+    "name": "GARLIC-BULK",
+    "price": 2.24,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     60,
+     69
+    ]
+   },
+   {
+    "name": "ITAL PARSLEY ORG",
+    "price": 2.0,
+    "quantity": 1.0,
+    "unit_price": 2.0,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     57,
+     67,
+     68
+    ]
+   },
+   {
+    "name": "POTATO-RUSSET",
+    "price": 9.74,
+    "quantity": 3.91,
+    "unit_price": 2.49,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     54,
+     66
+    ]
+   },
+   {
+    "name": "BAG SALE PAPER EA",
+    "price": 0.1,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     48,
+     51
+    ]
+   },
+   {
+    "name": "GELSON'S EGGS",
+    "price": 4.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     45,
+     46,
+     49,
+     50
+    ]
+   },
+   {
+    "name": "CRUSHED TOMATOES",
+    "price": 5.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     39,
+     42
+    ]
+   },
+   {
+    "name": "PENNE RIGATE #41",
+    "price": 3.5,
+    "quantity": 1.0,
+    "unit_price": 3.5,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     36,
+     40,
+     41
+    ]
+   }
+  ]
+ }
+]
