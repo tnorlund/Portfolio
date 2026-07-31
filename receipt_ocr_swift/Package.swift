@@ -25,7 +25,8 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ],
             resources: [
-                .copy("LineItems/block_role_priors_v2.json")
+                .copy("LineItems/block_role_priors_v2.json"),
+                .copy("Sections/section_order_priors_v2.json")
             ]
         ),
         .executableTarget(
@@ -53,5 +54,4 @@ let package = Package(
     ],
     swiftLanguageModes: [.v5]
 )
-
 
