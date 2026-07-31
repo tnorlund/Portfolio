@@ -9,11 +9,15 @@ import logging
 import os
 from typing import Any
 
-# These imports are available via Lambda layer
+# receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
+# bundled into this Lambda's archive as a FileAsset referencing the
+# canonical source (stdlib-only module, same pattern as the line-item
+# updater's band-block decoder).
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
+from receipt_upload.tender import classify_tender_for_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +50,35 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     word_labels = []
     last_key = None
     while True:
-        page_labels, last_key = dynamo_client.list_receipt_word_labels_for_receipt(
-            image_id, receipt_id, last_evaluated_key=last_key
+        page_labels, last_key = (
+            dynamo_client.list_receipt_word_labels_for_receipt(
+                image_id, receipt_id, last_evaluated_key=last_key
+            )
         )
         word_labels.extend(page_labels)
         if last_key is None:
             break
 
     words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
+
+    # Lines + sections feed the tender classifier's payment zone
+    lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
+    sections = dynamo_client.get_receipt_sections_from_receipt(
+        image_id, receipt_id
+    )
+    tender = classify_tender_for_receipt(lines, sections, word_labels, words)
+
+    # Bank-match fields are computed OFFLINE (scripts/
+    # backfill_tender_bank.py); carry them over from the stored summary
+    # so a label-change recompute does not clobber them.
+    ledger = bank_amount = bank_match_confidence = None
+    try:
+        existing = dynamo_client.get_receipt_summary(image_id, receipt_id)
+        ledger = existing.ledger
+        bank_amount = existing.bank_amount
+        bank_match_confidence = existing.bank_match_confidence
+    except EntityNotFoundError:
+        pass
 
     # Try to get merchant name from ReceiptPlace
     merchant_name: str | None = None
@@ -76,6 +101,12 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         merchant_name=merchant_name,
         word_labels=word_labels,
         words=words,
+        tender_class=tender.tender_class,
+        card_network=tender.card_network,
+        card_last4=tender.card_last4,
+        ledger=ledger,
+        bank_amount=bank_amount,
+        bank_match_confidence=bank_match_confidence,
     )
 
     # Convert to record and upsert
@@ -91,6 +122,9 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         "tax": summary.tax,
         "item_count": summary.item_count,
         "date": summary.date.isoformat() if summary.date else None,
+        "tender_class": summary.tender_class,
+        "card_network": summary.card_network,
+        "card_last4": summary.card_last4,
     }
 
     logger.info(

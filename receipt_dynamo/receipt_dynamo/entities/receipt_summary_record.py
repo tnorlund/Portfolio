@@ -131,6 +131,36 @@ class ReceiptSummaryRecord:
         return self.summary.tip
 
     @property
+    def tender_class(self) -> str | None:
+        """Get tender_class from summary."""
+        return self.summary.tender_class
+
+    @property
+    def card_network(self) -> str | None:
+        """Get card_network from summary."""
+        return self.summary.card_network
+
+    @property
+    def card_last4(self) -> str | None:
+        """Get card_last4 from summary."""
+        return self.summary.card_last4
+
+    @property
+    def ledger(self) -> str | None:
+        """Get ledger from summary."""
+        return self.summary.ledger
+
+    @property
+    def bank_amount(self) -> float | None:
+        """Get bank_amount from summary."""
+        return self.summary.bank_amount
+
+    @property
+    def bank_match_confidence(self) -> float | None:
+        """Get bank_match_confidence from summary."""
+        return self.summary.bank_match_confidence
+
+    @property
     def key(self) -> dict[str, Any]:
         """Generate the primary key for this summary."""
         return {
@@ -186,6 +216,23 @@ class ReceiptSummaryRecord:
                 item[field_name] = {"N": str(value)}
             else:
                 item[field_name] = {"NULL": True}
+
+        # Optional tender / bank-match fields. Written only when set so
+        # pre-tender items and items from writers unaware of these
+        # fields stay byte-identical (non-breaking).
+        for field_name in (
+            "tender_class",
+            "card_network",
+            "card_last4",
+            "ledger",
+        ):
+            value = getattr(self.summary, field_name)
+            if value is not None:
+                item[field_name] = {"S": value}
+        for field_name in ("bank_amount", "bank_match_confidence"):
+            value = getattr(self.summary, field_name)
+            if value is not None:
+                item[field_name] = {"N": str(value)}
 
         return item
 
@@ -253,6 +300,12 @@ class ReceiptSummaryRecord:
                 "item_count must contain a valid integer"
             ) from exc
 
+        # Optional tender / bank-match fields (absent on older items)
+        def parse_string(field_name: str) -> str | None:
+            if field_name in item and "S" in item[field_name]:
+                return item[field_name]["S"]
+            return None
+
         summary = ReceiptSummary(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -260,6 +313,12 @@ class ReceiptSummaryRecord:
             date=date,
             totals=totals,
             item_count=item_count,
+            tender_class=parse_string("tender_class"),
+            card_network=parse_string("card_network"),
+            card_last4=parse_string("card_last4"),
+            ledger=parse_string("ledger"),
+            bank_amount=parse_number("bank_amount"),
+            bank_match_confidence=parse_number("bank_match_confidence"),
         )
 
         return cls(

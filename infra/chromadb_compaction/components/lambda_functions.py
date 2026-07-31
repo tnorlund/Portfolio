@@ -406,6 +406,22 @@ class HybridLambdaDeployment(ComponentResource):
                         / "summary_processor.py"
                     )
                 ),
+                # Tender classifier: bundled from the canonical source
+                # (stdlib-only module) rather than copied, so the logic
+                # cannot fork. Same pattern as the line-item updater.
+                "receipt_upload/__init__.py": pulumi.StringAsset(
+                    "# deploy-time stub: only tender is bundled; the real\n"
+                    "# receipt_upload __init__ pulls PIL and the full "
+                    "package.\n"
+                ),
+                "receipt_upload/tender.py": pulumi.FileAsset(
+                    str(
+                        Path(__file__).parent.parent.parent.parent
+                        / "receipt_upload"
+                        / "receipt_upload"
+                        / "tender.py"
+                    )
+                ),
             }
         )
 
