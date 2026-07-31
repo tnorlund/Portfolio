@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -23,6 +23,9 @@ let package = Package(
                 .product(name: "SotoSQS", package: "soto"),
                 .product(name: "SotoDynamoDB", package: "soto"),
                 .product(name: "Logging", package: "swift-log"),
+            ],
+            resources: [
+                .copy("LineItems/block_role_priors_v2.json")
             ]
         ),
         .executableTarget(
@@ -47,7 +50,8 @@ let package = Package(
                 .product(name: "SotoDynamoDB", package: "soto")
             ]
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
 
 
