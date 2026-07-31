@@ -510,6 +510,77 @@ export interface LayoutLMBatchInferenceResponse {
   legacy_mode?: boolean;
 }
 
+// Deterministic line-item decode visualization types
+
+export type LineItemReconciliationStatus =
+  | "match"
+  | "near"
+  | "mismatch"
+  | "no-baseline";
+
+export interface LineItemDecodeImage {
+  image_id: string;
+  receipt_id: number;
+  width: number;
+  height: number;
+  cdn_s3_bucket?: string;
+  cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_thumbnail_s3_key?: string;
+  cdn_thumbnail_webp_s3_key?: string;
+  cdn_thumbnail_avif_s3_key?: string;
+  cdn_small_s3_key?: string;
+  cdn_small_webp_s3_key?: string;
+  cdn_small_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+}
+
+export interface LineItemDecodeLine {
+  line_id: number;
+  text: string;
+  bounding_box: BoundingBox;
+  top_left?: Point;
+  top_right?: Point;
+  bottom_left?: Point;
+  bottom_right?: Point;
+}
+
+export interface LineItemDecodeSection {
+  section_type: string;
+  line_ids: number[];
+}
+
+export interface DecodedReceiptLineItem {
+  name: string;
+  price: string;
+  quantity: number | null;
+  unit_price: number | null;
+  is_discount: boolean;
+  line_ids: number[];
+  reconciliation_status: LineItemReconciliationStatus | null;
+}
+
+export interface LineItemDecodeReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string | null;
+  image: LineItemDecodeImage;
+  lines: LineItemDecodeLine[];
+  sections: LineItemDecodeSection[];
+  line_items: DecodedReceiptLineItem[];
+  printed_subtotal: number | null;
+}
+
+export interface LineItemDecodeResponse {
+  receipts: LineItemDecodeReceipt[];
+  batch_size: number;
+  candidate_count: number;
+  fetched_at: string;
+}
+
 // Per-Epoch Checkpoint Evaluation Types
 // Produced by the eval-checkpoints SageMaker Processing job and served by
 // GET /layoutlm_epochs. Each entry re-scores one checkpoint on the run's

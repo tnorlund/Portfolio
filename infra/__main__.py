@@ -329,6 +329,19 @@ create_lambda_route(
     permission_name="word_similarity_lambda_permission",
 )
 
+# Geometric-reader API. The Lambda is always available, but is registered here
+# to keep this task's API wiring colocated with its explicit main-program hook.
+from routes.line_item_decode.infra import line_item_decode_lambda
+
+create_lambda_route(
+    api=api_gateway.api,
+    integration_name="line_item_decode_lambda_integration",
+    route_name="line_item_decode_route",
+    route_key="GET /line_item_decode",
+    lambda_function=line_item_decode_lambda,
+    permission_name="line_item_decode_lambda_permission",
+)
+
 # ValidateMerchantStepFunctions removed - redundant with LangGraph metadata creation
 # Metadata is now created by:
 # - Upload OCR Handler (LangGraph)

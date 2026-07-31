@@ -1,0 +1,494 @@
+.container {
+  width: 100%;
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  overflow: hidden;
+  background: var(--background-color);
+  border-radius: 12px;
+  contain: paint;
+}
+
+.receiptQueue {
+  position: relative;
+  z-index: 1;
+  width: var(--rf-queue-width, 120px);
+  height: var(--rf-queue-height, 400px);
+}
+
+.queuedReceipt {
+  position: absolute;
+  width: 100px;
+  overflow: hidden;
+  background: var(--background-color);
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 20%);
+  transition:
+    transform calc(0.6s * var(--rf-motion-scale, 1)) ease-out,
+    opacity calc(0.35s * var(--rf-motion-scale, 1)) ease-out,
+    top calc(0.4s * var(--rf-motion-scale, 1)) ease,
+    left calc(0.4s * var(--rf-motion-scale, 1)) ease;
+  will-change: transform, opacity;
+}
+
+.queuedReceipt img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.activeReceipt {
+  width: 100%;
+  height: 100%;
+}
+
+.receiptImageWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 500px;
+}
+
+.receiptImageInner {
+  position: relative;
+  max-height: 500px;
+}
+
+.receiptImage {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 500px;
+}
+
+.receiptLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: var(--text-color);
+  opacity: 0.55;
+}
+
+.svgOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zone,
+.activeZone {
+  transform-box: fill-box;
+  transform-origin: top;
+  animation: zone-sweep calc(0.42s * var(--rf-motion-scale, 1)) ease-out both;
+}
+
+.activeZone > rect:first-child {
+  animation: zone-breathe calc(0.85s * var(--rf-motion-scale, 1)) ease-in-out
+    infinite alternate;
+}
+
+.zoneCaption {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  fill: white;
+}
+
+.priceCarrier {
+  animation: price-pulse calc(0.55s * var(--rf-motion-scale, 1)) ease-in-out
+    infinite alternate;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.ledgerPanel {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  height: 500px;
+  min-height: 500px;
+  padding: 0.5rem 0;
+  color: var(--text-color);
+}
+
+.panelHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-height: 2.7rem;
+}
+
+.panelHeader strong {
+  overflow: hidden;
+  font-size: 0.96rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eyebrow {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.61rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.phaseRail {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  align-items: center;
+  margin: 0.65rem 0 0.75rem;
+}
+
+.phaseStep {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.57rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.3;
+  transition:
+    opacity 180ms ease,
+    color 180ms ease;
+}
+
+.activePhase {
+  color: var(--color-blue);
+  opacity: 1;
+}
+
+.phaseLine {
+  height: 1px;
+  margin: 0 0.38rem;
+  background: currentcolor;
+  opacity: 0.16;
+}
+
+.sectionList {
+  display: grid;
+  gap: 0.28rem;
+  min-height: 8.5rem;
+  transition: min-height 240ms ease;
+}
+
+.compactSections {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.2rem 0.35rem;
+  min-height: 3.5rem;
+}
+
+.sectionRow {
+  display: grid;
+  grid-template-columns: 0.55rem minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+  font-size: 0.72rem;
+  opacity: 0.14;
+  transform: translateX(4px);
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.compactSections .sectionRow {
+  grid-template-columns: 0.42rem minmax(0, 1fr);
+  gap: 0.25rem;
+  font-size: 0.6rem;
+}
+
+.sectionRow.revealed,
+.ledgerRow.revealed {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.sectionSwatch {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 2px;
+}
+
+.compactSections .sectionSwatch {
+  width: 0.42rem;
+  height: 0.42rem;
+}
+
+.sectionRow > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.lineCount {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  opacity: 0.42;
+}
+
+.compactSections .lineCount {
+  display: none;
+}
+
+.ledger {
+  min-height: 7.5rem;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--text-color) 14%, transparent);
+}
+
+.ledgerHeading,
+.ledgerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.ledgerHeading {
+  padding: 0.42rem 0 0.28rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
+.ledgerRow {
+  align-items: start;
+  padding: 0.24rem 0;
+  font-size: 0.72rem;
+  opacity: 0;
+  transform: translateX(5px);
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.itemName {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.quantityChip {
+  padding: 0.08rem 0.24rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.52rem;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--color-cyan) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-cyan) 50%, transparent);
+  border-radius: 999px;
+}
+
+.itemPrice,
+.runningTotal > span:last-child,
+.proofEquation {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.discount {
+  color: var(--color-teal);
+}
+
+.runningTotal {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.48rem 0;
+  margin-top: auto;
+  border-top: 1px solid color-mix(in srgb, var(--text-color) 18%, transparent);
+}
+
+.runningTotal > span:first-child {
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.52;
+}
+
+.runningTotal > span:last-child {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.proof {
+  min-height: 5.4rem;
+  padding: 0.55rem 0.62rem;
+  opacity: 0;
+  background: color-mix(in srgb, var(--text-color) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-color) 12%, transparent);
+  border-radius: 8px;
+  transform: translateY(4px);
+  transition:
+    opacity 240ms ease,
+    transform 240ms ease;
+}
+
+.proofVisible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.proofEquation {
+  display: flex;
+  gap: 0.42rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.44rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.proofOperator {
+  opacity: 0.38;
+}
+
+.proofBadge {
+  width: fit-content;
+  padding: 0.2rem 0.45rem;
+  margin: 0 auto;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+}
+
+.match {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 10%, transparent);
+}
+
+.near {
+  color: var(--color-yellow);
+  background: color-mix(in srgb, var(--color-yellow) 10%, transparent);
+}
+
+.mismatch {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 10%, transparent);
+}
+
+.noBaseline {
+  color: var(--text-color);
+  opacity: 0.56;
+}
+
+.reocrNote {
+  display: block;
+  margin-top: 0.34rem;
+  font-size: 0.6rem;
+  text-align: center;
+  text-transform: uppercase;
+  opacity: 0.58;
+}
+
+@keyframes zone-sweep {
+  from {
+    opacity: 0;
+    transform: scaleY(0.05);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes zone-breathe {
+  from {
+    fill-opacity: 0.16;
+  }
+  to {
+    fill-opacity: 0.32;
+  }
+}
+
+@keyframes price-pulse {
+  from {
+    transform: scale(0.985);
+  }
+  to {
+    transform: scale(1.015);
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .activeReceipt,
+  .receiptImageWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+
+  .receiptImageInner,
+  .receiptImage {
+    max-height: 380px;
+  }
+
+  .ledgerPanel {
+    width: min(100%, 440px);
+    height: auto;
+    min-height: 27rem;
+    margin: 0 auto;
+  }
+
+  .sectionList {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-height: 4.2rem;
+  }
+
+  .sectionRow {
+    grid-template-columns: 0.5rem minmax(0, 1fr);
+  }
+
+  .lineCount {
+    display: none;
+  }
+
+  .ledger {
+    min-height: 7rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .receiptImageInner,
+  .receiptImage {
+    max-height: 300px;
+  }
+
+  .ledgerPanel {
+    min-height: 26rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queuedReceipt,
+  .sectionRow,
+  .ledgerRow,
+  .proof {
+    transition: none;
+  }
+
+  .zone,
+  .activeZone,
+  .activeZone > rect:first-child,
+  .priceCarrier {
+    animation: none;
+  }
+}
