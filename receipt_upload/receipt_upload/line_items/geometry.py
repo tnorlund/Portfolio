@@ -299,6 +299,32 @@ def _name_is_real(name: str) -> bool:
 def extract_items(
     words: list[dict], line_ids: set[int]
 ) -> tuple[list[dict], bool]:
+    """Extract line items: band-block decoder over the ITEMS zone.
+
+    Delegates to blocks.decode_band_blocks with the committed prior asset
+    (block_role_priors_v1.json -- the section_order_priors pattern, so the
+    Swift worker loads the same file). First design to clear all three
+    instruments: golden leave-one-out floors (recall/name/precision),
+    the 686-receipt corpus reconciliation sweep, and the 12-test semantic
+    suite. The banded implementation remains as extract_items_banded: it
+    is the decoder's internal row machinery and the sweep baseline.
+    """
+    # Lazy import: blocks imports this module at module scope.
+    from receipt_upload.line_items import blocks as _blocks
+
+    items = _blocks.decode_band_blocks(
+        {
+            "words": [w for w in words if w["line_id"] in line_ids],
+            "items_line_ids": sorted(line_ids),
+        },
+        _blocks.load_default_priors(),
+    )
+    return items, False
+
+
+def extract_items_banded(
+    words: list[dict], line_ids: set[int]
+) -> tuple[list[dict], bool]:
     """Extract items from the section's words.
 
     Bands classify as ITEM (real name + price), NAME (name, no price), or

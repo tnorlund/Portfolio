@@ -471,7 +471,9 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
         return len(re.findall(r"[A-Za-z]{2,}", stripped)) < 2
 
     items = []
-    for p in price_idx:
+    # Emit in the banded path's order (ascending y = band_words order) so
+    # item_index semantics match the implementation being replaced.
+    for p in sorted(price_idx, key=lambda i: bands[i]["y"]):
         parsed = parsed_cache.get(p) or parse_band(list(bands[p]["words"]))
         if parsed is None or parsed.get("price") is None:
             continue
@@ -491,13 +493,31 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
                     parsed["unit_price"] = mp["unit_price"]
                     break
         if _sku_dominated(parsed.get("name") or ""):
+            # Member-name candidates: any band with real alpha content and
+            # no SKU run. The former >=2-alpha-token rule rejected
+            # single-word real names ("BREAD", "Water") -- caught by the
+            # semantic suite as lost names and dropped zero-price items.
             cands = [
                 (len(bands[i]["text"]), bands[i]["text"])
                 for i in blocks[p]
-                if not _sku_dominated(bands[i]["text"])
+                if _name_is_real(bands[i]["text"])
+                and not SKU_LIKE_RE.search(bands[i]["text"])
             ]
+            if not cands:
+                cands = [
+                    (len(bands[i]["text"]), bands[i]["text"])
+                    for i in blocks[p]
+                    if not _sku_dominated(bands[i]["text"])
+                ]
             if cands:
                 parsed["name"] = max(cands)[1].strip()
+                parsed["stacked"] = True
+        if not _name_is_real(parsed.get("name") or ""):
+            if parsed["price"] == 0:
+                # unnamed zero band is noise (banded-path parity); a NAMED
+                # zero-price item (comped/free line) is kept above.
+                continue
+            parsed["name_quality"] = "low"
         parsed["line_ids"] = sorted(
             set(bands[p]["line_ids"]).union(
                 *(bands[i]["line_ids"] for i in blocks[p])
