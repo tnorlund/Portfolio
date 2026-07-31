@@ -68,9 +68,7 @@ def main() -> None:
 
     receipts, lek = client.list_receipts(limit=None)
     while lek:
-        more, lek = client.list_receipts(
-            limit=None, last_evaluated_key=lek
-        )
+        more, lek = client.list_receipts(limit=None, last_evaluated_key=lek)
         receipts.extend(more)
     if args.image_id:
         receipts = [r for r in receipts if r.image_id == args.image_id]
@@ -86,9 +84,7 @@ def main() -> None:
             existing = client.get_receipt_sections_from_receipt(
                 r.image_id, r.receipt_id
             )
-            if any(
-                str(s.section_type).upper() == "ITEMS" for s in existing
-            ):
+            if any(str(s.section_type).upper() == "ITEMS" for s in existing):
                 stats["has-items-section"] += 1
                 continue
             rows = client.get_receipt_rows_from_receipt(
@@ -122,9 +118,7 @@ def main() -> None:
                 preds = sections_from_assignments(
                     assign_row_sections(rows, lines, model, merchant)
                 )
-                existing_types = {
-                    str(s.section_type) for s in existing
-                }
+                existing_types = {str(s.section_type) for s in existing}
                 new = [
                     s
                     for s in preds
@@ -132,9 +126,7 @@ def main() -> None:
                 ]
                 for s in new:
                     predicted_types[str(s.section_type)] += 1
-                stats[
-                    "would-apply" if new else "nothing-to-add"
-                ] += 1
+                stats["would-apply" if new else "nothing-to-add"] += 1
             done += 1
             if done % 50 == 0:
                 print(f"  {done} processed", flush=True)
