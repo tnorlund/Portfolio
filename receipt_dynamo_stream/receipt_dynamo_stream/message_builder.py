@@ -18,6 +18,9 @@ from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
+from receipt_dynamo.entities.receipt_summary_record import (
+    ReceiptSummaryRecord,
+)
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.change_detection import (
@@ -45,7 +48,7 @@ logger = logging.getLogger(__name__)
 # ReceiptSection INSERTs matter because creating a section changes the
 # correct ``section_label`` for the receipt's rows in ChromaDB; other
 # entity INSERTs are covered by the embedding pipeline itself.
-_INSERT_SYNCED_ENTITY_TYPES = frozenset({"RECEIPT_SECTION"})
+_INSERT_SYNCED_ENTITY_TYPES = frozenset({"RECEIPT_SECTION", "RECEIPT_SUMMARY"})
 
 
 def build_messages_from_records(
@@ -266,6 +269,24 @@ def _extract_receipt_word_label(
     ]
 
 
+def _extract_receipt_summary(
+    entity: ReceiptSummaryRecord,
+) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
+    """Route summary changes to the LINE_ITEMS queue.
+
+    The summary is written when a receipt's words, sections, labels and
+    merchant all exist, so it is the correct trigger for line-item
+    recomputation -- and resegmentation rewrites it, which regenerates
+    line items automatically. The consumer refetches current state from
+    DynamoDB; the event image is not trusted.
+    """
+    return {
+        "entity_type": "RECEIPT_SUMMARY",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+    }, [TargetQueue.LINE_ITEMS]
+
+
 def _extract_receipt_section(
     entity: ReceiptSection,
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
@@ -337,6 +358,7 @@ _ENTITY_EXTRACTORS: dict[str, tuple[type, _ExtractorFunc]] = {
     "RECEIPT_PLACE": (ReceiptPlace, _extract_receipt_place),
     "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
     "RECEIPT_SECTION": (ReceiptSection, _extract_receipt_section),
+    "RECEIPT_SUMMARY": (ReceiptSummaryRecord, _extract_receipt_summary),
     "RECEIPT": (Receipt, _extract_receipt),
     "RECEIPT_WORD": (ReceiptWord, _extract_receipt_word),
     "RECEIPT_LINE": (ReceiptLine, _extract_receipt_line),

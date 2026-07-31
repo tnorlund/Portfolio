@@ -43,6 +43,7 @@ def publish_messages(
     lines_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
     words_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
     summary_messages: list[tuple[dict[str, object], TargetQueue]] = []
+    line_item_messages: list[tuple[dict[str, object], TargetQueue]] = []
 
     for msg in messages:
         msg_dict = _message_to_dict(msg)
@@ -52,6 +53,8 @@ def publish_messages(
             words_messages.append((msg_dict, ChromaDBCollection.WORDS))
         if TargetQueue.RECEIPT_SUMMARY in msg.collections:
             summary_messages.append((msg_dict, TargetQueue.RECEIPT_SUMMARY))
+        if TargetQueue.LINE_ITEMS in msg.collections:
+            line_item_messages.append((msg_dict, TargetQueue.LINE_ITEMS))
 
     if lines_messages:
         sent_count += send_batch_to_queue(
@@ -77,6 +80,15 @@ def publish_messages(
             summary_messages,
             "RECEIPT_SUMMARY_QUEUE_URL",
             TargetQueue.RECEIPT_SUMMARY,
+            metrics,
+        )
+
+    if line_item_messages:
+        sent_count += send_batch_to_queue(
+            sqs,
+            line_item_messages,
+            "LINE_ITEM_QUEUE_URL",
+            TargetQueue.LINE_ITEMS,
             metrics,
         )
 

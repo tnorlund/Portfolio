@@ -40,6 +40,7 @@ class TargetQueue(str, Enum):
     LINES = "lines"
     WORDS = "words"
     RECEIPT_SUMMARY = "receipt_summary"
+    LINE_ITEMS = "line_items"
 
 
 @dataclass(frozen=True)

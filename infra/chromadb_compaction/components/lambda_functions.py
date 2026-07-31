@@ -347,6 +347,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
                     "RECEIPT_SUMMARY_QUEUE_URL": chromadb_queues.summary_queue_url,
+                    "LINE_ITEM_QUEUE_URL": chromadb_queues.line_item_queue_url,
                     "LOG_LEVEL": "INFO",
                     # Stream processing configuration (aligned with code and infrastructure)
                     "MAX_RECORDS_PER_INVOCATION": "10",  # Matches DynamoDB Stream batch_size
@@ -470,10 +471,134 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # ------------------------------------------------------------------
+        # Line-item updater: rewrites RECEIPT_LINE_ITEM rows when a
+        # receipt's summary changes. Bundles the CANONICAL extraction
+        # modules from receipt_upload as FileAssets -- no copies live in
+        # the repo, so the logic cannot fork (the build_receipt_rows
+        # shadowing lesson).
+        # ------------------------------------------------------------------
+        _repo_root = Path(__file__).parent.parent.parent.parent
+        line_item_updater_code = pulumi.AssetArchive(
+            {
+                "handler.py": pulumi.FileAsset(
+                    _repo_root
+                    / "infra"
+                    / "receipt_line_item_updater"
+                    / "handler.py"
+                ),
+                "line_item_processor.py": pulumi.FileAsset(
+                    _repo_root
+                    / "infra"
+                    / "receipt_line_item_updater"
+                    / "line_item_processor.py"
+                ),
+                "receipt_upload/__init__.py": pulumi.StringAsset(
+                    "# deploy-time stub: only line_items is bundled; the real\n"
+                    "# receipt_upload __init__ pulls PIL and the full package.\n"
+                ),
+                "receipt_upload/line_items/__init__.py": pulumi.StringAsset(
+                    ""
+                ),
+                "receipt_upload/line_items/geometry.py": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "geometry.py"
+                ),
+                "receipt_upload/line_items/blocks.py": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "blocks.py"
+                ),
+                "receipt_upload/line_items/assets/block_role_priors_v1.json": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "assets"
+                    / "block_role_priors_v1.json"
+                ),
+                "receipt_upload/line_items/assets/block_role_priors_v2.json": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "assets"
+                    / "block_role_priors_v2.json"
+                ),
+            }
+        )
+
+        self.line_item_updater_log_group = aws.cloudwatch.LogGroup(
+            f"{name}-line-item-updater-log-group",
+            retention_in_days=14,
+            tags={
+                "Project": "ChromaDB",
+                "Component": "LineItemUpdater",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        self.line_item_updater_function = aws.lambda_.Function(
+            f"{name}-line-item-updater",
+            runtime="python3.12",
+            architectures=["arm64"],
+            code=line_item_updater_code,
+            handler="handler.lambda_handler",
+            role=self.lambda_role.arn,
+            timeout=120,  # extraction fetches words+sections; queue vis is 2x
+            memory_size=512,
+            environment={
+                "variables": {
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "LOG_LEVEL": "INFO",
+                }
+            },
+            description=(
+                "Rewrites RECEIPT_LINE_ITEM rows via the band-block decoder "
+                "when a receipt's summary changes"
+            ),
+            tags={
+                "Project": "ChromaDB",
+                "Component": "LineItemUpdater",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+                "environment": stack,
+            },
+            layers=[dynamo_layer.arn],
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[
+                    self.lambda_role,
+                    self.line_item_updater_log_group,
+                ],
+                ignore_changes=["layers"],
+            ),
+        )
+
+        self.line_item_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-line-item-event-source-mapping",
+            event_source_arn=chromadb_queues.line_item_queue_arn,
+            function_name=self.line_item_updater_function.arn,
+            batch_size=50,
+            maximum_batching_window_in_seconds=5,
+            function_response_types=["ReportBatchItemFailures"],
+            opts=ResourceOptions(parent=self),
+        )
+
         # Export useful properties
         self.stream_processor_arn = self.stream_processor_function.arn
         self.enhanced_compaction_arn = self.enhanced_compaction_function.arn
         self.summary_updater_arn = self.summary_updater_function.arn
+        self.line_item_updater_arn = self.line_item_updater_function.arn
         self.role_arn = self.lambda_role.arn
 
         # Register outputs
@@ -581,6 +706,8 @@ class HybridLambdaDeployment(ComponentResource):
                 chromadb_queues.words_dlq_arn,
                 chromadb_queues.summary_queue_arn,
                 chromadb_queues.summary_dlq_arn,
+                chromadb_queues.line_item_queue_arn,
+                chromadb_queues.line_item_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -602,6 +729,8 @@ class HybridLambdaDeployment(ComponentResource):
                                     args[3],  # Words DLQ ARN
                                     args[4],  # Summary queue ARN
                                     args[5],  # Summary DLQ ARN
+                                    args[6],  # Line-item queue ARN
+                                    args[7],  # Line-item DLQ ARN
                                 ],
                             }
                         ],
