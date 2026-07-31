@@ -8,4 +8,4 @@
 
 > **AnalyticsParams** = `Record`\<`string`, `string` \| `number` \| `boolean` \| `undefined`\>
 
-Defined in: [utils/analytics.ts:66](https://github.com/tnorlund/Portfolio/blob/543d4087e92143d3b910fb21a6192978e1af43ca/portfolio/utils/analytics.ts#L66)
+Defined in: [utils/analytics.ts:66](https://github.com/tnorlund/Portfolio/blob/a35037cb237277f8f4afb2220d8ffc3f6064a0d9/portfolio/utils/analytics.ts#L66)
