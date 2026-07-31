@@ -598,9 +598,7 @@ class HybridLambdaDeployment(ComponentResource):
             # The inline sqs_policy grants receive/delete on the queue;
             # without the explicit dependency AWS can reject the mapping
             # when it is created before the IAM update lands.
-            opts=ResourceOptions(
-                parent=self, depends_on=[self.sqs_policy]
-            ),
+            opts=ResourceOptions(parent=self, depends_on=[self.sqs_policy]),
         )
 
         # Export useful properties
