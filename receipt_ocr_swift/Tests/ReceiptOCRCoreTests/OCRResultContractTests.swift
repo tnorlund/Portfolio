@@ -305,7 +305,7 @@ final class OCRResultContractTests: XCTestCase {
 
     // MARK: - Worker: the shared fixture drives the full upload/handoff path.
 
-    private final class SQSMock: SQSClientProtocol {
+    private final class SQSMock: SQSClientProtocol, @unchecked Sendable {
         var messages: [SQSMessage] = []
         var sentMessages: [String] = []
         var deleted: [SQSDeleteEntry] = []
@@ -365,6 +365,46 @@ final class OCRResultContractTests: XCTestCase {
         }
     }
 
+    private actor UnderstandingAnalyzerSpy: ReceiptUnderstandingAnalyzing {
+        private var references: [ReceiptReference] = []
+        private var lineCounts: [Int] = []
+        private var acknowledgedBeforeAnalysis: [Bool] = []
+        private let acknowledgementCheck: @Sendable () -> Bool
+
+        init(
+            acknowledgementCheck: @escaping @Sendable () -> Bool = { true }
+        ) {
+            self.acknowledgementCheck = acknowledgementCheck
+        }
+
+        func analyze(
+            reference: ReceiptReference,
+            lines: [Line],
+            predictions: [LinePrediction]
+        ) async -> ReceiptUnderstandingReport {
+            references.append(reference)
+            lineCounts.append(lines.count)
+            acknowledgedBeforeAnalysis.append(acknowledgementCheck())
+            return ReceiptUnderstandingReport(
+                reference: reference,
+                rows: [],
+                identitySignals: ReceiptIdentitySignals(),
+                merchantResolution: .abstained("test"),
+                sections: [],
+                consistencyIssues: [],
+                candidates: [],
+                timings: [],
+                totalMilliseconds: 0,
+                offlineFallback: true,
+                errors: []
+            )
+        }
+
+        func observations() -> ([ReceiptReference], [Int], [Bool]) {
+            (references, lineCounts, acknowledgedBeforeAnalysis)
+        }
+    }
+
     func test_worker_uploads_fixture_and_writes_pending_labels() async throws {
         let cfg = Config(
             ocrJobQueueURL: "q-jobs",
@@ -392,9 +432,17 @@ final class OCRResultContractTests: XCTestCase {
             createdAt: now, updatedAt: now, status: .pending
         )
         s3.objects["raw-bucket:images/IMG_CONTRACT.png"] = Data([0xFF, 0xD8, 0xFF])
+        let analyzer = UnderstandingAnalyzerSpy {
+            !sqs.deleted.isEmpty
+        }
 
         let worker = OCRWorker(
-            config: cfg, ocr: FixtureOCREngine(), sqs: sqs, s3: s3, dynamo: dynamo
+            config: cfg,
+            ocr: FixtureOCREngine(),
+            sqs: sqs,
+            s3: s3,
+            dynamo: dynamo,
+            understandingAnalyzer: analyzer
         )
         let processedBatch = try await worker.processBatch()
         XCTAssertTrue(processedBatch)
@@ -433,6 +481,16 @@ final class OCRResultContractTests: XCTestCase {
             XCTAssertEqual(label.validationStatus, .pending)
             XCTAssertEqual(label.labelProposedBy, "auto-inference")
         }
+
+        // The shadow analyzer receives receipt-local Vision/LayoutLM output
+        // only after the production message has been acknowledged.
+        let observations = await analyzer.observations()
+        XCTAssertEqual(
+            observations.0,
+            [ReceiptReference(imageID: imageId, receiptID: 1)]
+        )
+        XCTAssertEqual(observations.1, [4])
+        XCTAssertEqual(observations.2, [true])
 
         // The OCR-results message carries the pointer contract the Lambda
         // parses: job_id + image_id (routing), s3 location, receipt count.

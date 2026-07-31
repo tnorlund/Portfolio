@@ -178,47 +178,38 @@ public final class SotoDynamoClient: DynamoClientProtocol {
     public func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
         guard !labels.isEmpty else { return }
 
-        // Process in chunks of 25 (DynamoDB batch write limit)
-        let chunkSize = 25
-        var remaining = labels[...]
-
-        while !remaining.isEmpty {
-            let chunk = remaining.prefix(chunkSize)
-            remaining = remaining.dropFirst(chunkSize)
-
-            var writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
-                let dict = label.toDynamoItemDict()
-                let item = Self.convertToAttributeValues(dict)
-                return DynamoDB.WriteRequest(putRequest: .init(item: item))
-            }
-
-            // Retry with exponential backoff until all items are processed
-            let maxRetries = 8
-            var retryCount = 0
-            let baseDelayMs: UInt64 = 50
-
-            while !writeRequests.isEmpty && retryCount < maxRetries {
-                let req = DynamoDB.BatchWriteItemInput(requestItems: [tableName: writeRequests])
-                let resp = try await dynamo.batchWriteItem(req)
-
-                // Check for unprocessed items
-                if let unprocessed = resp.unprocessedItems?[tableName], !unprocessed.isEmpty {
-                    writeRequests = unprocessed
-                    retryCount += 1
-
-                    // Exponential backoff with jitter
-                    let delayMs = baseDelayMs * UInt64(1 << retryCount)
-                    let jitter = UInt64.random(in: 0...delayMs / 4)
-                    try await Task.sleep(nanoseconds: (delayMs + jitter) * 1_000_000)
-                } else {
-                    // All items processed
-                    writeRequests = []
+        // BatchWrite cannot express a condition and could replace a human-VALID
+        // label with a new PENDING inference. Create each exact label key once.
+        // Retrying after a partial network failure is safe because collisions
+        // are treated as successful idempotent replays.
+        let maximumConcurrentWrites = 8
+        for start in stride(
+            from: 0,
+            to: labels.count,
+            by: maximumConcurrentWrites
+        ) {
+            let end = min(start + maximumConcurrentWrites, labels.count)
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for label in labels[start..<end] {
+                    group.addTask {
+                        let item = Self.convertToAttributeValues(
+                            label.toDynamoItemDict()
+                        )
+                        let request = DynamoDB.PutItemInput(
+                            conditionExpression:
+                                "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                            item: item,
+                            tableName: self.tableName
+                        )
+                        do {
+                            _ = try await self.dynamo.putItem(request)
+                        } catch let error as DynamoDBErrorType
+                            where error.errorCode == "ConditionalCheckFailedException" {
+                            // Existing PENDING or human-VALID rows win.
+                        }
+                    }
                 }
-            }
-
-            // If we still have unprocessed items after max retries, throw an error
-            if !writeRequests.isEmpty {
-                throw BatchWriteError.unprocessedItems(count: writeRequests.count)
+                try await group.waitForAll()
             }
         }
     }
@@ -313,3 +304,87 @@ public final class SotoDynamoClient: DynamoClientProtocol {
     }
 }
 
+#if os(macOS)
+extension SotoDynamoClient: KnownReceiptEvidenceProviding {
+    public func evidence(
+        for references: Set<ReceiptReference>
+    ) async throws -> [ReceiptReference: KnownReceiptEvidence] {
+        var result: [ReceiptReference: KnownReceiptEvidence] = [:]
+        for reference in references.sorted(by: {
+            $0.imageID == $1.imageID
+                ? $0.receiptID < $1.receiptID
+                : $0.imageID < $1.imageID
+        }) {
+            let partition = "IMAGE#\(reference.imageID)"
+            let receiptPrefix = "RECEIPT#" + String(format: "%05d", reference.receiptID)
+
+            let placeRequest = DynamoDB.GetItemInput(
+                consistentRead: true,
+                key: [
+                    "PK": .s(partition),
+                    "SK": .s("\(receiptPrefix)#PLACE")
+                ],
+                tableName: tableName
+            )
+            let place = try await dynamo.getItem(placeRequest).item
+
+            var validSectionByLine: [Int: String] = [:]
+            var lastKey: [String: DynamoDB.AttributeValue]? = nil
+            repeat {
+                let request = DynamoDB.QueryInput(
+                    consistentRead: true,
+                    exclusiveStartKey: lastKey,
+                    expressionAttributeNames: [
+                        "#pk": "PK",
+                        "#sk": "SK",
+                        "#status": "validation_status"
+                    ],
+                    expressionAttributeValues: [
+                        ":pk": .s(partition),
+                        ":prefix": .s("\(receiptPrefix)#SECTION#"),
+                        ":valid": .s("VALID")
+                    ],
+                    filterExpression: "#status = :valid",
+                    keyConditionExpression: "#pk = :pk AND begins_with(#sk, :prefix)",
+                    tableName: tableName
+                )
+                let response = try await dynamo.query(request)
+                for item in response.items ?? [] {
+                    guard
+                        case .s(let section)? = item["section_type"],
+                        case .l(let rawLineIDs)? = item["line_ids"]
+                    else { continue }
+                    for value in rawLineIDs {
+                        guard case .n(let raw) = value, let lineID = Int(raw) else {
+                            continue
+                        }
+                        validSectionByLine[lineID] = section
+                    }
+                }
+                lastKey = response.lastEvaluatedKey
+            } while lastKey?.isEmpty == false
+
+            func string(_ key: String) -> String? {
+                guard case .s(let value)? = place?[key] else { return nil }
+                return value
+            }
+            func number(_ key: String) -> Double? {
+                guard case .n(let value)? = place?[key] else { return nil }
+                return Double(value)
+            }
+            result[reference] = KnownReceiptEvidence(
+                reference: reference,
+                placeID: string("place_id"),
+                merchantName: string("merchant_name"),
+                formattedAddress: string("formatted_address"),
+                phoneNumber: string("phone_number"),
+                website: string("website"),
+                placeValidationStatus: string("validation_status"),
+                placeConfidence: number("confidence"),
+                validSectionByLine: validSectionByLine
+            )
+        }
+        return result
+    }
+}
+#endif
