@@ -11,7 +11,8 @@
   ],
   "_known_limitations": [
     "25 receipts / 163 items -- covers the formats the 686-receipt corpus sweep found distinct, not the long tail",
-    "labeling ambiguity exists on multi-line restaurant items; the rule above was applied after one anchor disagreement"
+    "labeling ambiguity exists on multi-line restaurant items; the rule above was applied after one anchor disagreement",
+    "two 2026-07-30 local-capture receipts (Whole Foods weighted item, Coffee Press negative control) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries"
   ],
   "receipts": [
     {
@@ -2313,6 +2314,47 @@
           "is_discount": false
         }
       ]
+    },
+    {
+      "image_id": "a7fef2ca-b84d-5405-a0f5-cbefe598a2dc",
+      "receipt_id": 1,
+      "merchant": "Whole Foods Market",
+      "printed_subtotal": "10.55",
+      "printed_total": "11.43",
+      "items_sum": "10.55",
+      "sum_matches_subtotal": true,
+      "local_only": true,
+      "labeling_rules_applied": [
+        "weighted item: quantity is the printed weight, unit_price the per-lb price",
+        "tare-weight line is item metadata (in line_ids), never its own item"
+      ],
+      "true_items": [
+        {
+          "name": "HOT BAR",
+          "price": "10.55",
+          "quantity": 0.88,
+          "unit_price": "11.99",
+          "line_ids": [
+            6,
+            7,
+            8,
+            9
+          ],
+          "is_discount": false
+        }
+      ]
+    },
+    {
+      "image_id": "0951426f-b7f9-5435-8569-7319cf0db1f4",
+      "receipt_id": 1,
+      "merchant": "The Coffee Press",
+      "printed_subtotal": "4.00",
+      "printed_total": "4.34",
+      "items_sum": "0.00",
+      "sum_matches_subtotal": false,
+      "local_only": true,
+      "reconcile_note": "NEGATIVE CONTROL: the receipt prints NO line items -- only Subtotal/Tax/Total and card metadata. Correct extraction is zero items; the subtotal legitimately has no printed breakdown.",
+      "true_items": []
     }
   ]
 }

@@ -86,6 +86,10 @@ _FLOORS = {
     "The Home Depot": (0.80, 0.25, 0.50),
     "Costco Wholesale": (0.40, 0.00, 0.85),
     "Target": (0.65, 0.10, 0.90),
+    # 2026-07-30 local-capture additions. WFM precision floor is 0.50
+    # because the unseen tare-weight row currently emits a $0.05 item;
+    # RAISE to 0.95+ when the tare template lands in the priors.
+    "Whole Foods Market": (1.00, 1.00, 0.50),
 }
 
 
