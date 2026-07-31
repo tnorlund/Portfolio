@@ -8,7 +8,7 @@
 
 > **trackEvent**(`event`, `params?`): [`AnalyticsEventMeta`](../type-aliases/AnalyticsEventMeta.md)
 
-Defined in: [utils/analytics.ts:265](https://github.com/tnorlund/Portfolio/blob/363f16ed7e988f6c1adb5cf450a3cb3a55d6a0a8/portfolio/utils/analytics.ts#L265)
+Defined in: [utils/analytics.ts:265](https://github.com/tnorlund/Portfolio/blob/54c5f624eedfe159f142989b8d71b3663ba95761/portfolio/utils/analytics.ts#L265)
 
 ## Parameters
 
