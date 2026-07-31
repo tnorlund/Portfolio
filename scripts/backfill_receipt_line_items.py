@@ -41,7 +41,7 @@ from receipt_dynamo.entities.receipt_line_item import (  # noqa: E402
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
 PROD_MARKER = "d7ff76a"
-EXTRACTOR_VERSION = "line-items-geom-v1"
+EXTRACTOR_VERSION = "line-items-blocks-v2"
 
 
 def main() -> None:

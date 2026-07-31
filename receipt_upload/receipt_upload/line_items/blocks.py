@@ -591,9 +591,17 @@ def decode_band_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
 
 
 def load_default_priors() -> dict:
-    """The committed template->role prior asset (golden-set trained)."""
+    """The committed template->role prior asset (v2, self-labeled)."""
     import json
     from pathlib import Path
 
-    path = Path(__file__).parent / "assets" / "block_role_priors_v1.json"
+    # v2: 928 templates self-labeled from 401 corpus receipts whose decoded
+    # items reconcile to their own printed subtotal (DeepCPCFG-style labels
+    # from records). Harvested from NON-golden receipts only, so the CI
+    # floor gate scores golden receipts with priors that never saw them --
+    # the train-on-test caveat recorded at integration is resolved.
+    # Limitation, measured: self-labeling reinforces the decoder's own
+    # systematic beliefs (the WFM tare-weight item survives it); hand
+    # labels in the golden set remain the corrective signal.
+    path = Path(__file__).parent / "assets" / "block_role_priors_v2.json"
     return json.load(open(path))["templates"]

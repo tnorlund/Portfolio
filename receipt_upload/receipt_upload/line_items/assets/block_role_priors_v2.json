@@ -1,0 +1,4645 @@
+{
+ "_README": "Template->role priors for item-block decoding, v2: self-labeled from 401 corpus receipts whose decoded items reconcile to their own printed subtotal (labels-from-records; harvested 2026-07-30 from NON-golden receipts only, so golden-set evaluation is leakage-free). Regenerate with scratchpad/harvest_priors.py -> repo script TBD. Ships like section_order_priors_v2.json; the Swift worker loads the same asset. Limitation: self-labeling reinforces the decoder's own systematic beliefs; golden hand labels remain the corrective signal.",
+ "templates": {
+  "DESCRIPTION QTY AMOUNT": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "T EXTRASTRTHSCT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BELLY TRIO SUSHI COMBO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# RICE (SMALL) $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SUIGEI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ESTELLA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SALMON SKIN ROLL #PCS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HAND ROLL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG A#/A# #% FAT MLK #.#": {
+   "role": "PRICE",
+   "support": 11,
+   "purity": 1.0
+  },
+  "SOUR CREAM #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "**** ****": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DINE-IN #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CE": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ABC BURGER[BEETL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEDIUM RARE": {
+   "role": "MEMBER",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# ONION RINGS[LG] $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RANCH": {
+   "role": "MEMBER",
+   "support": 5,
+   "purity": 1.0
+  },
+  "(#)": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHICKEN CLUB $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "SANDWICH": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# ORG BANANAS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# STRAWBERRIES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BEEF BULGOGI #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# HIBIKI WHSKY #.# A": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FLAX OAT BRAN PITA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC LIQUID SOAP #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EXTRA VRGN OLIVE OIL #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TURBINADO SUGAR #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F RAW WHOLE MILK #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # BEEF FLANK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # ORGANIC GRND #.#": {
+   "role": "PRICE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "PRE ROLL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TAHOE ALIEN [.#G] | DOGWALKERS | PRE-ROLL | # P": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ACK MINI SHOW DOGS INFUSED PRE-ROLL'S | SATIVA": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$#.#": {
+   "role": "PRICE",
+   "support": 11,
+   "purity": 1.0
+  },
+  ". #G \u00d7 # PRE-ROLLS, #.#G TOTAL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # EA $#.#EA C": {
+   "role": "OUTSIDE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "DUCT TAPE WHT #YDX#.#\" $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ITEM QTY PRICE TOTAL": {
+   "role": "MEMBER",
+   "support": 10,
+   "purity": 1.0
+  },
+  "# # #.# #.#": {
+   "role": "PRICE",
+   "support": 78,
+   "purity": 1.0
+  },
+  "PIZZA MUSHROOM & TRUFFLE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PIZZA MARGHERITA #. #OZ F": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PIZZA SICILIAN #. #OZ FW": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PIZZA MARGHERITA #.#OZ F": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #.# #.# #.#": {
+   "role": "PRICE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "SKLS ATL. SALMON PRTNS. W": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SKIS ATL. SALMON PRTNS. W": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TAGLIERINI CHICKEN LEMON": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "HOT SMOKED SALMON CLASSIC": {
+   "role": "MEMBER",
+   "support": 5,
+   "purity": 1.0
+  },
+  "HOT SMOKED SALMON PEPPER": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "SALMON GINGER IBS MYLAR": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ATLANTIC SALMON W/ MISO #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SPECIALTY SLICE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SO-CAL CHICKEN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SOFT DRINK $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SURFER BURRITO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STEAK": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RAW WHOLE MILK #.#": {
+   "role": "PRICE",
+   "support": 31,
+   "purity": 1.0
+  },
+  "ORG SOURDOUGH BREAD #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "ORG WHITE ONIONS #LB #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG WHITE VINEGAR #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BNLS PORK THIN CHOPS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DESCRIPTION QTY PRICE TOTAL": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "SCRUB BUDDIES BOTTLE BRUSH #.# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SCRUB BUDDIES BOTTLE BRUSH #.# #.#T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EAST COAST BAGEL COMPANY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# OPEN FACE LOX $O #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "OPEN FACE DOUBLE PORTION $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "TOASTED $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PR (SING E-INFUSED)-BLUE DREA (.#G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "M- #.#G-#": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "UNIT PRICE #.#": {
+   "role": "PRICE",
+   "support": 10,
+   "purity": 1.0
+  },
+  "SALTED BUTTER #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "SPROUTS LRG EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LAUNDRY CLEANING AND CLOSET": {
+   "role": "MEMBER",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# BRIGHTROOM $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# @ $#.# EA": {
+   "role": "OUTSIDE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# MRS. MEYER'S T": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# @ $#.# EA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG PSTR RSED EGGS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "RUSSET POTATO # LB #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #.#": {
+   "role": "OUTSIDE",
+   "support": 6,
+   "purity": 0.6666666666666666
+  },
+  "# PAD THAI #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN": {
+   "role": "MEMBER",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# DRUNKEN NOODLES #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# LARGE BOTTLED BEER #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "POR #X# GIACOMETTI WHITE PL": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# # @ #.# #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "CORONA EXTRA RC #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CA REDEM VAL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WAS SPROUTS #,# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# OPEN FACE LOX $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "VT EMPERORS CLOUD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DESCRIPTION": {
+   "role": "OUTSIDE",
+   "support": 7,
+   "purity": 1.0
+  },
+  "BACON \u2022 WRAPPED TENDERLOIN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #. # #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BACON WRAPPED TENDERLOIN": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# TAN-TAN RAMEN $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "THIN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PORK CHASHU": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MEAT PATTY #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "+ FRIED MUSTARD": {
+   "role": "MEMBER",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# ANIMAL FRY #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "SHEPHERD'S PIE GRASS FED": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN AND VEG POTSTICKE": {
+   "role": "MEMBER",
+   "support": 3,
+   "purity": 1.0
+  },
+  "STEAK RICE BOWL $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "#.# GALLONS @ $#.#/GAL #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BROWN REUSABLE BAG #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LIQUOR PRICE YOU PAY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BUTTER CHARDONNAY #.# #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CRY WINE SNGL TAX #.# #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEMBER SAVINGS -#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEMBER SAVINGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG BLUE CORN TORT CHIPS $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SAVORY THIN MULTISEED CR $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "CHICKEN GYOZA $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "CHICKEN FRIED RICE $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "PASTA GARLICKY $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "MUSHROOM RISOTTO $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BOWL CUBAN STYLE CITRUS $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHEESE SPINACH & ARTIC $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "CHICKEN BURRITO BOWL $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BOWL BEEF & QUESO $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "GROUND BEEF KEBABS MIDDL $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BBQ CHICKEN SALAD $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "TUNA SALAD $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "LEMON CHICKEN & ARUGULA $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# TONKOTSU RAMEN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "COMBO CHASHU BUN WITH HOUSE SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# HEDARY'S FRIES $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "KRO DRIED MANGO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PPB DRK CHOC PRETZ #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHMP STICKS #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# B&J CHUNKY MONKEY #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# JENIS SPLENDED ICE #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG CHICKN BREAST VP #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ORG LRG GRADE A EGGS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PARCHMENT PAPER #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# @ #.#": {
+   "role": "OUTSIDE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "T AM SPIRIT PK REG BL # #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "----": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "NOLROSE HREP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WHITE PITE !LITE)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PZ SALAMINO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PIZZA BREAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # STUFFED PEP #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # DAVE'S # WG #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# VT ICD COFFEE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG WHOLE MILK #.#": {
+   "role": "PRICE",
+   "support": 8,
+   "purity": 1.0
+  },
+  "# MIDNIGHT IN TULUM $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# STEAK SANDWICH $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "CALIFORNIA PIZZA KITCHEN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GF BBQ CHICKEN PIZZA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BBQ CHICKEN PIZZA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "T&B DINE-IN SPECIAL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  ".CAULIFLOWER CRUST": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "W/PINEAPPLE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TAKE&BAKE BURNT END PIZZA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "APPETIZER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LETTUCE WRAPS W/CN#X": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BERRIES NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# UP & UP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# EASY OFF T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#@#.# #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# #WLED ST# <A> #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "FEIT #W ST# WW STR# AMBER LED #PK": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# GOOD&GATHER NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ROOMESSNT]S $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # KS GR FD BTR #.#": {
+   "role": "PRICE",
+   "support": 6,
+   "purity": 1.0
+  },
+  "E # KS ESPRESSO #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "E # KS FR # #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SALMON FILLET SKIN ON $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LARGE STRAWBERRY SURFRIDER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BLUE JAR": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GREEN BEANS #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "POULTRY DEPT KEY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PS TOMATOES #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "REG #.# #@ #.# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "YOU SAVED .#": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORDER": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "#X GABY'S CAESAR AVOCADO WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ATHENA CLUB T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG FRUIT NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SOUR PATCH NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CARLTONCARDS T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FAMILY SIZE BACON #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "E # MIXED PEPPER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # SNAP EAS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ORG ROC #LB #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# OG CARROT#LB #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ITALIAN CHKN #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MED OOL DATE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KS IR FD BTR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BNL /SL BRST #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GROC NONEDIBLE PRICE YOU PAY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DAWN ULTRA LIQ ORG #.# #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "REFRIG/FROZEN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# VITAL FARMS PASTUR #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEAT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SAUSAGE ITALIAN #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "(# @ #.#) #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "G#": {
+   "role": "OUTSIDE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# FULL SERVICE GRAPHENE $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "NELROSE MRAP $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WHITE PITA": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHICKEN PESTO CAPRESE $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PANINI": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ORG RFND COCONUT OIL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SHREDDED CARROTS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "SHREDDED RED CABBAGE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "YELLOW BANANAS #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "#.# #B @ $#.# / #B": {
+   "role": "OUTSIDE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "ORG CHICKEN THIGH #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BIG WAYGU BEEF BOWL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LOGAN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG PUR ORANGE JUICE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "*CRV FS # #.#": {
+   "role": "PRICE",
+   "support": 10,
+   "purity": 1.0
+  },
+  "PLAIN GRS FED KEFIR #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "TOTAL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ITEM QTY PRICE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MED #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# OZ TARE #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "COMBO PLATES # #.# #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "GRINGA TACO # #.# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FAJITA BURRITO STEAK $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SMAL# GUACAMOLE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PEP) $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FRUITLANDS GOSE # PK #.# I": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "*CRV TX # #.# T": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "#X ARMEN'S DELUXE CHEESEBURGER WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#X PESTO CHICKEN SANDWICH $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "REFRIG/FROZEN PRICE YOU PAY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LUC LOD EGG WHITES #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #PC SAE BALL END HEX KEY $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #PC METRIC BALL END HEX $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #\u0420C SECURITY BIT SET $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "QUAN DESCRIPT COST": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GREY GOOSE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DBL-DBI #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CRISPY CHICKEN #PC #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CARMENET BUTTERY CHARD B #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TAN TAN MEN #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SEASONED EGG TOPPING #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PREMIUM TONKOTSU RED #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "**EVERYTHING $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F # RX #: ****# #.#N": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "OTH #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "POR #X# BELUCCI BIANCA POL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "*SB#*": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WTRMLN DRINK MIX #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "NO PULP ORANGE JUICE #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ORANGE DEFENSE JUICE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "S #.# #.# CILANTRO ORGANIC #": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PAY YOU PRICE PRODUCE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BLACK TRUFFLE FIOCCHETTI": {
+   "role": "MEMBER",
+   "support": 3,
+   "purity": 1.0
+  },
+  "PEAR AND CHEESE FIOCCHETT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BEEF SHORT RIB RAVIOLI #": {
+   "role": "MEMBER",
+   "support": 3,
+   "purity": 1.0
+  },
+  "SMOKED MOZZARELLA AGNOLOT": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "LOBSTER RAVIOLI #OZ FW": {
+   "role": "MEMBER",
+   "support": 4,
+   "purity": 1.0
+  },
+  "STICKY BUTTER TOFFEE CAKE": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "CHICKEN BREAST & WILD RI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SIDE ROASTED GREEN VEGET $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ENTREE STUFFED PEPPERS B $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #V #-TOOL COMBO KIT $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG BLUE CORN TORT CHIPS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MUSHROOM RISOTTO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BOWL CUBAN STYLE CITRUS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LEMON CHICKEN & ARUGULA $#.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "SPICY SALAME SANDWICH $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN MILANESE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MASHED POTATOES": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SAUT\u00c9ED SPINACH": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MENABREA BIONDA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MENABREA ROSSA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PRODUCE": {
+   "role": "MEMBER",
+   "support": 6,
+   "purity": 1.0
+  },
+  "BROCCOLI FLORETS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC ASPARAGUS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG BROCCOLI FLORETS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG CITRUS NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HEALTH AND BEAUTY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# TEND SKIN T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MILK ORGANIC HALF GALLON $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "BEEF BULGOGI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RICE JASMINE FROM THAILA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BLUE MOON $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "WHOLE MILK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$ADD FRIED EGG $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BRUSSELS SPROUTS": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.#": {
+   "role": "PRICE",
+   "support": 10,
+   "purity": 1.0
+  },
+  "# SOURDOUGH BOULE #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BANANAS GREEN #.# #.# S": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# EVOLUTION #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CRV PROD SNGL NTX #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$#.# ROSSA MENABREA": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$#.# BIONDA MENABREA": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SPINACH SAUT\u00c9ED": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "POTATOES MASHED": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$#.# MILANESE CHICKEN": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$#.# SANDWICH SALAME SPICY": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CITY CULVER - SISTERS PASTA": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LB RUSSET POTATOES #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# ROOMESSNTLS T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PATIO & OUTDOOR DECOR": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BIC LIGHTER T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RAW MILK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TURBINADO SUGAR #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "DAIRY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC CARROT JUICE #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ORNG JUICE W CALCIUM #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# WAIIAN POKE X SUSHI ROLLS": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# RAINBOW ROLL $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# YELLOWTAIL AND JALAPENO ROLL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN CAESAR SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GROCERY": {
+   "role": "MEMBER",
+   "support": 5,
+   "purity": 1.0
+  },
+  "# LESSEREVIL NF $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# CHOBANI NF $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# CHOBAN\" FLIP NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DAISY ERAND NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SIMPLYPOTATO NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "REGULER PRICE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GRAPES NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG EG#S NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG FRU NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # # # EA": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SIMPLY NF $# .#": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SIMPLY NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# NATIVE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# AVEENC T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# COTTONELIPE T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HOME": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BED PILLONS T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BFD PILL.CHS T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SUBTOTAL: $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F # PLAN B ONE STEP EACH #.#T": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORIGINAL PRICE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ROASTED HONEY PORK FRIED #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "JUUL DEVICE BCT KIT SLAT $#.# TX": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "JUUL E LIQ POD TABC #CT $#.# TX": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG SOURD UGH BREAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GARLIC CHICKEN WRAP $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# ITEM PRICE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GARLIC TOAST #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # KS ALKALINE #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# COFFEE SM #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TJ'S FROSTED FLAKES $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STEEL CUT OATMEAL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN AND CHEDDAR SAND $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EGG BITES BACON AND CHED $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PROTEIN PANCAKES $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PORK GYOZA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WAFFLES TOASTER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SIDE LEMON BASIL PASTA S $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SAUSAGE CHICKEN APPLE CH $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "R-TWO POTATO HASH $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SPICY SPUDS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EGGS LARGE CAGE FREE WHI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ITEMS IN TRANSACTION: #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KID SCOOP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# POPPI TFP $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BOTTLE DEPOSIT FEE $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# AQUAFINA NFP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BROCCOLI SPRT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CEL #:# BREAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SWT ONION SAUSAGE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FRIES $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "#/#": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "--FIP #% -$#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STILIZY | BLACK CHERRY GELAT (#.#G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "\u2022 #": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BATCH: H#-#-# /#": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "--# $#.# -$#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CAGE FREE BROWN EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "*** *******************************": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SIDE OF EEL SAUCE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LG SANDWICH $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "GROCERY $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CASCADE T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG FF GRASSFED MILK #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# DM RSPBRY SALT #CT - #.# |": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GROCERY SIG RICE CRACKERS #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CLOVER SPROUTS #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "CLUSTER TOMATOES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG # LB CARROTS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ACTIVE DRY YEAST #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "MEXICAN STYLE CHEESE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GREY REUSEABLE BAG #.#": {
+   "role": "PRICE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "ORG CHICKEN SAUSAGE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ORGANIC CILANTRO #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BAGEL SANDWICH $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC BANANAS #.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "#.# LB @ $#.# / #B": {
+   "role": "OUTSIDE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "BRIOCHE BURGER BUNS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "RAW WHOLE I #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GRINGA TACO #.# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "POUR OVER $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "WINTER BLEND, REGULAR, NONE, HALF AND": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HALF, NO SUGAR": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG VANILLA EXTRACT #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "UNSLTD SALTINE CRCKR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "UNSALTED BUTTER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PECANS HALVES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHANGE #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# WEIHENSTEPHANER LAGER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HEALTHY & HAPPY (#.#%) $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "COBB SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEXICALI SALAD $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "HALF & HALF PINT $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ENTREE CHICKEN LETTUCE W $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# WILD FABLE T $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "BOUIN #.# #.#T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RRIOCHE BURGER BUNS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MEAL-SPCYDIXIPJ #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SPCYDIX +PJ": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LG FRY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SNY TEA/LAND MD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GRLNUG #CT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SIDE SID #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SM MAC #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CFA SAUCE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BUFFALO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # ORG BS THIGH #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# BENTO BOX $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SALMON PLATE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# JARRITOS SODA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SPAM MUSUBI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC GREEN ONIONS #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "SPROUTS CREAM CHEESE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#@ #.#": {
+   "role": "OUTSIDE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# SPF # TANNIN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CANTU BRUSH $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # KIQ CREAMER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # IRISH BUTTER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LEMONS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG WHOLE ROSEMARY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG BIRCHWOOD COFFEE #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "BNLS PORK LOIN CHOPS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "E # ORG. DATES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FULL SERVICE GRAPHENE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  ".. DION BOWL BIG $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ABC BURGER[BEEF] $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# ULTIMATE EGG $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BURGER[BEEF]": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ONION RINGS[L G] $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SAUCES & $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CONDIMENTS - ON THE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SIDE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# FOUNTAIN SODA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG JUMBO AVOCADOS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HOT JALAPENO PEPPERS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "*** ***": {
+   "role": "OUTSIDE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "F (SHAKE) -L'ORANGE-#.#G-S (. #G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "A (CONE) -CLASSIC- (#PK) - (#.#\"": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "A (CONE)-CLASSIC- (#PK) - (#.#\"": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PR (SINGLE)-GOVERNMINT OASIS- (. #G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "QTY ITEM PRICE": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# \u00ab BIG BEEF BOWL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CALROSE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHUNKY GUACAMOLE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HATCH CHILE GUACAMOL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MONTEREY JACK CHEESE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FLOUR TORTILLAS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TYLER, **PHONE**, NO UTENSILS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BURRITO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #.# #.#": {
+   "role": "PRICE",
+   "support": 9,
+   "purity": 1.0
+  },
+  "# WILD FABLE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "VIT D WHOLE MILK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DRANO T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CALIFORNIA DELIGHT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#_SPRAY PAINT <A,U* #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BEHR WHITE SATIN AERO B# #Z": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BEHR CAULK \u00abA\u00bb": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BEHR MULTI-PURP CAULK #.# OZ WHITE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#-#-# OT RECYC $ *A,U\u00bb #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GLN INI FL SA\u00bb #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GLIDDEN PREM INT FLAT BASE' # #Z": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MAX REFUND VALUE $#.#": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PRO XTRA PREFERRED PRICING": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "KWIK SEAL WHITE #.# #Z": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PRO XTRA PREFERRED PRICING -#.#": {
+   "role": "PRICE",
+   "support": 5,
+   "purity": 1.0
+  },
+  "\u2022-PRO PAINT-": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# PRO PAINT -#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "-PRO XTRA PREFERRED PRICING": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# #PK TWLS <A= #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LAG SCRW ZINC #/# X #-#/# (ALH)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MAX REFUND VALUE $#.#/#": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "\u2022.-PRO XTRA PREFERRED PRICING": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# '# HDXTOILETBRU <A> #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HOX ATLET BRUSH": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "-----PRO XTRA PREFERRED PRICING": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CDW #X#CT <A,S> #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PRO XTRA MEMBER STATEMENT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PRO XTRA SPEND #/#: $#,#.#": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RUSSET POTATO # LB #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "CHIVES #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SALMON BOWL #.# B": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BANANA WALNUT WAFFLE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG PINT BLUEBERRIES #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC GREEN ONIONS #.# F": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ORG WHOLE MILK #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC GREEK YOGURT #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BRISKET BURNT ENDS PLATE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "POTATO SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BARBECUE BEANS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CLASSIC BARBECUE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#X ARMEN'S": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DELUXE CHEESEBURGER WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SHAWARMA WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PASTURE EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # ORG CHKTENDR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SESAME OIL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # CHICKEN SLD #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "E # HN CHEERIOS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "E # MEATLOAF #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# **KS TOWEL** #.# A": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# **KS ULTRA** #.# A": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # GATORADECORE #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "E # KS SALMON #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ROTISSERIE #.# A": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# EVIAN FACIAL SPRAY #.#Z": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#X ARMEN'S DELUXE CHEESEBURGER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WRAP": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# # EA $#.# EA": {
+   "role": "OUTSIDE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# #/#XB GALV NIPPLE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MILK CHOCOLATE CHIPS #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "ORG GARLIC POWDER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TOFFEE ICE CREAM BAR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "NATURA: BEEF HAS, POACHED INEDIUM,": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "W/B. CAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "IKE S AT FREDDY S $#.# #": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GROCERY PRICE YOU PAY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # MC HOLLANDAISE #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "T CALCIUM MAG ZINC $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BAG FEE. $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GRAD A PASTURE EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "T BUTTER CHARD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "JOHN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MBD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG DARK BROWN SUGAR #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "WHITE ALL PURP FLOUR #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# THREADLCKR <A> #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LOCTITE # THREADLOCKER RED .# OZ": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PB COOKIES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CRAB CAKES BENEDICT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CREOLE BREAKFAST POTATOES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "$#.# PARADISO #": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# W# #LB DUMBBELL BLA $#.#T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BANGARANG #OZ $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CATORCE #OZ $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MANGO SPEARS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG COCONUT MILK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "COLLAGEN BRN POWDER #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#/#\" X#' L-METAL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# RY CHOPPING AT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# OPEN FACE FLAVOR/LOX CC $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "LOX SPREAD $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "DOUBLE TOASTED $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "OPEN FACE CC AND TOM $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "DRIP COFFEE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HALF AND HALF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STEAK AND EGGS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MIMOSA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LEMON DROP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ESPRESSO MARTINI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# TOSCANOVA CHOPPED SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PIZZA MARGHERITA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CAPRESE PANINI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SUB SIDE MIX GREENS SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PASTRAMI PANINI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# AFFOGATO AL CAFFE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG BIRCHWOOD COFFEE #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BOTTLE RETURN -#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PLAIN WHL GRK YOGURT #.#": {
+   "role": "PRICE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "PREPAY CA ## #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LOVE AND BE TOVED MIDI JACK CRO": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#/# #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "SOUR GUMMI WORMS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# LB @ $#.# / IB": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# TUNA TARTARE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EARN # LAST CALL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DBL-DBL #.#": {
+   "role": "PRICE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# FRY #,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHEESE FRY #.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "# MED COKE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DBL AVOCADO BACON #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FRENCH FRIES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# STEAK PLATE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ALMOND-WILD RICE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "COOKIE BUTTER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # RICE BOWLS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# TIDEF&GPOD #.# A": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ROTISSERIE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CANDY HEART #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SPIN FRITTAT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CAPREE SHKR #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# IRISH BUTTER #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# MINI WONTONS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# STUFFED PEP #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHICALFREDO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KSCONVGRKYGT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ORG BLUES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ORG FR EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HONEY DIJON MUSTARD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG BLCK SESAME SEED #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG POPPY SEED #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ARLIC CHICKEN WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WEM THE ARGENTINE TOASTED $#.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ITEM": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "QTY PRICE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ADULT SCARY MOV": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEDIUM POPCORN #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "OF TRUSARDS OR ALCOTIAL. RESTRICT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "YELLOW MUSTARD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORIGINAL OAK SMOKED SALMO": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# FRY #.#": {
+   "role": "PRICE",
+   "support": 4,
+   "purity": 1.0
+  },
+  "# THR $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PARADISO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHIPS": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG WATER NF $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# UP & UP T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BARBASOL T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DEALWORTHY T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GELATO | PICCOLO CUP # $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FLAVORS \u00d7 #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG CAGE FREE EGGS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "RAW CHEDDAR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EMPLOYEE: LAUREN C": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MEAL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DOUBLE CHEESEBURGER": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# FRENCH FRIES": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# REG VANILLA CONCRETE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# FRY SAUCE PKT (#) $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FAMILY SIZE BACON #,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG EV OLIVE OIL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# HAMBURGER #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "+ ONION": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "+ PROTEIN STYLE": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "OIL SPRAY COCONUT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEAT CKN LEMON WHOLE SPATCHCOC #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ENTREE LASAGNA SPINACH #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "VEG POTATOES GARLIC IN PARMESA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "R-BEANS GREEN ORG # OZ #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "R-SALAD COMPLETE GREAT KALE HE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BAG FEE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LARGE AMERICANO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CAPPUCCINO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KS BAGS # #.# A": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # ORG FR EGGS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "IX GABY'S CAESAR AVOCADO WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#X CHEESE QUESADILLA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#/# UP&UP": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# UP T + $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "& UP # $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ITEM PRICE AMOUNT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # $#.# $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "BEAUTY SECRETS NOVELTY TWEEZERS GARDEN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# $#.# $#.#": {
+   "role": "PRICE",
+   "support": 3,
+   "purity": 1.0
+  },
+  "SC X WIDE JUMBO TINT BRUSH- ASSORID": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SC TINT BOWL ASSORTED COLORS": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ION HEALTHY SCALP MASK": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ALFRESCO SLTD BUTTER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "APPLE CHICKEN SAUSGE #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "AMOUNT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DESCRIPTION QTY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DEAL WORTHY T \u2022 $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CLOROX T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KS MEX CHEES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # BEEF BULGOGI #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# BAGELS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KS GR FD BTR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "QTY ITEM AMOUNT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PARKING, PREFERRED PP #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# OX# T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#* SOCIAL MONK FAMILY MEAL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# YELLOWTAIL AND JALAPENO ROLL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # CHOC CARAMEL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # /SANDERS #.#-": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # PASTURE EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG FR BROWN EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GARAGE & HARDWARE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LEVOIT T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KIKKOMAN NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GG SPICES NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# UP # UP T $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# UP&UP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ICED LATTE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "REGULAR": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "WHOLE MILK": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ICED AMERICANO $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HALF & HALF": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BLUEBERRIES # OZ #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC GREEK YOGURT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ALEXFF OG WHOLE A# MILK $#.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TRKY MEATLF GRN BEAN #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TRADITIONAL MAYO #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG LRG GRADE A EGGS #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PICO DE GALLO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RAW MED CHEDDAR CHS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BNES PORK THIN CHOPS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BUR FLOUR TORTILLAS #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "PRICE YOU PAY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PURE LIFE WATER #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CRV SFTDK SNGL NTX #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EGG WHITES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CARNITAS PIZZA (#$#.#/EA) $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #OZ TRI TIP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# RANCH": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# REG BBQ": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SUGGESTED TIPS:": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SWEET CHALLAH SANDWICH $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ITEM QTY PRICE AMOUNT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # EA #.# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# \"NOT SO FRIED\" CHICKEN $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "TOASTED": {
+   "role": "MEMBER",
+   "support": 3,
+   "purity": 1.0
+  },
+  "TANGY MUSTARD BBQ SAUCE": {
+   "role": "MEMBER",
+   "support": 3,
+   "purity": 1.0
+  },
+  "MUSTARD REMEULADE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "I SMALL PICKLES & DILL POTATO SALAD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN BOWL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GUACAMOLE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LARGE CHIPS AND GUAC #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LARGE CHIPS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LARGE COCONUT SOUP #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MEDIUM": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# STEAMED WHITE RICE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "YES WAY ROSE #.# L": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CRV #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TEA SOUNGER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "AL: THE HAY $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BE UN DOG $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BACON $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PLAIN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# LARGE FRY $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MILK SHAKE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "VANILLA $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WHIP CREAN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F GREEN BEANS #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F ORGANIC CILANTRO #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F ORGANIC LIMES #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F WHITE JASMINE RICE #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "F ORG PSTR RSED EGGS #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DAIRY YOGURT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PLAIN WHL GRK": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HOTHOUSE TOMATOES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "AVOCADO OIL MAYO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "KOMBUCHA-ORG-ENLIGHT #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ORGANIC POPCORN #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WHEAT PITA BREAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "KUSHBERRY FARMS - I-# COOKI (#.#G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ES PREROLL (#G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "VICE - PRIVATE RESERVE PRERO (#.#G)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# (#G) *WHEEL PROMO*": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# AVOCADO GREENS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KORA TURMERIC GLOW SHOT $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MAGNESIUM L-THREONATE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RUSTIC BATARD BREAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG SOURDOUGH BATARD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# AVOCADO TOAST $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MULTIGRAIN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# POACHED EGGS (AVAILABLE UNTIL #PM)": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BBQ ST. LOUIS RIBS LARGE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SNLK SSM OIL #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HFNG CHILI SAUCE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ONIONS GREEN #.# LLL": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GARLIC #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # #. # #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "MOREL MUSHROOM SAUCE #OZ": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BASIL PESTO #OZ FW": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TOMATO BASIL SAUCE #OZ F": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WHITE WINE BUTTER SAUCE #": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "ROLLED OATS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MEAL-STRIPS #CT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STRIPS #CT": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "+# CFA SAUCE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FRIES MD": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LMNDE MD $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHICKEN SANDWICH": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG GINGER ROOT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG DARK RYE FLOUR #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SPROUTS ORG SPICE #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "# # # #": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "+ GRILLED #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MED SOFT DRINK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LARGE WHITE GUMMI $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BIG BEEF BOWL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RICE $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CLUSTER TOMATOES #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RESC ORG LEMON BAG #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG GROUND ALLSPICE #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG GROUND CORIANDER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG TURMERIC POWDER #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RAW WHOLE MILK #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ROASTED GARLC NAAN #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG LEMONS # LB BAG #.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "#X THE MINI KABOB WRAP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#\u00d7 ARMEN'S DELUXE CHEESEBURGER $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# IAM NUDE HAIRCLP # EACH #.#T": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SURVEY": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# # # # #": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BANANA EACH $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# @ $#.#": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CINNAMON ROLL CEREAL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "AVOCADO MASH #OZ TRAY": {
+   "role": "MEMBER",
+   "support": 4,
+   "purity": 1.0
+  },
+  "B/N WAFFLE, WITH SYRUP #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "JUICE-ORG-TROPICAL T #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FROZEN TAXABLE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CUBE ICE #LB": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#@ #.# EA #.# T F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HARD DELUXE #.# #.# EA #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TITO'S VODKA #.# I": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CRV/TAX/EBT #/#Z #.# T F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GREEN SEEDLESS GRAPE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# LB @ #.#/ #B #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STRAWBERRY CLAMSHELL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC STRAWBERRIES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PLASTI DIP SPRY #Z BLK $#,#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# #/# \"NOT SO FRIED\" CHICKEN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CIABATTA": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "MUSTARD REMOULADE": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "SMALL DELI SIDE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SMALL BASIL PESTO SHELIS": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "THE TURKEY REUBEN $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ONION RINGS[REG] $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RENO-U REDUCER #/# SA! AN AL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KID": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SCOOP $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KATSU CHICKEN CURRY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "* LEVEL # SPICY": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SALMON KATSU CURRY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ANAWALT LUMBER": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# EA $#.# EA": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CHNNLCK # #/#\" V-JAW PLIERS $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # CHEESE TRAY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "APPAREL": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ROAST AND RICE KITCHEN": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# DOUBLE TUNA ROLL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CUCUMBER SPECIAL ROLL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# RED DRAGON ROLL #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ADD CREAM CHEEZE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MANGO STICKY RICE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# JAPANESE SCALLOP SUSHI #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# GREEK YOGURT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# KS EGG WHITE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SIDE AJITAMA/EGG $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "NATURAL BEEF HAS, POACHED MEDIUM,": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "W/BREAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# \u2022 ITEM PRICE": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MEATBALLS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "S#": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ONION RINGS[REG] $#.#": {
+   "role": "PRICE",
+   "support": 2,
+   "purity": 1.0
+  },
+  "WATER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# WINGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BREADED - #": {
+   "role": "MEMBER",
+   "support": 3,
+   "purity": 1.0
+  },
+  "ADD FRIES - WINGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "HOUSE MARGARITA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "STRAWBERRY PUREE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WELL TEQUILA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# VITAL FARMS NF $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CRPT CLNR T $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# X LIVE FREE PR HDY NAVY S": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "YETI NAME DROP STICKER /#": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "\u2022 FRY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ANIMAL FRY #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG TOMATOES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG SEA SALT BUTTER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORGANIC WHOLE MILK #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "*BOTTLE DEPOSIT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "WHIPPED CREAM CHS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "SMOKED SALMON #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GARLIC BAGELS # CT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BAG PROMPT CHARGE #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # OG BAKER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# PORK TENDER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "DELI": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PARM CHEESE WEDGE #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ROMANO CHEESE #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FAMILY SIZE BACON #.# F": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FRUITLANDS GOSE # PK #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "** *************************************": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG #LB SWEET ONIONS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG WHOLE THYME LEAF #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# #B @ $#.#/ LB": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BLS PORK LOIN CHOPS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "THIN CUT CHKN BREAST #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LARGE ALFRESCO EGGS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "RAW CREAM #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # KS THICK CUT #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # ROMANO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # REGGIANO #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SEA ICE VODKA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GOLD BELL PEPPERS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#@# F #": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG WHITE LB #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ORG A#/A. #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FAMILY S# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GREY REI #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "GROUND BEEF #% #B VS PO": {
+   "role": "MEMBER",
+   "support": 2,
+   "purity": 1.0
+  },
+  "* GRILLED #": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# MED PINK LEMONADE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#/# #-UP": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# 'FINGER' (@#.#) #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "'FRIES' #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# 'CANES SAUCE' (@#.#) #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "BELLA DONOVAN, NONE, HALF AND HALF,": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "NO SUGAR, REGULAR": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "#.# LB @ $#.#/ #B": {
+   "role": "OUTSIDE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "EMAIL SENDING # @ #.# #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LOBSTER MAC AND CHEESE : #C": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# SIG WHITE VINEGAR #.# #.# S": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# BURRITO FRIDA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ADD GUAC": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# HIHOTRIPLE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "FRIES #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "E # THAI JASMINE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CAESAR SALAD #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "CAESAR": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "NP CRUTON": {
+   "role": "MEMBER",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# **RIVERVIEW BREEZE #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# *WELL TEQUILA #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# ADD SHRIMP #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# CHICKEN TENDER #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "PLAIN PNKO BRDCRUMBS #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "LARGE GRADE A EGGS , #.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "# NUTELLA BOMB $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "COMBO BOWL $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "ADD-ON \u00d7 # $#.#": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TEA TREE CONDITIONER #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  },
+  "TEA TREE SHAMPOO #.# T": {
+   "role": "PRICE",
+   "support": 1,
+   "purity": 1.0
+  }
+ }
+}
