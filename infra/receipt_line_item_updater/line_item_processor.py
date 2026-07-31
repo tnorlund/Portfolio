@@ -89,8 +89,9 @@ def update_receipt_line_items(
         if w.line_id in line_ids
     ]
 
-    items, collapsed = extract_items(word_dicts, line_ids)
-
+    # Summary is fetched BEFORE extraction: the decoder's non-product
+    # band filter needs the printed subtotal/tax/grand_total to recognize
+    # summary figures leaking into the ITEMS zone.
     summary_dict = None
     merchant = None
     try:
@@ -113,6 +114,10 @@ def update_receipt_line_items(
             image_id[:8],
             receipt_id,
         )
+
+    items, collapsed = extract_items(
+        word_dicts, line_ids, summary=summary_dict
+    )
 
     status, _, _ = reconcile(
         [x for x in items if not x.get("is_discount")], summary_dict

@@ -94,7 +94,7 @@ def main() -> None:
         sec = targets.get((img, rid))
         words, _, summary = fetch_receipt_records(client, args.table, img, rid)
         line_ids = {int(x) for x in (sec.get("line_ids") or [])}
-        items, collapsed = extract_items(words, line_ids)
+        items, collapsed = extract_items(words, line_ids, summary=summary)
         status, _, _ = reconcile(
             [x for x in items if not x["is_discount"]], summary
         )
