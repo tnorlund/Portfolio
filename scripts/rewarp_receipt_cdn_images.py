@@ -588,7 +588,8 @@ def _load_original(
 
 def _backup_existing_variants(
     s3_client: Any,
-    bucket: str,
+    source_bucket: str,
+    dest_bucket: str,
     receipt: Receipt,
     backup_prefix: str,
 ) -> tuple[list[str], Optional[str]]:
@@ -596,8 +597,12 @@ def _backup_existing_variants(
 
     The site bucket has no versioning, so a republish is otherwise
     unrecoverable. Copies are server-side (no download) and land at
-    ``{backup_prefix}{original_key}``, which is also exactly the
-    argument order ``aws s3 cp`` needs to put them back.
+    ``{dest_bucket}/{backup_prefix}{original_key}``.
+
+    The destination must NOT be the site bucket. The prod deploy runs
+    ``aws s3 sync ... --delete --exclude "assets/*"`` (main.yml), so any
+    prefix that is not part of the built site is deleted on the next
+    deploy -- which is exactly how an earlier backup run was lost.
 
     Returns ``(copied keys, error)``; a non-None error means the caller
     must not overwrite anything for this receipt.
@@ -609,9 +614,9 @@ def _backup_existing_variants(
             continue
         try:
             s3_client.copy_object(
-                Bucket=bucket,
+                Bucket=dest_bucket,
                 Key=f"{backup_prefix}{key}",
-                CopySource={"Bucket": bucket, "Key": key},
+                CopySource={"Bucket": source_bucket, "Key": key},
             )
             copied.append(key)
         except ClientError as exc:
@@ -633,6 +638,8 @@ def rewarp_receipt(
     darkness_margin: float,
     dry_run: bool,
     backup_prefix: Optional[str] = None,
+    backup_bucket: Optional[str] = None,
+    allow_same_bucket: bool = False,
 ) -> dict[str, Any]:
     """Rebuild and republish one receipt's CDN variants.
 
@@ -713,10 +720,28 @@ def rewarp_receipt(
     # Back up before the first overwrite, never after: a partial upload
     # with no backup is the one outcome there is no way back from.
     if backup_prefix:
+        # Default to the raw-photo bucket: it always exists for this
+        # receipt and the site deploy never syncs over it.
+        dest_bucket = backup_bucket or image_entity.raw_s3_bucket
+        if dest_bucket == receipt.cdn_s3_bucket and not allow_same_bucket:
+            record["status"] = "skipped_backup_same_bucket"
+            record["notes"].append(
+                f"refusing to back up into the site bucket "
+                f"{dest_bucket}: the prod deploy's 'aws s3 sync --delete "
+                f"--exclude assets/*' removes any non-site prefix, which "
+                f"already destroyed one backup run. Pass --backup-bucket "
+                f"or --allow-same-bucket."
+            )
+            return record
         copied, error = _backup_existing_variants(
-            s3_client, receipt.cdn_s3_bucket, receipt, backup_prefix
+            s3_client,
+            receipt.cdn_s3_bucket,
+            dest_bucket,
+            receipt,
+            backup_prefix,
         )
         record["backed_up"] = len(copied)
+        record["backup_bucket"] = dest_bucket
         if error:
             record["status"] = "skipped_backup_failed"
             record["notes"].append(error)
@@ -857,11 +882,28 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--backup-bucket",
+        help=(
+            "Bucket to copy live CDN objects into before overwriting. "
+            "Defaults to the image's raw-photo bucket. Must not be the "
+            "site bucket: the prod deploy syncs with --delete and only "
+            "excludes assets/*, so any other prefix there is destroyed "
+            "on the next deploy."
+        ),
+    )
+    parser.add_argument(
+        "--allow-same-bucket",
+        action="store_true",
+        help=(
+            "Permit backing up into the site bucket anyway. The next "
+            "site deploy will delete those backups."
+        ),
+    )
+    parser.add_argument(
         "--backup-prefix",
         help=(
-            "S3 key prefix (same bucket) to copy live CDN objects to "
-            "before overwriting them. Defaults to a timestamped "
-            "'backups/rewarp-<UTC>/' prefix."
+            "Key prefix for backups. Defaults to a timestamped "
+            "'rewarp-backups/<UTC>/' prefix."
         ),
     )
     parser.add_argument(
@@ -948,13 +990,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     backup_prefix: Optional[str] = None
     if args.apply and not args.no_backup:
         backup_prefix = args.backup_prefix or (
-            "backups/rewarp-"
+            "rewarp-backups/"
             + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             + "/"
         )
         if not backup_prefix.endswith("/"):
             backup_prefix += "/"
-        logger.info("Backing up replaced objects under %s", backup_prefix)
+        logger.info(
+            "Backing up replaced objects to %s under %s",
+            args.backup_bucket or "the image's raw-photo bucket",
+            backup_prefix,
+        )
     elif args.apply:
         logger.warning(
             "--no-backup: overwrites will be unrecoverable on an "
@@ -1097,6 +1143,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 args.darkness_margin,
                 dry_run=args.dry_run_apply,
                 backup_prefix=backup_prefix,
+                backup_bucket=args.backup_bucket,
+                allow_same_bucket=args.allow_same_bucket,
             )
             logger.info(
                 "%s %s/%d gap=%s %s",

@@ -322,23 +322,34 @@ class FakeS3:
             raise ClientError(
                 {"Error": {"Code": "AccessDenied"}}, "CopyObject"
             )
-        self.copies.append((source, Key))
+        self.copies.append(((CopySource["Bucket"], source), (Bucket, Key)))
 
 
-def test_backup_copies_every_populated_variant():
+def test_backup_lands_in_a_different_bucket():
+    """Backups must leave the site bucket entirely.
+
+    The prod deploy runs `aws s3 sync --delete --exclude "assets/*"`, so
+    a backup prefix in the site bucket is deleted by the next deploy --
+    which is how a real backup run was lost.
+    """
     receipt = make_receipt(866, 2688)
     s3 = FakeS3()
     copied, error = rw._backup_existing_variants(
-        s3, "site-bucket", receipt, "backups/run/"
+        s3, "site-bucket", "raw-bucket", receipt, "rewarp-backups/run/"
     )
     assert error is None
-    # Only the two keys this fixture populates.
     assert copied == [f"assets/{IMG}/1.jpg", f"assets/{IMG}/1_thumbnail.jpg"]
     assert s3.copies == [
-        (f"assets/{IMG}/1.jpg", f"backups/run/assets/{IMG}/1.jpg"),
         (
-            f"assets/{IMG}/1_thumbnail.jpg",
-            f"backups/run/assets/{IMG}/1_thumbnail.jpg",
+            ("site-bucket", f"assets/{IMG}/1.jpg"),
+            ("raw-bucket", f"rewarp-backups/run/assets/{IMG}/1.jpg"),
+        ),
+        (
+            ("site-bucket", f"assets/{IMG}/1_thumbnail.jpg"),
+            (
+                "raw-bucket",
+                f"rewarp-backups/run/assets/{IMG}/1_thumbnail.jpg",
+            ),
         ),
     ]
 
@@ -348,7 +359,7 @@ def test_backup_tolerates_missing_objects():
     receipt = make_receipt(866, 2688)
     s3 = FakeS3(missing={f"assets/{IMG}/1.jpg"})
     copied, error = rw._backup_existing_variants(
-        s3, "site-bucket", receipt, "backups/run/"
+        s3, "site-bucket", "raw-bucket", receipt, "rewarp-backups/run/"
     )
     assert error is None
     assert copied == [f"assets/{IMG}/1_thumbnail.jpg"]
@@ -358,10 +369,77 @@ def test_backup_failure_is_reported_so_caller_can_abort():
     receipt = make_receipt(866, 2688)
     s3 = FakeS3(fail_key=f"assets/{IMG}/1.jpg")
     _copied, error = rw._backup_existing_variants(
-        s3, "site-bucket", receipt, "backups/run/"
+        s3, "site-bucket", "raw-bucket", receipt, "rewarp-backups/run/"
     )
     assert error is not None
     assert "AccessDenied" in error
+
+
+def _rewarp_with_stubs(monkeypatch, uploaded, **kwargs):
+    """Drive rewarp_receipt past everything except the backup step."""
+    monkeypatch.setattr(
+        rw, "upload_all_cdn_formats", lambda *a, **k: uploaded.append(a)
+    )
+    monkeypatch.setattr(
+        rw,
+        "_load_original",
+        lambda *a, **k: (PIL_Image.new("RGB", (100, 200)), []),
+    )
+    monkeypatch.setattr(
+        rw, "warp_receipt_crop", lambda *a, **k: PIL_Image.new("RGB", (8, 8))
+    )
+    monkeypatch.setattr(rw, "text_alignment_score", lambda *a, **k: (99.0, 5))
+    dynamo = SimpleNamespace(
+        list_receipt_words_from_receipt=lambda *a, **k: []
+    )
+    image_entity = SimpleNamespace(
+        width=100,
+        height=200,
+        raw_s3_bucket="raw-bucket",
+        raw_s3_key="raw.png",
+    )
+    return rw.rewarp_receipt(
+        dynamo,
+        FakeS3(),
+        make_receipt(866, 2688),
+        image_entity,
+        darkness_margin=6.0,
+        dry_run=False,
+        backup_prefix="rewarp-backups/run/",
+        **kwargs,
+    )
+
+
+def test_backup_defaults_to_the_raw_photo_bucket(monkeypatch):
+    uploaded: list = []
+    record = _rewarp_with_stubs(monkeypatch, uploaded)
+    assert record["status"] == "applied"
+    assert record["backup_bucket"] == "raw-bucket"
+    assert uploaded
+
+
+def test_backup_into_the_site_bucket_is_refused(monkeypatch):
+    """Same-bucket backup is the exact mistake that lost the last run."""
+    uploaded: list = []
+    record = _rewarp_with_stubs(
+        monkeypatch, uploaded, backup_bucket="site-bucket"
+    )
+    assert record["status"] == "skipped_backup_same_bucket"
+    assert uploaded == []
+    assert "sync --delete" in " ".join(record["notes"])
+
+
+def test_same_bucket_backup_allowed_with_explicit_opt_in(monkeypatch):
+    uploaded: list = []
+    record = _rewarp_with_stubs(
+        monkeypatch,
+        uploaded,
+        backup_bucket="site-bucket",
+        allow_same_bucket=True,
+    )
+    assert record["status"] == "applied"
+    assert record["backup_bucket"] == "site-bucket"
+    assert uploaded
 
 
 def test_rewarp_aborts_when_backup_fails(monkeypatch):
