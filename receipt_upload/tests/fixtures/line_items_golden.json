@@ -1,2360 +1,2839 @@
 {
-  "_README": "Hand-labeled ground truth for receipt line items, built 2026-07-30 from the warped receipt crops (dev CDN), NOT from OCR output. This is the yardstick for line-item extractor changes: score against it before and after.",
-  "_labeling_rules": [
-    "name = the product name as printed, not a SKU/PLU/item number",
-    "when one item spans multiple printed name lines, the name is the line CARRYING THE PRICE",
-    "price = the extended line total (not unit price) as printed",
-    "exclude subtotal/tax/total/tender/change/department headers/column headers",
-    "include zero-price items that the receipt prints as line items",
-    "a restaurant modifier with its own price is its own item; without a price it is not",
-    "every receipt's items must sum to the printed subtotal, or carry a reconcile_note explaining why not"
-  ],
-  "_known_limitations": [
-    "25 receipts / 163 items -- covers the formats the 686-receipt corpus sweep found distinct, not the long tail",
-    "labeling ambiguity exists on multi-line restaurant items; the rule above was applied after one anchor disagreement",
-    "two 2026-07-30 local-capture receipts (Whole Foods weighted item, Coffee Press negative control) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries"
-  ],
-  "receipts": [
+ "_README": "Hand-labeled ground truth for receipt line items, built 2026-07-30 from the warped receipt crops (dev CDN), NOT from OCR output. This is the yardstick for line-item extractor changes: score against it before and after.",
+ "_labeling_rules": [
+  "name = the product name as printed, not a SKU/PLU/item number",
+  "when one item spans multiple printed name lines, the name is the line CARRYING THE PRICE",
+  "price = the extended line total (not unit price) as printed",
+  "exclude subtotal/tax/total/tender/change/department headers/column headers",
+  "include zero-price items that the receipt prints as line items",
+  "a restaurant modifier with its own price is its own item; without a price it is not",
+  "every receipt's items must sum to the printed subtotal, or carry a reconcile_note explaining why not"
+ ],
+ "_known_limitations": [
+  "25 receipts / 163 items -- covers the formats the 686-receipt corpus sweep found distinct, not the long tail",
+  "labeling ambiguity exists on multi-line restaurant items; the rule above was applied after one anchor disagreement",
+  "two 2026-07-30 local-capture receipts (Whole Foods weighted item, Coffee Press negative control) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries"
+ ],
+ "receipts": [
+  {
+   "image_id": "b50ba18b-7511-4a85-87cd-74aa5e147e10",
+   "receipt_id": 2,
+   "merchant": "Amazon Fresh",
+   "printed_subtotal": "$13.98",
+   "printed_total": "$14.63",
+   "items_sum": "13.98",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "Pre-savings total and Subtotal are both $13.98, so there were no discounts. Item names are truncated by the printer with a trailing ellipsis; recorded exactly as printed.",
+   "true_items": [
     {
-      "image_id": "b50ba18b-7511-4a85-87cd-74aa5e147e10",
-      "receipt_id": 2,
-      "merchant": "Amazon Fresh",
-      "printed_subtotal": "$13.98",
-      "printed_total": "$14.63",
-      "items_sum": "13.98",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "Pre-savings total and Subtotal are both $13.98, so there were no discounts. Item names are truncated by the printer with a trailing ellipsis; recorded exactly as printed.",
-      "true_items": [
-        {
-          "name": "Clorox Disinfecting Bleac...",
-          "price": "$8.99",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            8,
-            10
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Rockenwagner French Loaf...",
-          "price": "$4.99",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            11
-          ],
-          "is_discount": false
-        }
-      ]
+     "name": "Clorox Disinfecting Bleac...",
+     "price": "$8.99",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      10
+     ],
+     "is_discount": false
     },
     {
-      "image_id": "165b9d15-9fa1-4a3c-a568-1b4e98170ab5",
-      "receipt_id": 1,
-      "merchant": "Costco Wholesale",
-      "printed_subtotal": "198.93",
-      "printed_total": "198.93",
-      "items_sum": "198.93",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "18 printed item lines, matching the printed 'Items Sold: 18'. Two prices are partly illegible: the SEAWEED SAL price is covered by a green highlighter blot (only '.99' and a faint ones-digit are visible) and the BAGUETTE price is very faded. The other 16 prices are crisp and sum to 171.95, forcing those two to total 26.98. Glyph-level analysis of the faded BAGUETTE ones-digit matches the '5' glyph elsewhere on this receipt (top-right bar + upper-left stem + lower-right bowl edge), so BAGUETTE = 5.99 and SEAWEED SAL = 20.99. Both are marked uncertain. Note the OCR text disagrees on two prices where the image is unambiguous: OCR line 36 reads '1.89' but the receipt clearly prints 4.89 (SG MONDELUXE), and OCR line 43 reads '5, 90' for the baguette.",
-      "true_items": [
-        {
-          "name": "HORIZON ORG.",
-          "price": "12.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            10,
-            12,
-            13
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "ORG ATAULFO",
-          "price": "6.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            12,
-            14,
-            15
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HNY RSTD MIX",
-          "price": "15.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            16,
-            17
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CHICKN SALAD",
-          "price": "8.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            16,
-            18,
-            19
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "COCKTAIL TOM",
-          "price": "6.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            18,
-            20,
-            21
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BUFALA MOZZ",
-          "price": "14.69",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            20,
-            22,
-            23
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BLUEBERRIES",
-          "price": "5.79",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            22,
-            24,
-            25
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "S&P PISTACH",
-          "price": "17.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            24,
-            26,
-            28
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SEAWEED SAL",
-          "price": "20.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            29,
-            30
-          ],
-          "is_discount": false,
-          "uncertain": true,
-          "label_note": "Price partly hidden under a green highlighter blot; only '.99' is legible. Value derived by subtraction against the printed subtotal (see reconcile_note). The name is also truncated by fading - 'SEAWEED SAL' plus one unreadable glyph, most likely SEAWEED SALAD. Recorded only what is legible."
-        },
-        {
-          "name": "STRAWBERRIES",
-          "price": "6.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            31,
-            32
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CALIFORNIA",
-          "price": "9.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            33,
-            34
-          ],
-          "is_discount": false,
-          "uncertain": true
-        },
-        {
-          "name": "SG MONDELUXE",
-          "price": "4.89",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            33,
-            35,
-            36
-          ],
-          "is_discount": false,
-          "uncertain": true
-        },
-        {
-          "name": "AHI TUNA",
-          "price": "38.40",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            35,
-            37,
-            38
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BAGEL CHIP",
-          "price": "7.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            39,
-            40
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BAGUETTE",
-          "price": "5.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            39,
-            42,
-            43
-          ],
-          "is_discount": false,
-          "uncertain": true,
-          "label_note": "Severely faded thermal print - only glyph fragments survive. Dollars digit read as 5 by matching surviving strokes against the 5 in 5.79 on the same receipt; cents forced to .99 by the subtotal. OCR line 43 reads '5, 90', but OCR also misreads the crisp 4.89 on line 36 as '1.89', so it is not trustworthy here."
-        },
-        {
-          "name": "BANANAS",
-          "price": "1.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            41,
-            44
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "IFS 3 LB.",
-          "price": "7.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            45,
-            47
-          ],
-          "is_discount": false,
-          "uncertain": true
-        },
-        {
-          "name": "AVOCADOS",
-          "price": "5.79",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            46,
-            48
-          ],
-          "is_discount": false,
-          "uncertain": true
-        }
-      ]
-    },
-    {
-      "image_id": "5cef2e7e-baad-4c29-9e5f-6a3d5ec20885",
-      "receipt_id": 1,
-      "merchant": "Costco Wholesale",
-      "printed_subtotal": "46.28",
-      "printed_total": "46.28",
-      "items_sum": "46.28",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "BEEF FLANK",
-          "price": "46.28",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            10,
-            11,
-            15
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "659623a5-5989-4e61-b153-9cda1331cc8e",
-      "receipt_id": 2,
-      "merchant": "Gelson's Westlake Village",
-      "printed_subtotal": null,
-      "printed_total": "19.40",
-      "items_sum": "18.09",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "No SUBTOTAL line is printed. The Tax Report line 'TAX 1  18.09  1.31 TT' prints the taxable base 18.09, which equals items_sum (17.99 + 0.10). 18.09 + 1.31 tax = 19.40 BALANCE DUE. CRV 0.10 is a separately printed line item (its own PLU 00000000009032) so it is recorded as an item, not a fee; excluding it would break the 18.09 base.",
-      "true_items": [
-        {
-          "name": "BUTTER CHARDONNAY",
-          "price": "17.99",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            36,
-            37,
-            40
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CRV",
-          "price": "0.10",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            38,
-            39,
-            41
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "2360d36e-8211-46c4-9bc8-106766d80038",
-      "receipt_id": 1,
-      "merchant": "In-N-Out Burger",
-      "printed_subtotal": "6.80",
-      "printed_total": "$7.45",
-      "items_sum": "6.80",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "The subtotal is printed on the order-type line 'COUNTER-Eat In  6.80' (In-N-Out prints no line labeled 'Subtotal'). 6.80 + TAX 9.50% 0.65 = 7.45 = Amount Due. '+ Onion' (line 8) and '+ Protein Style' (line 9) are unpriced modifiers of the Hamburger, so they are not separate items; their line_ids are attached to the Hamburger.",
-      "true_items": [
-        {
-          "name": "Hamburger",
-          "price": "3.75",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            7,
-            8,
-            9,
-            17
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Reg Chocolate Shk",
-          "price": "3.05",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            10,
-            18
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "6b4b3394-cb57-4ce6-9782-751563165946",
-      "receipt_id": 2,
-      "merchant": "In-N-Out Burger",
-      "printed_subtotal": "14.50",
-      "printed_total": "$15.91",
-      "items_sum": "14.50",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "The subtotal is printed on the order-type line 'DRIVE-Take Out  14.50'. 14.50 + TAX 9.75% 1.41 = 15.91 = Amount Due. '5 Meat Patty' is quantity 5 at 9.75 extended (1.95 each, unit price not printed). '+ Fried Mustard' (line 12) is an unpriced modifier of the Meat Patty line, not a separate item; its line_id is attached to that item. Lines 9-10 ('NOTE' / 'tesIA') are an order note, excluded.",
-      "true_items": [
-        {
-          "name": "Meat Patty",
-          "price": "9.75",
-          "quantity": 5,
-          "unit_price": null,
-          "line_ids": [
-            11,
-            12,
-            20
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Animal Fry",
-          "price": "4.75",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            13,
-            21
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "1f68d3a7-6835-4e4d-845c-bab6c4eb8280",
-      "receipt_id": 1,
-      "merchant": "Roast & Rice Asian Fusion",
-      "printed_subtotal": "73.00",
-      "printed_total": "$80.12",
-      "items_sum": "73.00",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "Large Bottled Beer",
-          "price": "13.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            13,
-            14,
-            15,
-            27
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Crispy Pork Belly Basil",
-          "price": "20.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            16,
-            17,
-            18,
-            28
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Mango Sticky Rice",
-          "price": "14.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            5,
-            19,
-            29
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Japanese Scallop Sushi",
-          "price": "12.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            6,
-            20,
-            30
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Albacore Sushi",
-          "price": "10.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            7,
-            21,
-            31
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Steamed White Rice",
-          "price": "3.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            8,
-            22,
-            32
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Ponzu Sauce",
-          "price": "1.00",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            23,
-            33
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "abb331f5-5fdb-4868-9e63-331a385dc012",
-      "receipt_id": 1,
-      "merchant": "Smith's",
-      "printed_subtotal": null,
-      "printed_total": "4.48",
-      "items_sum": "4.48",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "No SUBTOTAL line is printed. Receipt goes items -> TAX 0.00 -> **** BALANCE 4.48. Items sum 4.48 equals BALANCE with zero tax, and 'TOTAL NUMBER OF ITEMS SOLD = 2' confirms exactly 2 items.",
-      "true_items": [
-        {
-          "name": "OLIPOP GRAPE",
-          "price": "2.49",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            7,
-            11
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "OLIPOP SPRKL TONIC",
-          "price": "1.99",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            8,
-            12
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "887079fa-bb3e-480a-8202-e759afe63f1a",
-      "receipt_id": 2,
-      "merchant": "Sprouts Farmers Market",
-      "printed_subtotal": null,
-      "printed_total": "16.75",
-      "items_sum": "16.75",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "ORG A2/A2 6% FAT MLK",
-          "price": "7.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            15
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BLSL CHICKEN THIGHS",
-          "price": "8.76",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            17,
-            18
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "c2bb8fff-fc28-4c2d-ab98-13300c3b4c2e",
-      "receipt_id": 1,
-      "merchant": "Sprouts Farmers Market",
-      "printed_subtotal": null,
-      "printed_total": "7.57",
-      "items_sum": "7.57",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "1 LB BAG BABY CARROT",
-          "price": "1.29",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            16
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BROCCOLI FLORETS",
-          "price": "3.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            15,
-            17
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SOUR CREAM",
-          "price": "2.79",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            19,
-            20
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "c2c5aadf-58e8-4276-95ae-0f46039946da",
-      "receipt_id": 1,
-      "merchant": "Sprouts Farmers Market",
-      "printed_subtotal": null,
-      "printed_total": "23.26",
-      "items_sum": "23.26",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "ORG 3 CNT GARLIC",
-          "price": "2.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            15,
-            18
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "ORG GINGER ROOT",
-          "price": "7.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            16,
-            19
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "ORGANIC GREEN ONIONS",
-          "price": "1.29",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            17,
-            20
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "LARGE ALFRESCO EGGS",
-          "price": "10.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            22,
-            23
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "5dcf582e-cdfe-40f8-89f4-53b1cf3fc893",
-      "receipt_id": 1,
-      "merchant": "TRADER JOE'S",
-      "printed_subtotal": "$44.29",
-      "printed_total": "$44.29",
-      "items_sum": "44.29",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "No line is literally labeled 'Subtotal'; printed_subtotal is the amount printed on the 'Items in Transaction:11' line ($44.29). 'Balance to pay' / 'TOTAL PURCHASE' are also $44.29 (no tax on NV groceries). Item count check: 9 printed lines, two of which are qty 2, = 11 items, matching 'Items in Transaction:11'.",
-      "true_items": [
-        {
-          "name": "HALF & HALF PINT",
-          "price": "$1.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            8,
-            19
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "MILK QUART WHOLE",
-          "price": "$1.79",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            20
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "EGG BITES UNEXPECTED CHE",
-          "price": "$7.58",
-          "quantity": 2,
-          "unit_price": "$3.79",
-          "line_ids": [
-            10,
-            11,
-            21
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SALAD CHICKEN APPLE WALD",
-          "price": "$5.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            12,
-            22
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SPICY SPUDS",
-          "price": "$8.98",
-          "quantity": 2,
-          "unit_price": "$4.49",
-          "line_ids": [
-            13,
-            14,
-            23
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SUPER SPINACH SALAD",
-          "price": "$4.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            15,
-            24
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "MULTI-FLORAL AND CLOVER",
-          "price": "$3.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            16,
-            25
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "MANGO NECTAR JUICE ORG 6",
-          "price": "$5.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            17,
-            26
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "GUAVA NECTAR JUICE ORG 3",
-          "price": "$3.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            18,
-            27
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "6d820865-13fd-4b9f-b2e0-6b81e6a2fff2",
-      "receipt_id": 1,
-      "merchant": "Target",
-      "printed_subtotal": "$43.03",
-      "printed_total": "$43.03",
-      "items_sum": "43.03",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "Department headers GROCERY and NON RETAIL are excluded. 'Bottle Deposit Fee' ($1.20) and 'Bag Fee' ($0.10) are printed as their own priced lines and are required for the subtotal to reconcile, so they are included as line items (not discounts). TARGET BAG is a genuine $0.00 line item. OCR split two prices across lines ($5 + 1.89 = $5.89, $6 + 1.79 = $6.79); the image shows $5.89 and $6.79.",
-      "true_items": [
-        {
-          "name": "BERRIES",
-          "price": "$6.79",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            7,
-            18,
-            19
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BERRIES",
-          "price": "$5.69",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            8,
-            20,
-            21
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BERRIES",
-          "price": "$6.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            22,
-            23
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BERRIES",
-          "price": "$5.89",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            10,
-            24,
-            25,
-            27
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CUT FRUIT",
-          "price": "$5.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            11,
-            26,
-            28
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "GG BACON",
-          "price": "$6.79",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            12,
-            29,
-            30,
-            31
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "GG WATER",
-          "price": "$3.59",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            13,
-            32
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Bottle Deposit Fee",
-          "price": "$1.20",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            33
-          ],
-          "is_discount": false,
-          "label_note": "Ambiguous: this is an indented continuation line under '203600096 GG WATER ... $3.59', so it could be read as a second name line of the water item. I kept it as its own entry because it carries its OWN price ($1.20) - the priced-line rule only collapses lines when just one of them is priced. Both prices are needed independently for the $43.03 subtotal."
-        },
-        {
-          "name": "TARGET BAG",
-          "price": "$0.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            16,
-            34
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Bag Fee",
-          "price": "$0.10",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            17,
-            35
-          ],
-          "is_discount": false,
-          "label_note": "Same ambiguity as Bottle Deposit Fee: indented continuation under '004100019 TARGET BAG ... $0.00', kept separate because it carries its own price. This pair is the harder case, since the parent line is $0.00 - reading TARGET BAG + Bag Fee as one item priced $0.10 would also reconcile. I kept them split to match the printed line structure."
-        }
-      ]
-    },
-    {
-      "image_id": "7ca97b51-7369-4321-bd01-0211f2bf2557",
-      "receipt_id": 1,
-      "merchant": "Target",
-      "printed_subtotal": "$60.68",
-      "printed_total": "$61.25",
-      "items_sum": "60.68",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "Department headers ELECTRONICS / GROCERY / STATIONERY & OFFICE SUPPLIES are excluded. The gift card is a real printed line item ($50.00) and is required for the subtotal to reconcile; its three follow-on detail lines (card number, New Bal, 'Cannot be returned*') are attached to it rather than treated as separate items.",
-      "true_items": [
-        {
-          "name": "GIFT CARDS",
-          "price": "$50.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            6,
-            7,
-            8,
-            9,
-            14,
-            15
-          ],
-          "is_discount": false,
-          "label_note": "Multi-line item. The priced line is '790015919 GIFT CARDS  N  $50.00'; three follow-on lines carry no price ('041-814-611-747-077', 'New Bal: $50.00', 'Cannot be returned*'). Per the priced-line rule the name is GIFT CARDS, and all four lines are included in line_ids. Note 'New Bal: $50.00' contains a dollar amount that is NOT a line total - an extractor keying on any currency token would double-count it."
-        },
-        {
-          "name": "GHIRARDELLI",
-          "price": "$4.69",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            11,
-            16,
-            17
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CarltonCards",
-          "price": "$5.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            13,
-            18,
-            19
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "1bfb07b7-aefd-4579-b721-df597471b96b",
-      "receipt_id": 1,
-      "merchant": "The Home Depot",
-      "printed_subtotal": "332.18",
-      "printed_total": "$356.26",
-      "items_sum": "332.18",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "HW RED DOT ALL PURP JC BOX 3.5 GAL",
-          "price": "29.22",
-          "quantity": 2,
-          "unit_price": "14.61",
-          "line_ids": [
-            10,
-            11,
-            12,
-            13
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HW GREEN DOT TOPPING JC 3.5 GAL",
-          "price": "12.52",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            15,
-            16
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "2-1/2 X 10 STEEL STUD 25 GA",
-          "price": "14.98",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            17,
-            18,
-            19
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "2 1/2IN X 10FT STEEL TRACK 25 GA",
-          "price": "45.84",
-          "quantity": 3,
-          "unit_price": "15.28",
-          "line_ids": [
-            20,
-            21,
-            22,
-            23
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "5/8INX10FT L-METAL TRIM",
-          "price": "22.86",
-          "quantity": 3,
-          "unit_price": "7.62",
-          "line_ids": [
-            24,
-            25,
-            26,
-            27
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HW FAST SET LITE 20 MIN 18 LB BAG",
-          "price": "31.02",
-          "quantity": 2,
-          "unit_price": "15.51",
-          "line_ids": [
-            28,
-            29,
-            30,
-            31
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "DYNAFLEX ULTRA 10.1 OZ BLACK ADVANCE",
-          "price": "17.56",
-          "quantity": 2,
-          "unit_price": "8.78",
-          "line_ids": [
-            32,
-            33,
-            34,
-            35,
-            36
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "TITEBOND III ULTIMATE WD GLUE 16 OZ",
-          "price": "9.98",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            37,
-            38,
-            39
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HUSKY 10 OZ HEAVY DUTY CAULK GUN",
-          "price": "19.98",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            40,
-            41,
-            42
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SHELL ROTELLA T4 TRIP 15W40 128OZ",
-          "price": "50.94",
-          "quantity": 3,
-          "unit_price": "16.98",
-          "line_ids": [
-            43,
-            44,
-            45,
-            46
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "MKE 6-32 NC TAP & #36 DRILL BIT",
-          "price": "15.94",
-          "quantity": 2,
-          "unit_price": "7.97",
-          "line_ids": [
-            47,
-            48,
-            49,
-            50
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "6X1-5/8\" TRIM HEAD SCREW 1 LB",
-          "price": "5.97",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            52,
-            53,
-            54
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.12",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            55,
-            56
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "20LB QUIKRETE WATER-STOP CEMENT",
-          "price": "25.45",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            58,
-            59,
-            60,
-            61
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-1.27",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            62,
-            63
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "1-5/8\" FINE DRYWALL SCREW 1 LB",
-          "price": "5.97",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            65,
-            66,
-            67,
-            68
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "1-5/8\" COARSE DRYWALL SCREW 5 LB",
-          "price": "25.98",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            69,
-            70,
-            71,
-            72
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.64",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            73,
-            74
-          ],
-          "is_discount": true
-        }
-      ]
-    },
-    {
-      "image_id": "879b0fa6-c951-461b-a937-1bee74190b0a",
-      "receipt_id": 2,
-      "merchant": "The Home Depot",
-      "printed_subtotal": "195.86",
-      "printed_total": "$210.01",
-      "items_sum": "195.86",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "0.750INX23.75INX97IN WHT MEL",
-          "price": "38.97",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            8,
-            9,
-            10
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CA LUMBER FEE",
-          "price": "0.38",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            11,
-            12,
-            13
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CA LUMBER FEE",
-          "price": "0.10",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            15,
-            16
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CA LUMBER FEE",
-          "price": "0.25",
-          "quantity": 5,
-          "unit_price": "0.05",
-          "line_ids": [
-            17,
-            18,
-            19,
-            20
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HW FAST SET LITE 20 MIN 18 LB BAG",
-          "price": "15.51",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            21,
-            22,
-            23,
-            24
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CARLON NEW WORK 3G 49CU ADJUSTABLE",
-          "price": "13.40",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            25,
-            26,
-            27
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HW RED DOT ALL PURP JC BOX 3.5 GAL",
-          "price": "14.61",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            28,
-            29,
-            30
-          ],
-          "is_discount": false
-        },
-        {
-          "name": ".719IN X 1.5IN X 96IN PRMD FJ BOARD",
-          "price": "29.90",
-          "quantity": 5,
-          "unit_price": "5.98",
-          "line_ids": [
-            32,
-            33,
-            34,
-            35,
-            36
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "1X5-8FT PRIMED FJ S4S BOARD",
-          "price": "10.97",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            37,
-            38,
-            39,
-            40
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.82",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            41,
-            42
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "VERSABOND BONDING MORTAR-WHITE 50LB",
-          "price": "44.91",
-          "quantity": 3,
-          "unit_price": "14.97",
-          "line_ids": [
-            44,
-            45,
-            46,
-            47,
-            48,
-            49
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.90",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            50,
-            51
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "MKE MX4 SDS+ 5/8\" X 8\" DRILL BIT",
-          "price": "17.77",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            53,
-            54,
-            55,
-            56
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.53",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            57,
-            58
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "1/2\" COP EL 45 DEG CXC",
-          "price": "4.22",
-          "quantity": 2,
-          "unit_price": "2.11",
-          "line_ids": [
-            60,
-            61,
-            62,
-            63,
-            64
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "3/4\" COP EL 45 DEG CXC",
-          "price": "7.72",
-          "quantity": 2,
-          "unit_price": "3.86",
-          "line_ids": [
-            65,
-            66,
-            67,
-            68,
-            69
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.60",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            70,
-            71
-          ],
-          "is_discount": true
-        }
-      ]
-    },
-    {
-      "image_id": "ccfbeaca-6f40-4e9f-ba5e-6a30a643f0aa",
-      "receipt_id": 1,
-      "merchant": "The Home Depot",
-      "printed_subtotal": "1,023.48",
-      "printed_total": null,
-      "items_sum": "1023.48",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "DW 20 FV ADV BL. COMBO KIT",
-          "price": "299.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            10,
-            11,
-            12,
-            13
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "TRIM 31 IN CARDBOARD PAINT SHIELD",
-          "price": "1.96",
-          "quantity": 2,
-          "unit_price": "0.98",
-          "line_ids": [
-            14,
-            15,
-            16,
-            17
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CA LUMBER FEE",
-          "price": "0.20",
-          "quantity": 2,
-          "unit_price": "0.10",
-          "line_ids": [
-            18,
-            19,
-            20,
-            23,
-            21,
-            22
-          ],
-          "is_discount": false,
-          "label_note": "Name spans two printed lines with two different spellings: the SKU line reads 'CA LBR FEE' and the line below reads 'CA LUMBER FEE'. The price (0.20N) is on neither of them; it sits on the quantity line '2@0.10'. Chose the fuller 'CA LUMBER FEE' per the Home-Depot description rule, since the priced line carries no name to take."
-        },
-        {
-          "name": "CA LUMBER FEE",
-          "price": "0.72",
-          "quantity": 8,
-          "unit_price": "0.09",
-          "line_ids": [
-            24,
-            25,
-            26,
-            27,
-            28,
-            29
-          ],
-          "is_discount": false,
-          "label_note": "Same two-spelling case as the CA LUMBER FEE above ('CA LBR FEE' on the SKU line, 'CA LUMBER FEE' below); price 0.72N sits on the quantity line '8@0.09', which carries no name."
-        },
-        {
-          "name": "5 GAL BUCKET-HOMER LOGO (ORANGE)",
-          "price": "3.98",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            30,
-            31,
-            32,
-            33,
-            34
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HDX 5 GA ET STRAINER - 2 PK",
-          "price": "4.27",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            35,
-            36,
-            37
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BEHR MULTI-PURP CAULK 10.1 OZ WHITE",
-          "price": "13.44",
-          "quantity": 3,
-          "unit_price": "4.48",
-          "line_ids": [
-            38,
-            39,
-            40,
-            41
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "ASSTD (Y&R) WNGD WIRE CONN 180PK",
-          "price": "14.48",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            42,
-            43,
-            44
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "MCH SCRW ZINC PHL FLT #6 X 1-1/2",
-          "price": "1.38",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            45,
-            46
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "MCH SCRW ZINC PHL FLT #6 X 2",
-          "price": "1.38",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            47,
-            48,
-            49
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "HUSKY NARROW PAINT MIXER 5 GALLON",
-          "price": "8.98",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            51,
-            52,
-            53
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.27",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            54,
-            55
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "SPEE-D CHANNEL DRAIN COUPLING",
-          "price": "5.47",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            57,
-            58,
-            59,
-            60
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SPEE-D CHANNEL DRAIN 10' WITH GRATES",
-          "price": "169.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            61,
-            62,
-            63
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "3\" SEWER/DRAIN EL 45D D3034 PVC",
-          "price": "28.44",
-          "quantity": 6,
-          "unit_price": "4.74",
-          "line_ids": [
-            64,
-            65,
-            66,
-            67,
-            68
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "3\" SEWER/DRAIN EL 90D D3034 PVC",
-          "price": "10.54",
-          "quantity": 2,
-          "unit_price": "5.27",
-          "line_ids": [
-            69,
-            70,
-            71,
-            72,
-            73
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "2\"X3\"X3\" DOWNSPOUT ADPTR PVC",
-          "price": "4.74",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            74,
-            75,
-            76,
-            77
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "9 IN. DOWN SPOUT CATCH BASIN KIT",
-          "price": "44.97",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            78,
-            79,
-            80,
-            81
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-7.89",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            82,
-            83
-          ],
-          "is_discount": true
-        },
-        {
-          "name": ".719IN X 3.5IN X 96IN PRMD FJ",
-          "price": "73.84",
-          "quantity": 8,
-          "unit_price": "9.23",
-          "line_ids": [
-            85,
-            86,
-            87,
-            88,
-            89
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "1X5-8FT PRIMED FJ S4S BOARD",
-          "price": "21.94",
-          "quantity": 2,
-          "unit_price": "10.97",
-          "line_ids": [
-            90,
-            91,
-            92,
-            94,
-            93
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-1.96",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            95,
-            96
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "DW 20V XR BL (2) 4AH HMR COMBO KIT",
-          "price": "299.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            97,
-            98,
-            99,
-            100
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "DW 20V XR BL 4-1/2\" GRINDER",
-          "price": "199.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            101,
-            102,
-            103,
-            104
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "DW Backwall BOGO",
-          "price": "-199.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            105,
-            106
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "BETTER 6 X 3/8 IN KNIT MINI 6PK",
-          "price": "11.54",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            108,
-            109,
-            110,
-            111
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BEST 6 X 3/4 IN SHEDLESS KNIT ASSEM",
-          "price": "6.37",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            112,
-            113,
-            114,
-            115
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.54",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            116,
-            117
-          ],
-          "is_discount": true
-        },
-        {
-          "name": "DUTY 5 GALLON BUCKET GRID",
-          "price": "8.76",
-          "quantity": 2,
-          "unit_price": null,
-          "line_ids": [
-            119,
-            120,
-            123,
-            121
-          ],
-          "is_discount": false,
-          "uncertain": true,
-          "label_note": "Torn corner. The SKU line survives as '...89012804 5-GAL GRID <A>' and the description line as '...DUTY 5 GALLON BUCKET GRID' with its leading word(s) destroyed (likely 'HDX HEAVY'). The 8.76 prints on its own line below, with the quantity line torn away entirely, so the priced line carries no name and the name had to come from the partial description. Recorded only what is actually readable rather than reconstructing the missing words."
-        },
-        {
-          "name": "Pro Xtra Preferred Pricing",
-          "price": "-0.26",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            122,
-            124
-          ],
-          "is_discount": true
-        }
-      ]
-    },
-    {
-      "image_id": "291cfd80-5b29-428e-b650-5e4505c4cbd7",
-      "receipt_id": 2,
-      "merchant": "The Stand - American Classics Redefined",
-      "printed_subtotal": "$34.99",
-      "printed_total": "$37.53",
-      "items_sum": "34.99",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "Subtotal 34.99 + WV Sales Tax 2.54 = Total 37.53. The larger 'MC [7645] $45.04' line is the card tender including the $7.51 tip and is not the printed grand total. 'Medium Rare' (x2) and 'Ranch' are zero-price modifiers, folded into their parent item's line_ids rather than recorded as items; 'Total Number of Items 3' confirms 3 items.",
-      "true_items": [
-        {
-          "name": "ABC Burger[Beef]",
-          "price": "$13.25",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            13,
-            16,
-            17,
-            23
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Ultimate Egg Burger[Beef]",
-          "price": "$12.75",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            18,
-            19,
-            20,
-            24
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Onion Rings[LG]",
-          "price": "$8.99",
-          "quantity": 1,
-          "unit_price": null,
-          "line_ids": [
-            15,
-            21,
-            22,
-            25
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "84bf7d03-b76f-419a-8579-cdea86fbb374",
-      "receipt_id": 1,
-      "merchant": "Trader Joe's",
-      "printed_subtotal": "$28.23",
-      "printed_total": "$28.23",
-      "items_sum": "28.23",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "No line is literally labeled 'Subtotal'; printed_subtotal is the amount printed on the 'Items in Transaction:7' line ($28.23). 'Balance to pay' / 'TOTAL PURCHASE' are also $28.23. 7 printed item lines matches 'Items in Transaction:7'. OCR line 22 reads '$3,99' \u2014 the image clearly shows '$3.99'.",
-      "true_items": [
-        {
-          "name": "CHICKEN GYOZA",
-          "price": "$3.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            19
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "CHICKEN GYOZA",
-          "price": "$3.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            10,
-            20
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "BEANS GREEN ORGANIC 1LB",
-          "price": "$3.29",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            11,
-            21
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "R-ARUGULA LEMON BASIL CO",
-          "price": "$3.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            12,
-            22
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SPICY SPUDS",
-          "price": "$4.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            13,
-            23
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "SPICY SPUDS",
-          "price": "$4.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            24
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "R-SALAD COMPLETE CAESAR",
-          "price": "$3.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            15,
-            25
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "01024cab-3c61-4aac-b1ec-e9ce56947fe3",
-      "receipt_id": 2,
-      "merchant": "Twin Peaks",
-      "printed_subtotal": "21.98",
-      "printed_total": "23.82",
-      "items_sum": "21.98",
-      "sum_matches_subtotal": true,
-      "labeling_rules_applied": [
-        "multi-line item name -> use the line carrying the price"
-      ],
-      "true_items": [
-        {
-          "name": "Water",
-          "price": "0.00",
-          "quantity": 2,
-          "unit_price": "0.00",
-          "line_ids": [
-            11,
-            15
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "12 Naked Wings",
-          "price": "18.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            12,
-            16,
-            13
-          ],
-          "is_discount": false,
-          "label_note": "Receipt prints two name lines for one price: '12 Wings' then indented '12 Naked Wings  18.49'. Rule applied: the item name is the line that CARRIES THE PRICE. Matches the independent hand-verification of this receipt."
-        },
-        {
-          "name": "Arnold Palmer",
-          "price": "3.49",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            14,
-            17
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "6f2f1d08-af1e-4716-a26c-dea4c065ab62",
-      "receipt_id": 2,
-      "merchant": "Vons",
-      "printed_subtotal": null,
-      "printed_total": "55.03",
-      "items_sum": "54.69",
-      "sum_matches_subtotal": false,
-      "reconcile_note": "No subtotal line is printed on this receipt. items_sum 54.69 + printed TAX 0.34 = 55.03 = printed **** BALANCE / PAYMENT AMOUNT, so the receipt reconciles. (Tax 0.34 = 7.25% of the 4.69 'T'-flagged wine glass; the $50 Amazon gift card is untaxed, which is also why 'TOTAL NUMBER OF ITEMS SOLD = 1'.)",
-      "true_items": [
-        {
-          "name": "PAPY WINE GLASCONV",
-          "price": "4.69",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            10,
-            31,
-            33
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "AMAZON 50.00",
-          "price": "50.00",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            12,
-            13,
-            34
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "78e5a740-8f66-495c-b4d3-2e1c40498995",
-      "receipt_id": 1,
-      "merchant": "Vons",
-      "printed_subtotal": null,
-      "printed_total": "7.50",
-      "items_sum": "6.99",
-      "sum_matches_subtotal": true,
-      "reconcile_note": "This Vons receipt prints no SUBTOTAL line, only TAX and '**** BALANCE'. items_sum 6.99 + TAX 0.51 = 7.50 = printed BALANCE, and 'TOTAL NUMBER OF ITEMS SOLD = 1' confirms a single item. 'GROC NONEDIBLE' is a department header and 'Price' / 'You Pay' are column headers, all excluded. OCR line 14 reads '5.99' but the image clearly prints 6.99 in the Price column (matching the 6.99 You Pay).",
-      "true_items": [
-        {
-          "name": "GLAD CLING WRAP",
-          "price": "6.99",
-          "quantity": null,
-          "unit_price": null,
-          "line_ids": [
-            9,
-            10,
-            14,
-            16
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "758cbedf-f1dd-4466-98ec-faf86e82d422",
-      "receipt_id": 2,
-      "merchant": "Wild Fork",
-      "printed_subtotal": "20.94",
-      "printed_total": "20.94",
-      "items_sum": "20.94",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "Hot Smoked Salmon Pepper",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            16,
-            19,
-            20,
-            21
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Hot Smoked Salmon Pepper",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            17,
-            22,
-            23,
-            25,
-            26
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Hot Smoked Salmon Pepper",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            18,
-            24,
-            27,
-            28,
-            29
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "9ed1103e-0b4e-4089-8fa4-6f29b6dc198b",
-      "receipt_id": 1,
-      "merchant": "Wild Fork",
-      "printed_subtotal": "62.82",
-      "printed_total": "62.82",
-      "items_sum": "62.82",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "Lobster Mac and Cheese 2c",
-          "price": "18.98",
-          "quantity": 1,
-          "unit_price": "18.98",
-          "line_ids": [
-            15,
-            16,
-            17,
-            18,
-            38,
-            51
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Black Truffle Fiocchetti",
-          "price": "7.98",
-          "quantity": 1,
-          "unit_price": "7.98",
-          "line_ids": [
-            19,
-            20,
-            21,
-            40,
-            52
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Avocado Mash 8oz Tray",
-          "price": "3.97",
-          "quantity": 1,
-          "unit_price": "3.97",
-          "line_ids": [
-            22,
-            23,
-            24,
-            41,
-            53
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Avocado Mash 8oz Tray",
-          "price": "3.97",
-          "quantity": 1,
-          "unit_price": "3.97",
-          "line_ids": [
-            25,
-            26,
-            27,
-            42,
-            54
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Hot Smoked Salmon Classic",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            28,
-            29,
-            31,
-            43,
-            55
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Hot Smoked Salmon Classic",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            30,
-            32,
-            33,
-            44,
-            56
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Hot Smoked Salmon Pepper",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            34,
-            35,
-            45,
-            57
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Hot Smoked Salmon Pepper",
-          "price": "6.98",
-          "quantity": 1,
-          "unit_price": "6.98",
-          "line_ids": [
-            36,
-            37,
-            39,
-            46,
-            58
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "fb588a3b-49ab-4ee7-accd-f1953b7378c3",
-      "receipt_id": 2,
-      "merchant": "Wild Fork Meat & Seafood Market - Thousand Oaks",
-      "printed_subtotal": "119.92",
-      "printed_total": "119.92",
-      "items_sum": "119.92",
-      "sum_matches_subtotal": true,
-      "true_items": [
-        {
-          "name": "Lobster meat - CKL",
-          "price": "44.98",
-          "quantity": 1,
-          "unit_price": "44.98",
-          "line_ids": [
-            15,
-            16,
-            22,
-            23,
-            34
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Lobster meat - CKL",
-          "price": "44.98",
-          "quantity": 1,
-          "unit_price": "44.98",
-          "line_ids": [
-            17,
-            18,
-            24,
-            25,
-            35
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Lobster Ravioli 12oz FW",
-          "price": "14.98",
-          "quantity": 1,
-          "unit_price": "14.98",
-          "line_ids": [
-            19,
-            20,
-            26,
-            27,
-            36
-          ],
-          "is_discount": false
-        },
-        {
-          "name": "Lobster Ravioli 12oz FW",
-          "price": "14.98",
-          "quantity": 1,
-          "unit_price": "14.98",
-          "line_ids": [
-            21,
-            28,
-            29,
-            37
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "a7fef2ca-b84d-5405-a0f5-cbefe598a2dc",
-      "receipt_id": 1,
-      "merchant": "Whole Foods Market",
-      "printed_subtotal": "10.55",
-      "printed_total": "11.43",
-      "items_sum": "10.55",
-      "sum_matches_subtotal": true,
-      "local_only": true,
-      "labeling_rules_applied": [
-        "weighted item: quantity is the printed weight, unit_price the per-lb price",
-        "tare-weight line is item metadata (in line_ids), never its own item"
-      ],
-      "true_items": [
-        {
-          "name": "HOT BAR",
-          "price": "10.55",
-          "quantity": 0.88,
-          "unit_price": "11.99",
-          "line_ids": [
-            6,
-            7,
-            8,
-            9
-          ],
-          "is_discount": false
-        }
-      ]
-    },
-    {
-      "image_id": "0951426f-b7f9-5435-8569-7319cf0db1f4",
-      "receipt_id": 1,
-      "merchant": "The Coffee Press",
-      "printed_subtotal": "4.00",
-      "printed_total": "4.34",
-      "items_sum": "0.00",
-      "sum_matches_subtotal": false,
-      "local_only": true,
-      "reconcile_note": "NEGATIVE CONTROL: the receipt prints NO line items -- only Subtotal/Tax/Total and card metadata. Correct extraction is zero items; the subtotal legitimately has no printed breakdown.",
-      "true_items": []
+     "name": "Rockenwagner French Loaf...",
+     "price": "$4.99",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      11
+     ],
+     "is_discount": false
     }
-  ]
+   ]
+  },
+  {
+   "image_id": "165b9d15-9fa1-4a3c-a568-1b4e98170ab5",
+   "receipt_id": 1,
+   "merchant": "Costco Wholesale",
+   "printed_subtotal": "198.93",
+   "printed_total": "198.93",
+   "items_sum": "198.93",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "18 printed item lines, matching the printed 'Items Sold: 18'. Two prices are partly illegible: the SEAWEED SAL price is covered by a green highlighter blot (only '.99' and a faint ones-digit are visible) and the BAGUETTE price is very faded. The other 16 prices are crisp and sum to 171.95, forcing those two to total 26.98. Glyph-level analysis of the faded BAGUETTE ones-digit matches the '5' glyph elsewhere on this receipt (top-right bar + upper-left stem + lower-right bowl edge), so BAGUETTE = 5.99 and SEAWEED SAL = 20.99. Both are marked uncertain. Note the OCR text disagrees on two prices where the image is unambiguous: OCR line 36 reads '1.89' but the receipt clearly prints 4.89 (SG MONDELUXE), and OCR line 43 reads '5, 90' for the baguette.",
+   "true_items": [
+    {
+     "name": "HORIZON ORG.",
+     "price": "12.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      10,
+      12,
+      13
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG ATAULFO",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      14,
+      15
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HNY RSTD MIX",
+     "price": "15.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      16,
+      17
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CHICKN SALAD",
+     "price": "8.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      16,
+      18,
+      19
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "COCKTAIL TOM",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      18,
+      20,
+      21
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BUFALA MOZZ",
+     "price": "14.69",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      20,
+      22,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BLUEBERRIES",
+     "price": "5.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      22,
+      24,
+      25
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "S&P PISTACH",
+     "price": "17.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      24,
+      26,
+      28
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SEAWEED SAL",
+     "price": "20.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      29,
+      30
+     ],
+     "is_discount": false,
+     "uncertain": true,
+     "label_note": "Price partly hidden under a green highlighter blot; only '.99' is legible. Value derived by subtraction against the printed subtotal (see reconcile_note). The name is also truncated by fading - 'SEAWEED SAL' plus one unreadable glyph, most likely SEAWEED SALAD. Recorded only what is legible."
+    },
+    {
+     "name": "STRAWBERRIES",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      31,
+      32
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CALIFORNIA",
+     "price": "9.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      33,
+      34
+     ],
+     "is_discount": false,
+     "uncertain": true
+    },
+    {
+     "name": "SG MONDELUXE",
+     "price": "4.89",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      33,
+      35,
+      36
+     ],
+     "is_discount": false,
+     "uncertain": true
+    },
+    {
+     "name": "AHI TUNA",
+     "price": "38.40",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      35,
+      37,
+      38
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BAGEL CHIP",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      39,
+      40
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BAGUETTE",
+     "price": "5.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      39,
+      42,
+      43
+     ],
+     "is_discount": false,
+     "uncertain": true,
+     "label_note": "Severely faded thermal print - only glyph fragments survive. Dollars digit read as 5 by matching surviving strokes against the 5 in 5.79 on the same receipt; cents forced to .99 by the subtotal. OCR line 43 reads '5, 90', but OCR also misreads the crisp 4.89 on line 36 as '1.89', so it is not trustworthy here."
+    },
+    {
+     "name": "BANANAS",
+     "price": "1.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      41,
+      44
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "IFS 3 LB.",
+     "price": "7.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      45,
+      47
+     ],
+     "is_discount": false,
+     "uncertain": true
+    },
+    {
+     "name": "AVOCADOS",
+     "price": "5.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      46,
+      48
+     ],
+     "is_discount": false,
+     "uncertain": true
+    }
+   ]
+  },
+  {
+   "image_id": "5cef2e7e-baad-4c29-9e5f-6a3d5ec20885",
+   "receipt_id": 1,
+   "merchant": "Costco Wholesale",
+   "printed_subtotal": "46.28",
+   "printed_total": "46.28",
+   "items_sum": "46.28",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "BEEF FLANK",
+     "price": "46.28",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      10,
+      11,
+      15
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "659623a5-5989-4e61-b153-9cda1331cc8e",
+   "receipt_id": 2,
+   "merchant": "Gelson's Westlake Village",
+   "printed_subtotal": null,
+   "printed_total": "19.40",
+   "items_sum": "18.09",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "No SUBTOTAL line is printed. The Tax Report line 'TAX 1  18.09  1.31 TT' prints the taxable base 18.09, which equals items_sum (17.99 + 0.10). 18.09 + 1.31 tax = 19.40 BALANCE DUE. CRV 0.10 is a separately printed line item (its own PLU 00000000009032) so it is recorded as an item, not a fee; excluding it would break the 18.09 base.",
+   "true_items": [
+    {
+     "name": "BUTTER CHARDONNAY",
+     "price": "17.99",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      36,
+      37,
+      40
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CRV",
+     "price": "0.10",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      38,
+      39,
+      41
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "2360d36e-8211-46c4-9bc8-106766d80038",
+   "receipt_id": 1,
+   "merchant": "In-N-Out Burger",
+   "printed_subtotal": "6.80",
+   "printed_total": "$7.45",
+   "items_sum": "6.80",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "The subtotal is printed on the order-type line 'COUNTER-Eat In  6.80' (In-N-Out prints no line labeled 'Subtotal'). 6.80 + TAX 9.50% 0.65 = 7.45 = Amount Due. '+ Onion' (line 8) and '+ Protein Style' (line 9) are unpriced modifiers of the Hamburger, so they are not separate items; their line_ids are attached to the Hamburger.",
+   "true_items": [
+    {
+     "name": "Hamburger",
+     "price": "3.75",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      7,
+      8,
+      9,
+      17
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Reg Chocolate Shk",
+     "price": "3.05",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      10,
+      18
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "6b4b3394-cb57-4ce6-9782-751563165946",
+   "receipt_id": 2,
+   "merchant": "In-N-Out Burger",
+   "printed_subtotal": "14.50",
+   "printed_total": "$15.91",
+   "items_sum": "14.50",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "The subtotal is printed on the order-type line 'DRIVE-Take Out  14.50'. 14.50 + TAX 9.75% 1.41 = 15.91 = Amount Due. '5 Meat Patty' is quantity 5 at 9.75 extended (1.95 each, unit price not printed). '+ Fried Mustard' (line 12) is an unpriced modifier of the Meat Patty line, not a separate item; its line_id is attached to that item. Lines 9-10 ('NOTE' / 'tesIA') are an order note, excluded.",
+   "true_items": [
+    {
+     "name": "Meat Patty",
+     "price": "9.75",
+     "quantity": 5,
+     "unit_price": null,
+     "line_ids": [
+      11,
+      12,
+      20
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Animal Fry",
+     "price": "4.75",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      21
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "1f68d3a7-6835-4e4d-845c-bab6c4eb8280",
+   "receipt_id": 1,
+   "merchant": "Roast & Rice Asian Fusion",
+   "printed_subtotal": "73.00",
+   "printed_total": "$80.12",
+   "items_sum": "73.00",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "Large Bottled Beer",
+     "price": "13.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      14,
+      15,
+      27
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Crispy Pork Belly Basil",
+     "price": "20.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      16,
+      17,
+      18,
+      28
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Mango Sticky Rice",
+     "price": "14.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      5,
+      19,
+      29
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Japanese Scallop Sushi",
+     "price": "12.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      6,
+      20,
+      30
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Albacore Sushi",
+     "price": "10.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      7,
+      21,
+      31
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Steamed White Rice",
+     "price": "3.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      22,
+      32
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Ponzu Sauce",
+     "price": "1.00",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      23,
+      33
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "abb331f5-5fdb-4868-9e63-331a385dc012",
+   "receipt_id": 1,
+   "merchant": "Smith's",
+   "printed_subtotal": null,
+   "printed_total": "4.48",
+   "items_sum": "4.48",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "No SUBTOTAL line is printed. Receipt goes items -> TAX 0.00 -> **** BALANCE 4.48. Items sum 4.48 equals BALANCE with zero tax, and 'TOTAL NUMBER OF ITEMS SOLD = 2' confirms exactly 2 items.",
+   "true_items": [
+    {
+     "name": "OLIPOP GRAPE",
+     "price": "2.49",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      7,
+      11
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "OLIPOP SPRKL TONIC",
+     "price": "1.99",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      12
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "887079fa-bb3e-480a-8202-e759afe63f1a",
+   "receipt_id": 2,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "16.75",
+   "items_sum": "16.75",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "ORG A2/A2 6% FAT MLK",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      15
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BLSL CHICKEN THIGHS",
+     "price": "8.76",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      17,
+      18
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "c2bb8fff-fc28-4c2d-ab98-13300c3b4c2e",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "7.57",
+   "items_sum": "7.57",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "1 LB BAG BABY CARROT",
+     "price": "1.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      16
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BROCCOLI FLORETS",
+     "price": "3.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      15,
+      17
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SOUR CREAM",
+     "price": "2.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      19,
+      20
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "c2c5aadf-58e8-4276-95ae-0f46039946da",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "23.26",
+   "items_sum": "23.26",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "ORG 3 CNT GARLIC",
+     "price": "2.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      15,
+      18
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG GINGER ROOT",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      16,
+      19
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORGANIC GREEN ONIONS",
+     "price": "1.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      17,
+      20
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "LARGE ALFRESCO EGGS",
+     "price": "10.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      22,
+      23
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "5dcf582e-cdfe-40f8-89f4-53b1cf3fc893",
+   "receipt_id": 1,
+   "merchant": "TRADER JOE'S",
+   "printed_subtotal": "$44.29",
+   "printed_total": "$44.29",
+   "items_sum": "44.29",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "No line is literally labeled 'Subtotal'; printed_subtotal is the amount printed on the 'Items in Transaction:11' line ($44.29). 'Balance to pay' / 'TOTAL PURCHASE' are also $44.29 (no tax on NV groceries). Item count check: 9 printed lines, two of which are qty 2, = 11 items, matching 'Items in Transaction:11'.",
+   "true_items": [
+    {
+     "name": "HALF & HALF PINT",
+     "price": "$1.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      19
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MILK QUART WHOLE",
+     "price": "$1.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      20
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "EGG BITES UNEXPECTED CHE",
+     "price": "$7.58",
+     "quantity": 2,
+     "unit_price": "$3.79",
+     "line_ids": [
+      10,
+      11,
+      21
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SALAD CHICKEN APPLE WALD",
+     "price": "$5.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      22
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SPICY SPUDS",
+     "price": "$8.98",
+     "quantity": 2,
+     "unit_price": "$4.49",
+     "line_ids": [
+      13,
+      14,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SUPER SPINACH SALAD",
+     "price": "$4.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      15,
+      24
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MULTI-FLORAL AND CLOVER",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      16,
+      25
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MANGO NECTAR JUICE ORG 6",
+     "price": "$5.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      17,
+      26
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "GUAVA NECTAR JUICE ORG 3",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      18,
+      27
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "6d820865-13fd-4b9f-b2e0-6b81e6a2fff2",
+   "receipt_id": 1,
+   "merchant": "Target",
+   "printed_subtotal": "$43.03",
+   "printed_total": "$43.03",
+   "items_sum": "43.03",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "Department headers GROCERY and NON RETAIL are excluded. 'Bottle Deposit Fee' ($1.20) and 'Bag Fee' ($0.10) are printed as their own priced lines and are required for the subtotal to reconcile, so they are included as line items (not discounts). TARGET BAG is a genuine $0.00 line item. OCR split two prices across lines ($5 + 1.89 = $5.89, $6 + 1.79 = $6.79); the image shows $5.89 and $6.79.",
+   "true_items": [
+    {
+     "name": "BERRIES",
+     "price": "$6.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      7,
+      18,
+      19
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BERRIES",
+     "price": "$5.69",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      20,
+      21
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BERRIES",
+     "price": "$6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      22,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BERRIES",
+     "price": "$5.89",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      10,
+      24,
+      25,
+      27
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CUT FRUIT",
+     "price": "$5.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      11,
+      26,
+      28
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "GG BACON",
+     "price": "$6.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      29,
+      30,
+      31
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "GG WATER",
+     "price": "$3.59",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      32
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Bottle Deposit Fee",
+     "price": "$1.20",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      33
+     ],
+     "is_discount": false,
+     "label_note": "Ambiguous: this is an indented continuation line under '203600096 GG WATER ... $3.59', so it could be read as a second name line of the water item. I kept it as its own entry because it carries its OWN price ($1.20) - the priced-line rule only collapses lines when just one of them is priced. Both prices are needed independently for the $43.03 subtotal."
+    },
+    {
+     "name": "TARGET BAG",
+     "price": "$0.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      16,
+      34
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Bag Fee",
+     "price": "$0.10",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      17,
+      35
+     ],
+     "is_discount": false,
+     "label_note": "Same ambiguity as Bottle Deposit Fee: indented continuation under '004100019 TARGET BAG ... $0.00', kept separate because it carries its own price. This pair is the harder case, since the parent line is $0.00 - reading TARGET BAG + Bag Fee as one item priced $0.10 would also reconcile. I kept them split to match the printed line structure."
+    }
+   ]
+  },
+  {
+   "image_id": "7ca97b51-7369-4321-bd01-0211f2bf2557",
+   "receipt_id": 1,
+   "merchant": "Target",
+   "printed_subtotal": "$60.68",
+   "printed_total": "$61.25",
+   "items_sum": "60.68",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "Department headers ELECTRONICS / GROCERY / STATIONERY & OFFICE SUPPLIES are excluded. The gift card is a real printed line item ($50.00) and is required for the subtotal to reconcile; its three follow-on detail lines (card number, New Bal, 'Cannot be returned*') are attached to it rather than treated as separate items.",
+   "true_items": [
+    {
+     "name": "GIFT CARDS",
+     "price": "$50.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      6,
+      7,
+      8,
+      9,
+      14,
+      15
+     ],
+     "is_discount": false,
+     "label_note": "Multi-line item. The priced line is '790015919 GIFT CARDS  N  $50.00'; three follow-on lines carry no price ('041-814-611-747-077', 'New Bal: $50.00', 'Cannot be returned*'). Per the priced-line rule the name is GIFT CARDS, and all four lines are included in line_ids. Note 'New Bal: $50.00' contains a dollar amount that is NOT a line total - an extractor keying on any currency token would double-count it."
+    },
+    {
+     "name": "GHIRARDELLI",
+     "price": "$4.69",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      11,
+      16,
+      17
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CarltonCards",
+     "price": "$5.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      18,
+      19
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "1bfb07b7-aefd-4579-b721-df597471b96b",
+   "receipt_id": 1,
+   "merchant": "The Home Depot",
+   "printed_subtotal": "332.18",
+   "printed_total": "$356.26",
+   "items_sum": "332.18",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "HW RED DOT ALL PURP JC BOX 3.5 GAL",
+     "price": "29.22",
+     "quantity": 2,
+     "unit_price": "14.61",
+     "line_ids": [
+      10,
+      11,
+      12,
+      13
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HW GREEN DOT TOPPING JC 3.5 GAL",
+     "price": "12.52",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      15,
+      16
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "2-1/2 X 10 STEEL STUD 25 GA",
+     "price": "14.98",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      17,
+      18,
+      19
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "2 1/2IN X 10FT STEEL TRACK 25 GA",
+     "price": "45.84",
+     "quantity": 3,
+     "unit_price": "15.28",
+     "line_ids": [
+      20,
+      21,
+      22,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "5/8INX10FT L-METAL TRIM",
+     "price": "22.86",
+     "quantity": 3,
+     "unit_price": "7.62",
+     "line_ids": [
+      24,
+      25,
+      26,
+      27
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HW FAST SET LITE 20 MIN 18 LB BAG",
+     "price": "31.02",
+     "quantity": 2,
+     "unit_price": "15.51",
+     "line_ids": [
+      28,
+      29,
+      30,
+      31
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "DYNAFLEX ULTRA 10.1 OZ BLACK ADVANCE",
+     "price": "17.56",
+     "quantity": 2,
+     "unit_price": "8.78",
+     "line_ids": [
+      32,
+      33,
+      34,
+      35,
+      36
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "TITEBOND III ULTIMATE WD GLUE 16 OZ",
+     "price": "9.98",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      37,
+      38,
+      39
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HUSKY 10 OZ HEAVY DUTY CAULK GUN",
+     "price": "19.98",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      40,
+      41,
+      42
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SHELL ROTELLA T4 TRIP 15W40 128OZ",
+     "price": "50.94",
+     "quantity": 3,
+     "unit_price": "16.98",
+     "line_ids": [
+      43,
+      44,
+      45,
+      46
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MKE 6-32 NC TAP & #36 DRILL BIT",
+     "price": "15.94",
+     "quantity": 2,
+     "unit_price": "7.97",
+     "line_ids": [
+      47,
+      48,
+      49,
+      50
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "6X1-5/8\" TRIM HEAD SCREW 1 LB",
+     "price": "5.97",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      52,
+      53,
+      54
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.12",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      55,
+      56
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "20LB QUIKRETE WATER-STOP CEMENT",
+     "price": "25.45",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      58,
+      59,
+      60,
+      61
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-1.27",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      62,
+      63
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "1-5/8\" FINE DRYWALL SCREW 1 LB",
+     "price": "5.97",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      65,
+      66,
+      67,
+      68
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "1-5/8\" COARSE DRYWALL SCREW 5 LB",
+     "price": "25.98",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      69,
+      70,
+      71,
+      72
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.64",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      73,
+      74
+     ],
+     "is_discount": true
+    }
+   ]
+  },
+  {
+   "image_id": "879b0fa6-c951-461b-a937-1bee74190b0a",
+   "receipt_id": 2,
+   "merchant": "The Home Depot",
+   "printed_subtotal": "195.86",
+   "printed_total": "$210.01",
+   "items_sum": "195.86",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "0.750INX23.75INX97IN WHT MEL",
+     "price": "38.97",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      9,
+      10
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CA LUMBER FEE",
+     "price": "0.38",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      11,
+      12,
+      13
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CA LUMBER FEE",
+     "price": "0.10",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      15,
+      16
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CA LUMBER FEE",
+     "price": "0.25",
+     "quantity": 5,
+     "unit_price": "0.05",
+     "line_ids": [
+      17,
+      18,
+      19,
+      20
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HW FAST SET LITE 20 MIN 18 LB BAG",
+     "price": "15.51",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      21,
+      22,
+      23,
+      24
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CARLON NEW WORK 3G 49CU ADJUSTABLE",
+     "price": "13.40",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      25,
+      26,
+      27
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HW RED DOT ALL PURP JC BOX 3.5 GAL",
+     "price": "14.61",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      28,
+      29,
+      30
+     ],
+     "is_discount": false
+    },
+    {
+     "name": ".719IN X 1.5IN X 96IN PRMD FJ BOARD",
+     "price": "29.90",
+     "quantity": 5,
+     "unit_price": "5.98",
+     "line_ids": [
+      32,
+      33,
+      34,
+      35,
+      36
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "1X5-8FT PRIMED FJ S4S BOARD",
+     "price": "10.97",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      37,
+      38,
+      39,
+      40
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.82",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      41,
+      42
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "VERSABOND BONDING MORTAR-WHITE 50LB",
+     "price": "44.91",
+     "quantity": 3,
+     "unit_price": "14.97",
+     "line_ids": [
+      44,
+      45,
+      46,
+      47,
+      48,
+      49
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.90",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      50,
+      51
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "MKE MX4 SDS+ 5/8\" X 8\" DRILL BIT",
+     "price": "17.77",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      53,
+      54,
+      55,
+      56
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.53",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      57,
+      58
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "1/2\" COP EL 45 DEG CXC",
+     "price": "4.22",
+     "quantity": 2,
+     "unit_price": "2.11",
+     "line_ids": [
+      60,
+      61,
+      62,
+      63,
+      64
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "3/4\" COP EL 45 DEG CXC",
+     "price": "7.72",
+     "quantity": 2,
+     "unit_price": "3.86",
+     "line_ids": [
+      65,
+      66,
+      67,
+      68,
+      69
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.60",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      70,
+      71
+     ],
+     "is_discount": true
+    }
+   ]
+  },
+  {
+   "image_id": "ccfbeaca-6f40-4e9f-ba5e-6a30a643f0aa",
+   "receipt_id": 1,
+   "merchant": "The Home Depot",
+   "printed_subtotal": "1,023.48",
+   "printed_total": null,
+   "items_sum": "1023.48",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "DW 20 FV ADV BL. COMBO KIT",
+     "price": "299.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      10,
+      11,
+      12,
+      13
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "TRIM 31 IN CARDBOARD PAINT SHIELD",
+     "price": "1.96",
+     "quantity": 2,
+     "unit_price": "0.98",
+     "line_ids": [
+      14,
+      15,
+      16,
+      17
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CA LUMBER FEE",
+     "price": "0.20",
+     "quantity": 2,
+     "unit_price": "0.10",
+     "line_ids": [
+      18,
+      19,
+      20,
+      23,
+      21,
+      22
+     ],
+     "is_discount": false,
+     "label_note": "Name spans two printed lines with two different spellings: the SKU line reads 'CA LBR FEE' and the line below reads 'CA LUMBER FEE'. The price (0.20N) is on neither of them; it sits on the quantity line '2@0.10'. Chose the fuller 'CA LUMBER FEE' per the Home-Depot description rule, since the priced line carries no name to take."
+    },
+    {
+     "name": "CA LUMBER FEE",
+     "price": "0.72",
+     "quantity": 8,
+     "unit_price": "0.09",
+     "line_ids": [
+      24,
+      25,
+      26,
+      27,
+      28,
+      29
+     ],
+     "is_discount": false,
+     "label_note": "Same two-spelling case as the CA LUMBER FEE above ('CA LBR FEE' on the SKU line, 'CA LUMBER FEE' below); price 0.72N sits on the quantity line '8@0.09', which carries no name."
+    },
+    {
+     "name": "5 GAL BUCKET-HOMER LOGO (ORANGE)",
+     "price": "3.98",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      30,
+      31,
+      32,
+      33,
+      34
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HDX 5 GA ET STRAINER - 2 PK",
+     "price": "4.27",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      35,
+      36,
+      37
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BEHR MULTI-PURP CAULK 10.1 OZ WHITE",
+     "price": "13.44",
+     "quantity": 3,
+     "unit_price": "4.48",
+     "line_ids": [
+      38,
+      39,
+      40,
+      41
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ASSTD (Y&R) WNGD WIRE CONN 180PK",
+     "price": "14.48",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      42,
+      43,
+      44
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MCH SCRW ZINC PHL FLT #6 X 1-1/2",
+     "price": "1.38",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      45,
+      46
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MCH SCRW ZINC PHL FLT #6 X 2",
+     "price": "1.38",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      47,
+      48,
+      49
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "HUSKY NARROW PAINT MIXER 5 GALLON",
+     "price": "8.98",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      51,
+      52,
+      53
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.27",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      54,
+      55
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "SPEE-D CHANNEL DRAIN COUPLING",
+     "price": "5.47",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      57,
+      58,
+      59,
+      60
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SPEE-D CHANNEL DRAIN 10' WITH GRATES",
+     "price": "169.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      61,
+      62,
+      63
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "3\" SEWER/DRAIN EL 45D D3034 PVC",
+     "price": "28.44",
+     "quantity": 6,
+     "unit_price": "4.74",
+     "line_ids": [
+      64,
+      65,
+      66,
+      67,
+      68
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "3\" SEWER/DRAIN EL 90D D3034 PVC",
+     "price": "10.54",
+     "quantity": 2,
+     "unit_price": "5.27",
+     "line_ids": [
+      69,
+      70,
+      71,
+      72,
+      73
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "2\"X3\"X3\" DOWNSPOUT ADPTR PVC",
+     "price": "4.74",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      74,
+      75,
+      76,
+      77
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "9 IN. DOWN SPOUT CATCH BASIN KIT",
+     "price": "44.97",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      78,
+      79,
+      80,
+      81
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-7.89",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      82,
+      83
+     ],
+     "is_discount": true
+    },
+    {
+     "name": ".719IN X 3.5IN X 96IN PRMD FJ",
+     "price": "73.84",
+     "quantity": 8,
+     "unit_price": "9.23",
+     "line_ids": [
+      85,
+      86,
+      87,
+      88,
+      89
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "1X5-8FT PRIMED FJ S4S BOARD",
+     "price": "21.94",
+     "quantity": 2,
+     "unit_price": "10.97",
+     "line_ids": [
+      90,
+      91,
+      92,
+      94,
+      93
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-1.96",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      95,
+      96
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "DW 20V XR BL (2) 4AH HMR COMBO KIT",
+     "price": "299.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      97,
+      98,
+      99,
+      100
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "DW 20V XR BL 4-1/2\" GRINDER",
+     "price": "199.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      101,
+      102,
+      103,
+      104
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "DW Backwall BOGO",
+     "price": "-199.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      105,
+      106
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "BETTER 6 X 3/8 IN KNIT MINI 6PK",
+     "price": "11.54",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      108,
+      109,
+      110,
+      111
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BEST 6 X 3/4 IN SHEDLESS KNIT ASSEM",
+     "price": "6.37",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      112,
+      113,
+      114,
+      115
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.54",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      116,
+      117
+     ],
+     "is_discount": true
+    },
+    {
+     "name": "DUTY 5 GALLON BUCKET GRID",
+     "price": "8.76",
+     "quantity": 2,
+     "unit_price": null,
+     "line_ids": [
+      119,
+      120,
+      123,
+      121
+     ],
+     "is_discount": false,
+     "uncertain": true,
+     "label_note": "Torn corner. The SKU line survives as '...89012804 5-GAL GRID <A>' and the description line as '...DUTY 5 GALLON BUCKET GRID' with its leading word(s) destroyed (likely 'HDX HEAVY'). The 8.76 prints on its own line below, with the quantity line torn away entirely, so the priced line carries no name and the name had to come from the partial description. Recorded only what is actually readable rather than reconstructing the missing words."
+    },
+    {
+     "name": "Pro Xtra Preferred Pricing",
+     "price": "-0.26",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      122,
+      124
+     ],
+     "is_discount": true
+    }
+   ]
+  },
+  {
+   "image_id": "291cfd80-5b29-428e-b650-5e4505c4cbd7",
+   "receipt_id": 2,
+   "merchant": "The Stand - American Classics Redefined",
+   "printed_subtotal": "$34.99",
+   "printed_total": "$37.53",
+   "items_sum": "34.99",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "Subtotal 34.99 + WV Sales Tax 2.54 = Total 37.53. The larger 'MC [7645] $45.04' line is the card tender including the $7.51 tip and is not the printed grand total. 'Medium Rare' (x2) and 'Ranch' are zero-price modifiers, folded into their parent item's line_ids rather than recorded as items; 'Total Number of Items 3' confirms 3 items.",
+   "true_items": [
+    {
+     "name": "ABC Burger[Beef]",
+     "price": "$13.25",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      16,
+      17,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Ultimate Egg Burger[Beef]",
+     "price": "$12.75",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      18,
+      19,
+      20,
+      24
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Onion Rings[LG]",
+     "price": "$8.99",
+     "quantity": 1,
+     "unit_price": null,
+     "line_ids": [
+      15,
+      21,
+      22,
+      25
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "84bf7d03-b76f-419a-8579-cdea86fbb374",
+   "receipt_id": 1,
+   "merchant": "Trader Joe's",
+   "printed_subtotal": "$28.23",
+   "printed_total": "$28.23",
+   "items_sum": "28.23",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "No line is literally labeled 'Subtotal'; printed_subtotal is the amount printed on the 'Items in Transaction:7' line ($28.23). 'Balance to pay' / 'TOTAL PURCHASE' are also $28.23. 7 printed item lines matches 'Items in Transaction:7'. OCR line 22 reads '$3,99' \u2014 the image clearly shows '$3.99'.",
+   "true_items": [
+    {
+     "name": "CHICKEN GYOZA",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      19
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CHICKEN GYOZA",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      10,
+      20
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BEANS GREEN ORGANIC 1LB",
+     "price": "$3.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      11,
+      21
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "R-ARUGULA LEMON BASIL CO",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      22
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SPICY SPUDS",
+     "price": "$4.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SPICY SPUDS",
+     "price": "$4.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      24
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "R-SALAD COMPLETE CAESAR",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      15,
+      25
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "01024cab-3c61-4aac-b1ec-e9ce56947fe3",
+   "receipt_id": 2,
+   "merchant": "Twin Peaks",
+   "printed_subtotal": "21.98",
+   "printed_total": "23.82",
+   "items_sum": "21.98",
+   "sum_matches_subtotal": true,
+   "labeling_rules_applied": [
+    "multi-line item name -> use the line carrying the price"
+   ],
+   "true_items": [
+    {
+     "name": "Water",
+     "price": "0.00",
+     "quantity": 2,
+     "unit_price": "0.00",
+     "line_ids": [
+      11,
+      15
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "12 Naked Wings",
+     "price": "18.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      16,
+      13
+     ],
+     "is_discount": false,
+     "label_note": "Receipt prints two name lines for one price: '12 Wings' then indented '12 Naked Wings  18.49'. Rule applied: the item name is the line that CARRIES THE PRICE. Matches the independent hand-verification of this receipt."
+    },
+    {
+     "name": "Arnold Palmer",
+     "price": "3.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      17
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "6f2f1d08-af1e-4716-a26c-dea4c065ab62",
+   "receipt_id": 2,
+   "merchant": "Vons",
+   "printed_subtotal": null,
+   "printed_total": "55.03",
+   "items_sum": "54.69",
+   "sum_matches_subtotal": false,
+   "reconcile_note": "No subtotal line is printed on this receipt. items_sum 54.69 + printed TAX 0.34 = 55.03 = printed **** BALANCE / PAYMENT AMOUNT, so the receipt reconciles. (Tax 0.34 = 7.25% of the 4.69 'T'-flagged wine glass; the $50 Amazon gift card is untaxed, which is also why 'TOTAL NUMBER OF ITEMS SOLD = 1'.)",
+   "true_items": [
+    {
+     "name": "PAPY WINE GLASCONV",
+     "price": "4.69",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      10,
+      31,
+      33
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "AMAZON 50.00",
+     "price": "50.00",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      13,
+      34
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "78e5a740-8f66-495c-b4d3-2e1c40498995",
+   "receipt_id": 1,
+   "merchant": "Vons",
+   "printed_subtotal": null,
+   "printed_total": "7.50",
+   "items_sum": "6.99",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "This Vons receipt prints no SUBTOTAL line, only TAX and '**** BALANCE'. items_sum 6.99 + TAX 0.51 = 7.50 = printed BALANCE, and 'TOTAL NUMBER OF ITEMS SOLD = 1' confirms a single item. 'GROC NONEDIBLE' is a department header and 'Price' / 'You Pay' are column headers, all excluded. OCR line 14 reads '5.99' but the image clearly prints 6.99 in the Price column (matching the 6.99 You Pay).",
+   "true_items": [
+    {
+     "name": "GLAD CLING WRAP",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      10,
+      14,
+      16
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "758cbedf-f1dd-4466-98ec-faf86e82d422",
+   "receipt_id": 2,
+   "merchant": "Wild Fork",
+   "printed_subtotal": "20.94",
+   "printed_total": "20.94",
+   "items_sum": "20.94",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "Hot Smoked Salmon Pepper",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      16,
+      19,
+      20,
+      21
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Hot Smoked Salmon Pepper",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      17,
+      22,
+      23,
+      25,
+      26
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Hot Smoked Salmon Pepper",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      18,
+      24,
+      27,
+      28,
+      29
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "9ed1103e-0b4e-4089-8fa4-6f29b6dc198b",
+   "receipt_id": 1,
+   "merchant": "Wild Fork",
+   "printed_subtotal": "62.82",
+   "printed_total": "62.82",
+   "items_sum": "62.82",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "Lobster Mac and Cheese 2c",
+     "price": "18.98",
+     "quantity": 1,
+     "unit_price": "18.98",
+     "line_ids": [
+      15,
+      16,
+      17,
+      18,
+      38,
+      51
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Black Truffle Fiocchetti",
+     "price": "7.98",
+     "quantity": 1,
+     "unit_price": "7.98",
+     "line_ids": [
+      19,
+      20,
+      21,
+      40,
+      52
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Avocado Mash 8oz Tray",
+     "price": "3.97",
+     "quantity": 1,
+     "unit_price": "3.97",
+     "line_ids": [
+      22,
+      23,
+      24,
+      41,
+      53
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Avocado Mash 8oz Tray",
+     "price": "3.97",
+     "quantity": 1,
+     "unit_price": "3.97",
+     "line_ids": [
+      25,
+      26,
+      27,
+      42,
+      54
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Hot Smoked Salmon Classic",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      28,
+      29,
+      31,
+      43,
+      55
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Hot Smoked Salmon Classic",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      30,
+      32,
+      33,
+      44,
+      56
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Hot Smoked Salmon Pepper",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      34,
+      35,
+      45,
+      57
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Hot Smoked Salmon Pepper",
+     "price": "6.98",
+     "quantity": 1,
+     "unit_price": "6.98",
+     "line_ids": [
+      36,
+      37,
+      39,
+      46,
+      58
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "fb588a3b-49ab-4ee7-accd-f1953b7378c3",
+   "receipt_id": 2,
+   "merchant": "Wild Fork Meat & Seafood Market - Thousand Oaks",
+   "printed_subtotal": "119.92",
+   "printed_total": "119.92",
+   "items_sum": "119.92",
+   "sum_matches_subtotal": true,
+   "true_items": [
+    {
+     "name": "Lobster meat - CKL",
+     "price": "44.98",
+     "quantity": 1,
+     "unit_price": "44.98",
+     "line_ids": [
+      15,
+      16,
+      22,
+      23,
+      34
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Lobster meat - CKL",
+     "price": "44.98",
+     "quantity": 1,
+     "unit_price": "44.98",
+     "line_ids": [
+      17,
+      18,
+      24,
+      25,
+      35
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Lobster Ravioli 12oz FW",
+     "price": "14.98",
+     "quantity": 1,
+     "unit_price": "14.98",
+     "line_ids": [
+      19,
+      20,
+      26,
+      27,
+      36
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Lobster Ravioli 12oz FW",
+     "price": "14.98",
+     "quantity": 1,
+     "unit_price": "14.98",
+     "line_ids": [
+      21,
+      28,
+      29,
+      37
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "a7fef2ca-b84d-5405-a0f5-cbefe598a2dc",
+   "receipt_id": 1,
+   "merchant": "Whole Foods Market",
+   "printed_subtotal": "10.55",
+   "printed_total": "11.43",
+   "items_sum": "10.55",
+   "sum_matches_subtotal": true,
+   "local_only": true,
+   "labeling_rules_applied": [
+    "weighted item: quantity is the printed weight, unit_price the per-lb price",
+    "tare-weight line is item metadata (in line_ids), never its own item"
+   ],
+   "true_items": [
+    {
+     "name": "HOT BAR",
+     "price": "10.55",
+     "quantity": 0.88,
+     "unit_price": "11.99",
+     "line_ids": [
+      6,
+      7,
+      8,
+      9
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "0951426f-b7f9-5435-8569-7319cf0db1f4",
+   "receipt_id": 1,
+   "merchant": "The Coffee Press",
+   "printed_subtotal": "4.00",
+   "printed_total": "4.34",
+   "items_sum": "0.00",
+   "sum_matches_subtotal": false,
+   "local_only": true,
+   "reconcile_note": "NEGATIVE CONTROL: the receipt prints NO line items -- only Subtotal/Tax/Total and card metadata. Correct extraction is zero items; the subtotal legitimately has no printed breakdown.",
+   "true_items": []
+  },
+  {
+   "image_id": "cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "64.99",
+   "items_sum": "64.99",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "no printed subtotal/tax; items sum equals BALANCE DUE 64.99 exactly (CRV counted as its own item per Gelson's precedent)",
+   "true_items": [
+    {
+     "name": "JALAPENO PEPPERS",
+     "price": "1.00",
+     "quantity": 4,
+     "unit_price": "0.25",
+     "line_ids": [
+      37,
+      38,
+      63,
+      88
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG 2 LB CARROTS",
+     "price": "2.79",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      39,
+      64,
+      89
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG GINGER ROOT",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      40,
+      65,
+      90
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG SLICED CRIMINI",
+     "price": "6.98",
+     "quantity": 2,
+     "unit_price": "3.49",
+     "line_ids": [
+      41,
+      42,
+      66,
+      91
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORGANIC GREEN ONIONS",
+     "price": "1.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      43,
+      67,
+      92
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "RED BELL PEPPERS",
+     "price": "3.00",
+     "quantity": 2,
+     "unit_price": "1.50",
+     "line_ids": [
+      44,
+      45,
+      68,
+      93
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "WHITE ONIONS",
+     "price": "1.59",
+     "quantity": 1.07,
+     "unit_price": "1.49",
+     "line_ids": [
+      46,
+      69,
+      94
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "100% COCONUT H20 WIT",
+     "price": "4.00",
+     "quantity": 2,
+     "unit_price": "2.00",
+     "line_ids": [
+      50,
+      51,
+      70,
+      95
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "*CRV FS 05",
+     "price": "0.10",
+     "quantity": 2,
+     "unit_price": "0.05",
+     "line_ids": [
+      52,
+      53,
+      54,
+      71
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "KOREAN BBQ SAUCE",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      55,
+      72
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG A2/A2 6% FAT MLK",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      57,
+      73
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG LRG GRADE A EGGS",
+     "price": "11.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      58,
+      74
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORGANIC SOUR CREAM",
+     "price": "3.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      59,
+      75
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "CHALLAH MINI KNOTS",
+     "price": "5.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      61,
+      76
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "4d0bdfd5-4d5f-4c01-8f20-7f21090ab361",
+   "receipt_id": 2,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "34.94",
+   "items_sum": "34.94",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "items zone includes BALANCE DUE / CREDIT / CHANGE lines (46,47,50,58,59,62) which must NOT be emitted as items",
+   "true_items": [
+    {
+     "name": "CRISPY ONIONS",
+     "price": "2.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      35,
+      51
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORG GINGER ROOT",
+     "price": "7.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      36,
+      52
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "ORGANIC GREEN ONIONS",
+     "price": "1.50",
+     "quantity": 1,
+     "unit_price": "1.50",
+     "line_ids": [
+      37,
+      38,
+      53
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SEEDLESS LEMONS BAG",
+     "price": "4.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      39,
+      54
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SWEET CHILI SAUCE",
+     "price": "3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      41,
+      55
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "RAW MILK",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      43,
+      56
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "BRIOCHE BURGER BUNS",
+     "price": "6.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      45,
+      57
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "f1844265-90f3-4c5c-81a0-5944f1c6fe9a",
+   "receipt_id": 1,
+   "merchant": "Trader Joe's",
+   "printed_subtotal": null,
+   "printed_total": "43.94",
+   "items_sum": "43.94",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "no tax; items sum equals Balance to pay exactly; printed 'Items in Transaction: 16' cross-checks quantities (1+1+1+1+1+2+1+2+4+2)",
+   "true_items": [
+    {
+     "name": "ORG KOSHER DILL PICKLE S",
+     "price": "$3.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      8,
+      28
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "MANGO NECTAR JUICE ORG",
+     "price": "$5.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      9,
+      10,
+      29
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SALMON FILLET SKIN ON",
+     "price": "$9.39",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      11,
+      30
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SALMON FILLET SKIN ON",
+     "price": "$6.69",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      12,
+      31
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SALSA AUTENTICA",
+     "price": "$2.29",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      13,
+      32
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "TUNA SOLID WHITE ALBACOR",
+     "price": "$3.98",
+     "quantity": 2,
+     "unit_price": "$1.99",
+     "line_ids": [
+      14,
+      15,
+      33
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "TUNA SOLID WHITE ALBACOR",
+     "price": "$1.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      16,
+      34
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "POTATO SWEET EACH",
+     "price": "$1.98",
+     "quantity": 2,
+     "unit_price": "$0.99",
+     "line_ids": [
+      17,
+      18,
+      35
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "A-AVOCADO HASS LARGE EAC",
+     "price": "$7.16",
+     "quantity": 4,
+     "unit_price": "$1.79",
+     "line_ids": [
+      19,
+      20,
+      36
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "LEMON EACH",
+     "price": "$0.98",
+     "quantity": 2,
+     "unit_price": "$0.49",
+     "line_ids": [
+      21,
+      22,
+      37
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "b4c2a475-d739-4a42-afbf-6b5e06443ba1",
+   "receipt_id": 1,
+   "merchant": "Amazon Fresh",
+   "printed_subtotal": "$11.14",
+   "printed_total": "$11.14",
+   "items_sum": "11.14",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "OCR misread item 1's price '$0.99 F' as '950.93 F'; truth is 0.99 (0.99+1.89+3.78+2.09+2.39 = printed subtotal 11.14 exactly). Recall ceiling 4/5 until re-OCR repairs the digits.",
+   "true_items": [
+    {
+     "name": "Amazon Fresh, Small Curd",
+     "price": "$0.99",
+     "quantity": 1,
+     "unit_price": "$0.99",
+     "line_ids": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      26
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Amazon Fresh, Greek Nonfa",
+     "price": "$1.89",
+     "quantity": 1,
+     "unit_price": "$1.89",
+     "line_ids": [
+      13,
+      14,
+      15,
+      16,
+      27
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Amazon Fresh Brand, Stopl",
+     "price": "$3.78",
+     "quantity": 2,
+     "unit_price": "$1.89",
+     "line_ids": [
+      17,
+      18,
+      19,
+      28
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "365 Everyday Value, Orgar",
+     "price": "$2.09",
+     "quantity": 1,
+     "unit_price": "$2.09",
+     "line_ids": [
+      20,
+      21,
+      22,
+      29,
+      31
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Blueberries, 1 Pint",
+     "price": "$2.39",
+     "quantity": 1,
+     "unit_price": "$2.39",
+     "line_ids": [
+      23,
+      24,
+      25,
+      30,
+      32
+     ],
+     "is_discount": false
+    }
+   ]
+  }
+ ]
 }

@@ -37,9 +37,23 @@ def main() -> int:
     client = DynamoClient(args.table)
     golden = json.load(open(FIXTURES / "line_items_golden.json"))
 
+    existing = {}
+    ocr_path = FIXTURES / "line_items_golden_ocr.json"
+    if ocr_path.exists():
+        for r in json.load(open(ocr_path))["receipts"]:
+            existing[(r["image_id"], r["receipt_id"])] = r
+
     out = []
     for d in golden["receipts"]:
         key = (d["image_id"], d["receipt_id"])
+        if d.get("local_only"):
+            # local-capture receipts are not in Dynamo; keep the entry
+            # written when they were labeled
+            if key in existing:
+                out.append(existing[key])
+            else:
+                print(f"  WARNING: local_only {key} missing from fixture")
+            continue
         words = client.list_receipt_words_from_receipt(*key)
         sections = client.get_receipt_sections_from_receipt(*key)
         item_lines: set[int] = set()
