@@ -55,7 +55,6 @@ from receipt_dynamo.entities.receipt_summary import (
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
 )
-
 from receipt_upload.tender import classify_tender_for_receipt
 
 logging.basicConfig(
