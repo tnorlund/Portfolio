@@ -13,6 +13,7 @@
 - [BoundingBox](interfaces/BoundingBox.md)
 - [CachedImageDetailsResponse](interfaces/CachedImageDetailsResponse.md)
 - [DatasetMetrics](interfaces/DatasetMetrics.md)
+- [DecodedReceiptLineItem](interfaces/DecodedReceiptLineItem.md)
 - [EpochEvaluationCompute](interfaces/EpochEvaluationCompute.md)
 - [EpochEvaluationEntry](interfaces/EpochEvaluationEntry.md)
 - [EpochEvaluationJobsResponse](interfaces/EpochEvaluationJobsResponse.md)
@@ -50,6 +51,11 @@
 - [LayoutLMReceiptInference](interfaces/LayoutLMReceiptInference.md)
 - [LayoutLMReceiptWord](interfaces/LayoutLMReceiptWord.md)
 - [Line](interfaces/Line.md)
+- [LineItemDecodeImage](interfaces/LineItemDecodeImage.md)
+- [LineItemDecodeLine](interfaces/LineItemDecodeLine.md)
+- [LineItemDecodeReceipt](interfaces/LineItemDecodeReceipt.md)
+- [LineItemDecodeResponse](interfaces/LineItemDecodeResponse.md)
+- [LineItemDecodeSection](interfaces/LineItemDecodeSection.md)
 - [MilkReceiptData](interfaces/MilkReceiptData.md)
 - [MilkSimilarityResponse](interfaces/MilkSimilarityResponse.md)
 - [MilkSimilarityTiming](interfaces/MilkSimilarityTiming.md)
@@ -100,6 +106,7 @@
 
 ## Type Aliases
 
+- [LineItemReconciliationStatus](type-aliases/LineItemReconciliationStatus.md)
 - [MerchantCountsResponse](type-aliases/MerchantCountsResponse.md)
 - [ReceiptHealthIssueState](type-aliases/ReceiptHealthIssueState.md)
 - [ReceiptHealthPreflightClassification](type-aliases/ReceiptHealthPreflightClassification.md)

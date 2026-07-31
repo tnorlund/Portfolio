@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthSectionEvidence
 
-Defined in: [types/api.ts:1126](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1126)
+Defined in: [types/api.ts:1197](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1197)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:1126](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **context\_sections**: `Record`\<`string`, `number`\>
 
-Defined in: [types/api.ts:1128](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1128)
+Defined in: [types/api.ts:1199](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1199)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1128](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **has\_payment\_summary**: `boolean`
 
-Defined in: [types/api.ts:1133](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1133)
+Defined in: [types/api.ts:1204](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1204)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1133](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **has\_tip\_entry\_area**: `boolean`
 
-Defined in: [types/api.ts:1131](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1131)
+Defined in: [types/api.ts:1202](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1202)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:1131](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **has\_tip\_suggestions**: `boolean`
 
-Defined in: [types/api.ts:1130](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1130)
+Defined in: [types/api.ts:1201](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1201)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:1130](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **has\_void\_discount**: `boolean`
 
-Defined in: [types/api.ts:1132](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1132)
+Defined in: [types/api.ts:1203](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1203)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:1132](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **issue\_rows**: [`ReceiptHealthSectionEvidenceRow`](ReceiptHealthSectionEvidenceRow.md)[]
 
-Defined in: [types/api.ts:1129](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1129)
+Defined in: [types/api.ts:1200](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1200)
 
 ***
 
@@ -62,4 +62,4 @@ Defined in: [types/api.ts:1129](https://github.com/tnorlund/Portfolio/blob/40353
 
 > `optional` **issue\_sections**: `Record`\<`string`, `number`\>
 
-Defined in: [types/api.ts:1127](https://github.com/tnorlund/Portfolio/blob/40353e6c8390dc1eb39304d7d27521884baae729/portfolio/types/api.ts#L1127)
+Defined in: [types/api.ts:1198](https://github.com/tnorlund/Portfolio/blob/e36a64a94a66d29102da30b6c0e4a00f4af2919e/portfolio/types/api.ts#L1198)
