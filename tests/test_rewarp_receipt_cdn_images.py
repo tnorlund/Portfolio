@@ -8,6 +8,7 @@ conflict check.
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -34,6 +35,7 @@ def make_receipt(width: int, height: int, **overrides) -> SimpleNamespace:
         "cdn_s3_bucket": "site-bucket",
         "cdn_s3_key": f"assets/{IMG}/1.jpg",
         "cdn_thumbnail_s3_key": f"assets/{IMG}/1_thumbnail.jpg",
+        "timestamp_added": "2026-01-01T00:00:00+00:00",
     }
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -63,7 +65,7 @@ def make_word(x: float, y: float, width: float, height: float, text: str):
 )
 def test_variant_verdicts(monkeypatch, cdn_size, expected):
     monkeypatch.setattr(
-        rw, "_probe_cdn_size", lambda *a, **k: (cdn_size, None)
+        rw, "_probe_cdn_size", lambda *a, **k: (cdn_size, None, None)
     )
     probe = rw._probe_variant(
         None, "bucket", "full", "key.jpg", rw._aspect(866, 2688)
@@ -80,7 +82,7 @@ def test_scan_status_is_worst_variant(monkeypatch):
     monkeypatch.setattr(
         rw,
         "_probe_cdn_size",
-        lambda client, bucket, key: (sizes[key], None),
+        lambda client, bucket, key: (sizes[key], None, None),
     )
     receipt = make_receipt(
         866,
@@ -218,6 +220,88 @@ def test_conflicts_reported_for_legacy_key_layout():
 
 
 # --------------------------------------------------------------------- #
+# Staleness signal                                                      #
+# --------------------------------------------------------------------- #
+
+
+def _stub_probe(monkeypatch, size, mtime):
+    monkeypatch.setattr(
+        rw,
+        "_probe_cdn_size",
+        lambda *a, **k: (size, None, mtime),
+    )
+
+
+def test_stale_when_asset_predates_receipt_row(monkeypatch):
+    """The case aspect grading cannot see: right shape, wrong crop.
+
+    Mirrors prod 04b16930: the asset was written 2026-01-16 but the
+    receipt row was rewritten 2026-07-11, so the crop cannot depict the
+    geometry the row now carries even though its ratio still matches.
+    """
+    _stub_probe(
+        monkeypatch,
+        (846, 2462),
+        datetime(2026, 1, 16, 19, 12, 47, tzinfo=timezone.utc),
+    )
+    receipt = make_receipt(
+        846, 2462, timestamp_added="2026-07-11T23:27:29.682716+00:00"
+    )
+    result = rw.scan_receipt(receipt, None, None)
+    assert result.status == "stale_timestamp"
+    assert result.is_mismatch
+    assert "predates receipt row" in " ".join(result.notes)
+
+
+def test_not_stale_when_asset_newer_than_row(monkeypatch):
+    _stub_probe(
+        monkeypatch,
+        (846, 2462),
+        datetime(2026, 8, 1, tzinfo=timezone.utc),
+    )
+    receipt = make_receipt(
+        846, 2462, timestamp_added="2026-07-11T23:27:29.682716+00:00"
+    )
+    assert rw.scan_receipt(receipt, None, None).status == "ok"
+
+
+def test_aspect_mismatch_outranks_staleness(monkeypatch):
+    """A wrong-shape asset keeps the more specific verdict."""
+    _stub_probe(
+        monkeypatch,
+        (2462, 846),
+        datetime(2026, 1, 16, tzinfo=timezone.utc),
+    )
+    receipt = make_receipt(
+        846, 2462, timestamp_added="2026-07-11T23:27:29.682716+00:00"
+    )
+    result = rw.scan_receipt(receipt, None, None)
+    assert result.status == "rotated_90"
+    # The staleness evidence is still recorded, just not the headline.
+    assert "predates receipt row" in " ".join(result.notes)
+
+
+def test_naive_entity_timestamp_treated_as_utc():
+    receipt = make_receipt(846, 2462, timestamp_added="2026-07-11T23:27:29")
+    parsed = rw._entity_timestamp(receipt)
+    assert parsed is not None and parsed.tzinfo is not None
+
+
+@pytest.mark.parametrize("bad", [None, "", "not-a-date", 12345])
+def test_unparseable_entity_timestamp_is_not_fatal(bad):
+    receipt = make_receipt(846, 2462, timestamp_added=bad)
+    assert rw._entity_timestamp(receipt) is None
+
+
+def test_stale_verdict_ranks_below_aspect_mismatch():
+    assert (
+        rw.VERDICT_SEVERITY["stale_timestamp"]
+        < rw.VERDICT_SEVERITY["aspect_mismatch"]
+    )
+    assert "stale_timestamp" in rw.MISMATCH_VERDICTS
+
+
+# --------------------------------------------------------------------- #
 # Backup before overwrite                                               #
 # --------------------------------------------------------------------- #
 
@@ -340,6 +424,43 @@ def test_parse_excludes():
 def test_parse_excludes_rejects_malformed(bad):
     with pytest.raises(ValueError):
         rw._parse_excludes([bad])
+
+
+# --------------------------------------------------------------------- #
+# --force guardrails                                                    #
+# --------------------------------------------------------------------- #
+
+
+def test_force_with_apply_all_is_refused():
+    """Unfiltered + unfiltered is the one combination with no brakes."""
+    assert (
+        rw.main(
+            [
+                "--table",
+                "t",
+                "--apply",
+                "--apply-all",
+                "--force",
+            ]
+        )
+        == 2
+    )
+
+
+def test_force_without_image_filter_is_refused():
+    assert rw.main(["--table", "t", "--apply", "--force"]) == 2
+
+
+def test_apply_without_filter_or_apply_all_is_refused():
+    assert rw.main(["--table", "t", "--apply"]) == 2
+
+
+def test_force_parses_with_an_image_filter(monkeypatch):
+    """--force + a named image is the supported shape."""
+    args = rw.parse_args(
+        ["--table", "t", "--apply", "--force", "--image-id", IMG]
+    )
+    assert args.force and args.image_ids == [IMG]
 
 
 def test_close_is_symmetric():

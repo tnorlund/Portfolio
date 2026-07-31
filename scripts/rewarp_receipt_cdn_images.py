@@ -111,9 +111,14 @@ PROBED_VARIANTS: tuple[tuple[str, str], ...] = (
 VERDICT_SEVERITY = {
     "ok": 0,
     "cdn_unreadable": 1,
-    "aspect_mismatch": 2,
-    "rotated_90": 3,
+    "stale_timestamp": 2,
+    "aspect_mismatch": 3,
+    "rotated_90": 4,
 }
+
+# Verdicts that mean the published asset does not depict the receipt the
+# entity describes, and so should be rebuilt.
+MISMATCH_VERDICTS = ("rotated_90", "aspect_mismatch", "stale_timestamp")
 
 
 @dataclass
@@ -126,6 +131,7 @@ class VariantProbe:
     width: Optional[int] = None
     height: Optional[int] = None
     aspect: Optional[float] = None
+    last_modified: Optional[str] = None
     note: Optional[str] = None
 
 
@@ -140,20 +146,18 @@ class ScanResult:
     entity_height: int = 0
     entity_aspect: Optional[float] = None
     quad_aspect: Optional[float] = None
+    entity_timestamp: Optional[str] = None
+    newest_asset_timestamp: Optional[str] = None
     variants: list[VariantProbe] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
     def is_mismatch(self) -> bool:
-        return self.status in ("rotated_90", "aspect_mismatch")
+        return self.status in MISMATCH_VERDICTS
 
     @property
     def bad_variants(self) -> list[VariantProbe]:
-        return [
-            v
-            for v in self.variants
-            if v.verdict in ("rotated_90", "aspect_mismatch")
-        ]
+        return [v for v in self.variants if v.verdict in MISMATCH_VERDICTS]
 
 
 def _aspect(width: float, height: float) -> Optional[float]:
@@ -224,8 +228,8 @@ def _open_image_size(data: bytes) -> Optional[tuple[int, int]]:
 
 def _probe_cdn_size(
     s3_client: Any, bucket: str, key: str
-) -> tuple[Optional[tuple[int, int]], Optional[str]]:
-    """Pixel dimensions of a CDN object, or an error string.
+) -> tuple[Optional[tuple[int, int]], Optional[str], Optional[datetime]]:
+    """Pixel dimensions and mtime of a CDN object, or an error string.
 
     A ranged GET of the header is enough for JPEG/WebP/AVIF; the full
     object is fetched only if the header alone will not parse.
@@ -237,26 +241,49 @@ def _probe_cdn_size(
             Range=f"bytes=0-{HEADER_PROBE_BYTES - 1}",
         )
         head = response["Body"].read()
+        last_modified = response.get("LastModified")
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
         if code in ("NoSuchKey", "404", "NoSuchBucket", "AccessDenied"):
-            return None, f"s3_error:{code}"
-        return None, f"s3_error:{code or exc}"
+            return None, f"s3_error:{code}", None
+        return None, f"s3_error:{code or exc}", None
     except BotoCoreError as exc:
-        return None, f"s3_error:{exc}"
+        return None, f"s3_error:{exc}", None
 
     size = _open_image_size(head)
     if size is not None:
-        return size, None
+        return size, None, last_modified
 
     try:
         full = s3_client.get_object(Bucket=bucket, Key=key)["Body"].read()
     except (ClientError, BotoCoreError) as exc:
-        return None, f"s3_error:{exc}"
+        return None, f"s3_error:{exc}", None
     size = _open_image_size(full)
     if size is None:
-        return None, "undecodable"
-    return size, None
+        return None, "undecodable", last_modified
+    return size, None, last_modified
+
+
+def _entity_timestamp(receipt: Receipt) -> Optional[datetime]:
+    """The Receipt row's own timestamp, as an aware UTC datetime.
+
+    ``timestamp_added`` is the only timestamp the entity carries. It is
+    rewritten whenever the receipt is re-created (re-segmentation), so an
+    asset older than it cannot depict the current geometry.
+    """
+    raw = getattr(receipt, "timestamp_added", None)
+    if isinstance(raw, datetime):
+        parsed = raw
+    elif isinstance(raw, str):
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def scan_receipt(
@@ -315,6 +342,30 @@ def scan_receipt(
         (v.verdict for v in result.variants),
         key=lambda verdict: VERDICT_SEVERITY.get(verdict, 0),
     )
+
+    # Aspect grading only catches assets whose *shape* changed. A crop
+    # rebuilt from shifted corners can keep almost the same ratio while
+    # every word box lands off the text, so also compare when the asset
+    # was written against when the receipt row was written.
+    entity_ts = _entity_timestamp(receipt)
+    if entity_ts is not None:
+        result.entity_timestamp = entity_ts.isoformat()
+
+    mtimes = [
+        datetime.fromisoformat(v.last_modified)
+        for v in result.variants
+        if v.last_modified
+    ]
+    if mtimes:
+        newest = max(mtimes)
+        result.newest_asset_timestamp = newest.isoformat()
+        if entity_ts is not None and newest < entity_ts:
+            result.notes.append(
+                f"asset written {newest.isoformat()} predates receipt "
+                f"row {entity_ts.isoformat()}"
+            )
+            if result.status == "ok":
+                result.status = "stale_timestamp"
     return result
 
 
@@ -327,7 +378,11 @@ def _probe_variant(
 ) -> VariantProbe:
     """Measure one CDN variant and grade it against the entity aspect."""
     probe = VariantProbe(name=name, key=key, verdict="ok")
-    size, error = _probe_cdn_size(s3_client, bucket, key)
+    size, error, last_modified = _probe_cdn_size(s3_client, bucket, key)
+    if last_modified is not None:
+        probe.last_modified = last_modified.astimezone(
+            timezone.utc
+        ).isoformat()
     if size is None:
         probe.verdict = "cdn_unreadable"
         probe.note = error or "unknown"
@@ -772,6 +827,17 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Restrict to this image id. Repeatable.",
     )
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Rebuild every receipt matched by --image-id/--image-ids-file "
+            "regardless of its scan verdict. For assets the aspect check "
+            "cannot see through, e.g. a shifted crop that kept its ratio. "
+            "Backups and the alignment self-check still apply -- the "
+            "self-check is the real gate. Refused with --apply-all."
+        ),
+    )
+    parser.add_argument(
         "--image-ids-file",
         help=(
             "File of image ids, one per line (blank lines and '#' "
@@ -854,6 +920,22 @@ def main(argv: Optional[list[str]] = None) -> int:
             "--apply without an image filter requires --apply-all; "
             "refusing to rewrite every receipt in %s by accident.",
             args.table,
+        )
+        return 2
+
+    if args.force and args.apply_all:
+        logger.error(
+            "--force with --apply-all would rebuild every receipt in %s "
+            "with no verdict filtering at all; refusing. Name the "
+            "receipts with --image-id or --image-ids-file.",
+            args.table,
+        )
+        return 2
+
+    if args.force and not args.image_ids and not args.image_ids_file:
+        logger.error(
+            "--force needs --image-id or --image-ids-file to say what to "
+            "rebuild."
         )
         return 2
 
@@ -975,7 +1057,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.apply or args.dry_run_apply:
         by_key = {(r.image_id, r.receipt_id): r for r in receipts}
         applied: list[dict[str, Any]] = []
-        for result in mismatches:
+        # --force rebuilds everything named on the command line; the
+        # alignment self-check, not the scan verdict, decides what is
+        # safe to publish.
+        targets = results if args.force else mismatches
+        if args.force:
+            logger.info(
+                "--force: rebuilding all %d matched receipts regardless "
+                "of scan verdict",
+                len(targets),
+            )
+        for result in targets:
             if (result.image_id, result.receipt_id) in excludes:
                 applied.append(
                     {
