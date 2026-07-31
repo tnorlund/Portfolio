@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import styles from "./Validation.module.css";
-import { buildTruthChain, failureHint } from "./truthChain";
+import { Agreement, buildTruthChain, failureHint } from "./truthChain";
 import { ReviewVerdict, ValidationReceipt } from "./types";
 
 const currency = new Intl.NumberFormat("en-US", {
@@ -27,10 +27,18 @@ const quantityLabel = (
   return unitPrice === null ? `×${amount}` : `${amount} × ${money(unitPrice)}`;
 };
 
+const AGREEMENT_LABELS: Record<Agreement, string> = {
+  agree: "Agrees",
+  near: "Near",
+  disagree: "Disagrees",
+  unknown: "Missing",
+};
+
 interface TruthPanelProps {
   receipt: ValidationReceipt;
   onHoverItem: (lineIds: number[] | null) => void;
   onReview: (verdict: ReviewVerdict, note: string) => void;
+  onFlagRequest: () => void;
   saving: boolean;
 }
 
@@ -38,52 +46,70 @@ export const TruthPanel: React.FC<TruthPanelProps> = ({
   receipt,
   onHoverItem,
   onReview,
+  onFlagRequest,
   saving,
 }) => {
-  const [note, setNote] = useState("");
   const chain = buildTruthChain(receipt.items_sum, receipt.summary);
   const hint = failureHint(receipt);
   const summary = receipt.summary;
   const status = receipt.reconciliation_status ?? "no-baseline";
-
-  const submit = (verdict: ReviewVerdict) => {
-    onReview(verdict, note);
-    setNote("");
-  };
+  const missingTargets = [
+    receipt.image ? null : "image",
+    receipt.sections.length > 0 ? null : "sections",
+    receipt.items.length > 0 ? null : "items",
+  ].filter((target): target is string => target !== null);
 
   return (
     <section className={styles.truthPanel} data-testid="truth-panel">
       <header className={styles.truthHeader}>
         <div>
           <span className={styles.eyebrow}>Truth chain</span>
-          <strong>{receipt.merchant_name}</strong>
+          <strong>{receipt.merchant_name || "Unknown merchant"}</strong>
         </div>
         <span className={styles.statusBadge} data-status={status}>
           {status}
         </span>
       </header>
 
+      {missingTargets.length > 0 ? (
+        <div className={styles.reviewTarget} data-testid="review-target">
+          <strong>Review target</strong>
+          <span>Missing {missingTargets.join(" + ")} — inspect and flag the gap.</span>
+        </div>
+      ) : null}
+
       <div className={styles.tenderRow} data-testid="tender-badges">
-        <span className={styles.tenderBadge}>
-          {summary?.tender_class ?? "tender ?"}
+        <span className={styles.tenderBadge} data-kind="tender">
+          <small>Tender</small>
+          <strong>{summary?.tender_class ?? "unknown"}</strong>
         </span>
-        {summary?.card_network ? (
-          <span className={styles.tenderBadge}>{summary.card_network}</span>
+        {summary?.card_network || summary?.card_last4 ? (
+          <span className={styles.tenderBadge} data-kind="card">
+            <small>Card</small>
+            <strong>
+              {[summary.card_network, summary.card_last4 ? `••${summary.card_last4}` : null]
+                .filter(Boolean)
+                .join(" ")}
+            </strong>
+          </span>
         ) : null}
-        {summary?.card_last4 ? (
-          <span className={styles.tenderBadge}>••{summary.card_last4}</span>
-        ) : null}
-        {summary?.ledger ? (
-          <span className={styles.tenderBadge}>{summary.ledger}</span>
-        ) : null}
+        <span className={styles.tenderBadge} data-kind="ledger">
+          <small>Ledger</small>
+          <strong>{summary?.ledger ?? "unlinked"}</strong>
+        </span>
         {summary?.bank_match_confidence !== null &&
         summary?.bank_match_confidence !== undefined ? (
-          <span className={styles.tenderBadge}>
-            conf {summary.bank_match_confidence.toFixed(2)}
+          <span className={styles.tenderBadge} data-kind="confidence">
+            <small>Bank match</small>
+            <strong>{Math.round(summary.bank_match_confidence * 100)}%</strong>
           </span>
         ) : null}
       </div>
 
+      <div className={styles.tableLabel}>
+        <span className={styles.eyebrow}>Extracted items</span>
+        <span>{receipt.items.length}</span>
+      </div>
       <table className={styles.itemsTable} data-testid="items-table">
         <thead>
           <tr>
@@ -124,13 +150,20 @@ export const TruthPanel: React.FC<TruthPanelProps> = ({
             );
           })}
           {receipt.items.length === 0 ? (
-            <tr>
-              <td colSpan={4}>No line items extracted.</td>
+            <tr className={styles.missingTableRow}>
+              <td colSpan={4}>
+                <strong>No line items extracted.</strong>
+                <span>This receipt stays in the queue as a repair target.</span>
+              </td>
             </tr>
           ) : null}
         </tbody>
       </table>
 
+      <div className={styles.chainHeading}>
+        <span className={styles.eyebrow}>Four-figure agreement</span>
+        <small>each figure vs its upstream truth</small>
+      </div>
       <div className={styles.chain} data-testid="truth-chain">
         {chain.map((row) => (
           <div
@@ -140,9 +173,16 @@ export const TruthPanel: React.FC<TruthPanelProps> = ({
             data-agreement={row.agreement}
             title={`vs ${row.referenceLabel}: ${money(row.reference)}`}
           >
-            <span className={styles.chainLabel}>{row.label}</span>
+            <span className={styles.agreementMark} aria-hidden="true" />
+            <span className={styles.chainLabel}>
+              {row.label}
+              <small>vs {row.referenceLabel}</small>
+            </span>
             <span className={styles.chainValue}>{money(row.value)}</span>
             <span className={styles.chainDelta}>{signedMoney(row.delta)}</span>
+            <span className={styles.agreementLabel}>
+              {AGREEMENT_LABELS[row.agreement]}
+            </span>
           </div>
         ))}
       </div>
@@ -158,51 +198,36 @@ export const TruthPanel: React.FC<TruthPanelProps> = ({
           data-testid="failure-hint"
           data-code={hint.code}
         >
-          <strong>{hint.label}</strong>
+          <span className={styles.hintChip}>{hint.label}</span>
           <span>{hint.detail}</span>
         </div>
       ) : null}
 
-      <div className={styles.reviewBox}>
-        <textarea
-          className={styles.noteInput}
-          value={note}
-          placeholder="Note for Claude (what's wrong, what to repair)…"
-          aria-label="Review note"
-          onChange={(event) => setNote(event.target.value)}
-          rows={2}
-        />
-        <div className={styles.reviewButtons}>
-          <button
-            type="button"
-            className={styles.confirmButton}
-            disabled={saving}
-            onClick={() => submit("confirm")}
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            className={styles.flagButton}
-            disabled={saving}
-            onClick={() => submit("flag")}
-          >
-            Flag
-          </button>
+      {!summary ? (
+        <div className={styles.missingSummary}>
+          <strong>No receipt summary</strong>
+          <span>Printed totals, tender, and bank truth are unavailable.</span>
         </div>
-      </div>
-
-      {receipt.reviews.length > 0 ? (
-        <ul className={styles.reviewLog} data-testid="prior-reviews">
-          {receipt.reviews.map((entry) => (
-            <li key={`${entry.ts}-${entry.verdict}`}>
-              <span data-status={entry.verdict}>{entry.verdict}</span>
-              <span>{entry.note || "—"}</span>
-              <small>{entry.ts.slice(0, 16).replace("T", " ")}</small>
-            </li>
-          ))}
-        </ul>
       ) : null}
+
+      <div className={styles.reviewButtons}>
+        <button
+          type="button"
+          className={styles.confirmButton}
+          disabled={saving}
+          onClick={() => onReview("confirm", "")}
+        >
+          Confirm <kbd>C</kbd>
+        </button>
+        <button
+          type="button"
+          className={styles.flagButton}
+          disabled={saving}
+          onClick={onFlagRequest}
+        >
+          Flag with note <kbd>F</kbd>
+        </button>
+      </div>
     </section>
   );
 };

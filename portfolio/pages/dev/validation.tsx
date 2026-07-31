@@ -4,18 +4,29 @@
 // (portfolio/dev-harness/validation_shim.py) via the /api/validation rewrite,
 // which only exists in PHASE_DEVELOPMENT_SERVER.
 import Head from "next/head";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   fetchMerchants,
   fetchReceipt,
+  fetchReviews,
   fetchWorklist,
   postReview,
 } from "../../components/dev/validation/client";
 import MerchantList from "../../components/dev/validation/MerchantList";
 import ReceiptCanvas from "../../components/dev/validation/ReceiptCanvas";
+import ReviewLog from "../../components/dev/validation/ReviewLog";
 import TruthPanel from "../../components/dev/validation/TruthPanel";
 import {
   MerchantsResponse,
+  OverlayMode,
+  ReviewEntry,
   ReviewVerdict,
   StatusFilter,
   ValidationReceipt,
@@ -24,58 +35,143 @@ import {
 import styles from "../../components/dev/validation/Validation.module.css";
 import { useImageFormatSupport } from "../../components/ui/Figures/ReceiptFlow/useImageFormatSupport";
 
+const errorMessage = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
 export default function ValidationWorkstation() {
   const formatSupport = useImageFormatSupport();
+  const merchantSearchRef = useRef<HTMLInputElement>(null);
+  const jumpTargetRef = useRef<Pick<ReviewEntry, "image_id" | "receipt_id"> | null>(
+    null,
+  );
   const [index, setIndex] = useState<MerchantsResponse | null>(null);
   const [merchant, setMerchant] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("failures");
   const [worklist, setWorklist] = useState<WorklistRow[]>([]);
   const [position, setPosition] = useState(0);
   const [receipt, setReceipt] = useState<ValidationReceipt | null>(null);
+  const [reviews, setReviews] = useState<ReviewEntry[]>([]);
   const [highlight, setHighlight] = useState<number[] | null>(null);
-  const [showSections, setShowSections] = useState(true);
-  const [showItems, setShowItems] = useState(true);
+  const [overlayMode, setOverlayMode] = useState<OverlayMode>("both");
+  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
+  const [flagNote, setFlagNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [indexLoading, setIndexLoading] = useState(true);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [worklistLoading, setWorklistLoading] = useState(true);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [indexError, setIndexError] = useState<string | null>(null);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [worklistError, setWorklistError] = useState<string | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const [queueVersion, setQueueVersion] = useState(0);
+  const [receiptVersion, setReceiptVersion] = useState(0);
 
-  useEffect(() => {
-    fetchMerchants()
-      .then(setIndex)
-      .catch((cause) => setError(String(cause)));
+  const retryAll = useCallback(() => {
+    setActionError(null);
+    setReloadVersion((version) => version + 1);
+    setQueueVersion((version) => version + 1);
+    setReceiptVersion((version) => version + 1);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    setReceipt(null);
-    fetchWorklist(merchant, statusFilter)
-      .then((response) => {
+    setIndexLoading(true);
+    setReviewsLoading(true);
+    void Promise.allSettled([fetchMerchants(), fetchReviews()]).then(
+      ([merchantResult, reviewResult]) => {
         if (cancelled) return;
-        setWorklist(response.receipts);
-        setPosition(0);
-        setError(null);
-      })
-      .catch((cause) => !cancelled && setError(String(cause)));
+        if (merchantResult.status === "fulfilled") {
+          setIndex(merchantResult.value);
+          setIndexError(null);
+        } else {
+          setIndexError(errorMessage(merchantResult.reason));
+        }
+        if (reviewResult.status === "fulfilled") {
+          setReviews(reviewResult.value.entries);
+          setReviewsError(null);
+        } else {
+          setReviewsError(errorMessage(reviewResult.reason));
+        }
+        setIndexLoading(false);
+        setReviewsLoading(false);
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [merchant, statusFilter]);
-
-  const current = worklist[position] ?? null;
+  }, [reloadVersion]);
 
   useEffect(() => {
-    if (!current) {
+    let cancelled = false;
+    setReceipt(null);
+    setWorklistLoading(true);
+    setWorklistError(null);
+    void fetchWorklist(merchant, statusFilter)
+      .then((response) => {
+        if (cancelled) return;
+        setWorklist(response.receipts);
+        const target = jumpTargetRef.current;
+        const targetPosition = target
+          ? response.receipts.findIndex(
+              (row) =>
+                row.image_id === target.image_id &&
+                row.receipt_id === target.receipt_id,
+            )
+          : -1;
+        if (target && targetPosition < 0) {
+          setWorklistError(
+            `Receipt ${target.receipt_id} is not present in the current 1,000-row index.`,
+          );
+        }
+        setPosition(targetPosition >= 0 ? targetPosition : 0);
+        jumpTargetRef.current = null;
+      })
+      .catch((cause) => {
+        if (cancelled) return;
+        setWorklist([]);
+        setPosition(0);
+        setWorklistError(errorMessage(cause));
+      })
+      .finally(() => {
+        if (!cancelled) setWorklistLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [merchant, queueVersion, statusFilter]);
+
+  const current = worklist[position] ?? null;
+  const currentImageId = current?.image_id;
+  const currentReceiptId = current?.receipt_id;
+
+  useEffect(() => {
+    if (!currentImageId || currentReceiptId === undefined) {
       setReceipt(null);
+      setReceiptLoading(false);
       return;
     }
     let cancelled = false;
     setHighlight(null);
-    fetchReceipt(current.image_id, current.receipt_id)
-      .then((detail) => !cancelled && setReceipt(detail))
-      .catch((cause) => !cancelled && setError(String(cause)));
+    setReceipt(null);
+    setReceiptError(null);
+    setReceiptLoading(true);
+    void fetchReceipt(currentImageId, currentReceiptId)
+      .then((detail) => {
+        if (!cancelled) setReceipt(detail);
+      })
+      .catch((cause) => {
+        if (!cancelled) setReceiptError(errorMessage(cause));
+      })
+      .finally(() => {
+        if (!cancelled) setReceiptLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [current]);
+  }, [currentImageId, currentReceiptId, receiptVersion]);
 
   const step = useCallback(
     (delta: number) =>
@@ -85,20 +181,9 @@ export default function ValidationWorkstation() {
     [worklist.length],
   );
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
-      if (event.key === "ArrowRight" || event.key === "j") step(1);
-      if (event.key === "ArrowLeft" || event.key === "k") step(-1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
-
   const onReview = useCallback(
-    async (verdict: ReviewVerdict, note: string) => {
-      if (!receipt || !current) return;
+    async (verdict: ReviewVerdict, note: string): Promise<boolean> => {
+      if (!receipt || !current || saving) return false;
       setSaving(true);
       try {
         const entry = await postReview({
@@ -113,16 +198,77 @@ export default function ValidationWorkstation() {
         setReceipt((value) =>
           value ? { ...value, reviews: [...value.reviews, entry] } : value,
         );
-        setError(null);
+        setReviews((value) => [...value, entry]);
+        setActionError(null);
         step(1);
+        return true;
       } catch (cause) {
-        setError(String(cause));
+        setActionError(errorMessage(cause));
+        return false;
       } finally {
         setSaving(false);
       }
     },
-    [receipt, current, step],
+    [current, receipt, saving, step],
   );
+
+  const openFlagDialog = useCallback(() => {
+    if (!receipt || saving) return;
+    setFlagNote("");
+    setFlagDialogOpen(true);
+  }, [receipt, saving]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const key = event.key.toLocaleLowerCase();
+      if (key === "escape" && flagDialogOpen) {
+        event.preventDefault();
+        setFlagDialogOpen(false);
+        return;
+      }
+      if (flagDialogOpen) return;
+
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        Boolean(target?.isContentEditable) ||
+        Boolean(target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (isTyping) return;
+
+      if (key === "m") {
+        event.preventDefault();
+        merchantSearchRef.current?.focus();
+      } else if (key === "j" || event.key === "ArrowRight") {
+        event.preventDefault();
+        step(1);
+      } else if (key === "k" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        step(-1);
+      } else if (key === "c" && receipt && !saving) {
+        event.preventDefault();
+        void onReview("confirm", "");
+      } else if (key === "f" && receipt && !saving) {
+        event.preventDefault();
+        openFlagDialog();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flagDialogOpen, onReview, openFlagDialog, receipt, saving, step]);
+
+  const jumpToReview = useCallback((entry: ReviewEntry) => {
+    jumpTargetRef.current = entry;
+    setMerchant(null);
+    setStatusFilter("all");
+    setQueueVersion((version) => version + 1);
+  }, []);
+
+  const submitFlag = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (await onReview("flag", flagNote.trim())) {
+      setFlagDialogOpen(false);
+      setFlagNote("");
+    }
+  };
 
   const heading = useMemo(() => {
     if (!current) return "No receipts for this filter";
@@ -136,82 +282,175 @@ export default function ValidationWorkstation() {
       </Head>
       <div className={styles.layout}>
         <MerchantList
+          ref={merchantSearchRef}
           merchants={index?.merchants ?? []}
           totals={index?.totals ?? {}}
           receipts={index?.receipts ?? 0}
           selected={merchant}
           statusFilter={statusFilter}
+          loading={indexLoading}
+          error={indexError}
+          onRetry={retryAll}
           onSelect={setMerchant}
           onStatusChange={setStatusFilter}
         />
 
         <main className={styles.centerPanel}>
-          {error ? <div className={styles.error}>{error}</div> : null}
+          {actionError ? (
+            <div className={styles.error} role="alert">
+              <span>{actionError}</span>
+              <button type="button" onClick={() => setActionError(null)}>
+                Dismiss
+              </button>
+            </div>
+          ) : null}
           <div className={styles.rotationBar}>
             <button
               type="button"
               onClick={() => step(-1)}
-              disabled={position === 0}
+              disabled={position === 0 || worklistLoading}
             >
-              ← prev
+              ← prev <kbd>K</kbd>
             </button>
             <button
               type="button"
               onClick={() => step(1)}
-              disabled={position >= worklist.length - 1}
+              disabled={position >= worklist.length - 1 || worklistLoading}
             >
-              next →
+              next <kbd>J</kbd> →
             </button>
             <span className={styles.position}>
               {worklist.length === 0 ? 0 : position + 1} / {worklist.length}
             </span>
-            <strong>{heading}</strong>
-            <span className={styles.toggles}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={showSections}
-                  onChange={(event) => setShowSections(event.target.checked)}
-                />{" "}
-                sections
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={showItems}
-                  onChange={(event) => setShowItems(event.target.checked)}
-                />{" "}
-                items
-              </label>
-            </span>
+            <strong className={styles.receiptHeading}>{heading}</strong>
+            <div
+              className={styles.overlayToggle}
+              role="group"
+              aria-label="Receipt overlay"
+            >
+              {(["sections", "items", "both"] as OverlayMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  data-active={overlayMode === mode}
+                  onClick={() => setOverlayMode(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {receipt ? (
+          {worklistLoading ? (
+            <div className={styles.empty}>Loading review queue…</div>
+          ) : worklistError ? (
+            <div className={styles.resilientState} role="alert">
+              <strong>Review queue unavailable</strong>
+              <span>{worklistError}</span>
+              <button type="button" onClick={retryAll}>
+                Retry local shim
+              </button>
+            </div>
+          ) : receiptLoading ? (
+            <div className={styles.empty}>Loading receipt evidence…</div>
+          ) : receiptError ? (
+            <div className={styles.resilientState} role="alert">
+              <strong>Receipt details unavailable</strong>
+              <span>{receiptError}</span>
+              <button type="button" onClick={() => setReceiptVersion((value) => value + 1)}>
+                Retry receipt
+              </button>
+            </div>
+          ) : receipt ? (
             <ReceiptCanvas
               receipt={receipt}
               formatSupport={formatSupport}
               highlightLineIds={highlight}
-              showSections={showSections}
-              showItems={showItems}
+              overlayMode={overlayMode}
             />
           ) : (
-            <div className={styles.empty}>
-              {worklist.length === 0 ? "Nothing queued." : "Loading receipt…"}
-            </div>
+            <div className={styles.empty}>Nothing queued for this filter.</div>
           )}
         </main>
 
-        {receipt ? (
-          <TruthPanel
-            receipt={receipt}
-            onHoverItem={setHighlight}
-            onReview={onReview}
-            saving={saving}
+        <div className={styles.rightRail}>
+          {receipt ? (
+            <TruthPanel
+              receipt={receipt}
+              onHoverItem={setHighlight}
+              onReview={onReview}
+              onFlagRequest={openFlagDialog}
+              saving={saving}
+            />
+          ) : (
+            <section className={styles.truthPanel}>
+              <div className={styles.inlineLoading}>
+                {receiptLoading
+                  ? "Loading truth chain…"
+                  : "Select a receipt to review its truth chain."}
+              </div>
+            </section>
+          )}
+          <ReviewLog
+            entries={reviews}
+            currentImageId={receipt?.image_id}
+            currentReceiptId={receipt?.receipt_id}
+            loading={reviewsLoading}
+            error={reviewsError}
+            onRetry={retryAll}
+            onJump={jumpToReview}
           />
-        ) : (
-          <section className={styles.truthPanel} />
-        )}
+        </div>
       </div>
+
+      {flagDialogOpen ? (
+        <div
+          className={styles.dialogBackdrop}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setFlagDialogOpen(false);
+          }}
+        >
+          <form
+            className={styles.flagDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="flag-dialog-title"
+            onSubmit={submitFlag}
+          >
+            <div className={styles.dialogHeader}>
+              <div>
+                <span className={styles.eyebrow}>Flag receipt</span>
+                <strong id="flag-dialog-title">Describe the failure mode</strong>
+              </div>
+              <button
+                type="button"
+                aria-label="Close flag dialog"
+                onClick={() => setFlagDialogOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <textarea
+              autoFocus
+              className={styles.noteInput}
+              value={flagNote}
+              placeholder="What is wrong, and what should Claude repair?"
+              aria-label="Review note"
+              onChange={(event) => setFlagNote(event.target.value)}
+              rows={4}
+            />
+            <div className={styles.dialogActions}>
+              <small>Esc closes without saving</small>
+              <button type="button" onClick={() => setFlagDialogOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className={styles.flagButton} disabled={saving}>
+                {saving ? "Saving…" : "Save flag"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </>
   );
 }

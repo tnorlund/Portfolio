@@ -6,6 +6,7 @@ import {
 } from "../../../types/api";
 
 export type ReviewVerdict = "confirm" | "flag" | "resolved";
+export type OverlayMode = "sections" | "items" | "both";
 
 export interface ValidationSummary {
   subtotal: number | null;
@@ -63,7 +64,7 @@ export interface ValidationReceipt {
   reconciliation_status: LineItemReconciliationStatus | null;
   items_section_line_ids: number[] | null;
   items_section_status: string | null;
-  image: LineItemDecodeImage;
+  image: LineItemDecodeImage | null;
   lines: LineItemDecodeLine[];
   sections: ValidationSection[];
   summary: ValidationSummary | null;
@@ -115,6 +116,11 @@ export interface WorklistResponse {
   matching: number;
   receipts: WorklistRow[];
   built_at: string;
+}
+
+export interface ReviewLogResponse {
+  entries: ReviewEntry[];
+  log: string;
 }
 
 export type StatusFilter =

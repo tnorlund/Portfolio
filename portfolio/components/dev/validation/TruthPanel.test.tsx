@@ -69,16 +69,21 @@ const agreements = () =>
     ]),
   );
 
-const renderPanel = (value: ValidationReceipt, onReview = jest.fn()) => {
+const renderPanel = (
+  value: ValidationReceipt,
+  onReview = jest.fn(),
+  onFlagRequest = jest.fn(),
+) => {
   render(
     <TruthPanel
       receipt={value}
       onHoverItem={jest.fn()}
       onReview={onReview}
+      onFlagRequest={onFlagRequest}
       saving={false}
     />,
   );
-  return onReview;
+  return { onReview, onFlagRequest };
 };
 
 describe("TruthPanel truth chain", () => {
@@ -164,16 +169,22 @@ describe("TruthPanel truth chain", () => {
     expect(badges).toHaveTextContent("chase");
   });
 
-  it("sends the typed note with the verdict", () => {
-    const onReview = renderPanel(receipt());
-    fireEvent.change(screen.getByLabelText("Review note"), {
-      target: { value: "items zone stops one row early" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Flag" }));
-    expect(onReview).toHaveBeenCalledWith(
-      "flag",
-      "items zone stops one row early",
+  it("confirms immediately and opens the note flow for flags", () => {
+    const { onReview, onFlagRequest } = renderPanel(receipt());
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Flag with note/ }));
+    expect(onReview).toHaveBeenCalledWith("confirm", "");
+    expect(onFlagRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps incomplete receipts visible as explicit review targets", () => {
+    renderPanel(
+      receipt({ image: null, sections: [], items: [], item_count: 0 }),
     );
+    expect(screen.getByTestId("review-target")).toHaveTextContent(
+      "Missing image + sections + items",
+    );
+    expect(screen.getByText("No line items extracted.")).toBeInTheDocument();
   });
 });
 

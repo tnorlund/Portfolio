@@ -68,6 +68,7 @@ from receipt_dynamo import DynamoClient  # noqa: E402  (after path setup)
 from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
     EntityNotFoundError,
 )
+from receipt_upload.line_items.geometry import reconcile  # noqa: E402
 
 REVIEW_LOG = Path(
     os.environ.get(
@@ -99,7 +100,11 @@ def _receipt_status(statuses: set) -> str:
 
 
 def _build_index() -> dict[str, Any]:
-    """One pass over line items + summaries -> per-receipt truth rows."""
+    """Index receipt headers, line items, and summaries into review rows.
+
+    Starting from receipt headers is intentional: missing line items are a
+    validation target, not a reason for the receipt to disappear from the UI.
+    """
     buckets: dict[tuple, dict[str, Any]] = {}
     last_key = None
     while True:
@@ -126,6 +131,26 @@ def _build_index() -> dict[str, Any]:
         if last_key is None:
             break
 
+    # Seed every receipt before joining the derived records. A receipt with no
+    # sections, summary, or line items must still be reviewable.
+    last_key = None
+    while True:
+        batch, last_key = _client.list_receipts(
+            limit=1000, last_evaluated_key=last_key
+        )
+        for receipt in batch:
+            buckets.setdefault(
+                (receipt.image_id, receipt.receipt_id),
+                {
+                    "merchant": None,
+                    "items": 0,
+                    "items_sum": 0.0,
+                    "statuses": set(),
+                },
+            )
+        if last_key is None:
+            break
+
     summaries: dict[tuple, Any] = {}
     last_key = None
     while True:
@@ -133,7 +158,19 @@ def _build_index() -> dict[str, Any]:
             limit=1000, last_evaluated_key=last_key
         )
         for record in batch:
-            summaries[(record.image_id, record.receipt_id)] = record
+            key = (record.image_id, record.receipt_id)
+            summaries[key] = record
+            bucket = buckets.setdefault(
+                key,
+                {
+                    "merchant": None,
+                    "items": 0,
+                    "items_sum": 0.0,
+                    "statuses": set(),
+                },
+            )
+            if record.merchant_name and not bucket["merchant"]:
+                bucket["merchant"] = record.merchant_name
         if last_key is None:
             break
 
@@ -145,6 +182,14 @@ def _build_index() -> dict[str, Any]:
         if record is not None:
             figures, baseline = mcp_server._summary_baseline(record)
         items_sum = round(bucket["items_sum"], 2)
+        receipt_status = _receipt_status(bucket["statuses"])
+        if not bucket["statuses"]:
+            # Reuse the production reconciliation ladder. In particular, a
+            # receipt with a baseline but no extracted items is a mismatch.
+            receipt_status, _, _ = reconcile(
+                ([{"price": items_sum}] if bucket["items"] else []),
+                figures if record is not None else None,
+            )
         rows.append(
             {
                 "image_id": image_id,
@@ -154,7 +199,7 @@ def _build_index() -> dict[str, Any]:
                     or bucket["merchant"]
                     or "Unknown"
                 ),
-                "status": _receipt_status(bucket["statuses"]),
+                "status": receipt_status,
                 "items": bucket["items"],
                 "items_sum": items_sum,
                 "baseline": baseline,
@@ -316,7 +361,12 @@ def handle_receipt(params: dict) -> dict[str, Any]:
     if "error" in diagnostic:
         return diagnostic
 
-    details = _client.get_receipt_details(image_id, receipt_id)
+    try:
+        details = _client.get_receipt_details(image_id, receipt_id)
+    except EntityNotFoundError:
+        # Orphaned derived records are precisely the sort of incomplete data
+        # this workstation exists to surface. Keep the diagnostics visible.
+        details = None
     try:
         sections = _client.get_receipt_sections_from_receipt(
             image_id, receipt_id
@@ -326,16 +376,23 @@ def handle_receipt(params: dict) -> dict[str, Any]:
 
     summary = _summary_payload(image_id, receipt_id)
     merchant = (summary or {}).get("merchant_name")
-    if not merchant and details.place is not None:
+    if not merchant and details is not None and details.place is not None:
         merchant = details.place.merchant_name
 
     return {
         **diagnostic,
         "merchant_name": merchant or "Unknown",
-        "image": decode_route._image_payload(details.receipt),
+        "image": (
+            decode_route._image_payload(details.receipt)
+            if details is not None
+            else None
+        ),
         "lines": [
             decode_route._line_payload(line)
-            for line in sorted(details.lines, key=lambda value: value.line_id)
+            for line in sorted(
+                details.lines if details is not None else [],
+                key=lambda value: value.line_id,
+            )
         ],
         "sections": [
             {
