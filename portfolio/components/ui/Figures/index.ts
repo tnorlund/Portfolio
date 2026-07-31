@@ -95,13 +95,6 @@ const DynamicLayoutLMInferenceVisualization = dynamic(
   }
 );
 export const LayoutLMInferenceVisualization = DynamicLayoutLMInferenceVisualization;
-export const GeometricReader = dynamic(
-  () => import("./GeometricReader"),
-  {
-    ssr: false,
-    loading: () => loadingShell("layoutlm"),
-  }
-);
 export const PageCurlLetter = dynamic(() => import("./PageCurlLetter"), { ssr: false });
 export const PrecisionRecallDartboard = dynamic(() => import("./PrecisionRecallDartboard"), { ssr: false });
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
@@ -184,13 +177,6 @@ export const AugmentationShowcase = dynamic(
 );
 export const SynthesisPipeline = dynamic(
   () => import("./SynthesisPipeline"),
-  {
-    ssr: false,
-    loading: () => loadingShell("within"),
-  }
-);
-export const SectionEmbeddingExplorer = dynamic(
-  () => import("./SectionEmbeddingExplorer"),
   {
     ssr: false,
     loading: () => loadingShell("within"),
