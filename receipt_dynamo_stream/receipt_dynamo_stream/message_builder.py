@@ -289,21 +289,30 @@ def _extract_receipt_summary(
 
 def _extract_receipt_section(
     entity: ReceiptSection,
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    """Extract section data targeting the LINES collection only.
+) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
+    """Extract section data targeting the LINES collection.
 
     ``section_label`` lives on LINES (visual-row) metadata. The message
     carries only (image_id, receipt_id): the consumer recomputes labels
     from the receipt's *current* section set in DynamoDB, so the event
     image is deliberately not trusted (see compaction sections module).
     ``section_type`` is included only for within-batch deduplication.
+
+    Canonical ITEMS sections additionally target LINE_ITEMS: a section
+    invalidation or line_ids edit must recompute (or clear) the
+    receipt's line items even when no summary rewrite follows.
     """
+    targets: list[ChromaDBCollection | TargetQueue] = [
+        ChromaDBCollection.LINES
+    ]
+    if str(entity.section_type).upper() == "ITEMS":
+        targets.append(TargetQueue.LINE_ITEMS)
     return {
         "entity_type": "RECEIPT_SECTION",
         "image_id": entity.image_id,
         "receipt_id": entity.receipt_id,
         "section_type": str(entity.section_type),
-    }, [ChromaDBCollection.LINES]
+    }, targets
 
 
 def _extract_receipt(

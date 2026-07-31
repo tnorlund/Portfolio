@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_upload.line_items.geometry import extract_items, reconcile
 
@@ -49,11 +50,14 @@ def update_receipt_line_items(
         image_id, receipt_id
     )
 
-    # ITEMS zone: any non-INVALID ITEMS section; prefer VALID over PENDING
-    # when both exist so provenance reflects the strongest source.
+    # ITEMS zone: any non-INVALID canonical ITEMS section; prefer VALID
+    # over PENDING when both exist so provenance reflects the strongest
+    # source. Exact match (like the backfill script): legacy
+    # ITEMS_VALUE / ITEMS_DESCRIPTION zones are partial (prices-only or
+    # names-only) and must not masquerade as a full ITEMS section.
     items_section = None
     for s in sections:
-        if "ITEM" not in str(getattr(s, "section_type", "") or "").upper():
+        if str(getattr(s, "section_type", "") or "").upper() != "ITEMS":
             continue
         status = str(getattr(s, "validation_status", "") or "").upper()
         if status == "INVALID":
@@ -99,7 +103,11 @@ def update_receipt_line_items(
                 "tax": getattr(inner, "tax", None),
             }
             merchant = getattr(inner, "merchant_name", None)
-    except Exception:  # noqa: BLE001 - summary may not exist yet
+    except EntityNotFoundError:
+        # Only "summary does not exist yet" is a valid no-baseline case.
+        # Operational failures (throttling, access, malformed data) must
+        # propagate so SQS retries instead of acking rows with a silently
+        # wrong no-baseline status and a missing merchant.
         logger.info(
             "no summary for %s:%d; reconciliation is no-baseline",
             image_id[:8],

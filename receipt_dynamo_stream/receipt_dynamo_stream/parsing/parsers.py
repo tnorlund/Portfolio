@@ -35,12 +35,15 @@ logger = logging.getLogger(__name__)
 # SK pattern matchers in order of specificity (most specific first)
 _SK_PATTERN_MATCHERS: list[tuple[Callable[[str], bool], str]] = [
     (lambda sk: "#PLACE" in sk, "RECEIPT_PLACE"),
-    # RECEIPT#00001#SUMMARY; the "#SUMMARY" suffix appears in no other SK
-    (lambda sk: sk.endswith("#SUMMARY"), "RECEIPT_SUMMARY"),
     (lambda sk: "#LABEL#" in sk, "RECEIPT_WORD_LABEL"),
     # RECEIPT#00001#SECTION#{TYPE}; "#SECTION#" appears in no other
-    # entity SK (receipt_section.py is the only entity emitting it)
+    # entity SK (receipt_section.py is the only entity emitting it).
+    # Must run BEFORE the summary matcher: SectionType.SUMMARY yields
+    # SKs like RECEIPT#00001#SECTION#SUMMARY which also end in
+    # "#SUMMARY" and would otherwise be misparsed as summary records.
     (lambda sk: "#SECTION#" in sk, "RECEIPT_SECTION"),
+    # RECEIPT#00001#SUMMARY (checked after "#SECTION#" above)
+    (lambda sk: sk.endswith("#SUMMARY"), "RECEIPT_SUMMARY"),
     (lambda sk: "#COMPACTION_RUN#" in sk, "COMPACTION_RUN"),
     (lambda sk: "#WORD#" in sk and "#LINE#" in sk, "RECEIPT_WORD"),
     (lambda sk: "#LINE#" in sk, "RECEIPT_LINE"),

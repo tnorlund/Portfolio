@@ -21,8 +21,10 @@ CHROMADB_RELEVANT_FIELDS = {
         "label_proposed_by",
         "label_consolidated_from",
     ],
+    # timestamp_computed only: the summary updater stamps a fresh value on
+    # every write, and the nested ``summary`` dataclass is not JSON
+    # serializable (it would crash the SQS publisher).
     "RECEIPT_SUMMARY": [
-        "summary",
         "timestamp_computed",
     ],
     "RECEIPT_SECTION": [

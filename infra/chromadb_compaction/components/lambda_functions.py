@@ -595,7 +595,12 @@ class HybridLambdaDeployment(ComponentResource):
             batch_size=50,
             maximum_batching_window_in_seconds=5,
             function_response_types=["ReportBatchItemFailures"],
-            opts=ResourceOptions(parent=self),
+            # The inline sqs_policy grants receive/delete on the queue;
+            # without the explicit dependency AWS can reject the mapping
+            # when it is created before the IAM update lands.
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.sqs_policy]
+            ),
         )
 
         # Export useful properties
@@ -655,6 +660,9 @@ class HybridLambdaDeployment(ComponentResource):
                                     "dynamodb:PutItem",
                                     "dynamodb:UpdateItem",
                                     "dynamodb:DeleteItem",
+                                    # line-item updater writes rows via
+                                    # batch_write_item
+                                    "dynamodb:BatchWriteItem",
                                     "dynamodb:Query",
                                     "dynamodb:DescribeTable",
                                 ],
