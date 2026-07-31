@@ -40,7 +40,6 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
-
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
