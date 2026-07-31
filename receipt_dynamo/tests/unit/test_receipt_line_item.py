@@ -3,7 +3,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.entities.receipt_line_item import (
     ReceiptLineItem,
     item_to_receipt_line_item,
@@ -95,6 +94,18 @@ def test_numeric_price_normalized_to_string():
             {"reconciliation_status": "sorta"},
             "reconciliation_status must be one of",
         ),
+        (
+            {"baseline_figures_agreeing": 0},
+            "baseline_figures_agreeing must be an int in 1..3",
+        ),
+        (
+            {"baseline_figures_agreeing": 4},
+            "baseline_figures_agreeing must be an int in 1..3",
+        ),
+        (
+            {"baseline_figures_agreeing": True},
+            "baseline_figures_agreeing must be an int in 1..3",
+        ),
     ],
 )
 def test_validation_errors(overrides, msg):
@@ -110,3 +121,18 @@ def test_slug_and_normalize_helpers():
 def test_iso_string_extracted_at_normalizes():
     li = make(extracted_at="2026-07-29T12:00:00")
     assert isinstance(li.extracted_at, datetime)
+
+
+def test_baseline_figures_agreeing_round_trip():
+    li = make(baseline_figures_agreeing=3)
+    item = li.to_item()
+    assert item["baseline_figures_agreeing"]["N"] == "3"
+    assert item_to_receipt_line_item(item) == li
+
+
+def test_baseline_figures_agreeing_absent_is_none():
+    # Rows written before the grade existed must still round-trip.
+    li = make()
+    item = li.to_item()
+    assert "baseline_figures_agreeing" not in item
+    assert item_to_receipt_line_item(item).baseline_figures_agreeing is None
