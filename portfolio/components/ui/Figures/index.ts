@@ -95,6 +95,13 @@ const DynamicLayoutLMInferenceVisualization = dynamic(
   }
 );
 export const LayoutLMInferenceVisualization = DynamicLayoutLMInferenceVisualization;
+export const GeometricReader = dynamic(
+  () => import("./GeometricReader"),
+  {
+    ssr: false,
+    loading: () => loadingShell("layoutlm"),
+  }
+);
 export const PageCurlLetter = dynamic(() => import("./PageCurlLetter"), { ssr: false });
 export const PrecisionRecallDartboard = dynamic(() => import("./PrecisionRecallDartboard"), { ssr: false });
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";

@@ -16,6 +16,7 @@ import {
   MilkSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
+  LineItemDecodeResponse,
   EpochEvaluationResponse,
   EpochEvaluationJobsResponse,
   EpochEvaluationReceiptRecord,
@@ -276,6 +277,25 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/layoutlm_inference`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLineItemDecode(
+    batchSize: number = 5
+  ): Promise<LineItemDecodeResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams({
+      batch_size: batchSize.toString(),
+    });
+    const response = await fetch(
+      `${apiUrl}/line_item_decode?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {
