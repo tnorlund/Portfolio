@@ -10,7 +10,7 @@ COPY tools/glyph-studio/py/ /tmp/glyphstudio_pkg/
 
 RUN pip install --no-cache-dir /tmp/glyphstudio_pkg && \
     pip install --no-cache-dir \
-        mcp \
+        "mcp>=1.26.0,<2" \
         boto3 \
         run-mcp-servers-with-aws-lambda==0.5.21 && \
     rm -rf /tmp/glyphstudio_pkg
