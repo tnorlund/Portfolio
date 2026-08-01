@@ -122,6 +122,25 @@ def test_sku_parsed_as_money_subtotal_is_no_baseline():
     assert r3.status == "no-baseline"
 
 
+def test_mid_parsed_as_grand_total_is_no_baseline():
+    # Prod 07550815 r1: the Sprouts-family "MID: 910664" merchant id
+    # line parsed as money, storing grand_total 910664.0 (dev computes
+    # 12.35 correctly). Magnitude bound rejects id-derived figures.
+    mid = "910664"
+    bogus_grand = float(mid)
+    assert bogus_grand == 910664.0
+    r = reconcile_detailed(items(12.35), {"grand_total": bogus_grand})
+    assert r.status == "no-baseline"
+    # A sane subtotal alongside still reconciles -- and the rejected
+    # grand_total must not corroborate the grade (single-figure).
+    r2 = reconcile_detailed(
+        items(12.35), {"subtotal": 12.35, "grand_total": bogus_grand}
+    )
+    assert r2.status == "match"
+    assert r2.baseline_source == "subtotal"
+    assert r2.baseline_figures_agreeing == 1
+
+
 def test_under_extraction_stays_mismatch():
     # Implausibility is one-directional: a baseline far ABOVE the item
     # sum is severe under-extraction (zone gap / zero items), which is
