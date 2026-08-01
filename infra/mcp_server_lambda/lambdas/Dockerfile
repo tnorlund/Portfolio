@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_places && \
     pip install --no-cache-dir /tmp/receipt_upload && \
     pip install --no-cache-dir /tmp/receipt_agent && \
-    pip install --no-cache-dir run-mcp-servers-with-aws-lambda==0.5.21 && \
+    pip install --no-cache-dir "mcp>=1.26.0,<2" run-mcp-servers-with-aws-lambda==0.5.21 && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_upload /tmp/receipt_places /tmp/receipt_agent
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
