@@ -8,7 +8,7 @@
 
 > **findLineEdgesAtPrimaryExtremes**(`lines`, `_hull`, `centroid`, `avgAngle`): `object`
 
-Defined in: [utils/receipt/boundingBox.ts:143](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/utils/receipt/boundingBox.ts#L143)
+Defined in: [utils/receipt/boundingBox.ts:143](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/utils/receipt/boundingBox.ts#L143)
 
 Gather points along the left and right edges of text lines that sit at
 the outermost positions along the primary axis.

@@ -6,7 +6,7 @@
 
 # Interface: ReaderSummaryBaseline
 
-Defined in: [types/api.ts:75](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/types/api.ts#L75)
+Defined in: [types/api.ts:75](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/types/api.ts#L75)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:75](https://github.com/tnorlund/Portfolio/blob/5127005
 
 > **averageTimeToBottomMs**: `number` \| `null`
 
-Defined in: [types/api.ts:77](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/types/api.ts#L77)
+Defined in: [types/api.ts:77](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/types/api.ts#L77)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:77](https://github.com/tnorlund/Portfolio/blob/5127005
 
 > **sampleSize**: `number`
 
-Defined in: [types/api.ts:76](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/types/api.ts#L76)
+Defined in: [types/api.ts:76](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/types/api.ts#L76)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:76](https://github.com/tnorlund/Portfolio/blob/5127005
 
 > `optional` **averageActiveScrollMs?**: `number` \| `null`
 
-Defined in: [types/api.ts:78](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/types/api.ts#L78)
+Defined in: [types/api.ts:78](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/types/api.ts#L78)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:78](https://github.com/tnorlund/Portfolio/blob/5127005
 
 > `optional` **averageScreensPerMinute?**: `number` \| `null`
 
-Defined in: [types/api.ts:79](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/types/api.ts#L79)
+Defined in: [types/api.ts:79](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/types/api.ts#L79)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:79](https://github.com/tnorlund/Portfolio/blob/5127005
 
 > `optional` **updatedAt?**: `string` \| `null`
 
-Defined in: [types/api.ts:80](https://github.com/tnorlund/Portfolio/blob/51270051f58b122e896ffa9900919c972ba6f42b/portfolio/types/api.ts#L80)
+Defined in: [types/api.ts:80](https://github.com/tnorlund/Portfolio/blob/544b4c7049faf480478b759a80e38bbac1a70be4/portfolio/types/api.ts#L80)
