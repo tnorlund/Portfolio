@@ -448,7 +448,13 @@ def test_extend_apply_updates_section_and_rewrites_summary(label):
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
 def test_extend_refuses_when_arithmetic_worsens(label):
-    """Absorbing a junk 50.00 band makes |delta| grow — must refuse."""
+    """Absorbing a junk 50.00 band breaks reconciliation — must refuse.
+
+    The absorbed sum (59.00) overwhelms the printed baseline (13.00),
+    tripping reconcile's baseline sanity check (item_sum > 3x baseline
+    -> no-baseline), so the guard refuses for lack of comparable
+    deltas rather than via the shrink-and-improve check.
+    """
     pytest.importorskip("receipt_dynamo")
     pytest.importorskip("receipt_upload")
     module = _load_module(label, SERVER_FILES[label])
@@ -465,7 +471,8 @@ def test_extend_refuses_when_arithmetic_worsens(label):
     assert result["applied"] is False
     assert "refusal" in result
     assert result["before"]["delta"] == -4.00
-    assert result["after"]["delta"] == 46.00
+    assert result["after"]["status"] == "no-baseline"
+    assert result["after"]["delta"] is None
     assert client.updated_sections == []
     assert client.updated_summaries == []
 

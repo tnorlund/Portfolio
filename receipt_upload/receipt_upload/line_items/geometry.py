@@ -16,6 +16,7 @@ Input word dicts carry: line_id, word_id, text, x, y_mid, h
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from receipt_dynamo.amounts import (
@@ -605,12 +606,85 @@ def _extract_items_banded(
     return items, collapsed
 
 
-def reconcile(
+@dataclass
+class ReconcileResult:
+    """Full reconciliation verdict.
+
+    ``status`` keeps the existing four-value vocabulary (match / near /
+    mismatch / no-baseline) -- golden floors, the stream stage and the
+    ReceiptLineItem entity all depend on it. The extra fields are purely
+    additive diagnostics:
+
+    ``baseline_source``: which printed figure the items were compared
+    against -- "subtotal" or "grand_total_minus_tax".
+
+    ``baseline_figures_agreeing``: graded confidence of a match/near
+    verdict = how many printed summary figures (subtotal, tax,
+    grand_total) participate in an arithmetic story consistent with the
+    item sum. 3 = subtotal, tax and grand_total all printed and
+    subtotal + tax ~= grand_total (reconcile's match band on
+    grand_total); 2 = two figures corroborate (subtotal ~= grand_total
+    with no printed tax, or a grand_total - tax baseline with a printed
+    tax); 1 = only a single printed figure existed to check against, or
+    the cross-figure identity failed. None when status is mismatch or
+    no-baseline.
+    """
+
+    status: str
+    item_sum: Optional[float]
+    baseline: Optional[float]
+    baseline_source: Optional[str] = None
+    baseline_figures_agreeing: Optional[int] = None
+
+
+# Absolute plausibility ceiling for any printed summary figure. SKU /
+# barcode strings occasionally OCR-parse as money (a 24-char SKU tail
+# became a $2.0B subtotal); no honest receipt here approaches this.
+MAX_PLAUSIBLE_BASELINE = 50_000.0
+
+
+def _classify_against(item_sum: float, baseline: float) -> str:
+    diff = abs(item_sum - baseline)
+    if diff <= max(0.02, baseline * 0.01):
+        return "match"
+    if diff <= max(1.0, baseline * 0.10):
+        return "near"
+    return "mismatch"
+
+
+def _baseline_implausible(item_sum: float, baseline: float) -> bool:
+    """A printed baseline no honest receipt produces.
+
+    Mirrors the failure-modes audit's B-baseline-ocr-broken rule: the
+    extracted items exceed triple the baseline, i.e. OCR dropped digits
+    from the printed figure. Deliberately one-directional -- a baseline
+    far ABOVE the item sum is severe under-extraction (zone gap, zero
+    items), which is the extractor's fault and must stay a hard
+    mismatch; only a baseline the extracted evidence overwhelms is the
+    baseline's fault.
+    """
+    return item_sum > 3 * baseline
+
+
+def reconcile_detailed(
     items: list[dict], summary: Optional[dict]
-) -> tuple[str, Optional[float], Optional[float]]:
-    """Compare extracted item sum against summary subtotal/grand_total."""
+) -> ReconcileResult:
+    """Compare extracted item sum against the printed summary figures.
+
+    Baseline selection: subtotal when printed (and positive); else
+    grand_total - tax (tax defaulting to 0 when absent). Neither figure
+    -> no-baseline.
+
+    Baseline sanity: a would-be mismatch against a broken baseline
+    (subtotal > grand_total, or implausible per
+    ``_baseline_implausible``) is reclassified no-baseline instead of
+    blaming the extractor -- unless grand_total - tax rescues it to a
+    clean match/near. Receipts whose baseline is sane keep exactly the
+    pre-existing match/near/mismatch semantics, and an already
+    match/near verdict is never rerouted.
+    """
     if summary is None:
-        return "no-baseline", None, None
+        return ReconcileResult("no-baseline", None, None)
 
     def _f(key):
         v = summary.get(key)
@@ -620,18 +694,75 @@ def reconcile(
             return None
 
     subtotal, grand, tax = _f("subtotal"), _f("grand_total"), _f("tax")
-    baseline = subtotal
-    if baseline is None and grand is not None:
-        baseline = grand - (tax or 0.0)
-    if baseline is None or baseline <= 0:
-        return "no-baseline", None, None
+    # Figure hygiene: a zero/negative printed figure is no figure at
+    # all (a $0.00 subtotal must not shadow a real grand_total), and
+    # neither is an impossible one -- Zen Leaf 5b1ea5d7 r1 OCR-parsed
+    # the SKU "1A4040300003CF2000271909" as a $2,000,271,909.00
+    # subtotal. No receipt in this corpus is remotely near $50k.
+    if subtotal is not None and not 0 < subtotal <= MAX_PLAUSIBLE_BASELINE:
+        subtotal = None
+    if grand is not None and not 0 < grand <= MAX_PLAUSIBLE_BASELINE:
+        grand = None
+    fallback = None
+    if grand is not None:
+        fallback = round(grand - (tax or 0.0), 2)
+        if fallback <= 0:
+            fallback = None
+
+    if subtotal is not None:
+        baseline, source = subtotal, "subtotal"
+    elif fallback is not None:
+        baseline, source = fallback, "grand_total_minus_tax"
+    else:
+        return ReconcileResult("no-baseline", None, None)
+
     item_sum = round(sum(i["price"] for i in items), 2)
-    diff = abs(item_sum - baseline)
-    if diff <= max(0.02, baseline * 0.01):
-        return "match", item_sum, baseline
-    if diff <= max(1.0, baseline * 0.10):
-        return "near", item_sum, baseline
-    return "mismatch", item_sum, baseline
+    status = _classify_against(item_sum, baseline)
+
+    if status == "mismatch":
+        if source == "subtotal":
+            insane = (
+                grand is not None and subtotal > grand + 0.01
+            ) or _baseline_implausible(item_sum, subtotal)
+            if insane:
+                if (
+                    fallback is not None
+                    and abs(fallback - subtotal) > 0.005
+                    and not _baseline_implausible(item_sum, fallback)
+                    and _classify_against(item_sum, fallback) != "mismatch"
+                ):
+                    baseline, source = fallback, "grand_total_minus_tax"
+                    status = _classify_against(item_sum, fallback)
+                else:
+                    return ReconcileResult("no-baseline", None, None)
+        elif _baseline_implausible(item_sum, baseline):
+            return ReconcileResult("no-baseline", None, None)
+
+    grade = None
+    if status in ("match", "near"):
+        grade = 1
+        if source == "subtotal":
+            if grand is not None and abs(
+                round(subtotal + (tax or 0.0), 2) - grand
+            ) <= max(0.02, grand * 0.01):
+                grade = 3 if tax is not None else 2
+        elif tax is not None:
+            # items ~= grand_total - printed tax: grand and tax both
+            # corroborate; no printed subtotal so 3 is unreachable.
+            grade = 2
+    return ReconcileResult(status, item_sum, baseline, source, grade)
+
+
+def reconcile(
+    items: list[dict], summary: Optional[dict]
+) -> tuple[str, Optional[float], Optional[float]]:
+    """Compare extracted item sum against summary subtotal/grand_total.
+
+    Tuple-compatible wrapper over :func:`reconcile_detailed`; existing
+    callers unpack (status, item_sum, baseline).
+    """
+    r = reconcile_detailed(items, summary)
+    return r.status, r.item_sum, r.baseline
 
 
 __all__ = [
@@ -641,6 +772,7 @@ __all__ = [
     "PRICE_RE",
     "QTY_AT_RE",
     "QTY_MULT_RE",
+    "ReconcileResult",
     "SKU_LIKE_RE",
     "TAX_FLAG_RE",
     "UNIT_WORDS",
@@ -649,4 +781,5 @@ __all__ = [
     "extract_items",
     "parse_band",
     "reconcile",
+    "reconcile_detailed",
 ]

@@ -31,7 +31,7 @@ from boto3.dynamodb.types import TypeDeserializer  # noqa: E402
 from extract_line_items import (  # noqa: E402
     extract_items,
     fetch_receipt_records,
-    reconcile,
+    reconcile_detailed,
 )
 
 from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
@@ -95,9 +95,10 @@ def main() -> None:
         words, _, summary = fetch_receipt_records(client, args.table, img, rid)
         line_ids = {int(x) for x in (sec.get("line_ids") or [])}
         items, collapsed = extract_items(words, line_ids, summary=summary)
-        status, _, _ = reconcile(
+        recon_result = reconcile_detailed(
             [x for x in items if not x["is_discount"]], summary
         )
+        status = recon_result.status
         merchant = (summary or {}).get("merchant_name")
         entities = []
         for idx, it in enumerate(items):
@@ -125,6 +126,9 @@ def main() -> None:
                     source_model_source=sec.get("model_source"),
                     reconciliation_status=status,
                     collapsed_banding=bool(collapsed),
+                    baseline_figures_agreeing=(
+                        recon_result.baseline_figures_agreeing
+                    ),
                 )
             )
         stats["receipts"] += 1

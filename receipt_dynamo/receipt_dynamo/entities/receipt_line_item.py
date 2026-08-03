@@ -73,6 +73,11 @@ class ReceiptLineItem:
         reconciliation_status (str | None): match / near / mismatch /
             no-baseline at write time.
         collapsed_banding (bool): Extraction ran on degenerate banding.
+        baseline_figures_agreeing (int | None): Graded confidence of a
+            match/near reconciliation: how many printed summary figures
+            (subtotal, tax, grand_total) corroborate the item sum
+            (1..3). None for mismatch / no-baseline rows and rows
+            written before the grade existed.
     """
 
     REQUIRED_KEYS = {
@@ -103,6 +108,7 @@ class ReceiptLineItem:
     source_model_source: Optional[str] = None
     reconciliation_status: Optional[str] = None
     collapsed_banding: bool = False
+    baseline_figures_agreeing: Optional[int] = None
 
     def __post_init__(self):
         """Validate and normalize the ReceiptLineItem instance."""
@@ -193,6 +199,17 @@ class ReceiptLineItem:
             if value is not None and not isinstance(value, str):
                 raise ValueError(f"{fname} must be a string or None")
 
+        if self.baseline_figures_agreeing is not None:
+            if (
+                isinstance(self.baseline_figures_agreeing, bool)
+                or not isinstance(self.baseline_figures_agreeing, int)
+                or not 1 <= self.baseline_figures_agreeing <= 3
+            ):
+                raise ValueError(
+                    "baseline_figures_agreeing must be an int in 1..3 "
+                    "or None"
+                )
+
         if isinstance(self.extracted_at, str):
             self.extracted_at = datetime.fromisoformat(self.extracted_at)
         elif not isinstance(self.extracted_at, datetime):
@@ -251,6 +268,10 @@ class ReceiptLineItem:
             item["quantity"] = {"N": str(self.quantity)}
         if self.unit_price is not None:
             item["unit_price"] = {"N": str(self.unit_price)}
+        if self.baseline_figures_agreeing is not None:
+            item["baseline_figures_agreeing"] = {
+                "N": str(self.baseline_figures_agreeing)
+            }
         for fname in (
             "merchant_name",
             "source_section_status",
@@ -296,6 +317,7 @@ class ReceiptLineItem:
         yield "source_section_status", self.source_section_status
         yield "source_model_source", self.source_model_source
         yield "reconciliation_status", self.reconciliation_status
+        yield "baseline_figures_agreeing", self.baseline_figures_agreeing
         yield "collapsed_banding", self.collapsed_banding
         yield "extractor_version", self.extractor_version
         yield "extracted_at", self._extracted_at_iso()
@@ -315,6 +337,7 @@ class ReceiptLineItem:
                 self.name_quality,
                 self.merchant_name,
                 self.reconciliation_status,
+                self.baseline_figures_agreeing,
                 self.extractor_version,
                 self._extracted_at_iso(),
             )
@@ -377,6 +400,11 @@ class ReceiptLineItem:
                 reconciliation_status=opt_s("reconciliation_status"),
                 collapsed_banding=item.get("collapsed_banding", {}).get(
                     "BOOL", False
+                ),
+                baseline_figures_agreeing=(
+                    int(item["baseline_figures_agreeing"]["N"])
+                    if "baseline_figures_agreeing" in item
+                    else None
                 ),
             )
         except (KeyError, IndexError, ValueError) as e:

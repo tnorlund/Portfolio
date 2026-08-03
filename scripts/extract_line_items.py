@@ -54,6 +54,7 @@ from receipt_upload.line_items.geometry import (  # noqa: E402
     extract_items,
     parse_band,
     reconcile,
+    reconcile_detailed,
 )
 
 _DES = TypeDeserializer()

@@ -28,7 +28,10 @@ from typing import Any
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
-from receipt_upload.line_items.geometry import extract_items, reconcile
+from receipt_upload.line_items.geometry import (
+    extract_items,
+    reconcile_detailed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +122,10 @@ def update_receipt_line_items(
         word_dicts, line_ids, summary=summary_dict
     )
 
-    status, _, _ = reconcile(
+    recon = reconcile_detailed(
         [x for x in items if not x.get("is_discount")], summary_dict
     )
+    status = recon.status
 
     now = datetime.now(timezone.utc)
     entities = []
@@ -154,6 +158,7 @@ def update_receipt_line_items(
                 ),
                 reconciliation_status=status,
                 collapsed_banding=bool(collapsed),
+                baseline_figures_agreeing=recon.baseline_figures_agreeing,
             )
         )
 
@@ -170,6 +175,8 @@ def update_receipt_line_items(
         "items": len(entities),
         "deleted": deleted,
         "reconciliation": status,
+        "baseline_source": recon.baseline_source,
+        "baseline_figures_agreeing": recon.baseline_figures_agreeing,
         "reocr_triggered": reocr,
     }
 
