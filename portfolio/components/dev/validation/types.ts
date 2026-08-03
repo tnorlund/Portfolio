@@ -5,8 +5,46 @@ import {
   LineItemReconciliationStatus,
 } from "../../../types/api";
 
-export type ReviewVerdict = "confirm" | "flag" | "resolved";
+export type ReviewVerdict = "confirm" | "flag" | "approve-fix" | "golden";
 export type OverlayMode = "sections" | "items" | "both";
+
+/** Scout-agent evidence: a bare sentence, or a labelled figure. */
+export type DossierEvidence =
+  | string
+  | {
+      label?: string | null;
+      detail?: string | null;
+      value?: string | number | null;
+    };
+
+export interface DossierDryRun {
+  before_delta: number | null;
+  after_delta: number | null;
+  before_status: string | null;
+  after_status: string | null;
+}
+
+export interface DossierProposal {
+  tool: string;
+  args: Record<string, unknown>;
+  /** Null when the scout proposed a fix it never simulated. */
+  dry_run: DossierDryRun | null;
+}
+
+/**
+ * Pre-session analysis written to .dev-harness/dossiers/ by a read-only
+ * agent. A dossier that cannot justify a proposal abstains instead.
+ */
+export interface ReceiptDossier {
+  failure_mode: string | null;
+  diagnosis: string;
+  evidence: DossierEvidence[];
+  proposal: DossierProposal | null;
+  abstain_reason: string | null;
+  generated_at: string | null;
+  author: string | null;
+  source: string;
+}
 
 export interface ValidationSummary {
   subtotal: number | null;
@@ -46,6 +84,10 @@ export interface ReviewEntry {
   receipt_id: number;
   verdict: ReviewVerdict;
   note: string;
+  /** A–J failure-mode letter, or a client-side hint code. */
+  reason?: string | null;
+  /** Which OCR rows the verdict is about. */
+  line_ids?: number[];
   merchant: string;
   status: string;
   delta: number | null;
@@ -68,6 +110,8 @@ export interface ValidationReceipt {
   lines: LineItemDecodeLine[];
   sections: ValidationSection[];
   summary: ValidationSummary | null;
+  dossier: ReceiptDossier | null;
+  dossier_error: string | null;
   reviews: ReviewEntry[];
 }
 
@@ -111,11 +155,34 @@ export interface MerchantsResponse {
 }
 
 export interface WorklistResponse {
-  merchant: string;
-  status: string;
+  merchant?: string;
+  status?: string;
+  /** Set when the rows came from a curated queue file, not the filters. */
+  queue?: string | null;
+  queue_description?: string | null;
+  /** Queue ids the index does not know about — a queue is never silently short. */
+  missing?: { image_id: string; receipt_id: number }[];
   matching: number;
   receipts: WorklistRow[];
   built_at: string;
+}
+
+export interface QueueSummary {
+  name: string;
+  count: number;
+  description: string | null;
+  error: string | null;
+}
+
+export interface QueuesResponse {
+  queues: QueueSummary[];
+  dir: string;
+}
+
+/** Optional provenance attached to a verdict. */
+export interface ReviewExtras {
+  reason?: string | null;
+  line_ids?: number[];
 }
 
 export interface ReviewLogResponse {

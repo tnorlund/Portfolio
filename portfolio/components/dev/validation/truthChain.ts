@@ -16,6 +16,38 @@ export interface TruthRow {
 export type FailureCode =
   "baseline" | "promo" | "summary-band" | "zone-gap" | "overshoot";
 
+/**
+ * The A–J taxonomy from the mismatch survey, offered as reason codes so a
+ * verdict can be joined back to the mode it confirms or refutes. There is no
+ * E: it was folded into F when the survey was written.
+ */
+export const FAILURE_MODES: { code: string; label: string }[] = [
+  {
+    code: "A-total-line-absorbed",
+    label: "A · printed total absorbed as an item",
+  },
+  {
+    code: "B-baseline-ocr-broken",
+    label: "B · printed baseline itself is wrong",
+  },
+  {
+    code: "C-tender-line-absorbed",
+    label: "C · tender line absorbed as an item",
+  },
+  {
+    code: "D-promo-qty-double-count",
+    label: "D · promo/quantity band double-counted",
+  },
+  { code: "F-mixed-junk-bands", label: "F · several junk classes together" },
+  { code: "G-phantom-item", label: "G · delta equals one item, no signature" },
+  {
+    code: "H-zone-gap-missing-items",
+    label: "H · ITEMS zone missed real rows",
+  },
+  { code: "I-digit-fragmentation", label: "I · OCR split a price" },
+  { code: "J-unknown", label: "J · no explanation reproduces the delta" },
+];
+
 export interface FailureHint {
   code: FailureCode;
   label: string;
@@ -103,6 +135,22 @@ export const buildTruthChain = (
     },
   ];
 };
+
+/**
+ * A golden fixture needs two independent truths to agree: items that
+ * reconcile against the printed baseline, and a bank settlement that matches
+ * the printed total. Anything less is a claim, not proof.
+ */
+export const isGoldenReady = (
+  receipt: Pick<
+    ValidationReceipt,
+    "items_sum" | "reconciliation_status" | "summary"
+  >,
+): boolean =>
+  receipt.reconciliation_status === "match" &&
+  buildTruthChain(receipt.items_sum, receipt.summary).find(
+    (row) => row.key === "bank",
+  )?.agreement === "agree";
 
 const nearlyEqual = (left: number, right: number): boolean =>
   Math.abs(left - right) <= matchTolerance(right || left || 1);

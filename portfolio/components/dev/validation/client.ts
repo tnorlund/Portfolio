@@ -2,6 +2,7 @@
 // /api/validation/:path* rewrite that next.config.js adds in dev.
 import {
   MerchantsResponse,
+  QueuesResponse,
   ReviewEntry,
   ReviewLogResponse,
   ReviewVerdict,
@@ -41,15 +42,23 @@ const getJson = async <T>(url: string): Promise<T> => {
 export const fetchMerchants = (refresh = false): Promise<MerchantsResponse> =>
   getJson(`${BASE}/merchants${refresh ? "?refresh=1" : ""}`);
 
+export const fetchQueues = (): Promise<QueuesResponse> =>
+  getJson(`${BASE}/queues`);
+
+// A queue is an ordered file of ids; it replaces the merchant/status filters
+// rather than narrowing them, so the reviewer sees the curated sequence.
 export const fetchWorklist = (
   merchant: string | null,
   status: string,
   limit = 1000,
+  queue: string | null = null,
 ): Promise<WorklistResponse> =>
-  getJson(
-    `${BASE}/worklist?status=${encodeURIComponent(status)}&limit=${limit}` +
-      (merchant ? `&merchant=${encodeURIComponent(merchant)}` : ""),
-  );
+  queue
+    ? getJson(`${BASE}/worklist?queue=${encodeURIComponent(queue)}`)
+    : getJson(
+        `${BASE}/worklist?status=${encodeURIComponent(status)}&limit=${limit}` +
+          (merchant ? `&merchant=${encodeURIComponent(merchant)}` : ""),
+      );
 
 export const fetchReviews = (): Promise<ReviewLogResponse> =>
   getJson(`${BASE}/review`);
@@ -68,6 +77,8 @@ export const postReview = async (entry: {
   receipt_id: number;
   verdict: ReviewVerdict;
   note: string;
+  reason?: string | null;
+  line_ids?: number[];
   merchant: string;
   status: string;
   delta: number | null;

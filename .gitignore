@@ -262,3 +262,7 @@ backups/
 # Archived review-loop runs keep their small timing/verification logs, which
 # the blanket *.log rule above would otherwise drop.
 !docs/review-loops/**/*.log
+
+# Local review harness: agent dossiers, curated queues, and the raw review
+# log. Sync verdicts into docs/line-items/reviews/ instead of committing these.
+.dev-harness/

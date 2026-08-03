@@ -14,9 +14,15 @@ image payloads reuse the deployed line_item_decode handler's helpers.
 Run:
     python portfolio/dev-harness/validation_shim.py [--port 8787]
 
+Agent work reaches the reviewer as files, never as rows: an ordered queue in
+``.dev-harness/queues/<name>.json`` and a per-receipt dossier in
+``.dev-harness/dossiers/<image_id>-<receipt_id>.json``. Both are read-only
+here; the review log is the only thing this process writes.
+
 Environment:
-    DYNAMODB_TABLE_NAME   defaults to the dev table, ReceiptsTable-dc5be22
-    VALIDATION_REVIEW_LOG defaults to <repo>/.dev-harness/review_log.jsonl
+    DYNAMODB_TABLE_NAME    defaults to the dev table, ReceiptsTable-dc5be22
+    VALIDATION_HARNESS_DIR defaults to <repo>/.dev-harness
+    VALIDATION_REVIEW_LOG  defaults to <harness dir>/review_log.jsonl
 """
 
 from __future__ import annotations
@@ -70,12 +76,20 @@ from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
 )
 from receipt_upload.line_items.geometry import reconcile  # noqa: E402
 
+HARNESS_DIR = Path(
+    os.environ.get("VALIDATION_HARNESS_DIR", str(REPO_ROOT / ".dev-harness"))
+)
+DOSSIER_DIR = HARNESS_DIR / "dossiers"
+QUEUE_DIR = HARNESS_DIR / "queues"
 REVIEW_LOG = Path(
     os.environ.get(
-        "VALIDATION_REVIEW_LOG",
-        str(REPO_ROOT / ".dev-harness" / "review_log.jsonl"),
+        "VALIDATION_REVIEW_LOG", str(HARNESS_DIR / "review_log.jsonl")
     )
 )
+
+# confirm/flag are the reviewer's eyes; approve-fix queues the post-session
+# writer; golden promotes into the bank-proven fixture set.
+REVIEW_VERDICTS = ("confirm", "flag", "approve-fix", "golden")
 
 # Failures first: the point of the harness is to look at what's broken.
 STATUS_ORDER = {"mismatch": 0, "near": 1, "no-baseline": 2, "match": 3}
@@ -90,6 +104,137 @@ _review_lock = threading.Lock()
 def _run(coro):
     """The MCP impls are async; each request gets its own loop."""
     return asyncio.run(coro)
+
+
+def _read_json(path: Path) -> tuple[Any, Optional[str]]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, f"{path.name}: {type(exc).__name__}: {exc}"
+
+
+def _optional_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _dry_run_payload(value: Any) -> Optional[dict[str, Any]]:
+    """The before/after pair the reviewer approves against.
+
+    A proposal whose dry run is missing is still shown, but the UI has to be
+    able to say so — hence None rather than zero-filled deltas.
+    """
+    if not isinstance(value, dict):
+        return None
+    return {
+        "before_delta": _optional_float(value.get("before_delta")),
+        "after_delta": _optional_float(value.get("after_delta")),
+        "before_status": _optional_str(value.get("before_status")),
+        "after_status": _optional_str(value.get("after_status")),
+    }
+
+
+def _proposal_payload(value: Any) -> Optional[dict[str, Any]]:
+    if not isinstance(value, dict):
+        return None
+    tool = _optional_str(value.get("tool"))
+    if not tool:
+        return None
+    args = value.get("args")
+    return {
+        "tool": tool,
+        "args": args if isinstance(args, dict) else {},
+        "dry_run": _dry_run_payload(value.get("dry_run")),
+    }
+
+
+def _normalize_dossier(payload: dict, source: str) -> dict[str, Any]:
+    """Give the UI a stable shape whatever the scout agent wrote."""
+    evidence = payload.get("evidence")
+    return {
+        "failure_mode": _optional_str(payload.get("failure_mode")),
+        "diagnosis": _optional_str(payload.get("diagnosis")) or "",
+        "evidence": evidence if isinstance(evidence, list) else [],
+        "proposal": _proposal_payload(payload.get("proposal")),
+        "abstain_reason": _optional_str(payload.get("abstain_reason")),
+        "generated_at": _optional_str(payload.get("generated_at")),
+        "author": _optional_str(payload.get("author")),
+        "source": source,
+    }
+
+
+def _read_dossier(
+    image_id: str, receipt_id: int
+) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    path = DOSSIER_DIR / f"{image_id}-{receipt_id}.json"
+    if not path.is_file():
+        return None, None
+    payload, error = _read_json(path)
+    if error is not None:
+        return None, error
+    if not isinstance(payload, dict):
+        return None, f"{path.name}: expected a JSON object"
+    return _normalize_dossier(payload, path.name), None
+
+
+def _queue_receipts(payload: Any) -> list[dict[str, Any]]:
+    """Accept a bare ordered list or {"receipts": [...]}, ids only."""
+    rows = payload.get("receipts") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        return []
+    entries = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        image_id = _optional_str(row.get("image_id"))
+        try:
+            receipt_id = int(row.get("receipt_id"))
+        except (TypeError, ValueError):
+            continue
+        if image_id:
+            entries.append({"image_id": image_id, "receipt_id": receipt_id})
+    return entries
+
+
+def _queue_path(name: str) -> Optional[Path]:
+    """Reject anything that could climb out of the queue directory."""
+    cleaned = name.strip()
+    if not cleaned or cleaned != Path(cleaned).name or cleaned.startswith("."):
+        return None
+    if not cleaned.endswith(".json"):
+        cleaned = f"{cleaned}.json"
+    return QUEUE_DIR / cleaned
+
+
+def handle_queues(_params: dict) -> dict[str, Any]:
+    queues = []
+    for path in sorted(QUEUE_DIR.glob("*.json")) if QUEUE_DIR.is_dir() else []:
+        payload, error = _read_json(path)
+        entry: dict[str, Any] = {
+            "name": path.stem,
+            "count": 0,
+            "description": None,
+            "error": error,
+        }
+        if error is None:
+            entry["count"] = len(_queue_receipts(payload))
+            if isinstance(payload, dict):
+                entry["description"] = _optional_str(
+                    payload.get("description")
+                )
+        queues.append(entry)
+    return {"queues": queues, "dir": str(QUEUE_DIR)}
 
 
 def _receipt_status(statuses: set) -> str:
@@ -297,8 +442,46 @@ def handle_merchants(params: dict) -> dict[str, Any]:
     }
 
 
+def _queue_worklist(index: dict[str, Any], name: str) -> dict[str, Any]:
+    """A curated queue is an order, not a filter: keep the file's sequence."""
+    path = _queue_path(name)
+    if path is None:
+        return {"error": f"invalid queue name {name!r}"}
+    if not path.is_file():
+        return {"error": f"no queue {name!r} in {QUEUE_DIR}"}
+    payload, error = _read_json(path)
+    if error is not None:
+        return {"error": error}
+
+    by_key = {
+        (row["image_id"], row["receipt_id"]): row for row in index["rows"]
+    }
+    ordered, missing = [], []
+    for entry in _queue_receipts(payload):
+        row = by_key.get((entry["image_id"], entry["receipt_id"]))
+        if row is None:
+            missing.append(entry)
+        else:
+            ordered.append(row)
+    return {
+        "queue": path.stem,
+        "queue_description": (
+            _optional_str(payload.get("description"))
+            if isinstance(payload, dict)
+            else None
+        ),
+        "matching": len(ordered),
+        "receipts": ordered,
+        "missing": missing,
+        "built_at": index["built_at"],
+    }
+
+
 def handle_worklist(params: dict) -> dict[str, Any]:
     index = _index(refresh=params.get("refresh", ["0"])[0] == "1")
+    queue = (params.get("queue", [""])[0] or "").strip()
+    if queue:
+        return _queue_worklist(index, queue)
     merchant = (params.get("merchant", [""])[0] or "").strip().lower()
     status = (params.get("status", ["all"])[0] or "all").strip().lower()
     try:
@@ -320,6 +503,7 @@ def handle_worklist(params: dict) -> dict[str, Any]:
     return {
         "merchant": params.get("merchant", [""])[0],
         "status": status,
+        "queue": None,
         "matching": len(ordered),
         "receipts": ordered[:limit],
         "built_at": index["built_at"],
@@ -375,6 +559,7 @@ def handle_receipt(params: dict) -> dict[str, Any]:
         sections = []
 
     summary = _summary_payload(image_id, receipt_id)
+    dossier, dossier_error = _read_dossier(image_id, receipt_id)
     merchant = (summary or {}).get("merchant_name")
     if not merchant and details is not None and details.place is not None:
         merchant = details.place.merchant_name
@@ -403,6 +588,8 @@ def handle_receipt(params: dict) -> dict[str, Any]:
             for section in sections
         ],
         "summary": summary,
+        "dossier": dossier,
+        "dossier_error": dossier_error,
         "reviews": _read_reviews(image_id, receipt_id),
     }
 
@@ -424,16 +611,36 @@ def _read_reviews(
                 continue
             if image_id is not None and entry.get("image_id") != image_id:
                 continue
-            if receipt_id is not None and entry.get("receipt_id") != receipt_id:
+            if (
+                receipt_id is not None
+                and entry.get("receipt_id") != receipt_id
+            ):
                 continue
             entries.append(entry)
     return entries
 
 
+def _coerce_line_ids(value: Any) -> list[int]:
+    """Which rows the verdict is about — free text can't point at a row."""
+    if not isinstance(value, list):
+        return []
+    line_ids = set()
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        try:
+            line_ids.add(int(item))
+        except (TypeError, ValueError):
+            continue
+    return sorted(line_ids)
+
+
 def handle_review_post(body: dict) -> dict[str, Any]:
     verdict = str(body.get("verdict", "")).strip().lower()
-    if verdict not in ("confirm", "flag", "resolved"):
-        return {"error": "verdict must be confirm, flag or resolved"}
+    if verdict not in REVIEW_VERDICTS:
+        return {
+            "error": f"verdict must be one of {', '.join(REVIEW_VERDICTS)}"
+        }
     image_id = str(body.get("image_id", "")).strip()
     if not image_id:
         return {"error": "image_id is required"}
@@ -447,6 +654,10 @@ def handle_review_post(body: dict) -> dict[str, Any]:
         "receipt_id": receipt_id,
         "verdict": verdict,
         "note": str(body.get("note", "") or ""),
+        # The A-J failure-mode letter (or a hint code) the reviewer agreed
+        # with, so a verdict can be joined back to the taxonomy.
+        "reason": _optional_str(body.get("reason")),
+        "line_ids": _coerce_line_ids(body.get("line_ids")),
         "merchant": str(body.get("merchant", "") or ""),
         "status": str(body.get("status", "") or ""),
         "delta": body.get("delta"),
@@ -500,8 +711,12 @@ class ValidationHandler(BaseHTTPRequestHandler):
             if route == "/merchants":
                 self._send(200, handle_merchants(params))
                 return
+            if route == "/queues":
+                self._send(200, handle_queues(params))
+                return
             if route == "/worklist":
-                self._send(200, handle_worklist(params))
+                payload = handle_worklist(params)
+                self._send(400 if "error" in payload else 200, payload)
                 return
             if route == "/receipt":
                 payload = handle_receipt(params)
@@ -520,8 +735,12 @@ class ValidationHandler(BaseHTTPRequestHandler):
                         "ok": True,
                         "table": TABLE_NAME,
                         "review_log": str(REVIEW_LOG),
+                        "dossiers": str(DOSSIER_DIR),
+                        "queues": str(QUEUE_DIR),
+                        "verdicts": list(REVIEW_VERDICTS),
                         "routes": [
                             "/merchants",
+                            "/queues",
                             "/worklist",
                             "/receipt",
                             "/review",
@@ -564,7 +783,8 @@ def main() -> None:
     args = parser.parse_args()
     print(
         f"validation shim: http://{args.host}:{args.port} "
-        f"table={TABLE_NAME} review_log={REVIEW_LOG}",
+        f"table={TABLE_NAME} review_log={REVIEW_LOG} "
+        f"harness_dir={HARNESS_DIR}",
         flush=True,
     )
     ThreadingHTTPServer(

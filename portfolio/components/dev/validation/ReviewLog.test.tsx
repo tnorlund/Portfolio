@@ -16,20 +16,42 @@ const entry = (overrides: Partial<ReviewEntry> = {}): ReviewEntry => ({
 });
 
 describe("ReviewLog", () => {
-  it("groups per-receipt history and counts resolved receipts", () => {
+  it("groups per-receipt history and counts the session's output verdicts", () => {
     render(
       <ReviewLog
         entries={[
           entry(),
-          entry({ verdict: "resolved", ts: "2026-07-31T19:00:00.000Z" }),
-          entry({ image_id: "image-2", receipt_id: 2, merchant: "Deli" }),
+          entry({ verdict: "golden", ts: "2026-07-31T19:00:00.000Z" }),
+          entry({
+            image_id: "image-2",
+            receipt_id: 2,
+            merchant: "Deli",
+            verdict: "approve-fix",
+          }),
         ]}
         onJump={jest.fn()}
       />,
     );
     expect(screen.getByText("2 receipts")).toBeInTheDocument();
-    expect(screen.getByText("1 resolved")).toBeInTheDocument();
+    expect(screen.getByText("1 golden")).toBeInTheDocument();
+    expect(screen.getByText("1 to fix")).toBeInTheDocument();
     expect(screen.getByText("2 events")).toBeInTheDocument();
+  });
+
+  it("falls back to the reason code when a verdict carried no note", () => {
+    render(
+      <ReviewLog
+        entries={[
+          entry({
+            verdict: "approve-fix",
+            note: "",
+            reason: "H-zone-gap-missing-items",
+          }),
+        ]}
+        onJump={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("H-zone-gap-missing-items")).toBeInTheDocument();
   });
 
   it("jumps to a receipt from a log entry", () => {

@@ -1,7 +1,33 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import TruthPanel from "./TruthPanel";
 import { failureHint } from "./truthChain";
-import { ValidationItem, ValidationReceipt, ValidationSummary } from "./types";
+import {
+  ReceiptDossier,
+  ValidationItem,
+  ValidationReceipt,
+  ValidationSummary,
+} from "./types";
+
+const dossier = (overrides: Partial<ReceiptDossier> = {}): ReceiptDossier => ({
+  failure_mode: "H-zone-gap-missing-items",
+  diagnosis: "The ITEMS section stops four rows above the subtotal.",
+  evidence: ["bands 18-21 are priced rows no item claimed"],
+  proposal: {
+    tool: "extend_items_section",
+    args: { line_ids: [18, 19, 20, 21] },
+    dry_run: {
+      before_delta: -4.18,
+      after_delta: 0,
+      before_status: "mismatch",
+      after_status: "match",
+    },
+  },
+  abstain_reason: null,
+  generated_at: "2026-08-03T12:00:00Z",
+  author: "scout",
+  source: "image-1-1.json",
+  ...overrides,
+});
 
 const item = (overrides: Partial<ValidationItem> = {}): ValidationItem => ({
   item_index: 0,
@@ -57,6 +83,8 @@ const receipt = (
   lines: [],
   sections: [],
   summary: summary(),
+  dossier: null,
+  dossier_error: null,
   reviews: [],
   ...overrides,
 });
@@ -175,6 +203,98 @@ describe("TruthPanel truth chain", () => {
     fireEvent.click(screen.getByRole("button", { name: /Flag with note/ }));
     expect(onReview).toHaveBeenCalledWith("confirm", "");
     expect(onFlagRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the agent's diagnosis, evidence and dry-run deltas", () => {
+    renderPanel(receipt({ dossier: dossier() }));
+    expect(screen.getByTestId("dossier-mode")).toHaveTextContent(
+      "H-zone-gap-missing-items",
+    );
+    expect(screen.getByTestId("dossier-diagnosis")).toHaveTextContent(
+      "stops four rows above the subtotal",
+    );
+    expect(screen.getByTestId("dossier-evidence")).toHaveTextContent(
+      "bands 18-21",
+    );
+    const dryRun = screen.getByTestId("dossier-dry-run");
+    expect(dryRun).toHaveTextContent("-$4.18");
+    expect(dryRun).toHaveTextContent("$0.00");
+    expect(dryRun).toHaveTextContent("mismatch");
+    expect(dryRun).toHaveTextContent("match");
+  });
+
+  it("renders an abstention rather than inventing a proposal", () => {
+    renderPanel(
+      receipt({
+        dossier: dossier({
+          proposal: null,
+          abstain_reason: "The fix would close the delta but break the status.",
+        }),
+      }),
+    );
+    expect(screen.getByTestId("dossier-abstain")).toHaveTextContent(
+      "break the status",
+    );
+    expect(screen.queryByTestId("dossier-proposal")).not.toBeInTheDocument();
+  });
+
+  it("says so when a proposal was never simulated", () => {
+    renderPanel(
+      receipt({
+        dossier: dossier({
+          proposal: { tool: "extend_items_section", args: {}, dry_run: null },
+        }),
+      }),
+    );
+    expect(screen.getByTestId("dossier-no-dry-run")).toBeInTheDocument();
+  });
+
+  it("shows the missing-dossier state instead of an empty panel", () => {
+    renderPanel(receipt());
+    expect(screen.getByTestId("dossier-empty")).toBeInTheDocument();
+  });
+
+  it("surfaces an unreadable dossier file", () => {
+    renderPanel(receipt({ dossier_error: "image-1-1.json: bad JSON" }));
+    expect(screen.getByTestId("dossier-error")).toHaveTextContent("bad JSON");
+  });
+
+  it("approves a fix with the dossier's mode and target rows", () => {
+    const { onReview } = renderPanel(receipt({ dossier: dossier() }));
+    fireEvent.click(screen.getByRole("button", { name: /Approve fix/ }));
+    expect(onReview).toHaveBeenCalledWith("approve-fix", "", {
+      reason: "H-zone-gap-missing-items",
+      line_ids: [18, 19, 20, 21],
+    });
+  });
+
+  it("disables approve-fix when the dossier proposed nothing", () => {
+    renderPanel(receipt({ dossier: dossier({ proposal: null }) }));
+    expect(screen.getByRole("button", { name: /Approve fix/ })).toBeDisabled();
+  });
+
+  it("allows golden only when the receipt matches and the bank agrees", () => {
+    const { onReview } = renderPanel(receipt());
+    const golden = screen.getByRole("button", { name: /Golden/ });
+    expect(golden).toBeEnabled();
+    fireEvent.click(golden);
+    expect(onReview).toHaveBeenCalledWith("golden", "");
+  });
+
+  it("blocks golden when no bank transaction settled the printed total", () => {
+    renderPanel(receipt({ summary: summary({ bank_amount: null }) }));
+    expect(screen.getByRole("button", { name: /Golden/ })).toBeDisabled();
+  });
+
+  it("blocks golden on a receipt that does not reconcile", () => {
+    renderPanel(
+      receipt({
+        items_sum: 2.5,
+        delta: -4.18,
+        reconciliation_status: "mismatch",
+      }),
+    );
+    expect(screen.getByRole("button", { name: /Golden/ })).toBeDisabled();
   });
 
   it("keeps incomplete receipts visible as explicit review targets", () => {

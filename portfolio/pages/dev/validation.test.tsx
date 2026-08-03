@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   fetchMerchants,
+  fetchQueues,
   fetchReceipt,
   fetchReviews,
   fetchWorklist,
@@ -11,6 +12,7 @@ import ValidationWorkstation from "./validation";
 
 jest.mock("../../components/dev/validation/client", () => ({
   fetchMerchants: jest.fn(),
+  fetchQueues: jest.fn(),
   fetchReceipt: jest.fn(),
   fetchReviews: jest.fn(),
   fetchWorklist: jest.fn(),
@@ -25,6 +27,7 @@ jest.mock(
 );
 
 const mockedFetchMerchants = jest.mocked(fetchMerchants);
+const mockedFetchQueues = jest.mocked(fetchQueues);
 const mockedFetchReceipt = jest.mocked(fetchReceipt);
 const mockedFetchReviews = jest.mocked(fetchReviews);
 const mockedFetchWorklist = jest.mocked(fetchWorklist);
@@ -45,10 +48,13 @@ const detail = (receiptId: number): ValidationReceipt => ({
   lines: [],
   sections: [],
   summary: null,
+  dossier: null,
+  dossier_error: null,
   reviews: [],
 });
 
 beforeEach(() => {
+  jest.clearAllMocks();
   mockedFetchMerchants.mockResolvedValue({
     merchants: [],
     totals: { mismatch: 2 },
@@ -57,6 +63,17 @@ beforeEach(() => {
     table: "dev",
   });
   mockedFetchReviews.mockResolvedValue({ entries: [], log: "/tmp/reviews" });
+  mockedFetchQueues.mockResolvedValue({
+    queues: [
+      {
+        name: "session-1",
+        count: 2,
+        description: "Smith's + Gelson's",
+        error: null,
+      },
+    ],
+    dir: "/tmp/queues",
+  });
   mockedFetchWorklist.mockResolvedValue({
     merchant: "",
     status: "failures",
@@ -145,6 +162,116 @@ describe("ValidationWorkstation keyboard flow", () => {
     await waitFor(() =>
       expect(mockedPostReview).toHaveBeenCalledWith(
         expect.objectContaining({ verdict: "confirm", note: "" }),
+      ),
+    );
+  });
+});
+
+describe("ValidationWorkstation curated queues", () => {
+  it("loads a queue by name and says the filters no longer apply", async () => {
+    render(<ValidationWorkstation />);
+    await screen.findByText("Alpha Market · receipt 1");
+
+    fireEvent.change(
+      await screen.findByRole("combobox", { name: "Curated review queue" }),
+      { target: { value: "session-1" } },
+    );
+
+    await waitFor(() =>
+      expect(mockedFetchWorklist).toHaveBeenCalledWith(
+        null,
+        "failures",
+        1000,
+        "session-1",
+      ),
+    );
+    expect(await screen.findByTestId("queue-notice")).toHaveTextContent(
+      "session-1",
+    );
+  });
+
+  it("reports queued ids the index does not know about", async () => {
+    mockedFetchWorklist.mockResolvedValueOnce({
+      matching: 0,
+      built_at: "now",
+      queue: "session-1",
+      receipts: [],
+      missing: [{ image_id: "image-9", receipt_id: 9 }],
+    });
+    render(<ValidationWorkstation />);
+    expect(
+      await screen.findByText(/1 queued receipt\(s\) are not in the index/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("ValidationWorkstation dossier verdicts", () => {
+  it("approves the dossier's proposal with its mode and rows", async () => {
+    mockedFetchReceipt.mockImplementation(async (_imageId, receiptId) => ({
+      ...detail(receiptId),
+      dossier: {
+        failure_mode: "H-zone-gap-missing-items",
+        diagnosis: "ITEMS stops short of the subtotal.",
+        evidence: [],
+        proposal: {
+          tool: "extend_items_section",
+          args: { line_ids: [18, 19] },
+          dry_run: {
+            before_delta: -5,
+            after_delta: 0,
+            before_status: "mismatch",
+            after_status: "match",
+          },
+        },
+        abstain_reason: null,
+        generated_at: null,
+        author: "scout",
+        source: "image-1-1.json",
+      },
+    }));
+    render(<ValidationWorkstation />);
+    await screen.findByTestId("dossier");
+
+    fireEvent.keyDown(window, { key: "a" });
+    await waitFor(() =>
+      expect(mockedPostReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          verdict: "approve-fix",
+          reason: "H-zone-gap-missing-items",
+          line_ids: [18, 19],
+        }),
+      ),
+    );
+  });
+
+  it("refuses golden on a receipt with no bank agreement", async () => {
+    render(<ValidationWorkstation />);
+    await screen.findByTestId("truth-panel");
+    fireEvent.keyDown(window, { key: "g" });
+    await waitFor(() => expect(screen.getByTestId("dossier-empty")).toBeInTheDocument());
+    expect(mockedPostReview).not.toHaveBeenCalled();
+  });
+
+  it("attaches the chosen failure mode to a flag", async () => {
+    render(<ValidationWorkstation />);
+    await screen.findByTestId("truth-panel");
+
+    fireEvent.keyDown(window, { key: "f" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Failure mode" }), {
+      target: { value: "B-baseline-ocr-broken" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Review note" }), {
+      target: { value: "printed subtotal is garbled" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save flag" }));
+
+    await waitFor(() =>
+      expect(mockedPostReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          verdict: "flag",
+          reason: "B-baseline-ocr-broken",
+          note: "printed subtotal is garbled",
+        }),
       ),
     );
   });

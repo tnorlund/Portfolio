@@ -9,7 +9,6 @@ interface ReviewGroup {
   merchant: string;
   entries: ReviewEntry[];
   latest: ReviewEntry;
-  resolved: boolean;
 }
 
 interface ReviewLogProps {
@@ -63,12 +62,17 @@ export const ReviewLog: React.FC<ReviewLogProps> = ({
         merchant: latest.merchant || "Unknown merchant",
         entries: sorted,
         latest,
-        resolved: latest.verdict === "resolved",
       };
     }).sort((left, right) => right.latest.ts.localeCompare(left.latest.ts));
   }, [entries]);
 
-  const resolvedCount = groups.filter((group) => group.resolved).length;
+  // The session metric: golden entries added plus repairs approved.
+  const goldenCount = groups.filter(
+    (group) => group.latest.verdict === "golden",
+  ).length;
+  const approvedCount = groups.filter(
+    (group) => group.latest.verdict === "approve-fix",
+  ).length;
 
   return (
     <section className={styles.reviewLogPanel} data-testid="review-log-panel">
@@ -79,7 +83,8 @@ export const ReviewLog: React.FC<ReviewLogProps> = ({
         </div>
         <div className={styles.logCounts}>
           <span>{groups.length} receipts</span>
-          <span data-kind="resolved">{resolvedCount} resolved</span>
+          <span data-kind="golden">{goldenCount} golden</span>
+          <span data-kind="approve-fix">{approvedCount} to fix</span>
         </div>
       </header>
 
@@ -128,7 +133,13 @@ export const ReviewLog: React.FC<ReviewLogProps> = ({
                     <li key={`${entry.ts}-${entry.verdict}`}>
                       <button type="button" onClick={() => onJump(entry)}>
                         <span data-status={entry.verdict}>{entry.verdict}</span>
-                        <span>{entry.note || "No note"}</span>
+                        <span>
+                          {entry.note ||
+                            entry.reason ||
+                            (entry.line_ids?.length
+                              ? `lines ${entry.line_ids.join(", ")}`
+                              : "No note")}
+                        </span>
                         <small>{displayTime(entry.ts)}</small>
                       </button>
                     </li>

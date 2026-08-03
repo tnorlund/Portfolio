@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useMemo, useState } from "react";
 import styles from "./Validation.module.css";
-import { MerchantRow, StatusFilter } from "./types";
+import { MerchantRow, QueueSummary, StatusFilter } from "./types";
 
 const FILTERS: StatusFilter[] = [
   "failures",
@@ -19,6 +19,10 @@ interface MerchantListProps {
   receipts: number;
   selected: string | null;
   statusFilter: StatusFilter;
+  queues?: QueueSummary[];
+  /** Name of the curated queue in force, or null for the filters. */
+  queue?: string | null;
+  onQueueChange?: (queue: string | null) => void;
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
@@ -34,6 +38,9 @@ const MerchantList = React.forwardRef<HTMLInputElement, MerchantListProps>(
       receipts,
       selected,
       statusFilter,
+      queues = [],
+      queue = null,
+      onQueueChange,
       loading = false,
       error = null,
       onRetry,
@@ -109,6 +116,34 @@ const MerchantList = React.forwardRef<HTMLInputElement, MerchantListProps>(
           </label>
         </div>
 
+        {onQueueChange ? (
+          <label className={styles.queueField}>
+            <span>Queue</span>
+            <select
+              value={queue ?? ""}
+              aria-label="Curated review queue"
+              onChange={(event) =>
+                onQueueChange(event.target.value || null)
+              }
+            >
+              <option value="">None — use filters</option>
+              {queues.map((entry) => (
+                <option key={entry.name} value={entry.name} disabled={Boolean(entry.error)}>
+                  {entry.name} ({entry.count})
+                  {entry.error ? " — unreadable" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {queue ? (
+          <p className={styles.queueNotice} data-testid="queue-notice">
+            Reviewing queue <strong>{queue}</strong> in its curated order;
+            merchant and status filters are ignored.
+          </p>
+        ) : null}
+
         <div className={styles.chips} role="group" aria-label="Status filter">
           {FILTERS.map((filter) => (
             <button
@@ -116,6 +151,7 @@ const MerchantList = React.forwardRef<HTMLInputElement, MerchantListProps>(
               type="button"
               className={styles.chip}
               data-active={filter === statusFilter}
+              disabled={Boolean(queue)}
               onClick={() => onStatusChange(filter)}
             >
               {filter}
@@ -140,6 +176,7 @@ const MerchantList = React.forwardRef<HTMLInputElement, MerchantListProps>(
               type="button"
               className={styles.merchantButton}
               data-active={selected === null}
+              disabled={Boolean(queue)}
               onClick={() => onSelect(null)}
             >
               <span className={styles.merchantName}>All merchants</span>
@@ -154,6 +191,7 @@ const MerchantList = React.forwardRef<HTMLInputElement, MerchantListProps>(
                   type="button"
                   className={styles.merchantButton}
                   data-active={merchant.name === selected}
+                  disabled={Boolean(queue)}
                   onClick={() => onSelect(merchant.name)}
                   title={`${merchant.match} match · ${merchant.near} near · ${merchant.mismatch} mismatch · ${merchant["no-baseline"]} no-baseline`}
                 >

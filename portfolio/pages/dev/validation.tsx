@@ -14,6 +14,7 @@ import React, {
 } from "react";
 import {
   fetchMerchants,
+  fetchQueues,
   fetchReceipt,
   fetchReviews,
   fetchWorklist,
@@ -23,10 +24,13 @@ import MerchantList from "../../components/dev/validation/MerchantList";
 import ReceiptCanvas from "../../components/dev/validation/ReceiptCanvas";
 import ReviewLog from "../../components/dev/validation/ReviewLog";
 import TruthPanel from "../../components/dev/validation/TruthPanel";
+import { FAILURE_MODES, isGoldenReady } from "../../components/dev/validation/truthChain";
 import {
   MerchantsResponse,
   OverlayMode,
+  QueueSummary,
   ReviewEntry,
+  ReviewExtras,
   ReviewVerdict,
   StatusFilter,
   ValidationReceipt,
@@ -47,6 +51,8 @@ export default function ValidationWorkstation() {
   const [index, setIndex] = useState<MerchantsResponse | null>(null);
   const [merchant, setMerchant] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("failures");
+  const [queues, setQueues] = useState<QueueSummary[]>([]);
+  const [queue, setQueue] = useState<string | null>(null);
   const [worklist, setWorklist] = useState<WorklistRow[]>([]);
   const [position, setPosition] = useState(0);
   const [receipt, setReceipt] = useState<ValidationReceipt | null>(null);
@@ -55,6 +61,7 @@ export default function ValidationWorkstation() {
   const [overlayMode, setOverlayMode] = useState<OverlayMode>("both");
   const [flagDialogOpen, setFlagDialogOpen] = useState(false);
   const [flagNote, setFlagNote] = useState("");
+  const [flagReason, setFlagReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [indexLoading, setIndexLoading] = useState(true);
   const [reviewsLoading, setReviewsLoading] = useState(true);
@@ -80,25 +87,32 @@ export default function ValidationWorkstation() {
     let cancelled = false;
     setIndexLoading(true);
     setReviewsLoading(true);
-    void Promise.allSettled([fetchMerchants(), fetchReviews()]).then(
-      ([merchantResult, reviewResult]) => {
-        if (cancelled) return;
-        if (merchantResult.status === "fulfilled") {
-          setIndex(merchantResult.value);
-          setIndexError(null);
-        } else {
-          setIndexError(errorMessage(merchantResult.reason));
-        }
-        if (reviewResult.status === "fulfilled") {
-          setReviews(reviewResult.value.entries);
-          setReviewsError(null);
-        } else {
-          setReviewsError(errorMessage(reviewResult.reason));
-        }
-        setIndexLoading(false);
-        setReviewsLoading(false);
-      },
-    );
+    void Promise.allSettled([
+      fetchMerchants(),
+      fetchReviews(),
+      fetchQueues(),
+    ]).then(([merchantResult, reviewResult, queueResult]) => {
+      if (cancelled) return;
+      if (merchantResult.status === "fulfilled") {
+        setIndex(merchantResult.value);
+        setIndexError(null);
+      } else {
+        setIndexError(errorMessage(merchantResult.reason));
+      }
+      if (reviewResult.status === "fulfilled") {
+        setReviews(reviewResult.value.entries);
+        setReviewsError(null);
+      } else {
+        setReviewsError(errorMessage(reviewResult.reason));
+      }
+      // A shim without queue files is the normal case, so a failure here
+      // leaves the filters working rather than blocking the page.
+      setQueues(
+        queueResult.status === "fulfilled" ? queueResult.value.queues : [],
+      );
+      setIndexLoading(false);
+      setReviewsLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -109,10 +123,18 @@ export default function ValidationWorkstation() {
     setReceipt(null);
     setWorklistLoading(true);
     setWorklistError(null);
-    void fetchWorklist(merchant, statusFilter)
+    void fetchWorklist(merchant, statusFilter, 1000, queue)
       .then((response) => {
         if (cancelled) return;
         setWorklist(response.receipts);
+        // A stale queue entry is worth saying out loud, but it must not hide
+        // the receipts the queue did resolve.
+        if (response.missing && response.missing.length > 0) {
+          setActionError(
+            `${response.missing.length} queued receipt(s) are not in the index; ` +
+              "the queue is stale or points at another table.",
+          );
+        }
         const target = jumpTargetRef.current;
         const targetPosition = target
           ? response.receipts.findIndex(
@@ -141,7 +163,7 @@ export default function ValidationWorkstation() {
     return () => {
       cancelled = true;
     };
-  }, [merchant, queueVersion, statusFilter]);
+  }, [merchant, queue, queueVersion, statusFilter]);
 
   const current = worklist[position] ?? null;
   const currentImageId = current?.image_id;
@@ -182,7 +204,11 @@ export default function ValidationWorkstation() {
   );
 
   const onReview = useCallback(
-    async (verdict: ReviewVerdict, note: string): Promise<boolean> => {
+    async (
+      verdict: ReviewVerdict,
+      note: string,
+      extras: ReviewExtras = {},
+    ): Promise<boolean> => {
       if (!receipt || !current || saving) return false;
       setSaving(true);
       try {
@@ -191,6 +217,8 @@ export default function ValidationWorkstation() {
           receipt_id: receipt.receipt_id,
           verdict,
           note,
+          reason: extras.reason ?? null,
+          line_ids: extras.line_ids ?? [],
           merchant: receipt.merchant_name,
           status: receipt.reconciliation_status ?? "no-baseline",
           delta: receipt.delta,
@@ -215,8 +243,29 @@ export default function ValidationWorkstation() {
   const openFlagDialog = useCallback(() => {
     if (!receipt || saving) return;
     setFlagNote("");
+    // Pre-select the scout's diagnosis so agreeing is one click and
+    // disagreeing is a deliberate change.
+    setFlagReason(receipt.dossier?.failure_mode ?? "");
     setFlagDialogOpen(true);
   }, [receipt, saving]);
+
+  const proposal = receipt?.dossier?.proposal ?? null;
+
+  const approveFix = useCallback(() => {
+    if (!receipt || !proposal || saving) return;
+    const args = proposal.args?.line_ids;
+    void onReview("approve-fix", "", {
+      reason: receipt.dossier?.failure_mode ?? null,
+      line_ids: Array.isArray(args)
+        ? args.filter((value): value is number => typeof value === "number")
+        : [],
+    });
+  }, [onReview, proposal, receipt, saving]);
+
+  const promoteGolden = useCallback(() => {
+    if (!receipt || saving || !isGoldenReady(receipt)) return;
+    void onReview("golden", "");
+  }, [onReview, receipt, saving]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -249,26 +298,53 @@ export default function ValidationWorkstation() {
       } else if (key === "f" && receipt && !saving) {
         event.preventDefault();
         openFlagDialog();
+      } else if (key === "a" && receipt && !saving) {
+        event.preventDefault();
+        approveFix();
+      } else if (key === "g" && receipt && !saving) {
+        event.preventDefault();
+        promoteGolden();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [flagDialogOpen, onReview, openFlagDialog, receipt, saving, step]);
+  }, [
+    approveFix,
+    flagDialogOpen,
+    onReview,
+    openFlagDialog,
+    promoteGolden,
+    receipt,
+    saving,
+    step,
+  ]);
 
   const jumpToReview = useCallback((entry: ReviewEntry) => {
     jumpTargetRef.current = entry;
     setMerchant(null);
+    setQueue(null);
     setStatusFilter("all");
     setQueueVersion((version) => version + 1);
   }, []);
 
   const submitFlag = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (await onReview("flag", flagNote.trim())) {
+    if (
+      await onReview("flag", flagNote.trim(), {
+        reason: flagReason || null,
+      })
+    ) {
       setFlagDialogOpen(false);
       setFlagNote("");
+      setFlagReason("");
     }
   };
+
+  const selectQueue = useCallback((name: string | null) => {
+    setActionError(null);
+    setQueue(name);
+    if (name) setMerchant(null);
+  }, []);
 
   const heading = useMemo(() => {
     if (!current) return "No receipts for this filter";
@@ -288,6 +364,9 @@ export default function ValidationWorkstation() {
           receipts={index?.receipts ?? 0}
           selected={merchant}
           statusFilter={statusFilter}
+          queues={queues}
+          queue={queue}
+          onQueueChange={selectQueue}
           loading={indexLoading}
           error={indexError}
           onRetry={retryAll}
@@ -430,6 +509,21 @@ export default function ValidationWorkstation() {
                 ×
               </button>
             </div>
+            <label className={styles.reasonField}>
+              <span>Failure mode</span>
+              <select
+                value={flagReason}
+                aria-label="Failure mode"
+                onChange={(event) => setFlagReason(event.target.value)}
+              >
+                <option value="">Unclassified</option>
+                {FAILURE_MODES.map((mode) => (
+                  <option key={mode.code} value={mode.code}>
+                    {mode.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <textarea
               autoFocus
               className={styles.noteInput}

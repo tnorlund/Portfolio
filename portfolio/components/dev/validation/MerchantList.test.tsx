@@ -92,4 +92,36 @@ describe("MerchantList", () => {
     ref.current?.focus();
     expect(screen.getByRole("searchbox")).toHaveFocus();
   });
+
+  it("lists the queue files and disables the filters a queue overrides", () => {
+    const onQueueChange = jest.fn();
+    render(
+      <MerchantList
+        merchants={merchants}
+        totals={{}}
+        receipts={30}
+        selected={null}
+        statusFilter="failures"
+        queues={[
+          { name: "session-1", count: 14, description: null, error: null },
+          { name: "broken", count: 0, description: null, error: "bad JSON" },
+        ]}
+        queue="session-1"
+        onQueueChange={onQueueChange}
+        onSelect={jest.fn()}
+        onStatusChange={jest.fn()}
+      />,
+    );
+
+    const picker = screen.getByRole("combobox", {
+      name: "Curated review queue",
+    });
+    expect(within(picker).getByRole("option", { name: /session-1 \(14\)/ })).toBeEnabled();
+    expect(within(picker).getByRole("option", { name: /unreadable/ })).toBeDisabled();
+    expect(screen.getByTestId("queue-notice")).toHaveTextContent("session-1");
+    expect(screen.getByRole("button", { name: "mismatch" })).toBeDisabled();
+
+    fireEvent.change(picker, { target: { value: "" } });
+    expect(onQueueChange).toHaveBeenCalledWith(null);
+  });
 });

@@ -171,6 +171,63 @@
   letter-spacing: 0;
 }
 
+.queueField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.76;
+}
+
+.queueField select {
+  max-width: 170px;
+  border: 1px solid color-mix(in srgb, var(--text-color) 18%, transparent);
+  border-radius: 6px;
+  padding: 3px 22px 3px 7px;
+  background: var(--background-color);
+  color: inherit;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.reasonField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.76;
+}
+
+.reasonField select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--text-color) 18%, transparent);
+  border-radius: 6px;
+  padding: 4px 22px 4px 7px;
+  background: var(--background-color);
+  color: inherit;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.queueNotice {
+  margin: 0 0 9px;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-blue) 8%, transparent);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -191,6 +248,12 @@
 
 .chip:hover {
   border-color: color-mix(in srgb, var(--color-blue) 60%, transparent);
+}
+
+.chip:disabled,
+.merchantButton:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .chip[data-active="true"] {
@@ -774,7 +837,8 @@
 }
 
 .reviewButtons {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   position: sticky;
   bottom: -12px;
@@ -783,9 +847,10 @@
 }
 
 .confirmButton,
-.flagButton {
+.flagButton,
+.approveButton,
+.goldenButton {
   margin: 0;
-  flex: 1;
   border-radius: 7px;
   padding: 7px;
   cursor: pointer;
@@ -803,15 +868,136 @@
   background: var(--color-red, #e5484d);
 }
 
+.approveButton {
+  background: var(--color-blue);
+}
+
+.goldenButton {
+  background: var(--color-purple);
+}
+
 .confirmButton:disabled,
-.flagButton:disabled {
+.flagButton:disabled,
+.approveButton:disabled,
+.goldenButton:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
 .confirmButton kbd,
-.flagButton kbd {
+.flagButton kbd,
+.approveButton kbd,
+.goldenButton kbd {
   margin-left: 5px;
+}
+
+/* Agent dossier */
+
+.dossier {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 9px;
+  border: 1px solid color-mix(in srgb, var(--color-blue) 22%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-blue) 6%, transparent);
+  font-size: 11px;
+}
+
+.dossier[data-state="none"] {
+  border-color: color-mix(in srgb, var(--text-color) 12%, transparent);
+  background: color-mix(in srgb, var(--text-color) 4%, transparent);
+  opacity: 0.75;
+}
+
+.dossier p {
+  margin: 0;
+}
+
+.dossierHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.dossierMode {
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--color-blue);
+  background: color-mix(in srgb, var(--color-blue) 14%, transparent);
+  font-weight: 650;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.dossierDiagnosis {
+  line-height: 1.4;
+}
+
+.dossierEvidence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  opacity: 0.82;
+}
+
+.dossierEvidence li {
+  margin: 0;
+  padding-left: 9px;
+  position: relative;
+}
+
+.dossierEvidence li::before {
+  content: "·";
+  position: absolute;
+  left: 2px;
+}
+
+.dossierProposal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color) 6%, transparent);
+}
+
+.dossierProposal code {
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.dossierDryRun {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 10px;
+}
+
+.dossierWarning {
+  font-size: 10px;
+  color: var(--color-yellow);
+}
+
+.dossierAbstain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-yellow) 10%, transparent);
+  font-size: 10px;
+}
+
+.dossierMeta {
+  opacity: 0.55;
+  font-size: 9px;
 }
 
 /* Review log */
@@ -829,9 +1015,14 @@
   background: color-mix(in srgb, var(--text-color) 7%, transparent);
 }
 
-.logCounts span[data-kind="resolved"] {
-  color: var(--color-green);
-  background: color-mix(in srgb, var(--color-green) 10%, transparent);
+.logCounts span[data-kind="golden"] {
+  color: var(--color-purple);
+  background: color-mix(in srgb, var(--color-purple) 10%, transparent);
+}
+
+.logCounts span[data-kind="approve-fix"] {
+  color: var(--color-blue);
+  background: color-mix(in srgb, var(--color-blue) 10%, transparent);
 }
 
 .reviewGroups,
@@ -906,8 +1097,13 @@
   white-space: nowrap;
 }
 
-.logVerdict[data-status="resolved"],
-.reviewHistory [data-status="resolved"] {
+.logVerdict[data-status="golden"],
+.reviewHistory [data-status="golden"] {
+  color: var(--color-purple);
+}
+
+.logVerdict[data-status="approve-fix"],
+.reviewHistory [data-status="approve-fix"] {
   color: var(--color-green);
 }
 

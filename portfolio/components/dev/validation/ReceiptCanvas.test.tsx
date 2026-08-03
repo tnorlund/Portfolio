@@ -44,6 +44,8 @@ const receipt = (overrides: Partial<ValidationReceipt> = {}): ValidationReceipt 
     { section_type: "ITEMS", line_ids: [1], validation_status: "VALID" },
   ],
   summary: null,
+  dossier: null,
+  dossier_error: null,
   reviews: [],
   ...overrides,
 });
