@@ -1,8 +1,10 @@
 version: 2
+
 updates:
-  # Enable version updates for npm (JavaScript/TypeScript)
+  # Monitor every current and future npm manifest in the repository.
   - package-ecosystem: "npm"
-    directory: "/portfolio"
+    directories:
+      - "**/*"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
@@ -13,59 +15,34 @@ updates:
       prefix: "chore"
       include: "scope"
 
-  # Enable version updates for pip (Python)
+  # Monitor every current and future Python dependency manifest.
   - package-ecosystem: "pip"
-    directory: "/infra"
+    directories:
+      - "**/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 6
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Monitor base-image tags in Dockerfiles throughout the repository.
+  - package-ecosystem: "docker"
+    directories:
+      - "**/*"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
     labels:
       - "dependencies"
-      - "python"
+      - "component: infra"
     commit-message:
       prefix: "chore"
       include: "scope"
 
-  # Enable version updates for pip (Python) - receipt_layoutlm
-  - package-ecosystem: "pip"
-    directory: "/receipt_layoutlm"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-
-  # Enable version updates for pip (Python) - receipt_dynamo
-  - package-ecosystem: "pip"
-    directory: "/receipt_dynamo"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-
-  # Enable version updates for pip (Python) - receipt_upload
-  - package-ecosystem: "pip"
-    directory: "/receipt_upload"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-
-  # Enable version updates for GitHub Actions
+  # Monitor actions and reusable workflows under .github/workflows.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -73,8 +50,6 @@ updates:
     open-pull-requests-limit: 2
     labels:
       - "dependencies"
-      - "github-actions"
     commit-message:
       prefix: "ci"
       include: "scope"
-
