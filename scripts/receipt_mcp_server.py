@@ -4762,25 +4762,9 @@ def _evaluate_items_zone(words: list[dict], summary: dict, line_ids) -> dict:
     Discounts are excluded from the sum, matching the stream stage and
     scripts/repair_item_sections.evaluate.
     """
-    from receipt_upload.line_items.geometry import extract_items, reconcile
+    from receipt_upload.line_items.geometry import evaluate_items_zone
 
-    items, collapsed = extract_items(words, set(line_ids))
-    status, items_sum, baseline = reconcile(
-        [x for x in items if not x["is_discount"]], summary
-    )
-    delta = (
-        round(items_sum - baseline, 2)
-        if items_sum is not None and baseline is not None
-        else None
-    )
-    return {
-        "status": status,
-        "items_sum": items_sum,
-        "baseline": baseline,
-        "delta": delta,
-        "n_items": len(items),
-        "collapsed_banding": collapsed,
-    }
+    return evaluate_items_zone(words, summary, set(line_ids))
 
 
 async def get_receipt_line_items_impl(
@@ -4898,10 +4882,6 @@ async def extend_items_section_impl(
     from receipt_dynamo.entities.receipt_summary_record import (
         ReceiptSummaryRecord,
     )
-
-    # Guard ranking (strict improvement required to apply). Distinct from
-    # _RECON_SEVERITY: "no-baseline" is never rankable here.
-    guard_rank = {"match": 0, "near": 1, "mismatch": 2}
 
     try:
         try:
@@ -5041,36 +5021,14 @@ async def extend_items_section_impl(
             "applied": False,
         }
 
-        if before["status"] == "match":
-            result["verified"] = False
-            result["refusal"] = (
-                "Current ITEMS zone already reconciles (match); nothing "
-                "to repair."
-            )
-            return result
-        if (
-            before["status"] not in guard_rank
-            or after["status"] not in guard_rank
-            or before["delta"] is None
-            or after["delta"] is None
-        ):
-            result["verified"] = False
-            result["refusal"] = (
-                "Cannot verify the extension: reconciliation did not "
-                "produce comparable deltas for both zones."
-            )
-            return result
+        from receipt_upload.line_items.geometry import (
+            items_boundary_extension_guard,
+        )
 
-        shrinks = abs(after["delta"]) < abs(before["delta"])
-        improves = guard_rank[after["status"]] < guard_rank[before["status"]]
-        if not (shrinks and improves):
+        verified, refusal = items_boundary_extension_guard(before, after)
+        if not verified:
             result["verified"] = False
-            result["refusal"] = (
-                "Arithmetic guard failed: extension must strictly shrink "
-                f"|delta| (before {before['delta']}, after "
-                f"{after['delta']}) AND improve status (before "
-                f"{before['status']!r}, after {after['status']!r})."
-            )
+            result["refusal"] = refusal
             return result
 
         result["verified"] = True

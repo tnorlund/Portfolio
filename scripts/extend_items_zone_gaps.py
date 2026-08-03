@@ -76,6 +76,8 @@ sys.path.insert(
     ),
 )
 
+# isort: off
+# Script-local and editable imports group differently across the two CI venvs.
 import boto3  # noqa: E402
 from extract_line_items import _query_all, fetch_receipt_records  # noqa: E402
 from repair_item_sections import (  # noqa: E402
@@ -95,6 +97,8 @@ from receipt_upload.line_items.geometry import (  # noqa: E402
     band_words,
     parse_band,
 )
+
+# isort: on
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
 PROD_MARKER = "d7ff76a"
