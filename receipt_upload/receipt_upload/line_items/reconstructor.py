@@ -20,6 +20,7 @@ import statistics
 from datetime import datetime, timezone
 from typing import Dict, List, Set, Tuple
 
+from receipt_dynamo.amounts import GRAND_TOTAL_DISQUALIFIER_TOKENS
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
@@ -38,24 +39,9 @@ _GRAND_TOTAL_KEYWORDS = frozenset(
 )
 # Tokens that turn a "total" row into a non-monetary count/summary row (e.g.
 # "TOTAL NUMBER OF ITEMS SOLD"), which must NOT anchor a grand-total election.
-_GRAND_TOTAL_DISQUALIFIERS = frozenset(
-    {
-        "number",
-        "items",
-        "item",
-        "qty",
-        "quantity",
-        "count",
-        "sold",
-        "transactions",
-        "transaction",
-        "pieces",
-        "units",
-        "lines",
-        "savings",
-        "saved",
-    }
-)
+# Canonical copy lives in receipt_dynamo.amounts, shared with the
+# ReceiptSummary printed-total fallback.
+_GRAND_TOTAL_DISQUALIFIERS = GRAND_TOTAL_DISQUALIFIER_TOKENS
 _PROPOSED_BY = "geometry_line_items"
 _RECLASS_BY = "arithmetic_totals_reclass"
 

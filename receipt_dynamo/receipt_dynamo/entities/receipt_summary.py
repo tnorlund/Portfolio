@@ -20,6 +20,14 @@ from datetime import datetime
 from math import isfinite
 from typing import TYPE_CHECKING
 
+from receipt_dynamo.amounts import (
+    NON_PAYMENT_SUMMARY_RE,
+    SUBTOTAL_KEYWORD_RE,
+    TAX_KEYWORD_RE,
+    is_grand_total_line,
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.identifier_mixins import ReceiptIdentifierMixin
 from receipt_dynamo.entities.util import validate_non_negative_int
@@ -31,6 +39,12 @@ if TYPE_CHECKING:
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
+
+# Allowed values for the optional tender / bank-match fields.
+VALID_TENDER_CLASSES = frozenset({"cash", "card", "unknown"})
+VALID_LEDGERS = frozenset({"chase", "apple", "none"})
+
+_LAST4_RE = re.compile(r"^\d{4}$")
 
 
 @dataclass
@@ -353,6 +367,157 @@ def _extract_summary_fields(
 
 
 # =============================================================================
+# Label-independent printed-total fallback
+# =============================================================================
+
+# Minimum same-row y tolerance (normalized units). Receipt OCR splits a
+# summary row into separate "lines" per column ("Total:" on one line,
+# "USD$ 42.54" on another), so row membership is decided by y-band overlap
+# rather than line_id adjacency.
+_MIN_ROW_BAND = 0.005
+
+
+def _word_y_center(word: "ReceiptWord") -> float | None:
+    """Return the normalized y-center of a word, or None without geometry."""
+    box = getattr(word, "bounding_box", None)
+    if not box:
+        return None
+    y = box.get("y")
+    if y is None:
+        return None
+    return y + (box.get("height") or 0.0) / 2.0
+
+
+def _word_height(word: "ReceiptWord") -> float:
+    """Return the normalized height of a word (0.0 without geometry)."""
+    box = getattr(word, "bounding_box", None)
+    if not box:
+        return 0.0
+    return box.get("height") or 0.0
+
+
+def _positive_amount(text: str) -> float | None:
+    """Parse text as a positive printed amount, else None.
+
+    Requires amount-like punctuation (decimals or a currency symbol) so
+    bare integers such as store numbers never qualify.
+    """
+    if not looks_like_receipt_amount(text):
+        return None
+    value = parse_receipt_amount(text)
+    if value is None or value <= 0:
+        return None
+    return value
+
+
+def _is_summary_noise_line(line_text: str) -> bool:
+    """Return whether a line is a subtotal/tax/non-payment summary row."""
+    return bool(
+        SUBTOTAL_KEYWORD_RE.search(line_text)
+        or TAX_KEYWORD_RE.search(line_text)
+        or NON_PAYMENT_SUMMARY_RE.search(line_text)
+    )
+
+
+def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
+    """Find the printed grand total from receipt words, without labels.
+
+    Deterministic fallback for receipts whose GRAND_TOTAL labels are
+    missing or attached to the wrong words (the evaluator then rejects
+    them and the summary is left with no total even though one is
+    printed). Sprouts is the canonical case: it prints "Total:" /
+    "BALANCE DUE" and "USD$ 42.54" as separate OCR lines in the same
+    visual row.
+
+    Strategy:
+    1. Find anchor lines whose joined text reads as a grand-total row
+       (shared ``is_grand_total_line`` keywords).
+    2. Take amounts printed on the anchor line itself; otherwise pair the
+       anchor with amount words on other lines whose y-center falls in
+       the anchor's row band (skipping subtotal/tax/savings rows).
+    3. Return the largest anchored amount, mirroring the GRAND_TOTAL
+       label handler's largest-value semantics.
+
+    Args:
+        words: ReceiptWord records (text + normalized bounding boxes).
+
+    Returns:
+        The printed grand total, or None when no anchored amount exists.
+    """
+    lines: dict[int, list["ReceiptWord"]] = {}
+    for word in words:
+        line_id = getattr(word, "line_id", None)
+        if line_id is None:
+            continue
+        lines.setdefault(line_id, []).append(word)
+    for line_words in lines.values():
+        line_words.sort(key=lambda w: getattr(w, "word_id", 0))
+    line_texts = {
+        line_id: " ".join(str(getattr(w, "text", "")) for w in line_words)
+        for line_id, line_words in lines.items()
+    }
+
+    anchor_ids = [
+        line_id
+        for line_id, text in line_texts.items()
+        if is_grand_total_line(text)
+    ]
+    if not anchor_ids:
+        return None
+
+    anchored: list[float] = []
+    for anchor_id in anchor_ids:
+        anchor_words = lines[anchor_id]
+
+        # Amounts printed on the anchor line itself win outright.
+        same_line = [
+            amount
+            for w in anchor_words
+            if (amount := _positive_amount(str(getattr(w, "text", ""))))
+            is not None
+        ]
+        if same_line:
+            anchored.extend(same_line)
+            continue
+
+        # Pair with amount words in the anchor's y-band on other lines.
+        centers = [
+            c for w in anchor_words if (c := _word_y_center(w)) is not None
+        ]
+        if not centers:
+            continue
+        anchor_y = sum(centers) / len(centers)
+        anchor_height = max(_word_height(w) for w in anchor_words)
+        band = max(0.6 * anchor_height, _MIN_ROW_BAND)
+
+        for line_id, line_words in lines.items():
+            if line_id == anchor_id:
+                continue
+            if _is_summary_noise_line(line_texts[line_id]):
+                continue
+            for w in line_words:
+                center = _word_y_center(w)
+                if center is None or abs(center - anchor_y) > band:
+                    continue
+                amount = _positive_amount(str(getattr(w, "text", "")))
+                if amount is not None:
+                    anchored.append(amount)
+
+    return max(anchored) if anchored else None
+
+
+def _apply_printed_total_fallback(
+    totals: MonetaryTotals, words: list["ReceiptWord"]
+) -> None:
+    """Fill grand_total from the printed total when labels produced none."""
+    if totals.grand_total is not None and totals.grand_total > 0:
+        return
+    printed = find_printed_grand_total(words)
+    if printed is not None:
+        totals.grand_total = printed
+
+
+# =============================================================================
 # ReceiptSummary dataclass
 # =============================================================================
 
@@ -371,6 +536,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         date: Date of the receipt (parsed from DATE label).
         totals: Grouped monetary totals (grand_total, subtotal, tax, tip).
         item_count: Number of line items (count of LINE_TOTAL labels).
+        tender_class: How the receipt was paid -- ``cash``, ``card`` or
+            ``unknown`` (None when tender was never classified).
+        card_network: Card network printed on the receipt
+            (e.g. ``VISA``, ``MASTERCARD``), when card-tendered.
+        card_last4: Last four PAN digits printed on the receipt.
+        ledger: Which bank ledger this receipt's card belongs to --
+            ``chase``, ``apple`` or ``none`` (None when unknown).
+        bank_amount: Settled amount from the matched bank transaction.
+        bank_match_confidence: Confidence of the bank match in [0, 1].
     """
 
     image_id: str
@@ -379,6 +553,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
     date: datetime | None = None
     totals: MonetaryTotals = field(default_factory=MonetaryTotals)
     item_count: int = 0
+    tender_class: str | None = None
+    card_network: str | None = None
+    card_last4: str | None = None
+    ledger: str | None = None
+    bank_amount: float | None = None
+    bank_match_confidence: float | None = None
 
     def __post_init__(self) -> None:
         """Validate identifiers and computed summary fields."""
@@ -392,6 +572,50 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         if not isinstance(self.totals, MonetaryTotals):
             raise ValueError("totals must be a MonetaryTotals object")
         validate_non_negative_int("item_count", self.item_count)
+        self._validate_tender_fields()
+
+    def _validate_tender_fields(self) -> None:
+        """Validate the optional tender / bank-match fields."""
+        if (
+            self.tender_class is not None
+            and self.tender_class not in VALID_TENDER_CLASSES
+        ):
+            raise ValueError(
+                "tender_class must be one of "
+                f"{sorted(VALID_TENDER_CLASSES)} or None"
+            )
+        if self.card_network is not None and not isinstance(
+            self.card_network, str
+        ):
+            raise ValueError("card_network must be a string or None")
+        if self.card_last4 is not None and (
+            not isinstance(self.card_last4, str)
+            or not _LAST4_RE.match(self.card_last4)
+        ):
+            raise ValueError("card_last4 must be a 4-digit string or None")
+        if self.ledger is not None and self.ledger not in VALID_LEDGERS:
+            raise ValueError(
+                f"ledger must be one of {sorted(VALID_LEDGERS)} or None"
+            )
+        for field_name in ("bank_amount", "bank_match_confidence"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
+            if not isfinite(value):
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
+            setattr(self, field_name, float(value))
+        if self.bank_match_confidence is not None and not (
+            0.0 <= self.bank_match_confidence <= 1.0
+        ):
+            raise ValueError(
+                "bank_match_confidence must be within [0, 1] or None"
+            )
 
     # Convenience properties for backwards compatibility
     @property
@@ -447,6 +671,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         totals, date, item_count = _extract_summary_fields(
             word_labels, word_text_lookup
         )
+        _apply_printed_total_fallback(totals, words)
 
         return cls(
             image_id=receipt.image_id,
@@ -465,6 +690,13 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         merchant_name: str | None,
         word_labels: list["ReceiptWordLabel"],
         words: list["ReceiptWord"],
+        *,
+        tender_class: str | None = None,
+        card_network: str | None = None,
+        card_last4: str | None = None,
+        ledger: str | None = None,
+        bank_amount: float | None = None,
+        bank_match_confidence: float | None = None,
     ) -> "ReceiptSummary":
         """Compute a summary from word labels and words directly.
 
@@ -477,6 +709,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             merchant_name: Merchant name (if known).
             word_labels: List of ReceiptWordLabel records.
             words: List of ReceiptWord records.
+            tender_class: Optional tender class (cash/card/unknown).
+            card_network: Optional card network.
+            card_last4: Optional last four PAN digits.
+            ledger: Optional bank ledger (chase/apple/none).
+            bank_amount: Optional matched bank transaction amount.
+            bank_match_confidence: Optional match confidence in [0, 1].
 
         Returns:
             A ReceiptSummary with computed fields.
@@ -490,6 +728,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         totals, date, item_count = _extract_summary_fields(
             word_labels, word_text_lookup
         )
+        _apply_printed_total_fallback(totals, words)
 
         return cls(
             image_id=image_id,
@@ -498,6 +737,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             date=date,
             totals=totals,
             item_count=item_count,
+            tender_class=tender_class,
+            card_network=card_network,
+            card_last4=card_last4,
+            ledger=ledger,
+            bank_amount=bank_amount,
+            bank_match_confidence=bank_match_confidence,
         )
 
     def to_dict(self) -> dict:
@@ -512,6 +757,12 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             "merchant_name": self.merchant_name,
             "date": self.date.isoformat() if self.date else None,
             "item_count": self.item_count,
+            "tender_class": self.tender_class,
+            "card_network": self.card_network,
+            "card_last4": self.card_last4,
+            "ledger": self.ledger,
+            "bank_amount": self.bank_amount,
+            "bank_match_confidence": self.bank_match_confidence,
         }
         result.update(self.totals.to_dict())
         return result

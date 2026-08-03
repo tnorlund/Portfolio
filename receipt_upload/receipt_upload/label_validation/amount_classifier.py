@@ -6,18 +6,16 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-from receipt_dynamo.amounts import parse_receipt_amount
-
-_TOTAL_RE = re.compile(r"\b(total|amount\s+due|balance|authorized)\b", re.I)
-_SUBTOTAL_RE = re.compile(r"\bsub[-\s]?total\b", re.I)
-_TAX_RE = re.compile(r"\b(tax|vat)\b", re.I)
-_NON_PAYMENT_SUMMARY_RE = re.compile(
-    r"\b("
-    r"savings?|discounts?|refunds?|returns?|coupons?|promos?|"
-    r"promotion|rewards?|loyalty|cash\s+back|cashback|store\s+credit"
-    r")\b",
-    re.I,
+from receipt_dynamo.amounts import (
+    NON_PAYMENT_SUMMARY_RE as _NON_PAYMENT_SUMMARY_RE,
 )
+from receipt_dynamo.amounts import SUBTOTAL_KEYWORD_RE as _SUBTOTAL_RE
+from receipt_dynamo.amounts import TAX_KEYWORD_RE as _TAX_RE
+from receipt_dynamo.amounts import TOTAL_KEYWORD_RE as _TOTAL_RE
+from receipt_dynamo.amounts import (
+    parse_receipt_amount,
+)
+
 _SUMMARY_RE = re.compile(
     r"\b("
     r"total|sub[-\s]?total|tax|vat|amount\s+due|balance|authorized|"
