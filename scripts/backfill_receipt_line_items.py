@@ -33,6 +33,7 @@ from extract_line_items import (  # noqa: E402
     fetch_receipt_records,
     reconcile_detailed,
 )
+
 from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 from receipt_dynamo.entities.receipt_line_item import (  # noqa: E402
     ReceiptLineItem,

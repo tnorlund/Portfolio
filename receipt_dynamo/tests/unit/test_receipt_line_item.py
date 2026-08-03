@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.receipt_line_item import (
     ReceiptLineItem,
     item_to_receipt_line_item,
