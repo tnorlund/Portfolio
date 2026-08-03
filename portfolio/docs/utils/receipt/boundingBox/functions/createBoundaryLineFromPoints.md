@@ -8,7 +8,7 @@
 
 > **createBoundaryLineFromPoints**(`point1`, `point2`): [`BoundaryLine`](../interfaces/BoundaryLine.md)
 
-Defined in: [utils/receipt/boundingBox.ts:676](https://github.com/tnorlund/Portfolio/blob/0482ad83dd03ad3dccb8e1e6880b0fdb00475ed7/portfolio/utils/receipt/boundingBox.ts#L676)
+Defined in: [utils/receipt/boundingBox.ts:676](https://github.com/tnorlund/Portfolio/blob/71f2f16e7d0a36ce905b3328c6b63799616ecc66/portfolio/utils/receipt/boundingBox.ts#L676)
 
 Create a boundary line from two points.
 
