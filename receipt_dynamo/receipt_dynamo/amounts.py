@@ -30,6 +30,18 @@ NON_PAYMENT_SUMMARY_RE = re.compile(
     r")\b",
     re.I,
 )
+# Settlement/tender vocabulary that can collide with TOTAL_KEYWORD_RE
+# ("Total Tender", "Amount Tendered", "Cash Total", "Change Due").
+# These rows record how the customer PAID -- tender can include tip and
+# cash-given, change is money returned -- never what the receipt
+# totals, so they must not anchor a printed grand total (Moody Market
+# a8d7ab9f r4: "Total Tender 24.67" = total 21.45 + tips 3.22 outranked
+# the plain "Total 21.45" row). Minimal mirror of the canonical
+# settlement vocabulary in receipt_upload.line_items.geometry
+# .SETTLEMENT_RE; receipt_dynamo sits below receipt_upload in the
+# dependency graph, so the colliding subset is mirrored here rather
+# than imported.
+TENDER_KEYWORD_RE = re.compile(r"\b(tender(?:ed)?|cash|change)\b", re.I)
 # Tokens that turn a "total" row into a non-monetary count/summary row
 # (e.g. "TOTAL NUMBER OF ITEMS SOLD"), which must NOT be read as a
 # grand-total row.
