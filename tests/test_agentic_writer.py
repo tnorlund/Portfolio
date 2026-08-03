@@ -369,10 +369,12 @@ def test_true_divergence_halts_immediately(tmp_path):
     assert report["divergence"]["poll_attempts"] == 1
 
 
-def test_halt_when_guard_refuses_at_write_time(tmp_path):
+def test_halt_when_stale_superset_does_not_reconcile(tmp_path):
     # Adjudicated against a stale world: line 3 is already inside the
-    # section, so the write-time dry run refuses and the run halts
-    # without writing anything.
+    # section but the stored reconciliation is still the pre-apply one,
+    # so the run halts (with the sharper applied-previously-diverged
+    # kind) without writing anything. A refusal with NO prior apply is
+    # covered by test_refusal_without_prior_apply_still_halts.
     world = MutableWorld()
     world.sections = [_items_section([1, 2, 3])]
     rc = _run(tmp_path, world, [_verdict()])
@@ -380,7 +382,9 @@ def test_halt_when_guard_refuses_at_write_time(tmp_path):
     report = json.loads(
         (tmp_path / "verdicts" / "p1.divergence.json").read_text()
     )
-    assert report["divergence"]["kind"] == "guard-refusal"
+    assert report["divergence"]["kind"] == "applied-previously-diverged"
+    assert report["divergence"]["observed_delta"] == -4.0
+    assert report["divergence"]["predicted_delta"] == 0.0
     assert world.summary_updates == []
 
 
@@ -394,6 +398,108 @@ def test_divergence_halts_remaining_entries(tmp_path):
         (tmp_path / "verdicts" / "p1.divergence.json").read_text()
     )
     assert len(report["remaining_unapplied"]) == 1
+
+
+# --------------------------------------------------------------------------
+# Re-run idempotency (pass-20260803 lesson): a re-run over a partially
+# applied pass must classify already-applied entries as skipped
+# 'applied-previously' and continue — unless the section is a superset
+# but the reconciliation does NOT match the prediction, which is real.
+# --------------------------------------------------------------------------
+
+
+class _TwoReceiptWorld:
+    """Routes calls to per-receipt MutableWorlds.
+
+    Getters carry (image_id, receipt_id) so they dispatch directly;
+    update_* calls carry only the entity, so they route to the receipt
+    of the most recent getter — sound here because the writer is
+    strictly serial (one receipt at a time).
+    """
+
+    def __init__(self, worlds):
+        self.worlds = worlds
+        self._current = None
+
+    def _get(self, name, image_id, receipt_id):
+        self._current = int(receipt_id)
+        return getattr(self.worlds[self._current], name)(image_id, receipt_id)
+
+    def get_receipt_details(self, image_id, receipt_id):
+        return self._get("get_receipt_details", image_id, receipt_id)
+
+    def get_receipt_sections_from_receipt(self, image_id, receipt_id):
+        return self._get(
+            "get_receipt_sections_from_receipt", image_id, receipt_id
+        )
+
+    def get_receipt_summary(self, image_id, receipt_id):
+        return self._get("get_receipt_summary", image_id, receipt_id)
+
+    def get_receipt_line_items_from_receipt(self, image_id, receipt_id):
+        return self._get(
+            "get_receipt_line_items_from_receipt", image_id, receipt_id
+        )
+
+    def update_receipt_section(self, section):
+        self.worlds[self._current].update_receipt_section(section)
+
+    def update_receipt_summary(self, record):
+        self.worlds[self._current].update_receipt_summary(record)
+
+
+def _post_applied_world():
+    """A world where the [3] extension already landed and confirmed."""
+    world = MutableWorld()
+    world.sections = [_items_section([1, 2, 3])]
+    world.line_items = world._items_for([1, 2, 3])
+    return world
+
+
+def test_rerun_skips_applied_entry_and_continues(tmp_path, capsys):
+    # Receipt 1 was applied+confirmed by the previous (halted) run;
+    # receipt 2 was never reached. The re-run must skip 1 and apply 2.
+    worlds = {1: _post_applied_world(), 2: MutableWorld()}
+    client = _TwoReceiptWorld(worlds)
+    second = _verdict()
+    second["receipt_id"] = 2
+    rc = _run(tmp_path, client, [_verdict(), second])
+    assert rc == 0
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["skipped"][0]["skip_reason"] == "applied-previously"
+    assert summary["skipped"][0]["receipt_id"] == 1
+    (record,) = summary["applied"]
+    assert record["receipt_id"] == 2
+    assert record["confirmed"] is True
+    # Receipt 1 was not re-written.
+    assert worlds[1].summary_updates == []
+    assert worlds[2].summary_updates != []
+
+
+def test_refusal_without_prior_apply_still_halts(tmp_path):
+    # Guard refusal where the section does NOT contain the added lines
+    # (e.g. line claimed by another section) stays a guard-refusal halt.
+    from receipt_dynamo.entities.receipt_section import ReceiptSection
+
+    world = MutableWorld()
+    world.sections.append(
+        ReceiptSection(
+            receipt_id=1,
+            image_id=IMAGE_ID,
+            section_type="SUMMARY",
+            line_ids=[3],
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            model_source="seed",
+            validation_status="NONE",
+        )
+    )
+    rc = _run(tmp_path, world, [_verdict()])
+    assert rc == 2
+    report = json.loads(
+        (tmp_path / "verdicts" / "p1.divergence.json").read_text()
+    )
+    assert report["divergence"]["kind"] == "guard-refusal"
 
 
 # --------------------------------------------------------------------------

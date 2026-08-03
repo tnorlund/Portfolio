@@ -287,6 +287,77 @@ def _stamp_provenance(client, image_id: str, receipt_id: int) -> str:
     return model_source
 
 
+def _applied_previously(
+    mcp_server, client, entry: dict[str, Any], where: dict[str, Any]
+) -> Optional[dict[str, Any]]:
+    """Skip-record when this entry's extension is already in place.
+
+    A previous (possibly halted) run of the same pass may have applied
+    and confirmed some entries; the guard then refuses them on re-run
+    ("already in the ITEMS section" / "already reconciles"). That is
+    idempotent success, not divergence — IF the current world matches
+    the prediction: the ITEMS section must contain every add_line_id
+    AND the current reconciliation must equal the predicted post-state
+    (delta to the cent; status when both sides carry one). A superset
+    section whose reconciliation does NOT match the prediction is a
+    real halt.
+
+    Returns a skip record ('skip_reason': 'applied-previously'), None
+    when the extension is simply not applied (genuine refusal), or
+    raises DivergenceError for the superset-but-diverged case.
+    """
+    proposal = entry.get("proposal") or {}
+    add = {int(x) for x in proposal.get("add_line_ids") or []}
+    predicted = proposal.get("after") or {}
+    view = _run(
+        mcp_server.get_receipt_line_items_impl(
+            client, where["image_id"], where["receipt_id"]
+        )
+    )
+    current = {int(x) for x in view.get("items_section_line_ids") or []}
+    if not add or not add <= current:
+        return None  # not previously applied; the refusal stands
+
+    predicted_delta = predicted.get("delta")
+    predicted_status = predicted.get("status")
+    observed_delta = view.get("delta")
+    observed_status = view.get("reconciliation_status")
+    delta_ok = (
+        observed_delta is not None
+        and predicted_delta is not None
+        and abs(observed_delta - predicted_delta) < DELTA_CONFIRM_TOLERANCE
+    )
+    status_ok = (
+        observed_status is None
+        or predicted_status is None
+        or observed_status == predicted_status
+    )
+    if delta_ok and status_ok:
+        return {
+            **where,
+            "add_line_ids": sorted(add),
+            "skip_reason": "applied-previously",
+            "predicted_status": predicted_status,
+            "predicted_delta": predicted_delta,
+            "observed_delta": observed_delta,
+            "applied": False,
+            "confirmed": True,
+        }
+    raise DivergenceError(
+        "section already contains the extension but reconciliation "
+        "does not match the prediction",
+        {
+            **where,
+            "kind": "applied-previously-diverged",
+            "add_line_ids": sorted(add),
+            "predicted_status": predicted_status,
+            "predicted_delta": predicted_delta,
+            "observed_status": observed_status,
+            "observed_delta": observed_delta,
+        },
+    )
+
+
 def apply_one(
     mcp_server,
     client,
@@ -313,6 +384,13 @@ def apply_one(
         )
     )
     if dry.get("error") or not dry.get("verified"):
+        # Re-run idempotency (pass-20260803 lesson): a refusal on a
+        # receipt this pass ALREADY applied and confirmed is not a
+        # divergence — verify and skip it, so a partially-applied pass
+        # can be re-run without a run-wide halt.
+        prior = _applied_previously(mcp_server, client, entry, where)
+        if prior is not None:
+            return prior
         raise DivergenceError(
             "guard refused at write time (world changed since "
             "adjudication)",
@@ -483,17 +561,21 @@ def run_apply(
                 skipped.append({**entry, "skip_reason": f"frozen:{marker}"})
                 continue
             try:
-                applied_records.append(
-                    apply_one(
-                        mcp_server,
-                        client,
-                        entry,
-                        apply=apply,
-                        poll_attempts=poll_attempts,
-                        poll_interval=poll_interval,
-                        sleep=sleep,
-                    )
+                outcome = apply_one(
+                    mcp_server,
+                    client,
+                    entry,
+                    apply=apply,
+                    poll_attempts=poll_attempts,
+                    poll_interval=poll_interval,
+                    sleep=sleep,
                 )
+                if outcome.get("skip_reason"):
+                    # e.g. applied-previously: idempotent re-run of a
+                    # partially-applied pass; continue, don't halt.
+                    skipped.append(outcome)
+                else:
+                    applied_records.append(outcome)
             except DivergenceError as exc:
                 report = {
                     "pass_id": pass_id,
