@@ -70,7 +70,9 @@ PROD_TABLE_FRAGMENT = "d7ff76a"  # hard refusal; this loop is dev-only
 PROVENANCE_SUFFIX = "agentic-vision-v1"
 DELTA_CONFIRM_TOLERANCE = 0.005
 
-DEFAULT_POLL_ATTEMPTS = 10
+# pass-20260803 measured ~33s from summary bump to the stream stage's
+# recompute landing (SQS batching); 10 x 3s lost that race by 3 seconds.
+DEFAULT_POLL_ATTEMPTS = 30
 DEFAULT_POLL_INTERVAL = 3.0
 
 
@@ -358,7 +360,22 @@ def apply_one(
     # The apply bumped the summary timestamp; the stream stage now
     # regenerates the line items. Wait for it, then CONFIRM the delta
     # landed exactly as the dry run predicted.
+    #
+    # Three observable states, learned from the pass-20260803 halt on
+    # 112ed08b (stream latency ~33s beat the old 30s window by 3s):
+    #   observed == predicted  -> confirmed.
+    #   observed == before     -> the stream has NOT landed yet (stored
+    #                             rows are still the pre-apply ones);
+    #                             keep polling, this refutes nothing.
+    #   anything else          -> the world moved somewhere the dry run
+    #                             did not predict: a TRUE divergence,
+    #                             halt immediately (no point waiting).
+    # Exhausting the window while still stale is reported as
+    # confirmation-timeout, not delta-divergence — the prediction was
+    # never refuted, the stream was just slower than the window.
     predicted_delta = predicted.get("delta")
+    before_delta = (dry.get("before") or {}).get("delta")
+    record["before_delta"] = before_delta
     observed_delta = None
     for attempt in range(poll_attempts):
         if attempt:
@@ -377,14 +394,35 @@ def apply_one(
             record["confirmed"] = True
             record["observed_delta"] = observed_delta
             return record
+        stale = observed_delta is None or (
+            before_delta is not None
+            and abs(observed_delta - before_delta) < DELTA_CONFIRM_TOLERANCE
+        )
+        if not stale:
+            raise DivergenceError(
+                "post-apply delta diverged from the dry-run prediction",
+                {
+                    **where,
+                    "kind": "delta-divergence",
+                    "add_line_ids": add_line_ids,
+                    "predicted_delta": predicted_delta,
+                    "before_delta": before_delta,
+                    "observed_delta": observed_delta,
+                    "poll_attempts": attempt + 1,
+                },
+            )
 
     raise DivergenceError(
-        "post-apply delta diverged from the dry-run prediction",
+        "stream regeneration did not land inside the poll window "
+        "(stored deltas are still pre-apply; the prediction was not "
+        "refuted — widen --poll-attempts/--poll-interval or re-check "
+        "this receipt before re-running)",
         {
             **where,
-            "kind": "delta-divergence",
+            "kind": "confirmation-timeout",
             "add_line_ids": add_line_ids,
             "predicted_delta": predicted_delta,
+            "before_delta": before_delta,
             "observed_delta": observed_delta,
             "poll_attempts": poll_attempts,
         },
