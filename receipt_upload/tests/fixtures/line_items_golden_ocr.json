@@ -13803,6 +13803,109 @@
      "h": 0.013035
     }
    ]
+  },
+  {
+   "image_id": "49d8fde2-7ffd-4913-a9c0-6731e74fa147",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "items_line_ids": [
+    14,
+    15
+   ],
+   "words": [
+    {
+     "line_id": 15,
+     "word_id": 1,
+     "text": "17.99",
+     "x": 0.783173,
+     "y_mid": 0.725511,
+     "h": 0.013119
+    },
+    {
+     "line_id": 14,
+     "word_id": 3,
+     "text": "MILK",
+     "x": 0.27425,
+     "y_mid": 0.725568,
+     "h": 0.010879
+    },
+    {
+     "line_id": 14,
+     "word_id": 2,
+     "text": "WHOLE",
+     "x": 0.1325,
+     "y_mid": 0.725581,
+     "h": 0.010853
+    },
+    {
+     "line_id": 14,
+     "word_id": 1,
+     "text": "RAW",
+     "x": 0.0375,
+     "y_mid": 0.725568,
+     "h": 0.010879
+    }
+   ]
+  },
+  {
+   "image_id": "9cf39343-8eb3-4fdb-bcea-843d6388b8d2",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "items_line_ids": [
+    34,
+    35,
+    36
+   ],
+   "words": [
+    {
+     "line_id": 35,
+     "word_id": 4,
+     "text": "MILK",
+     "x": 0.429688,
+     "y_mid": 0.545942,
+     "h": 0.017539
+    },
+    {
+     "line_id": 35,
+     "word_id": 2,
+     "text": "FF",
+     "x": 0.163649,
+     "y_mid": 0.539932,
+     "h": 0.016436
+    },
+    {
+     "line_id": 35,
+     "word_id": 1,
+     "text": "ORG",
+     "x": 0.076674,
+     "y_mid": 0.538106,
+     "h": 0.0172
+    },
+    {
+     "line_id": 36,
+     "word_id": 1,
+     "text": "8.49",
+     "x": 0.783465,
+     "y_mid": 0.551599,
+     "h": 0.015988
+    },
+    {
+     "line_id": 34,
+     "word_id": 1,
+     "text": "DAIRY",
+     "x": 0.055118,
+     "y_mid": 0.554506,
+     "h": 0.018895
+    },
+    {
+     "line_id": 35,
+     "word_id": 3,
+     "text": "GRASSFED",
+     "x": 0.230159,
+     "y_mid": 0.54282,
+     "h": 0.019325
+    }
+   ]
   }
  ]
 }

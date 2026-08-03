@@ -77,7 +77,9 @@ def _score_receipt(
 # (+70 items corpus-wide): over-generation is invisible to recall and
 # names, so it must be gated explicitly.
 _FLOORS = {
-    "Sprouts Farmers Market": (1.00, 0.85, 0.95),
+    # Name floor raised 0.85 -> 0.90 with the 2026-08-03 agent-originated
+    # promotions (two single-item Sprouts receipts, measured names 0.949).
+    "Sprouts Farmers Market": (1.00, 0.90, 0.95),
     "Roast & Rice Asian Fusion": (1.00, 1.00, 0.95),
     "TRADER JOE'S": (1.00, 1.00, 0.95),
     "Trader Joe's": (1.00, 1.00, 0.95),

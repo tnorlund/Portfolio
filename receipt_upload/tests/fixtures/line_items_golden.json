@@ -3060,6 +3060,52 @@
      "is_discount": false
     }
    ]
+  },
+  {
+   "image_id": "49d8fde2-7ffd-4913-a9c0-6731e74fa147",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "17.99",
+   "items_sum": "17.99",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "no printed subtotal/tax; single item equals BALANCE DUE / CREDIT / EMV Total 17.99 exactly, and the bank settlement 17.99 (conf 0.95) agrees to the cent. Store header block is printed twice (scanner artifact); body printed once.",
+   "true_items": [
+    {
+     "name": "RAW WHOLE MILK",
+     "price": "17.99",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      14,
+      15
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "9cf39343-8eb3-4fdb-bcea-843d6388b8d2",
+   "receipt_id": 1,
+   "merchant": "Sprouts Farmers Market",
+   "printed_subtotal": null,
+   "printed_total": "8.49",
+   "items_sum": "8.49",
+   "sum_matches_subtotal": true,
+   "reconcile_note": "no printed subtotal/tax; single item equals BALANCE DUE / DEBIT / EMV Total 8.49 exactly, and the bank settlement 8.49 (conf 0.90) agrees to the cent.",
+   "true_items": [
+    {
+     "name": "ORG FF GRASSFED MILK",
+     "price": "8.49",
+     "quantity": null,
+     "unit_price": null,
+     "line_ids": [
+      35,
+      36
+     ],
+     "is_discount": false
+    }
+   ]
   }
  ]
 }
