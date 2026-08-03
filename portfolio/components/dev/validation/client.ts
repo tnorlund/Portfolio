@@ -1,7 +1,11 @@
 // Dev-only client for the local validation shim, proxied by the
 // /api/validation/:path* rewrite that next.config.js adds in dev.
 import {
-  MerchantsResponse,
+  ApproveResponse,
+  AuditDeckResponse,
+  AuditReceipt,
+  AuditReviewResponse,
+  DigestResponse,
   QueuesResponse,
   ReviewEntry,
   ReviewLogResponse,
@@ -39,26 +43,38 @@ const getJson = async <T>(url: string): Promise<T> => {
   return payload as T;
 };
 
-export const fetchMerchants = (refresh = false): Promise<MerchantsResponse> =>
-  getJson(`${BASE}/merchants${refresh ? "?refresh=1" : ""}`);
+const postJson = async <T>(path: string, body: unknown): Promise<T> => {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(
+      `Could not reach the local validation shim to POST ${path}.`,
+    );
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = (await response.json()) as Record<string, unknown>;
+  } catch {
+    throw new Error(`${path} failed (${response.status}).`);
+  }
+  if (!response.ok || payload?.error) {
+    throw new Error(String(payload?.error ?? `${response.status} ${path}`));
+  }
+  return payload as T;
+};
 
 export const fetchQueues = (): Promise<QueuesResponse> =>
   getJson(`${BASE}/queues`);
 
-// A queue is an ordered file of ids; it replaces the merchant/status filters
-// rather than narrowing them, so the reviewer sees the curated sequence.
-export const fetchWorklist = (
-  merchant: string | null,
-  status: string,
-  limit = 1000,
-  queue: string | null = null,
-): Promise<WorklistResponse> =>
-  queue
-    ? getJson(`${BASE}/worklist?queue=${encodeURIComponent(queue)}`)
-    : getJson(
-        `${BASE}/worklist?status=${encodeURIComponent(status)}&limit=${limit}` +
-          (merchant ? `&merchant=${encodeURIComponent(merchant)}` : ""),
-      );
+// A queue is an ordered file of ids, written by the adjudicator when it
+// escalates. The escalation screen shows nothing else: there is no browse.
+export const fetchWorklist = (queue: string): Promise<WorklistResponse> =>
+  getJson(`${BASE}/worklist?queue=${encodeURIComponent(queue)}`);
 
 export const fetchReviews = (): Promise<ReviewLogResponse> =>
   getJson(`${BASE}/review`);
@@ -72,7 +88,7 @@ export const fetchReceipt = (
       `&receipt_id=${receiptId}`,
   );
 
-export const postReview = async (entry: {
+export interface ReviewPayload {
   image_id: string;
   receipt_id: number;
   verdict: ReviewVerdict;
@@ -82,25 +98,44 @@ export const postReview = async (entry: {
   merchant: string;
   status: string;
   delta: number | null;
-}): Promise<ReviewEntry> => {
-  let response: Response;
-  try {
-    response = await fetch(`${BASE}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-  } catch {
-    throw new Error("Could not reach the local validation shim to save review.");
-  }
-  let payload: Record<string, unknown>;
-  try {
-    payload = (await response.json()) as Record<string, unknown>;
-  } catch {
-    throw new Error(`Review save failed (${response.status}).`);
-  }
-  if (!response.ok || payload?.error) {
-    throw new Error(String(payload?.error ?? `${response.status} /review`));
-  }
-  return payload.entry as ReviewEntry;
-};
+  pass_id?: string | null;
+}
+
+export const postReview = async (
+  entry: ReviewPayload,
+): Promise<ReviewEntry> =>
+  (await postJson<{ entry: ReviewEntry }>("/review", entry)).entry;
+
+export const fetchDigest = (passId?: string | null): Promise<DigestResponse> =>
+  getJson(
+    `${BASE}/digest${passId ? `?pass_id=${encodeURIComponent(passId)}` : ""}`,
+  );
+
+export const postApprove = (
+  passId: string | null,
+  groupId: string,
+): Promise<ApproveResponse> =>
+  postJson("/approve", { pass_id: passId, group_id: groupId });
+
+export const fetchAuditDeck = (
+  passId?: string | null,
+): Promise<AuditDeckResponse> =>
+  getJson(
+    `${BASE}/audit${passId ? `?pass_id=${encodeURIComponent(passId)}` : ""}`,
+  );
+
+// The shim strips the agent's conclusions from this payload; the deck never
+// asks for them, so a UI bug cannot leak the verdict into a blind review.
+export const fetchAuditReceipt = (
+  imageId: string,
+  receiptId: number,
+): Promise<AuditReceipt> =>
+  getJson(
+    `${BASE}/audit?image_id=${encodeURIComponent(imageId)}` +
+      `&receipt_id=${receiptId}`,
+  );
+
+/** Commit a blind verdict; the response carries the reveal. */
+export const postAuditVerdict = (
+  entry: ReviewPayload,
+): Promise<AuditReviewResponse> => postJson("/review", entry);

@@ -14,10 +14,17 @@ image payloads reuse the deployed line_item_decode handler's helpers.
 Run:
     python portfolio/dev-harness/validation_shim.py [--port 8787]
 
-Agent work reaches the reviewer as files, never as rows: an ordered queue in
-``.dev-harness/queues/<name>.json`` and a per-receipt dossier in
-``.dev-harness/dossiers/<image_id>-<receipt_id>.json``. Both are read-only
-here; the review log is the only thing this process writes.
+Agent work reaches the reviewer as files, never as rows:
+
+    queues/<name>.json                 ordered escalation queue (T2)
+    dossiers/<image_id>-<receipt_id>.json   per-receipt scout analysis
+    verdicts/<pass-id>.jsonl           adjudicated verdicts, one per line
+    verdicts/<pass-id>/digest.json     optional pre-grouped batch digest
+
+Those four are read-only here. This process writes exactly three things:
+the review log, ``approvals/<pass-id>.json`` (which T1 groups the human
+signed off), and ``freeze/<class>`` markers (a failed blind audit, which
+the adjudicator and writer must respect before touching that class again).
 
 Environment:
     DYNAMODB_TABLE_NAME    defaults to the dev table, ReceiptsTable-dc5be22
@@ -31,7 +38,10 @@ import argparse
 import asyncio
 import importlib.util
 import json
+import math
 import os
+import random
+import re
 import sys
 import threading
 import time
@@ -81,6 +91,9 @@ HARNESS_DIR = Path(
 )
 DOSSIER_DIR = HARNESS_DIR / "dossiers"
 QUEUE_DIR = HARNESS_DIR / "queues"
+VERDICT_DIR = HARNESS_DIR / "verdicts"
+APPROVAL_DIR = HARNESS_DIR / "approvals"
+FREEZE_DIR = HARNESS_DIR / "freeze"
 REVIEW_LOG = Path(
     os.environ.get(
         "VALIDATION_REVIEW_LOG", str(HARNESS_DIR / "review_log.jsonl")
@@ -88,8 +101,22 @@ REVIEW_LOG = Path(
 )
 
 # confirm/flag are the reviewer's eyes; approve-fix queues the post-session
-# writer; golden promotes into the bank-proven fixture set.
-REVIEW_VERDICTS = ("confirm", "flag", "approve-fix", "golden")
+# writer; golden promotes into the bank-proven fixture set. The two audit
+# verdicts come from the blind deck and are the only ones that can freeze a
+# tier, so they are kept distinct from a plain confirm/flag.
+AUDIT_VERDICTS = ("audit-agree", "audit-disagree")
+REVIEW_VERDICTS = (
+    "confirm",
+    "flag",
+    "approve-fix",
+    "golden",
+    *AUDIT_VERDICTS,
+)
+
+# Blind audit share of a pass's auto-applied verdicts, with a floor so a
+# small pass is still sampled at all.
+AUDIT_FRACTION = 0.10
+AUDIT_MIN_SAMPLE = 3
 
 # Failures first: the point of the harness is to look at what's broken.
 STATUS_ORDER = {"mismatch": 0, "near": 1, "no-baseline": 2, "match": 3}
@@ -160,16 +187,45 @@ def _proposal_payload(value: Any) -> Optional[dict[str, Any]]:
 
 
 def _normalize_dossier(payload: dict, source: str) -> dict[str, Any]:
-    """Give the UI a stable shape whatever the scout agent wrote."""
+    """Give the UI a stable shape across dossier v1 and v2.
+
+    v2 renamed ``failure_mode`` to ``mode``, split the narrative into
+    ``visual_evidence`` (transcription first, per the runbook's
+    independence rule), and dropped the tool name from the proposal.
+    """
     evidence = payload.get("evidence")
+    visual = payload.get("visual_evidence")
+    rows = (evidence if isinstance(evidence, list) else []) + (
+        visual if isinstance(visual, list) else []
+    )
+    proposal = payload.get("proposal")
     return {
-        "failure_mode": _optional_str(payload.get("failure_mode")),
-        "diagnosis": _optional_str(payload.get("diagnosis")) or "",
-        "evidence": evidence if isinstance(evidence, list) else [],
-        "proposal": _proposal_payload(payload.get("proposal")),
+        "failure_mode": _optional_str(
+            _first(payload, "mode", "failure_mode")
+        ),
+        "diagnosis": _optional_str(
+            _first(payload, "diagnosis", "confidence_justification")
+        )
+        or "",
+        "evidence": rows,
+        "proposal": _v2_proposal(proposal) or _proposal_payload(proposal),
         "abstain_reason": _optional_str(payload.get("abstain_reason")),
+        "verdict_recommendation": _optional_str(
+            payload.get("verdict_recommendation")
+        ),
+        "confidence": _optional_str(payload.get("confidence")),
+        "signals_concurring": [
+            str(s)
+            for s in (
+                payload.get("signals_concurring")
+                if isinstance(payload.get("signals_concurring"), list)
+                else []
+            )
+        ],
         "generated_at": _optional_str(payload.get("generated_at")),
-        "author": _optional_str(payload.get("author")),
+        "author": _optional_str(
+            _first(payload, "author", "verdict_by", "generated_by")
+        ),
         "source": source,
     }
 
@@ -235,6 +291,773 @@ def handle_queues(_params: dict) -> dict[str, Any]:
                 )
         queues.append(entry)
     return {"queues": queues, "dir": str(QUEUE_DIR)}
+
+
+# --------------------------------------------------------------------------
+# Adjudicated verdicts: passes, digest groups, approvals, blind audit, freeze
+# --------------------------------------------------------------------------
+
+# The adjudicator names its tiers; the harness only cares about the three
+# routes, so every spelling seen in the design docs maps onto one of them.
+_TIER_ALIASES = {
+    "t0": "T0",
+    "auto": "T0",
+    "auto-apply": "T0",
+    "auto_apply": "T0",
+    "apply": "T0",
+    "t1": "T1",
+    "digest": "T1",
+    "batch": "T1",
+    "batch-digest": "T1",
+    "batch_digest": "T1",
+    "t2": "T2",
+    "escalate": "T2",
+    "escalation": "T2",
+    "abstain": "abstain",
+    "abstained": "abstain",
+}
+
+_CLASS_LETTER = re.compile(r"^[A-Z]$")
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "y")
+    return bool(value)
+
+
+def _first(payload: dict, *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
+def _freeze_class(value: Any) -> str:
+    """The A-J class letter, matching ``agentic_adjudicate.mode_class``.
+
+    The adjudicator matches freeze markers by tier name or by the mode's
+    letter prefix, so the marker must be named the same way or the freeze
+    is silently ignored on the next pass.
+    """
+    letter = (_optional_str(value) or "").split("-", 1)[0].upper()
+    return letter if _CLASS_LETTER.match(letter) else "unclassified"
+
+
+def _v2_proposal(value: Any) -> Optional[dict[str, Any]]:
+    """Dossier-v2 proposal: line ids and a guard verdict, never a tool name.
+
+    The tool is not in the file because there is only one write path; the
+    label here has to match what agentic_writer.py actually runs.
+    """
+    if not isinstance(value, dict):
+        return None
+    add = value.get("add_line_ids")
+    line_ids = _coerce_line_ids(add) if isinstance(add, list) else []
+    before = value.get("before") if isinstance(value.get("before"), dict) else {}
+    after = value.get("after") if isinstance(value.get("after"), dict) else {}
+    return {
+        "tool": "extend_items_section" if line_ids else None,
+        "args": {"line_ids": line_ids},
+        "verified": _as_bool(value.get("verified")),
+        "contiguous": _as_bool(value.get("contiguous")),
+        "vision_products_confirmed": _as_bool(
+            value.get("vision_products_confirmed")
+        ),
+        "dry_run": {
+            "before_delta": _optional_float(before.get("delta")),
+            "after_delta": _optional_float(after.get("delta")),
+            "before_status": _optional_str(before.get("status")),
+            "after_status": _optional_str(after.get("status")),
+        },
+    }
+
+
+def _normalize_verdict(payload: Any) -> Optional[dict[str, Any]]:
+    """One adjudicated row from ``verdicts/<pass-id>.jsonl``."""
+    if not isinstance(payload, dict):
+        return None
+    image_id = _optional_str(_first(payload, "image_id", "imageId"))
+    try:
+        receipt_id = int(_first(payload, "receipt_id", "receiptId"))
+    except (TypeError, ValueError):
+        return None
+    if not image_id:
+        return None
+
+    tier_raw = _optional_str(_first(payload, "tier", "route", "tier_name"))
+    tier = _TIER_ALIASES.get((tier_raw or "").lower(), tier_raw or "abstain")
+    mode = _optional_str(_first(payload, "mode", "failure_mode", "class"))
+    proposal = _v2_proposal(payload.get("proposal")) or _proposal_payload(
+        payload.get("proposal")
+    )
+    dry_run = (proposal or {}).get("dry_run") or {}
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "merchant": _optional_str(
+            _first(payload, "merchant", "merchant_name")
+        )
+        or "Unknown",
+        "failure_mode": mode,
+        "tier": tier,
+        "action": _optional_str(_first(payload, "action", "proposed_action"))
+        or (proposal or {}).get("tool"),
+        "proposal": proposal,
+        "golden_candidate": _as_bool(
+            _first(payload, "golden", "golden_candidate", "is_golden")
+        ),
+        "group_id": _optional_str(_first(payload, "group_id", "groupId")),
+        # The verdict file carries the gap through the proposal's dry run,
+        # not as a bare field.
+        "delta": (
+            _optional_float(payload.get("delta"))
+            if payload.get("delta") is not None
+            else dry_run.get("before_delta")
+        ),
+        "after_delta": dry_run.get("after_delta"),
+        "reason": _optional_str(payload.get("reason")),
+        "confidence": _optional_str(payload.get("confidence")),
+        "verdict_recommendation": _optional_str(
+            _first(payload, "verdict_recommendation", "recommendation")
+        ),
+        "diagnosis": _optional_str(payload.get("diagnosis")),
+        "abstain_reason": _optional_str(payload.get("abstain_reason")),
+        "verdict_by": _optional_str(payload.get("verdict_by")),
+    }
+
+
+def _read_verdict_lines(path: Path) -> tuple[list[dict], Optional[str]]:
+    """JSONL is the contract; a bad line is reported, never silently dropped."""
+    entries, bad = [], 0
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    bad += 1
+                    continue
+                entry = _normalize_verdict(row)
+                if entry is None:
+                    bad += 1
+                else:
+                    entries.append(entry)
+    except OSError as exc:
+        return [], f"{path.name}: {type(exc).__name__}: {exc}"
+    return entries, (f"{path.name}: {bad} unreadable line(s)" if bad else None)
+
+
+def _list_passes() -> list[dict[str, Any]]:
+    """Newest first. A pass is a ``<id>.jsonl`` file or a ``<id>/`` directory."""
+    if not VERDICT_DIR.is_dir():
+        return []
+    passes: dict[str, dict[str, Any]] = {}
+    for path in VERDICT_DIR.iterdir():
+        if path.name.startswith("."):
+            continue
+        if path.is_file() and path.suffix == ".jsonl":
+            entry = passes.setdefault(path.stem, {"pass_id": path.stem})
+            entry["verdicts_path"] = path
+            entry["mtime"] = max(entry.get("mtime", 0.0), path.stat().st_mtime)
+        elif path.is_dir():
+            entry = passes.setdefault(path.name, {"pass_id": path.name})
+            digest = path / "digest.json"
+            verdicts = path / "verdicts.jsonl"
+            if digest.is_file():
+                entry["digest_path"] = digest
+            if verdicts.is_file():
+                entry["verdicts_path"] = verdicts
+            entry["mtime"] = max(entry.get("mtime", 0.0), path.stat().st_mtime)
+    # A sibling digest for the flat layout: verdicts/<id>.digest.json
+    for path in VERDICT_DIR.glob("*.digest.json"):
+        stem = path.name[: -len(".digest.json")]
+        passes.setdefault(stem, {"pass_id": stem, "mtime": path.stat().st_mtime})
+        passes[stem]["digest_path"] = path
+    return sorted(
+        passes.values(), key=lambda p: (-p.get("mtime", 0.0), p["pass_id"])
+    )
+
+
+def _select_pass(pass_id: Optional[str]) -> Optional[dict[str, Any]]:
+    passes = _list_passes()
+    if not passes:
+        return None
+    if not pass_id:
+        return passes[0]
+    for entry in passes:
+        if entry["pass_id"] == pass_id:
+            return entry
+    return None
+
+
+def _pass_entries(record: dict[str, Any]) -> tuple[list[dict], Optional[str]]:
+    path = record.get("verdicts_path")
+    if path is None:
+        return [], None
+    return _read_verdict_lines(path)
+
+
+def _frozen_classes() -> list[str]:
+    if not FREEZE_DIR.is_dir():
+        return []
+    return sorted(p.name for p in FREEZE_DIR.iterdir() if p.is_file())
+
+
+def _approvals_path(pass_id: str) -> Optional[Path]:
+    cleaned = pass_id.strip()
+    if not cleaned or cleaned != Path(cleaned).name or cleaned.startswith("."):
+        return None
+    return APPROVAL_DIR / f"{cleaned}.json"
+
+
+def _read_approvals(pass_id: str) -> dict[str, Any]:
+    """The file agentic_writer.py reads: ``approved_groups`` is the contract.
+
+    ``approval_log`` is this harness's own provenance and is preserved but
+    never required; ``t2_retirements`` may be hand-written and must survive
+    an approval written here.
+    """
+    empty: dict[str, Any] = {
+        "pass_id": pass_id,
+        "approved_groups": [],
+        "t2_retirements": [],
+        "approval_log": [],
+    }
+    path = _approvals_path(pass_id)
+    if path is None or not path.is_file():
+        return empty
+    payload, error = _read_json(path)
+    if error is not None or not isinstance(payload, dict):
+        return empty
+    return {
+        **empty,
+        **payload,
+        "approved_groups": [
+            str(g) for g in (payload.get("approved_groups") or [])
+        ],
+    }
+
+
+def _slug(value: Any, fallback: str) -> str:
+    """Same slug the adjudicator's group_id uses; ids must match exactly."""
+    text = (_optional_str(value) or "").lower() or fallback
+    cleaned = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return cleaned or fallback
+
+
+def _group_id(entry: dict[str, Any]) -> str:
+    return entry["group_id"] or (
+        f"{_slug(entry['merchant'], 'unknown-merchant')}"
+        f"::{_slug(entry['failure_mode'], 'unknown-mode')}"
+    )
+
+
+def _receipt_ref(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "image_id": entry["image_id"],
+        "receipt_id": entry["receipt_id"],
+        "delta": entry["delta"],
+        "merchant": entry["merchant"],
+        "reason": entry.get("reason"),
+        "golden": entry["golden_candidate"],
+    }
+
+
+def _derive_digest(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group the batch tier by merchant × mode, the unit a human approves."""
+    groups: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        if entry["tier"] != "T1":
+            continue
+        key = _group_id(entry)
+        group = groups.setdefault(
+            key,
+            {
+                "group_id": key,
+                "merchant": entry["merchant"],
+                "failure_mode": entry["failure_mode"] or "unclassified",
+                "action": None,
+                "golden_candidate": False,
+                "receipts": [],
+                "thumbnails": [],
+            },
+        )
+        group["golden_candidate"] = (
+            group["golden_candidate"] or entry["golden_candidate"]
+        )
+        group["action"] = group["action"] or entry["action"]
+        group["receipts"].append(_receipt_ref(entry))
+    return list(groups.values())
+
+
+def _normalize_group(
+    payload: Any, by_key: dict[tuple, dict[str, Any]]
+) -> Optional[dict[str, Any]]:
+    """A ``t1_groups`` row from the adjudicator's digest.json.
+
+    The digest names membership but not the money; the per-receipt figures
+    are joined back from the verdicts file so the reviewer sees the gap the
+    group would close rather than an empty column.
+    """
+    if not isinstance(payload, dict):
+        return None
+    receipts, golden = [], False
+    raw = _first(payload, "receipts", "members", "rows")
+    for row in raw if isinstance(raw, list) else []:
+        if not isinstance(row, dict):
+            continue
+        image_id = _optional_str(_first(row, "image_id", "imageId"))
+        try:
+            receipt_id = int(_first(row, "receipt_id", "receiptId"))
+        except (TypeError, ValueError):
+            continue
+        if not image_id:
+            continue
+        entry = by_key.get((image_id, receipt_id))
+        golden = golden or _as_bool(row.get("golden"))
+        receipts.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "delta": (entry or {}).get("delta"),
+                "merchant": _optional_str(
+                    _first(row, "merchant", "merchant_name")
+                )
+                or (entry or {}).get("merchant"),
+                "reason": _optional_str(row.get("reason"))
+                or (entry or {}).get("reason"),
+                "golden": _as_bool(row.get("golden")),
+            }
+        )
+    merchant = _optional_str(_first(payload, "merchant", "merchant_name"))
+    mode = _optional_str(_first(payload, "mode", "failure_mode", "class"))
+    thumbs = _first(payload, "thumbnails", "samples", "sample_thumbnails")
+    action = _optional_str(_first(payload, "action", "proposed_action", "tool"))
+    if action is None:
+        action = next(
+            (
+                (by_key.get((r["image_id"], r["receipt_id"])) or {}).get("action")
+                for r in receipts
+                if (by_key.get((r["image_id"], r["receipt_id"])) or {}).get(
+                    "action"
+                )
+            ),
+            None,
+        )
+    try:
+        golden_count = int(payload.get("golden_count"))
+    except (TypeError, ValueError):
+        golden_count = 0
+    return {
+        "group_id": _optional_str(_first(payload, "group_id", "groupId"))
+        or f"{_slug(merchant, 'unknown-merchant')}::{_slug(mode, 'unknown-mode')}",
+        "merchant": merchant or "Unknown",
+        "failure_mode": mode or "unclassified",
+        "action": action,
+        "golden_candidate": golden_count > 0
+        or golden
+        or _as_bool(_first(payload, "golden_candidate", "is_golden")),
+        "receipts": receipts,
+        # A digest that states its own count is trusted over the row list,
+        # which may be truncated for display.
+        "count": _first(payload, "count", "n", "receipt_count"),
+        "thumbnails": [
+            str(t) for t in (thumbs if isinstance(thumbs, list) else [])
+        ],
+    }
+
+
+def _finalize_groups(
+    groups: list[dict[str, Any]], approvals: dict[str, Any]
+) -> list[dict[str, Any]]:
+    approved = set(approvals.get("approved_groups") or [])
+    frozen = set(_frozen_classes())
+    rows = []
+    for group in groups:
+        try:
+            count = int(_first(group, "count"))
+        except (TypeError, ValueError):
+            count = 0
+        deltas = [
+            r["delta"] for r in group["receipts"] if r["delta"] is not None
+        ]
+        rows.append(
+            {
+                **group,
+                "count": count or len(group["receipts"]),
+                "net_delta": round(sum(deltas), 2) if deltas else None,
+                "approved": group["group_id"] in approved,
+                # The adjudicator freezes by tier name or class letter; the
+                # digest is entirely T1, so both markers apply here.
+                "frozen": bool(
+                    frozen & {_freeze_class(group["failure_mode"]), "T1"}
+                ),
+            }
+        )
+    # Golden candidates ratchet the CI floors, so they lead the digest.
+    return sorted(
+        rows,
+        key=lambda r: (
+            not r["golden_candidate"],
+            -r["count"],
+            r["merchant"],
+            r["failure_mode"],
+        ),
+    )
+
+
+def handle_digest(params: dict) -> dict[str, Any]:
+    requested = (params.get("pass_id", [""])[0] or "").strip()
+    record = _select_pass(requested or None)
+    passes = [entry["pass_id"] for entry in _list_passes()]
+    if record is None:
+        return {
+            "pass_id": None,
+            "groups": [],
+            "passes": passes,
+            "frozen": _frozen_classes(),
+            "generated_at": None,
+            "source": None,
+            "error": (
+                f"no pass {requested!r} in {VERDICT_DIR}"
+                if requested
+                else None
+            ),
+        }
+
+    pass_id = record["pass_id"]
+    approvals = _read_approvals(pass_id)
+    digest_path = record.get("digest_path")
+    # The verdicts file is always read: it is where the money lives, even
+    # when the adjudicator also wrote a pre-grouped digest.
+    entries, warning = _pass_entries(record)
+    by_key = {(e["image_id"], e["receipt_id"]): e for e in entries}
+    generated_at, source = None, None
+    groups: list[dict[str, Any]] = []
+
+    if digest_path is not None:
+        payload, error = _read_json(digest_path)
+        if error is not None:
+            warning = warning or error
+        else:
+            rows = (
+                _first(payload, "t1_groups", "groups")
+                if isinstance(payload, dict)
+                else payload
+            )
+            groups = [
+                group
+                for group in (
+                    _normalize_group(row, by_key)
+                    for row in (rows if isinstance(rows, list) else [])
+                )
+                if group is not None
+            ]
+            if isinstance(payload, dict):
+                generated_at = _optional_str(
+                    _first(payload, "generated_at", "built_at")
+                )
+            source = digest_path.name
+    if not groups:
+        # No pre-grouped digest: group the batch tier out of the verdicts
+        # file itself, so the screen works the moment a pass lands.
+        groups = _derive_digest(entries)
+        source = source or (
+            record["verdicts_path"].name
+            if record.get("verdicts_path")
+            else None
+        )
+
+    return {
+        "pass_id": pass_id,
+        "groups": _finalize_groups(groups, approvals),
+        "passes": passes,
+        "frozen": _frozen_classes(),
+        "generated_at": generated_at,
+        "source": source,
+        "warning": warning,
+    }
+
+
+def handle_approve_post(body: dict) -> dict[str, Any]:
+    pass_id = str(body.get("pass_id", "") or "").strip()
+    group_id = str(body.get("group_id", "") or "").strip()
+    if not group_id:
+        return {"error": "group_id is required"}
+    record = _select_pass(pass_id or None)
+    if record is None:
+        return {"error": f"no pass {pass_id!r} in {VERDICT_DIR}"}
+    pass_id = record["pass_id"]
+    path = _approvals_path(pass_id)
+    if path is None:
+        return {"error": f"invalid pass id {pass_id!r}"}
+
+    digest = handle_digest({"pass_id": [pass_id]})
+    group = next(
+        (g for g in digest["groups"] if g["group_id"] == group_id), None
+    )
+    if group is None:
+        return {"error": f"no group {group_id!r} in pass {pass_id}"}
+    if group["frozen"]:
+        return {
+            "error": (
+                f"class {group['failure_mode']!r} is frozen by a failed "
+                "blind audit; clear the freeze marker before approving."
+            )
+        }
+
+    with _review_lock:
+        approvals = _read_approvals(pass_id)
+        approved = approvals["approved_groups"]
+        if group_id in approved:
+            return {
+                "ok": True,
+                "already": True,
+                "pass_id": pass_id,
+                "group_id": group_id,
+                "approvals": len(approved),
+                "path": str(path),
+            }
+        approved.append(group_id)
+        approvals["approval_log"].append(
+            {
+                "group_id": group_id,
+                "merchant": group["merchant"],
+                "failure_mode": group["failure_mode"],
+                "action": group["action"],
+                "golden_candidate": group["golden_candidate"],
+                "receipts": group["receipts"],
+                "approved_by": str(body.get("author", "user") or "user"),
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        approvals["pass_id"] = pass_id
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(approvals, indent=2) + "\n", encoding="utf-8"
+        )
+    return {
+        "ok": True,
+        "already": False,
+        "pass_id": pass_id,
+        "group_id": group_id,
+        "approvals": len(approved),
+        "path": str(path),
+    }
+
+
+def _audit_sample(pass_id: str, entries: list[dict[str, Any]]) -> list[dict]:
+    """A stable blind sample of the auto-applied tier.
+
+    Seeded on the pass id so reloading the deck never reshuffles it, and so
+    the sample is reproducible from the pass alone when auditing the audit.
+    """
+    auto = sorted(
+        (e for e in entries if e["tier"] == "T0"),
+        key=lambda e: (e["image_id"], e["receipt_id"]),
+    )
+    if not auto:
+        return []
+    size = min(
+        len(auto), max(AUDIT_MIN_SAMPLE, math.ceil(len(auto) * AUDIT_FRACTION))
+    )
+    chosen = random.Random(pass_id).sample(range(len(auto)), size)
+    return [auto[position] for position in sorted(chosen)]
+
+
+def _blind_dossier(dossier: Optional[dict[str, Any]]) -> Optional[dict]:
+    """The scout's observations without any of its conclusions.
+
+    An audit only means something if the human reaches a verdict the agent
+    could not have suggested, so diagnosis, proposal, confidence and the
+    recommendation itself are withheld until the verdict is committed.
+    """
+    if dossier is None:
+        return None
+    return {
+        "failure_mode": None,
+        "diagnosis": "",
+        "evidence": dossier.get("evidence", []),
+        "proposal": None,
+        "abstain_reason": None,
+        "verdict_recommendation": None,
+        "confidence": None,
+        "signals_concurring": [],
+        "generated_at": dossier.get("generated_at"),
+        "author": dossier.get("author"),
+        "source": dossier.get("source"),
+        "blind": True,
+    }
+
+
+def _audited_receipts(pass_id: str) -> set[tuple[str, int]]:
+    return {
+        (entry.get("image_id"), entry.get("receipt_id"))
+        for entry in _read_reviews()
+        if entry.get("verdict") in AUDIT_VERDICTS
+        and entry.get("pass_id") == pass_id
+    }
+
+
+def handle_audit(params: dict) -> dict[str, Any]:
+    requested = (params.get("pass_id", [""])[0] or "").strip()
+    record = _select_pass(requested or None)
+    frozen = _frozen_classes()
+    if record is None:
+        return {
+            "pass_id": None,
+            "sample": [],
+            "size": 0,
+            "total_auto": 0,
+            "frozen": frozen,
+            "error": (
+                f"no pass {requested!r} in {VERDICT_DIR}" if requested else None
+            ),
+        }
+    pass_id = record["pass_id"]
+    entries, warning = _pass_entries(record)
+    sample = _audit_sample(pass_id, entries)
+
+    image_id = (params.get("image_id", [""])[0] or "").strip()
+    if image_id:
+        try:
+            receipt_id = int(params.get("receipt_id", [""])[0])
+        except (TypeError, ValueError):
+            return {"error": "receipt_id must be an integer"}
+        if not any(
+            e["image_id"] == image_id and e["receipt_id"] == receipt_id
+            for e in sample
+        ):
+            return {
+                "error": (
+                    f"receipt {receipt_id} is not in the blind sample for "
+                    f"pass {pass_id}"
+                )
+            }
+        detail = handle_receipt(
+            {"image_id": [image_id], "receipt_id": [str(receipt_id)]}
+        )
+        if "error" in detail:
+            return detail
+        return {
+            **detail,
+            "pass_id": pass_id,
+            "blind": True,
+            "dossier": _blind_dossier(detail.get("dossier")),
+            "reviews": [
+                r
+                for r in detail.get("reviews", [])
+                if r.get("verdict") not in AUDIT_VERDICTS
+            ],
+        }
+
+    reviewed = _audited_receipts(pass_id)
+    return {
+        "pass_id": pass_id,
+        "size": len(sample),
+        "total_auto": sum(1 for e in entries if e["tier"] == "T0"),
+        "frozen": frozen,
+        "warning": warning,
+        "sample": [
+            {
+                "image_id": entry["image_id"],
+                "receipt_id": entry["receipt_id"],
+                "merchant": entry["merchant"],
+                "reviewed": (entry["image_id"], entry["receipt_id"])
+                in reviewed,
+            }
+            for entry in sample
+        ],
+    }
+
+
+def handle_verdicts(params: dict) -> dict[str, Any]:
+    requested = (params.get("pass_id", [""])[0] or "").strip()
+    record = _select_pass(requested or None)
+    frozen = _frozen_classes()
+    if record is None:
+        return {
+            "pass_id": None,
+            "entries": [],
+            "frozen": frozen,
+            "passes": [],
+            "error": (
+                f"no pass {requested!r} in {VERDICT_DIR}" if requested else None
+            ),
+        }
+    entries, warning = _pass_entries(record)
+    frozen_set = set(frozen)
+    return {
+        "pass_id": record["pass_id"],
+        "passes": [entry["pass_id"] for entry in _list_passes()],
+        "frozen": frozen,
+        "warning": warning,
+        # A frozen entry is still served — the writer needs to see what it
+        # must not apply, not have it quietly disappear.
+        "entries": [
+            {
+                **entry,
+                "frozen": bool(
+                    frozen_set
+                    & {_freeze_class(entry["failure_mode"]), entry["tier"]}
+                ),
+            }
+            for entry in entries
+        ],
+    }
+
+
+def _write_freeze(
+    mode: Optional[str],
+    tier: Optional[str],
+    entry: dict[str, Any],
+    pass_id: Optional[str],
+) -> list[str]:
+    """Freeze the audited verdict's tier and its class, per the operating
+    model ("a marker file in .dev-harness/freeze/<tier-or-class>").
+
+    Markers are named exactly the way ``agentic_adjudicate.load_frozen``
+    matches them — a tier name or a bare A-J class letter. A marker it
+    cannot match is a freeze that silently does nothing, so the tier is
+    always written even when the mode yields no usable class letter.
+    """
+    names = []
+    for name in (_freeze_class(mode), tier):
+        if not name or name == "unclassified" or name in names:
+            continue
+        names.append(name)
+    if not names:
+        names = ["T0"]
+
+    FREEZE_DIR.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (FREEZE_DIR / name).write_text(
+            json.dumps(
+                {
+                    "marker": name,
+                    "mode": mode,
+                    "tier": tier,
+                    "pass_id": pass_id,
+                    "image_id": entry["image_id"],
+                    "receipt_id": entry["receipt_id"],
+                    "note": entry.get("note", ""),
+                    "frozen_at": datetime.now(timezone.utc).isoformat(),
+                    "reason": (
+                        "blind audit disagreed with an auto-applied verdict"
+                    ),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return names
 
 
 def _receipt_status(statuses: set) -> str:
@@ -664,11 +1487,75 @@ def handle_review_post(body: dict) -> dict[str, Any]:
         "author": str(body.get("author", "user") or "user"),
         "ts": datetime.now(timezone.utc).isoformat(),
     }
+
+    revealed: Optional[dict[str, Any]] = None
+    froze: list[str] = []
+    if verdict in AUDIT_VERDICTS:
+        record = _select_pass(
+            _optional_str(body.get("pass_id"))
+        )
+        pass_id = record["pass_id"] if record else None
+        entry["pass_id"] = pass_id
+        adjudicated = None
+        if record is not None:
+            entries, _ = _pass_entries(record)
+            adjudicated = next(
+                (
+                    e
+                    for e in entries
+                    if e["image_id"] == image_id
+                    and e["receipt_id"] == receipt_id
+                ),
+                None,
+            )
+        dossier, _ = _read_dossier(image_id, receipt_id)
+        # What the human was not allowed to see while deciding.
+        revealed = {
+            "tier": (adjudicated or {}).get("tier"),
+            "reason": (adjudicated or {}).get("reason"),
+            "failure_mode": (dossier or {}).get("failure_mode")
+            or (adjudicated or {}).get("failure_mode"),
+            "diagnosis": (dossier or {}).get("diagnosis")
+            or (adjudicated or {}).get("diagnosis"),
+            "verdict_recommendation": (dossier or {}).get(
+                "verdict_recommendation"
+            )
+            or (adjudicated or {}).get("verdict_recommendation"),
+            "confidence": (dossier or {}).get("confidence")
+            or (adjudicated or {}).get("confidence"),
+            "signals_concurring": (dossier or {}).get("signals_concurring")
+            or [],
+            "proposal": (dossier or {}).get("proposal")
+            or (adjudicated or {}).get("proposal"),
+            "abstain_reason": (dossier or {}).get("abstain_reason"),
+        }
+        entry["revealed_failure_mode"] = revealed["failure_mode"]
+        if verdict == "audit-disagree":
+            # One disagreement is enough. The class comes from the
+            # adjudicated entry first: that is the exact string the next
+            # adjudication run will classify, so freezing anything else
+            # would leave the tier open.
+            froze = _write_freeze(
+                (adjudicated or {}).get("failure_mode")
+                or revealed["failure_mode"],
+                (adjudicated or {}).get("tier"),
+                entry,
+                pass_id,
+            )
+            entry["froze"] = froze
+
     with _review_lock:
         REVIEW_LOG.parent.mkdir(parents=True, exist_ok=True)
         with REVIEW_LOG.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry) + "\n")
-    return {"ok": True, "entry": entry, "log": str(REVIEW_LOG)}
+    return {
+        "ok": True,
+        "entry": entry,
+        "log": str(REVIEW_LOG),
+        "revealed": revealed,
+        "freeze_written": froze,
+        "frozen": _frozen_classes(),
+    }
 
 
 class ValidationHandler(BaseHTTPRequestHandler):
@@ -722,6 +1609,18 @@ class ValidationHandler(BaseHTTPRequestHandler):
                 payload = handle_receipt(params)
                 self._send(400 if "error" in payload else 200, payload)
                 return
+            if route == "/digest":
+                self._send(200, handle_digest(params))
+                return
+            if route == "/verdicts":
+                self._send(200, handle_verdicts(params))
+                return
+            if route == "/audit":
+                payload = handle_audit(params)
+                # An empty deck is a normal state, not a client error; only a
+                # named-but-missing pass or a bad id is a 400.
+                self._send(400 if payload.get("error") else 200, payload)
+                return
             if route == "/review":
                 self._send(
                     200,
@@ -737,13 +1636,22 @@ class ValidationHandler(BaseHTTPRequestHandler):
                         "review_log": str(REVIEW_LOG),
                         "dossiers": str(DOSSIER_DIR),
                         "queues": str(QUEUE_DIR),
+                        "verdict_dir": str(VERDICT_DIR),
+                        "approvals": str(APPROVAL_DIR),
+                        "freeze": str(FREEZE_DIR),
+                        "frozen": _frozen_classes(),
+                        "passes": [p["pass_id"] for p in _list_passes()],
                         "verdicts": list(REVIEW_VERDICTS),
                         "routes": [
                             "/merchants",
                             "/queues",
                             "/worklist",
                             "/receipt",
+                            "/digest",
+                            "/verdicts",
+                            "/audit",
                             "/review",
+                            "/approve",
                             "/line_item_decode",
                         ],
                     },
@@ -765,6 +1673,10 @@ class ValidationHandler(BaseHTTPRequestHandler):
             body = json.loads(raw or b"{}")
         except json.JSONDecodeError:
             self._send(400, {"error": "body must be JSON"})
+            return
+        if route == "/approve":
+            payload = handle_approve_post(body)
+            self._send(400 if "error" in payload else 200, payload)
             return
         if route != "/review":
             self._send(404, {"error": f"no route {route}"})

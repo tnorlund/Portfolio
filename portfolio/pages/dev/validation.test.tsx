@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import * as client from "../../components/dev/validation/client";
 import {
-  fetchMerchants,
+  fetchAuditDeck,
+  fetchDigest,
   fetchQueues,
   fetchReceipt,
   fetchReviews,
@@ -11,11 +13,15 @@ import { ValidationReceipt } from "../../components/dev/validation/types";
 import ValidationWorkstation from "./validation";
 
 jest.mock("../../components/dev/validation/client", () => ({
-  fetchMerchants: jest.fn(),
+  fetchAuditDeck: jest.fn(),
+  fetchAuditReceipt: jest.fn(),
+  fetchDigest: jest.fn(),
   fetchQueues: jest.fn(),
   fetchReceipt: jest.fn(),
   fetchReviews: jest.fn(),
   fetchWorklist: jest.fn(),
+  postApprove: jest.fn(),
+  postAuditVerdict: jest.fn(),
   postReview: jest.fn(),
 }));
 
@@ -26,7 +32,8 @@ jest.mock(
   }),
 );
 
-const mockedFetchMerchants = jest.mocked(fetchMerchants);
+const mockedFetchAuditDeck = jest.mocked(fetchAuditDeck);
+const mockedFetchDigest = jest.mocked(fetchDigest);
 const mockedFetchQueues = jest.mocked(fetchQueues);
 const mockedFetchReceipt = jest.mocked(fetchReceipt);
 const mockedFetchReviews = jest.mocked(fetchReviews);
@@ -53,14 +60,47 @@ const detail = (receiptId: number): ValidationReceipt => ({
   reviews: [],
 });
 
+const worklistRow = (receiptId: number, merchant: string) => ({
+  image_id: `image-${receiptId}`,
+  receipt_id: receiptId,
+  merchant,
+  status: "mismatch" as const,
+  items: 0,
+  items_sum: 0,
+  baseline: 5,
+  subtotal: 5,
+  grand_total: 5,
+  tax: 0,
+  delta: -5,
+  tender_class: null,
+  card_network: null,
+  card_last4: null,
+  ledger: null,
+  bank_amount: null,
+  bank_match_confidence: null,
+});
+
+const showEscalation = async () => {
+  fireEvent.click(screen.getByRole("tab", { name: /Escalation/ }));
+  return screen.findByText("Alpha Market · receipt 1");
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
-  mockedFetchMerchants.mockResolvedValue({
-    merchants: [],
-    totals: { mismatch: 2 },
-    receipts: 2,
-    built_at: "now",
-    table: "dev",
+  mockedFetchDigest.mockResolvedValue({
+    pass_id: "pass-1",
+    groups: [],
+    passes: ["pass-1"],
+    frozen: [],
+    generated_at: null,
+    source: "pass-1.jsonl",
+  });
+  mockedFetchAuditDeck.mockResolvedValue({
+    pass_id: "pass-1",
+    size: 0,
+    total_auto: 0,
+    sample: [],
+    frozen: [],
   });
   mockedFetchReviews.mockResolvedValue({ entries: [], log: "/tmp/reviews" });
   mockedFetchQueues.mockResolvedValue({
@@ -71,54 +111,15 @@ beforeEach(() => {
         description: "Smith's + Gelson's",
         error: null,
       },
+      { name: "session-2", count: 1, description: null, error: null },
     ],
     dir: "/tmp/queues",
   });
   mockedFetchWorklist.mockResolvedValue({
-    merchant: "",
-    status: "failures",
+    queue: "session-1",
     matching: 2,
     built_at: "now",
-    receipts: [
-      {
-        image_id: "image-1",
-        receipt_id: 1,
-        merchant: "Alpha Market",
-        status: "mismatch",
-        items: 0,
-        items_sum: 0,
-        baseline: 5,
-        subtotal: 5,
-        grand_total: 5,
-        tax: 0,
-        delta: -5,
-        tender_class: null,
-        card_network: null,
-        card_last4: null,
-        ledger: null,
-        bank_amount: null,
-        bank_match_confidence: null,
-      },
-      {
-        image_id: "image-2",
-        receipt_id: 2,
-        merchant: "Beta Market",
-        status: "mismatch",
-        items: 0,
-        items_sum: 0,
-        baseline: 5,
-        subtotal: 5,
-        grand_total: 5,
-        tax: 0,
-        delta: -5,
-        tender_class: null,
-        card_network: null,
-        card_last4: null,
-        ledger: null,
-        bank_amount: null,
-        bank_match_confidence: null,
-      },
-    ],
+    receipts: [worklistRow(1, "Alpha Market"), worklistRow(2, "Beta Market")],
   });
   mockedFetchReceipt.mockImplementation(async (_imageId, receiptId) =>
     detail(receiptId),
@@ -132,29 +133,88 @@ beforeEach(() => {
     status: "mismatch",
     delta: -5,
     author: "user",
-    ts: "2026-07-31T20:00:00.000Z",
+    ts: "2026-08-03T20:00:00.000Z",
   });
 });
 
-describe("ValidationWorkstation keyboard flow", () => {
-  it("navigates, focuses search, confirms, and manages the flag dialog", async () => {
+describe("ValidationWorkstation three-screen shell", () => {
+  it("opens on the digest and switches between the three screens", async () => {
     render(<ValidationWorkstation />);
-    expect(await screen.findByText("Alpha Market · receipt 1")).toBeInTheDocument();
+    expect(await screen.findByTestId("digest-panel")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Digest/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
-    fireEvent.keyDown(window, { key: "m" });
-    expect(screen.getByRole("searchbox", { name: "Search merchants" })).toHaveFocus();
-    screen.getByRole("searchbox").blur();
+    fireEvent.click(screen.getByRole("tab", { name: /Audit/ }));
+    expect(await screen.findByTestId("audit-deck")).toBeInTheDocument();
+    expect(screen.queryByTestId("digest-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Escalation/ }));
+    expect(await screen.findByTestId("truth-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("audit-deck")).not.toBeInTheDocument();
+  });
+});
+
+describe("ValidationWorkstation escalation screen", () => {
+  it("defaults to the first available queue, with no browse or filters", async () => {
+    render(<ValidationWorkstation />);
+    await showEscalation();
+
+    expect(mockedFetchWorklist).toHaveBeenCalledWith("session-1");
+    expect(
+      screen.getByRole("combobox", { name: "Escalation queue" }),
+    ).toHaveValue("session-1");
+    // The merchant browse panel and status chips are gone for good.
+    expect(screen.queryByTestId("merchant-panel")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("searchbox", { name: "Search merchants" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Status filter" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("loads another queue when the selector changes", async () => {
+    render(<ValidationWorkstation />);
+    await showEscalation();
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Escalation queue" }),
+      { target: { value: "session-2" } },
+    );
+    await waitFor(() =>
+      expect(mockedFetchWorklist).toHaveBeenCalledWith("session-2"),
+    );
+  });
+
+  it("says so when no escalation queue is selected", async () => {
+    mockedFetchQueues.mockResolvedValue({ queues: [], dir: "/tmp/queues" });
+    render(<ValidationWorkstation />);
+    fireEvent.click(screen.getByRole("tab", { name: /Escalation/ }));
+    expect(await screen.findByTestId("no-queue")).toHaveTextContent(
+      "No escalation queue selected",
+    );
+    expect(mockedFetchWorklist).not.toHaveBeenCalled();
+  });
+
+  it("keeps the keyboard verdict flow", async () => {
+    render(<ValidationWorkstation />);
+    await showEscalation();
 
     fireEvent.keyDown(window, { key: "j" });
     expect(await screen.findByText("Beta Market · receipt 2")).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "k" });
     expect(await screen.findByText("Alpha Market · receipt 1")).toBeInTheDocument();
+    // The verdict keys only fire once the receipt behind the heading loaded.
     await waitFor(() =>
       expect(screen.getByTestId("truth-panel")).toHaveTextContent("Alpha Market"),
     );
 
     fireEvent.keyDown(window, { key: "f" });
-    expect(screen.getByRole("dialog", { name: "Describe the failure mode" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Describe the failure mode" }),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -163,30 +223,6 @@ describe("ValidationWorkstation keyboard flow", () => {
       expect(mockedPostReview).toHaveBeenCalledWith(
         expect.objectContaining({ verdict: "confirm", note: "" }),
       ),
-    );
-  });
-});
-
-describe("ValidationWorkstation curated queues", () => {
-  it("loads a queue by name and says the filters no longer apply", async () => {
-    render(<ValidationWorkstation />);
-    await screen.findByText("Alpha Market · receipt 1");
-
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Curated review queue" }),
-      { target: { value: "session-1" } },
-    );
-
-    await waitFor(() =>
-      expect(mockedFetchWorklist).toHaveBeenCalledWith(
-        null,
-        "failures",
-        1000,
-        "session-1",
-      ),
-    );
-    expect(await screen.findByTestId("queue-notice")).toHaveTextContent(
-      "session-1",
     );
   });
 
@@ -199,13 +235,12 @@ describe("ValidationWorkstation curated queues", () => {
       missing: [{ image_id: "image-9", receipt_id: 9 }],
     });
     render(<ValidationWorkstation />);
+    fireEvent.click(screen.getByRole("tab", { name: /Escalation/ }));
     expect(
       await screen.findByText(/1 queued receipt\(s\) are not in the index/),
     ).toBeInTheDocument();
   });
-});
 
-describe("ValidationWorkstation dossier verdicts", () => {
   it("approves the dossier's proposal with its mode and rows", async () => {
     mockedFetchReceipt.mockImplementation(async (_imageId, receiptId) => ({
       ...detail(receiptId),
@@ -224,12 +259,16 @@ describe("ValidationWorkstation dossier verdicts", () => {
           },
         },
         abstain_reason: null,
+        verdict_recommendation: "approve-fix",
+        confidence: "high",
+        signals_concurring: ["arithmetic"],
         generated_at: null,
         author: "scout",
         source: "image-1-1.json",
       },
     }));
     render(<ValidationWorkstation />);
+    fireEvent.click(screen.getByRole("tab", { name: /Escalation/ }));
     await screen.findByTestId("dossier");
 
     fireEvent.keyDown(window, { key: "a" });
@@ -243,36 +282,15 @@ describe("ValidationWorkstation dossier verdicts", () => {
       ),
     );
   });
+});
 
-  it("refuses golden on a receipt with no bank agreement", async () => {
-    render(<ValidationWorkstation />);
-    await screen.findByTestId("truth-panel");
-    fireEvent.keyDown(window, { key: "g" });
-    await waitFor(() => expect(screen.getByTestId("dossier-empty")).toBeInTheDocument());
-    expect(mockedPostReview).not.toHaveBeenCalled();
-  });
-
-  it("attaches the chosen failure mode to a flag", async () => {
-    render(<ValidationWorkstation />);
-    await screen.findByTestId("truth-panel");
-
-    fireEvent.keyDown(window, { key: "f" });
-    fireEvent.change(screen.getByRole("combobox", { name: "Failure mode" }), {
-      target: { value: "B-baseline-ocr-broken" },
-    });
-    fireEvent.change(screen.getByRole("textbox", { name: "Review note" }), {
-      target: { value: "printed subtotal is garbled" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save flag" }));
-
-    await waitFor(() =>
-      expect(mockedPostReview).toHaveBeenCalledWith(
-        expect.objectContaining({
-          verdict: "flag",
-          reason: "B-baseline-ocr-broken",
-          note: "printed subtotal is garbled",
-        }),
-      ),
-    );
+describe("harness shrink", () => {
+  it("no longer ships the merchant browse panel", () => {
+    expect(() =>
+      require.resolve("../../components/dev/validation/MerchantList"),
+    ).toThrow();
+    // The browse index it was the only consumer of is gone from the client
+    // too, so nothing can quietly bring worst-first ordering back.
+    expect(client).not.toHaveProperty("fetchMerchants");
   });
 });

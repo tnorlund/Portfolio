@@ -5,8 +5,17 @@ import {
   LineItemReconciliationStatus,
 } from "../../../types/api";
 
-export type ReviewVerdict = "confirm" | "flag" | "approve-fix" | "golden";
+export type ReviewVerdict =
+  | "confirm"
+  | "flag"
+  | "approve-fix"
+  | "golden"
+  | "audit-agree"
+  | "audit-disagree";
 export type OverlayMode = "sections" | "items" | "both";
+
+/** The three things a human still does in the agentic-first loop. */
+export type HarnessScreen = "escalation" | "digest" | "audit";
 
 /** Scout-agent evidence: a bare sentence, or a labelled figure. */
 export type DossierEvidence =
@@ -25,10 +34,15 @@ export interface DossierDryRun {
 }
 
 export interface DossierProposal {
-  tool: string;
+  /** v2 files name no tool — there is one write path, so the shim labels it. */
+  tool: string | null;
   args: Record<string, unknown>;
   /** Null when the scout proposed a fix it never simulated. */
   dry_run: DossierDryRun | null;
+  /** The real guard accepted this proposal in a dry run. */
+  verified?: boolean;
+  contiguous?: boolean;
+  vision_products_confirmed?: boolean;
 }
 
 /**
@@ -36,14 +50,21 @@ export interface DossierProposal {
  * agent. A dossier that cannot justify a proposal abstains instead.
  */
 export interface ReceiptDossier {
+  /** Dossier v2's `mode`: the A–J taxonomy id, letter prefix = class. */
   failure_mode: string | null;
   diagnosis: string;
   evidence: DossierEvidence[];
   proposal: DossierProposal | null;
   abstain_reason: string | null;
+  verdict_recommendation: string | null;
+  /** v2 grades confidence high/medium/low, not numerically. */
+  confidence: string | null;
+  signals_concurring: string[];
   generated_at: string | null;
   author: string | null;
   source: string;
+  /** Set by /audit: the agent's conclusions have been stripped out. */
+  blind?: boolean;
 }
 
 export interface ValidationSummary {
@@ -135,25 +156,6 @@ export interface WorklistRow {
   bank_match_confidence: number | null;
 }
 
-export interface MerchantRow {
-  name: string;
-  receipts: number;
-  match: number;
-  near: number;
-  mismatch: number;
-  "no-baseline": number;
-  with_bank: number;
-  match_rate: number;
-}
-
-export interface MerchantsResponse {
-  merchants: MerchantRow[];
-  totals: Record<string, number>;
-  receipts: number;
-  built_at: string;
-  table: string;
-}
-
 export interface WorklistResponse {
   merchant?: string;
   status?: string;
@@ -190,5 +192,104 @@ export interface ReviewLogResponse {
   log: string;
 }
 
-export type StatusFilter =
-  "failures" | "all" | "mismatch" | "near" | "match" | "no-baseline";
+/* --- Batch digest: the T1 tier, approved a group at a time --- */
+
+export interface DigestReceiptRef {
+  image_id: string;
+  receipt_id: number;
+  delta: number | null;
+  merchant: string | null;
+  /** Why the adjudicator routed this receipt here. */
+  reason: string | null;
+  golden: boolean;
+}
+
+/**
+ * One merchant × failure-mode group from the adjudicated pass. Approving it
+ * is the human sign-off the writer waits on, so a group is the smallest unit
+ * the reviewer ever says yes to.
+ */
+export interface DigestGroup {
+  group_id: string;
+  merchant: string;
+  failure_mode: string;
+  /** The tool the writer would run for every receipt in the group. */
+  action: string | null;
+  /** Golden candidates ratchet the CI floors; they are never routine. */
+  golden_candidate: boolean;
+  count: number;
+  net_delta: number | null;
+  receipts: DigestReceiptRef[];
+  thumbnails: string[];
+  approved: boolean;
+  /** True when a failed blind audit froze this failure mode. */
+  frozen: boolean;
+}
+
+export interface DigestResponse {
+  pass_id: string | null;
+  groups: DigestGroup[];
+  passes: string[];
+  frozen: string[];
+  generated_at: string | null;
+  source: string | null;
+  warning?: string | null;
+  error?: string | null;
+}
+
+export interface ApproveResponse {
+  ok: true;
+  already: boolean;
+  pass_id: string;
+  group_id: string;
+  approvals: number;
+  path: string;
+}
+
+/* --- Audit deck: blind re-review of the auto-applied tier --- */
+
+export interface AuditSampleRef {
+  image_id: string;
+  receipt_id: number;
+  merchant: string | null;
+  reviewed: boolean;
+}
+
+export interface AuditDeckResponse {
+  pass_id: string | null;
+  size: number;
+  /** How many auto-verdicts the sample was drawn from. */
+  total_auto: number;
+  sample: AuditSampleRef[];
+  frozen: string[];
+  warning?: string | null;
+  error?: string | null;
+}
+
+/** A sampled receipt with the agent's conclusions withheld. */
+export interface AuditReceipt extends ValidationReceipt {
+  pass_id: string;
+  blind: true;
+}
+
+/** What the agent had concluded, released only after the human commits. */
+export interface AuditRevealed {
+  tier: string | null;
+  /** The adjudicator's routing reason, e.g. "auto-extension". */
+  reason: string | null;
+  failure_mode: string | null;
+  diagnosis: string | null;
+  verdict_recommendation: string | null;
+  confidence: string | null;
+  signals_concurring: string[];
+  proposal: DossierProposal | null;
+  abstain_reason: string | null;
+}
+
+export interface AuditReviewResponse {
+  entry: ReviewEntry;
+  revealed: AuditRevealed | null;
+  /** Markers this disagreement wrote: the audited tier and its class. */
+  freeze_written: string[];
+  frozen: string[];
+}
