@@ -160,16 +160,23 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         # Write to DynamoDB
         dynamo_client.add_ocr_job(ocr_job)
-        logger.info("Created OCR job %s for image %s receipt %d", job_id, image_id, receipt_id)
+        logger.info(
+            "Created OCR job %s for image %s receipt %d",
+            job_id,
+            image_id,
+            receipt_id,
+        )
 
         # Send SQS message
         sqs = boto3.client("sqs")
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=json.dumps({
-                "job_id": job_id,
-                "image_id": image_id,
-            }),
+            MessageBody=json.dumps(
+                {
+                    "job_id": job_id,
+                    "image_id": image_id,
+                }
+            ),
         )
         logger.info("Sent SQS message to %s", queue_url)
 
