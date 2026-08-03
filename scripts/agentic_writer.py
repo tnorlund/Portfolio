@@ -24,7 +24,11 @@ report, and exits nonzero. Never a retry.
 
 Safety rails: ``--dry-run`` is the default (``--apply`` required for
 writes); a lockfile in `.dev-harness/writer.lock` enforces single
-flight; the prod table (d7ff76a) is refused outright.
+flight; the prod table (d7ff76a) is refused outright; and freeze
+markers in `.dev-harness/freeze/` (tier names or A-J mode-class
+letters, same semantics as the adjudicator's) are honored here too —
+re-read before EVERY write, so an audit-deck disagreement landing
+mid-session stops the remaining entries of that class immediately.
 
 Duplicate retirement (destructive; T2 sign-off required):
 
@@ -58,6 +62,7 @@ HARNESS_DIR = REPO_ROOT / ".dev-harness"
 DEFAULT_VERDICTS_DIR = HARNESS_DIR / "verdicts"
 DEFAULT_APPROVALS_DIR = HARNESS_DIR / "approvals"
 DEFAULT_BACKUP_DIR = HARNESS_DIR / "backups"
+DEFAULT_FREEZE_DIR = HARNESS_DIR / "freeze"
 DEFAULT_LOCK_PATH = HARNESS_DIR / "writer.lock"
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
@@ -130,12 +135,10 @@ class WriterLock:
             pass
 
 
-def _load_helpers():
-    """Load scripts/agentic_triage_helpers.py (shares the MCP loader)."""
-    name = "_agentic_writer_helpers"
+def _load_by_path(name: str, filename: str):
     if name in sys.modules:
         return sys.modules[name]
-    path = REPO_ROOT / "scripts" / "agentic_triage_helpers.py"
+    path = REPO_ROOT / "scripts" / filename
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
@@ -143,6 +146,38 @@ def _load_helpers():
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _load_helpers():
+    """Load scripts/agentic_triage_helpers.py (shares the MCP loader)."""
+    return _load_by_path(
+        "_agentic_writer_helpers", "agentic_triage_helpers.py"
+    )
+
+
+def _load_adjudicator():
+    """Load scripts/agentic_adjudicate.py for its freeze semantics.
+
+    ``load_frozen`` (marker names in the freeze dir: tier names or A-J
+    class letters) and ``mode_class`` are imported, never mirrored, so
+    the writer and the adjudicator can never disagree about what a
+    freeze means.
+    """
+    return _load_by_path(
+        "_agentic_writer_adjudicator", "agentic_adjudicate.py"
+    )
+
+
+def _frozen_marker(entry: dict[str, Any], frozen: set[str]) -> Optional[str]:
+    """The freeze marker hitting this entry's tier or mode class."""
+    if not frozen:
+        return None
+    adjudicator = _load_adjudicator()
+    cls = adjudicator.mode_class(entry)
+    return next(
+        (name for name in (entry.get("tier"), cls) if name in frozen),
+        None,
+    )
 
 
 def _run(coro):
@@ -177,16 +212,22 @@ def load_approvals(path: Path) -> dict[str, Any]:
 
 
 def select_applicable(
-    entries: list[dict[str, Any]], approvals: dict[str, Any]
+    entries: list[dict[str, Any]],
+    approvals: dict[str, Any],
+    frozen: set[str] = frozenset(),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """(to_apply, skipped). T0 always; T1 only when its group is
-    approved; golden never."""
+    approved; golden never; nothing whose tier or mode class carries a
+    freeze marker (an audit disagreement outranks any verdict)."""
     approved_groups = set(approvals.get("approved_groups") or [])
     to_apply, skipped = [], []
     for entry in entries:
         proposal = entry.get("proposal") or {}
         reason = None
-        if entry.get("golden"):
+        marker = _frozen_marker(entry, frozen)
+        if marker is not None:
+            reason = f"frozen:{marker}"
+        elif entry.get("golden"):
             reason = "golden-never-auto-applied"
         elif entry.get("tier") == "T0":
             pass
@@ -370,6 +411,7 @@ def run_apply(
     apply: bool,
     verdicts_dir: Path = DEFAULT_VERDICTS_DIR,
     approvals_dir: Path = DEFAULT_APPROVALS_DIR,
+    freeze_dir: Path = DEFAULT_FREEZE_DIR,
     lock_path: Path = DEFAULT_LOCK_PATH,
     poll_attempts: int = DEFAULT_POLL_ATTEMPTS,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
@@ -382,11 +424,26 @@ def run_apply(
         return 1
     entries = load_verdicts(verdicts_path)
     approvals = load_approvals(Path(approvals_dir) / f"{pass_id}.json")
-    to_apply, skipped = select_applicable(entries, approvals)
+    adjudicator = _load_adjudicator()
+    to_apply, skipped = select_applicable(
+        entries, approvals, frozen=adjudicator.load_frozen(Path(freeze_dir))
+    )
 
     applied_records: list[dict[str, Any]] = []
+    processed = 0
     with WriterLock(lock_path):
         for entry in to_apply:
+            processed += 1
+            # Re-read the freeze dir before EVERY write: an audit deck
+            # disagreement mid-session must stop the writer from
+            # applying the very class the audit just condemned, not
+            # merely the adjudicator's next run.
+            marker = _frozen_marker(
+                entry, adjudicator.load_frozen(Path(freeze_dir))
+            )
+            if marker is not None:
+                skipped.append({**entry, "skip_reason": f"frozen:{marker}"})
+                continue
             try:
                 applied_records.append(
                     apply_one(
@@ -410,7 +467,7 @@ def run_apply(
                             "image_id": e.get("image_id"),
                             "receipt_id": e.get("receipt_id"),
                         }
-                        for e in to_apply[len(applied_records) + 1 :]
+                        for e in to_apply[processed:]
                     ],
                 }
                 path = _write_divergence_report(
@@ -621,6 +678,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--approvals-dir", type=Path, default=DEFAULT_APPROVALS_DIR
     )
     p_apply.add_argument(
+        "--freeze-dir",
+        type=Path,
+        default=DEFAULT_FREEZE_DIR,
+        help="freeze markers (tier names or A-J class letters); "
+        "re-checked before every write",
+    )
+    p_apply.add_argument(
         "--poll-attempts", type=int, default=DEFAULT_POLL_ATTEMPTS
     )
     p_apply.add_argument(
@@ -662,6 +726,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 apply=args.apply,
                 verdicts_dir=args.verdicts_dir,
                 approvals_dir=args.approvals_dir,
+                freeze_dir=args.freeze_dir,
                 poll_attempts=args.poll_attempts,
                 poll_interval=args.poll_interval,
             )
