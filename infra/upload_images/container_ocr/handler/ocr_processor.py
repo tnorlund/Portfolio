@@ -41,6 +41,7 @@ from receipt_dynamo.entities import (
     Word,
 )
 from receipt_upload.geometry.transformations import find_perspective_coeffs
+from receipt_upload.line_items.geometry import extract_items
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -621,6 +622,129 @@ class OCRProcessor:
 
         return matches
 
+    def _items_zone_baseline(
+        self, image_id: str, receipt_id: int
+    ) -> Dict[str, Any] | None:
+        """ITEMS-zone line ids + summary figures for delta metrics.
+
+        Returns {"line_ids", "summary"} or None when the receipt has
+        no usable ITEMS section or printed subtotal -- the SMART
+        re-OCR completion deltas are then null (metrics are recorded
+        only where cheaply available).
+        """
+        try:
+            sections = self.dynamo.get_receipt_sections_from_receipt(
+                image_id, receipt_id
+            )
+            items_section = None
+            for section in sections:
+                s_type = str(
+                    getattr(section, "section_type", "") or ""
+                ).upper()
+                if s_type != "ITEMS":
+                    continue
+                status = str(
+                    getattr(section, "validation_status", "") or ""
+                ).upper()
+                if status == "INVALID":
+                    continue
+                if items_section is None or status == "VALID":
+                    items_section = section
+                if status == "VALID":
+                    break
+            if items_section is None:
+                return None
+            record = self.dynamo.get_receipt_summary(image_id, receipt_id)
+            inner = getattr(record, "summary", None)
+            subtotal = getattr(inner, "subtotal", None)
+            if subtotal is None:
+                return None
+            return {
+                "line_ids": {
+                    int(x) for x in (items_section.line_ids or [])
+                },
+                "summary": {
+                    "subtotal": float(subtotal),
+                    "grand_total": getattr(inner, "grand_total", None),
+                    "tax": getattr(inner, "tax", None),
+                },
+            }
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.info(
+                "items-zone baseline unavailable for %s#%s "
+                "(re-OCR deltas will be null)",
+                image_id,
+                receipt_id,
+            )
+            return None
+
+    def _items_zone_delta(
+        self, words: list, baseline: Dict[str, Any] | None
+    ) -> float | None:
+        """Signed items-sum minus printed subtotal for a word set.
+
+        Same decode the line-item updater uses, so before/after deltas
+        are comparable to reconciliation deltas downstream.
+        """
+        if baseline is None:
+            return None
+        try:
+            word_dicts = [
+                {
+                    "line_id": w.line_id,
+                    "word_id": w.word_id,
+                    "text": w.text,
+                    "x": w.bounding_box.get("x", 0.0),
+                    "y_mid": w.bounding_box.get("y", 0.0)
+                    + w.bounding_box.get("height", 0.0) / 2,
+                    "h": w.bounding_box.get("height", 0.0),
+                }
+                for w in words
+                if w.line_id in baseline["line_ids"]
+            ]
+            items, _ = extract_items(
+                word_dicts,
+                baseline["line_ids"],
+                summary=baseline["summary"],
+            )
+            total = sum(
+                item["price"]
+                for item in items
+                if not item.get("is_discount")
+                and isinstance(item.get("price"), (int, float))
+            )
+            return round(total - baseline["summary"]["subtotal"], 2)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.info("items-zone delta computation failed (non-fatal)")
+            return None
+
+    def _record_reocr_completion_metrics(
+        self,
+        ocr_job: Any,
+        words_accepted: int,
+        words_rejected: int,
+        delta_before: float | None,
+        delta_after: float | None,
+    ) -> None:
+        """Persist SMART re-OCR completion metrics onto the OCRJob.
+
+        The harvest (scripts/harvest_reocr_outcomes.py) aggregates
+        these per mechanism x strategy to tune the strategy ladder.
+        Best-effort: a metrics failure never fails the overlay.
+        """
+        try:
+            ocr_job.reocr_words_accepted = words_accepted
+            ocr_job.reocr_words_rejected = words_rejected
+            ocr_job.reocr_delta_before = delta_before
+            ocr_job.reocr_delta_after = delta_after
+            ocr_job.status = OCRStatus.COMPLETED.value
+            ocr_job.updated_at = datetime.now(timezone.utc)
+            self.dynamo.update_ocr_job(ocr_job)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Failed to record re-OCR completion metrics (non-fatal)"
+            )
+
     def _process_regional_reocr_job(
         self, ocr_job: Any, ocr_routing_decision: Any
     ) -> Dict[str, Any]:
@@ -780,6 +904,16 @@ class OCRProcessor:
                 last_evaluated_key=lek,
             )
             labels.extend(page or [])
+
+        # SMART re-OCR completion metrics: measure the items-zone delta
+        # against the printed subtotal BEFORE any word mutation. Null
+        # when the receipt has no ITEMS section / subtotal (cheap-only).
+        zone_baseline = self._items_zone_baseline(
+            ocr_job.image_id, ocr_job.receipt_id
+        )
+        reocr_delta_before = self._items_zone_delta(
+            existing_words, zone_baseline
+        )
 
         candidate_words = [
             word
@@ -1182,6 +1316,26 @@ class OCRProcessor:
             if lines_to_update:
                 self.dynamo.update_receipt_lines(lines_to_update)
 
+        # SMART re-OCR completion metrics: post-overlay delta from the
+        # in-memory word set (matched words were mutated in place;
+        # orphans removed; unmatched additions appended).
+        post_overlay_words = [
+            w
+            for w in existing_words
+            if (w.line_id, w.word_id) not in deleted_word_ids
+        ] + words_to_add
+        reocr_delta_after = self._items_zone_delta(
+            post_overlay_words, zone_baseline
+        )
+        words_accepted = len(words_to_update) + len(words_to_add)
+        self._record_reocr_completion_metrics(
+            ocr_job,
+            words_accepted=words_accepted,
+            words_rejected=words_rejected,
+            delta_before=reocr_delta_before,
+            delta_after=reocr_delta_after,
+        )
+
         ocr_routing_decision.status = OCRStatus.COMPLETED.value
         ocr_routing_decision.receipt_count = 1
         ocr_routing_decision.updated_at = datetime.now(timezone.utc)
@@ -1279,6 +1433,8 @@ class OCRProcessor:
             "words_added": len(words_to_add),
             "words_deleted": len(words_to_delete),
             "words_rejected": words_rejected,
+            "reocr_delta_before": reocr_delta_before,
+            "reocr_delta_after": reocr_delta_after,
             "labels_revalidated": len(labels_to_revalidate),
             "labels_deleted": len(labels_to_delete),
             "lines_rebuilt": len(lines_to_update),

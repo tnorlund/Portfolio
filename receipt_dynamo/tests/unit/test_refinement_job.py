@@ -154,6 +154,97 @@ def test_ocr_job_regional_reocr_fields_roundtrip():
     assert restored.reocr_reason == "subtotal_mismatch_phantom_values"
 
 
+def _smart_reocr_job(**overrides):
+    values = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "job_id": "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "s3_bucket": "test-bucket",
+        "s3_key": "receipts/test.png",
+        "created_at": datetime(2025, 5, 1, 12, 0, 0),
+        "status": OCRStatus.COMPLETED,
+        "job_type": OCRJobType.REGIONAL_REOCR,
+        "receipt_id": 7,
+        "reocr_region": {"x": 0.0, "y": 0.2, "width": 1.0, "height": 0.5},
+        "reocr_reason": "line_items_recon",
+        "reocr_strategy": "invert",
+        "reocr_mechanism": "reverse-video-total",
+        "reocr_words_accepted": 12,
+        "reocr_words_rejected": 3,
+        "reocr_delta_before": -61.85,
+        "reocr_delta_after": 0.0,
+    }
+    values.update(overrides)
+    return OCRJob(**values)
+
+
+@pytest.mark.unit
+def test_ocr_job_smart_reocr_fields_roundtrip():
+    job = _smart_reocr_job()
+    restored = item_to_ocr_job(job.to_item())
+    assert restored == job
+    assert restored.reocr_strategy == "invert"
+    assert restored.reocr_mechanism == "reverse-video-total"
+    assert restored.reocr_words_accepted == 12
+    assert restored.reocr_words_rejected == 3
+    assert restored.reocr_delta_before == -61.85
+    assert restored.reocr_delta_after == 0.0
+
+
+@pytest.mark.unit
+def test_ocr_job_smart_reocr_fields_absent_tolerant():
+    """Legacy items without the SMART re-OCR attributes still parse."""
+    item = _smart_reocr_job().to_item()
+    for field in (
+        "reocr_strategy",
+        "reocr_mechanism",
+        "reocr_words_accepted",
+        "reocr_words_rejected",
+        "reocr_delta_before",
+        "reocr_delta_after",
+    ):
+        del item[field]
+    restored = item_to_ocr_job(item)
+    assert restored.reocr_strategy is None
+    assert restored.reocr_mechanism is None
+    assert restored.reocr_words_accepted is None
+    assert restored.reocr_words_rejected is None
+    assert restored.reocr_delta_before is None
+    assert restored.reocr_delta_after is None
+    # A None-valued job round-trips (NULL attributes) too.
+    assert item_to_ocr_job(restored.to_item()) == restored
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("reocr_strategy", "sharpen"),
+        ("reocr_strategy", 1),
+        ("reocr_mechanism", ""),
+        ("reocr_mechanism", 5),
+        ("reocr_words_accepted", True),
+        ("reocr_words_accepted", -1),
+        ("reocr_words_accepted", 1.5),
+        ("reocr_words_rejected", True),
+        ("reocr_words_rejected", -2),
+        ("reocr_delta_before", True),
+        ("reocr_delta_before", float("nan")),
+        ("reocr_delta_after", "0.0"),
+        ("reocr_delta_after", float("inf")),
+    ],
+)
+def test_ocr_job_smart_reocr_field_validation(field, value):
+    with pytest.raises(ValueError):
+        _smart_reocr_job(**{field: value})
+
+
+@pytest.mark.unit
+def test_ocr_job_smart_reocr_strategy_values():
+    for strategy in ("plain", "invert", "deskew", "upscale2x"):
+        job = _smart_reocr_job(reocr_strategy=strategy)
+        assert item_to_ocr_job(job.to_item()).reocr_strategy == strategy
+
+
 @pytest.mark.unit
 def test_ocr_job_invalid_s3_bucket():
     with pytest.raises(ValueError, match="s3_bucket must be a string"):

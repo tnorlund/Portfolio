@@ -49,9 +49,18 @@ BOUNDARY_EXTENSION_SOURCE = "zone-gap-extend-v1"
 
 
 def update_receipt_line_items(
-    image_id: str, receipt_id: int
+    image_id: str,
+    receipt_id: int,
+    reocr_mechanism: str | None = None,
 ) -> dict[str, Any]:
-    """Recompute and rewrite RECEIPT_LINE_ITEM rows for one receipt."""
+    """Recompute and rewrite RECEIPT_LINE_ITEM rows for one receipt.
+
+    ``reocr_mechanism`` is an optional diagnosed OCR-failure mechanism
+    (e.g. "reverse-video-total" from a triage dossier) threaded through
+    to the re-OCR trigger so the strategy ladder can pick a targeted
+    capture strategy. The SQS path never sets it; direct callers
+    (scripts, agents) may.
+    """
     if dynamo_client is None:
         raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
 
@@ -192,6 +201,7 @@ def update_receipt_line_items(
         items,
         summary_dict,
         [word for word in word_dicts if word["line_id"] in line_ids],
+        reocr_mechanism=reocr_mechanism,
     )
     return {
         "items": len(entities),
@@ -273,6 +283,7 @@ def _maybe_trigger_items_reocr(
     items: list[dict],
     summary_dict: dict | None,
     zone_words: list[dict],
+    reocr_mechanism: str | None = None,
 ) -> bool:
     """Fire a capped REGIONAL_REOCR of the ITEMS zone on reconciliation
     mismatch (the digit-misread signature no downstream logic can fix).
@@ -282,6 +293,10 @@ def _maybe_trigger_items_reocr(
     requirement. The attempt cap exists because some glyphs are
     unreadable at any resolution (Twin Peaks) -- without it, every
     recompute of a permanently-mismatched receipt would re-fire.
+
+    Each attempt climbs the SMART strategy ladder: attempt 1 gets the
+    mechanism's best strategy, attempt 2 a DIFFERENT one (never a
+    repeat of a capture that already failed).
     """
     fn = os.environ.get("TRIGGER_REOCR_FUNCTION_NAME")
     if not fn or dynamo_client is None:
@@ -313,6 +328,7 @@ def _maybe_trigger_items_reocr(
             return False
 
         from receipt_upload.line_items.reocr import items_zone_reocr_region
+        from receipt_upload.line_items.reocr_strategy import choose_strategy
 
         receipt = dynamo_client.get_receipt(image_id, receipt_id)
         image = dynamo_client.get_image(image_id)
@@ -321,6 +337,9 @@ def _maybe_trigger_items_reocr(
         )
         if region is None:
             return False
+
+        attempt_number = len(prior) + 1
+        strategy = choose_strategy(reocr_mechanism, attempt_number)
 
         import boto3
 
@@ -333,14 +352,20 @@ def _maybe_trigger_items_reocr(
                     "receipt_id": receipt_id,
                     "reocr_region": region,
                     "reocr_reason": REOCR_REASON,
+                    "reocr_strategy": strategy,
+                    "reocr_mechanism": reocr_mechanism,
                 }
             ).encode(),
         )
         logger.info(
-            "triggered items-zone re-OCR for %s:%d region=%s",
+            "triggered items-zone re-OCR for %s:%d region=%s "
+            "strategy=%s mechanism=%s attempt=%d",
             image_id[:8],
             receipt_id,
             region,
+            strategy,
+            reocr_mechanism,
+            attempt_number,
         )
         return True
     except Exception:  # noqa: BLE001 - best-effort improvement pass

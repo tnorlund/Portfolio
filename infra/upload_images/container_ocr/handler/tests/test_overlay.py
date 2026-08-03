@@ -1528,3 +1528,149 @@ class TestOrphanDeletion:
         proc.dynamo.delete_receipt_words.assert_called_once()
         deleted = proc.dynamo.delete_receipt_words.call_args[0][0]
         assert deleted[0].text == "JUNK"
+
+
+# ===========================================================================
+# 9. SMART re-OCR completion metrics on the OCRJob
+# ===========================================================================
+
+class TestReocrCompletionMetrics:
+    def _run(self, proc, existing_words, new_words, region=None):
+        if region is None:
+            region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region=region, s3_bucket="b", s3_key="k",
+            status=None, updated_at=None,
+            reocr_words_accepted=None, reocr_words_rejected=None,
+            reocr_delta_before=None, reocr_delta_after=None,
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+        proc.dynamo.list_receipt_words_from_receipt.return_value = (
+            existing_words
+        )
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
+        proc.dynamo.list_receipt_letters_from_word.return_value = []
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = []
+
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps({"lines": []}))
+
+        new_lines = [_make_line(text=w.text, line_id=w.line_id)
+                     for w in new_words]
+        with patch(
+            "handler.ocr_processor.download_file_from_s3",
+            return_value=tmp,
+        ), patch(
+            "handler.ocr_processor.process_ocr_dict_as_image",
+            return_value=([], [], []),
+        ), patch(
+            "handler.ocr_processor.image_ocr_to_receipt_ocr",
+            return_value=(new_lines, new_words, []),
+        ):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+        return result, ocr_job
+
+    def _with_items_baseline(self, proc, subtotal=9.99):
+        proc.dynamo.get_receipt_sections_from_receipt.return_value = [
+            SimpleNamespace(
+                section_type="ITEMS",
+                validation_status="VALID",
+                line_ids=[1],
+            )
+        ]
+        proc.dynamo.get_receipt_summary.return_value = SimpleNamespace(
+            summary=SimpleNamespace(
+                subtotal=9.99, grand_total=None, tax=None
+            )
+        )
+
+    def test_metrics_persisted_on_ocr_job(self):
+        proc = _make_processor()
+        self._with_items_baseline(proc, subtotal=9.99)
+
+        # Line 1: "ITEM" (left, outside region) + "8.99" (right, inside).
+        existing = [
+            _make_word(text="ITEM", x=0.1, y=0.1, w=0.1, h=0.05,
+                       line_id=1, word_id=1),
+            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
+                       line_id=1, word_id=2),
+        ]
+        # Regional pass reads the price correctly as 9.99.
+        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
+                          line_id=1, word_id=1)]
+
+        result, ocr_job = self._run(proc, existing, new)
+
+        assert result["success"] is True
+        assert result["words_replaced"] == 1
+        assert result["reocr_delta_before"] == -1.0
+        assert result["reocr_delta_after"] == 0.0
+
+        proc.dynamo.update_ocr_job.assert_called_once()
+        persisted = proc.dynamo.update_ocr_job.call_args[0][0]
+        assert persisted is ocr_job
+        assert ocr_job.reocr_words_accepted == 1
+        assert ocr_job.reocr_words_rejected == 0
+        assert ocr_job.reocr_delta_before == -1.0
+        assert ocr_job.reocr_delta_after == 0.0
+        assert ocr_job.status == "COMPLETED"
+
+    def test_rejected_overlay_counts_persisted(self):
+        proc = _make_processor()
+        self._with_items_baseline(proc, subtotal=9.99)
+        existing = [
+            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
+                       line_id=1, word_id=2, confidence=0.99),
+        ]
+        # Low-confidence replacement is rejected by Guard 3a.
+        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
+                          line_id=1, word_id=1, confidence=0.3)]
+
+        result, ocr_job = self._run(proc, existing, new)
+
+        assert result["success"] is True
+        assert result["words_rejected"] == 1
+        assert ocr_job.reocr_words_accepted == 0
+        assert ocr_job.reocr_words_rejected == 1
+
+    def test_deltas_null_without_items_baseline(self):
+        proc = _make_processor()
+        # No sections / summary mocks configured: MagicMock defaults are
+        # not iterable, so the baseline lookup fails soft -> null deltas.
+        existing = [
+            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
+                       line_id=1, word_id=2),
+        ]
+        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
+                          line_id=1, word_id=1)]
+
+        result, ocr_job = self._run(proc, existing, new)
+
+        assert result["success"] is True
+        assert result["reocr_delta_before"] is None
+        assert result["reocr_delta_after"] is None
+        assert ocr_job.reocr_delta_before is None
+        assert ocr_job.reocr_delta_after is None
+        # Word counts still persist even without deltas.
+        assert ocr_job.reocr_words_accepted == 1
+        proc.dynamo.update_ocr_job.assert_called_once()
+
+    def test_metrics_failure_is_nonfatal(self):
+        proc = _make_processor()
+        proc.dynamo.update_ocr_job.side_effect = RuntimeError("boom")
+        existing = [
+            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
+                       line_id=1, word_id=2),
+        ]
+        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
+                          line_id=1, word_id=1)]
+
+        result, _ = self._run(proc, existing, new)
+        assert result["success"] is True

@@ -541,6 +541,13 @@ class HybridLambdaDeployment(ComponentResource):
                     / "line_items"
                     / "reocr.py"
                 ),
+                "receipt_upload/line_items/reocr_strategy.py": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "reocr_strategy.py"
+                ),
                 # reocr.py imports geometry.transformations directly; the
                 # real geometry __init__ pulls the full package.
                 "receipt_upload/geometry/__init__.py": pulumi.StringAsset(
@@ -568,6 +575,14 @@ class HybridLambdaDeployment(ComponentResource):
                     / "line_items"
                     / "assets"
                     / "block_role_priors_v2.json"
+                ),
+                "receipt_upload/line_items/assets/reocr_ladder.json": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "assets"
+                    / "reocr_ladder.json"
                 ),
             }
         )

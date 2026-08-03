@@ -17,6 +17,10 @@ from receipt_dynamo.entities.util import (
     normalize_enum,
 )
 
+# Contract shared with the Swift OCR worker and the strategy ladder in
+# receipt_upload.line_items.reocr_strategy -- keep the values in sync.
+VALID_REOCR_STRATEGIES = ("plain", "invert", "deskew", "upscale2x")
+
 
 @dataclass(eq=True, unsafe_hash=False)
 class OCRJob:
@@ -47,6 +51,15 @@ class OCRJob:
     receipt_id: int | None = None
     reocr_region: dict[str, float] | None = None
     reocr_reason: str | None = None
+    # SMART re-OCR fields (all optional / absent-tolerant). The trigger
+    # writes strategy + mechanism; the overlay writes the completion
+    # metrics. Consumed by the Swift worker under exactly these names.
+    reocr_strategy: str | None = None
+    reocr_mechanism: str | None = None
+    reocr_words_accepted: int | None = None
+    reocr_words_rejected: int | None = None
+    reocr_delta_before: float | None = None
+    reocr_delta_after: float | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -120,6 +133,45 @@ class OCRJob:
         ):
             raise ValueError("reocr_reason must be a string or None")
 
+        if self.reocr_strategy is not None and (
+            not isinstance(self.reocr_strategy, str)
+            or self.reocr_strategy not in VALID_REOCR_STRATEGIES
+        ):
+            raise ValueError(
+                "reocr_strategy must be one of "
+                f"{VALID_REOCR_STRATEGIES} or None"
+            )
+
+        if self.reocr_mechanism is not None and (
+            not isinstance(self.reocr_mechanism, str)
+            or not self.reocr_mechanism
+        ):
+            raise ValueError(
+                "reocr_mechanism must be a non-empty string or None"
+            )
+
+        for count_field in ("reocr_words_accepted", "reocr_words_rejected"):
+            count = getattr(self, count_field)
+            if count is None:
+                continue
+            if isinstance(count, bool) or not isinstance(count, int):
+                raise ValueError(f"{count_field} must be an integer or None")
+            if count < 0:
+                raise ValueError(f"{count_field} must not be negative")
+
+        for delta_field in ("reocr_delta_before", "reocr_delta_after"):
+            delta = getattr(self, delta_field)
+            if delta is None:
+                continue
+            if (
+                isinstance(delta, bool)
+                or not isinstance(delta, int | float)
+                or not isfinite(delta)
+            ):
+                raise ValueError(
+                    f"{delta_field} must be a finite number or None"
+                )
+
     @property
     def key(self) -> dict[str, Any]:
         return {
@@ -178,6 +230,36 @@ class OCRJob:
                 if self.reocr_reason is not None
                 else {"NULL": True}
             ),
+            "reocr_strategy": (
+                {"S": self.reocr_strategy}
+                if self.reocr_strategy is not None
+                else {"NULL": True}
+            ),
+            "reocr_mechanism": (
+                {"S": self.reocr_mechanism}
+                if self.reocr_mechanism is not None
+                else {"NULL": True}
+            ),
+            "reocr_words_accepted": (
+                {"N": str(self.reocr_words_accepted)}
+                if self.reocr_words_accepted is not None
+                else {"NULL": True}
+            ),
+            "reocr_words_rejected": (
+                {"N": str(self.reocr_words_rejected)}
+                if self.reocr_words_rejected is not None
+                else {"NULL": True}
+            ),
+            "reocr_delta_before": (
+                {"N": str(float(self.reocr_delta_before))}
+                if self.reocr_delta_before is not None
+                else {"NULL": True}
+            ),
+            "reocr_delta_after": (
+                {"N": str(float(self.reocr_delta_after))}
+                if self.reocr_delta_after is not None
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -193,7 +275,13 @@ class OCRJob:
             f"job_type={_repr_str(self.job_type)}, "
             f"receipt_id={self.receipt_id}, "
             f"reocr_region={self.reocr_region}, "
-            f"reocr_reason={_repr_str(self.reocr_reason)}"
+            f"reocr_reason={_repr_str(self.reocr_reason)}, "
+            f"reocr_strategy={_repr_str(self.reocr_strategy)}, "
+            f"reocr_mechanism={_repr_str(self.reocr_mechanism)}, "
+            f"reocr_words_accepted={self.reocr_words_accepted}, "
+            f"reocr_words_rejected={self.reocr_words_rejected}, "
+            f"reocr_delta_before={self.reocr_delta_before}, "
+            f"reocr_delta_after={self.reocr_delta_after}"
             ")"
         )
 
@@ -209,6 +297,12 @@ class OCRJob:
         yield "receipt_id", self.receipt_id
         yield "reocr_region", self.reocr_region
         yield "reocr_reason", self.reocr_reason
+        yield "reocr_strategy", self.reocr_strategy
+        yield "reocr_mechanism", self.reocr_mechanism
+        yield "reocr_words_accepted", self.reocr_words_accepted
+        yield "reocr_words_rejected", self.reocr_words_rejected
+        yield "reocr_delta_before", self.reocr_delta_before
+        yield "reocr_delta_after", self.reocr_delta_after
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, OCRJob):
@@ -225,6 +319,12 @@ class OCRJob:
             and self.receipt_id == other.receipt_id
             and self.reocr_region == other.reocr_region
             and self.reocr_reason == other.reocr_reason
+            and self.reocr_strategy == other.reocr_strategy
+            and self.reocr_mechanism == other.reocr_mechanism
+            and self.reocr_words_accepted == other.reocr_words_accepted
+            and self.reocr_words_rejected == other.reocr_words_rejected
+            and self.reocr_delta_before == other.reocr_delta_before
+            and self.reocr_delta_after == other.reocr_delta_after
         )
 
     def __hash__(self) -> int:
@@ -245,6 +345,12 @@ class OCRJob:
                     else None
                 ),
                 self.reocr_reason,
+                self.reocr_strategy,
+                self.reocr_mechanism,
+                self.reocr_words_accepted,
+                self.reocr_words_rejected,
+                self.reocr_delta_before,
+                self.reocr_delta_after,
             )
         )
 
@@ -310,6 +416,20 @@ class OCRJob:
             "receipt_id": EntityFactory.extract_int_field("receipt_id"),
             "reocr_region": _extract_reocr_region,
             "reocr_reason": _extract_optional_string("reocr_reason"),
+            "reocr_strategy": _extract_optional_string("reocr_strategy"),
+            "reocr_mechanism": _extract_optional_string("reocr_mechanism"),
+            "reocr_words_accepted": EntityFactory.extract_int_field(
+                "reocr_words_accepted"
+            ),
+            "reocr_words_rejected": EntityFactory.extract_int_field(
+                "reocr_words_rejected"
+            ),
+            "reocr_delta_before": EntityFactory.extract_float_field(
+                "reocr_delta_before"
+            ),
+            "reocr_delta_after": EntityFactory.extract_float_field(
+                "reocr_delta_after"
+            ),
         }
 
         if item.get("TYPE", {}).get("S") != "OCR_JOB":
