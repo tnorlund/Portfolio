@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMBatchInferenceResponse
 
-Defined in: [types/api.ts:506](https://github.com/tnorlund/Portfolio/blob/e0be3a8181d56920074512046822d89784e33ec1/portfolio/types/api.ts#L506)
+Defined in: [types/api.ts:506](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L506)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:506](https://github.com/tnorlund/Portfolio/blob/e0be3a
 
 > **aggregate\_stats**: [`LayoutLMAggregateStats`](LayoutLMAggregateStats.md)
 
-Defined in: [types/api.ts:508](https://github.com/tnorlund/Portfolio/blob/e0be3a8181d56920074512046822d89784e33ec1/portfolio/types/api.ts#L508)
+Defined in: [types/api.ts:508](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L508)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:508](https://github.com/tnorlund/Portfolio/blob/e0be3a
 
 > **fetched\_at**: `string`
 
-Defined in: [types/api.ts:509](https://github.com/tnorlund/Portfolio/blob/e0be3a8181d56920074512046822d89784e33ec1/portfolio/types/api.ts#L509)
+Defined in: [types/api.ts:509](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L509)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:509](https://github.com/tnorlund/Portfolio/blob/e0be3a
 
 > **receipts**: [`LayoutLMReceiptInference`](LayoutLMReceiptInference.md)[]
 
-Defined in: [types/api.ts:507](https://github.com/tnorlund/Portfolio/blob/e0be3a8181d56920074512046822d89784e33ec1/portfolio/types/api.ts#L507)
+Defined in: [types/api.ts:507](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L507)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:507](https://github.com/tnorlund/Portfolio/blob/e0be3a
 
 > `optional` **legacy\_mode?**: `boolean`
 
-Defined in: [types/api.ts:510](https://github.com/tnorlund/Portfolio/blob/e0be3a8181d56920074512046822d89784e33ec1/portfolio/types/api.ts#L510)
+Defined in: [types/api.ts:510](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L510)
