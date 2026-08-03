@@ -410,9 +410,30 @@ jobs:
           BUCKET=$(pulumi stack output cdn_bucket_name)
           DIST_ID=$(pulumi stack output cdn_distribution_id)
 
-          # IMPORTANT: --exclude "assets/*" preserves images uploaded by receipt processing pipeline
-          # Without this, every deploy would delete all CDN-hosted images
-          aws s3 sync ../portfolio/out s3://$BUCKET --delete --exclude "assets/*" --cache-control "public, max-age=3600"
+          # Deletion is scoped to paths the build output actually owns.
+          # The bucket also holds prefixes the build knows nothing about
+          # (assets/ from the receipt pipeline, ad-hoc backups, anything
+          # future); a bucket-wide `sync --delete` treats all of them as
+          # stale and wipes them -- the bucket is unversioned, so that
+          # loss is permanent (it already destroyed one backup run).
+          OUT=../portfolio/out
+
+          # Root-level files: --exclude "*/*" removes every prefixed key
+          # from both copy and delete consideration, so this only syncs
+          # top-level files (index.html etc.) and deletes stale ones.
+          aws s3 sync "$OUT" "s3://$BUCKET" --delete --exclude "*/*" --cache-control "public, max-age=3600"
+
+          # Each top-level directory the build emitted: full sync with
+          # delete scoped inside that prefix. assets/ is skipped even if
+          # the build ever emits one -- it belongs to the receipt
+          # pipeline, and clobbering it deletes every CDN-hosted image.
+          for dir in "$OUT"/*/; do
+            prefix=$(basename "$dir")
+            if [ "$prefix" = "assets" ]; then
+              continue
+            fi
+            aws s3 sync "$OUT/$prefix" "s3://$BUCKET/$prefix" --delete --cache-control "public, max-age=3600"
+          done
           aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
