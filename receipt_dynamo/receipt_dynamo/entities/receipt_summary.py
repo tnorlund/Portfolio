@@ -24,6 +24,8 @@ from receipt_dynamo.amounts import (
     NON_PAYMENT_SUMMARY_RE,
     SUBTOTAL_KEYWORD_RE,
     TAX_KEYWORD_RE,
+    TENDER_KEYWORD_RE,
+    TOTAL_KEYWORD_RE,
     is_grand_total_line,
     looks_like_receipt_amount,
     parse_receipt_amount,
@@ -411,11 +413,46 @@ def _positive_amount(text: str) -> float | None:
 
 
 def _is_summary_noise_line(line_text: str) -> bool:
-    """Return whether a line is a subtotal/tax/non-payment summary row."""
+    """Return whether a line is a subtotal/tax/tender/non-payment row."""
     return bool(
         SUBTOTAL_KEYWORD_RE.search(line_text)
         or TAX_KEYWORD_RE.search(line_text)
         or NON_PAYMENT_SUMMARY_RE.search(line_text)
+        or TENDER_KEYWORD_RE.search(line_text)
+    )
+
+
+def _is_grand_total_anchor(line_text: str) -> bool:
+    """A grand-total anchor row: a total row that is not a tender row.
+
+    Tender/settlement rows ("Total Tender", "Amount Tendered", "Cash",
+    "Change") record how the customer paid -- tender can include tip --
+    so a plain "Total" row must always outrank them. Moody Market
+    (a8d7ab9f r4) printed "Total 21.45" and "Total Tender 24.67"
+    (total + tips); anchoring on the tender row broke reconciliation.
+    """
+    return bool(
+        is_grand_total_line(line_text)
+        and not TENDER_KEYWORD_RE.search(line_text)
+    )
+
+
+def _is_subtotal_anchor(line_text: str) -> bool:
+    """A subtotal anchor row (never a savings/tender variant)."""
+    return bool(
+        SUBTOTAL_KEYWORD_RE.search(line_text)
+        and not NON_PAYMENT_SUMMARY_RE.search(line_text)
+        and not TENDER_KEYWORD_RE.search(line_text)
+    )
+
+
+def _is_subtotal_noise_line(line_text: str) -> bool:
+    """Rows a subtotal anchor must not pair with across the y-band."""
+    return bool(
+        TOTAL_KEYWORD_RE.search(line_text)
+        or TAX_KEYWORD_RE.search(line_text)
+        or NON_PAYMENT_SUMMARY_RE.search(line_text)
+        or TENDER_KEYWORD_RE.search(line_text)
     )
 
 
@@ -431,10 +468,11 @@ def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
 
     Strategy:
     1. Find anchor lines whose joined text reads as a grand-total row
-       (shared ``is_grand_total_line`` keywords).
+       (shared ``is_grand_total_line`` keywords) and is not a
+       tender/settlement row (``_is_grand_total_anchor``).
     2. Take amounts printed on the anchor line itself; otherwise pair the
        anchor with amount words on other lines whose y-center falls in
-       the anchor's row band (skipping subtotal/tax/savings rows).
+       the anchor's row band (skipping subtotal/tax/tender/savings rows).
     3. Return the largest anchored amount, mirroring the GRAND_TOTAL
        label handler's largest-value semantics.
 
@@ -444,6 +482,29 @@ def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
     Returns:
         The printed grand total, or None when no anchored amount exists.
     """
+    return _find_anchored_amount(
+        words, _is_grand_total_anchor, _is_summary_noise_line
+    )
+
+
+def find_printed_subtotal(words: list["ReceiptWord"]) -> float | None:
+    """Find the printed subtotal from receipt words, without labels.
+
+    Same anchored-row strategy as :func:`find_printed_grand_total`,
+    anchored on subtotal rows and skipping total/tax/tender/savings
+    rows when pairing across the y-band.
+    """
+    return _find_anchored_amount(
+        words, _is_subtotal_anchor, _is_subtotal_noise_line
+    )
+
+
+def _find_anchored_amount(
+    words: list["ReceiptWord"],
+    is_anchor: Callable[[str], bool],
+    is_noise: Callable[[str], bool],
+) -> float | None:
+    """Largest amount printed on (or row-banded with) an anchor line."""
     lines: dict[int, list["ReceiptWord"]] = {}
     for word in words:
         line_id = getattr(word, "line_id", None)
@@ -458,9 +519,7 @@ def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
     }
 
     anchor_ids = [
-        line_id
-        for line_id, text in line_texts.items()
-        if is_grand_total_line(text)
+        line_id for line_id, text in line_texts.items() if is_anchor(text)
     ]
     if not anchor_ids:
         return None
@@ -493,7 +552,7 @@ def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
         for line_id, line_words in lines.items():
             if line_id == anchor_id:
                 continue
-            if _is_summary_noise_line(line_texts[line_id]):
+            if is_noise(line_texts[line_id]):
                 continue
             for w in line_words:
                 center = _word_y_center(w)
@@ -509,12 +568,15 @@ def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
 def _apply_printed_total_fallback(
     totals: MonetaryTotals, words: list["ReceiptWord"]
 ) -> None:
-    """Fill grand_total from the printed total when labels produced none."""
-    if totals.grand_total is not None and totals.grand_total > 0:
-        return
-    printed = find_printed_grand_total(words)
-    if printed is not None:
-        totals.grand_total = printed
+    """Fill grand_total/subtotal from printed rows when labels gave none."""
+    if totals.grand_total is None or totals.grand_total <= 0:
+        printed = find_printed_grand_total(words)
+        if printed is not None:
+            totals.grand_total = printed
+    if totals.subtotal is None or totals.subtotal <= 0:
+        printed = find_printed_subtotal(words)
+        if printed is not None:
+            totals.subtotal = printed
 
 
 # =============================================================================
