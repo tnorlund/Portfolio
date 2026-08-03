@@ -85,6 +85,12 @@ disagreement freezes that tier/class: a marker file in
 `.dev-harness/freeze/<tier-or-class>` demotes the frozen class to T2 in
 every subsequent adjudication run until the marker is removed, and
 auto-verdicts of that class since the last clean audit are re-queued.
+The writer independently re-reads the freeze dir before every single
+write (so a marker landing mid-session stops the remaining entries of
+that class immediately), and regardless of that check, re-running the
+adjudicator after any audit disagreement — before any further writer
+run — is the standing process; the writer-side check is defense in
+depth, not a substitute.
 
 ## Failure containment
 

@@ -222,12 +222,20 @@ def _run(tmp_path, world, entries, approvals=None, apply=True, **kwargs):
         apply=apply,
         verdicts_dir=verdicts_dir,
         approvals_dir=approvals_dir,
+        freeze_dir=kwargs.pop("freeze_dir", tmp_path / "freeze"),
         lock_path=tmp_path / "writer.lock",
         poll_attempts=kwargs.pop("poll_attempts", 3),
         poll_interval=0.0,
         sleep=lambda _s: None,
         **kwargs,
     )
+
+
+def _freeze(tmp_path, marker):
+    freeze_dir = tmp_path / "freeze"
+    freeze_dir.mkdir(exist_ok=True)
+    (freeze_dir / marker).write_text("audit disagreement")
+    return freeze_dir
 
 
 # --------------------------------------------------------------------------
@@ -433,6 +441,76 @@ def test_t2_never_applied(tmp_path, capsys):
     assert world.summary_updates == []
     summary = json.loads(capsys.readouterr().out)
     assert summary["skipped"][0]["skip_reason"] == "tier-T2-not-writable"
+
+
+# --------------------------------------------------------------------------
+# Freeze markers: the writer honors them too, re-checked before every
+# write (a mid-session audit freeze must stop the writer immediately,
+# not merely the adjudicator's next run).
+# --------------------------------------------------------------------------
+
+
+def test_frozen_tier_skips_t0_entry(tmp_path, capsys):
+    _freeze(tmp_path, "T0")
+    world = MutableWorld()
+    rc = _run(tmp_path, world, [_verdict()])
+    assert rc == 0
+    assert world.summary_updates == []
+    assert world.section_updates == []
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["applied"] == []
+    assert summary["skipped"][0]["skip_reason"] == "frozen:T0"
+
+
+def test_frozen_mode_class_skips_entry(tmp_path, capsys):
+    _freeze(tmp_path, "H")  # _verdict() mode is H-clean-extension
+    world = MutableWorld()
+    rc = _run(tmp_path, world, [_verdict()])
+    assert rc == 0
+    assert world.summary_updates == []
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["skipped"][0]["skip_reason"] == "frozen:H"
+
+
+def test_unrelated_freeze_does_not_block(tmp_path, capsys):
+    _freeze(tmp_path, "B")  # different mode class entirely
+    world = MutableWorld()
+    rc = _run(tmp_path, world, [_verdict()])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["applied"][0]["confirmed"] is True
+
+
+class _FreezeMidRunWorld(MutableWorld):
+    """The audit deck writes a freeze marker while the writer runs.
+
+    ``update_receipt_summary`` is the last write of the guarded apply,
+    so dropping the marker there lands it exactly between entry #1's
+    apply and entry #2's — the writer must re-check per receipt and
+    skip #2.
+    """
+
+    def __init__(self, tmp_path):
+        super().__init__()
+        self._tmp_path = tmp_path
+
+    def update_receipt_summary(self, record):
+        super().update_receipt_summary(record)
+        _freeze(self._tmp_path, "T0")
+
+
+def test_freeze_appearing_mid_run_stops_later_entries(tmp_path, capsys):
+    world = _FreezeMidRunWorld(tmp_path)
+    # Two identical T0 verdicts: without the per-receipt re-check the
+    # second would reach the guard (and diverge); with it, the freeze
+    # written during the first apply skips the second cleanly.
+    rc = _run(tmp_path, world, [_verdict(), _verdict()])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert len(summary["applied"]) == 1
+    assert summary["applied"][0]["confirmed"] is True
+    assert summary["skipped"][0]["skip_reason"] == "frozen:T0"
+    assert len(world.summary_updates) == 1
 
 
 # --------------------------------------------------------------------------
