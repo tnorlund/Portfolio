@@ -282,11 +282,15 @@ def test_dry_run_default_writes_nothing(tmp_path, capsys):
 
 
 # --------------------------------------------------------------------------
-# Halt on divergence
+# Halt on divergence / confirmation timing (pass-20260803 lessons)
 # --------------------------------------------------------------------------
 
 
-def test_halt_on_divergence_when_delta_never_lands(tmp_path, capsys):
+def test_halt_reports_timeout_when_stream_never_lands(tmp_path, capsys):
+    # Observed delta stays at the PRE-APPLY value: the stream simply
+    # has not landed, which refutes nothing — the halt must say
+    # confirmation-timeout, not delta-divergence (the 112ed08b
+    # misattribution).
     world = MutableWorld(stream_works=False)  # stream never regenerates
     rc = _run(tmp_path, world, [_verdict()])
     assert rc == 2
@@ -294,10 +298,75 @@ def test_halt_on_divergence_when_delta_never_lands(tmp_path, capsys):
     report_path = tmp_path / "verdicts" / "p1.divergence.json"
     assert report_path.exists()
     report = json.loads(report_path.read_text())
-    assert report["divergence"]["kind"] == "delta-divergence"
+    assert report["divergence"]["kind"] == "confirmation-timeout"
     assert report["divergence"]["predicted_delta"] == 0.0
+    assert report["divergence"]["before_delta"] == -4.0
     assert report["divergence"]["observed_delta"] == -4.0
     assert not (tmp_path / "writer.lock").exists()
+
+
+class _DelayedStreamWorld(MutableWorld):
+    """Stream regeneration lands only after ``lag_reads`` re-reads.
+
+    Models the pass-20260803 reality: ~33s of stream/SQS latency
+    between the summary bump and the recompute landing, during which
+    the stored rows still show the pre-apply delta.
+    """
+
+    def __init__(self, lag_reads):
+        super().__init__(stream_works=False)
+        self.lag_reads = lag_reads
+        self._reads_since_apply = None
+
+    def update_receipt_summary(self, record):
+        super().update_receipt_summary(record)
+        self._reads_since_apply = 0
+
+    def get_receipt_line_items_from_receipt(self, image_id, receipt_id):
+        if self._reads_since_apply is not None:
+            self._reads_since_apply += 1
+            if self._reads_since_apply > self.lag_reads:
+                items_section = next(
+                    s for s in self.sections if s.section_type == "ITEMS"
+                )
+                self.line_items = self._items_for(items_section.line_ids)
+        return self.line_items
+
+
+def test_late_stream_still_confirms_within_window(tmp_path, capsys):
+    # 112ed08b regression: while observed == pre-apply delta the writer
+    # must keep polling, and a stream landing late (but inside the
+    # window) is a clean confirmation, not a halt.
+    world = _DelayedStreamWorld(lag_reads=3)
+    rc = _run(tmp_path, world, [_verdict()], poll_attempts=6)
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["applied"][0]["confirmed"] is True
+    assert summary["applied"][0]["observed_delta"] == 0.0
+
+
+class _WrongRegenWorld(MutableWorld):
+    """Stream lands on a delta that is neither before nor predicted."""
+
+    def update_receipt_summary(self, record):
+        self.summary_updates.append(record)
+        # Regenerate to APPLES only: delta -6.00 (before was -4.00,
+        # predicted 0.0) — a true divergence.
+        self.line_items = self._items_for([1])
+
+
+def test_true_divergence_halts_immediately(tmp_path):
+    world = _WrongRegenWorld()
+    rc = _run(tmp_path, world, [_verdict()], poll_attempts=10)
+    assert rc == 2
+    report = json.loads(
+        (tmp_path / "verdicts" / "p1.divergence.json").read_text()
+    )
+    assert report["divergence"]["kind"] == "delta-divergence"
+    assert report["divergence"]["observed_delta"] == -6.0
+    assert report["divergence"]["before_delta"] == -4.0
+    # Fail-fast: a genuinely wrong delta must not wait out the window.
+    assert report["divergence"]["poll_attempts"] == 1
 
 
 def test_halt_when_guard_refuses_at_write_time(tmp_path):
@@ -654,3 +723,167 @@ def test_retire_dry_run_backs_up_but_does_not_delete(tmp_path, capsys):
     assert world.deleted == []
     out = json.loads(capsys.readouterr().out)
     assert out["retired"][0]["deletion"]["dry_run"] is True
+
+
+# --------------------------------------------------------------------------
+# Simulator fidelity: 112ed08b (Sprouts) shape. OCR split each visual
+# item row into a name-only line and a price-only line (15/34, 16/35,
+# 17/36); the section is row-anchored, so extending with the two name
+# lines widens to their price lines (+9.98). The dry-run prediction
+# must equal a Lambda-style recompute (line_item_processor's exact
+# word/summary construction) over the section as stored post-apply.
+# --------------------------------------------------------------------------
+
+
+class _SproutsWorld:
+    """Row-anchored stub shaped like dev receipt 112ed08b r1."""
+
+    LINES = {
+        15: ("ORG SWT POTATO 3LB", 0.10),
+        34: ("4.99", 0.10),
+        16: ("SEEDLESS LEMONS BAG", 0.15),
+        35: ("4.99", 0.15),
+        17: ("SHALLOTS", 0.20),
+        36: ("0.84", 0.20),
+    }
+
+    def __init__(self):
+        from receipt_dynamo.entities.receipt_section import ReceiptSection
+
+        self.words = [
+            _word(lid, 1, text, 0.80 if text[0].isdigit() else 0.05, y)
+            for lid, (text, y) in self.LINES.items()
+        ]
+        self.sections = [
+            ReceiptSection(
+                receipt_id=1,
+                image_id=IMAGE_ID,
+                section_type="ITEMS",
+                line_ids=[17, 36],
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                model_source="section-seed-v0",
+                validation_status="VALID",
+                row_ids=[17],
+            )
+        ]
+        self.rows = [
+            SimpleNamespace(row_id=15, line_ids=[15, 34]),
+            SimpleNamespace(row_id=16, line_ids=[16, 35]),
+            SimpleNamespace(row_id=17, line_ids=[17, 36]),
+        ]
+        self.summary_updates = []
+
+    def get_receipt_details(self, image_id, receipt_id):
+        return SimpleNamespace(
+            lines=[SimpleNamespace(line_id=i) for i in self.LINES],
+            words=self.words,
+        )
+
+    def get_receipt_sections_from_receipt(self, image_id, receipt_id):
+        return self.sections
+
+    def get_receipt_rows_from_receipt(self, image_id, receipt_id):
+        return self.rows
+
+    def get_receipt_summary(self, image_id, receipt_id):
+        from receipt_dynamo.entities.receipt_summary import (
+            MonetaryTotals,
+            ReceiptSummary,
+        )
+        from receipt_dynamo.entities.receipt_summary_record import (
+            ReceiptSummaryRecord,
+        )
+
+        return ReceiptSummaryRecord(
+            summary=ReceiptSummary(
+                image_id=IMAGE_ID,
+                receipt_id=1,
+                merchant_name="Sprouts Farmers Market",
+                totals=MonetaryTotals(
+                    grand_total=10.82, subtotal=None, tax=None
+                ),
+                item_count=3,
+            ),
+            timestamp_computed="2026-01-01T00:00:00+00:00",
+        )
+
+    def update_receipt_section(self, section):
+        self.sections = [
+            section if s.section_type == "ITEMS" else s for s in self.sections
+        ]
+
+    def update_receipt_summary(self, record):
+        self.summary_updates.append(record)
+
+
+def test_sprouts_row_widening_prediction_matches_lambda_recompute():
+    from receipt_upload.line_items.geometry import (
+        extract_items,
+        reconcile_detailed,
+    )
+
+    world = _SproutsWorld()
+
+    dry = writer._run(
+        mcp_server.extend_items_section_impl(
+            world, IMAGE_ID, 1, [15, 16], dry_run=True
+        )
+    )
+    assert dry.get("verified") is True, dry
+    # The 112ed08b shape: adding the two NAME lines widens (via the row
+    # anchor) to their price lines, moving -9.98 -> 0.0.
+    assert dry["before"]["delta"] == -9.98
+    assert dry["after"] == {
+        "status": "match",
+        "items_sum": 10.82,
+        "baseline": 10.82,
+        "delta": 0.0,
+        "n_items": 3,
+        "collapsed_banding": False,
+    }
+    assert set(dry["extended_line_ids"]) == {15, 16, 17, 34, 35, 36}
+
+    applied = writer._run(
+        mcp_server.extend_items_section_impl(
+            world, IMAGE_ID, 1, [15, 16], dry_run=False
+        )
+    )
+    assert applied.get("applied") is True
+
+    # Lambda-style recompute over the section AS STORED, using
+    # line_item_processor.update_receipt_line_items's exact input
+    # construction: word dicts from the word entities and a summary
+    # dict from the inner ReceiptSummary attributes.
+    stored = next(s for s in world.sections if s.section_type == "ITEMS")
+    lambda_words = [
+        {
+            "line_id": w.line_id,
+            "word_id": w.word_id,
+            "text": w.text,
+            "x": w.bounding_box.get("x", 0.0),
+            "y_mid": w.bounding_box.get("y", 0.0)
+            + w.bounding_box.get("height", 0.0) / 2,
+            "h": w.bounding_box.get("height", 0.0),
+        }
+        for w in world.words
+    ]
+    inner = world.get_receipt_summary(IMAGE_ID, 1).summary
+    lambda_summary = {
+        "subtotal": getattr(inner, "subtotal", None),
+        "grand_total": getattr(inner, "grand_total", None),
+        "tax": getattr(inner, "tax", None),
+    }
+    items, _ = extract_items(
+        lambda_words,
+        {int(x) for x in stored.line_ids},
+        summary=lambda_summary,
+    )
+    recon = reconcile_detailed(
+        [i for i in items if not i.get("is_discount")], lambda_summary
+    )
+
+    # Parity: what the stream stage will store equals the prediction.
+    assert recon.status == dry["after"]["status"]
+    assert recon.item_sum == dry["after"]["items_sum"]
+    assert round(recon.item_sum - recon.baseline, 2) == dry["after"]["delta"]
+    assert len(items) == dry["after"]["n_items"]
