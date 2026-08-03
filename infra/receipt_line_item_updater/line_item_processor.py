@@ -22,16 +22,22 @@ import json
 import logging
 import os
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
+# Warning #6 requires one first-party block in infra files.
+# isort: off
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_upload.line_items.geometry import (
     extract_items,
+    propose_items_boundary_extension,
     reconcile_detailed,
 )
+
+# isort: on
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +45,7 @@ TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "")
 dynamo_client = DynamoClient(TABLE_NAME) if TABLE_NAME else None
 
 EXTRACTOR_VERSION = "line-items-blocks-v2"
+BOUNDARY_EXTENSION_SOURCE = "zone-gap-extend-v1"
 
 
 def update_receipt_line_items(
@@ -77,7 +84,6 @@ def update_receipt_line_items(
         )
         return {"items": 0, "deleted": deleted, "reason": "no-items-zone"}
 
-    line_ids = {int(x) for x in (items_section.line_ids or [])}
     word_dicts = [
         {
             "line_id": w.line_id,
@@ -89,7 +95,6 @@ def update_receipt_line_items(
             "h": w.bounding_box.get("height", 0.0),
         }
         for w in words
-        if w.line_id in line_ids
     ]
 
     # Summary is fetched BEFORE extraction: the decoder's non-product
@@ -117,6 +122,19 @@ def update_receipt_line_items(
             image_id[:8],
             receipt_id,
         )
+
+    extension = None
+    if summary_dict is not None:
+        items_section, extension = _maybe_extend_items_section(
+            image_id,
+            receipt_id,
+            items_section,
+            sections,
+            word_dicts,
+            summary_dict,
+        )
+
+    line_ids = {int(x) for x in (items_section.line_ids or [])}
 
     items, collapsed = extract_items(
         word_dicts, line_ids, summary=summary_dict
@@ -169,7 +187,11 @@ def update_receipt_line_items(
         dynamo_client.add_receipt_line_items(entities)
 
     reocr = _maybe_trigger_items_reocr(
-        image_id, receipt_id, items, summary_dict, word_dicts
+        image_id,
+        receipt_id,
+        items,
+        summary_dict,
+        [word for word in word_dicts if word["line_id"] in line_ids],
     )
     return {
         "items": len(entities),
@@ -177,7 +199,67 @@ def update_receipt_line_items(
         "reconciliation": status,
         "baseline_source": recon.baseline_source,
         "baseline_figures_agreeing": recon.baseline_figures_agreeing,
+        "section_extension": extension,
         "reocr_triggered": reocr,
+    }
+
+
+def _maybe_extend_items_section(
+    image_id: str,
+    receipt_id: int,
+    items_section: Any,
+    sections: list[Any],
+    words: list[dict],
+    summary: dict,
+) -> tuple[Any, dict[str, Any] | None]:
+    """Persist a reconciliation-verified adjacent-row ITEMS extension."""
+
+    try:
+        rows = dynamo_client.get_receipt_rows_from_receipt(
+            image_id, receipt_id
+        )
+    except EntityNotFoundError:
+        rows = []
+    proposal = propose_items_boundary_extension(
+        words=words,
+        summary=summary,
+        current_line_ids={int(x) for x in (items_section.line_ids or [])},
+        sections=sections,
+        rows=rows,
+        current_row_ids=getattr(items_section, "row_ids", None),
+    )
+    if proposal is None:
+        return items_section, None
+
+    model_source = str(getattr(items_section, "model_source", "") or "")
+    sources = [part for part in model_source.split("+") if part]
+    if BOUNDARY_EXTENSION_SOURCE not in sources:
+        sources.append(BOUNDARY_EXTENSION_SOURCE)
+    updated = replace(
+        items_section,
+        line_ids=proposal["line_ids"],
+        row_ids=proposal["row_ids"],
+        model_source="+".join(sources),
+    )
+    # replace() preserves validation_status and all verifier provenance.  In
+    # particular, a VALID section must never be demoted by automatic repair.
+    dynamo_client.update_receipt_section(updated)
+    logger.info(
+        "extended ITEMS boundary for %s:%d with lines=%s (%s/%s -> %s/%s)",
+        image_id[:8],
+        receipt_id,
+        proposal["added_line_ids"],
+        proposal["before"]["status"],
+        proposal["before"]["delta"],
+        proposal["after"]["status"],
+        proposal["after"]["delta"],
+    )
+    return updated, {
+        "added_line_ids": proposal["added_line_ids"],
+        "added_row_ids": proposal["added_row_ids"],
+        "before": proposal["before"],
+        "after": proposal["after"],
+        "model_source": updated.model_source,
     }
 
 

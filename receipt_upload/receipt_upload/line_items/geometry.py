@@ -765,6 +765,320 @@ def reconcile(
     return r.status, r.item_sum, r.baseline
 
 
+# Reconciliation rank for the ITEMS-boundary repair guard.  no-baseline is
+# deliberately absent: an extension cannot be arithmetic-verified when
+# either side has no comparable baseline.
+_BOUNDARY_RECON_RANK = {"match": 0, "near": 1, "mismatch": 2}
+
+
+def evaluate_items_zone(
+    words: list[dict], summary: Optional[dict], line_ids: set[int]
+) -> dict[str, Any]:
+    """Decode and reconcile one proposed ITEMS zone.
+
+    This is shared by the MCP repair tool and the automatic ingest repair so
+    the verifier cannot drift.  Discounts are excluded from the arithmetic,
+    matching every canonical line-item writer.
+    """
+
+    items, collapsed = extract_items(words, set(line_ids), summary=summary)
+    result = reconcile_detailed(
+        [item for item in items if not item.get("is_discount")], summary
+    )
+    delta = (
+        round(result.item_sum - result.baseline, 2)
+        if result.item_sum is not None and result.baseline is not None
+        else None
+    )
+    return {
+        "status": result.status,
+        "items_sum": result.item_sum,
+        "baseline": result.baseline,
+        "delta": delta,
+        "n_items": len(items),
+        "collapsed_banding": collapsed,
+    }
+
+
+def items_boundary_extension_guard(
+    before: dict[str, Any], after: dict[str, Any]
+) -> tuple[bool, Optional[str]]:
+    """Apply the exact reconciliation guard for an ITEMS extension.
+
+    Acceptance requires both a strictly smaller absolute delta and a better
+    reconciliation status: mismatch -> near/match or near -> match.
+    """
+
+    if before.get("status") == "match":
+        return False, (
+            "Current ITEMS zone already reconciles (match); nothing to "
+            "repair."
+        )
+    if (
+        before.get("status") not in _BOUNDARY_RECON_RANK
+        or after.get("status") not in _BOUNDARY_RECON_RANK
+        or before.get("delta") is None
+        or after.get("delta") is None
+    ):
+        return False, (
+            "Cannot verify the extension: reconciliation did not produce "
+            "comparable deltas for both zones."
+        )
+
+    shrinks = abs(after["delta"]) < abs(before["delta"])
+    improves = (
+        _BOUNDARY_RECON_RANK[after["status"]]
+        < _BOUNDARY_RECON_RANK[before["status"]]
+    )
+    if not (shrinks and improves):
+        return False, (
+            "Arithmetic guard failed: extension must strictly shrink "
+            f"|delta| (before {before['delta']}, after {after['delta']}) "
+            f"AND improve status (before {before['status']!r}, after "
+            f"{after['status']!r})."
+        )
+    return True, None
+
+
+def _entity_field(entity: Any, name: str, default: Any = None) -> Any:
+    if isinstance(entity, dict):
+        return entity.get(name, default)
+    return getattr(entity, name, default)
+
+
+def _is_non_product_row(row_words: list[dict]) -> bool:
+    """Whether the decoder structurally recognizes a settlement/note row."""
+
+    for band in band_words(row_words):
+        text = " ".join(str(word.get("text") or "") for word in band)
+        bare = re.sub(r"\$?\d[\d.,]*", " ", text).strip()
+        if (
+            SETTLEMENT_RE.match(bare)
+            or WAS_PRICE_RE.search(text)
+            or SALE_PRICE_RE.search(text)
+            or NON_PRODUCT_NOTE_RE.search(text)
+        ):
+            return True
+    return False
+
+
+def _is_priced_product_row(row_words: list[dict]) -> bool:
+    """Whether one visual row is safe to consider as a boundary item."""
+
+    if _is_non_product_row(row_words):
+        return False
+    has_price = False
+    for band in band_words(row_words):
+        parsed = parse_band(band)
+        if parsed is not None and parsed.get("price") not in (None, 0):
+            has_price = True
+    return has_price
+
+
+def propose_items_boundary_extension(
+    words: list[dict],
+    summary: Optional[dict],
+    current_line_ids: set[int],
+    sections: list[Any],
+    rows: list[Any],
+    current_row_ids: Optional[list[int]] = None,
+) -> Optional[dict[str, Any]]:
+    """Return the best reconciliation-verified adjacent-row extension.
+
+    Only whole, unclaimed, priced ReceiptRows in gaps inside the ITEMS span or
+    adjacent to either edge are candidates.  Edge candidates are contiguous
+    prefixes of the unclaimed zone (neutral barcode/SKU rows may separate
+    printed product rows); claimed or settlement rows terminate the scan.
+    Among verified proposals, prefer the best status, then the smallest
+    absolute delta, then the smallest boundary change.
+    """
+
+    current = {int(line_id) for line_id in current_line_ids}
+    if not words or not current or not rows:
+        return None
+
+    other_claimed: set[int] = set()
+    for section in sections:
+        if str(_entity_field(section, "section_type", "")).upper() == "ITEMS":
+            continue
+        other_claimed.update(
+            int(line_id)
+            for line_id in (_entity_field(section, "line_ids", []) or [])
+        )
+
+    words_by_line: dict[int, list[dict]] = {}
+    for word in words:
+        try:
+            line_id = int(word["line_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        words_by_line.setdefault(line_id, []).append(word)
+
+    visual_rows: list[dict[str, Any]] = []
+    for row in rows:
+        line_ids = {
+            int(line_id)
+            for line_id in (_entity_field(row, "line_ids", []) or [])
+        }
+        row_words = [
+            word
+            for line_id in line_ids
+            for word in words_by_line.get(line_id, [])
+        ]
+        if not line_ids or not row_words:
+            continue
+        y_min = _entity_field(row, "y_min")
+        if y_min is None:
+            y_min = min(float(word.get("y_mid", 0.0)) for word in row_words)
+        visual_rows.append(
+            {
+                "row_id": int(_entity_field(row, "row_id")),
+                "line_ids": line_ids,
+                "words": row_words,
+                "y_min": float(y_min),
+            }
+        )
+    visual_rows.sort(key=lambda row: (row["y_min"], row["row_id"]))
+
+    item_indexes = [
+        index
+        for index, row in enumerate(visual_rows)
+        if row["line_ids"] & current
+    ]
+    if not item_indexes:
+        return None
+
+    def adjacent_chain(indexes: range) -> list[dict[str, Any]]:
+        chain = []
+        for index in indexes:
+            row = visual_rows[index]
+            if row["line_ids"] & (current | other_claimed):
+                break
+            if _is_non_product_row(row["words"]):
+                break
+            if _is_priced_product_row(row["words"]):
+                chain.append(row)
+        return chain
+
+    first, last = min(item_indexes), max(item_indexes)
+    interior = [
+        row
+        for row in visual_rows[first : last + 1]
+        if not row["line_ids"] & (current | other_claimed)
+        and _is_priced_product_row(row["words"])
+    ]
+    above = adjacent_chain(range(first - 1, -1, -1))
+    below = adjacent_chain(range(last + 1, len(visual_rows)))
+    if not interior and not above and not below:
+        return None
+
+    before = evaluate_items_zone(words, summary, current)
+    proposals = []
+
+    def record_proposal(added_rows: list[dict[str, Any]]) -> None:
+        added_line_ids = {
+            line_id for row in added_rows for line_id in row["line_ids"]
+        }
+        proposed_line_ids = current | added_line_ids
+        after = evaluate_items_zone(words, summary, proposed_line_ids)
+        verified, _ = items_boundary_extension_guard(before, after)
+        if not verified:
+            return
+        proposal = {
+            "line_ids": sorted(proposed_line_ids),
+            "added_line_ids": sorted(added_line_ids),
+            "added_row_ids": sorted(row["row_id"] for row in added_rows),
+            "row_ids": (
+                sorted(
+                    {int(row_id) for row_id in current_row_ids}
+                    | {row["row_id"] for row in added_rows}
+                )
+                if current_row_ids is not None
+                else None
+            ),
+            "before": before,
+            "after": after,
+        }
+        signature = tuple(proposal["added_line_ids"])
+        if not any(
+            tuple(existing["added_line_ids"]) == signature
+            for existing in proposals
+        ):
+            proposals.append(proposal)
+
+    # Whole-zone proposals preserve every priced row inside the current span
+    # and grow outward only as contiguous edge prefixes.
+    for above_count in range(len(above) + 1):
+        for below_count in range(len(below) + 1):
+            if not interior and above_count == 0 and below_count == 0:
+                continue
+            record_proposal(
+                interior + above[:above_count] + below[:below_count]
+            )
+
+    # Some OCR sections have several independent internal holes.  Follow the
+    # arithmetic downhill one row at a time, but do not persist an
+    # intermediate mismatch: only record states that pass the original
+    # strict status-and-delta guard.  Edge availability remains prefix-based,
+    # so the search cannot jump over a nearer priced row.
+    selected: list[dict[str, Any]] = []
+    remaining_interior = list(interior)
+    above_count = below_count = 0
+    current_evaluation = before
+    while current_evaluation.get("delta") is not None:
+        available = list(remaining_interior)
+        if above_count < len(above):
+            available.append(above[above_count])
+        if below_count < len(below):
+            available.append(below[below_count])
+        downhill = []
+        for row in available:
+            candidate_rows = selected + [row]
+            candidate_line_ids = current | {
+                line_id
+                for candidate in candidate_rows
+                for line_id in candidate["line_ids"]
+            }
+            evaluation = evaluate_items_zone(
+                words, summary, candidate_line_ids
+            )
+            if evaluation.get("delta") is not None and abs(
+                evaluation["delta"]
+            ) < abs(current_evaluation["delta"]):
+                downhill.append((evaluation, row))
+        if not downhill:
+            break
+        current_evaluation, chosen = min(
+            downhill,
+            key=lambda option: (
+                abs(option[0]["delta"]),
+                _BOUNDARY_RECON_RANK.get(option[0]["status"], 99),
+                option[1]["row_id"],
+            ),
+        )
+        selected.append(chosen)
+        if chosen in remaining_interior:
+            remaining_interior.remove(chosen)
+        elif above_count < len(above) and chosen is above[above_count]:
+            above_count += 1
+        elif below_count < len(below) and chosen is below[below_count]:
+            below_count += 1
+        record_proposal(selected)
+        if current_evaluation["status"] == "match":
+            break
+    if not proposals:
+        return None
+    return min(
+        proposals,
+        key=lambda proposal: (
+            _BOUNDARY_RECON_RANK[proposal["after"]["status"]],
+            abs(proposal["after"]["delta"]),
+            len(proposal["added_line_ids"]),
+            proposal["added_line_ids"],
+        ),
+    )
+
+
 __all__ = [
     "DISCOUNT_WORDS",
     "LEAD_QTY_RE",
@@ -778,8 +1092,11 @@ __all__ = [
     "UNIT_WORDS",
     "band_words",
     "estimate_skew",
+    "evaluate_items_zone",
     "extract_items",
+    "items_boundary_extension_guard",
     "parse_band",
+    "propose_items_boundary_extension",
     "reconcile",
     "reconcile_detailed",
 ]
