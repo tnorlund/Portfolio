@@ -660,9 +660,7 @@ class OCRProcessor:
             if subtotal is None:
                 return None
             return {
-                "line_ids": {
-                    int(x) for x in (items_section.line_ids or [])
-                },
+                "line_ids": {int(x) for x in (items_section.line_ids or [])},
                 "summary": {
                     "subtotal": float(subtotal),
                     "grand_total": getattr(inner, "grand_total", None),
