@@ -4,6 +4,7 @@ import json
 from typing import Optional
 
 import pulumi
+import pulumi_aws as aws
 from pulumi import ComponentResource, Config, Output, ResourceOptions
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 
@@ -65,7 +66,8 @@ class ResegmentReceiptLambda(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=role),
         )
@@ -160,9 +162,39 @@ class ResegmentReceiptLambda(ComponentResource):
             opts=ResourceOptions(parent=role),
         )
 
+        # The async apply path self-invokes the function with
+        # InvocationType=Event so gateway callers get a pollable job id
+        # instead of a timeout. The function name is deterministic, so the
+        # ARN can be granted before the function exists.
+        function_name = f"{name}-{stack}-resegment-receipt"
+        region = aws.config.region or aws.get_region().name
+        account_id = aws.get_caller_identity().account_id
+        RolePolicy(
+            f"{name}-lambda-self-invoke-policy",
+            role=role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["lambda:InvokeFunction"],
+                            "Resource": (
+                                f"arn:aws:lambda:{region}:{account_id}:"
+                                f"function:{function_name}"
+                            ),
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=role),
+        )
+
         docker_image = CodeBuildDockerImage(
             f"{name}-img",
-            dockerfile_path=("infra/resegment_receipt_lambda/lambdas/Dockerfile"),
+            dockerfile_path=(
+                "infra/resegment_receipt_lambda/lambdas/Dockerfile"
+            ),
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
@@ -171,7 +203,7 @@ class ResegmentReceiptLambda(ComponentResource):
                 "receipt_upload",
                 "receipt_places",
             ],
-            lambda_function_name=f"{name}-{stack}-resegment-receipt",
+            lambda_function_name=function_name,
             lambda_config={
                 "role_arn": role.arn,
                 "timeout": 900,

@@ -1,6 +1,7 @@
 """End-to-end local test for plan/apply receipt re-segmentation."""
 
 import io
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
@@ -1245,3 +1246,286 @@ def test_v1_plan_binds_source_image_identity():
         )
     # Rejected before any destructive work.
     assert client.get_receipt(image_id, 1).receipt_id == 1
+
+
+@mock_aws
+def test_apply_defaults_to_no_inline_embeddings(monkeypatch):
+    """The deployed Lambda OOMs at its memory limit when embeddings run
+    inline, so an apply event without create_embeddings must never enter
+    the embedding path (outputs self-heal via the normal pipeline)."""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentNoEmbed", raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    def forbidden_embed(**kwargs):
+        del kwargs
+        raise AssertionError("embeddings must not run by default")
+
+    monkeypatch.setattr(resegment_receipt, "_embed_outputs", forbidden_embed)
+
+    result = apply_plan(
+        {"plan_id": plan["plan_id"], "plan_hash": plan["plan_hash"]},
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        site_bucket="resegment-site",
+        chromadb_bucket="resegment-chroma",
+    )
+
+    assert result["status"] == "APPLIED"
+    assert result["compaction_run_ids"] == []
+    assert result["output_receipt_ids"] == [2, 3]
+
+
+@mock_aws
+def test_failed_apply_never_clobbers_another_workers_lock(monkeypatch):
+    """Status guard: a worker whose apply fails after another worker has
+    since taken over the COMMITTING lock must not stamp PLANNED over the
+    new holder's status, release its reservations, or delete its staged
+    objects. (S3 ETags are content-derived, so a recover-and-retry cycle
+    can resurrect the exact ETag a stale worker still holds; the rollback
+    therefore re-reads the head and verifies the per-attempt apply_token
+    before doing anything destructive.)"""
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        "ReceiptResegmentClobber", raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    real_stage = resegment_receipt._stage_outputs
+
+    def stage_then_lose_lock(**kwargs):
+        real_stage(**kwargs)
+        # Simulate a second worker recovering the plan and acquiring the
+        # COMMITTING lock with its own apply_token.
+        head = resegment_receipt._load_plan(
+            s3_client, raw_bucket, plan["plan_id"]
+        )
+        head["apply_token"] = "other-worker-token"
+        resegment_receipt._save_plan(s3_client, raw_bucket, head)
+        raise RuntimeError("simulated failure after losing the lock")
+
+    monkeypatch.setattr(
+        resegment_receipt, "_stage_outputs", stage_then_lose_lock
+    )
+
+    with pytest.raises(RuntimeError, match="losing the lock"):
+        apply_plan(
+            {
+                "plan_id": plan["plan_id"],
+                "plan_hash": plan["plan_hash"],
+                "create_embeddings": False,
+            },
+            dynamo_client=client,
+            s3_client=s3_client,
+            raw_bucket=raw_bucket,
+            site_bucket="resegment-site",
+            chromadb_bucket="resegment-chroma",
+        )
+
+    # The loser left the new lock holder's status and token untouched.
+    stored = resegment_receipt._load_plan(
+        s3_client, raw_bucket, plan["plan_id"]
+    )
+    assert stored["status"] == "COMMITTING"
+    assert stored["apply_token"] == "other-worker-token"
+    # The loser did not release the new holder's reservations.
+    for output_id in (2, 3):
+        counts = client.get_receipt_item_type_counts(image_id, output_id)
+        assert counts.get("RESEGMENT_RESERVATION") == 1
+    # The loser did not delete the staged output crops either.
+    staged_key = f"receipts/{image_id}/{image_id}_RECEIPT_00002.png"
+    assert s3_client.get_object(Bucket=raw_bucket, Key=staged_key)["Body"]
+
+
+class _RecordingLambdaClient:
+    """Captures self-invocations dispatched by start_async_apply."""
+
+    def __init__(self):
+        self.invocations = []
+
+    def invoke(self, **kwargs):
+        self.invocations.append(kwargs)
+        return {"StatusCode": 202}
+
+
+def _set_handler_env(monkeypatch, table_name):
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", table_name)
+    monkeypatch.setenv("RAW_BUCKET", "resegment-raw")
+    monkeypatch.setenv("SITE_BUCKET", "resegment-site")
+    monkeypatch.setenv("CHROMADB_BUCKET", "resegment-chroma")
+
+
+@mock_aws
+def test_async_apply_returns_job_id_and_is_pollable(monkeypatch):
+    """A gateway apply dispatches a background self-invoke and returns a
+    job id immediately; the job is pollable through mode=status before,
+    during, and after the background worker runs."""
+    table_name = "ReceiptResegmentAsync"
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        table_name, raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    fake_lambda = _RecordingLambdaClient()
+    response = resegment_receipt.start_async_apply(
+        {"plan_id": plan["plan_id"], "plan_hash": plan["plan_hash"]},
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        lambda_client=fake_lambda,
+        function_name="resegment-self",
+    )
+
+    assert response["status"] == "PENDING"
+    job_id = response["job_id"]
+    assert job_id
+    assert response["poll"] == {
+        "mode": "status",
+        "plan_id": plan["plan_id"],
+        "job_id": job_id,
+    }
+    [invocation] = fake_lambda.invocations
+    assert invocation["FunctionName"] == "resegment-self"
+    assert invocation["InvocationType"] == "Event"
+    worker_event = json.loads(invocation["Payload"])
+    assert worker_event == {
+        "mode": "apply",
+        "plan_id": plan["plan_id"],
+        "plan_hash": plan["plan_hash"],
+        "job_id": job_id,
+    }
+
+    # Before the background worker runs the job polls PENDING.
+    _set_handler_env(monkeypatch, table_name)
+    status = resegment_receipt.handler(
+        {"mode": "status", "plan_id": plan["plan_id"], "job_id": job_id},
+        None,
+    )
+    assert status["plan_status"] == "PLANNED"
+    assert status["job"]["status"] == "PENDING"
+
+    # Run the dispatched worker event through the real handler.
+    result = resegment_receipt.handler(worker_event, None)
+    assert result["status"] == "APPLIED"
+    assert result["output_receipt_ids"] == [2, 3]
+
+    status = resegment_receipt.handler(
+        {"mode": "status", "plan_id": plan["plan_id"], "job_id": job_id},
+        None,
+    )
+    assert status["plan_status"] == "APPLIED"
+    assert status["job"]["status"] == "APPLIED"
+    assert status["job"]["result"]["output_receipt_ids"] == [2, 3]
+
+    # Re-dispatching an already-applied plan short-circuits synchronously
+    # without another background invocation.
+    repeat = resegment_receipt.start_async_apply(
+        {"plan_id": plan["plan_id"], "plan_hash": plan["plan_hash"]},
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+        lambda_client=fake_lambda,
+        function_name="resegment-self",
+    )
+    assert repeat["status"] == "APPLIED"
+    assert repeat["output_receipt_ids"] == [2, 3]
+    assert len(fake_lambda.invocations) == 1
+
+
+@mock_aws
+def test_async_worker_records_failure_for_polling(monkeypatch):
+    """A background apply that fails must surface FAILED (with the error)
+    to pollers instead of leaving them guessing at a gateway timeout."""
+    table_name = "ReceiptResegmentAsyncFail"
+    raw_bucket = "resegment-raw"
+    client, s3_client, image_id = _seed_two_line_receipt(
+        table_name, raw_bucket, "resegment-images"
+    )
+    plan = create_plan(
+        _v1_plan_event(image_id),
+        dynamo_client=client,
+        s3_client=s3_client,
+        raw_bucket=raw_bucket,
+    )
+
+    _set_handler_env(monkeypatch, table_name)
+    result = resegment_receipt.handler(
+        {
+            "mode": "apply",
+            "plan_id": plan["plan_id"],
+            "plan_hash": "not-the-stored-hash",
+            "job_id": "job-fail",
+        },
+        None,
+    )
+    assert result["status"] == "error"
+
+    status = resegment_receipt.handler(
+        {"mode": "status", "plan_id": plan["plan_id"], "job_id": "job-fail"},
+        None,
+    )
+    assert status["plan_status"] == "PLANNED"
+    assert status["job"]["status"] == "FAILED"
+    assert "plan_hash" in status["job"]["error"]
+
+    unknown = resegment_receipt.handler(
+        {"mode": "status", "plan_id": plan["plan_id"], "job_id": "job-nope"},
+        None,
+    )
+    assert unknown["job"] == {"job_id": "job-nope", "status": "UNKNOWN"}
+
+
+def test_handler_routes_async_apply_to_dispatcher(monkeypatch):
+    """The async flag routes to the dispatcher with the same sanitized
+    event as a synchronous apply (no test-only controls forwarded)."""
+    captured = {}
+
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", "table")
+    monkeypatch.setenv("RAW_BUCKET", "raw")
+    monkeypatch.setenv("SITE_BUCKET", "site")
+    monkeypatch.setenv("CHROMADB_BUCKET", "chroma")
+    monkeypatch.setattr(
+        receipt_dynamo, "DynamoClient", lambda table_name: object()
+    )
+    monkeypatch.setattr(
+        resegment_receipt.boto3, "client", lambda service: object()
+    )
+
+    def fake_start(event, **kwargs):
+        del kwargs
+        captured.update(event)
+        return {"status": "PENDING", "job_id": "job-1"}
+
+    monkeypatch.setattr(resegment_receipt, "start_async_apply", fake_start)
+
+    result = resegment_receipt.handler(
+        {
+            "mode": "apply",
+            "plan_id": "plan-1",
+            "plan_hash": "hash-1",
+            "async": True,
+            "create_embeddings": True,
+            "wait_for_embeddings": True,
+        },
+        None,
+    )
+
+    assert result == {"status": "PENDING", "job_id": "job-1"}
+    assert captured == {"plan_id": "plan-1", "plan_hash": "hash-1"}

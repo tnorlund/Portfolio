@@ -1082,12 +1082,23 @@ masked output rendering is explicitly enabled.""",
 
 Returns the immutable assignment evidence, metrics, findings, artifact hashes,
 and freshly signed visualization URLs. Use this whenever preview URLs expire or
-before revising/applying to verify that a revision is still latest and applicable.""",
+before revising/applying to verify that a revision is still latest and applicable.
+
+Pass job_id (returned by apply_receipt_resegmentation) to poll an async apply
+instead: the response then reports the job status (PENDING/APPLIED/
+CLEANUP_PENDING/FAILED) and the current plan head status.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "plan_id": {"type": "string"},
                     "revision": {"type": "integer", "minimum": 1},
+                    "job_id": {
+                        "type": "string",
+                        "description": (
+                            "Async apply job id to poll; when set, returns "
+                            "the job status instead of the plan document"
+                        ),
+                    },
                 },
                 "required": ["plan_id"],
             },
@@ -1138,12 +1149,25 @@ the output parents replace the source parent atomically. Cleanup is resumable.
 
 WARNING: This creates new receipt records and deletes the source receipt after
 the staged outputs are ready. Superseded revisions and plans with blocking
-findings—including layered PHOTO plans—are rejected.""",
+findings—including layered PHOTO plans—are rejected.
+
+By default the apply runs asynchronously: this returns immediately with a
+job_id, and the apply continues in the background (an apply outlives the
+gateway timeout, so a synchronous call would report an error while the apply
+keeps working). Poll progress with get_receipt_resegmentation_plan(plan_id,
+job_id=...). Set synchronous=true only for fast direct invocations.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "plan_id": {"type": "string"},
                     "plan_hash": {"type": "string"},
+                    "synchronous": {
+                        "type": "boolean",
+                        "description": (
+                            "Wait for the apply to finish instead of "
+                            "returning a pollable job_id (default false)"
+                        ),
+                    },
                 },
                 "required": ["plan_id", "plan_hash"],
             },
@@ -2196,6 +2220,7 @@ async def call_tool(
             result = await get_receipt_resegmentation_plan_impl(
                 plan_id=arguments["plan_id"],
                 revision=arguments.get("revision"),
+                job_id=arguments.get("job_id"),
             )
         elif name == "revise_receipt_resegmentation_plan":
             result = await revise_receipt_resegmentation_plan_impl(arguments)
@@ -2203,6 +2228,7 @@ async def call_tool(
             result = await apply_receipt_resegmentation_impl(
                 plan_id=arguments["plan_id"],
                 plan_hash=arguments["plan_hash"],
+                synchronous=arguments.get("synchronous", False),
             )
         elif name == "get_receipt_words":
             result = await get_receipt_words_impl(
@@ -3941,14 +3967,28 @@ async def plan_receipt_resegmentation_impl(arguments: dict) -> dict:
 
 
 async def get_receipt_resegmentation_plan_impl(
-    plan_id: str, revision: int | None = None
+    plan_id: str,
+    revision: int | None = None,
+    job_id: str | None = None,
 ) -> dict:
-    """Retrieve a plan and refresh its signed visualization URLs."""
+    """Retrieve a plan (or poll an async apply job) via the Lambda.
+
+    With ``job_id`` this polls the status of an asynchronous apply started
+    by ``apply_receipt_resegmentation`` instead of fetching the plan
+    document.
+    """
     try:
         env = os.environ.get("PORTFOLIO_ENV", "dev")
-        payload = {"mode": "get", "plan_id": plan_id}
-        if revision is not None:
-            payload["revision"] = revision
+        if job_id is not None:
+            payload = {
+                "mode": "status",
+                "plan_id": plan_id,
+                "job_id": job_id,
+            }
+        else:
+            payload = {"mode": "get", "plan_id": plan_id}
+            if revision is not None:
+                payload["revision"] = revision
         return await _invoke_lambda(
             f"resegment-receipt-{env}-resegment-receipt", payload
         )
@@ -3971,14 +4011,26 @@ async def revise_receipt_resegmentation_plan_impl(arguments: dict) -> dict:
 
 
 async def apply_receipt_resegmentation_impl(
-    plan_id: str, plan_hash: str
+    plan_id: str, plan_hash: str, synchronous: bool = False
 ) -> dict:
-    """Invoke the receipt re-segmentation Lambda in apply mode."""
+    """Invoke the receipt re-segmentation Lambda in apply mode.
+
+    An apply outlives the MCP gateway timeout, so by default it dispatches
+    asynchronously: the Lambda returns a job_id immediately and keeps
+    working in the background. Poll with
+    ``get_receipt_resegmentation_plan(plan_id, job_id=...)``.
+    """
     try:
         env = os.environ.get("PORTFOLIO_ENV", "dev")
+        payload = {
+            "mode": "apply",
+            "plan_id": plan_id,
+            "plan_hash": plan_hash,
+        }
+        if not synchronous:
+            payload["async"] = True
         return await _invoke_lambda(
-            f"resegment-receipt-{env}-resegment-receipt",
-            {"mode": "apply", "plan_id": plan_id, "plan_hash": plan_hash},
+            f"resegment-receipt-{env}-resegment-receipt", payload
         )
     except Exception as e:
         logger.exception("Error applying receipt re-segmentation")

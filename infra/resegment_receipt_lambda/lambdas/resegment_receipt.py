@@ -279,6 +279,162 @@ def _load_revision(
     return json.loads(response["Body"].read())
 
 
+def _job_key(plan_id: str, job_id: str) -> str:
+    return (
+        f"{PLAN_PREFIX}/{_validate_plan_id(plan_id)}/jobs/"
+        f"{_validate_plan_id(job_id)}.json"
+    )
+
+
+def _write_job_record(
+    s3_client: "S3Client",
+    bucket: str,
+    plan_id: str,
+    job_id: str,
+    record: Mapping[str, Any],
+) -> None:
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=_job_key(plan_id, job_id),
+        Body=json.dumps(record, sort_keys=True, default=str).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+
+def _read_job_record(
+    s3_client: "S3Client", bucket: str, plan_id: str, job_id: str
+) -> dict[str, Any] | None:
+    try:
+        response = s3_client.get_object(
+            Bucket=bucket, Key=_job_key(plan_id, job_id)
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") in (
+            "NoSuchKey",
+            "404",
+        ):
+            return None
+        raise
+    return json.loads(response["Body"].read())
+
+
+def _record_job_outcome(
+    s3_client: "S3Client",
+    bucket: str,
+    plan_id: str,
+    job_id: str,
+    *,
+    result: Mapping[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    """Persist an apply job's terminal status; never raise past logging."""
+    record: dict[str, Any] = {
+        "job_id": str(job_id),
+        "plan_id": str(plan_id),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if error is not None:
+        record["status"] = "FAILED"
+        record["error"] = error
+    else:
+        record["status"] = str((result or {}).get("status", "APPLIED"))
+        record["result"] = dict(result or {})
+    try:
+        _write_job_record(s3_client, bucket, str(plan_id), str(job_id), record)
+    except Exception:  # pylint: disable=broad-except
+        logger.exception(
+            "Failed to record apply job outcome for plan %s job %s",
+            plan_id,
+            job_id,
+        )
+
+
+def start_async_apply(
+    event: dict[str, Any],
+    *,
+    s3_client: "S3Client",
+    raw_bucket: str,
+    lambda_client: Any = None,
+    function_name: str | None = None,
+) -> dict[str, Any]:
+    """Dispatch an apply to a background self-invoke and return a job id.
+
+    The MCP gateway fronting this Lambda times out long before a real apply
+    finishes, so a synchronous apply through it reports an error while the
+    apply keeps working — dangerous ambiguity. This path validates the
+    request cheaply, records a pollable job-status object next to the plan,
+    self-invokes with ``InvocationType=Event``, and returns immediately.
+    Poll with ``{"mode": "status", "plan_id": ..., "job_id": ...}``.
+    """
+    plan_id = str(event["plan_id"])
+    plan = _load_plan(s3_client, raw_bucket, plan_id)
+    if event.get("plan_hash") != plan["plan_hash"]:
+        raise ValueError("plan_hash does not match the stored plan")
+    if plan["status"] == "APPLIED":
+        return {"status": "APPLIED", **plan["result"]}
+
+    job_id = str(uuid.uuid4())
+    submitted_at = datetime.now(timezone.utc).isoformat()
+    _write_job_record(
+        s3_client,
+        raw_bucket,
+        plan_id,
+        job_id,
+        {
+            "job_id": job_id,
+            "plan_id": plan_id,
+            "status": "PENDING",
+            "submitted_at": submitted_at,
+        },
+    )
+    if function_name is None:
+        function_name = os.environ["AWS_LAMBDA_FUNCTION_NAME"]
+    if lambda_client is None:
+        lambda_client = boto3.client("lambda")
+    lambda_client.invoke(
+        FunctionName=function_name,
+        InvocationType="Event",
+        Payload=json.dumps(
+            {
+                "mode": "apply",
+                "plan_id": plan_id,
+                "plan_hash": event.get("plan_hash"),
+                "job_id": job_id,
+            }
+        ).encode("utf-8"),
+    )
+    return {
+        "status": "PENDING",
+        "job_id": job_id,
+        "plan_id": plan_id,
+        "submitted_at": submitted_at,
+        "poll": {"mode": "status", "plan_id": plan_id, "job_id": job_id},
+    }
+
+
+def get_apply_status(
+    event: dict[str, Any],
+    *,
+    s3_client: "S3Client",
+    raw_bucket: str,
+) -> dict[str, Any]:
+    """Report an async apply job's progress plus the plan head status."""
+    plan_id = str(event["plan_id"])
+    head = _load_plan(s3_client, raw_bucket, plan_id)
+    response: dict[str, Any] = {
+        "plan_id": plan_id,
+        "plan_status": head.get("status"),
+        "revision": head.get("revision", 1),
+    }
+    if head.get("status") == "APPLIED" and head.get("result"):
+        response["result"] = head["result"]
+    job_id = event.get("job_id")
+    if job_id is not None:
+        job = _read_job_record(s3_client, raw_bucket, plan_id, str(job_id))
+        response["job"] = job or {"job_id": str(job_id), "status": "UNKNOWN"}
+    return response
+
+
 def _word_ref_set(segment: dict[str, Any]) -> set[tuple[int, int]]:
     return {
         (int(ref["line_id"]), int(ref["word_id"]))
@@ -1336,6 +1492,7 @@ def apply_plan(
             # also loaded this COMMITTING plan loses here and bails before it
             # could release the winning worker's freshly-reserved rows.
             plan["status"] = "PLANNED"
+            plan.pop("apply_token", None)
             try:
                 plan_etag = _save_plan(
                     s3_client, raw_bucket, plan, if_match=plan_etag
@@ -1448,7 +1605,15 @@ def apply_plan(
     # apply that also read the PLANNED head loses the swap and bails here,
     # so it can never reserve IDs, delete staged child rows, race the commit,
     # destroy the winner's committed outputs.
+    #
+    # The apply_token makes each COMMITTING head byte-unique. S3 ETags are
+    # content-derived, so without it a recover-and-retry cycle rewrites the
+    # exact bytes of an earlier COMMITTING head and resurrects its ETag,
+    # letting a stale worker's If-Match rollback (below) clobber the new
+    # lock holder (the CAS-loser status revert observed in prod 2026-08-01).
+    apply_token = str(uuid.uuid4())
     plan["status"] = "COMMITTING"
+    plan["apply_token"] = apply_token
     try:
         plan_etag = _save_plan(s3_client, raw_bucket, plan, if_match=plan_etag)
     except PlanPreconditionError as error:
@@ -1475,7 +1640,10 @@ def apply_plan(
             uploaded_keys=uploaded_keys,
         )
         run_ids = []
-        if event.get("create_embeddings", True):
+        # Embeddings default OFF: running them inline OOMs the deployed
+        # Lambda at its memory limit, and the outputs' embeddings self-heal
+        # through the normal pipeline. Opt in explicitly for tests/tools.
+        if event.get("create_embeddings", False):
             run_ids = _embed_outputs(
                 outputs=outputs,
                 dynamo_client=dynamo_client,
@@ -1562,30 +1730,61 @@ def apply_plan(
         return {"status": "APPLIED", **result}
     except Exception:
         if not committed:
-            if plan["status"] == "COMMITTING":
-                # The COMMITTING lock was acquired before staging; revert it so
-                # a retry re-runs the full plan validation instead of the
+            # Status guard: only the current lock holder may roll back. The
+            # head is re-read and both the status and this attempt's unique
+            # apply_token are verified before ANY rollback step, so a CAS
+            # loser (or a worker whose lock was recovered by a peer) can
+            # never stamp PLANNED over a status another worker has since
+            # advanced (COMMITTING/APPLIED), release the winner's
+            # reservations, or delete the winner's staged objects.
+            still_owner = False
+            head_etag = None
+            try:
+                head, head_etag = _load_plan_with_etag(
+                    s3_client, raw_bucket, plan["plan_id"]
+                )
+                still_owner = (
+                    head.get("status") == "COMMITTING"
+                    and head.get("apply_token") == apply_token
+                )
+            except Exception:  # pylint: disable=broad-except
+                logger.exception(
+                    "Could not re-read plan %s to verify rollback "
+                    "ownership; leaving state for the resume path",
+                    plan["plan_id"],
+                )
+            if still_owner:
+                # The COMMITTING lock was acquired before staging; revert it
+                # so a retry re-runs the full plan validation instead of the
                 # resume path. The conditional write keeps this worker from
                 # stamping over a status another worker has since advanced.
                 plan["status"] = "PLANNED"
+                plan.pop("apply_token", None)
                 try:
                     plan_etag = _save_plan(
-                        s3_client, raw_bucket, plan, if_match=plan_etag
+                        s3_client, raw_bucket, plan, if_match=head_etag
                     )
                 except Exception:  # pylint: disable=broad-except
                     logger.exception(
                         "Failed to revert plan %s to PLANNED", plan["plan_id"]
                     )
-            try:
-                dynamo_client.release_receipt_id_reservations(
-                    plan["image_id"], output_ids, plan["plan_id"]
-                )
-            finally:
-                _delete_uploaded_objects(
-                    s3_client,
-                    raw_bucket,
-                    site_bucket,
-                    uploaded_keys,
+                try:
+                    dynamo_client.release_receipt_id_reservations(
+                        plan["image_id"], output_ids, plan["plan_id"]
+                    )
+                finally:
+                    _delete_uploaded_objects(
+                        s3_client,
+                        raw_bucket,
+                        site_bucket,
+                        uploaded_keys,
+                    )
+            else:
+                logger.warning(
+                    "Plan %s is no longer held by this apply attempt; "
+                    "skipping rollback so the current lock holder's "
+                    "progress is preserved",
+                    plan["plan_id"],
                 )
         raise
 
@@ -1595,10 +1794,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     del context
     try:
         mode = event.get("mode")
-        if mode not in {"plan", "get", "revise", "apply"}:
+        if mode not in {"plan", "get", "revise", "apply", "status"}:
             return {
                 "status": "error",
-                "error": "mode must be plan, get, revise, or apply",
+                "error": "mode must be plan, get, revise, apply, or status",
             }
 
         table_name = os.environ["DYNAMODB_TABLE_NAME"]
@@ -1626,6 +1825,15 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 s3_client=s3_client,
                 raw_bucket=raw_bucket,
             )
+        if mode == "status":
+            return get_apply_status(
+                {
+                    "plan_id": event.get("plan_id"),
+                    "job_id": event.get("job_id"),
+                },
+                s3_client=s3_client,
+                raw_bucket=raw_bucket,
+            )
         if mode == "revise":
             return revise_plan(
                 {
@@ -1641,17 +1849,49 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 s3_client=s3_client,
                 raw_bucket=raw_bucket,
             )
-        return apply_plan(
-            {
-                "plan_id": event.get("plan_id"),
-                "plan_hash": event.get("plan_hash"),
-            },
-            dynamo_client=dynamo_client,
-            s3_client=s3_client,
-            raw_bucket=raw_bucket,
-            site_bucket=site_bucket,
-            chromadb_bucket=chromadb_bucket,
-        )
+        apply_event = {
+            "plan_id": event.get("plan_id"),
+            "plan_hash": event.get("plan_hash"),
+        }
+        if event.get("async"):
+            # Gateway callers time out before a synchronous apply finishes,
+            # leaving them unable to tell an error from a success. Dispatch
+            # the apply to a background self-invoke and return a job id the
+            # caller can poll with mode=status.
+            return start_async_apply(
+                apply_event,
+                s3_client=s3_client,
+                raw_bucket=raw_bucket,
+            )
+        job_id = event.get("job_id")
+        try:
+            result = apply_plan(
+                apply_event,
+                dynamo_client=dynamo_client,
+                s3_client=s3_client,
+                raw_bucket=raw_bucket,
+                site_bucket=site_bucket,
+                chromadb_bucket=chromadb_bucket,
+            )
+        except Exception as exc:
+            if job_id is not None:
+                _record_job_outcome(
+                    s3_client,
+                    raw_bucket,
+                    str(event.get("plan_id")),
+                    str(job_id),
+                    error=str(exc),
+                )
+            raise
+        if job_id is not None:
+            _record_job_outcome(
+                s3_client,
+                raw_bucket,
+                str(event.get("plan_id")),
+                str(job_id),
+                result=result,
+            )
+        return result
     except Exception as exc:  # pylint: disable=broad-except
         logger.exception("Receipt re-segmentation failed")
         return {"status": "error", "error": str(exc)}
