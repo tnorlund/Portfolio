@@ -47,9 +47,11 @@ def _label(line_id, word_id, label, status="VALID"):
 class FakeClient:
     """Minimal DynamoClient stand-in for update_receipt_summary."""
 
-    def __init__(self, existing_summary=None):
+    def __init__(self, existing_summary=None, receipt_exists=True):
         self.existing_summary = existing_summary
+        self.receipt_exists = receipt_exists
         self.upserted = []
+        self.deleted_summaries = []
         self.lines = [
             {"line_id": 1, "text": "TOTAL 47.18", "y": 0.5},
             {"line_id": 2, "text": "VISA US DEBIT", "y": 0.4},
@@ -60,6 +62,15 @@ class FakeClient:
         ]
         self.words = [_word(1, 2, "47.18")]
         self.word_labels = [_label(1, 2, "GRAND_TOTAL")]
+
+    def get_receipt(self, image_id, receipt_id):
+        if not self.receipt_exists:
+            raise EntityNotFoundError("no receipt")
+        return SimpleNamespace(image_id=image_id, receipt_id=receipt_id)
+
+    def delete_receipt_summary(self, record):
+        self.deleted_summaries.append(record)
+        self.existing_summary = None
 
     def list_receipt_word_labels_for_receipt(
         self, image_id, receipt_id, last_evaluated_key=None
@@ -136,6 +147,39 @@ def test_recompute_preserves_offline_bank_fields(monkeypatch):
     assert record.ledger == "chase"
     assert record.bank_amount == 47.18
     assert record.bank_match_confidence == 0.95
+
+
+def test_skips_regen_and_sweeps_orphan_when_parent_deleted(monkeypatch):
+    """A re-segmentation apply deletes the source receipt; the child-row
+    deletion events must NOT resurrect its summary. The updater skips the
+    recompute and deletes any freshly re-created orphan summary row."""
+    existing = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=RECEIPT_ID,
+        totals=MonetaryTotals(grand_total=47.18),
+    )
+    client = FakeClient(existing_summary=existing, receipt_exists=False)
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    assert result["skipped"] == "parent receipt deleted"
+    assert result["orphan_summary_deleted"] is True
+    assert client.upserted == []
+    assert len(client.deleted_summaries) == 1
+
+
+def test_skips_regen_when_parent_deleted_and_no_orphan(monkeypatch):
+    """Parent gone and no summary row present: skip without writing."""
+    client = FakeClient(receipt_exists=False)
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    assert result["skipped"] == "parent receipt deleted"
+    assert result["orphan_summary_deleted"] is False
+    assert client.upserted == []
+    assert client.deleted_summaries == []
 
 
 def test_cash_receipt_classified(monkeypatch):

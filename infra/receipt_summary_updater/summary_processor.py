@@ -46,6 +46,41 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     if dynamo_client is None:
         raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
 
+    # Tombstone guard: the parent receipt must still exist. The Dynamo
+    # stream fires on child-row deletions too, so when a re-segmentation
+    # apply deletes a source receipt, the deletion events for its labels
+    # would otherwise resurrect an orphan RECEIPT#N#SUMMARY row minutes
+    # after the receipt is gone. Skip the recompute and clear any freshly
+    # re-created orphan summary instead (self-healing: a later event for
+    # the same deleted receipt sweeps whatever an earlier race left).
+    #
+    # A parent row that exists but does not parse as a Receipt (e.g. a
+    # RESEGMENT_RESERVATION placeholder) raises OperationError, which
+    # propagates so the SQS message is retried after the apply commits.
+    try:
+        dynamo_client.get_receipt(image_id, receipt_id)
+    except EntityNotFoundError:
+        orphan_summary_deleted = False
+        try:
+            orphan = dynamo_client.get_receipt_summary(image_id, receipt_id)
+            dynamo_client.delete_receipt_summary(orphan)
+            orphan_summary_deleted = True
+        except EntityNotFoundError:
+            pass
+        logger.info(
+            "Skipping summary regen for %s:%d: parent receipt no longer "
+            "exists (orphan summary deleted: %s)",
+            image_id[:8],
+            receipt_id,
+            orphan_summary_deleted,
+        )
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "skipped": "parent receipt deleted",
+            "orphan_summary_deleted": orphan_summary_deleted,
+        }
+
     # Fetch all word labels with pagination
     word_labels = []
     last_key = None
