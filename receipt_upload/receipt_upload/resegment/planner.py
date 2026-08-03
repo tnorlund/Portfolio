@@ -806,7 +806,16 @@ def build_source_fingerprint(
 def compute_plan_hash(plan: Mapping[str, Any]) -> str:
     """Return a stable hash while excluding mutable delivery metadata."""
     payload = deepcopy(dict(plan))
-    for key in ("plan_hash", "preview_urls", "delivery", "status", "result"):
+    # apply_token is per-attempt apply bookkeeping (the COMMITTING lock
+    # holder's identity), not plan content, so it must not perturb the hash.
+    for key in (
+        "plan_hash",
+        "preview_urls",
+        "delivery",
+        "status",
+        "result",
+        "apply_token",
+    ):
         payload.pop(key, None)
     encoded = json.dumps(
         payload, sort_keys=True, separators=(",", ":"), default=str
