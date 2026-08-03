@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMAggregateStats
 
-Defined in: [types/api.ts:495](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L495)
+Defined in: [types/api.ts:495](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L495)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:495](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **avg\_accuracy**: `number`
 
-Defined in: [types/api.ts:496](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L496)
+Defined in: [types/api.ts:496](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L496)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:496](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **avg\_inference\_time\_ms**: `number`
 
-Defined in: [types/api.ts:499](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L499)
+Defined in: [types/api.ts:499](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L499)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:499](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **batch\_size**: `number`
 
-Defined in: [types/api.ts:501](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L501)
+Defined in: [types/api.ts:501](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L501)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:501](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **estimated\_throughput\_per\_hour**: `number`
 
-Defined in: [types/api.ts:503](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L503)
+Defined in: [types/api.ts:503](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L503)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:503](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **max\_accuracy**: `number`
 
-Defined in: [types/api.ts:498](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L498)
+Defined in: [types/api.ts:498](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L498)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:498](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **min\_accuracy**: `number`
 
-Defined in: [types/api.ts:497](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L497)
+Defined in: [types/api.ts:497](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L497)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:497](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **total\_receipts\_in\_pool**: `number`
 
-Defined in: [types/api.ts:500](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L500)
+Defined in: [types/api.ts:500](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L500)
 
 ***
 
@@ -70,4 +70,4 @@ Defined in: [types/api.ts:500](https://github.com/tnorlund/Portfolio/blob/b52af8
 
 > **total\_words\_processed**: `number`
 
-Defined in: [types/api.ts:502](https://github.com/tnorlund/Portfolio/blob/b52af8d8c0b4f3796b5bdff13b2662e5305f19bd/portfolio/types/api.ts#L502)
+Defined in: [types/api.ts:502](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L502)
