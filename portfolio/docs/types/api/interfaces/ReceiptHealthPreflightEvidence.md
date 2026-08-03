@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthPreflightEvidence
 
-Defined in: [types/api.ts:1153](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L1153)
+Defined in: [types/api.ts:1153](https://github.com/tnorlund/Portfolio/blob/c7c24fda526a36b38a1b43c3548259eb6c9f8328/portfolio/types/api.ts#L1153)
 
 ## Indexable
 
@@ -18,7 +18,7 @@ Defined in: [types/api.ts:1153](https://github.com/tnorlund/Portfolio/blob/be853
 
 > `optional` **line\_item\_amount\_evidence?**: [`ReceiptHealthLineItemAmountEvidence`](ReceiptHealthLineItemAmountEvidence.md)
 
-Defined in: [types/api.ts:1155](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L1155)
+Defined in: [types/api.ts:1155](https://github.com/tnorlund/Portfolio/blob/c7c24fda526a36b38a1b43c3548259eb6c9f8328/portfolio/types/api.ts#L1155)
 
 ***
 
@@ -26,4 +26,4 @@ Defined in: [types/api.ts:1155](https://github.com/tnorlund/Portfolio/blob/be853
 
 > `optional` **section\_evidence?**: [`ReceiptHealthSectionEvidence`](ReceiptHealthSectionEvidence.md)
 
-Defined in: [types/api.ts:1154](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/types/api.ts#L1154)
+Defined in: [types/api.ts:1154](https://github.com/tnorlund/Portfolio/blob/c7c24fda526a36b38a1b43c3548259eb6c9f8328/portfolio/types/api.ts#L1154)

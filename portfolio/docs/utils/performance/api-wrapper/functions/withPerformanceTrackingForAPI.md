@@ -8,7 +8,7 @@
 
 > **withPerformanceTrackingForAPI**\<`T`\>(`api`, `prefix?`): `T`
 
-Defined in: [utils/performance/api-wrapper.ts:42](https://github.com/tnorlund/Portfolio/blob/be85367b636b7a0a46bf54ed6c0bc8dc5117cd32/portfolio/utils/performance/api-wrapper.ts#L42)
+Defined in: [utils/performance/api-wrapper.ts:42](https://github.com/tnorlund/Portfolio/blob/c7c24fda526a36b38a1b43c3548259eb6c9f8328/portfolio/utils/performance/api-wrapper.ts#L42)
 
 Wraps all methods of an API object to track performance
 
