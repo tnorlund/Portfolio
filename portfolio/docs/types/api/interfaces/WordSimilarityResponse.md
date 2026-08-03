@@ -6,7 +6,7 @@
 
 # Interface: WordSimilarityResponse
 
-Defined in: [types/api.ts:277](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L277)
+Defined in: [types/api.ts:277](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L277)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:277](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **cached\_at**: `string`
 
-Defined in: [types/api.ts:296](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L296)
+Defined in: [types/api.ts:296](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L296)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:296](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **original**: `object`
 
-Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L279)
+Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L279)
 
 #### labels
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 #### bbox?
 
-> `optional` **bbox**: [`AddressBoundingBox`](AddressBoundingBox.md)
+> `optional` **bbox?**: [`AddressBoundingBox`](AddressBoundingBox.md)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **query\_word**: `string`
 
-Defined in: [types/api.ts:278](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L278)
+Defined in: [types/api.ts:278](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L278)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:278](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **similar**: `object`[]
 
-Defined in: [types/api.ts:287](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L287)
+Defined in: [types/api.ts:287](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L287)
 
 #### labels
 
@@ -90,4 +90,4 @@ Defined in: [types/api.ts:287](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 #### bbox?
 
-> `optional` **bbox**: [`AddressBoundingBox`](AddressBoundingBox.md)
+> `optional` **bbox?**: [`AddressBoundingBox`](AddressBoundingBox.md)

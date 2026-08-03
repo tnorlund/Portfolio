@@ -6,7 +6,7 @@
 
 # Interface: TrainingMetricsEpoch
 
-Defined in: [types/api.ts:370](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L370)
+Defined in: [types/api.ts:370](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L370)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:370](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **epoch**: `number`
 
-Defined in: [types/api.ts:371](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L371)
+Defined in: [types/api.ts:371](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L371)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:371](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **is\_best**: `boolean`
 
-Defined in: [types/api.ts:372](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L372)
+Defined in: [types/api.ts:372](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L372)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:372](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **metrics**: `object`
 
-Defined in: [types/api.ts:373](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L373)
+Defined in: [types/api.ts:373](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L373)
 
 #### val\_f1
 
@@ -38,23 +38,23 @@ Defined in: [types/api.ts:373](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 #### eval\_loss?
 
-> `optional` **eval\_loss**: `number`
+> `optional` **eval\_loss?**: `number`
 
 #### learning\_rate?
 
-> `optional` **learning\_rate**: `number`
+> `optional` **learning\_rate?**: `number`
 
 #### train\_loss?
 
-> `optional` **train\_loss**: `number`
+> `optional` **train\_loss?**: `number`
 
 #### val\_precision?
 
-> `optional` **val\_precision**: `number`
+> `optional` **val\_precision?**: `number`
 
 #### val\_recall?
 
-> `optional` **val\_recall**: `number`
+> `optional` **val\_recall?**: `number`
 
 ***
 
@@ -62,15 +62,15 @@ Defined in: [types/api.ts:373](https://github.com/tnorlund/Portfolio/blob/66fe15
 
 > **per\_label**: `Record`\<`string`, \{ `f1`: `number`; `precision`: `number`; `recall`: `number`; `support`: `number`; \}\>
 
-Defined in: [types/api.ts:385](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L385)
+Defined in: [types/api.ts:385](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L385)
 
 ***
 
 ### confusion\_matrix?
 
-> `optional` **confusion\_matrix**: `object`
+> `optional` **confusion\_matrix?**: `object`
 
-Defined in: [types/api.ts:381](https://github.com/tnorlund/Portfolio/blob/66fe15e166ec08738ef79aa6736ae5334337d216/portfolio/types/api.ts#L381)
+Defined in: [types/api.ts:381](https://github.com/tnorlund/Portfolio/blob/68085483b9a46d4d6bd6bfb8f5536de998bf11da/portfolio/types/api.ts#L381)
 
 #### labels
 
