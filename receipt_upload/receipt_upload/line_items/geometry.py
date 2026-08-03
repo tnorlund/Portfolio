@@ -765,6 +765,50 @@ def reconcile(
     return r.status, r.item_sum, r.baseline
 
 
+# PROVEN policy constant (user-decided 2026-08-03): exact-to-the-cent
+# means a difference strictly under half a cent.
+PROVEN_CENT_TOLERANCE = 0.005
+
+
+def is_proven(
+    recon_status: Optional[str],
+    printed_total: Optional[float],
+    bank_amount: Optional[float],
+) -> bool:
+    """PROVEN = exact-to-the-cent on BOTH truth-chain hops.
+
+    Policy constant (user-decided 2026-08-03): a receipt is proven only
+    when hop 1 (extracted items -> printed figures) reconciles as a
+    full ``match`` — ``near`` NEVER counts, however small the band —
+    AND hop 2 (printed total -> bank ledger amount) agrees to the cent
+    (|printed - bank| < $0.005).
+
+    The strictness exists because tolerance bands admit false accepts:
+    the 14-receipt vision pilot found a receipt (1828b9ba) whose
+    printed tax was 0.97 but whose stored figure read 1.07 — both
+    arithmetics "close" inside the bands, and only the cent-exact bank
+    hop (or the image) can see the dime. Anything not exactly right is
+    not proven; it is at best "near", and near is a review queue, not
+    a proof.
+
+    Missing or non-numeric figures on either hop fail closed.
+    """
+    if recon_status != "match":
+        return False
+    if printed_total is None or bank_amount is None:
+        return False
+    try:
+        printed = float(printed_total)
+        bank = float(bank_amount)
+    except (TypeError, ValueError):
+        return False
+    # Round the difference to the mill first: 21.075 - 21.07 computes
+    # to 0.004999... in binary floats, and a half-cent gap must NOT
+    # slip under the strict < 0.005 policy line on representation
+    # noise alone.
+    return round(abs(printed - bank), 3) < PROVEN_CENT_TOLERANCE
+
+
 # Reconciliation rank for the ITEMS-boundary repair guard.  no-baseline is
 # deliberately absent: an extension cannot be arithmetic-verified when
 # either side has no comparable baseline.
@@ -1084,6 +1128,7 @@ __all__ = [
     "LEAD_QTY_RE",
     "NON_ITEM_SECTIONS",
     "PRICE_RE",
+    "PROVEN_CENT_TOLERANCE",
     "QTY_AT_RE",
     "QTY_MULT_RE",
     "ReconcileResult",
@@ -1094,6 +1139,7 @@ __all__ = [
     "estimate_skew",
     "evaluate_items_zone",
     "extract_items",
+    "is_proven",
     "items_boundary_extension_guard",
     "parse_band",
     "propose_items_boundary_extension",

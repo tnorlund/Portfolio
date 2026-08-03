@@ -1,0 +1,22 @@
+# The Agentic-First Review Loop
+Supersedes `review_workflow.md` (human-first). Agents adjudicate; the human decides only what needs eyes or ratchets a floor. **Grounding fact:** of the 31 curated session-1 dossiers exactly **1** carries a proposal — on one receipt the boundary search evaluated 39 extensions and **0** cleared the arithmetic guard. The auto-apply tier is near-empty by construction. That is the guard working, not the design failing; size the loop accordingly.
+
+## (a) Three passes
+**P1 triage** — nightly cron on the Mac mini, read-only, ~8 agents × 15 receipts. Covers every non-match receipt: 122 mismatch + 38 near + 67 no-baseline = **227 dev** for the backlog, ~15/night steady-state. Emits one dossier per receipt: A–J mode with closing evidence, image_suspect, and where the fix passes `extend_items_section(dry_run=True)`, a proposal. Vision reads the image only to answer "are the unclaimed rows products?" — it never proposes a number. Mac mini because the bank ledger (`~/receipts-email/*.db`, Apple PDFs) is local-only, and bank is the one signal agents cannot manufacture.
+**P2 adjudicate** — same cron, after P1. Routes dossiers into the tiers below and writes verdicts to *files*, never DynamoDB. Expected backlog split: ~5–15 auto-apply, ~60 batch, ~25 per-receipt human, rest abstain.
+**P3 writer** — triggered, single-flight lockfile, own process, no analysis in-thread, dev table only. Applies T0 plus approved T1 one receipt at a time and re-reads `/receipt` to confirm the delta moved as predicted. A divergence is a bug report, never a retry.
+
+## (b) Trust tiers
+**T0, fully auto-applied.** Arithmetic-guarded extensions only. *For:* math decides, not the model, and a section boundary is re-derivable so the change is reversible. *Against:* the agent still chooses *which* lines, and `extend_items_section` accepts non-contiguous `line_ids` — across 39 candidate subsets, hitting ±1% by coincidence is cheap. **Resolution:** T0 requires all four of contiguous extension, post-state `match` (not merely "improved"), every added line product-looking by vision, and ≤5 per pass. Anything else demotes to T1.
+**T1, batch sign-off.** One digest screen, one row per (merchant × mode) group, one Approve per group. Auto-golden candidates live here and nowhere else: promotion needs **three independent signals** — arithmetic reconcile, bank ledger amount, vision-confirmed item list — and still never auto-applies, because golden ratchets floors permanently.
+**T2, per-receipt human.** image_suspect (5/31), bank-contradicted (6/31), J-unknown, and any `flag` on a green row. Target ≤25 per session.
+**Audit sample.** 10% of auto-verdicts (min 3/pass), random and **blind** — image and decoded items shown, verdict hidden until the human commits. A single disagreement **freezes that tier**: no further auto-apply of the class, and every auto-verdict of that class since the last clean audit is re-queued to T2.
+
+## (c) The human surface
+Three screens. **Escalation queue** is today's single-receipt view — keep `ReceiptCanvas` and the dossier block of `TruthPanel`, since only a human can look at an image. **Batch digest** is one screen of group rows and one button. **Audit deck** is the blind review.
+DELETE: the `MerchantList` three-panel browse (232 lines — merchant selection is P1's job now), the status-filter dropdown, the default "whatever sorts worst" worklist ordering, the free-text-only flag box, and `ReviewLog`'s inline history panel, which belongs in the audit deck.
+
+## (d) Failure containment
+**Provenance.** Extend each review_log entry (`author` already exists) with `verdict_by` (`agent:<pass-id>` | `human`), `signals` (which concurred), `audit_state`, and for any applied repair the pre-extension `line_ids` — the only exact rollback key.
+**Rollback.** Line items are derived, so never patch them: revert the section boundary and let the stream regenerate. Contradiction arriving later from bank data, re-OCR, or the audit triggers the same freeze path as an audit disagreement.
+**Metric guard.** PROVEN requires a bank anchor by definition, so agent self-agreement cannot inflate it — but the *eligibility denominator* can. Two rules close that: an agent may never author both a repair and its confirmation (P1 and P3 are separate agents; bank is data, not an agent), and a receipt whose reconciliation came from an auto-applied repair does not count as PROVEN until it has survived one clean audit cycle.
