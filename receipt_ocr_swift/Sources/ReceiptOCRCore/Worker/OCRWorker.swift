@@ -207,7 +207,7 @@ public final class OCRWorker {
     }
 
     #if os(macOS)
-    private func cropImageData(_ imageData: Data, region: ReOCRRegion) throws -> Data {
+    private func cropImageData(_ imageData: Data, region: ReOCRRegion, strategy: ReOCRStrategy) throws -> Data {
         // trigger_reocr always sends full-width (x=0..1) with line-based
         // vertical padding. Use the region directly so crop and overlay
         // coordinate mapping are identical.
@@ -229,7 +229,10 @@ public final class OCRWorker {
         guard let croppedCG = cgImage.cropping(to: cropRect) else {
             throw DynamoMapError.invalid("regional_reocr_crop_failed")
         }
-        let bitmapRep = NSBitmapImageRep(cgImage: croppedCG)
+        // Apply the strategy-selected preprocess to the cropped region
+        // BEFORE Vision OCR (plain is a passthrough).
+        let preprocessedCG = ReOCRPreprocessor.apply(strategy, to: croppedCG)
+        let bitmapRep = NSBitmapImageRep(cgImage: preprocessedCG)
         guard let pngData = bitmapRep.representation(using: .png, properties: [:]) else {
             throw DynamoMapError.invalid("regional_reocr_png_encode_failed")
         }
@@ -259,6 +262,10 @@ public final class OCRWorker {
             let jobId: String
             let s3Bucket: String
             let jobType: OCRJobType
+            /// Raw value of the preprocess strategy applied to the cropped
+            /// region (REGIONAL_REOCR only; nil otherwise). Recorded in
+            /// the uploaded result JSON as `reocr_strategy_applied`.
+            let strategyApplied: String?
         }
         var imageURLs: [URL] = []
         var contexts: [Context] = []
@@ -287,7 +294,8 @@ public final class OCRWorker {
             let localURL = tempDir.appendingPathComponent(localName)
             if job.jobType == .regionalReocr, let region = job.reocrRegion {
                 #if os(macOS)
-                let cropped = try cropImageData(imageData, region: region)
+                let strategy = job.reocrStrategy
+                let cropped = try cropImageData(imageData, region: region, strategy: strategy)
                 localName = "\(name)-\(jobId)-reocr.png"
                 let croppedURL = tempDir.appendingPathComponent(localName)
                 try cropped.write(to: croppedURL)
@@ -298,11 +306,12 @@ public final class OCRWorker {
                         imageId: imageId,
                         jobId: jobId,
                         s3Bucket: config.rawBucketName,
-                        jobType: job.jobType
+                        jobType: job.jobType,
+                        strategyApplied: strategy.rawValue
                     )
                 )
                 logger.info(
-                    "regional_reocr_crop_complete image_id=\(imageId) job_id=\(jobId) x=\(region.x) y=\(region.y) width=\(region.width) height=\(region.height)"
+                    "regional_reocr_crop_complete image_id=\(imageId) job_id=\(jobId) x=\(region.x) y=\(region.y) width=\(region.width) height=\(region.height) strategy=\(strategy.rawValue) mechanism=\(job.reocrMechanism ?? "none")"
                 )
                 continue
                 #else
@@ -318,7 +327,8 @@ public final class OCRWorker {
                     imageId: imageId,
                     jobId: jobId,
                     s3Bucket: config.rawBucketName,
-                    jobType: job.jobType
+                    jobType: job.jobType,
+                    strategyApplied: nil
                 )
             )
         }
@@ -443,6 +453,21 @@ public final class OCRWorker {
                 }
             }
             #endif
+
+            // Record the applied preprocess strategy in the uploaded result
+            // JSON (REGIONAL_REOCR only) so the overlay Lambda can persist
+            // metrics. Additive top-level key alongside the existing payload;
+            // the overlay parser reads keys via .get() so extras are safe.
+            if ctx.jobType == .regionalReocr, let applied = ctx.strategyApplied {
+                if var resultJSON = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                    resultJSON["reocr_strategy_applied"] = applied
+                    let annotated = try JSONSerialization.data(withJSONObject: resultJSON)
+                    try annotated.write(to: resultURL)
+                    logger.info("regional_reocr_strategy_applied image_id=\(ctx.imageId) job_id=\(ctx.jobId) strategy=\(applied)")
+                } else {
+                    logger.warning("regional_reocr_strategy_annotate_skipped image_id=\(ctx.imageId) job_id=\(ctx.jobId) reason=result_not_json_object")
+                }
+            }
 
             // Upload OCR result JSON
             let resultKey = "ocr_results/\(resultURL.lastPathComponent)"

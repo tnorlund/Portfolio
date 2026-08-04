@@ -6,6 +6,18 @@ public enum OCRJobType: String {
     case regionalReocr = "REGIONAL_REOCR"
 }
 
+/// Preprocessing strategy applied to the cropped region before Vision OCR.
+///
+/// Contract with the Python side (which writes these OCRJob fields):
+/// `reocr_strategy` is one of "plain" | "invert" | "deskew" | "upscale2x";
+/// an absent or unrecognized value means `plain` (passthrough).
+public enum ReOCRStrategy: String, Equatable, CaseIterable, Sendable {
+    case plain
+    case invert
+    case deskew
+    case upscale2x
+}
+
 public struct ReOCRRegion: Equatable {
     public var x: Double
     public var y: Double
@@ -32,6 +44,11 @@ public struct OCRJob: Equatable {
     public var receiptId: Int?
     public var reocrRegion: ReOCRRegion?
     public var reocrReason: String?
+    /// Preprocess strategy for REGIONAL_REOCR jobs (absent → .plain).
+    public var reocrStrategy: ReOCRStrategy
+    /// Informational string written by the Python side describing what
+    /// triggered/selected the strategy. Passed through untouched.
+    public var reocrMechanism: String?
 
     public init(
         imageId: String,
@@ -44,7 +61,9 @@ public struct OCRJob: Equatable {
         jobType: OCRJobType = .firstPass,
         receiptId: Int? = nil,
         reocrRegion: ReOCRRegion? = nil,
-        reocrReason: String? = nil
+        reocrReason: String? = nil,
+        reocrStrategy: ReOCRStrategy = .plain,
+        reocrMechanism: String? = nil
     ) {
         self.imageId = imageId
         self.jobId = jobId
@@ -57,6 +76,8 @@ public struct OCRJob: Equatable {
         self.receiptId = receiptId
         self.reocrRegion = reocrRegion
         self.reocrReason = reocrReason
+        self.reocrStrategy = reocrStrategy
+        self.reocrMechanism = reocrMechanism
     }
 }
 
@@ -102,6 +123,14 @@ public extension OCRJob {
             item["reocr_reason"] = ["S": reason]
         } else {
             item["reocr_reason"] = ["NULL": true]
+        }
+
+        item["reocr_strategy"] = ["S": reocrStrategy.rawValue]
+
+        if let mechanism = reocrMechanism {
+            item["reocr_mechanism"] = ["S": mechanism]
+        } else {
+            item["reocr_mechanism"] = ["NULL": true]
         }
 
         return item
@@ -166,7 +195,10 @@ public extension OCRJob {
             jobType: jobType,
             receiptId: optionalInt("receipt_id"),
             reocrRegion: try optionalRegion("reocr_region"),
-            reocrReason: optionalString("reocr_reason")
+            reocrReason: optionalString("reocr_reason"),
+            // Contract: absent (or unrecognized) reocr_strategy → plain.
+            reocrStrategy: optionalString("reocr_strategy").flatMap(ReOCRStrategy.init(rawValue:)) ?? .plain,
+            reocrMechanism: optionalString("reocr_mechanism")
         )
     }
 }
