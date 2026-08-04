@@ -55,8 +55,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = SCRIPT_DIR.parent
 REPO_ROOT = PACKAGE_DIR.parent
 
-DEFAULT_OCR = REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
-DEFAULT_GOLDEN = REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden.json"
+DEFAULT_OCR = (
+    REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
+)
+DEFAULT_GOLDEN = (
+    REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden.json"
+)
 FIXTURES_DIR = PACKAGE_DIR / "Tests/ReceiptOCRCoreTests/Fixtures"
 DEFAULT_OUTPUT = FIXTURES_DIR / "line_items_parity_expected.json"
 GUARD_OUTPUT = FIXTURES_DIR / "line_items_guard_parity_expected.json"
@@ -126,14 +130,15 @@ def dump_item(item: dict) -> dict:
 
 def build_expectations(ocr_fixture: dict, golden_fixture: dict) -> list[dict]:
     golden_by_key = {
-        (r["image_id"], r["receipt_id"]): r
-        for r in golden_fixture["receipts"]
+        (r["image_id"], r["receipt_id"]): r for r in golden_fixture["receipts"]
     }
     expected: list[dict] = []
     for receipt in ocr_fixture["receipts"]:
         words = receipt["words"]
         zone = set(receipt["items_line_ids"])
-        golden = golden_by_key.get((receipt["image_id"], receipt["receipt_id"]))
+        golden = golden_by_key.get(
+            (receipt["image_id"], receipt["receipt_id"])
+        )
         summary = build_summary(golden)
 
         items, _ = extract_items(words, zone)
@@ -203,7 +208,10 @@ GUARD_BANDS: list[tuple[str, list[str]]] = [
     ("bag_sale_paper_is_a_product", ["BAG", "SALE", "PAPER", "EA", "0.10"]),
     # #1320 SETTLEMENT_RE: scrambled / prefixed / AUTH forms
     ("settlement_scrambled_due_balance", ["17.98", "DUE", "BALANCE"]),
-    ("settlement_item_prefixed_subtotal", ["[1", "item]", "Sub", "Total", "16.00"]),
+    (
+        "settlement_item_prefixed_subtotal",
+        ["[1", "item]", "Sub", "Total", "16.00"],
+    ),
     ("settlement_auth_debit", ["2014.98", "AUTH", "DEBIT", "$20.47"]),
     ("settlement_amount_due", ["Amount", "Due", "31.20"]),
     ("settlement_total_to_pay", ["Total", "To", "Pay", "9.99"]),
@@ -318,7 +326,9 @@ def generate(ocr_path: Path, golden_path: Path) -> dict[Path, str]:
     ocr_fixture = json.loads(ocr_path.read_text(encoding="utf-8"))
     golden_fixture = json.loads(golden_path.read_text(encoding="utf-8"))
     return {
-        DEFAULT_OUTPUT: render(build_expectations(ocr_fixture, golden_fixture)),
+        DEFAULT_OUTPUT: render(
+            build_expectations(ocr_fixture, golden_fixture)
+        ),
         GUARD_OUTPUT: render(build_guard_cases()),
         # The Swift package needs its own copy of the golden OCR words, and a
         # copy is exactly the thing that silently goes stale. Regenerating it
@@ -344,8 +354,7 @@ def main() -> None:
         stale = [
             path
             for path, payload in artifacts.items()
-            if not path.exists()
-            or path.read_text(encoding="utf-8") != payload
+            if not path.exists() or path.read_text(encoding="utf-8") != payload
         ]
         if stale:
             raise SystemExit(
