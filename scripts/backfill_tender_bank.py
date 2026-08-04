@@ -584,7 +584,13 @@ def run(args: argparse.Namespace) -> None:
     written = 0
     for start in range(0, len(to_write), args.batch_size):
         batch = to_write[start : start + args.batch_size]
-        client.upsert_receipt_summaries(batch)
+        # This script IS the offline source of truth for the bank fields,
+        # so it may legitimately retract a match (null a bank_amount) when
+        # the curated ledger no longer carries it — hence the explicit
+        # opt-out from the offline-field clobber guard.
+        client.upsert_receipt_summaries(
+            batch, allow_offline_field_clear=True
+        )
         written += len(batch)
         logger.info("upserted %d / %d", written, len(to_write))
     print(f"\nwrote {written} summary records")

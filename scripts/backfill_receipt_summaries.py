@@ -68,6 +68,27 @@ def backfill_summaries(
             break
     logger.info("Loaded %d places", len(places_by_key))
 
+    # Load the stored summaries so tender + offline bank fields survive the
+    # recompute. tender is classified elsewhere (this script never runs the
+    # classifier), and ledger / bank_amount / bank_match_confidence come
+    # from the LOCAL Chase + Apple ledgers and cannot be re-derived here —
+    # writing without this carry-over wiped them table-wide on 2026-08-04
+    # and collapsed dev PROVEN 281 -> 2.
+    logger.info("Loading existing summaries for field carry-over...")
+    existing_by_key = {}
+    last_key = None
+    while True:
+        summaries, last_key = client.list_receipt_summaries(
+            limit=1000,
+            last_evaluated_key=last_key,
+        )
+        for existing in summaries:
+            key = f"{existing.image_id}_{existing.receipt_id}"
+            existing_by_key[key] = existing
+        if last_key is None:
+            break
+    logger.info("Loaded %d existing summaries", len(existing_by_key))
+
     # Process receipts in batches
     pending_records: list[ReceiptSummaryRecord] = []
     last_key = None
@@ -88,13 +109,27 @@ def backfill_summaries(
                 place = places_by_key.get(key)
                 merchant_name = place.merchant_name if place else None
 
-                # Compute summary from word labels
+                # Compute summary from word labels, carrying over tender
+                # and offline bank fields from the stored summary.
+                existing = existing_by_key.get(key)
                 summary = ReceiptSummary.from_word_labels_and_words(
                     image_id=bundle.receipt.image_id,
                     receipt_id=bundle.receipt.receipt_id,
                     merchant_name=merchant_name,
                     word_labels=bundle.word_labels,
                     words=bundle.words,
+                    tender_class=(
+                        existing.tender_class if existing else None
+                    ),
+                    card_network=(
+                        existing.card_network if existing else None
+                    ),
+                    card_last4=existing.card_last4 if existing else None,
+                    ledger=existing.ledger if existing else None,
+                    bank_amount=existing.bank_amount if existing else None,
+                    bank_match_confidence=(
+                        existing.bank_match_confidence if existing else None
+                    ),
                 )
 
                 # Create record for persistence

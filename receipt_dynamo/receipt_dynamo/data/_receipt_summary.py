@@ -19,10 +19,12 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
+    EntityValidationError,
 )
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
     item_to_receipt_summary_record,
+    offline_fields_cleared,
 )
 
 
@@ -286,8 +288,45 @@ class _ReceiptSummary(FlattenedStandardMixin):
             last_evaluated_key=last_evaluated_key,
         )
 
+    def _guard_offline_fields(
+        self, summary: ReceiptSummaryRecord, allow_offline_field_clear: bool
+    ) -> None:
+        """Refuse to null offline bank fields a stored summary carries.
+
+        ledger / bank_amount / bank_match_confidence come from the LOCAL
+        Chase + Apple ledgers (scripts/backfill_tender_bank.py) and
+        cannot be re-derived in the cloud; bank_amount is half of the
+        PROVEN definition. A recompute must carry them over (see
+        infra/receipt_summary_updater/summary_processor.py) or pass
+        allow_offline_field_clear=True to clear them deliberately.
+        """
+        if allow_offline_field_clear:
+            return
+        try:
+            existing = self.get_receipt_summary(
+                summary.image_id, summary.receipt_id
+            )
+        except EntityNotFoundError:
+            return
+        cleared = offline_fields_cleared(summary, existing)
+        if cleared:
+            raise EntityValidationError(
+                f"upsert for {summary.image_id}#{summary.receipt_id} would "
+                f"null offline bank field(s) {cleared} that the stored "
+                "summary carries. These are computed offline "
+                "(scripts/backfill_tender_bank.py) and cannot be re-derived "
+                "in the cloud. Carry them over from the existing summary, "
+                "or pass allow_offline_field_clear=True to clear them "
+                "deliberately."
+            )
+
     @handle_dynamodb_errors("upsert_receipt_summary")
-    def upsert_receipt_summary(self, summary: ReceiptSummaryRecord) -> None:
+    def upsert_receipt_summary(
+        self,
+        summary: ReceiptSummaryRecord,
+        *,
+        allow_offline_field_clear: bool = False,
+    ) -> None:
         """
         Upserts a ReceiptSummaryRecord to DynamoDB.
 
@@ -298,13 +337,20 @@ class _ReceiptSummary(FlattenedStandardMixin):
         ----------
         summary : ReceiptSummaryRecord
             The summary instance to upsert.
+        allow_offline_field_clear : bool
+            Explicit opt-in to null offline bank fields
+            (ledger / bank_amount / bank_match_confidence) that the
+            stored summary carries. Defaults to False: such a write
+            raises instead of silently destroying offline data.
 
         Raises
         ------
         ValueError
-            If summary is invalid.
+            If summary is invalid, or if the write would null offline
+            bank fields without allow_offline_field_clear.
         """
         self._validate_entity(summary, ReceiptSummaryRecord, "summary")
+        self._guard_offline_fields(summary, allow_offline_field_clear)
         # Use put_item without condition - overwrites if exists
         self._client.put_item(
             TableName=self.table_name,
@@ -313,7 +359,10 @@ class _ReceiptSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("upsert_receipt_summaries")
     def upsert_receipt_summaries(
-        self, summaries: list[ReceiptSummaryRecord]
+        self,
+        summaries: list[ReceiptSummaryRecord],
+        *,
+        allow_offline_field_clear: bool = False,
     ) -> None:
         """
         Upserts multiple ReceiptSummaryRecord items to DynamoDB.
@@ -325,15 +374,24 @@ class _ReceiptSummary(FlattenedStandardMixin):
         ----------
         summaries : list[ReceiptSummaryRecord]
             A list of summary instances to upsert.
+        allow_offline_field_clear : bool
+            Explicit opt-in to null offline bank fields
+            (ledger / bank_amount / bank_match_confidence) that a
+            stored summary carries. Defaults to False: such a write
+            raises instead of silently destroying offline data.
 
         Raises
         ------
         ValueError
-            If summaries is invalid or if an error occurs during batch write.
+            If summaries is invalid, if an error occurs during batch
+            write, or if a write would null offline bank fields without
+            allow_offline_field_clear.
         """
         self._validate_entity_list(
             summaries, ReceiptSummaryRecord, "summaries"
         )
+        for summary in summaries:
+            self._guard_offline_fields(summary, allow_offline_field_clear)
 
         # batch_write_item is idempotent - overwrites if exists
         request_items = [
