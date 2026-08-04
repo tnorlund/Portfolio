@@ -36,7 +36,7 @@ canonical decoder.
 | MCP repair tools | `get_receipt_line_items`, `extend_items_section` (arithmetic-guarded), `list_reconciliation_worklist` — both server variants |
 | Tender/bank | `receipt_upload/tender.py`, summary entity fields, `scripts/backfill_tender_bank.py` (ledger data is LOCAL-only: `~/receipts-email/email_receipts.db` + Apple Card PDFs) |
 | Validation workstation | `/dev/validation` on branch `codex/geometric-reader` (local-only; shim `portfolio/dev-harness/validation_shim.py`; `VALIDATION_MATH_AUDIT.md`) |
-| Golden set + gates | `receipt_upload/tests/fixtures/line_items_golden*.json` (33 receipts), per-merchant floors in `test_line_item_golden_regression.py`, corpus sweep as label-free second gate |
+| Golden set + gates | `receipt_upload/tests/fixtures/line_items_golden*.json` (35 receipts), per-merchant floors in `test_line_item_golden_regression.py`, corpus sweep as label-free second gate |
 | CDN repair tool | `scripts/rewarp_receipt_cdn_images.py` (--force, stale_timestamp verdict, raw-bucket backups) |
 
 ## Current numbers (dev, 679 baselined receipts)
@@ -52,9 +52,16 @@ canonical decoder.
 
 ## Standing WARNINGS (each cost real hours; do not relearn)
 
-1. **Swift decoder is FORKED from Python** as of #1320/#1321: the 33/33 parity
-   fixture froze at #1313 (no band filter). Regenerate expectations from live
-   Python in CI before trusting or wiring the Swift decoder as producer.
+1. **Swift decoder parity is now REGENERATED, not snapshotted** (Phase 1 of
+   making the Mac worker the producer). It had forked: the 33/33 fixture
+   froze at #1313 while Python gained #1320/#1321/#1324/#1329, so the gate
+   measured agreement with a Python that no longer existed. The port is
+   caught up (35/35) and the fixture is rebuilt from live Python by
+   `receipt_ocr_swift/Scripts/generate_line_items_parity.py`, which CI runs
+   in `--check` mode — never hand-edit the expectation JSON. Note the
+   golden set alone cannot see the #1320 guards (it decodes identically
+   with the pre-#1320 regexes); the synthetic guard vectors in that
+   generator are what covers them.
 2. MCP receipt tools default to DEV (`PORTFOLIO_ENV`); prod writes need
    explicit `DynamoClient("ReceiptsTable-d7ff76a")`.
 3. CI deploys PROD only — after merging Lambda/entity changes, deploy the dev

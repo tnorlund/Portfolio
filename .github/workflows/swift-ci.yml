@@ -11,14 +11,28 @@ name: Swift CI
 on:
     push:
         branches: [main]
+        # GitHub Actions does not support YAML anchors, so the watched
+        # path list is duplicated below verbatim -- keep them in sync.
         paths:
             - "receipt_ocr_swift/**"
             - ".github/workflows/swift-ci.yml"
+            # The Swift decoder is a PORT. When the Python original moves,
+            # this workflow must run even though no Swift file changed --
+            # otherwise the parity fixture silently freezes, which is
+            # exactly what happened between #1313 and #1329.
+            - "receipt_upload/receipt_upload/line_items/**"
+            - "receipt_dynamo/receipt_dynamo/amounts.py"
+            - "receipt_dynamo/receipt_dynamo/entities/receipt_summary.py"
+            - "receipt_upload/tests/fixtures/line_items_golden*.json"
     pull_request:
         branches: [main]
         paths:
             - "receipt_ocr_swift/**"
             - ".github/workflows/swift-ci.yml"
+            - "receipt_upload/receipt_upload/line_items/**"
+            - "receipt_dynamo/receipt_dynamo/amounts.py"
+            - "receipt_dynamo/receipt_dynamo/entities/receipt_summary.py"
+            - "receipt_upload/tests/fixtures/line_items_golden*.json"
     workflow_dispatch:
 
 concurrency:
@@ -43,6 +57,25 @@ jobs:
                   key: ${{ runner.os }}-spm-${{ hashFiles('receipt_ocr_swift/Package.resolved') }}
                   restore-keys: |
                       ${{ runner.os }}-spm-
+
+            # ANTI-DRIFT. The Swift decoder is a port; its parity fixture is
+            # a snapshot of Python output, and a snapshot that is only ever
+            # READ goes stale silently (it did: "33/33 parity" between #1313
+            # and #1329 measured agreement with a Python that no longer
+            # existed). Regenerate from the live Python decoder and fail on
+            # any difference, so the expectations can never be older than
+            # the code they claim to describe.
+            - name: Regenerate parity expectations from live Python
+              run: |
+                  python3 -m venv .venv-parity
+                  source .venv-parity/bin/activate
+                  pip install --quiet --no-deps -e receipt_dynamo \
+                    -e receipt_upload
+                  # boto3/Pillow are imported by the packages' __init__
+                  # chains, not by the decoder itself.
+                  pip install --quiet boto3 Pillow
+                  python receipt_ocr_swift/Scripts/generate_line_items_parity.py \
+                    --check
 
             - name: Build
               run: |

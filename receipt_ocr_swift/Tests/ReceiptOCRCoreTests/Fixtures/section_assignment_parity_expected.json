@@ -1187,5 +1187,32 @@
         ]
       }
     ]
+  },
+  {
+    "image_id": "49d8fde2-7ffd-4913-a9c0-6731e74fa147",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          14,
+          15
+        ]
+      }
+    ]
+  },
+  {
+    "image_id": "9cf39343-8eb3-4fdb-bcea-843d6388b8d2",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          34,
+          35,
+          36
+        ]
+      }
+    ]
   }
 ]

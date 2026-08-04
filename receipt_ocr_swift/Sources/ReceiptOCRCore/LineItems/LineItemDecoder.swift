@@ -92,17 +92,38 @@ enum LineItemRegex {
     static let leadQty = Rx("^(\\d{1,2})\\s+(?=[A-Za-z])")
     /// TAX_FLAG_RE (ported for completeness)
     static let taxFlag = Rx("\\s+[TFNOAB]X?$")
-    /// SETTLEMENT_RE: settlement lines are never items
+    /// SETTLEMENT_RE: settlement lines are never items, even when a broken
+    /// ITEMS section includes them. OCR sometimes scrambles word order
+    /// ("17.98 DUE BALANCE") or prefixes an item count ("[1 item] Sub Total
+    /// 16.00"); both forms are covered.
     static let settlement = Rx(
-        "^\\W*(?:BALANCE(?:\\s+DUE|\\s+TO\\s+PAY)?|TO\\s+PAY|CREDIT|DEBIT"
+        "^\\W*(?:ITEMS?\\W+)?"
+            + "(?:BALANCE(?:\\s+DUE|\\s+TO\\s+PAY)?|DUE\\s+BALANCE"
+            + "|(?:AMOUNT|TOTAL)\\s+(?:DUE|TO\\s+PAY)|TO\\s+PAY|CREDIT"
+            + "|(?:AUTH\\s+)?DEBIT"
             + "|CHANGE(?:\\s+DUE)?|CASH(?:\\s+BACK)?|TENDER(?:ED)?"
-            + "|SUB\\s*TOTAL|TOTAL|(?:SALES\\s+)?TAX)\\W*$",
+            + "|SUB\\W{0,2}T(?:OTA|T)L|TOTAL|(?:SALES\\s+)?TAX)\\W*$",
         ci: true
     )
     /// WAS_PRICE_RE: price-comparison metadata ("WAS: $3.59 each")
     static let wasPrice = Rx("\\b(?:WAS|REG)\\b[:.]?\\s*\\$?\\d", ci: true)
-    /// SALE_PRICE_RE: BOGO annotation echo ("Sale Price 1.99")
-    static let salePrice = Rx("\\bSALE\\s+PRICE\\b", ci: true)
+    /// SALE_PRICE_RE: annotation echo that restates a post-discount unit
+    /// price ("Sale Price 1.99", Target's "Regular Price $22.99", Nordstrom
+    /// Rack's "Comparable Value 59.95"). Exact phrases only — "BAG SALE
+    /// PAPER EA" is a real item.
+    static let salePrice = Rx(
+        "\\b(?:(?:SALE|REG(?:ULAR)?\\.?)\\s+PRICE|COMPARABLE\\s+VALUE)\\b",
+        ci: true
+    )
+    /// NON_PRODUCT_NOTE_RE: tip-suggestion footers ("22% Tip = 4.40",
+    /// "18%: (Tip Total 9.27)") and transaction-count notes ("Items in
+    /// Transaction: 5"). The %-sign / exact-phrase anchors keep product
+    /// names ("6% FAT MLK", "STEAK TIPS") out of reach.
+    static let nonProductNote = Rx(
+        "\\d{1,3}\\s*%\\s*[:=]|%\\s*TIP\\b|\\bTIP\\s+TOTAL\\b"
+            + "|\\bITEMS?\\s+IN\\s+TRANSACTION\\b",
+        ci: true
+    )
     /// SKU_LIKE_RE
     static let skuLike = Rx("\\d{4,}")
     /// Amount fraction gate: r"\d[.,]\d{2}(?!\d)"
@@ -468,10 +489,94 @@ func zoneBands(words: [ZoneWord], zoneLineIds: Set<Int>) -> [ZoneBand] {
 
 // MARK: - decode_band_blocks (blocks.decode_band_blocks)
 
+/// The printed summary figures a decode may be filtered against
+/// (Python's `summary` dict: subtotal / tax / grand_total).
+public struct LineItemSummary: Sendable, Equatable {
+    public var subtotal: Double?
+    public var tax: Double?
+    public var grandTotal: Double?
+
+    public init(
+        subtotal: Double? = nil, tax: Double? = nil, grandTotal: Double? = nil
+    ) {
+        self.subtotal = subtotal
+        self.tax = tax
+        self.grandTotal = grandTotal
+    }
+}
+
+/// Port of `blocks.filter_summary_figure_items` (#1320): drop non-product
+/// bands whose price merely restates a printed summary figure.
+///
+/// Every guard is load-bearing and ported verbatim:
+///   * runs only when the receipt does NOT already reconcile, so the filter
+///     can never lose a currently-matching receipt;
+///   * at least 2 other non-discount items must survive every drop
+///     (single-item receipts legitimately have item price == total);
+///   * an UNNAMED band may match subtotal / tax / grand_total and is dropped
+///     only when the drop strictly improves the delta;
+///   * a NAMED band may match only subtotal / grand_total and is dropped
+///     only when the remaining items then reconcile to a match.
+func filterSummaryFigureItems(
+    _ items: [ParsedBand], summary: LineItemSummary?
+) -> [ParsedBand] {
+    guard let summary, !items.isEmpty else { return items }
+
+    let subtotal = summary.subtotal
+    let tax = summary.tax
+    let grand = summary.grandTotal
+    var baseline = subtotal
+    if baseline == nil, let g = grand { baseline = g - (tax ?? 0.0) }
+    guard let base = baseline, base > 0 else { return items }
+
+    let nonDisc = items.filter { !$0.isDiscount }
+    var cur = pythonRound2(nonDisc.reduce(0.0) { $0 + $1.price })
+    let tol = max(0.02, base * 0.01)
+    if abs(cur - base) <= tol { return items }  // already reconciles
+
+    var drop: Set<Int> = []
+    var changed = true
+    while changed {
+        changed = false
+        for (idx, it) in items.enumerated() {
+            if drop.contains(idx) || it.isDiscount { continue }
+            let price = it.price
+            if price <= 0 { continue }
+            let unnamed = !nameIsReal(it.name)
+            var figures: [Double?] = [subtotal, grand]
+            if unnamed { figures.append(tax) }
+            // 1% figure tolerance (same shape as reconcile's match band):
+            // the printed figure itself carries OCR jitter.
+            let matchesFigure = figures.contains { f in
+                guard let f else { return false }
+                return abs(price - f) <= max(0.02, f * 0.01)
+            }
+            if !matchesFigure { continue }
+            if nonDisc.count - drop.count - 1 < 2 { continue }
+            let newDiff = abs(pythonRound2(cur - price) - base)
+            let ok =
+                unnamed
+                ? newDiff < abs(cur - base) - 0.005
+                : newDiff <= tol
+            if ok {
+                drop.insert(idx)
+                cur = pythonRound2(cur - price)
+                changed = true
+            }
+        }
+    }
+    if drop.isEmpty { return items }
+    return items.enumerated()
+        .filter { !drop.contains($0.offset) }
+        .map(\.element)
+}
+
 /// Port of `blocks.decode_band_blocks`: block decode over deskewed visual
-/// bands.
+/// bands. `summary` (optional) enables the non-product band filter; callers
+/// without a summary pass nil and get the unfiltered decode.
 func decodeBandBlocks(
-    words: [ZoneWord], zoneLineIds: Set<Int>, priors: [String: RolePrior]
+    words: [ZoneWord], zoneLineIds: Set<Int>, priors: [String: RolePrior],
+    summary: LineItemSummary? = nil
 ) -> [ParsedBand] {
     var bands = zoneBands(words: words, zoneLineIds: zoneLineIds)
     if bands.isEmpty { return [] }
@@ -485,6 +590,7 @@ func decodeBandBlocks(
         if LineItemRegex.settlement.match(bare) != nil
             || LineItemRegex.wasPrice.hasMatch(text)
             || LineItemRegex.salePrice.hasMatch(text)
+            || LineItemRegex.nonProductNote.hasMatch(text)
         {
             bands[idx].role = "OUTSIDE"
             continue
@@ -650,7 +756,7 @@ func decodeBandBlocks(
         parsed.lineIds = lids.sorted()
         items.append(parsed)
     }
-    return items
+    return filterSummaryFigureItems(items, summary: summary)
 }
 
 // MARK: - Priors (blocks.load_default_priors)
@@ -689,10 +795,12 @@ public func loadDefaultPriors() -> [String: RolePrior] {
 /// Port of `geometry.extract_items`: extract items via the band-block
 /// decoder with the committed golden-trained priors.
 public func extractLineItems(
-    words: [ZoneWord], zoneLineIds: Set<Int>
+    words: [ZoneWord], zoneLineIds: Set<Int>,
+    summary: LineItemSummary? = nil
 ) -> [DecodedLineItem] {
     extractLineItems(
-        words: words, zoneLineIds: zoneLineIds, priors: defaultPriors
+        words: words, zoneLineIds: zoneLineIds, priors: defaultPriors,
+        summary: summary
     )
 }
 
@@ -700,12 +808,14 @@ public func extractLineItems(
 private let defaultPriors: [String: RolePrior] = loadDefaultPriors()
 
 /// `extract_items` with explicit priors (parity with
-/// `decode_band_blocks(ocr, priors)`).
+/// `decode_band_blocks(ocr, priors, summary)`).
 public func extractLineItems(
-    words: [ZoneWord], zoneLineIds: Set<Int>, priors: [String: RolePrior]
+    words: [ZoneWord], zoneLineIds: Set<Int>, priors: [String: RolePrior],
+    summary: LineItemSummary? = nil
 ) -> [DecodedLineItem] {
     decodeBandBlocks(
-        words: words, zoneLineIds: zoneLineIds, priors: priors
+        words: words, zoneLineIds: zoneLineIds, priors: priors,
+        summary: summary
     ).map { p in
         DecodedLineItem(
             name: p.name,
@@ -766,33 +876,174 @@ public func mergePriceFragments(_ words: [ZoneWord]) -> [ZoneWord] {
     return out
 }
 
-/// Result of `reconcileLineItems` (Python `geometry.reconcile`).
-public struct ReconcileResult: Sendable {
+/// Result of `reconcileLineItems` (Python `geometry.ReconcileResult`).
+///
+/// `status` keeps the four-value vocabulary the golden floors, the stream
+/// stage and the ReceiptLineItem entity depend on. `baselineSource` and
+/// `baselineFiguresAgreeing` are the additive #1324 diagnostics: which
+/// printed figure was compared against, and how many printed figures
+/// participate in an arithmetic story consistent with the item sum
+/// (3 / 2 / 1; nil when the status is mismatch or no-baseline).
+public struct ReconcileResult: Sendable, Equatable {
     public let status: String  // "no-baseline" | "match" | "near" | "mismatch"
     public let itemSum: Double?
     public let baseline: Double?
+    public let baselineSource: String?
+    public let baselineFiguresAgreeing: Int?
+
+    public init(
+        status: String, itemSum: Double?, baseline: Double?,
+        baselineSource: String? = nil, baselineFiguresAgreeing: Int? = nil
+    ) {
+        self.status = status
+        self.itemSum = itemSum
+        self.baseline = baseline
+        self.baselineSource = baselineSource
+        self.baselineFiguresAgreeing = baselineFiguresAgreeing
+    }
 }
 
-/// Port of `geometry.reconcile`: compare extracted item sum against the
-/// summary subtotal / grand total.
+/// Absolute plausibility ceiling for any printed summary figure. SKU /
+/// barcode strings occasionally OCR-parse as money (a 24-char SKU tail
+/// became a $2.0B subtotal); no honest receipt approaches this.
+public let maxPlausibleBaseline: Double = 50_000.0
+
+/// Port of `geometry._classify_against`.
+func classifyAgainst(itemSum: Double, baseline: Double) -> String {
+    let diff = abs(itemSum - baseline)
+    if diff <= max(0.02, baseline * 0.01) { return "match" }
+    if diff <= max(1.0, baseline * 0.10) { return "near" }
+    return "mismatch"
+}
+
+/// Port of `geometry._baseline_implausible`: a printed baseline no honest
+/// receipt produces. Deliberately one-directional — a baseline far ABOVE
+/// the item sum is severe under-extraction (the extractor's fault) and must
+/// stay a hard mismatch.
+func baselineImplausible(itemSum: Double, baseline: Double) -> Bool {
+    itemSum > 3 * baseline
+}
+
+/// Port of `geometry.reconcile_detailed` (#1324): three-figure baseline
+/// with printed-figure hygiene and a 1..3 agreement grade.
+public func reconcileLineItemsDetailed(
+    items: [DecodedLineItem], summary: LineItemSummary?
+) -> ReconcileResult {
+    guard let summary else {
+        return ReconcileResult(
+            status: "no-baseline", itemSum: nil, baseline: nil
+        )
+    }
+    let tax = summary.tax
+    // Figure hygiene: a zero/negative printed figure is no figure at all,
+    // and neither is an impossible one.
+    var subtotal = summary.subtotal
+    var grand = summary.grandTotal
+    if let s = subtotal, !(s > 0 && s <= maxPlausibleBaseline) {
+        subtotal = nil
+    }
+    if let g = grand, !(g > 0 && g <= maxPlausibleBaseline) { grand = nil }
+
+    var fallback: Double?
+    if let g = grand {
+        let f = pythonRound2(g - (tax ?? 0.0))
+        fallback = f > 0 ? f : nil
+    }
+
+    var baseline: Double
+    var source: String
+    if let s = subtotal {
+        baseline = s
+        source = "subtotal"
+    } else if let f = fallback {
+        baseline = f
+        source = "grand_total_minus_tax"
+    } else {
+        return ReconcileResult(
+            status: "no-baseline", itemSum: nil, baseline: nil
+        )
+    }
+
+    let itemSum = pythonRound2(items.reduce(0.0) { $0 + $1.price })
+    var status = classifyAgainst(itemSum: itemSum, baseline: baseline)
+
+    if status == "mismatch" {
+        if source == "subtotal" {
+            let s = subtotal!
+            let insane =
+                (grand != nil && s > grand! + 0.01)
+                || baselineImplausible(itemSum: itemSum, baseline: s)
+            if insane {
+                if let f = fallback, abs(f - s) > 0.005,
+                    !baselineImplausible(itemSum: itemSum, baseline: f),
+                    classifyAgainst(itemSum: itemSum, baseline: f) != "mismatch"
+                {
+                    baseline = f
+                    source = "grand_total_minus_tax"
+                    status = classifyAgainst(itemSum: itemSum, baseline: f)
+                } else {
+                    return ReconcileResult(
+                        status: "no-baseline", itemSum: nil, baseline: nil
+                    )
+                }
+            }
+        } else if baselineImplausible(itemSum: itemSum, baseline: baseline) {
+            return ReconcileResult(
+                status: "no-baseline", itemSum: nil, baseline: nil
+            )
+        }
+    }
+
+    var grade: Int?
+    if status == "match" || status == "near" {
+        grade = 1
+        if source == "subtotal", let s = subtotal, let g = grand {
+            if abs(pythonRound2(s + (tax ?? 0.0)) - g) <= max(0.02, g * 0.01) {
+                grade = tax != nil ? 3 : 2
+            }
+        } else if source != "subtotal", tax != nil {
+            // items ~= grand_total - printed tax: grand and tax both
+            // corroborate; no printed subtotal so 3 is unreachable.
+            grade = 2
+        }
+    }
+    return ReconcileResult(
+        status: status, itemSum: itemSum, baseline: baseline,
+        baselineSource: source, baselineFiguresAgreeing: grade
+    )
+}
+
+/// Port of `geometry.reconcile`: tuple-compatible wrapper kept for the
+/// existing subtotal-only callers.
 public func reconcileLineItems(
     items: [DecodedLineItem],
     subtotal: Double?, grandTotal: Double?, tax: Double?
 ) -> ReconcileResult {
-    var baseline = subtotal
-    if baseline == nil, let grand = grandTotal {
-        baseline = grand - (tax ?? 0.0)
+    reconcileLineItemsDetailed(
+        items: items,
+        summary: LineItemSummary(
+            subtotal: subtotal, tax: tax, grandTotal: grandTotal
+        )
+    )
+}
+
+/// PROVEN policy constant (user-decided 2026-08-03): exact-to-the-cent
+/// means a difference strictly under half a cent.
+public let provenCentTolerance: Double = 0.005
+
+/// Port of `geometry.is_proven`: PROVEN = exact-to-the-cent on BOTH truth
+/// hops. `near` NEVER counts, however small the band; missing figures on
+/// either hop fail closed.
+public func isProven(
+    reconStatus: String?, printedTotal: Double?, bankAmount: Double?
+) -> Bool {
+    guard reconStatus == "match" else { return false }
+    guard let printed = printedTotal, let bank = bankAmount else {
+        return false
     }
-    guard let base = baseline, base > 0 else {
-        return ReconcileResult(status: "no-baseline", itemSum: nil, baseline: nil)
-    }
-    let itemSum = pythonRound2(items.reduce(0.0) { $0 + $1.price })
-    let diff = abs(itemSum - base)
-    if diff <= max(0.02, base * 0.01) {
-        return ReconcileResult(status: "match", itemSum: itemSum, baseline: base)
-    }
-    if diff <= max(1.0, base * 0.10) {
-        return ReconcileResult(status: "near", itemSum: itemSum, baseline: base)
-    }
-    return ReconcileResult(status: "mismatch", itemSum: itemSum, baseline: base)
+    // Round the difference to the mill first: 21.075 - 21.07 computes to
+    // 0.004999... in binary floats, and a half-cent gap must NOT slip under
+    // the strict < 0.005 policy line on representation noise alone.
+    return (abs(printed - bank) * 1000).rounded(.toNearestOrEven) / 1000
+        < provenCentTolerance
 }

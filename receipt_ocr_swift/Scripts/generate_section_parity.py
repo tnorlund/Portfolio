@@ -139,12 +139,17 @@ def main() -> None:
             }
         )
 
-    if len(expected) != 33:
-        raise RuntimeError(f"expected 33 receipts, got {len(expected)}")
+    # The golden set grows (33 -> 35 at the 2026-08 batch); never hardcode
+    # its size again, only guard against silently generating nothing.
+    if len(expected) != len(fixture["receipts"]):
+        raise RuntimeError(
+            f"expected {len(fixture['receipts'])} receipts, "
+            f"got {len(expected)}"
+        )
     args.output.write_text(
         json.dumps(expected, indent=2) + "\n", encoding="utf-8"
     )
-    print(f"wrote {len(expected)}/33 receipts to {args.output}")
+    print(f"wrote {len(expected)} receipts to {args.output}")
 
 
 if __name__ == "__main__":

@@ -161,14 +161,15 @@ import Testing
         }
     }
 
-    @Test func goldenEndToEndParity33Receipts() throws {
+    @Test func goldenEndToEndParityAcrossTheWholeGoldenSet() throws {
         let fixture = try load("line_items_golden_ocr", as: OCRFixture.self)
         let expected = try load(
             "receipt_structure_parity_expected",
             as: [ExpectedReceipt].self
         )
-        #expect(fixture.receipts.count == 33)
-        #expect(expected.count == 33)
+        // Count derived, not pinned: the golden set grows (33 -> 35).
+        #expect(fixture.receipts.count == expected.count)
+        #expect(expected.count >= 35)
 
         var passed = 0
         var failures: [String] = []
@@ -243,9 +244,10 @@ import Testing
             }
         }
         #expect(
-            passed == 33,
+            passed == expected.count,
             Comment(
-                rawValue: "pipeline parity \(passed)/33; failures:\n"
+                rawValue:
+                    "pipeline parity \(passed)/\(expected.count); failures:\n"
                     + failures.joined(separator: "\n")
             )
         )

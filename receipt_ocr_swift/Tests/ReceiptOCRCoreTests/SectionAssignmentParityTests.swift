@@ -101,14 +101,15 @@ import Testing
         return (lines, words)
     }
 
-    @Test func goldenParity33Receipts() throws {
+    @Test func goldenParityAcrossTheWholeGoldenSet() throws {
         let fixture = try load("line_items_golden_ocr", as: OCRFixture.self)
         let expected = try load(
             "section_assignment_parity_expected",
             as: [ExpectedReceipt].self
         )
-        #expect(fixture.receipts.count == 33)
-        #expect(expected.count == 33)
+        // Count derived, not pinned: the golden set grows (33 -> 35).
+        #expect(fixture.receipts.count == expected.count)
+        #expect(expected.count >= 35)
         let model = try loadSectionPriorModel()
 
         var passed = 0
@@ -143,9 +144,10 @@ import Testing
         }
 
         #expect(
-            passed == 33,
+            passed == expected.count,
             Comment(
-                rawValue: "section parity \(passed)/33; failures:\n"
+                rawValue:
+                    "section parity \(passed)/\(expected.count); failures:\n"
                     + failures.joined(separator: "\n")
             )
         )
