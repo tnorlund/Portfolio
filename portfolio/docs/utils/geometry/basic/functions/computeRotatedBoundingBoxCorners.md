@@ -8,7 +8,7 @@
 
 > **computeRotatedBoundingBoxCorners**(`hull`, `topLineCorners`, `bottomLineCorners`): [`Point`](../interfaces/Point.md)[]
 
-Defined in: [utils/geometry/basic.ts:139](https://github.com/tnorlund/Portfolio/blob/b865f19307724039ec5849cf1ef66145e2c9b205/portfolio/utils/geometry/basic.ts#L139)
+Defined in: [utils/geometry/basic.ts:139](https://github.com/tnorlund/Portfolio/blob/774ff90ed840b673d46c61680347bdd80720022c/portfolio/utils/geometry/basic.ts#L139)
 
 Compute receipt corners using the rotated bounding box approach.
 
