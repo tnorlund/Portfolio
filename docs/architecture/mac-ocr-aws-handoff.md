@@ -61,11 +61,82 @@ evaluation).
 | Label validation (Chroma KNN + LLM) | AWS Lambda (words pipeline) | `receipt_upload/label_validation/` |
 | Chroma compaction (snapshot merge) | AWS, async | triggered by `CompactionRun` Dynamo stream |
 
-Section segmentation is deliberately **not** ported to Swift. The Mac worker
-ships evidence (OCR geometry + LayoutLM labels); every merchant-conditioned
-or cross-receipt decision (merchant resolution, sections, verification,
-validation) runs in AWS where the priors, Chroma index, and DynamoDB state
-live.
+Section assignment and line-item decoding are **now also run on the Mac**
+(ported in #1314/#1315, brought to decoder parity in #1367). Both are
+deterministic and merchant-conditioned only through priors the worker ships
+in its bundle, so they need neither Chroma nor DynamoDB. Everything that
+depends on cross-receipt state — merchant *resolution*, KNN section
+verification, label validation, compaction — still runs in AWS, and the
+cloud keeps its own copy of both decoders as the canonical implementation
+(see "Two producers" below).
+
+| Stage | Executes on | Code |
+|---|---|---|
+| Section assignment (on device) | Mac | `Sections/SectionAssignment.swift` + `section_order_priors_v2.json` |
+| Line-item decode (on device) | Mac | `LineItems/` + `block_role_priors_v2.json` |
+
+## Two producers, one canonical decoder
+
+The worker and the cloud run the SAME algorithm, so rows say which one wrote
+them (`receipt_upload/line_items/provenance.py`):
+
+| Field | Worker | Cloud |
+|---|---|---|
+| `ReceiptSection.model_source` | `swift-worker-v1` | `upload-determinism-v1` |
+| `ReceiptLineItem.extractor_version` | `swift-worker-v1+line-items-blocks-v2` | `line-items-blocks-v2` |
+
+`extractor_version` carries the build AND the algorithm version because a
+cloud recompute over a worker-provided ITEMS section inherits
+`source_model_source = "swift-worker-v1"` and cannot be told apart on that
+field alone.
+
+Flow:
+
+1. **Ingest** (`_process_swift_single_pass`) persists worker sections and
+   RECEIPT_LINE_ITEM rows. Strictly additive — a payload with neither
+   `sections` nor `line_items` behaves exactly as it did before. Provenance
+   claimed by the payload is never trusted: rows are always re-stamped as
+   worker-written.
+2. **Lines pipeline** then runs `assign_and_persist_sections`, which is
+   additive-only, so worker sections suppress a duplicate cloud proposal for
+   the same types rather than racing them. KNN verification still covers
+   them (`VERIFIABLE_MODEL_SOURCES`).
+3. **Stream stage** (`infra/receipt_line_item_updater`) recomputes on every
+   summary change and acts as a CONSISTENCY CHECKER. The recompute wins by
+   default; the worker's rows are preserved only when they pass
+   `items_boundary_extension_guard` with the recompute as `before` — the
+   same arithmetic guard the ITEMS-boundary repair uses (strictly smaller
+   `|delta|` AND a strictly better reconciliation status; a matching
+   recompute is never displaced and no-baseline sides are never ranked).
+   Preserved rows keep the worker's decode and gain the merchant and graded
+   reconciliation only the cloud has.
+
+### Querying divergence
+
+Every receipt that arrives carrying worker rows emits exactly one log line
+from the line-item updater:
+
+```
+LINE_ITEM_DIVERGENCE {"image_id": ..., "receipt_id": ..., "divergent": 0|1,
+  "decision": "keep-worker"|"keep-recompute", "guard_reason": ...,
+  "worker_extractor_version": ..., "worker_count": ..., "cloud_count": ...,
+  "worker_status": ..., "cloud_status": ..., "worker_delta": ...,
+  "cloud_delta": ..., "name_mismatches": ..., "price_mismatches": ...}
+```
+
+WARNING when the two decodes disagree, INFO when they agree — so the
+agreement *rate* is measurable, not just the failures:
+
+```
+fields @timestamp, @message
+| filter @message like /LINE_ITEM_DIVERGENCE/
+| parse @message 'LINE_ITEM_DIVERGENCE *' as body
+| stats count() by divergent, decision
+```
+
+A rising `divergent` count with matching `worker_extractor_version` and
+cloud `EXTRACTOR_VERSION` means the Swift port has forked from the Python
+decoder again — the failure mode STATE_OF_THE_SYSTEM warning #1 describes.
 
 ## Artifacts crossing the boundary
 
@@ -186,15 +257,18 @@ later reads the labels back from DynamoDB.
 - `assign_and_persist_sections` is **additive**: it only `add`s sections of
   types absent for the receipt, always `PENDING` with
   `model_source="upload-determinism-v1"`. It never updates existing
-  sections, so human/VALID sections are never overwritten. Concurrent adds
-  are absorbed via `EntityAlreadyExistsError`.
+  sections, so human/VALID sections — and the worker's sections written at
+  ingest — are never overwritten. Concurrent adds are absorbed via
+  `EntityAlreadyExistsError`.
 - The returned `line_id → section_type` map prefers VALID sections over
   PENDING ones (`sections_to_line_map`), so human truth wins in Chroma
   metadata.
 - `verify_receipt_sections` **annotates only**: it sets
   `verification_source/status/section_type/confidence`,
   `disagreement_row_ids`, `verified_at`. It never changes `section_type`,
-  `line_ids`, or `row_ids`, never touches non-model sections, and never
+  `line_ids`, or `row_ids`, never touches sections outside
+  `VERIFIABLE_MODEL_SOURCES` (the cloud assigner + the worker running the
+  same assigner), and never
   demotes a VALID section (disagreement leaves PENDING sections PENDING and
   records the independent prediction as provenance:
   AGREED / DISAGREED / ABSTAINED).

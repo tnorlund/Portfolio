@@ -6,6 +6,7 @@ import pytest
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
+from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
 from receipt_upload.section_assignment import MODEL_SOURCE
 from receipt_upload.section_verifier import verify_receipt_sections
 
@@ -44,6 +45,13 @@ class FakeDynamo:
 
 
 @pytest.mark.parametrize(
+    "model_source",
+    # The Mac worker runs the SAME deterministic assigner on device and its
+    # sections suppress a duplicate cloud proposal, so verification must
+    # cover both producers or worker receipts silently lose the KNN check.
+    [MODEL_SOURCE, SWIFT_WORKER_MODEL_SOURCE],
+)
+@pytest.mark.parametrize(
     ("current_status", "expected_status"),
     [
         (ValidationStatus.PENDING.value, ValidationStatus.PENDING.value),
@@ -51,7 +59,7 @@ class FakeDynamo:
     ],
 )
 def test_disagreement_is_recorded_without_overriding_sync_assignment(
-    current_status: str, expected_status: str
+    current_status: str, expected_status: str, model_source: str
 ) -> None:
     now = datetime(2026, 7, 14, tzinfo=timezone.utc)
     row = ReceiptRow(
@@ -74,7 +82,7 @@ def test_disagreement_is_recorded_without_overriding_sync_assignment(
         row_ids=[1],
         created_at=now,
         validation_status=current_status,
-        model_source=MODEL_SOURCE,
+        model_source=model_source,
     )
     valid_neighbor = ReceiptSection(
         image_id=_NEIGHBOR,

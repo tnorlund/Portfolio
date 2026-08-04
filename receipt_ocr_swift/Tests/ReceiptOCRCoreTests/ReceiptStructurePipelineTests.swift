@@ -301,14 +301,20 @@ import Testing
             .deletingLastPathComponent()  // ReceiptOCRCoreTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // receipt_ocr_swift
+            .deletingLastPathComponent()  // repo root
             .appendingPathComponent(
                 "infra/receipt_line_item_updater/line_item_processor.py"
             )
         let source = try String(contentsOf: processor, encoding: .utf8)
+        let expected =
+            "EXTRACTOR_VERSION = \"\(swiftWorkerDecoderVersion)\""
         #expect(
-            source.contains("EXTRACTOR_VERSION = \"\(swiftWorkerDecoderVersion)\""),
-            "Swift decoder version \(swiftWorkerDecoderVersion) no longer "
-                + "matches the canonical Python EXTRACTOR_VERSION"
+            source.contains(expected),
+            Comment(
+                rawValue:
+                    "Swift decoder version \(swiftWorkerDecoderVersion) no "
+                    + "longer matches the canonical Python EXTRACTOR_VERSION"
+            )
         )
         #expect(
             swiftWorkerExtractorVersion
