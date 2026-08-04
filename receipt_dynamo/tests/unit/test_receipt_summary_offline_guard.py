@@ -134,9 +134,7 @@ def test_upsert_passes_when_no_stored_summary():
 def test_batch_upsert_raises_when_any_record_clears_bank_fields():
     client = guarded_client(existing=make_record(**BANKED))
     with pytest.raises(ValueError, match="offline bank field"):
-        client.upsert_receipt_summaries(
-            [make_record(**BANKED), make_record()]
-        )
+        client.upsert_receipt_summaries([make_record(**BANKED), make_record()])
     client._batch_write_with_retry.assert_not_called()
 
 
