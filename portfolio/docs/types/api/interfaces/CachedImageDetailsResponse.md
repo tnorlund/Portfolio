@@ -6,7 +6,7 @@
 
 # Interface: CachedImageDetailsResponse
 
-Defined in: [types/api.ts:55](https://github.com/tnorlund/Portfolio/blob/7e3cc84a18844719516f6eb4810b744e3a7d392b/portfolio/types/api.ts#L55)
+Defined in: [types/api.ts:55](https://github.com/tnorlund/Portfolio/blob/48c47417ce7c65d16d5ac7953d053a28ccd863f9/portfolio/types/api.ts#L55)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:55](https://github.com/tnorlund/Portfolio/blob/7e3cc84
 
 > **cached\_at**: `string`
 
-Defined in: [types/api.ts:57](https://github.com/tnorlund/Portfolio/blob/7e3cc84a18844719516f6eb4810b744e3a7d392b/portfolio/types/api.ts#L57)
+Defined in: [types/api.ts:57](https://github.com/tnorlund/Portfolio/blob/48c47417ce7c65d16d5ac7953d053a28ccd863f9/portfolio/types/api.ts#L57)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [types/api.ts:57](https://github.com/tnorlund/Portfolio/blob/7e3cc84
 
 > **images**: [`ImageDetailsApiResponse`](ImageDetailsApiResponse.md)[]
 
-Defined in: [types/api.ts:56](https://github.com/tnorlund/Portfolio/blob/7e3cc84a18844719516f6eb4810b744e3a7d392b/portfolio/types/api.ts#L56)
+Defined in: [types/api.ts:56](https://github.com/tnorlund/Portfolio/blob/48c47417ce7c65d16d5ac7953d053a28ccd863f9/portfolio/types/api.ts#L56)

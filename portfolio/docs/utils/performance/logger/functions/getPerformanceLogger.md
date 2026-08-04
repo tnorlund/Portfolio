@@ -8,7 +8,7 @@
 
 > **getPerformanceLogger**(): [`PerformanceLogger`](../classes/PerformanceLogger.md) \| `null`
 
-Defined in: [utils/performance/logger.ts:261](https://github.com/tnorlund/Portfolio/blob/7e3cc84a18844719516f6eb4810b744e3a7d392b/portfolio/utils/performance/logger.ts#L261)
+Defined in: [utils/performance/logger.ts:261](https://github.com/tnorlund/Portfolio/blob/48c47417ce7c65d16d5ac7953d053a28ccd863f9/portfolio/utils/performance/logger.ts#L261)
 
 ## Returns
 

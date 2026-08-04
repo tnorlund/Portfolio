@@ -8,7 +8,7 @@
 
 > **getLCP**(): `number` \| `undefined`
 
-Defined in: [utils/performance/monitor.ts:230](https://github.com/tnorlund/Portfolio/blob/7e3cc84a18844719516f6eb4810b744e3a7d392b/portfolio/utils/performance/monitor.ts#L230)
+Defined in: [utils/performance/monitor.ts:230](https://github.com/tnorlund/Portfolio/blob/48c47417ce7c65d16d5ac7953d053a28ccd863f9/portfolio/utils/performance/monitor.ts#L230)
 
 ## Returns
 
