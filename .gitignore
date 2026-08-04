@@ -262,3 +262,9 @@ backups/
 # Archived review-loop runs keep their small timing/verification logs, which
 # the blanket *.log rule above would otherwise drop.
 !docs/review-loops/**/*.log
+
+# Local analysis caches (multi-MB, machine-local; a `git add -A` once staged
+# a 28 MB label cache and needed a force-push rewrite)
+logs/
+.local-qa-out/
+.row_backfill_cache/
