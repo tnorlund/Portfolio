@@ -77,12 +77,16 @@ public final class SotoS3Client: S3ClientProtocol {
     public func getObject(bucket: String, key: String) async throws -> Data {
         let req = S3.GetObjectRequest(bucket: bucket, key: key)
         var data = Data()
-        _ = try await s3.multipartDownload(
-            req,
-            logger: AWSClient.loggingDisabled,
-            on: nil
-        ) { byteBuffer, _, _ in
-            data.append(contentsOf: byteBuffer.readableBytesView)
+        do {
+            _ = try await s3.multipartDownload(
+                req,
+                logger: AWSClient.loggingDisabled,
+                on: nil
+            ) { byteBuffer, _, _ in
+                data.append(contentsOf: byteBuffer.readableBytesView)
+            }
+        } catch let error as AWSErrorType where error.context?.responseCode == .notFound {
+            throw ObjectNotFoundError(bucket: bucket, key: key)
         }
         return data
     }

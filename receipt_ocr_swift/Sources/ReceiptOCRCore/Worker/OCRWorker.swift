@@ -270,14 +270,39 @@ public final class OCRWorker {
         var imageURLs: [URL] = []
         var contexts: [Context] = []
 
+        // Messages that can never succeed (job row deleted, source image
+        // gone, malformed body). Deleted from the queue at the end of the
+        // prep loop; previously one such message threw out of processBatch,
+        // aborting the whole drain, and — with no DLQ on the queue — came
+        // back after its visibility timeout to abort the next drain too.
+        var poisonEntries: [SQSDeleteEntry] = []
+
         for msg in messages {
             guard let data = msg.body.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let imageId = obj["image_id"] as? String,
                   let jobId = obj["job_id"] as? String
-            else { continue }
+            else {
+                logger.warning("job_skipped_malformed_body message_id=\(msg.messageId)")
+                poisonEntries.append(SQSDeleteEntry(id: msg.messageId, receiptHandle: msg.receiptHandle))
+                continue
+            }
             logger.info("job_start image_id=\(imageId) job_id=\(jobId)")
-            let job = try await Retry.withBackoff { try await self.dynamo.getOCRJob(imageId: imageId, jobId: jobId) }
+            let job: OCRJob
+            do {
+                job = try await Retry.withBackoff { try await self.dynamo.getOCRJob(imageId: imageId, jobId: jobId) }
+            } catch DynamoMapError.missing {
+                // Job row deleted (image cleanup) after the message was
+                // queued. It can never succeed; drop the message.
+                logger.warning("job_skipped_no_job_row image_id=\(imageId) job_id=\(jobId)")
+                poisonEntries.append(SQSDeleteEntry(id: msg.messageId, receiptHandle: msg.receiptHandle))
+                continue
+            } catch {
+                // Transient (throttle, network): leave the message for
+                // redelivery and keep draining the rest of the batch.
+                logger.warning("job_deferred stage=get_job image_id=\(imageId) job_id=\(jobId) error=\(error)")
+                continue
+            }
             // Update processing stage to DOWNLOADING
             do {
                 try await self.dynamo.updateOCRJobStage(imageId: imageId, jobId: jobId, stage: "DOWNLOADING")
@@ -286,7 +311,23 @@ public final class OCRWorker {
             }
             logger.debug("download_image bucket=\(job.s3Bucket) key=\(job.s3Key)")
             // Download image
-            let imageData = try await Retry.withBackoff { try await self.s3.getObject(bucket: job.s3Bucket, key: job.s3Key) }
+            let imageData: Data
+            do {
+                imageData = try await Retry.withBackoff { try await self.s3.getObject(bucket: job.s3Bucket, key: job.s3Key) }
+            } catch let notFound as ObjectNotFoundError {
+                // Source image deleted from S3: the job can never succeed.
+                // Mark it FAILED (best effort) and drop the message.
+                logger.warning("job_skipped_missing_image image_id=\(imageId) job_id=\(jobId) bucket=\(notFound.bucket) key=\(notFound.key)")
+                var failed = job
+                failed.status = .failed
+                failed.updatedAt = Date()
+                try? await dynamo.updateOCRJob(failed)
+                poisonEntries.append(SQSDeleteEntry(id: msg.messageId, receiptHandle: msg.receiptHandle))
+                continue
+            } catch {
+                logger.warning("job_deferred stage=download image_id=\(imageId) job_id=\(jobId) error=\(error)")
+                continue
+            }
             let baseName = (job.s3Key as NSString).lastPathComponent
             let name = baseName.isEmpty ? "\(imageId)" : (baseName as NSString).deletingPathExtension
             let ext = (baseName as NSString).pathExtension
@@ -295,7 +336,19 @@ public final class OCRWorker {
             if job.jobType == .regionalReocr, let region = job.reocrRegion {
                 #if os(macOS)
                 let strategy = job.reocrStrategy
-                let cropped = try cropImageData(imageData, region: region, strategy: strategy)
+                let cropped: Data
+                do {
+                    cropped = try cropImageData(imageData, region: region, strategy: strategy)
+                } catch {
+                    // Undecodable/corrupt image: retrying cannot help.
+                    logger.warning("job_skipped_crop_failed image_id=\(imageId) job_id=\(jobId) error=\(error)")
+                    var failed = job
+                    failed.status = .failed
+                    failed.updatedAt = Date()
+                    try? await dynamo.updateOCRJob(failed)
+                    poisonEntries.append(SQSDeleteEntry(id: msg.messageId, receiptHandle: msg.receiptHandle))
+                    continue
+                }
                 localName = "\(name)-\(jobId)-reocr.png"
                 let croppedURL = tempDir.appendingPathComponent(localName)
                 try cropped.write(to: croppedURL)
@@ -331,6 +384,17 @@ public final class OCRWorker {
                     strategyApplied: nil
                 )
             )
+        }
+
+        // Drop poison messages now, before any OCR work: even if something
+        // later in the batch throws, these must not return to the queue.
+        if !poisonEntries.isEmpty {
+            logger.info("sqs_delete_poison count=\(poisonEntries.count)")
+            do {
+                try await Retry.withBackoff { try await self.sqs.deleteMessages(queueURL: self.config.ocrJobQueueURL, entries: poisonEntries) }
+            } catch {
+                logger.warning("sqs_delete_poison_failed count=\(poisonEntries.count) error=\(error)")
+            }
         }
 
         // Update all jobs to OCR_RUNNING stage
@@ -506,8 +570,10 @@ public final class OCRWorker {
             logger.info("job_complete image_id=\(ctx.imageId) job_id=\(ctx.jobId) receipts=\(receipts.count)")
         }
 
-        // Delete processed messages
+        // Delete processed messages. Guard the empty case: an all-poison
+        // batch leaves no contexts, and SQS rejects an empty delete batch.
         let entries = contexts.map { SQSDeleteEntry(id: $0.message.messageId, receiptHandle: $0.message.receiptHandle) }
+        guard !entries.isEmpty else { return true }
         logger.info("sqs_delete_batch count=\(entries.count)")
         try await Retry.withBackoff { try await self.sqs.deleteMessages(queueURL: self.config.ocrJobQueueURL, entries: entries) }
         

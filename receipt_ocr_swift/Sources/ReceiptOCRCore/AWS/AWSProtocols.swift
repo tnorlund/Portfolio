@@ -17,6 +17,19 @@ public struct SQSDeleteEntry {
     public let receiptHandle: String
 }
 
+/// Thrown by `S3ClientProtocol.getObject` when the object does not exist.
+/// A typed error so the worker can tell "source image was deleted" (permanent,
+/// fail the job and drop the message) from transient S3 failures (leave the
+/// message for redelivery) without importing Soto types.
+public struct ObjectNotFoundError: Error {
+    public let bucket: String
+    public let key: String
+    public init(bucket: String, key: String) {
+        self.bucket = bucket
+        self.key = key
+    }
+}
+
 public protocol S3ClientProtocol {
     func getObject(bucket: String, key: String) async throws -> Data
     func uploadFile(url: URL, bucket: String, key: String) async throws
