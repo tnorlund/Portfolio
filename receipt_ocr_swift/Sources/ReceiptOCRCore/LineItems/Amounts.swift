@@ -91,6 +91,32 @@ final class Rx {
         )
     }
 
+    /// `re.split(pattern, s)` for patterns without capture groups. Like
+    /// Python, leading/trailing separators yield empty fields.
+    func split(_ s: String) -> [String] {
+        let ns = s as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        var out: [String] = []
+        var cursor = 0
+        for m in re.matches(in: s, options: [], range: range)
+        where m.range.length > 0 {
+            out.append(
+                ns.substring(
+                    with: NSRange(
+                        location: cursor, length: m.range.location - cursor
+                    )
+                )
+            )
+            cursor = m.range.location + m.range.length
+        }
+        out.append(
+            ns.substring(
+                with: NSRange(location: cursor, length: ns.length - cursor)
+            )
+        )
+        return out
+    }
+
     /// `re.findall` for patterns without capture groups (whole-match strings).
     func findAll(_ s: String) -> [String] {
         let ns = s as NSString

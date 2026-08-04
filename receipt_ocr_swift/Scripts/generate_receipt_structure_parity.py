@@ -123,12 +123,16 @@ def main() -> None:
             }
         )
 
-    if len(expected) != 33:
-        raise RuntimeError(f"expected 33 receipts, got {len(expected)}")
+    # The golden set grows; derive the count instead of pinning it.
+    if len(expected) != len(fixture["receipts"]):
+        raise RuntimeError(
+            f"expected {len(fixture['receipts'])} receipts, "
+            f"got {len(expected)}"
+        )
     output_path.write_text(
         json.dumps(expected, indent=2) + "\n", encoding="utf-8"
     )
-    print(f"wrote {len(expected)}/33 receipts to {output_path}")
+    print(f"wrote {len(expected)} receipts to {output_path}")
 
 
 if __name__ == "__main__":

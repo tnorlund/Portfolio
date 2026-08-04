@@ -4285,5 +4285,71 @@
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
     "should_reocr_items_zone": false
+  },
+  {
+    "image_id": "49d8fde2-7ffd-4913-a9c0-6731e74fa147",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          14,
+          15
+        ]
+      }
+    ],
+    "line_items": [
+      {
+        "item_index": 0,
+        "name": "RAW WHOLE MILK",
+        "price": 17.99,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          14,
+          15
+        ],
+        "reconciliation_status": "no-baseline"
+      }
+    ],
+    "printed_subtotal": null,
+    "reconciliation_status": "no-baseline",
+    "should_reocr_items_zone": false
+  },
+  {
+    "image_id": "9cf39343-8eb3-4fdb-bcea-843d6388b8d2",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          34,
+          35,
+          36
+        ]
+      }
+    ],
+    "line_items": [
+      {
+        "item_index": 0,
+        "name": "ORG FF GRASSFED MILK",
+        "price": 8.49,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          34,
+          35,
+          36
+        ],
+        "reconciliation_status": "no-baseline"
+      }
+    ],
+    "printed_subtotal": null,
+    "reconciliation_status": "no-baseline",
+    "should_reocr_items_zone": false
   }
 ]
