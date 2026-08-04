@@ -690,7 +690,7 @@ def _run_lines_pipeline_worker(
         merchant_name_matches_receipt,
     )
     from receipt_upload.section_assignment import (
-        MODEL_SOURCE,
+        VERIFIABLE_MODEL_SOURCES,
         assign_and_persist_sections,
     )
     from receipt_upload.section_verifier import verify_receipt_sections
@@ -838,16 +838,18 @@ def _run_lines_pipeline_worker(
                 )
                 from collections import Counter as _Counter
 
-                # NOTE: exact model_source match. The deterministic pipeline's
-                # sections are identified by MODEL_SOURCE verbatim (also in
-                # section_verifier._record_verification); provenance must ship
-                # in a separate additive field, never a model_source suffix.
+                # NOTE: exact model_source match against the deterministic
+                # producer set (also in
+                # section_verifier._record_verification) -- the cloud
+                # assigner and the Mac worker running the same assigner on
+                # device. Provenance must ship in a separate additive field,
+                # never a model_source suffix.
                 status_counts = _Counter(
                     section.verification_status
                     for section in dynamo.get_receipt_sections_from_receipt(
                         image_id, receipt_id
                     )
-                    if section.model_source == MODEL_SOURCE
+                    if section.model_source in VERIFIABLE_MODEL_SOURCES
                     and section.verification_status
                 )
                 verification_stats = {

@@ -534,6 +534,16 @@ class HybridLambdaDeployment(ComponentResource):
                     / "line_items"
                     / "blocks.py"
                 ),
+                # Producer stamps shared with the Mac worker's ingest path;
+                # the consistency checker needs them to tell worker-written
+                # rows from its own recompute.
+                "receipt_upload/line_items/provenance.py": pulumi.FileAsset(
+                    _repo_root
+                    / "receipt_upload"
+                    / "receipt_upload"
+                    / "line_items"
+                    / "provenance.py"
+                ),
                 "receipt_upload/line_items/reocr.py": pulumi.FileAsset(
                     _repo_root
                     / "receipt_upload"

@@ -24,7 +24,18 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
+from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
+
 MODEL_SOURCE = "upload-determinism-v1"
+
+# Sections the KNN verifier is allowed to annotate. The Mac worker runs the
+# SAME deterministic assigner on device and writes its proposals at ingest
+# (which suppresses a duplicate cloud proposal for those types), so leaving
+# them out would silently drop verification coverage for every worker-
+# produced receipt. Still an exact-match set, never a model_source
+# substring: repair stages append "+"-joined suffixes and those must not
+# accidentally qualify.
+VERIFIABLE_MODEL_SOURCES = frozenset({MODEL_SOURCE, SWIFT_WORKER_MODEL_SOURCE})
 _TOKEN_RE = re.compile(r"[a-z]+|\d+(?:\.\d+)?")
 _QUANTITY_RE = re.compile(
     r"(?:\b\d+\s*(?:@|x)\s*\$?\d)|(?:\b(?:each|ea)\b)|(?:/\s*lb\b)",

@@ -18,6 +18,9 @@ Covered contract points:
   6. OCR-results SQS messages are never misrouted to the LLM-validation path
   7. visual ReceiptRows are persisted by ingest, BEFORE the handler invokes
      the embedding/section pipeline
+  8. worker-decoded sections + RECEIPT_LINE_ITEM rows are persisted on
+     ingest, provenance-stamped -- and payloads without them behave exactly
+     as they did before the worker became a producer
 """
 
 import json
@@ -359,6 +362,164 @@ def test_swift_single_pass_persists_rows_before_embedding(
 
     barcodes = dynamo.list_receipt_barcodes_from_receipt(IMAGE_ID, 1)
     assert len(barcodes) == 1
+
+
+# ---------------------------------------------------------------------------
+# 7. Worker-decoded sections + line items land on ingest (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def _processor(table_name):
+    return OCRProcessor(
+        table_name=table_name,
+        raw_bucket="raw-bucket",
+        site_bucket="site-bucket",
+        ocr_job_queue_url="https://sqs.test/jobs",
+        ocr_results_queue_url="https://sqs.test/results",
+    )
+
+
+def _seed_job(processor):
+    now = datetime.now(timezone.utc)
+    processor.dynamo.add_ocr_job(
+        OCRJob(
+            image_id=IMAGE_ID,
+            job_id=JOB_ID,
+            s3_bucket="raw-bucket",
+            s3_key=f"images/{IMAGE_ID}.png",
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    routing = OCRRoutingDecision(
+        image_id=IMAGE_ID,
+        job_id=JOB_ID,
+        s3_bucket="raw-bucket",
+        s3_key=f"ocr_results/{IMAGE_ID}.json",
+        created_at=now,
+        updated_at=now,
+        receipt_count=0,
+    )
+    processor.dynamo.add_ocr_routing_decision(routing)
+    return processor.dynamo.get_ocr_job(IMAGE_ID, JOB_ID), routing
+
+
+def test_swift_single_pass_persists_worker_sections_and_line_items(
+    aws_stack, swift_payload
+):
+    """The worker's on-device decode is accepted verbatim at ingest.
+
+    Sections must exist before the embedding pipeline runs its own assigner
+    (which is additive-only and skips types already present), and the line
+    items must carry the worker provenance stamp so the stream stage can
+    recognize them as pre-computed rather than overwrite them blindly.
+    """
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    processor._process_swift_single_pass(swift_payload, ocr_job, routing)
+
+    dynamo = DynamoClient(aws_stack)
+    sections = dynamo.get_receipt_sections_from_receipt(IMAGE_ID, 1)
+    assert {section.section_type for section in sections} == {
+        "ITEMS",
+        "STOREFRONT",
+        "TOTAL_LINE",
+    }
+    for section in sections:
+        assert section.model_source == "swift-worker-v1"
+        assert section.validation_status == "PENDING"
+        assert section.line_ids
+        assert section.row_ids
+
+    line_items = dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    assert [item.name for item in line_items] == ["ORGANIC"]
+    assert line_items[0].price == "3.99"
+    assert line_items[0].line_ids == [3]
+    assert line_items[0].extractor_version == (
+        "swift-worker-v1+line-items-blocks-v2"
+    )
+    assert line_items[0].source_model_source == "swift-worker-v1"
+    # No summary exists at ingest, so the worker's own verdict rides along.
+    assert line_items[0].reconciliation_status == "no-baseline"
+
+
+def test_worker_structure_is_ignored_when_the_payload_omits_it(
+    aws_stack, swift_payload
+):
+    """Back-compat: pre-contract payloads keep exactly today's behavior."""
+    legacy = json.loads(json.dumps(swift_payload))
+    for receipt in legacy["receipts"]:
+        receipt.pop("sections", None)
+        receipt.pop("line_items", None)
+
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    result = processor._process_swift_single_pass(legacy, ocr_job, routing)
+
+    assert result["success"] is True
+    assert result["receipt_ids"] == [1]
+    assert result["per_receipt_data"][1]["worker_structure"] is None
+
+    dynamo = DynamoClient(aws_stack)
+    assert dynamo.get_receipt_sections_from_receipt(IMAGE_ID, 1) == []
+    assert dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1) == []
+    # The OCR entities are untouched by the additive path.
+    rows = dynamo.get_receipt_rows_from_receipt(IMAGE_ID, 1)
+    assert sorted(line_id for row in rows for line_id in row.line_ids) == [
+        1,
+        3,
+        4,
+    ]
+
+
+def test_worker_payload_cannot_impersonate_the_cloud_producer(
+    aws_stack, swift_payload
+):
+    """An ingest payload never gets to claim the cloud's provenance.
+
+    ``upload-determinism-v1`` and the bare cloud ``extractor_version`` mean
+    "the stream stage wrote this"; a worker payload asserting either would
+    make its rows invisible to the consistency checker.
+    """
+    spoofed = json.loads(json.dumps(swift_payload))
+    for receipt in spoofed["receipts"]:
+        for section in receipt["sections"]:
+            section["model_source"] = "upload-determinism-v1"
+        for item in receipt["line_items"]:
+            item["extractor_version"] = "line-items-blocks-v2"
+
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+    processor._process_swift_single_pass(spoofed, ocr_job, routing)
+
+    dynamo = DynamoClient(aws_stack)
+    assert all(
+        section.model_source == "swift-worker-v1"
+        for section in dynamo.get_receipt_sections_from_receipt(IMAGE_ID, 1)
+    )
+    assert all(
+        item.extractor_version == "swift-worker-v1+line-items-blocks-v2"
+        for item in dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    )
+
+
+def test_malformed_worker_rows_are_skipped_not_fatal(aws_stack, swift_payload):
+    """Structure is a bonus on top of OCR; it must never cost the words."""
+    broken = json.loads(json.dumps(swift_payload))
+    for receipt in broken["receipts"]:
+        receipt["sections"].append({"section_type": "ITEMS"})  # no line_ids
+        receipt["line_items"].append({"item_index": 9})  # no price/line_ids
+
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+    result = processor._process_swift_single_pass(broken, ocr_job, routing)
+
+    assert result["success"] is True
+    structure = result["per_receipt_data"][1]["worker_structure"]
+    assert structure["sections"] == 3
+    assert structure["line_items"] == 1
 
 
 def test_handler_runs_embedding_after_ocr_persistence(monkeypatch):

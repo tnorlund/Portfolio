@@ -147,14 +147,23 @@ final class OCRResultContractTests: XCTestCase {
 
         // On-device deterministic structure is additive to the established
         // receipt contract, including empty arrays when no items are decoded.
+        // Both provenance stamps are required: `model_source` names the
+        // producer (the Lambda skips its own section assigner for types the
+        // worker already wrote) and `extractor_version` names the producer +
+        // decode algorithm (the stream stage's consistency checker keys on it
+        // to tell worker rows from its own recompute).
         let sections = try XCTUnwrap(json["sections"] as? [[String: Any]])
         XCTAssertFalse(sections.isEmpty)
-        for section in sections {
+        let lineItems = try XCTUnwrap(json["line_items"] as? [[String: Any]])
+        for row in sections + lineItems {
             XCTAssertEqual(
-                section["model_source"] as? String, "swift-worker-v1"
+                row["model_source"] as? String, "swift-worker-v1"
+            )
+            XCTAssertEqual(
+                row["extractor_version"] as? String,
+                "swift-worker-v1+line-items-blocks-v2"
             )
         }
-        XCTAssertNotNil(json["line_items"] as? [[String: Any]])
     }
 
     func test_classification_encodes_python_parser_contract_keys() throws {

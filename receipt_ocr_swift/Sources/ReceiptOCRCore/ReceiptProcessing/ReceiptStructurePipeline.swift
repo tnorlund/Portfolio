@@ -1,6 +1,22 @@
 import Foundation
 
+/// Which producer wrote a row. The cloud's stream stage stamps
+/// `upload-determinism-v1`; anything starting with `swift-worker-` came from
+/// a Mac worker build and is treated as pre-computed by the ingest handler.
 public let swiftWorkerModelSource = "swift-worker-v1"
+
+/// Version of the decode ALGORITHM, kept in lockstep with the canonical
+/// Python decoder's `EXTRACTOR_VERSION`
+/// (`infra/receipt_line_item_updater/line_item_processor.py`). Bump both
+/// together: a mismatch between the two constants in production rows is the
+/// signal that the Swift port has fallen behind again (Warning #1).
+public let swiftWorkerDecoderVersion = "line-items-blocks-v2"
+
+/// The stamp written to `ReceiptLineItem.extractor_version`. Worker build and
+/// decoder version travel together in one queryable field so a divergent row
+/// identifies both which producer wrote it and which algorithm it ran.
+public let swiftWorkerExtractorVersion =
+    "\(swiftWorkerModelSource)+\(swiftWorkerDecoderVersion)"
 
 /// JSON contract for one on-device section prediction.
 public struct ReceiptSectionPayload: Codable, Sendable, Equatable {
@@ -9,6 +25,7 @@ public struct ReceiptSectionPayload: Codable, Sendable, Equatable {
     public let rowIds: [Int]
     public let confidence: Double
     public let modelSource: String
+    public let extractorVersion: String
 
     enum CodingKeys: String, CodingKey {
         case sectionType = "section_type"
@@ -16,6 +33,7 @@ public struct ReceiptSectionPayload: Codable, Sendable, Equatable {
         case rowIds = "row_ids"
         case confidence
         case modelSource = "model_source"
+        case extractorVersion = "extractor_version"
     }
 }
 
@@ -31,6 +49,7 @@ public struct ReceiptLineItemPayload: Codable, Sendable, Equatable {
     public let lineIds: [Int]
     public let reconciliationStatus: String
     public let modelSource: String
+    public let extractorVersion: String
 
     enum CodingKeys: String, CodingKey {
         case itemIndex = "item_index"
@@ -43,6 +62,7 @@ public struct ReceiptLineItemPayload: Codable, Sendable, Equatable {
         case lineIds = "line_ids"
         case reconciliationStatus = "reconciliation_status"
         case modelSource = "model_source"
+        case extractorVersion = "extractor_version"
     }
 }
 
@@ -150,7 +170,8 @@ public func buildOnDeviceReceiptStructure(
             lineIds: section.lineIds,
             rowIds: section.rowIds,
             confidence: section.confidence,
-            modelSource: swiftWorkerModelSource
+            modelSource: swiftWorkerModelSource,
+            extractorVersion: swiftWorkerExtractorVersion
         )
     }
 
@@ -185,7 +206,8 @@ public func buildOnDeviceReceiptStructure(
             nameQuality: item.nameQuality ?? "ok",
             lineIds: item.lineIds,
             reconciliationStatus: reconciliation.status,
-            modelSource: swiftWorkerModelSource
+            modelSource: swiftWorkerModelSource,
+            extractorVersion: swiftWorkerExtractorVersion
         )
     }
     return OnDeviceReceiptStructure(

@@ -208,6 +208,8 @@ import Testing
                         || got.reconciliationStatus
                             != wanted.reconciliationStatus
                         || got.modelSource != swiftWorkerModelSource
+                        || got.extractorVersion
+                            != swiftWorkerExtractorVersion
                     {
                         differences.append("item[\(got.itemIndex)]")
                     }
@@ -230,6 +232,7 @@ import Testing
             }
             if result.sections.contains(where: {
                 $0.modelSource != swiftWorkerModelSource
+                    || $0.extractorVersion != swiftWorkerExtractorVersion
             }) {
                 differences.append("section provenance")
             }
@@ -284,5 +287,32 @@ import Testing
         #expect(result.lineItems.count == 1)
         #expect(equalMoney(result.lineItems.first?.price, 3.99))
         #expect(result.lineItems.first?.modelSource == swiftWorkerModelSource)
+        #expect(
+            result.lineItems.first?.extractorVersion
+                == swiftWorkerExtractorVersion
+        )
+    }
+
+    /// The decoder version the worker stamps must stay equal to the canonical
+    /// Python `EXTRACTOR_VERSION`; a silent skew is what let the port fork
+    /// once already (STATE_OF_THE_SYSTEM warning #1).
+    @Test func extractorVersionTracksCanonicalPythonDecoder() throws {
+        let processor = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // ReceiptOCRCoreTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // receipt_ocr_swift
+            .appendingPathComponent(
+                "infra/receipt_line_item_updater/line_item_processor.py"
+            )
+        let source = try String(contentsOf: processor, encoding: .utf8)
+        #expect(
+            source.contains("EXTRACTOR_VERSION = \"\(swiftWorkerDecoderVersion)\""),
+            "Swift decoder version \(swiftWorkerDecoderVersion) no longer "
+                + "matches the canonical Python EXTRACTOR_VERSION"
+        )
+        #expect(
+            swiftWorkerExtractorVersion
+                == "\(swiftWorkerModelSource)+\(swiftWorkerDecoderVersion)"
+        )
     }
 }

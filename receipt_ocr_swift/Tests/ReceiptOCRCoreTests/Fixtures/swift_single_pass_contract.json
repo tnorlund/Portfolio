@@ -899,7 +899,8 @@
             3
           ],
           "confidence": 0.9999816459913875,
-          "model_source": "swift-worker-v1"
+          "model_source": "swift-worker-v1",
+          "extractor_version": "swift-worker-v1+line-items-blocks-v2"
         },
         {
           "section_type": "STOREFRONT",
@@ -910,7 +911,8 @@
             1
           ],
           "confidence": 0.9068789909517392,
-          "model_source": "swift-worker-v1"
+          "model_source": "swift-worker-v1",
+          "extractor_version": "swift-worker-v1+line-items-blocks-v2"
         },
         {
           "section_type": "TOTAL_LINE",
@@ -921,7 +923,8 @@
             4
           ],
           "confidence": 0.9565566777426845,
-          "model_source": "swift-worker-v1"
+          "model_source": "swift-worker-v1",
+          "extractor_version": "swift-worker-v1+line-items-blocks-v2"
         }
       ],
       "line_items": [
@@ -937,7 +940,8 @@
             3
           ],
           "reconciliation_status": "no-baseline",
-          "model_source": "swift-worker-v1"
+          "model_source": "swift-worker-v1",
+          "extractor_version": "swift-worker-v1+line-items-blocks-v2"
         }
       ],
       "needs_review": false

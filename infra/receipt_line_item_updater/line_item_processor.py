@@ -16,6 +16,31 @@ stage extracts on PENDING sections too and records
 ``source_section_status`` -- consumers filter on VALID when they want
 precision; gating production on VALID is what once limited coverage to
 hand-repaired receipts.
+
+CONSISTENCY CHECKER
+-------------------
+The Mac worker now runs the same decoder on device and ships its rows with
+the OCR upload (``receipt_upload.line_items.provenance``). When this stage
+finds worker-written rows already in the table it COMPARES instead of
+blindly overwriting:
+
+* the recompute wins by default -- byte-identical to the pre-worker
+  behavior, and the only outcome possible for a receipt with no worker rows;
+* the worker's rows are preserved only when they are *strictly better* by
+  ``items_boundary_extension_guard`` -- the same arithmetic guard the ITEMS
+  boundary repair uses (smaller |delta| AND a better reconciliation status,
+  never against an already-matching baseline, never across a no-baseline
+  side). Preserved rows are re-stamped with the merchant/summary context the
+  cloud has and the worker did not.
+
+Every receipt that arrives with worker rows emits one queryable log line
+prefixed ``LINE_ITEM_DIVERGENCE`` carrying a JSON body (counts, names,
+prices, both reconciliation statuses and deltas, and the decision), so
+divergence is a CloudWatch Insights filter, not an archaeology exercise::
+
+    fields @timestamp, @message
+    | filter @message like /LINE_ITEM_DIVERGENCE/
+    | filter divergent = 1
 """
 
 import json
@@ -33,8 +58,12 @@ from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_upload.line_items.geometry import (
     extract_items,
+    items_boundary_extension_guard,
     propose_items_boundary_extension,
     reconcile_detailed,
+)
+from receipt_upload.line_items.provenance import (
+    is_worker_extractor_version,
 )
 
 # isort: on
@@ -189,6 +218,15 @@ def update_receipt_line_items(
             )
         )
 
+    # Consistency check against rows the Mac worker already decoded on
+    # device. No worker rows -> `entities`/`items`/`recon` are used verbatim
+    # and this stage behaves exactly as it did before the worker produced
+    # anything.
+    entities, items, recon, divergence = _reconcile_with_worker_rows(
+        image_id, receipt_id, entities, items, recon, summary_dict, merchant
+    )
+    status = recon.status
+
     deleted = dynamo_client.delete_receipt_line_items_for_receipt(
         image_id, receipt_id
     )
@@ -211,7 +249,147 @@ def update_receipt_line_items(
         "baseline_figures_agreeing": recon.baseline_figures_agreeing,
         "section_extension": extension,
         "reocr_triggered": reocr,
+        "worker_divergence": divergence,
     }
+
+
+DIVERGENCE_MARKER = "LINE_ITEM_DIVERGENCE"
+
+
+def _delta(result: Any) -> float | None:
+    """|item sum - baseline| in the shape ``evaluate_items_zone`` returns."""
+
+    if result.item_sum is None or result.baseline is None:
+        return None
+    return round(result.item_sum - result.baseline, 2)
+
+
+def _row_to_item(row: Any) -> dict[str, Any]:
+    """A stored ReceiptLineItem as the decoder's item dict."""
+
+    try:
+        price = float(row.price)
+    except (TypeError, ValueError):
+        price = 0.0
+    return {
+        "name": row.name,
+        "price": price,
+        "quantity": row.quantity,
+        "unit_price": row.unit_price,
+        "is_discount": bool(row.is_discount),
+        "name_quality": row.name_quality,
+        "line_ids": list(row.line_ids or []),
+        "raw_text": row.raw_text,
+    }
+
+
+def _reconcile_with_worker_rows(
+    image_id: str,
+    receipt_id: int,
+    entities: list[ReceiptLineItem],
+    items: list[dict],
+    recon: Any,
+    summary_dict: dict | None,
+    merchant: str | None,
+) -> tuple[list[ReceiptLineItem], list[dict], Any, dict[str, Any] | None]:
+    """Compare a fresh recompute against worker-written rows.
+
+    Returns the rows to persist, their item dicts (for the re-OCR trigger),
+    their reconciliation result, and a divergence record (``None`` when the
+    receipt carries no worker rows -- the pre-worker path).
+
+    The recompute wins unless the worker's rows pass
+    ``items_boundary_extension_guard`` with the recompute as ``before``: the
+    worker is preserved only when it strictly shrinks |delta| AND strictly
+    improves reconciliation status. Reusing that guard verbatim means the
+    conservative cases fall out for free -- a matching recompute is never
+    displaced, and a no-baseline side is never ranked against a baselined
+    one (which is exactly the common case, since the worker decodes before
+    any summary exists).
+    """
+    try:
+        stored = dynamo_client.get_receipt_line_items_from_receipt(
+            image_id, receipt_id
+        )
+    except EntityNotFoundError:
+        stored = []
+    worker_rows = [
+        row
+        for row in stored
+        if is_worker_extractor_version(getattr(row, "extractor_version", None))
+    ]
+    if not worker_rows:
+        return entities, items, recon, None
+
+    worker_rows = sorted(worker_rows, key=lambda row: row.item_index)
+    worker_items = [_row_to_item(row) for row in worker_rows]
+    worker_recon = reconcile_detailed(
+        [item for item in worker_items if not item["is_discount"]],
+        summary_dict,
+    )
+
+    before = {"status": recon.status, "delta": _delta(recon)}
+    after = {"status": worker_recon.status, "delta": _delta(worker_recon)}
+    keep_worker, guard_reason = items_boundary_extension_guard(before, after)
+
+    cloud_names = [entity.name for entity in entities]
+    cloud_prices = [entity.price for entity in entities]
+    worker_names = [row.name for row in worker_rows]
+    worker_prices = [f"{item['price']:.2f}" for item in worker_items]
+    divergent = (
+        cloud_names != worker_names
+        or cloud_prices != worker_prices
+        or recon.status != worker_recon.status
+    )
+
+    record = {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "divergent": int(divergent),
+        "decision": "keep-worker" if keep_worker else "keep-recompute",
+        "guard_reason": guard_reason,
+        "worker_extractor_version": worker_rows[0].extractor_version,
+        "worker_count": len(worker_rows),
+        "cloud_count": len(entities),
+        "worker_status": worker_recon.status,
+        "cloud_status": recon.status,
+        "worker_delta": after["delta"],
+        "cloud_delta": before["delta"],
+        "name_mismatches": sum(
+            1
+            for cloud, worker in zip(cloud_names, worker_names)
+            if cloud != worker
+        ),
+        "price_mismatches": sum(
+            1
+            for cloud, worker in zip(cloud_prices, worker_prices)
+            if cloud != worker
+        ),
+    }
+    logger.log(
+        logging.WARNING if divergent else logging.INFO,
+        "%s %s",
+        DIVERGENCE_MARKER,
+        json.dumps(record, sort_keys=True),
+    )
+    if not keep_worker:
+        return entities, items, recon, record
+
+    # Preserve the worker's DECODE, refresh its CONTEXT: merchant and the
+    # graded reconciliation only exist in the cloud, and the worker had no
+    # summary to reconcile against when it wrote these rows.
+    now = datetime.now(timezone.utc)
+    kept = [
+        replace(
+            row,
+            extracted_at=now,
+            merchant_name=merchant,
+            reconciliation_status=worker_recon.status,
+            baseline_figures_agreeing=(worker_recon.baseline_figures_agreeing),
+        )
+        for row in worker_rows
+    ]
+    return kept, worker_items, worker_recon, record
 
 
 def _maybe_extend_items_section(
