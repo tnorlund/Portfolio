@@ -1,16 +1,22 @@
-# Dev OCR Queue Runners (dual-Mac)
+# OCR Queue Runners (dual-Mac, dev + prod)
 
-Two Macs drain the dev OCR job queue (`upload-images-dev-ocr-queue`) on a
-schedule, so re-OCR jobs queued by the agentic review loop get processed without
-anyone babysitting a terminal.
+Two Macs drain both OCR job queues (`upload-images-dev-ocr-queue` and
+`upload-images-prod-ocr-queue`) on a schedule, so re-OCR jobs queued by the
+agentic review loop get processed without anyone babysitting a terminal.
 
-| Machine | Hostname | Checkout used for the binary | Schedule |
-|---|---|---|---|
-| MacBook Pro | `Tylers-MacBook-Pro` (local) | `/Users/tnorlund/Portfolio/.claude/worktrees/backfill-main` | `:00 :15 :30 :45` |
-| Mac mini | `Tylers-Mac-mini`, `mini` (ssh alias) | `/Users/tnorlund/ocr-runner-main` | `:07 :22 :37 :52` |
+These Macs are the **only** Vision OCR consumers that exist — there is no
+cloud worker. Before the prod agents were added (2026-08-04) nothing had ever
+drained the prod queue, and its REGIONAL_REOCR jobs sat PENDING forever.
+
+| Machine | Hostname | Checkout used for the binary | dev schedule | prod schedule |
+|---|---|---|---|---|
+| MacBook Pro | `Tylers-MacBook-Pro` (local) | `/Users/tnorlund/Portfolio/.claude/worktrees/backfill-main` | `:00 :15 :30 :45` | `:05 :20 :35 :50` |
+| Mac mini | `Tylers-Mac-mini`, `mini` (ssh alias) | `/Users/tnorlund/ocr-runner-main` | `:07 :22 :37 :52` | `:12 :27 :42 :57` |
 
 The offset schedules interleave the two machines so they do not contend for the
-same SQS messages.
+same SQS messages, and stagger dev from prod on each machine so a host rarely
+runs two drains at once (the per-env locks make an overlap harmless, just
+slow).
 
 `StartCalendarInterval` is used rather than `StartInterval`, because launchd has
 no way to phase-offset an interval timer: the phase of a `StartInterval` agent
@@ -19,7 +25,8 @@ minutes are the only way to hold a durable 7-minute offset between the machines.
 
 ## What runs
 
-Both machines run the same command through a wrapper script:
+Both machines run the same command through per-env wrapper scripts (the prod
+agent is identical except `--env prod`):
 
 ```bash
 receipt-ocr --env dev --continuous --log-level info
@@ -34,14 +41,20 @@ invocation instead of being resurrected forever. That is also why the agents set
 
 | Purpose | Path (same on both machines) | Canonical copy in this repo |
 |---|---|---|
-| Wrapper script | `~/receipt_ocr_runner/run-dev.sh` | `scripts/ocr_runner/run-dev.sh` |
-| LaunchAgent | `~/Library/LaunchAgents/com.tnorlund.receipt-ocr-dev.plist` | `scripts/ocr_runner/com.tnorlund.receipt-ocr-dev.{macbook,mini}.plist` |
-| Log | `~/Library/Logs/receipt-ocr-dev.log` | — |
-| Overlap lock | `/tmp/receipt-ocr-dev.lock` (directory, created atomically) | — |
+| Wrapper script (dev) | `~/receipt_ocr_runner/run-dev.sh` | `scripts/ocr_runner/run-dev.sh` |
+| Wrapper script (prod) | `~/receipt_ocr_runner/run-prod.sh` | `scripts/ocr_runner/run-prod.sh` |
+| LaunchAgent (dev) | `~/Library/LaunchAgents/com.tnorlund.receipt-ocr-dev.plist` | `scripts/ocr_runner/com.tnorlund.receipt-ocr-dev.{macbook,mini}.plist` |
+| LaunchAgent (prod) | `~/Library/LaunchAgents/com.tnorlund.receipt-ocr-prod.plist` | `scripts/ocr_runner/com.tnorlund.receipt-ocr-prod.{macbook,mini}.plist` |
+| Log | `~/Library/Logs/receipt-ocr-{dev,prod}.log` | — |
+| Overlap lock | `/tmp/receipt-ocr-{dev,prod}.lock` (directory, created atomically) | — |
 
-The wrapper is byte-identical on both machines: it picks the first checkout path
-that exists on the host, so there is nothing per-machine to keep in sync. The
-two plists differ only in their four scheduled minutes.
+The wrappers are byte-identical on both machines: each picks the first checkout
+path that exists on the host, so there is nothing per-machine to keep in sync.
+The two envs' wrappers differ only in the env flag, lock, and log; the plists
+differ only in their four scheduled minutes. Both envs run the **same binary**
+from the same checkout — `--env` selects the Pulumi stack outputs (queue URLs,
+Dynamo table) at startup, so one `update_ocr_workers.sh` run refreshes dev and
+prod alike.
 
 ## Updating after a merge
 
@@ -111,14 +124,15 @@ authoritative one.
 
 ```bash
 mkdir -p ~/receipt_ocr_runner
-cp scripts/ocr_runner/run-dev.sh ~/receipt_ocr_runner/run-dev.sh
-chmod +x ~/receipt_ocr_runner/run-dev.sh
-cp scripts/ocr_runner/com.tnorlund.receipt-ocr-dev.mini.plist \
-   ~/Library/LaunchAgents/com.tnorlund.receipt-ocr-dev.plist
-
-plutil -lint ~/Library/LaunchAgents/com.tnorlund.receipt-ocr-dev.plist
-launchctl load -w ~/Library/LaunchAgents/com.tnorlund.receipt-ocr-dev.plist
-launchctl list | grep receipt-ocr        # confirm it registered
+for env in dev prod; do
+  cp scripts/ocr_runner/run-$env.sh ~/receipt_ocr_runner/run-$env.sh
+  chmod +x ~/receipt_ocr_runner/run-$env.sh
+  cp scripts/ocr_runner/com.tnorlund.receipt-ocr-$env.mini.plist \
+     ~/Library/LaunchAgents/com.tnorlund.receipt-ocr-$env.plist
+  plutil -lint ~/Library/LaunchAgents/com.tnorlund.receipt-ocr-$env.plist
+  launchctl load -w ~/Library/LaunchAgents/com.tnorlund.receipt-ocr-$env.plist
+done
+launchctl list | grep receipt-ocr        # confirm both registered
 ```
 
 Pick the plist whose schedule that machine should own, and give the machine a

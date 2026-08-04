@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.tnorlund.receipt-ocr-prod</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/tnorlund/receipt_ocr_runner/run-prod.sh</string>
+    </array>
+    <!-- MacBook Pro drains prod at :05 :20 :35 :50; the Mac mini prod agent
+         uses :12 :27 :42 :57. Offset from the dev agents (:00/:15/:30/:45
+         and :07/:22/:37/:52) so a machine rarely runs both drains at once;
+         the per-env locks make an overlap harmless, just slow. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Minute</key><integer>35</integer></dict>
+        <dict><key>Minute</key><integer>50</integer></dict>
+    </array>
+    <!-- Deliberately NOT KeepAlive: a wedged worker should die with its run,
+         not be resurrected in a loop. Each run exits when the queue is empty. -->
+    <key>KeepAlive</key><false/>
+    <key>RunAtLoad</key><false/>
+    <key>ProcessType</key><string>Background</string>
+    <key>StandardOutPath</key><string>/Users/tnorlund/Library/Logs/receipt-ocr-prod.log</string>
+    <key>StandardErrorPath</key><string>/Users/tnorlund/Library/Logs/receipt-ocr-prod.log</string>
+</dict>
+</plist>
