@@ -96,11 +96,17 @@ include = ["receipt_upload/py.typed"]
 [tool.hatch.build.targets.wheel.force-include]
 "receipt_upload/assets/section_order_priors_v2.json" = "receipt_upload/assets/section_order_priors_v2.json"
 "receipt_upload/assets/section_label_priors_v1.json" = "receipt_upload/assets/section_label_priors_v1.json"
+"receipt_upload/line_items/assets/block_role_priors_v1.json" = "receipt_upload/line_items/assets/block_role_priors_v1.json"
+"receipt_upload/line_items/assets/block_role_priors_v2.json" = "receipt_upload/line_items/assets/block_role_priors_v2.json"
+"receipt_upload/line_items/assets/reocr_ladder.json" = "receipt_upload/line_items/assets/reocr_ladder.json"
 
 # The global exclude drops *.json, so sdists need the assets re-included too.
 [tool.hatch.build.targets.sdist.force-include]
 "receipt_upload/assets/section_order_priors_v2.json" = "receipt_upload/assets/section_order_priors_v2.json"
 "receipt_upload/assets/section_label_priors_v1.json" = "receipt_upload/assets/section_label_priors_v1.json"
+"receipt_upload/line_items/assets/block_role_priors_v1.json" = "receipt_upload/line_items/assets/block_role_priors_v1.json"
+"receipt_upload/line_items/assets/block_role_priors_v2.json" = "receipt_upload/line_items/assets/block_role_priors_v2.json"
+"receipt_upload/line_items/assets/reocr_ladder.json" = "receipt_upload/line_items/assets/reocr_ladder.json"
 
 [tool.black]
 line-length = 79
