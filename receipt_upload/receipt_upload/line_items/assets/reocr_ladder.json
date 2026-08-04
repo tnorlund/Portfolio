@@ -1,23 +1,46 @@
 {
   "schema": "reocr-ladder-v1",
-  "generated_at": "2026-08-04T19:23:06.557980+00:00",
+  "generated_at": "2026-08-04T20:33:09.678546+00:00",
   "source": "scripts/harvest_reocr_outcomes.py --table ReceiptsTable-dc5be22",
   "mechanisms": {
     "reverse-video": {
       "invert": {
-        "attempts": 2,
-        "words_accepted": 117,
+        "attempts": 4,
+        "words_accepted": 163,
         "words_rejected": 4,
-        "acceptance_rate": 0.9669,
+        "acceptance_rate": 0.976,
         "mean_delta_improvement": null
+      },
+      "plain": {
+        "attempts": 2,
+        "words_accepted": 74,
+        "words_rejected": 3,
+        "acceptance_rate": 0.961,
+        "mean_delta_improvement": 0.0
       }
     },
     "small-print": {
-      "upscale2x": {
-        "attempts": 2,
-        "words_accepted": 52,
+      "plain": {
+        "attempts": 1,
+        "words_accepted": 148,
         "words_rejected": 0,
         "acceptance_rate": 1.0,
+        "mean_delta_improvement": -0.06
+      },
+      "upscale2x": {
+        "attempts": 3,
+        "words_accepted": 203,
+        "words_rejected": 0,
+        "acceptance_rate": 1.0,
+        "mean_delta_improvement": null
+      }
+    },
+    "tilted": {
+      "plain": {
+        "attempts": 1,
+        "words_accepted": 18,
+        "words_rejected": 1,
+        "acceptance_rate": 0.9474,
         "mean_delta_improvement": null
       }
     },
