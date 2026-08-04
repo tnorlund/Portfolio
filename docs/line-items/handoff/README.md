@@ -22,11 +22,15 @@ every retry today is still a plain re-read, and `reocr_strategy` is set on
 
 ## The four things that are actually broken
 
-1. **No machine drains the OCR queues.** The MacBook's LaunchAgent plist
-   exists but was never `launchctl load`ed (no job, no log ever written); the
-   mini has nothing installed. **74 re-OCR jobs are queued with no consumer**
-   (10 dev + 64 prod — prod's queue has never been drained). Jobs that did
-   complete were drained by hand.
+1. **DEV queues now drain; PROD's never has.** (Fixed 2026-08-04 17:37Z, PR
+   #1352.) Both Macs now run loaded LaunchAgents on interleaved schedules and
+   dev's backlog went 16/26 → **26/26 COMPLETED**. But both runners invoke the
+   worker with `--env dev`, so **prod's 64 REGIONAL_REOCR jobs remain PENDING
+   with no consumer at all**. Decide whether these machines should also drain
+   prod (`--env prod`) — that is the open question, not the dev setup.
+   Watch for a recurring `Error: missing("item")` in
+   `~/Library/Logs/receipt-ocr-dev.log` on both hosts: drains still exit rc=0,
+   but it may be masking a silently skipped message.
 2. **The Swift preprocessing is uncommitted, not unwritten.** ~90% done, 4
    files + 490 lines of tests, intact in worktree
    `/Users/tnorlund/Portfolio/.claude/worktrees/agent-a8c5ed403a0d5bcd6`
