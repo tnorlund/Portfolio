@@ -118,12 +118,8 @@ def backfill_summaries(
                     merchant_name=merchant_name,
                     word_labels=bundle.word_labels,
                     words=bundle.words,
-                    tender_class=(
-                        existing.tender_class if existing else None
-                    ),
-                    card_network=(
-                        existing.card_network if existing else None
-                    ),
+                    tender_class=(existing.tender_class if existing else None),
+                    card_network=(existing.card_network if existing else None),
                     card_last4=existing.card_last4 if existing else None,
                     ledger=existing.ledger if existing else None,
                     bank_amount=existing.bank_amount if existing else None,
@@ -162,7 +158,11 @@ def backfill_summaries(
                                 try:
                                     client.upsert_receipt_summaries([record])
                                     stats["summaries_created"] += 1
-                                except (EntityError, OperationError, DynamoDBError):
+                                except (
+                                    EntityError,
+                                    OperationError,
+                                    DynamoDBError,
+                                ):
                                     logger.exception(
                                         "Failed to upsert %s:%d",
                                         record.image_id[:8],
@@ -195,7 +195,9 @@ def backfill_summaries(
             try:
                 client.upsert_receipt_summaries(pending_records)
                 stats["summaries_created"] += len(pending_records)
-                logger.info("  Upserted final %d summaries", len(pending_records))
+                logger.info(
+                    "  Upserted final %d summaries", len(pending_records)
+                )
             except (EntityError, OperationError, DynamoDBError):
                 logger.exception(
                     "Final batch upsert failed, falling back to per-record"
@@ -215,7 +217,8 @@ def backfill_summaries(
         else:
             stats["summaries_created"] += len(pending_records)
             logger.info(
-                "  [DRY RUN] Would upsert final %d summaries", len(pending_records)
+                "  [DRY RUN] Would upsert final %d summaries",
+                len(pending_records),
             )
 
     return stats
