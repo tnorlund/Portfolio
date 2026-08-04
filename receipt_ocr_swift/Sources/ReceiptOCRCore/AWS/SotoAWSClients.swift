@@ -252,7 +252,9 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         return result
     }
 
-    private static func decodeOCRJob(_ attrs: [String: DynamoDB.AttributeValue]) throws -> OCRJob {
+    // internal (not private) so the contract test can decode real
+    // AttributeValue shapes — the fromItem-based tests missed this path.
+    static func decodeOCRJob(_ attrs: [String: DynamoDB.AttributeValue]) throws -> OCRJob {
         func getS(_ key: String) throws -> String {
             guard case .s(let v)? = attrs[key] else { throw DynamoMapError.missing(key) }
             return v
@@ -312,7 +314,13 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             jobType: jobType,
             receiptId: getOptionalInt("receipt_id"),
             reocrRegion: try getOptionalRegion("reocr_region"),
-            reocrReason: getOptionalS("reocr_reason")
+            reocrReason: getOptionalS("reocr_reason"),
+            // Contract: absent (or unrecognized) -> .plain, mirroring
+            // OCRJob.fromItem. This decoder is the PRODUCTION read path —
+            // omitting the fields here silently downgraded every strategy
+            // to plain while the fromItem-based tests stayed green.
+            reocrStrategy: getOptionalS("reocr_strategy").flatMap(ReOCRStrategy.init(rawValue:)) ?? .plain,
+            reocrMechanism: getOptionalS("reocr_mechanism")
         )
     }
 }
