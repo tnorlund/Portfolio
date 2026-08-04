@@ -6,7 +6,9 @@ Input:
         "image_id": "uuid-string",
         "receipt_id": 1,
         "reocr_region": {"x": 0.65, "y": 0.0, "width": 0.35, "height": 1.0},
-        "reocr_reason": "manual_trigger"  // optional, defaults to "manual_trigger"
+        "reocr_reason": "manual_trigger",  // optional, defaults to "manual_trigger"
+        "reocr_strategy": "invert",        // optional: plain|invert|deskew|upscale2x
+        "reocr_mechanism": "reverse-video-total"  // optional free string
     }
 
 Output:
@@ -35,6 +37,7 @@ import boto3
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import Image, OCRJob
+from receipt_dynamo.entities.ocr_job import VALID_REOCR_STRATEGIES
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -83,6 +86,19 @@ def _validate_input(event: dict[str, Any]) -> str | None:
     if reason is not None and not isinstance(reason, str):
         return "reocr_reason must be a string"
 
+    strategy = event.get("reocr_strategy")
+    if strategy is not None and strategy not in VALID_REOCR_STRATEGIES:
+        return (
+            "reocr_strategy must be one of "
+            f"{', '.join(VALID_REOCR_STRATEGIES)}"
+        )
+
+    mechanism = event.get("reocr_mechanism")
+    if mechanism is not None and (
+        not isinstance(mechanism, str) or not mechanism
+    ):
+        return "reocr_mechanism must be a non-empty string"
+
     return None
 
 
@@ -100,6 +116,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     receipt_id: int = event["receipt_id"]
     reocr_region: dict[str, float] = event["reocr_region"]
     reocr_reason: str = event.get("reocr_reason", "manual_trigger")
+    # SMART re-OCR: pass strategy + mechanism through to the OCRJob so
+    # the Swift worker can apply the targeted capture and the harvest
+    # can attribute the outcome. Both optional and non-breaking.
+    reocr_strategy: str | None = event.get("reocr_strategy")
+    reocr_mechanism: str | None = event.get("reocr_mechanism")
 
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
     queue_url = os.environ["OCR_JOB_QUEUE_URL"]
@@ -133,20 +154,29 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "height": float(reocr_region["height"]),
             },
             reocr_reason=reocr_reason,
+            reocr_strategy=reocr_strategy,
+            reocr_mechanism=reocr_mechanism,
         )
 
         # Write to DynamoDB
         dynamo_client.add_ocr_job(ocr_job)
-        logger.info("Created OCR job %s for image %s receipt %d", job_id, image_id, receipt_id)
+        logger.info(
+            "Created OCR job %s for image %s receipt %d",
+            job_id,
+            image_id,
+            receipt_id,
+        )
 
         # Send SQS message
         sqs = boto3.client("sqs")
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=json.dumps({
-                "job_id": job_id,
-                "image_id": image_id,
-            }),
+            MessageBody=json.dumps(
+                {
+                    "job_id": job_id,
+                    "image_id": image_id,
+                }
+            ),
         )
         logger.info("Sent SQS message to %s", queue_url)
 
@@ -154,6 +184,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "success": True,
             "job_id": job_id,
             "region": ocr_job.reocr_region,
+            "strategy": ocr_job.reocr_strategy,
+            "mechanism": ocr_job.reocr_mechanism,
         }
 
     except Exception as e:

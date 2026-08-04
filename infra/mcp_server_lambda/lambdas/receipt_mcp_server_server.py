@@ -1323,6 +1323,26 @@ Back up the receipt with export_image before triggering.""",
                         "description": "Reason for re-OCR. Default: manual_trigger",
                         "default": "manual_trigger",
                     },
+                    "strategy": {
+                        "type": "string",
+                        "enum": ["plain", "invert", "deskew", "upscale2x"],
+                        "description": (
+                            "Optional capture strategy for the Swift "
+                            "worker (SMART re-OCR ladder). Omit to let "
+                            "the worker use its default (plain)."
+                        ),
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": (
+                            "Optional diagnosed OCR-failure mechanism "
+                            "(free string, e.g. reverse-video-total, "
+                            "tilted-0deg-quads, small-print, "
+                            "pen-stroke). Read it from the triage "
+                            "dossier when one exists; recorded on the "
+                            "OCRJob for outcome harvesting."
+                        ),
+                    },
                 },
                 "required": ["image_id", "receipt_id", "reocr_region"],
             },
@@ -2269,6 +2289,8 @@ async def call_tool(
                 receipt_id=arguments["receipt_id"],
                 reocr_region=arguments["reocr_region"],
                 reocr_reason=arguments.get("reocr_reason", "manual_trigger"),
+                strategy=arguments.get("strategy"),
+                mechanism=arguments.get("mechanism"),
             )
         elif name == "list_recent_uploads":
             result = await list_recent_uploads_impl(
@@ -4246,6 +4268,8 @@ async def trigger_reocr_impl(
     receipt_id: int,
     reocr_region: dict,
     reocr_reason: str = "manual_trigger",
+    strategy: str | None = None,
+    mechanism: str | None = None,
 ) -> dict:
     """Invoke the trigger-reocr Lambda to start regional re-OCR."""
     try:
@@ -4257,6 +4281,8 @@ async def trigger_reocr_impl(
                 "receipt_id": receipt_id,
                 "reocr_region": reocr_region,
                 "reocr_reason": reocr_reason,
+                "reocr_strategy": strategy,
+                "reocr_mechanism": mechanism,
             },
         )
     except Exception as e:

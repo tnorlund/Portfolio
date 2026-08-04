@@ -1,0 +1,6 @@
+{
+  "schema": "reocr-ladder-v1",
+  "generated_at": null,
+  "source": "scripts/harvest_reocr_outcomes.py (no harvest run yet)",
+  "mechanisms": {}
+}

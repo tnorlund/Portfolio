@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.tnorlund.receipt-ocr-dev</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/tnorlund/receipt_ocr_runner/run-dev.sh</string>
+    </array>
+    <!-- MacBook Pro drains at :00 :15 :30 :45; the Mac mini agent uses
+         :07 :22 :37 :52 so the two machines interleave. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Minute</key><integer>45</integer></dict>
+    </array>
+    <!-- Deliberately NOT KeepAlive: a wedged worker should die with its run,
+         not be resurrected in a loop. Each run exits when the queue is empty. -->
+    <key>KeepAlive</key><false/>
+    <key>RunAtLoad</key><false/>
+    <key>ProcessType</key><string>Background</string>
+    <key>StandardOutPath</key><string>/Users/tnorlund/Library/Logs/receipt-ocr-dev.log</string>
+    <key>StandardErrorPath</key><string>/Users/tnorlund/Library/Logs/receipt-ocr-dev.log</string>
+</dict>
+</plist>

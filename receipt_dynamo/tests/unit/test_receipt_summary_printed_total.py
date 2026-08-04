@@ -14,8 +14,11 @@ import pytest
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_summary import (
+    MonetaryTotals,
     ReceiptSummary,
+    _apply_printed_total_fallback,
     find_printed_grand_total,
+    find_printed_subtotal,
 )
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
@@ -226,3 +229,97 @@ def test_fallback_overrides_zero_label_total():
     )
 
     assert summary.grand_total == 8.49
+
+
+# ---------------------------------------------------------------------------
+# Moody Market a8d7ab9f:4 — tender rows must never anchor the total.
+# Real line texts and y-geometry from dev: the receipt prints
+# "Subtotal 20.00 / Tax 1.45 / Total 21.45 / Tips 3.22 /
+# Total Tender 24.67 / Change 0.00" with labels and amounts as
+# separate per-column OCR lines. The old anchor logic accepted
+# "Total Tender" as a grand-total row and max() picked 24.67
+# (total + tips) over the plain "Total 21.45".
+# ---------------------------------------------------------------------------
+
+
+def _moody_a8d7ab9f_words() -> list[SimpleNamespace]:
+    return [
+        # Item row: "Big Waygu Beef Bowl" / "20.00".
+        _word(19, 1, "Big", 0.5029, x=0.00),
+        _word(19, 2, "Waygu", 0.5029, x=0.08),
+        _word(19, 3, "Beef", 0.5029, x=0.20),
+        _word(19, 4, "Bowl", 0.5029, x=0.30),
+        _word(2, 1, "20.00", 0.4999, x=0.89),
+        # Summary rows: keyword column and amount column are separate
+        # OCR lines paired only by the y-band.
+        _word(20, 1, "Subtotal", 0.4163, x=0.00),
+        _word(4, 1, "20.00", 0.4171, x=0.89),
+        _word(21, 1, "Tax", 0.3888, x=0.00),
+        _word(6, 1, "1.45", 0.3905, x=0.91),
+        _word(22, 1, "Total", 0.3626, x=0.00),
+        _word(8, 1, "21.45", 0.3631, x=0.89),
+        _word(23, 1, "Visa", 0.2797, x=0.00),
+        _word(23, 2, "...3931", 0.2797, x=0.11),
+        _word(10, 1, "21.45", 0.2797, x=0.89),
+        _word(24, 1, "Tips", 0.2253, x=0.00),
+        _word(12, 1, "3.22", 0.2261, x=0.91),
+        _word(25, 1, "Total", 0.1720, x=0.00),
+        _word(25, 2, "Tender", 0.1720, x=0.12),
+        _word(14, 1, "24.67", 0.1720, x=0.89),
+        _word(26, 1, "Change", 0.1439, x=0.00),
+        _word(16, 1, "0.00", 0.1439, x=0.91),
+    ]
+
+
+def test_moody_plain_total_outranks_total_tender():
+    assert find_printed_grand_total(_moody_a8d7ab9f_words()) == 21.45
+
+
+def test_moody_tender_rows_alone_anchor_nothing():
+    # Only the settlement block: no total row at all -> no anchor.
+    words = [
+        _word(24, 1, "Tips", 0.2253, x=0.00),
+        _word(12, 1, "3.22", 0.2261, x=0.91),
+        _word(25, 1, "Total", 0.1720, x=0.00),
+        _word(25, 2, "Tender", 0.1720, x=0.12),
+        _word(14, 1, "24.67", 0.1720, x=0.89),
+        _word(26, 1, "Change", 0.1439, x=0.00),
+        _word(16, 1, "0.00", 0.1439, x=0.91),
+    ]
+    assert find_printed_grand_total(words) is None
+
+
+def test_amount_tendered_and_cash_total_are_not_anchors():
+    words = [
+        _word(1, 1, "AMOUNT", 0.5),
+        _word(1, 2, "TENDERED", 0.5),
+        _word(2, 1, "50.00", 0.5005),
+        _word(3, 1, "CASH", 0.45),
+        _word(3, 2, "TOTAL", 0.45),
+        _word(4, 1, "50.00", 0.4505),
+    ]
+    assert find_printed_grand_total(words) is None
+
+
+def test_moody_printed_subtotal_is_anchored():
+    # The subtotal anchor pairs with the 20.00 in ITS row band, not the
+    # identical 20.00 on the item row (y 0.4999) and not the total.
+    assert find_printed_subtotal(_moody_a8d7ab9f_words()) == 20.00
+
+
+def test_subtotal_anchor_ignores_savings_subtotal():
+    words = [
+        _word(1, 1, "SUBTOTAL", 0.5),
+        _word(1, 2, "SAVINGS", 0.5),
+        _word(2, 1, "5.00", 0.5005),
+    ]
+    assert find_printed_subtotal(words) is None
+
+
+def test_moody_fallback_fills_grand_total_and_subtotal():
+    totals = MonetaryTotals(grand_total=None, subtotal=None, tax=None)
+    _apply_printed_total_fallback(totals, _moody_a8d7ab9f_words())
+    # 21.45 (not the 24.67 tender row); subtotal anchored at 20.00, so
+    # the $20 bowl reconciles against baseline 20.00.
+    assert totals.grand_total == 21.45
+    assert totals.subtotal == 20.00
