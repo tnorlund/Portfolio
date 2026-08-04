@@ -186,6 +186,23 @@ empties.
 Vision OCR runs fine headless over SSH with the screen locked; no TCC prompt is
 involved for image-buffer requests. This is confirmed on the mini.
 
+### The recon-match canary (run after each re-OCR wave)
+
+Re-OCR overlays write MEASURED tilt (#1356) into receipts whose remaining
+words are axis-aligned from the old code. The mixed-geometry safety evidence
+is one receipt deep, so until it isn't, run the census after each wave and
+compare `match` against the previous run:
+
+```bash
+python scripts/recon_census.py --table ReceiptsTable-dc5be22   # dev
+python scripts/recon_census.py --table ReceiptsTable-d7ff76a   # prod
+```
+
+Reference (2026-08-04): prod match 489 / PROVEN 302·823; dev match 512 /
+PROVEN 302·825. A DROP in `match` after a wave is the mixed-geometry (or
+other regression) signal — the fallback policy is "write tilt only on
+whole-receipt re-reads".
+
 ### A failing job aborts the rest of the batch
 
 If a single job throws, the worker prints `Error: NotFound: Not Found` and the
