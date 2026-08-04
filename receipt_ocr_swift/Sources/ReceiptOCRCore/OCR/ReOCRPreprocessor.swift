@@ -28,7 +28,16 @@ public enum ReOCRPreprocessor {
     /// stray observations) and excluded from the dominant-angle estimate.
     public static let deskewMaxAngleDegrees = 45.0
 
-    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    /// Color management is disabled: with the default (linear) working
+    /// space CIColorInvert inverts linearized values, turning gamma-240
+    /// "text" into ~101 mid-gray instead of ~15 — low-contrast output that
+    /// defeats the point of the invert strategy. Unmanaged math gives the
+    /// photometric 255−v flip reverse-video recovery needs.
+    private static let ciContext = CIContext(options: [
+        .useSoftwareRenderer: false,
+        .workingColorSpace: NSNull(),
+        .outputColorSpace: NSNull(),
+    ])
 
     // MARK: - Dispatch
 
@@ -85,12 +94,15 @@ public enum ReOCRPreprocessor {
     }
 
     /// Dominant text angle in degrees, estimated from the text-line quads
-    /// of a quick (`.fast`) Vision recognition pass. Positive = text rises
+    /// of an `.accurate` Vision recognition pass. Positive = text rises
     /// left-to-right (counter-clockwise in standard math orientation).
     /// Returns nil when no usable text observations are found.
     public static func detectDominantTextAngleDegrees(_ image: CGImage) -> Double? {
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .fast
+        // .accurate, not .fast: the fast path reports axis-aligned quads,
+        // so every baseline measures ~0° and deskew would silently never
+        // fire. Only .accurate returns the true rotated text quads.
+        request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         guard (try? handler.perform([request])) != nil,
