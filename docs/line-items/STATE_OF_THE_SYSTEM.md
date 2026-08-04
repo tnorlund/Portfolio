@@ -69,6 +69,11 @@ canonical decoder.
    should be checked.
 6. Two CI lint jobs have OPPOSITE isort personalities (no root config):
    replicate the exact bare venv from main.yml before "fixing" imports.
+   Also: the receipt_agent job lints changed files in a per-file loop that
+   SHORT-CIRCUITS at the first failure — green-after-one-fix proves nothing
+   about the rest. Sweep EVERY changed file with CI's exact flags
+   (`black --check --line-length=79`, `isort --check-only --profile=black
+   --line-length=79`) in one pass (#1361→#1363 whack-a-mole).
 7. New Lambdas under `ignore_changes=["layers"]` are born with stale layers.
 8. Batch label writes have no condition expression and clobber VALID rows —
    use the conditional singular path.
