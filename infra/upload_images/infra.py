@@ -113,6 +113,25 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Dead-letter queue for OCR jobs. Before this existed, a message
+        # whose job row or raw image had been deleted recycled forever —
+        # the 2026-08-04 poison messages aborted every Mac-worker drain
+        # until #1355 taught the worker to drop them. The worker is the
+        # first net; this DLQ catches messages it keeps deferring
+        # (persistent transient errors) so they park for inspection
+        # instead of cycling for the full 14-day retention.
+        self.ocr_dlq = Queue(
+            f"{name}-ocr-dlq",
+            name=f"{name}-{stack}-ocr-dlq",
+            message_retention_seconds=1209600,  # 14 days
+            tags={
+                "Purpose": "OCR Job DLQ",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
         # Create SQS queue for OCR results
         self.ocr_queue = Queue(
             f"{name}-ocr-queue",
@@ -120,9 +139,32 @@ class UploadImages(ComponentResource):
             visibility_timeout_seconds=3600,
             message_retention_seconds=1209600,  # 14 days
             receive_wait_time_seconds=0,  # Short polling
-            redrive_policy=None,  # No DLQ for now
+            # maxReceiveCount is generous: the Mac workers drain on
+            # quarter-hour schedules and legitimately re-receive deferred
+            # messages across drains; 8 receipts ≈ an hour of retries
+            # before a message parks.
+            redrive_policy=self.ocr_dlq.arn.apply(
+                lambda arn: json.dumps(
+                    {"deadLetterTargetArn": arn, "maxReceiveCount": 8}
+                )
+            ),
             tags={
                 "Purpose": "OCR Job Queue",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Dead-letter queue for OCR results: a payload the process_ocr
+        # Lambda cannot parse must park for replay, not recycle until the
+        # 4-day retention silently drops it.
+        self.ocr_results_dlq = Queue(
+            f"{name}-ocr-results-dlq",
+            name=f"{name}-{stack}-ocr-results-dlq",
+            message_retention_seconds=1209600,  # 14 days
+            tags={
+                "Purpose": "OCR Results DLQ",
                 "Component": name,
                 "Environment": pulumi.get_stack(),
             },
@@ -136,7 +178,11 @@ class UploadImages(ComponentResource):
             visibility_timeout_seconds=900,  # Must be >= Lambda timeout (900s for container-based process_ocr)
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
-            redrive_policy=None,  # No DLQ for now
+            redrive_policy=self.ocr_results_dlq.arn.apply(
+                lambda arn: json.dumps(
+                    {"deadLetterTargetArn": arn, "maxReceiveCount": 5}
+                )
+            ),
             tags={
                 "Purpose": "OCR Results Processing",
                 "Component": name,
