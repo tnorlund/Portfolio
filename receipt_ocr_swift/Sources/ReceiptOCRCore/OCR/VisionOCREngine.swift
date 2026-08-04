@@ -260,14 +260,59 @@ private func boundingBox(from characterBoxes: [CGRect]) -> CGRect {
     return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
 }
 
-/// Calculate corner points from a bounding box
-private func cornerPoints(from rect: CGRect) -> (topLeft: CGPoint, topRight: CGPoint, bottomLeft: CGPoint, bottomRight: CGPoint) {
-    return (
-        topLeft: CGPoint(x: rect.minX, y: rect.maxY),
-        topRight: CGPoint(x: rect.maxX, y: rect.maxY),
-        bottomLeft: CGPoint(x: rect.minX, y: rect.minY),
-        bottomRight: CGPoint(x: rect.maxX, y: rect.minY)
-    )
+/// A text quad in Vision's normalized bottom-left-origin space.
+private struct TextQuad {
+    let topLeft: CGPoint
+    let topRight: CGPoint
+    let bottomLeft: CGPoint
+    let bottomRight: CGPoint
+
+    init(topLeft: CGPoint, topRight: CGPoint, bottomLeft: CGPoint, bottomRight: CGPoint) {
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomLeft = bottomLeft
+        self.bottomRight = bottomRight
+    }
+
+    init(observation obs: VNRectangleObservation) {
+        self.init(topLeft: obs.topLeft, topRight: obs.topRight, bottomLeft: obs.bottomLeft, bottomRight: obs.bottomRight)
+    }
+
+    /// Baseline angle in degrees (positive = text rises left-to-right, i.e.
+    /// counter-clockwise in Vision's bottom-left-origin space). Normalized
+    /// deltas are scaled to pixel space first — on a non-square image the
+    /// raw normalized angle is distorted by the aspect ratio.
+    func baselineAngleDegrees(imageWidth: Int, imageHeight: Int) -> CGFloat {
+        let dx = (bottomRight.x - bottomLeft.x) * CGFloat(imageWidth)
+        let dy = (bottomRight.y - bottomLeft.y) * CGFloat(imageHeight)
+        guard dx != 0 || dy != 0 else { return 0 }
+        return atan2(dy, dx) * 180 / .pi
+    }
+
+    /// Axis-aligned bounding rect of the quad (for the legacy
+    /// `bounding_box` field, which stays a rect by contract).
+    var boundingRect: CGRect {
+        let xs = [topLeft.x, topRight.x, bottomLeft.x, bottomRight.x]
+        let ys = [topLeft.y, topRight.y, bottomLeft.y, bottomRight.y]
+        let minX = xs.min() ?? 0
+        let minY = ys.min() ?? 0
+        return CGRect(x: minX, y: minY, width: (xs.max() ?? 0) - minX, height: (ys.max() ?? 0) - minY)
+    }
+
+    /// The sub-quad spanning fractions [t0, t1] of the way along the
+    /// baseline — used to slice a word quad into per-letter quads that
+    /// follow the word's tilt instead of an axis-aligned grid.
+    func slice(from t0: CGFloat, to t1: CGFloat) -> TextQuad {
+        func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+        }
+        return TextQuad(
+            topLeft: lerp(topLeft, topRight, t0),
+            topRight: lerp(topLeft, topRight, t1),
+            bottomLeft: lerp(bottomLeft, bottomRight, t0),
+            bottomRight: lerp(bottomLeft, bottomRight, t1)
+        )
+    }
 }
 
 /// Strip Vision's "VNBarcodeSymbology" prefix so "VNBarcodeSymbologyCode128" -> "Code128".
@@ -376,10 +421,22 @@ private func performOCRSync(from cgImage: CGImage) throws -> [Line] {
 
     guard let observations = request.results else { return [] }
 
+    // For aspect-correct angle measurement. Angles are invariant to the
+    // uniform upscale above, so ocrImage vs cgImage does not matter here,
+    // but width/height individually do.
+    let imageWidth = ocrImage.width
+    let imageHeight = ocrImage.height
+
     var lines: [Line] = []
     for obs in observations {
         guard let candidate = obs.topCandidates(1).first else { continue }
         let lineText = candidate.string
+        // Vision's real rotated quad for the whole line. Until 2026-08 the
+        // corners were synthesized from the axis-aligned boundingBox and
+        // angleDegrees was hardcoded to 0.0, so no receipt in the corpus
+        // ever measured tilt (docs/line-items/handoff/SWIFT_AND_GEOMETRY.md).
+        let lineQuad = TextQuad(observation: obs)
+        let lineAngleDegrees = lineQuad.baselineAngleDegrees(imageWidth: imageWidth, imageHeight: imageHeight)
         let lineTextStartIndex = lineText.startIndex
 
         // Split line text into words (preserving word positions in the line)
@@ -403,44 +460,41 @@ private func performOCRSync(from cgImage: CGImage) throws -> [Line] {
             let wordEndIndex = lineText.index(wordStartIndex, offsetBy: wordStr.count)
             let wordRange = wordStartIndex..<wordEndIndex
 
-            // Get word bounding box using Vision API
-            // This works in both .accurate and .fast modes
-            let wordBoundingBox: CGRect
-            do {
-                wordBoundingBox = try candidate.boundingBox(for: wordRange)?.boundingBox ?? obs.boundingBox
-            } catch {
-                // Fallback to observation bounding box if range lookup fails
-                wordBoundingBox = obs.boundingBox
+            // Vision's rotated quad for this word range. Falls back to the
+            // line quad sliced by character position when the range lookup
+            // fails or comes back degenerate.
+            let wordQuad: TextQuad
+            if let wordObs = try? candidate.boundingBox(for: wordRange) {
+                wordQuad = TextQuad(observation: wordObs)
+            } else {
+                let start = CGFloat(lineText.distance(from: lineTextStartIndex, to: wordStartIndex))
+                let end = CGFloat(lineText.distance(from: lineTextStartIndex, to: wordEndIndex))
+                let total = CGFloat(lineText.count)
+                wordQuad = lineQuad.slice(from: start / total, to: end / total)
             }
+            // Words on a receipt line share the line's baseline; the line
+            // angle is measured over a longer edge and is therefore less
+            // noisy than a per-word (often 2-3 character) baseline.
+            let wordAngleDegrees = lineAngleDegrees
+            let wordBoundingBox = wordQuad.boundingRect
 
-            let wordCorners = cornerPoints(from: wordBoundingBox)
-
-            // Get character bounding boxes for each letter in the word
-            // NOTE: In .accurate mode, character-level boundingBox(for:) may return identical boxes.
-            // We estimate letter boxes from the word box, which is more reliable.
+            // Letter quads follow the word's baseline: slice the word quad
+            // proportionally instead of laying an axis-aligned grid over it.
             var letters: [Letter] = []
             for (letterIndex, char) in wordStr.enumerated() {
-                // Estimate letter box from word box (proportional distribution)
-                // This is more reliable than trying to get individual character boxes
-                let letterWidth = wordBoundingBox.width / CGFloat(wordStr.count)
-                let letterBox = CGRect(
-                    x: wordBoundingBox.minX + CGFloat(letterIndex) * letterWidth,
-                    y: wordBoundingBox.minY,
-                    width: letterWidth,
-                    height: wordBoundingBox.height
+                let letterQuad = wordQuad.slice(
+                    from: CGFloat(letterIndex) / CGFloat(wordStr.count),
+                    to: CGFloat(letterIndex + 1) / CGFloat(wordStr.count)
                 )
-
-                let letterCorners = cornerPoints(from: letterBox)
-
                 let letter = Letter(
                     text: String(char),
-                    boundingBox: normalizedRect(from: letterBox),
-                    topLeft: codablePoint(from: letterCorners.topLeft),
-                    topRight: codablePoint(from: letterCorners.topRight),
-                    bottomLeft: codablePoint(from: letterCorners.bottomLeft),
-                    bottomRight: codablePoint(from: letterCorners.bottomRight),
-                    angleDegrees: 0.0,
-                    angleRadians: 0.0,
+                    boundingBox: normalizedRect(from: letterQuad.boundingRect),
+                    topLeft: codablePoint(from: letterQuad.topLeft),
+                    topRight: codablePoint(from: letterQuad.topRight),
+                    bottomLeft: codablePoint(from: letterQuad.bottomLeft),
+                    bottomRight: codablePoint(from: letterQuad.bottomRight),
+                    angleDegrees: wordAngleDegrees,
+                    angleRadians: wordAngleDegrees * .pi / 180,
                     confidence: candidate.confidence
                 )
                 letters.append(letter)
@@ -453,12 +507,12 @@ private func performOCRSync(from cgImage: CGImage) throws -> [Line] {
             let word = Word(
                 text: String(wordStr),
                 boundingBox: normalizedRect(from: wordBoundingBox),
-                topLeft: codablePoint(from: wordCorners.topLeft),
-                topRight: codablePoint(from: wordCorners.topRight),
-                bottomLeft: codablePoint(from: wordCorners.bottomLeft),
-                bottomRight: codablePoint(from: wordCorners.bottomRight),
-                angleDegrees: 0.0,
-                angleRadians: 0.0,
+                topLeft: codablePoint(from: wordQuad.topLeft),
+                topRight: codablePoint(from: wordQuad.topRight),
+                bottomLeft: codablePoint(from: wordQuad.bottomLeft),
+                bottomRight: codablePoint(from: wordQuad.bottomRight),
+                angleDegrees: wordAngleDegrees,
+                angleRadians: wordAngleDegrees * .pi / 180,
                 confidence: candidate.confidence,
                 letters: letters,
                 extractedData: nil
@@ -466,17 +520,17 @@ private func performOCRSync(from cgImage: CGImage) throws -> [Line] {
             words.append(word)
         }
 
-        // Create line with line-level bounding box
-        let lineCorners = cornerPoints(from: obs.boundingBox)
+        // Create line from Vision's real quad; bounding_box stays the
+        // axis-aligned envelope by contract.
         let line = Line(
             text: lineText,
             boundingBox: normalizedRect(from: obs.boundingBox),
-            topLeft: codablePoint(from: lineCorners.topLeft),
-            topRight: codablePoint(from: lineCorners.topRight),
-            bottomLeft: codablePoint(from: lineCorners.bottomLeft),
-            bottomRight: codablePoint(from: lineCorners.bottomRight),
-            angleDegrees: 0.0,
-            angleRadians: 0.0,
+            topLeft: codablePoint(from: lineQuad.topLeft),
+            topRight: codablePoint(from: lineQuad.topRight),
+            bottomLeft: codablePoint(from: lineQuad.bottomLeft),
+            bottomRight: codablePoint(from: lineQuad.bottomRight),
+            angleDegrees: lineAngleDegrees,
+            angleRadians: lineAngleDegrees * .pi / 180,
             confidence: candidate.confidence,
             words: words
         )
