@@ -588,9 +588,7 @@ def run(args: argparse.Namespace) -> None:
         # so it may legitimately retract a match (null a bank_amount) when
         # the curated ledger no longer carries it — hence the explicit
         # opt-out from the offline-field clobber guard.
-        client.upsert_receipt_summaries(
-            batch, allow_offline_field_clear=True
-        )
+        client.upsert_receipt_summaries(batch, allow_offline_field_clear=True)
         written += len(batch)
         logger.info("upserted %d / %d", written, len(to_write))
     print(f"\nwrote {written} summary records")

@@ -73,6 +73,13 @@ canonical decoder.
 8. Batch label writes have no condition expression and clobber VALID rows —
    use the conditional singular path.
 9. Never merge frontend/visual changes without the user's review (#1316/#1317).
+10. `scripts/backfill_receipt_summaries.py` writes summaries DIRECTLY,
+    bypassing the summary-updater's carry-over — run only with its
+    tender/bank carry-over path intact (2026-08-04: a run without it nulled
+    bank_amount table-wide on dev and collapsed dev PROVEN 281 → 2; the
+    offline bank fields cannot be re-derived in the cloud). The upsert guard
+    (#1361) now raises on such writes; restore is
+    `scripts/backfill_tender_bank.py --apply`.
 
 ## Session-conduct rules (from the retrospective — retro/retro_strategist.md)
 
