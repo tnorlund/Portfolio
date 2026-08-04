@@ -158,6 +158,12 @@ class _FakeDynamo:
     def get_receipt_rows_from_receipt(self, _image_id, _receipt_id):
         return [_row(1, 0.10), _row(2, 0.15), _row(3, 0.20)]
 
+    def get_receipt_line_items_from_receipt(self, _image_id, _receipt_id):
+        # No worker-written rows: the consistency checker is a no-op and the
+        # recompute is persisted exactly as it was before the Mac worker
+        # became a producer.
+        return list(self.line_items)
+
     def update_receipt_section(self, section):
         self.updated_sections.append(section)
 

@@ -37,11 +37,19 @@ from receipt_dynamo.entities import (
     ReceiptBarcode,
     ReceiptLetter,
     ReceiptLine,
+    ReceiptLineItem,
+    ReceiptSection,
     ReceiptWord,
     Word,
 )
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import extract_items
+from receipt_upload.line_items.provenance import (
+    SWIFT_WORKER_EXTRACTOR_VERSION,
+    SWIFT_WORKER_MODEL_SOURCE,
+    is_worker_extractor_version,
+    is_worker_model_source,
+)
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -1637,6 +1645,13 @@ class OCRProcessor:
             if receipt_barcodes:
                 self.dynamo.add_receipt_barcodes(receipt_barcodes)
 
+            # Sections + line items the worker already decoded on device.
+            # Must run AFTER persist_receipt_rows: ReceiptSection.row_ids
+            # reference the ReceiptRow ids that call materializes.
+            worker_structure = self._persist_worker_structure(
+                image_id, receipt_id, receipt_data, current_time
+            )
+
             logger.info(
                 "Created receipt %s: %s lines, %s words, %s letters, "
                 "%s barcodes",
@@ -1653,6 +1668,7 @@ class OCRProcessor:
             per_receipt_data[receipt_id] = {
                 "lines": receipt_lines,
                 "words": receipt_words,
+                "worker_structure": worker_structure,
             }
 
         # Update routing decision
@@ -1729,6 +1745,151 @@ class OCRProcessor:
             "word_count": len(all_receipt_words),
             "swift_single_pass": True,  # Flag for handler to enable embeddings
         }
+
+    def _persist_worker_structure(
+        self,
+        image_id: str,
+        receipt_id: int,
+        receipt_data: Dict[str, Any],
+        created_at: datetime,
+    ) -> Optional[Dict[str, Any]]:
+        """Persist sections + line items the Mac worker decoded on device.
+
+        Strictly additive. A payload carrying neither ``sections`` nor
+        ``line_items`` -- every worker build before that contract, and every
+        legacy/PHOTO path -- returns ``None`` and leaves ingest byte-identical
+        to its previous behavior.
+
+        Two downstream stages already know how to defer to these rows:
+
+        * ``assign_and_persist_sections`` (run by the embedding processor
+          right after this method) skips section types that already exist, so
+          worker sections suppress a duplicate cloud proposal instead of
+          racing it;
+        * the stream stage (``infra/receipt_line_item_updater``) recognizes
+          the worker ``extractor_version`` and compares rather than blindly
+          overwriting.
+
+        Provenance is never taken on faith: whatever the payload claims, rows
+        are stamped with a worker source, so an ingest payload can never
+        impersonate the cloud producer. Malformed entries are skipped
+        individually -- structure is a bonus on top of OCR persistence and
+        must never cost the receipt its words.
+        """
+        sections_payload = receipt_data.get("sections") or []
+        items_payload = receipt_data.get("line_items") or []
+        if not sections_payload and not items_payload:
+            return None
+
+        sections: list[ReceiptSection] = []
+        for entry in sections_payload:
+            try:
+                model_source = entry.get("model_source")
+                if not is_worker_model_source(model_source):
+                    model_source = SWIFT_WORKER_MODEL_SOURCE
+                sections.append(
+                    ReceiptSection(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        section_type=str(entry["section_type"]),
+                        line_ids=[int(x) for x in entry["line_ids"]],
+                        row_ids=(
+                            [int(x) for x in entry["row_ids"]]
+                            if entry.get("row_ids")
+                            else None
+                        ),
+                        confidence=(
+                            float(entry["confidence"])
+                            if entry.get("confidence") is not None
+                            else None
+                        ),
+                        validation_status=ValidationStatus.PENDING.value,
+                        model_source=model_source,
+                        created_at=created_at,
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning(
+                    "Skipping malformed worker section for %s:%s: %s",
+                    image_id,
+                    receipt_id,
+                    exc,
+                )
+
+        line_items: list[ReceiptLineItem] = []
+        for entry in items_payload:
+            try:
+                extractor_version = entry.get("extractor_version")
+                if not is_worker_extractor_version(extractor_version):
+                    # Pre-contract worker builds shipped line items with no
+                    # extractor_version; stamp them so the consistency
+                    # checker can still tell them from a cloud recompute.
+                    extractor_version = SWIFT_WORKER_EXTRACTOR_VERSION
+                name = str(entry.get("name") or "")
+                quality = (
+                    "low"
+                    if entry.get("name_quality") == "low" or not name
+                    else "ok"
+                )
+                line_items.append(
+                    ReceiptLineItem(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        item_index=int(entry["item_index"]),
+                        name=name,
+                        price=float(entry["price"]),
+                        line_ids=[int(x) for x in entry["line_ids"]],
+                        extractor_version=extractor_version,
+                        extracted_at=created_at,
+                        quantity=entry.get("quantity"),
+                        unit_price=entry.get("unit_price"),
+                        is_discount=bool(entry.get("is_discount")),
+                        name_quality=quality,
+                        # No summary exists at ingest, so the worker's
+                        # reconciliation is almost always "no-baseline"; the
+                        # stream stage re-reconciles once one is written.
+                        reconciliation_status=(
+                            entry.get("reconciliation_status") or None
+                        ),
+                        source_model_source=SWIFT_WORKER_MODEL_SOURCE,
+                        source_section_status=ValidationStatus.PENDING.value,
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning(
+                    "Skipping malformed worker line item for %s:%s: %s",
+                    image_id,
+                    receipt_id,
+                    exc,
+                )
+
+        if sections:
+            # Batch put (not add_receipt_section) so an SQS redelivery
+            # rewrites rather than raising EntityAlreadyExistsError.
+            self.dynamo.add_receipt_sections(sections)
+        if line_items:
+            self.dynamo.delete_receipt_line_items_for_receipt(
+                image_id, receipt_id
+            )
+            self.dynamo.add_receipt_line_items(line_items)
+
+        summary = {
+            "sections": len(sections),
+            "line_items": len(line_items),
+            "section_types": sorted(
+                str(section.section_type) for section in sections
+            ),
+            "extractor_version": (
+                line_items[0].extractor_version if line_items else None
+            ),
+        }
+        logger.info(
+            "Persisted worker-decoded structure for %s:%s: %s",
+            image_id,
+            receipt_id,
+            summary,
+        )
+        return summary
 
     def _parse_receipt_barcodes_from_swift(
         self,

@@ -61,7 +61,12 @@ canonical decoder.
    in `--check` mode — never hand-edit the expectation JSON. Note the
    golden set alone cannot see the #1320 guards (it decodes identically
    with the pre-#1320 regexes); the synthetic guard vectors in that
-   generator are what covers them.
+   generator are what covers them. **Phase 2**: the worker now WRITES what
+   it decodes (sections + line items, stamped
+   `swift-worker-v1+line-items-blocks-v2`) and the stream stage compares
+   instead of overwriting — so a fork no longer just fails a test, it
+   shows up in prod as `LINE_ITEM_DIVERGENCE` log lines from the line-item
+   updater (see docs/architecture/mac-ocr-aws-handoff.md).
 2. MCP receipt tools default to DEV (`PORTFOLIO_ENV`); prod writes need
    explicit `DynamoClient("ReceiptsTable-d7ff76a")`.
 3. CI deploys PROD only — after merging Lambda/entity changes, deploy the dev

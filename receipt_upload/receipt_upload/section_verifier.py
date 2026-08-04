@@ -19,7 +19,7 @@ from receipt_chroma import propagate_knn
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
-from receipt_upload.section_assignment import MODEL_SOURCE
+from receipt_upload.section_assignment import VERIFIABLE_MODEL_SOURCES
 
 VERIFICATION_SOURCE = "glyphstudio-knn-v1"
 KNN_NEIGHBORS = 15
@@ -182,7 +182,10 @@ def _record_verification(
     )
     now = datetime.now(timezone.utc)
     for section in sections:
-        if section.model_source != MODEL_SOURCE or not section.row_ids:
+        if (
+            section.model_source not in VERIFIABLE_MODEL_SOURCES
+            or not section.row_ids
+        ):
             continue
         available = [
             predictions[row_id]
