@@ -364,3 +364,29 @@ def item_to_receipt_summary_record(
 ) -> ReceiptSummaryRecord:
     """Convert a DynamoDB item to a ReceiptSummaryRecord."""
     return ReceiptSummaryRecord.from_item(item)
+
+
+# Fields computed OFFLINE from the local Chase + Apple ledgers
+# (scripts/backfill_tender_bank.py). They cannot be re-derived in the
+# cloud, and bank_amount is half of the PROVEN definition — a recompute
+# that nulls them destroys data that only a laptop can restore. The
+# 2026-08-04 dev incident: a summary backfill without carry-over wiped
+# bank_amount on 422 receipts and collapsed dev PROVEN 281 -> 2.
+OFFLINE_BANK_FIELDS = ("ledger", "bank_amount", "bank_match_confidence")
+
+
+def offline_fields_cleared(
+    new: ReceiptSummaryRecord, existing: ReceiptSummaryRecord
+) -> list[str]:
+    """Offline bank fields populated on ``existing`` but nulled on ``new``.
+
+    Used by the upsert guard: writers recomputing a summary must carry
+    these over (see infra/receipt_summary_updater/summary_processor.py)
+    or explicitly opt in to clearing them.
+    """
+    return [
+        field
+        for field in OFFLINE_BANK_FIELDS
+        if getattr(existing, field, None) is not None
+        and getattr(new, field, None) is None
+    ]
