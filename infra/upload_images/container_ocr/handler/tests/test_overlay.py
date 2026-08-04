@@ -191,10 +191,9 @@ def _make_processor():
 # 0. Full-receipt refinement
 # ===========================================================================
 
+
 class TestRefinementRowIdentity:
-    def test_forwards_nondefault_receipt_id_to_row_persistence(
-        self, tmp_path
-    ):
+    def test_forwards_nondefault_receipt_id_to_row_persistence(self, tmp_path):
         proc = _make_processor()
         ocr_job = SimpleNamespace(
             image_id=_IMG_ID,
@@ -240,6 +239,7 @@ class TestRefinementRowIdentity:
 # ===========================================================================
 # 1. Coordinate remapping (pure, no mocking)
 # ===========================================================================
+
 
 class TestMapBboxToRegion:
     def test_identity_region(self):
@@ -323,11 +323,14 @@ class TestApplyRegionMapping:
 # 1b. Bbox containment ratio (pure)
 # ===========================================================================
 
+
 class TestBboxContainmentRatio:
     def test_fully_contained(self):
         proc = _make_processor()
         bbox = {"x": 0.3, "y": 0.3, "width": 0.1, "height": 0.1}
-        assert proc._bbox_containment_ratio(bbox, 0.0, 0.0, 1.0, 1.0) == pytest.approx(1.0)
+        assert proc._bbox_containment_ratio(
+            bbox, 0.0, 0.0, 1.0, 1.0
+        ) == pytest.approx(1.0)
 
     def test_half_contained_x(self):
         """Word straddles the right edge — only 50% inside."""
@@ -335,17 +338,23 @@ class TestBboxContainmentRatio:
         bbox = {"x": 0.9, "y": 0.1, "width": 0.2, "height": 0.1}
         # region covers x=[0.7, 1.0]. Word x=[0.9, 1.1]. Overlap x=[0.9, 1.0]=0.1
         # word area = 0.2*0.1 = 0.02, overlap area = 0.1*0.1 = 0.01
-        assert proc._bbox_containment_ratio(bbox, 0.7, 0.0, 1.0, 1.0) == pytest.approx(0.5)
+        assert proc._bbox_containment_ratio(
+            bbox, 0.7, 0.0, 1.0, 1.0
+        ) == pytest.approx(0.5)
 
     def test_no_overlap(self):
         proc = _make_processor()
         bbox = {"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1}
-        assert proc._bbox_containment_ratio(bbox, 0.5, 0.5, 1.0, 1.0) == pytest.approx(0.0)
+        assert proc._bbox_containment_ratio(
+            bbox, 0.5, 0.5, 1.0, 1.0
+        ) == pytest.approx(0.0)
 
     def test_zero_area_bbox(self):
         proc = _make_processor()
         bbox = {"x": 0.5, "y": 0.5, "width": 0.0, "height": 0.0}
-        assert proc._bbox_containment_ratio(bbox, 0.0, 0.0, 1.0, 1.0) == pytest.approx(0.0)
+        assert proc._bbox_containment_ratio(
+            bbox, 0.0, 0.0, 1.0, 1.0
+        ) == pytest.approx(0.0)
 
     def test_barely_inside(self):
         """Word mostly outside the region — only ~25% contained."""
@@ -362,6 +371,7 @@ class TestBboxContainmentRatio:
 # ===========================================================================
 # 2. Word matching (pure)
 # ===========================================================================
+
 
 class TestYOverlapRatio:
     def test_perfect_overlap(self):
@@ -385,7 +395,9 @@ class TestYOverlapRatio:
 
 class TestBboxCenterX:
     def test_basic(self):
-        assert OCRProcessor._bbox_center_x({"x": 0.2, "width": 0.1}) == pytest.approx(0.25)
+        assert OCRProcessor._bbox_center_x(
+            {"x": 0.2, "width": 0.1}
+        ) == pytest.approx(0.25)
 
     def test_missing_keys(self):
         assert OCRProcessor._bbox_center_x({}) == pytest.approx(0.0)
@@ -396,7 +408,9 @@ class TestMatchRegionalWords:
         """Each new word matches exactly one existing word."""
         proc = _make_processor()
         new_w = _make_word(text="NEW", x=0.8, y=0.1, w=0.1, h=0.05)
-        old_w = _make_word(text="OLD", x=0.8, y=0.1, w=0.1, h=0.05, line_id=2, word_id=2)
+        old_w = _make_word(
+            text="OLD", x=0.8, y=0.1, w=0.1, h=0.05, line_id=2, word_id=2
+        )
         matches = proc._match_regional_words([new_w], [old_w])
         assert len(matches) == 1
         assert matches[0] == (new_w, old_w)
@@ -405,25 +419,39 @@ class TestMatchRegionalWords:
         """Words with no y-overlap should not match."""
         proc = _make_processor()
         new_w = _make_word(text="NEW", x=0.8, y=0.0, w=0.1, h=0.02)
-        old_w = _make_word(text="OLD", x=0.8, y=0.9, w=0.1, h=0.02, line_id=2, word_id=2)
+        old_w = _make_word(
+            text="OLD", x=0.8, y=0.9, w=0.1, h=0.02, line_id=2, word_id=2
+        )
         matches = proc._match_regional_words([new_w], [old_w])
         assert len(matches) == 0
 
     def test_greedy_consumption(self):
         """Once an old word is consumed, it cannot match again."""
         proc = _make_processor()
-        new1 = _make_word(text="A", x=0.8, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        new2 = _make_word(text="B", x=0.8, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2)
-        old = _make_word(text="OLD", x=0.8, y=0.1, w=0.1, h=0.05, line_id=2, word_id=1)
+        new1 = _make_word(
+            text="A", x=0.8, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        new2 = _make_word(
+            text="B", x=0.8, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+        )
+        old = _make_word(
+            text="OLD", x=0.8, y=0.1, w=0.1, h=0.05, line_id=2, word_id=1
+        )
         matches = proc._match_regional_words([new1, new2], [old])
         assert len(matches) == 1
 
     def test_x_preference(self):
         """When y-overlap is equal, closer x-center is preferred."""
         proc = _make_processor()
-        new_w = _make_word(text="N", x=0.80, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1)
-        old_close = _make_word(text="CLOSE", x=0.80, y=0.1, w=0.05, h=0.05, line_id=2, word_id=1)
-        old_far = _make_word(text="FAR", x=0.50, y=0.1, w=0.05, h=0.05, line_id=2, word_id=2)
+        new_w = _make_word(
+            text="N", x=0.80, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1
+        )
+        old_close = _make_word(
+            text="CLOSE", x=0.80, y=0.1, w=0.05, h=0.05, line_id=2, word_id=1
+        )
+        old_far = _make_word(
+            text="FAR", x=0.50, y=0.1, w=0.05, h=0.05, line_id=2, word_id=2
+        )
         matches = proc._match_regional_words([new_w], [old_close, old_far])
         assert len(matches) == 1
         assert matches[0][1].text == "CLOSE"
@@ -431,10 +459,18 @@ class TestMatchRegionalWords:
     def test_word_splits(self):
         """Multiple new words can match multiple old words."""
         proc = _make_processor()
-        new1 = _make_word(text="A", x=0.7, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1)
-        new2 = _make_word(text="B", x=0.85, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
-        old1 = _make_word(text="X", x=0.7, y=0.1, w=0.05, h=0.05, line_id=2, word_id=1)
-        old2 = _make_word(text="Y", x=0.85, y=0.1, w=0.05, h=0.05, line_id=2, word_id=2)
+        new1 = _make_word(
+            text="A", x=0.7, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1
+        )
+        new2 = _make_word(
+            text="B", x=0.85, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2
+        )
+        old1 = _make_word(
+            text="X", x=0.7, y=0.1, w=0.05, h=0.05, line_id=2, word_id=1
+        )
+        old2 = _make_word(
+            text="Y", x=0.85, y=0.1, w=0.05, h=0.05, line_id=2, word_id=2
+        )
         matches = proc._match_regional_words([new1, new2], [old1, old2])
         assert len(matches) == 2
 
@@ -442,6 +478,7 @@ class TestMatchRegionalWords:
 # ===========================================================================
 # 3. Candidate selection (mocked DynamoDB)
 # ===========================================================================
+
 
 class TestCandidateSelection:
     def _run_overlay(self, proc, existing_words, labels, region=None):
@@ -464,7 +501,9 @@ class TestCandidateSelection:
             updated_at=None,
         )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = existing_words
+        proc.dynamo.list_receipt_words_from_receipt.return_value = (
+            existing_words
+        )
 
         label_page = labels if labels else []
         proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
@@ -479,7 +518,12 @@ class TestCandidateSelection:
             "lines": [
                 {
                     "text": "99.99",
-                    "bounding_box": {"x": 0.0, "y": 0.1, "width": 1.0, "height": 0.05},
+                    "bounding_box": {
+                        "x": 0.0,
+                        "y": 0.1,
+                        "width": 1.0,
+                        "height": 0.05,
+                    },
                     "top_left": {"x": 0.0, "y": 0.1},
                     "top_right": {"x": 1.0, "y": 0.1},
                     "bottom_left": {"x": 0.0, "y": 0.15},
@@ -488,7 +532,12 @@ class TestCandidateSelection:
                     "words": [
                         {
                             "text": "99.99",
-                            "bounding_box": {"x": 0.0, "y": 0.1, "width": 1.0, "height": 0.05},
+                            "bounding_box": {
+                                "x": 0.0,
+                                "y": 0.1,
+                                "width": 1.0,
+                                "height": 0.05,
+                            },
                             "top_left": {"x": 0.0, "y": 0.1},
                             "top_right": {"x": 1.0, "y": 0.1},
                             "bottom_left": {"x": 0.0, "y": 0.15},
@@ -504,20 +553,33 @@ class TestCandidateSelection:
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch(
-            "handler.ocr_processor.download_file_from_s3", return_value=tmp
-        ), patch(
-            "handler.ocr_processor.process_ocr_dict_as_image"
-        ) as mock_parse, patch(
-            "handler.ocr_processor.image_ocr_to_receipt_ocr"
-        ) as mock_convert:
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image"
+            ) as mock_parse,
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr"
+            ) as mock_convert,
+        ):
             # Simulate a single word from the regional OCR
             receipt_word = _make_word(
-                text="99.99", x=0.0, y=0.1, w=1.0, h=0.05,
-                line_id=1, word_id=1,
+                text="99.99",
+                x=0.0,
+                y=0.1,
+                w=1.0,
+                h=0.05,
+                line_id=1,
+                word_id=1,
             )
             receipt_line = _make_line(
-                text="99.99", x=0.0, y=0.1, w=1.0, h=0.05,
+                text="99.99",
+                x=0.0,
+                y=0.1,
+                w=1.0,
+                h=0.05,
                 line_id=1,
             )
             mock_parse.return_value = ([], [], [])
@@ -529,8 +591,12 @@ class TestCandidateSelection:
     def test_region_x_filter(self):
         """Only words whose center-x falls in the region are candidates."""
         proc = _make_processor()
-        inside = _make_word(text="IN", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        outside = _make_word(text="OUT", x=0.10, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2)
+        inside = _make_word(
+            text="IN", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        outside = _make_word(
+            text="OUT", x=0.10, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+        )
         self._run_overlay(proc, [inside, outside], labels=[])
         # The match should only use 'inside' since 'outside' center-x is ~0.15
         if proc.dynamo.update_receipt_words.called:
@@ -578,8 +644,16 @@ class TestUnmatchedWordAddition:
     """When re-OCR finds words that don't match any existing candidate,
     they should be added as new ReceiptWords on the best-matching line."""
 
-    def _run_overlay(self, proc, existing_words, new_words, new_lines=None,
-                     region=None, labels=None, new_letters=None):
+    def _run_overlay(
+        self,
+        proc,
+        existing_words,
+        new_words,
+        new_lines=None,
+        region=None,
+        labels=None,
+        new_letters=None,
+    ):
         """Run the overlay pipeline with explicit new words."""
         if region is None:
             region = {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
@@ -589,20 +663,30 @@ class TestUnmatchedWordAddition:
             new_letters = []
 
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
-            reocr_region=region, s3_bucket="b", s3_key="k",
+            image_id=_IMG_ID,
+            receipt_id=1,
+            reocr_region=region,
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = existing_words
+        proc.dynamo.list_receipt_words_from_receipt.return_value = (
+            existing_words
+        )
         proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
             [
-                l
-                if hasattr(l, "label")
-                else SimpleNamespace(line_id=l.line_id, word_id=l.word_id)
+                (
+                    l
+                    if hasattr(l, "label")
+                    else SimpleNamespace(line_id=l.line_id, word_id=l.word_id)
+                )
                 for l in (labels or [])
             ],
             None,
@@ -617,10 +701,19 @@ class TestUnmatchedWordAddition:
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr",
-                   return_value=(new_lines, new_words, new_letters)):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=(new_lines, new_words, new_letters),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
         return result
 
@@ -628,13 +721,16 @@ class TestUnmatchedWordAddition:
         """A new OCR word with no remaining candidate gets added."""
         proc = _make_processor()
         # One existing word on line 1
-        existing = _make_word(text="CARLON", x=0.1, y=0.5, w=0.15, h=0.05,
-                              line_id=1, word_id=1)
+        existing = _make_word(
+            text="CARLON", x=0.1, y=0.5, w=0.15, h=0.05, line_id=1, word_id=1
+        )
         # Two new OCR words: first one matches existing, second has no match
-        new_match = _make_word(text="CARLON", x=0.1, y=0.5, w=0.15, h=0.05,
-                               line_id=1, word_id=1)
-        new_extra = _make_word(text="8.68", x=0.85, y=0.5, w=0.1, h=0.05,
-                               line_id=1, word_id=2)
+        new_match = _make_word(
+            text="CARLON", x=0.1, y=0.5, w=0.15, h=0.05, line_id=1, word_id=1
+        )
+        new_extra = _make_word(
+            text="8.68", x=0.85, y=0.5, w=0.1, h=0.05, line_id=1, word_id=2
+        )
 
         result = self._run_overlay(proc, [existing], [new_match, new_extra])
 
@@ -649,11 +745,13 @@ class TestUnmatchedWordAddition:
     def test_unmatched_word_no_overlap_skipped(self):
         """A new word with no Y-overlap to any line is skipped."""
         proc = _make_processor()
-        existing = _make_word(text="A", x=0.1, y=0.1, w=0.1, h=0.05,
-                              line_id=1, word_id=1)
+        existing = _make_word(
+            text="A", x=0.1, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         # New word at completely different Y
-        new_word = _make_word(text="X", x=0.1, y=0.9, w=0.1, h=0.05,
-                              line_id=1, word_id=1)
+        new_word = _make_word(
+            text="X", x=0.1, y=0.9, w=0.1, h=0.05, line_id=1, word_id=1
+        )
 
         result = self._run_overlay(proc, [existing], [new_word])
 
@@ -662,10 +760,19 @@ class TestUnmatchedWordAddition:
     def test_unmatched_word_low_confidence_skipped(self):
         """A new word with confidence below 0.5 is not added."""
         proc = _make_processor()
-        existing = _make_word(text="A", x=0.1, y=0.1, w=0.1, h=0.05,
-                              line_id=1, word_id=1)
-        new_word = _make_word(text="X", x=0.5, y=0.1, w=0.1, h=0.05,
-                              line_id=1, word_id=2, confidence=0.3)
+        existing = _make_word(
+            text="A", x=0.1, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        new_word = _make_word(
+            text="X",
+            x=0.5,
+            y=0.1,
+            w=0.1,
+            h=0.05,
+            line_id=1,
+            word_id=2,
+            confidence=0.3,
+        )
 
         result = self._run_overlay(proc, [existing], [new_word])
 
@@ -674,10 +781,12 @@ class TestUnmatchedWordAddition:
     def test_unmatched_word_noise_skipped(self):
         """A new word that is noise text (e.g. 'SA-/') is not added."""
         proc = _make_processor()
-        existing = _make_word(text="A", x=0.1, y=0.1, w=0.1, h=0.05,
-                              line_id=1, word_id=1)
-        new_word = _make_word(text="SA-/", x=0.5, y=0.1, w=0.1, h=0.05,
-                              line_id=1, word_id=2)
+        existing = _make_word(
+            text="A", x=0.1, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        new_word = _make_word(
+            text="SA-/", x=0.5, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+        )
 
         result = self._run_overlay(proc, [existing], [new_word])
 
@@ -686,10 +795,18 @@ class TestUnmatchedWordAddition:
     def test_line_text_includes_added_words(self):
         """ReceiptLine text is rebuilt to include the added word."""
         proc = _make_processor()
-        existing = _make_word(text="ADJUSTABLE", x=0.1, y=0.5, w=0.2, h=0.05,
-                              line_id=1, word_id=1)
-        new_word = _make_word(text="8.68", x=0.85, y=0.5, w=0.1, h=0.05,
-                              line_id=1, word_id=1)
+        existing = _make_word(
+            text="ADJUSTABLE",
+            x=0.1,
+            y=0.5,
+            w=0.2,
+            h=0.05,
+            line_id=1,
+            word_id=1,
+        )
+        new_word = _make_word(
+            text="8.68", x=0.85, y=0.5, w=0.1, h=0.05, line_id=1, word_id=1
+        )
 
         self._run_overlay(proc, [existing], [new_word])
 
@@ -701,12 +818,22 @@ class TestUnmatchedWordAddition:
         """When re-OCR changes word text, attached labels need revalidation."""
         proc = _make_processor()
         existing = _make_word(
-            text="579199", x=0.1, y=0.5, w=0.15, h=0.05,
-            line_id=1, word_id=1,
+            text="579199",
+            x=0.1,
+            y=0.5,
+            w=0.15,
+            h=0.05,
+            line_id=1,
+            word_id=1,
         )
         new_word = _make_word(
-            text="579.99", x=0.1, y=0.5, w=0.15, h=0.05,
-            line_id=1, word_id=1,
+            text="579.99",
+            x=0.1,
+            y=0.5,
+            w=0.15,
+            h=0.05,
+            line_id=1,
+            word_id=1,
         )
         label = _make_label(line_id=1, word_id=1)
 
@@ -730,8 +857,13 @@ class TestUnmatchedWordAddition:
         """Labels attached to words deleted by re-OCR must not be orphaned."""
         proc = _make_processor()
         existing = _make_word(
-            text="GARBLED", x=0.1, y=0.5, w=0.15, h=0.05,
-            line_id=1, word_id=1,
+            text="GARBLED",
+            x=0.1,
+            y=0.5,
+            w=0.15,
+            h=0.05,
+            line_id=1,
+            word_id=1,
         )
         label = _make_label(line_id=1, word_id=1)
 
@@ -747,6 +879,7 @@ class TestUnmatchedWordAddition:
 # 4. ReceiptLine.text rebuild
 # ===========================================================================
 
+
 class TestLineTextRebuild:
     def test_line_text_reconstructed(self):
         """Line text is rebuilt from updated words joined by spaces."""
@@ -759,29 +892,90 @@ class TestLineTextRebuild:
             s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w1 = _make_word(text="TOTAL", x=0.30, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        existing_w2 = _make_word(text="99.98", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2)
+        existing_w1 = _make_word(
+            text="TOTAL", x=0.30, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        existing_w2 = _make_word(
+            text="99.98", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+        )
         existing_line = _make_line(text="TOTAL 99.98", line_id=1)
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w1, existing_w2]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_w1,
+            existing_w2,
+        ]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
-        proc.dynamo.list_receipt_lines_from_receipt.return_value = [existing_line]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            existing_line
+        ]
 
-        new_receipt_word = _make_word(text="99.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_receipt_word = _make_word(
+            text="99.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_receipt_line = _make_line(text="99.99", line_id=1)
 
-        ocr_json = {"lines": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
+        ocr_json = {
+            "lines": [
+                {
+                    "text": "99.99",
+                    "bounding_box": {
+                        "x": 0,
+                        "y": 0.1,
+                        "width": 1,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0, "y": 0.1},
+                    "top_right": {"x": 1, "y": 0.1},
+                    "bottom_left": {"x": 0, "y": 0.15},
+                    "bottom_right": {"x": 1, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": [
+                        {
+                            "text": "99.99",
+                            "bounding_box": {
+                                "x": 0,
+                                "y": 0.1,
+                                "width": 1,
+                                "height": 0.05,
+                            },
+                            "top_left": {"x": 0, "y": 0.1},
+                            "top_right": {"x": 1, "y": 0.1},
+                            "bottom_left": {"x": 0, "y": 0.15},
+                            "bottom_right": {"x": 1, "y": 0.15},
+                            "confidence": 0.99,
+                            "letters": [],
+                        }
+                    ],
+                }
+            ]
+        }
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_receipt_line], [new_receipt_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_receipt_line], [new_receipt_word], []),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
 
         assert proc.dynamo.update_receipt_lines.called
@@ -793,34 +987,93 @@ class TestLineTextRebuild:
         """Lines without overlaid words should not be updated."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w = _make_word(text="99.98", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="99.98", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         line1 = _make_line(text="99.98", line_id=1)
         line2 = _make_line(text="OTHER LINE", line_id=2, y=0.5)
 
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
-        proc.dynamo.list_receipt_lines_from_receipt.return_value = [line1, line2]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            line1,
+            line2,
+        ]
 
-        new_receipt_word = _make_word(text="99.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_receipt_word = _make_word(
+            text="99.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_receipt_line = _make_line(text="99.99", line_id=1)
 
-        ocr_json = {"lines": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
+        ocr_json = {
+            "lines": [
+                {
+                    "text": "99.99",
+                    "bounding_box": {
+                        "x": 0,
+                        "y": 0.1,
+                        "width": 1,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0, "y": 0.1},
+                    "top_right": {"x": 1, "y": 0.1},
+                    "bottom_left": {"x": 0, "y": 0.15},
+                    "bottom_right": {"x": 1, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": [
+                        {
+                            "text": "99.99",
+                            "bounding_box": {
+                                "x": 0,
+                                "y": 0.1,
+                                "width": 1,
+                                "height": 0.05,
+                            },
+                            "top_left": {"x": 0, "y": 0.1},
+                            "top_right": {"x": 1, "y": 0.1},
+                            "bottom_left": {"x": 0, "y": 0.15},
+                            "bottom_right": {"x": 1, "y": 0.15},
+                            "confidence": 0.99,
+                            "letters": [],
+                        }
+                    ],
+                }
+            ]
+        }
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_receipt_line], [new_receipt_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_receipt_line], [new_receipt_word], []),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
 
         updated_lines = proc.dynamo.update_receipt_lines.call_args[0][0]
@@ -831,35 +1084,93 @@ class TestLineTextRebuild:
         """Words should be ordered by word_id when rebuilding text."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # word_id=2 appears first in list but should be second in text
-        w1 = _make_word(text="TOTAL", x=0.30, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        w2 = _make_word(text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2)
+        w1 = _make_word(
+            text="TOTAL", x=0.30, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        w2 = _make_word(
+            text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+        )
         line = _make_line(text="TOTAL OLD", line_id=1)
 
         proc.dynamo.list_receipt_words_from_receipt.return_value = [w2, w1]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
         proc.dynamo.list_receipt_lines_from_receipt.return_value = [line]
 
-        new_word = _make_word(text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="NEW", line_id=1)
 
-        ocr_json = {"lines": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
+        ocr_json = {
+            "lines": [
+                {
+                    "text": "NEW",
+                    "bounding_box": {
+                        "x": 0,
+                        "y": 0.1,
+                        "width": 1,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0, "y": 0.1},
+                    "top_right": {"x": 1, "y": 0.1},
+                    "bottom_left": {"x": 0, "y": 0.15},
+                    "bottom_right": {"x": 1, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": [
+                        {
+                            "text": "NEW",
+                            "bounding_box": {
+                                "x": 0,
+                                "y": 0.1,
+                                "width": 1,
+                                "height": 0.05,
+                            },
+                            "top_left": {"x": 0, "y": 0.1},
+                            "top_right": {"x": 1, "y": 0.1},
+                            "bottom_left": {"x": 0, "y": 0.15},
+                            "bottom_right": {"x": 1, "y": 0.15},
+                            "confidence": 0.99,
+                            "letters": [],
+                        }
+                    ],
+                }
+            ]
+        }
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
 
         updated_lines = proc.dynamo.update_receipt_lines.call_args[0][0]
@@ -870,35 +1181,92 @@ class TestLineTextRebuild:
 # 5. ReceiptLetter replacement
 # ===========================================================================
 
+
 class TestLetterReplacement:
     def _run_with_letters(self, proc, old_letters, new_letters_from_ocr):
         """Run overlay and return (letters_to_add, letters_to_delete) from mock calls."""
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w = _make_word(text="AB", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="AB", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = old_letters
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
-        new_word = _make_word(text="CD", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="CD", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="CD", line_id=1)
 
-        ocr_json = {"lines": [{"text": "CD", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "CD", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
+        ocr_json = {
+            "lines": [
+                {
+                    "text": "CD",
+                    "bounding_box": {
+                        "x": 0,
+                        "y": 0.1,
+                        "width": 1,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0, "y": 0.1},
+                    "top_right": {"x": 1, "y": 0.1},
+                    "bottom_left": {"x": 0, "y": 0.15},
+                    "bottom_right": {"x": 1, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": [
+                        {
+                            "text": "CD",
+                            "bounding_box": {
+                                "x": 0,
+                                "y": 0.1,
+                                "width": 1,
+                                "height": 0.05,
+                            },
+                            "top_left": {"x": 0, "y": 0.1},
+                            "top_right": {"x": 1, "y": 0.1},
+                            "bottom_left": {"x": 0, "y": 0.15},
+                            "bottom_right": {"x": 1, "y": 0.15},
+                            "confidence": 0.99,
+                            "letters": [],
+                        }
+                    ],
+                }
+            ]
+        }
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], new_letters_from_ocr)):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], new_letters_from_ocr),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
 
         return proc
@@ -906,7 +1274,9 @@ class TestLetterReplacement:
     def test_old_letters_deleted(self):
         proc = _make_processor()
         old_letter = _make_letter(text="A", letter_id=1)
-        self._run_with_letters(proc, old_letters=[old_letter], new_letters_from_ocr=[])
+        self._run_with_letters(
+            proc, old_letters=[old_letter], new_letters_from_ocr=[]
+        )
         assert proc.dynamo.remove_receipt_letters.called
         deleted = proc.dynamo.remove_receipt_letters.call_args[0][0]
         assert len(deleted) == 1
@@ -914,9 +1284,31 @@ class TestLetterReplacement:
 
     def test_new_letters_use_existing_word_ids(self):
         proc = _make_processor()
-        new_letter_c = _make_letter(text="C", line_id=1, word_id=1, letter_id=1, x=0.0, y=0.1, w=0.01, h=0.05)
-        new_letter_d = _make_letter(text="D", line_id=1, word_id=1, letter_id=2, x=0.01, y=0.1, w=0.01, h=0.05)
-        self._run_with_letters(proc, old_letters=[], new_letters_from_ocr=[new_letter_c, new_letter_d])
+        new_letter_c = _make_letter(
+            text="C",
+            line_id=1,
+            word_id=1,
+            letter_id=1,
+            x=0.0,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
+        new_letter_d = _make_letter(
+            text="D",
+            line_id=1,
+            word_id=1,
+            letter_id=2,
+            x=0.01,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
+        self._run_with_letters(
+            proc,
+            old_letters=[],
+            new_letters_from_ocr=[new_letter_c, new_letter_d],
+        )
         assert proc.dynamo.put_receipt_letters.called
         added = proc.dynamo.put_receipt_letters.call_args[0][0]
         assert len(added) == 2
@@ -927,9 +1319,31 @@ class TestLetterReplacement:
 
     def test_sequential_letter_ids_starting_at_1(self):
         proc = _make_processor()
-        new_letter_c = _make_letter(text="C", line_id=1, word_id=1, letter_id=1, x=0.0, y=0.1, w=0.01, h=0.05)
-        new_letter_d = _make_letter(text="D", line_id=1, word_id=1, letter_id=2, x=0.01, y=0.1, w=0.01, h=0.05)
-        self._run_with_letters(proc, old_letters=[], new_letters_from_ocr=[new_letter_c, new_letter_d])
+        new_letter_c = _make_letter(
+            text="C",
+            line_id=1,
+            word_id=1,
+            letter_id=1,
+            x=0.0,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
+        new_letter_d = _make_letter(
+            text="D",
+            line_id=1,
+            word_id=1,
+            letter_id=2,
+            x=0.01,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
+        self._run_with_letters(
+            proc,
+            old_letters=[],
+            new_letters_from_ocr=[new_letter_c, new_letter_d],
+        )
         added = proc.dynamo.put_receipt_letters.call_args[0][0]
         letter_ids = [l.letter_id for l in added]
         assert letter_ids == [1, 2]
@@ -938,6 +1352,7 @@ class TestLetterReplacement:
 # ===========================================================================
 # 6. DynamoDB write ordering
 # ===========================================================================
+
 
 class TestWriteOrdering:
     def test_delete_before_add(self):
@@ -948,34 +1363,99 @@ class TestWriteOrdering:
         """
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w = _make_word(text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         old_letter = _make_letter(text="O", letter_id=1)
 
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = [old_letter]
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
-        new_letter = _make_letter(text="N", line_id=1, word_id=1, letter_id=1, x=0.0, y=0.1, w=0.01, h=0.05)
-        new_word = _make_word(text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_letter = _make_letter(
+            text="N",
+            line_id=1,
+            word_id=1,
+            letter_id=1,
+            x=0.0,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
+        new_word = _make_word(
+            text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="NEW", line_id=1)
 
-        ocr_json = {"lines": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
+        ocr_json = {
+            "lines": [
+                {
+                    "text": "NEW",
+                    "bounding_box": {
+                        "x": 0,
+                        "y": 0.1,
+                        "width": 1,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0, "y": 0.1},
+                    "top_right": {"x": 1, "y": 0.1},
+                    "bottom_left": {"x": 0, "y": 0.15},
+                    "bottom_right": {"x": 1, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": [
+                        {
+                            "text": "NEW",
+                            "bounding_box": {
+                                "x": 0,
+                                "y": 0.1,
+                                "width": 1,
+                                "height": 0.05,
+                            },
+                            "top_left": {"x": 0, "y": 0.1},
+                            "top_right": {"x": 1, "y": 0.1},
+                            "bottom_left": {"x": 0, "y": 0.15},
+                            "bottom_right": {"x": 1, "y": 0.15},
+                            "confidence": 0.99,
+                            "letters": [],
+                        }
+                    ],
+                }
+            ]
+        }
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [new_letter])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], [new_letter]),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
 
         # Extract call order from the mock manager
@@ -989,41 +1469,100 @@ class TestWriteOrdering:
                 del_idx = i
         assert add_idx is not None, "put_receipt_letters was never called"
         assert del_idx is not None, "remove_receipt_letters was never called"
-        assert del_idx < add_idx, "remove_receipt_letters must be called before put_receipt_letters"
+        assert (
+            del_idx < add_idx
+        ), "remove_receipt_letters must be called before put_receipt_letters"
 
 
 # ===========================================================================
 # 7. is_noise recomputation
 # ===========================================================================
 
+
 class TestIsNoiseRecomputation:
     def _run_overlay_with_text(self, proc, new_text):
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w = _make_word(text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
-        new_word = _make_word(text=new_text, x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text=new_text, x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text=new_text, line_id=1)
 
-        ocr_json = {"lines": [{"text": new_text, "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": new_text, "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
+        ocr_json = {
+            "lines": [
+                {
+                    "text": new_text,
+                    "bounding_box": {
+                        "x": 0,
+                        "y": 0.1,
+                        "width": 1,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0, "y": 0.1},
+                    "top_right": {"x": 1, "y": 0.1},
+                    "bottom_left": {"x": 0, "y": 0.15},
+                    "bottom_right": {"x": 1, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": [
+                        {
+                            "text": new_text,
+                            "bounding_box": {
+                                "x": 0,
+                                "y": 0.1,
+                                "width": 1,
+                                "height": 0.05,
+                            },
+                            "top_left": {"x": 0, "y": 0.1},
+                            "top_right": {"x": 1, "y": 0.1},
+                            "bottom_left": {"x": 0, "y": 0.15},
+                            "bottom_right": {"x": 1, "y": 0.15},
+                            "confidence": 0.99,
+                            "letters": [],
+                        }
+                    ],
+                }
+            ]
+        }
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
         return proc
 
@@ -1046,68 +1585,125 @@ class TestIsNoiseRecomputation:
 # 8. Integration / end-to-end (fully mocked)
 # ===========================================================================
 
+
 class TestIntegrationEndToEnd:
     def _build_ocr_json(self, words_data):
         """Build a minimal OCR JSON with the given words."""
         words = []
         for wd in words_data:
-            words.append({
-                "text": wd["text"],
-                "bounding_box": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1), "width": wd.get("w", 1.0), "height": wd.get("h", 0.05)},
-                "top_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1)},
-                "top_right": {"x": wd.get("x", 0.0) + wd.get("w", 1.0), "y": wd.get("y", 0.1)},
-                "bottom_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1) + wd.get("h", 0.05)},
-                "bottom_right": {"x": wd.get("x", 0.0) + wd.get("w", 1.0), "y": wd.get("y", 0.1) + wd.get("h", 0.05)},
-                "confidence": 0.99,
-                "letters": [],
-            })
+            words.append(
+                {
+                    "text": wd["text"],
+                    "bounding_box": {
+                        "x": wd.get("x", 0.0),
+                        "y": wd.get("y", 0.1),
+                        "width": wd.get("w", 1.0),
+                        "height": wd.get("h", 0.05),
+                    },
+                    "top_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1)},
+                    "top_right": {
+                        "x": wd.get("x", 0.0) + wd.get("w", 1.0),
+                        "y": wd.get("y", 0.1),
+                    },
+                    "bottom_left": {
+                        "x": wd.get("x", 0.0),
+                        "y": wd.get("y", 0.1) + wd.get("h", 0.05),
+                    },
+                    "bottom_right": {
+                        "x": wd.get("x", 0.0) + wd.get("w", 1.0),
+                        "y": wd.get("y", 0.1) + wd.get("h", 0.05),
+                    },
+                    "confidence": 0.99,
+                    "letters": [],
+                }
+            )
         line_text = " ".join(wd["text"] for wd in words_data)
         return {
-            "lines": [{
-                "text": line_text,
-                "bounding_box": {"x": 0.0, "y": 0.1, "width": 1.0, "height": 0.05},
-                "top_left": {"x": 0.0, "y": 0.1},
-                "top_right": {"x": 1.0, "y": 0.1},
-                "bottom_left": {"x": 0.0, "y": 0.15},
-                "bottom_right": {"x": 1.0, "y": 0.15},
-                "confidence": 0.99,
-                "words": words,
-            }]
+            "lines": [
+                {
+                    "text": line_text,
+                    "bounding_box": {
+                        "x": 0.0,
+                        "y": 0.1,
+                        "width": 1.0,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0.0, "y": 0.1},
+                    "top_right": {"x": 1.0, "y": 0.1},
+                    "bottom_left": {"x": 0.0, "y": 0.15},
+                    "bottom_right": {"x": 1.0, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": words,
+                }
+            ]
         }
 
     def test_full_flow(self):
         """End-to-end: one new word overlays one existing word, letters replaced, line rebuilt."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w = _make_word(text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         existing_line = _make_line(text="OLD", line_id=1)
         old_letter = _make_letter(text="O", letter_id=1)
 
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = [old_letter]
-        proc.dynamo.list_receipt_lines_from_receipt.return_value = [existing_line]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            existing_line
+        ]
 
-        new_word = _make_word(text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="NEW", line_id=1)
-        new_letter_n = _make_letter(text="N", line_id=1, word_id=1, letter_id=1, x=0.0, y=0.1, w=0.01, h=0.05)
+        new_letter_n = _make_letter(
+            text="N",
+            line_id=1,
+            word_id=1,
+            letter_id=1,
+            x=0.0,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
 
         ocr_json = self._build_ocr_json([{"text": "NEW"}])
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [new_letter_n])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], [new_letter_n]),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1123,13 +1719,18 @@ class TestIntegrationEndToEnd:
         """Should return error when no existing words found."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         proc.dynamo.list_receipt_words_from_receipt.return_value = []
@@ -1138,9 +1739,19 @@ class TestIntegrationEndToEnd:
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([], [], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([], [], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is False
@@ -1150,32 +1761,54 @@ class TestIntegrationEndToEnd:
         """If regional words don't match any existing words, overlay still succeeds with 0 replacements."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # Existing word is far from where the regional word will land
-        existing_w = _make_word(text="FAR", x=0.80, y=0.9, w=0.1, h=0.02, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="FAR", x=0.80, y=0.9, w=0.1, h=0.02, line_id=1, word_id=1
+        )
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
         # New word lands at y=0.1 which has no overlap with existing at y=0.9
-        new_word = _make_word(text="99.99", x=0.0, y=0.1, w=1.0, h=0.02, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="99.99", x=0.0, y=0.1, w=1.0, h=0.02, line_id=1, word_id=1
+        )
         new_line = _make_line(text="99.99", line_id=1)
 
         ocr_json = self._build_ocr_json([{"text": "99.99", "h": 0.02}])
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1185,7 +1818,8 @@ class TestIntegrationEndToEnd:
         """Should return error when receipt_id is None."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=None,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=None,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
         )
         routing = SimpleNamespace()
@@ -1197,7 +1831,8 @@ class TestIntegrationEndToEnd:
         """Should return error when reocr_region is missing/empty."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
+            image_id="00000000-0000-4000-8000-000000000001",
+            receipt_id=1,
             reocr_region=None,
         )
         routing = SimpleNamespace()
@@ -1210,6 +1845,7 @@ class TestIntegrationEndToEnd:
 # 9. Orphan deletion
 # ===========================================================================
 
+
 class TestOrphanDeletion:
     """Tests for deleting candidate words that aren't matched by new re-OCR words."""
 
@@ -1217,72 +1853,138 @@ class TestOrphanDeletion:
         """Build a minimal OCR JSON with the given words."""
         words = []
         for wd in words_data:
-            words.append({
-                "text": wd["text"],
-                "bounding_box": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1), "width": wd.get("w", 1.0), "height": wd.get("h", 0.05)},
-                "top_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1)},
-                "top_right": {"x": wd.get("x", 0.0) + wd.get("w", 1.0), "y": wd.get("y", 0.1)},
-                "bottom_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1) + wd.get("h", 0.05)},
-                "bottom_right": {"x": wd.get("x", 0.0) + wd.get("w", 1.0), "y": wd.get("y", 0.1) + wd.get("h", 0.05)},
-                "confidence": 0.99,
-                "letters": [],
-            })
+            words.append(
+                {
+                    "text": wd["text"],
+                    "bounding_box": {
+                        "x": wd.get("x", 0.0),
+                        "y": wd.get("y", 0.1),
+                        "width": wd.get("w", 1.0),
+                        "height": wd.get("h", 0.05),
+                    },
+                    "top_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1)},
+                    "top_right": {
+                        "x": wd.get("x", 0.0) + wd.get("w", 1.0),
+                        "y": wd.get("y", 0.1),
+                    },
+                    "bottom_left": {
+                        "x": wd.get("x", 0.0),
+                        "y": wd.get("y", 0.1) + wd.get("h", 0.05),
+                    },
+                    "bottom_right": {
+                        "x": wd.get("x", 0.0) + wd.get("w", 1.0),
+                        "y": wd.get("y", 0.1) + wd.get("h", 0.05),
+                    },
+                    "confidence": 0.99,
+                    "letters": [],
+                }
+            )
         line_text = " ".join(wd["text"] for wd in words_data)
         return {
-            "lines": [{
-                "text": line_text,
-                "bounding_box": {"x": 0.0, "y": 0.1, "width": 1.0, "height": 0.05},
-                "top_left": {"x": 0.0, "y": 0.1},
-                "top_right": {"x": 1.0, "y": 0.1},
-                "bottom_left": {"x": 0.0, "y": 0.15},
-                "bottom_right": {"x": 1.0, "y": 0.15},
-                "confidence": 0.99,
-                "words": words,
-            }]
+            "lines": [
+                {
+                    "text": line_text,
+                    "bounding_box": {
+                        "x": 0.0,
+                        "y": 0.1,
+                        "width": 1.0,
+                        "height": 0.05,
+                    },
+                    "top_left": {"x": 0.0, "y": 0.1},
+                    "top_right": {"x": 1.0, "y": 0.1},
+                    "bottom_left": {"x": 0.0, "y": 0.15},
+                    "bottom_right": {"x": 1.0, "y": 0.15},
+                    "confidence": 0.99,
+                    "words": words,
+                }
+            ]
         }
 
     def test_orphaned_word_deleted(self):
         """An existing word in the re-OCR region that no new word matches should be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
+            image_id=_IMG_ID,
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # Two existing words in the region: "GOOD" at x=0.75, "JUNK" at x=0.90.
         # Re-OCR produces only one word ("GOOD") matching the first.
         # "JUNK" becomes an orphan and should be deleted.
-        existing_good = _make_word(text="GOOD", x=0.75, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        existing_junk = _make_word(text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
-        junk_letter = _make_letter(text="J", line_id=1, word_id=2, letter_id=1, x=0.90, y=0.1, w=0.01, h=0.05)
+        existing_good = _make_word(
+            text="GOOD", x=0.75, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        existing_junk = _make_word(
+            text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2
+        )
+        junk_letter = _make_letter(
+            text="J",
+            line_id=1,
+            word_id=2,
+            letter_id=1,
+            x=0.90,
+            y=0.1,
+            w=0.01,
+            h=0.05,
+        )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_junk]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_good,
+            existing_junk,
+        ]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
 
         # list_receipt_letters_from_word is called for matched words AND orphans.
         # First call: matched word (existing_good) — returns empty.
         # Second call: orphan (existing_junk) — returns its letter.
-        proc.dynamo.list_receipt_letters_from_word.side_effect = [[], [junk_letter]]
+        proc.dynamo.list_receipt_letters_from_word.side_effect = [
+            [],
+            [junk_letter],
+        ]
 
         existing_line = _make_line(text="GOOD JUNK", line_id=1)
-        proc.dynamo.list_receipt_lines_from_receipt.return_value = [existing_line]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            existing_line
+        ]
 
         # Re-OCR produces one word "BETTER" that matches "GOOD" by position.
-        new_word = _make_word(text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="BETTER", line_id=1)
 
-        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.0, "w": 0.5}])
+        ocr_json = self._build_ocr_json(
+            [{"text": "BETTER", "x": 0.0, "w": 0.5}]
+        )
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1304,50 +2006,94 @@ class TestOrphanDeletion:
         """Rebuilt ReceiptLine.text must not contain orphaned words."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
+            image_id=_IMG_ID,
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # Three existing words on line 1, all inside the region.
         # Re-OCR matches word 1 ("AAA") and word 3 ("CCC") but NOT word 2 ("GARBLED").
-        existing_a = _make_word(text="AAA", x=0.72, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1)
-        existing_garble = _make_word(text="GARBLED", x=0.80, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
-        existing_c = _make_word(text="CCC", x=0.88, y=0.1, w=0.05, h=0.05, line_id=1, word_id=3)
+        existing_a = _make_word(
+            text="AAA", x=0.72, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1
+        )
+        existing_garble = _make_word(
+            text="GARBLED", x=0.80, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2
+        )
+        existing_c = _make_word(
+            text="CCC", x=0.88, y=0.1, w=0.05, h=0.05, line_id=1, word_id=3
+        )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_a, existing_garble, existing_c]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_a,
+            existing_garble,
+            existing_c,
+        ]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
 
         # Letters: matched words return empty, orphan returns its letters.
         garble_letters = [
-            _make_letter(text="G", line_id=1, word_id=2, letter_id=1, x=0.80, y=0.1),
-            _make_letter(text="A", line_id=1, word_id=2, letter_id=2, x=0.81, y=0.1),
+            _make_letter(
+                text="G", line_id=1, word_id=2, letter_id=1, x=0.80, y=0.1
+            ),
+            _make_letter(
+                text="A", line_id=1, word_id=2, letter_id=2, x=0.81, y=0.1
+            ),
         ]
         # Calls: word_id=1 match, word_id=3 match, then orphan word_id=2.
-        proc.dynamo.list_receipt_letters_from_word.side_effect = [[], [], garble_letters]
+        proc.dynamo.list_receipt_letters_from_word.side_effect = [
+            [],
+            [],
+            garble_letters,
+        ]
 
         existing_line = _make_line(text="AAA GARBLED CCC", line_id=1)
-        proc.dynamo.list_receipt_lines_from_receipt.return_value = [existing_line]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            existing_line
+        ]
 
         # Re-OCR produces 2 words at the same Y, matching word 1 and word 3.
-        new_a = _make_word(text="ALPHA", x=0.0, y=0.1, w=0.3, h=0.05, line_id=1, word_id=1)
-        new_c = _make_word(text="GAMMA", x=0.5, y=0.1, w=0.3, h=0.05, line_id=1, word_id=2)
+        new_a = _make_word(
+            text="ALPHA", x=0.0, y=0.1, w=0.3, h=0.05, line_id=1, word_id=1
+        )
+        new_c = _make_word(
+            text="GAMMA", x=0.5, y=0.1, w=0.3, h=0.05, line_id=1, word_id=2
+        )
         new_line = _make_line(text="ALPHA GAMMA", line_id=1)
 
-        ocr_json = self._build_ocr_json([
-            {"text": "ALPHA", "x": 0.0, "w": 0.3},
-            {"text": "GAMMA", "x": 0.5, "w": 0.3},
-        ])
+        ocr_json = self._build_ocr_json(
+            [
+                {"text": "ALPHA", "x": 0.0, "w": 0.3},
+                {"text": "GAMMA", "x": 0.5, "w": 0.3},
+            ]
+        )
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_a, new_c], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_a, new_c], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1365,79 +2111,140 @@ class TestOrphanDeletion:
         """Orphan letters must be removed before orphan words are deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
+            image_id=_IMG_ID,
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # One existing word in the region, no re-OCR words match it.
-        existing_orphan = _make_word(text="STALE", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        orphan_letter = _make_letter(text="S", line_id=1, word_id=1, letter_id=1, x=0.80, y=0.1)
+        existing_orphan = _make_word(
+            text="STALE", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        orphan_letter = _make_letter(
+            text="S", line_id=1, word_id=1, letter_id=1, x=0.80, y=0.1
+        )
 
         # Also add an existing word OUTSIDE the region so the receipt has words.
-        existing_outside = _make_word(text="KEEPER", x=0.10, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2)
+        existing_outside = _make_word(
+            text="KEEPER", x=0.10, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+        )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_orphan, existing_outside]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
-        proc.dynamo.list_receipt_letters_from_word.return_value = [orphan_letter]
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_orphan,
+            existing_outside,
+        ]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
+        proc.dynamo.list_receipt_letters_from_word.return_value = [
+            orphan_letter
+        ]
         proc.dynamo.list_receipt_lines_from_receipt.return_value = [
             _make_line(text="STALE KEEPER", line_id=1),
         ]
 
         # Re-OCR produces no words (region was all noise).
-        ocr_json = self._build_ocr_json([{"text": "X", "x": 0.0, "y": 0.8, "h": 0.01}])
+        ocr_json = self._build_ocr_json(
+            [{"text": "X", "x": 0.0, "y": 0.8, "h": 0.01}]
+        )
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        new_word = _make_word(text="X", x=0.0, y=0.8, w=0.01, h=0.01, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="X", x=0.0, y=0.8, w=0.01, h=0.01, line_id=1, word_id=1
+        )
         new_line = _make_line(text="X", line_id=1)
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             proc._process_regional_reocr_job(ocr_job, routing)
 
         # Extract call order: remove_receipt_letters must precede delete_receipt_words.
         call_names = [c[0] for c in proc.dynamo.method_calls]
-        remove_idx = next(i for i, n in enumerate(call_names) if n == "remove_receipt_letters")
-        delete_idx = next(i for i, n in enumerate(call_names) if n == "delete_receipt_words")
-        assert remove_idx < delete_idx, (
-            "remove_receipt_letters must be called before delete_receipt_words"
+        remove_idx = next(
+            i
+            for i, n in enumerate(call_names)
+            if n == "remove_receipt_letters"
         )
+        delete_idx = next(
+            i for i, n in enumerate(call_names) if n == "delete_receipt_words"
+        )
+        assert (
+            remove_idx < delete_idx
+        ), "remove_receipt_letters must be called before delete_receipt_words"
 
     def test_no_orphans_when_all_matched(self):
         """When every candidate word matches a re-OCR word, nothing should be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
+            image_id=_IMG_ID,
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
-        existing_w = _make_word(text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_w = _make_word(
+            text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
-        new_word = _make_word(text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="NEW", line_id=1)
 
         ocr_json = self._build_ocr_json([{"text": "NEW"}])
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1448,40 +2255,69 @@ class TestOrphanDeletion:
         """A word straddling the region edge (<80% contained) must NOT be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
+            image_id=_IMG_ID,
+            receipt_id=1,
             # Region covers x=[0.70, 1.0], y=[0.0, 1.0]
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # "GOOD" is fully inside the region (center at x=0.85) — will match.
-        existing_good = _make_word(text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_good = _make_word(
+            text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
         # "EDGE" straddles the left boundary: x=[0.65, 0.85], center=0.75
         # (inside region), but containment ~75% < 80% threshold.
-        existing_edge = _make_word(text="EDGE", x=0.65, y=0.1, w=0.20, h=0.05, line_id=1, word_id=2)
+        existing_edge = _make_word(
+            text="EDGE", x=0.65, y=0.1, w=0.20, h=0.05, line_id=1, word_id=2
+        )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_edge]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_good,
+            existing_edge,
+        ]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
         # Re-OCR produces one word at crop-space x=0.5 → receipt-relative x~0.85,
         # which is closer to GOOD (center=0.85) than EDGE (center=0.75).
         # The greedy matcher will pair it with GOOD, leaving EDGE unmatched.
-        new_word = _make_word(text="BETTER", x=0.5, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="BETTER", x=0.5, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="BETTER", line_id=1)
 
-        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.5, "w": 0.5}])
+        ocr_json = self._build_ocr_json(
+            [{"text": "BETTER", "x": 0.5, "w": 0.5}]
+        )
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1493,34 +2329,63 @@ class TestOrphanDeletion:
         """A word fully inside the region (100% contained) that isn't matched SHOULD be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
+            image_id=_IMG_ID,
+            receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
-            s3_bucket="b", s3_key="k",
+            s3_bucket="b",
+            s3_key="k",
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
 
         # "GOOD" matches, "JUNK" is fully inside (x=[0.90, 0.95]) — 100% contained.
-        existing_good = _make_word(text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
-        existing_junk = _make_word(text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
+        existing_good = _make_word(
+            text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        )
+        existing_junk = _make_word(
+            text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2
+        )
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_junk]
-        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_good,
+            existing_junk,
+        ]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [],
+            None,
+        )
         proc.dynamo.list_receipt_letters_from_word.side_effect = [[], []]
         proc.dynamo.list_receipt_lines_from_receipt.return_value = []
 
-        new_word = _make_word(text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_word = _make_word(
+            text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1
+        )
         new_line = _make_line(text="BETTER", line_id=1)
 
-        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.0, "w": 0.5}])
+        ocr_json = self._build_ocr_json(
+            [{"text": "BETTER", "x": 0.0, "w": 0.5}]
+        )
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
-        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
-             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
-             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3", return_value=tmp
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=([new_line], [new_word], []),
+            ),
+        ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
 
         assert result["success"] is True
@@ -1534,20 +2399,30 @@ class TestOrphanDeletion:
 # 9. SMART re-OCR completion metrics on the OCRJob
 # ===========================================================================
 
+
 class TestReocrCompletionMetrics:
     def _run(self, proc, existing_words, new_words, region=None):
         if region is None:
             region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
         ocr_job = SimpleNamespace(
-            image_id=_IMG_ID, receipt_id=1,
-            reocr_region=region, s3_bucket="b", s3_key="k",
-            status=None, updated_at=None,
-            reocr_words_accepted=None, reocr_words_rejected=None,
-            reocr_delta_before=None, reocr_delta_after=None,
+            image_id=_IMG_ID,
+            receipt_id=1,
+            reocr_region=region,
+            s3_bucket="b",
+            s3_key="k",
+            status=None,
+            updated_at=None,
+            reocr_words_accepted=None,
+            reocr_words_rejected=None,
+            reocr_delta_before=None,
+            reocr_delta_after=None,
         )
         routing = SimpleNamespace(
-            s3_bucket="b", s3_key="r.json",
-            status=None, receipt_count=None, updated_at=None,
+            s3_bucket="b",
+            s3_key="r.json",
+            status=None,
+            receipt_count=None,
+            updated_at=None,
         )
         proc.dynamo.list_receipt_words_from_receipt.return_value = (
             existing_words
@@ -1562,17 +2437,22 @@ class TestReocrCompletionMetrics:
         tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps({"lines": []}))
 
-        new_lines = [_make_line(text=w.text, line_id=w.line_id)
-                     for w in new_words]
-        with patch(
-            "handler.ocr_processor.download_file_from_s3",
-            return_value=tmp,
-        ), patch(
-            "handler.ocr_processor.process_ocr_dict_as_image",
-            return_value=([], [], []),
-        ), patch(
-            "handler.ocr_processor.image_ocr_to_receipt_ocr",
-            return_value=(new_lines, new_words, []),
+        new_lines = [
+            _make_line(text=w.text, line_id=w.line_id) for w in new_words
+        ]
+        with (
+            patch(
+                "handler.ocr_processor.download_file_from_s3",
+                return_value=tmp,
+            ),
+            patch(
+                "handler.ocr_processor.process_ocr_dict_as_image",
+                return_value=([], [], []),
+            ),
+            patch(
+                "handler.ocr_processor.image_ocr_to_receipt_ocr",
+                return_value=(new_lines, new_words, []),
+            ),
         ):
             result = proc._process_regional_reocr_job(ocr_job, routing)
         return result, ocr_job
@@ -1586,9 +2466,7 @@ class TestReocrCompletionMetrics:
             )
         ]
         proc.dynamo.get_receipt_summary.return_value = SimpleNamespace(
-            summary=SimpleNamespace(
-                subtotal=9.99, grand_total=None, tax=None
-            )
+            summary=SimpleNamespace(subtotal=9.99, grand_total=None, tax=None)
         )
 
     def test_metrics_persisted_on_ocr_job(self):
@@ -1597,14 +2475,19 @@ class TestReocrCompletionMetrics:
 
         # Line 1: "ITEM" (left, outside region) + "8.99" (right, inside).
         existing = [
-            _make_word(text="ITEM", x=0.1, y=0.1, w=0.1, h=0.05,
-                       line_id=1, word_id=1),
-            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
-                       line_id=1, word_id=2),
+            _make_word(
+                text="ITEM", x=0.1, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+            ),
+            _make_word(
+                text="8.99", x=0.75, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+            ),
         ]
         # Regional pass reads the price correctly as 9.99.
-        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
-                          line_id=1, word_id=1)]
+        new = [
+            _make_word(
+                text="9.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+            )
+        ]
 
         result, ocr_job = self._run(proc, existing, new)
 
@@ -1626,12 +2509,30 @@ class TestReocrCompletionMetrics:
         proc = _make_processor()
         self._with_items_baseline(proc, subtotal=9.99)
         existing = [
-            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
-                       line_id=1, word_id=2, confidence=0.99),
+            _make_word(
+                text="8.99",
+                x=0.75,
+                y=0.1,
+                w=0.1,
+                h=0.05,
+                line_id=1,
+                word_id=2,
+                confidence=0.99,
+            ),
         ]
         # Low-confidence replacement is rejected by Guard 3a.
-        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
-                          line_id=1, word_id=1, confidence=0.3)]
+        new = [
+            _make_word(
+                text="9.99",
+                x=0.0,
+                y=0.1,
+                w=1.0,
+                h=0.05,
+                line_id=1,
+                word_id=1,
+                confidence=0.3,
+            )
+        ]
 
         result, ocr_job = self._run(proc, existing, new)
 
@@ -1645,11 +2546,15 @@ class TestReocrCompletionMetrics:
         # No sections / summary mocks configured: MagicMock defaults are
         # not iterable, so the baseline lookup fails soft -> null deltas.
         existing = [
-            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
-                       line_id=1, word_id=2),
+            _make_word(
+                text="8.99", x=0.75, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+            ),
         ]
-        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
-                          line_id=1, word_id=1)]
+        new = [
+            _make_word(
+                text="9.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+            )
+        ]
 
         result, ocr_job = self._run(proc, existing, new)
 
@@ -1666,11 +2571,15 @@ class TestReocrCompletionMetrics:
         proc = _make_processor()
         proc.dynamo.update_ocr_job.side_effect = RuntimeError("boom")
         existing = [
-            _make_word(text="8.99", x=0.75, y=0.1, w=0.1, h=0.05,
-                       line_id=1, word_id=2),
+            _make_word(
+                text="8.99", x=0.75, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2
+            ),
         ]
-        new = [_make_word(text="9.99", x=0.0, y=0.1, w=1.0, h=0.05,
-                          line_id=1, word_id=1)]
+        new = [
+            _make_word(
+                text="9.99", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1
+            )
+        ]
 
         result, _ = self._run(proc, existing, new)
         assert result["success"] is True

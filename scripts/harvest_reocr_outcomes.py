@@ -30,7 +30,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from receipt_dynamo import DynamoClient
-
 from receipt_upload.line_items.reocr_strategy import (
     LEDGER_ASSET,
     build_ledger,
