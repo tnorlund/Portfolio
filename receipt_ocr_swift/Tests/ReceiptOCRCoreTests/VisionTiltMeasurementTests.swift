@@ -17,6 +17,15 @@ import CoreText
 /// geometry. swift-testing so the suite runs under CommandLineTools too.
 @Suite struct VisionTiltMeasurementTests {
 
+    /// Live Vision inference stalls on GitHub's headless macOS runners
+    /// (the first swift-ci run of live-Vision tests sat >30 min inside
+    /// VNRecognizeTextRequest), so these run off-CI only — on real
+    /// hardware, where RUNNERS.md declares the mini the authoritative
+    /// Swift machine.
+    private static var liveVisionAvailable: Bool {
+        ProcessInfo.processInfo.environment["CI"] == nil
+    }
+
     /// White canvas with receipt-like black text, drawn rotated by
     /// `tiltDegrees` about the image center (positive = counter-clockwise,
     /// matching Vision's bottom-left-origin angle convention).
@@ -87,7 +96,7 @@ import CoreText
         lines.compactMap { $0["angle_degrees"] as? Double }
     }
 
-    @Test func uprightTextMeasuresNearZero() throws {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func uprightTextMeasuresNearZero() throws {
         let json = try ocrJSON(tiltDegrees: 0)
         let lines = try lineDicts(json)
         try #require(!lines.isEmpty)
@@ -96,7 +105,7 @@ import CoreText
         }
     }
 
-    @Test func tiltedTextMeasuresItsTilt() throws {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func tiltedTextMeasuresItsTilt() throws {
         let tilt = 8.0
         let json = try ocrJSON(tiltDegrees: tilt)
         let lines = try lineDicts(json)
@@ -118,7 +127,7 @@ import CoreText
         }
     }
 
-    @Test func tiltedQuadCornersAreNotAxisAligned() throws {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func tiltedQuadCornersAreNotAxisAligned() throws {
         let json = try ocrJSON(tiltDegrees: 8.0)
         let lines = try lineDicts(json)
         try #require(!lines.isEmpty)
@@ -131,7 +140,7 @@ import CoreText
         }
     }
 
-    @Test func angleRadiansMatchesDegrees() throws {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func angleRadiansMatchesDegrees() throws {
         let json = try ocrJSON(tiltDegrees: 8.0)
         for line in try lineDicts(json) {
             let deg = try #require(line["angle_degrees"] as? Double)
