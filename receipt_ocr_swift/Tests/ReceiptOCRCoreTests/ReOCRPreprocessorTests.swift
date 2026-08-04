@@ -11,6 +11,16 @@ import CoreGraphics
 /// machines with only CommandLineTools.
 @Suite struct ReOCRPreprocessorTests {
 
+    /// Tests that run LIVE Vision inference stall on GitHub's headless
+    /// macOS runners (first workflow run sat >30 min inside
+    /// VNRecognizeTextRequest), so they only run off-CI — on real
+    /// hardware, where RUNNERS.md declares the mini the authoritative
+    /// Swift machine. CI still covers the pure-CoreImage transforms and
+    /// all the mocked worker plumbing.
+    private static var liveVisionAvailable: Bool {
+        ProcessInfo.processInfo.environment["CI"] == nil
+    }
+
     // MARK: - plain
 
     @Test func plainIsPassthrough() {
@@ -59,7 +69,7 @@ import CoreGraphics
 
     // MARK: - deskew
 
-    @Test func deskewReducesTiltBelowTwoDegrees() throws {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func deskewReducesTiltBelowTwoDegrees() throws {
         let upright = ReOCRTestImages.makeTextImage()
         // Sanity: the detector must see the synthetic text at all.
         let uprightAngle = try #require(ReOCRPreprocessor.detectDominantTextAngleDegrees(upright))
@@ -76,7 +86,7 @@ import CoreGraphics
         #expect(abs(residual) < 2.0)
     }
 
-    @Test func deskewLeavesUprightTextUntouched() {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func deskewLeavesUprightTextUntouched() {
         // Below the minimum-angle threshold the image is returned as-is
         // (no pointless resample).
         let upright = ReOCRTestImages.makeTextImage()
@@ -85,7 +95,7 @@ import CoreGraphics
         #expect(result.height == upright.height)
     }
 
-    @Test func deskewWithoutTextIsPassthrough() {
+    @Test(.enabled(if: Self.liveVisionAvailable)) func deskewWithoutTextIsPassthrough() {
         // A blank image has no text observations: deskew must return the
         // original rather than fail.
         let blank = ReOCRTestImages.makeImage(width: 64, height: 64) { ctx in
