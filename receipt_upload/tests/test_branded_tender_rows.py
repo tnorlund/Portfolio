@@ -7,6 +7,19 @@ scan of prod found 12 receipts carrying one; Trader Joe's Henderson
 
 The guard must not reach real food: dev stores two genuine products whose
 names contain a tender word, and they are pinned here as keeps.
+
+The vocabulary is CLOSED and every entry below is a measured observation,
+not a guess -- so it goes stale silently unless someone re-measures. The
+corpus drift check is that re-measurement::
+
+    python3.12 scripts/backfill_receipt_line_items.py --check \\
+        --table ReceiptsTable-d7ff76a
+
+It is read-only (prod-safe) and prints every receipt whose STORED
+reconciliation_status disagrees with a live recompute, with sums and
+baselines. That is how "Paid with card (8644): 32.30" surfaced -- as a
+drift row on 916d7955, not by anyone reading receipts. A new branded form
+appears there the same way; PROD_TENDER_PHANTOMS is where to add it.
 """
 
 from __future__ import annotations
