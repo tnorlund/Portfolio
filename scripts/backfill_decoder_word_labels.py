@@ -65,6 +65,9 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: E402
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: E402
     ReceiptWordLabel,
 )
+from receipt_upload.label_validation.label_normalization import (  # noqa: E402
+    normalize_label_alias,
+)
 from receipt_upload.line_items.labels import (  # noqa: E402
     DECODER_PROPOSED_BY,
     GATE_OK,
@@ -94,10 +97,11 @@ def _deser(item: dict) -> dict:
 
 
 def _fetch(client, table: str, image_id: str, receipt_id: int):
-    """One query per receipt: words, sections, summary, existing labels."""
+    """One query per receipt: words, sections, summary, place, labels."""
     words: list[ReceiptWord] = []
     sections: list[dict] = []
     summary: Optional[dict] = None
+    place: Optional[dict] = None
     labeled: dict[tuple[int, int], set[str]] = {}
     for raw in _query_all(
         client,
@@ -119,13 +123,15 @@ def _fetch(client, table: str, image_id: str, receipt_id: int):
             sections.append(_deser(raw))
         elif entity_type == "RECEIPT_SUMMARY":
             summary = _deser(raw)
+        elif entity_type == "RECEIPT_PLACE":
+            place = _deser(raw)
         elif entity_type == "RECEIPT_WORD_LABEL":
             match = _LABEL_SK_RE.match(raw["SK"]["S"])
             if match:
                 key = (int(match.group(1)), int(match.group(2)))
                 label = raw["SK"]["S"].split("#LABEL#", 1)[1]
                 labeled.setdefault(key, set()).add(label)
-    return words, sections, summary, labeled
+    return words, sections, summary, place, labeled
 
 
 def _items_line_ids(sections: list[dict]) -> set[int]:
@@ -214,12 +220,16 @@ def main() -> None:
     collided: Counter = Counter()
     written: Counter = Counter()
     agreement: Counter = Counter()
+    # Per-label agreement, because one label type disagreeing wholesale
+    # (a masked PAN the corpus calls PAYMENT_METHOD) moves the aggregate
+    # rate enough to hide every other type holding steady.
+    agreement_by_label: Counter = Counter()
     disagreements: Counter = Counter()
     receipts_with_labels = 0
     out_handle = open(args.json_out, "w") if args.json_out else None
 
     for index, (image_id, receipt_id) in enumerate(targets):
-        words, sections, summary, labeled = _fetch(
+        words, sections, summary, place, labeled = _fetch(
             client, args.table, image_id, receipt_id
         )
         result = derive_labels(
@@ -227,6 +237,7 @@ def main() -> None:
             _items_line_ids(sections),
             summary,
             require_proven=args.require_proven,
+            place=place,
         )
         gates[result.gate] += 1
         if result.gate != GATE_OK:
@@ -255,11 +266,14 @@ def main() -> None:
             collided[proposal.label] += 1
             # The collisions are free validation: where the corpus
             # already has an opinion about a word, does the arithmetic
-            # derivation agree with it?
-            agreement[
-                "agree" if proposal.label in existing else "disagree"
-            ] += 1
-            if proposal.label not in existing:
+            # derivation agree with it? Compared against the CORE_LABELS
+            # form of the existing label, because a stray "ADDRESS" row
+            # is the same opinion as ADDRESS_LINE, not a contradiction.
+            canonical = {normalize_label_alias(x) or x for x in existing}
+            verdict = "agree" if proposal.label in canonical else "disagree"
+            agreement[verdict] += 1
+            agreement_by_label[(proposal.label, verdict)] += 1
+            if verdict == "disagree":
                 disagreements[
                     (proposal.label, "|".join(sorted(existing)))
                 ] += 1
@@ -358,6 +372,14 @@ def main() -> None:
             f"  collision agreement: {agree} agree / {disagree} disagree "
             f"({rate:.1%})"
         )
+        print("  collision agreement by label:")
+        for label in sorted({label for label, _ in agreement_by_label}):
+            hit = agreement_by_label[(label, "agree")]
+            miss = agreement_by_label[(label, "disagree")]
+            print(
+                f"    {label:13s} {hit} agree / {miss} disagree "
+                f"({hit / max(1, hit + miss):.1%})"
+            )
         print("  top disagreements (derived -> existing):")
         for (derived, existing), count in disagreements.most_common(15):
             print(f"    {derived:13s} -> {existing:30s} {count}")

@@ -8,12 +8,14 @@ word-level placement of every label type, and the fail-closed rules
 
 import pytest
 
+from receipt_upload.label_validation.label_normalization import is_core_label
 from receipt_upload.line_items.labels import (
     DECODER_PROPOSED_BY,
     GATE_NO_ITEMS_SECTION,
     GATE_NOT_MATCHED,
     GATE_NOT_PROVEN,
     GATE_OK,
+    _quantity_labels,
     derive_labels,
 )
 
@@ -165,18 +167,75 @@ def test_printed_summary_figures_are_labelled():
     assert placed(result)[(4, 2)] == "GRAND_TOTAL"
 
 
-def test_summary_figure_printed_twice_is_ambiguous():
-    # "Balance to pay 37.51" and the terminal's "TOTAL PURCHASE 37.51"
-    # are both grand-total anchors: picking one would be a guess.
-    words = (
-        row(1, 0.10, "ORGANIC", "BANANAS", "37.51")
-        + row(2, 0.20, "Balance", "to", "pay", "37.51")
-        + row(3, 0.30, "TOTAL", "PURCHASE", "37.51")
+def trader_joes_restated_total():
+    """The Trader Joe's two-column layout, in receipt coordinates.
+
+    The amount column is printed as its own OCR lines, paired with the
+    descriptive text by vertical position: "Balance to pay" on the store
+    copy and "TOTAL PURCHASE" on the card slip both anchor the same
+    37.51. y decreases down the receipt (Vision's bottom-left origin).
+    """
+    return (
+        row(1, 0.6745, "PORK", "AL", "PASTOR", "DICED")
+        + row(20, 0.6842, "$37.51")
+        + row(15, 0.5202, "Items", "in", "Transaction:", "10")
+        + row(25, 0.5113, "$37.51")
+        + row(16, 0.4976, "Balance", "to", "pay")
+        + row(26, 0.4895, "$37.51")
+        + row(30, 0.3029, "TOTAL", "PURCHASE")
+        + row(37, 0.3142, "$37.51")
+    )
+
+
+def test_restated_grand_total_elects_one_canonical_copy():
+    # Three words print 37.51. "Items in Transaction" is not a
+    # grand-total anchor at all; "Balance to pay" and "TOTAL PURCHASE"
+    # both are. A receipt has exactly one grand total, so exactly one
+    # word is labelled -- the copy dedupe_grand_total keeps.
+    result = derive_labels(
+        trader_joes_restated_total(), {1, 20}, {"grand_total": 37.51}
+    )
+
+    assert result.gate == GATE_OK
+    assert by_label(result)["GRAND_TOTAL"] == {"$37.51"}
+    grand = [p for p in result.labels if p.label == "GRAND_TOTAL"]
+    assert len(grand) == 1
+    assert grand[0].word_key == (37, 1)
+
+
+def test_amount_beside_a_non_total_row_is_never_the_grand_total():
+    # The 37.51 paired with "Items in Transaction: 10" is a column
+    # neighbour, not a total: no anchor, no label, election or not.
+    result = derive_labels(
+        trader_joes_restated_total(), {1, 20}, {"grand_total": 37.51}
+    )
+    assert (25, 1) not in placed(result)
+
+
+def test_two_total_copies_on_one_row_mint_nothing():
+    # Both copies sit on the same visual row, so no row-ordering rule
+    # can tell them apart. Election declines rather than guessing.
+    words = row(1, 0.60, "ORGANIC", "BANANAS", "37.51") + row(
+        2, 0.30, "TOTAL", "37.51", "37.51"
     )
     result = derive_labels(words, {1}, {"grand_total": 37.51})
 
     assert result.gate == GATE_OK
     assert "GRAND_TOTAL" not in by_label(result)
+
+
+def test_restated_subtotal_stays_ambiguous():
+    # Only GRAND_TOTAL has a canonical-copy election rule. A subtotal
+    # printed twice still mints nothing.
+    words = (
+        row(1, 0.60, "ORGANIC", "BANANAS", "2.99")
+        + row(2, 0.40, "SUBTOTAL", "2.99")
+        + row(3, 0.30, "Sub", "Total", "2.99")
+    )
+    result = derive_labels(words, {1}, {"subtotal": 2.99})
+
+    assert result.gate == GATE_OK
+    assert "SUBTOTAL" not in by_label(result)
 
 
 def test_summary_word_disagreeing_with_the_summary_is_not_labelled():
@@ -215,6 +274,254 @@ def test_require_proven_needs_the_bank_hop(bank_amount, expected_gate):
         bank_amount=bank_amount,
     )
     assert result.gate == expected_gate
+
+
+TRADER_JOES_PLACE = {
+    "formatted_address": "2716 N Green Valley Pkwy, Henderson, NV 89014, USA"
+}
+
+
+def header_receipt(*extra_rows):
+    """A reconciling one-item receipt plus whatever header rows a test
+    wants to put in front of it."""
+    return row(1, 0.60, "ORGANIC", "BANANAS", "2.99") + [
+        word for extra in extra_rows for word in extra
+    ]
+
+
+def test_address_lines_match_the_place_row_through_ocr_damage():
+    # Places says "2716 N Green Valley Pkwy"; the receipt prints
+    # "North" and OCR breaks "Parkway" into "Par" + "way". The line is
+    # still the address, and the whole line is labelled.
+    words = header_receipt(
+        row(3, 0.85, "2716", "North", "Green", "Valley", "Par", "way"),
+        row(4, 0.83, "Henderson,", "NV"),
+        row(5, 0.82, "89014"),
+    )
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert by_label(result)["ADDRESS_LINE"] == {
+        "2716",
+        "North",
+        "Green",
+        "Valley",
+        "Par",
+        "way",
+        "Henderson,",
+        "NV",
+        "89014",
+    }
+
+
+def test_no_place_row_means_no_address_label():
+    words = header_receipt(row(3, 0.85, "2716", "North", "Green", "Valley"))
+    result = derive_labels(words, {1}, {"subtotal": 2.99})
+
+    assert "ADDRESS_LINE" not in by_label(result)
+
+
+def test_address_of_a_different_merchant_is_declined():
+    words = header_receipt(row(3, 0.85, "4001", "South", "Rainbow", "Blvd"))
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert "ADDRESS_LINE" not in by_label(result)
+
+
+def test_address_line_carrying_a_foreign_token_is_declined():
+    # A phone number sharing the address row would be swallowed by a
+    # whole-line label, so the whole line declines instead.
+    words = header_receipt(
+        row(3, 0.85, "2716", "Green", "Valley", "702-433-6773")
+    )
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert "ADDRESS_LINE" not in by_label(result)
+
+
+def test_address_is_found_wherever_it_is_printed():
+    # The header is not always the geometric top line -- some receipts
+    # read bottom-origin, and the address can print in the footer.
+    words = header_receipt(row(48, 0.04, "Henderson,", "NV", "89014"))
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert by_label(result)["ADDRESS_LINE"] == {"Henderson,", "NV", "89014"}
+
+
+def test_phone_number_spans_the_words_it_is_split_across():
+    words = header_receipt(
+        row(6, 0.81, "Store", "#0097", "-", "702", "433-6773")
+    )
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert by_label(result)["PHONE_NUMBER"] == {"702", "433-6773"}
+    assert "Store" not in by_label(result).get("PHONE_NUMBER", set())
+
+
+def test_phone_number_missing_a_digit_is_declined():
+    # OCR dropped a digit: "702 433-67 3" is nine digits, not a phone
+    # number, and repairing it would be a guess.
+    words = header_receipt(
+        row(6, 0.81, "Store", "#0097", "-", "702", "433-67", "3")
+    )
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert "PHONE_NUMBER" not in by_label(result)
+
+
+def test_two_unverified_phone_numbers_mint_neither():
+    words = header_receipt(
+        row(6, 0.81, "702-433-6773"), row(7, 0.79, "702-555-0100")
+    )
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99}, place=TRADER_JOES_PLACE
+    )
+
+    assert "PHONE_NUMBER" not in by_label(result)
+
+
+def test_place_phone_picks_the_merchant_number_out_of_several():
+    place = dict(TRADER_JOES_PLACE, phone_number="(702) 433-6773")
+    words = header_receipt(
+        row(6, 0.81, "702-433-6773"), row(7, 0.79, "702-555-0100")
+    )
+    result = derive_labels(words, {1}, {"subtotal": 2.99}, place=place)
+
+    assert by_label(result)["PHONE_NUMBER"] == {"702-433-6773"}
+
+
+def test_masked_pan_matches_the_summary_last_four():
+    # The merchant id (five trailing digits) and the terminal id (wrong
+    # four) are the two near-misses every card slip prints.
+    words = header_receipt(
+        row(29, 0.32, "MID:", "*******04690"),
+        row(32, 0.38, "******|*****1454"),
+        row(36, 0.34, "****0159"),
+    )
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99, "card_last4": "1454"}
+    )
+
+    assert by_label(result)["PAYMENT_METHOD"] == {"******|*****1454"}
+
+
+def test_masked_pan_is_never_labelled_with_a_non_core_alias():
+    # CARD_NUMBER reads like the more precise label, but it is not in
+    # CORE_LABELS -- the corpus normalizes it to PAYMENT_METHOD.
+    words = header_receipt(row(32, 0.38, "******|*****1454"))
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99, "card_last4": "1454"}
+    )
+
+    assert "CARD_NUMBER" not in by_label(result)
+    assert is_core_label("PAYMENT_METHOD")
+    assert not is_core_label("CARD_NUMBER")
+
+
+def test_masked_pan_needs_the_summary_to_say_which_card():
+    words = header_receipt(row(32, 0.38, "******|*****1454"))
+    result = derive_labels(words, {1}, {"subtotal": 2.99})
+
+    assert "PAYMENT_METHOD" not in by_label(result)
+
+
+def test_unmasked_trailing_digits_are_not_a_card():
+    words = header_receipt(row(32, 0.38, "Ref", "1454"))
+    result = derive_labels(
+        words, {1}, {"subtotal": 2.99, "card_last4": "1454"}
+    )
+
+    assert "PAYMENT_METHOD" not in by_label(result)
+
+
+def test_every_derived_label_is_a_core_label():
+    words = (
+        header_receipt(
+            row(3, 0.85, "2716", "North", "Green", "Valley", "Par", "way"),
+            row(6, 0.81, "Store", "#0097", "-", "702", "433-6773"),
+            row(32, 0.38, "******|*****1454"),
+        )
+        + row(2, 0.40, "TOTAL", "2.99")[:]
+    )
+    result = derive_labels(
+        words,
+        {1},
+        {"subtotal": 2.99, "grand_total": 2.99, "card_last4": "1454"},
+        place=TRADER_JOES_PLACE,
+    )
+
+    assert result.labels
+    for proposal in result.labels:
+        assert is_core_label(proposal.label), proposal.label
+
+
+@pytest.mark.parametrize(
+    "item,expected",
+    [
+        (
+            {
+                "name": "SODA",
+                "quantity": 2,
+                "unit_price": 1.5,
+                "qty_word_ids": [
+                    {"line_id": 1, "word_id": 2},
+                    {"line_id": 1, "word_id": 4},
+                ],
+            },
+            {"QUANTITY": {"2"}, "UNIT_PRICE": {"1.50"}},
+        ),
+        # An item the decoder emitted without a quantity span at all --
+        # the shape every decode has today, and the shape a decode that
+        # simply could not read the quantity keeps.
+        ({"name": "SODA"}, {}),
+        # A quantity with no unit price still names the quantity word.
+        (
+            {
+                "name": "SODA",
+                "quantity": 2,
+                "qty_word_ids": [{"line_id": 1, "word_id": 2}],
+            },
+            {"QUANTITY": {"2"}},
+        ),
+    ],
+)
+def test_quantity_span_contract_tolerates_a_decode_without_quantities(
+    item, expected
+):
+    # Pinned against the decoder's item dict directly: whichever of
+    # these fields a decode carries, the derivation reads what is there
+    # and mints nothing for what is not.
+    texts = {(1, 1): "SODA", (1, 2): "2", (1, 3): "@", (1, 4): "1.50"}
+    labels = _quantity_labels(item, texts)
+
+    by_type = {}
+    for proposal in labels:
+        by_type.setdefault(proposal.label, set()).add(proposal.text)
+    assert by_type == expected
+
+
+def test_quantity_labels_skip_cleanly_when_the_decode_has_no_quantity():
+    # QUANTITY / UNIT_PRICE come from the decoder's quantity span. A
+    # decode that never parsed one mints neither, and mints everything
+    # else as usual.
+    words = row(1, 0.60, "ORGANIC", "BANANAS", "2.99")
+    result = derive_labels(words, {1}, {"subtotal": 2.99})
+
+    labels = by_label(result)
+    assert "QUANTITY" not in labels
+    assert "UNIT_PRICE" not in labels
+    assert labels["LINE_TOTAL"] == {"2.99"}
 
 
 def test_proposed_by_marker_is_distinct_from_llm_proposers():

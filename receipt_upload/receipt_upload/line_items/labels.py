@@ -10,8 +10,9 @@ product or financial labels.
 
 This module turns the decode into label proposals. It mints nothing on
 its own judgement: every proposal points at a word the decoder already
-identified, or at a printed summary figure that equals the receipt's
-stored summary value to the cent.
+identified, or at printed text that equals a value the receipt already
+stores -- a summary figure to the cent, the ReceiptPlace row's address
+or phone, the summary's settled card last four.
 
 The gate is arithmetic, not heuristic. Labels are derived only when the
 decoded items reconcile to the receipt's printed baseline as a full
@@ -47,6 +48,7 @@ from receipt_upload.line_items.geometry import (
     is_proven,
     reconcile_detailed,
 )
+from receipt_upload.line_items.reconstructor import dedupe_grand_total
 
 # The provenance marker for every label this module derives. Distinct from
 # every LLM proposer ("llm_valid", "llm_needs_review", "*_analyzer_llm")
@@ -57,6 +59,29 @@ DECODER_PROPOSED_BY = "decoder_reconciled"
 # summary figure. Both sides are printed money, so this is exact-match
 # slack for float representation only, not a comparison band.
 _CENT = 0.005
+
+# Floor for "same visual row" when checking that a grand-total election
+# actually discriminated between two restatements of the total. Two
+# anchored copies printed side by side on one row cannot be told apart by
+# any row-ordering rule, so that case still mints nothing.
+_MIN_ROW_BAND = 0.005
+
+# Mask glyphs a receipt uses to redact a card number.
+_PAN_MASK_CHARS = "*#xX•·"
+
+# The trailing country component of a formatted address, dropped before
+# the street/city/state/postal split.
+_COUNTRY_TOKENS = frozenset({"usa", "us", "unitedstates"})
+
+# A US phone number, allowing the separators OCR actually preserves.
+_PHONE_RE = re.compile(r"(?:\+?1[-. ]?)?\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}")
+# Phone-shaped punctuation. Without a merchant phone to verify against, a
+# run of digits separated only by spaces is an order number as often as a
+# phone, so only a formatted number qualifies.
+_PHONE_PUNCT_RE = re.compile(r"[-.()]")
+# The longest word span the phone scan will join. A US number never needs
+# more than "(702)" "433" "-" "6773".
+_PHONE_MAX_SPAN = 4
 
 # Gate verdicts (why a receipt did or did not produce labels).
 GATE_OK = "ok"
@@ -299,16 +324,109 @@ def _quantity_labels(
     return out
 
 
+@dataclass
+class _ElectionCandidate:
+    """A stand-in GRAND_TOTAL label, for ``dedupe_grand_total`` to elect.
+
+    ``dedupe_grand_total`` decides which of a receipt's restatements of
+    the total is canonical, reading only these four fields off each
+    label. Handing it stand-ins for the words we are *about* to label
+    runs the corpus's own election rule over our proposals, instead of
+    inventing a second one that could disagree with it.
+    """
+
+    line_id: int
+    word_id: int
+    label: str = "GRAND_TOTAL"
+    validation_status: str = "PENDING"
+
+
+def _y_center(word: Any) -> Optional[float]:
+    """Normalized y-center of a word's bounding box, or None."""
+    box = getattr(word, "bounding_box", None) or {}
+    try:
+        return float(box.get("y", 0.0)) + float(box.get("height", 0.0)) / 2.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _row_band(word: Any) -> float:
+    """Half-row tolerance around a word, in normalized units."""
+    box = getattr(word, "bounding_box", None) or {}
+    try:
+        height = float(box.get("height", 0.0))
+    except (TypeError, ValueError):
+        height = 0.0
+    return max(0.6 * height, _MIN_ROW_BAND)
+
+
+def _elect_grand_total_word(
+    receipt_words: Sequence[Any], candidates: Sequence[Any]
+) -> Optional[Any]:
+    """Pick the one word that carries the receipt's grand total.
+
+    Receipts restate the total: Trader Joe's prints it against "Balance
+    to pay" on the store copy and again against "TOTAL PURCHASE" on the
+    card slip, and both are legitimate grand-total anchors. A receipt has
+    exactly one grand total, and ``reconstructor.dedupe_grand_total``
+    already decides which restatement is canonical and invalidates the
+    rest -- so labelling every copy would mint labels the pipeline's own
+    dedupe pass then has to retract, and would teach a model that echoes
+    of the total are grand totals. We label the copy dedupe would keep.
+
+    Still fail-closed where the anchor genuinely cannot discriminate:
+    if the election leaves more than one survivor, or if a losing copy
+    shares the winner's visual row (so no row-ordering rule could have
+    separated them), nothing is minted.
+    """
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    stand_ins = [
+        _ElectionCandidate(int(w.line_id), int(w.word_id)) for w in candidates
+    ]
+    redundant = {
+        id(x)
+        for x in dedupe_grand_total(
+            list(receipt_words), stand_ins  # type: ignore[arg-type]
+        )
+    }
+    survivors = [
+        word
+        for word, stand_in in zip(candidates, stand_ins)
+        if id(stand_in) not in redundant
+    ]
+    if len(survivors) != 1:
+        return None
+    elected = survivors[0]
+
+    elected_y = _y_center(elected)
+    if elected_y is None:
+        return None
+    band = _row_band(elected)
+    for other in candidates:
+        if other is elected:
+            continue
+        other_y = _y_center(other)
+        if other_y is None or abs(other_y - elected_y) <= band:
+            return None
+    return elected
+
+
 def _summary_labels(
     receipt_words: Sequence[Any], summary: Optional[dict]
 ) -> list[DerivedLabel]:
     """GRAND_TOTAL / SUBTOTAL / TAX proposals for printed summary words.
 
     A word is labelled only when it sits on a summary anchor row AND its
-    printed amount equals the receipt's stored summary figure to the cent,
-    and only when exactly one anchored word carries that value. Two words
-    printing the same figure (a total echoed by a tender row) are
-    ambiguous, and ambiguity mints nothing.
+    printed amount equals the receipt's stored summary figure to the
+    cent. GRAND_TOTAL tolerates the figure being restated -- receipts
+    print the total against several anchors -- and elects the canonical
+    copy via :func:`_elect_grand_total_word`. SUBTOTAL and TAX have no
+    such election rule, so for them two words printing the same figure
+    stay ambiguous, and ambiguity mints nothing.
     """
     out: list[DerivedLabel] = []
     finders = (
@@ -326,9 +444,17 @@ def _summary_labels(
             if abs(amount - value) < _CENT
         ]
         unique = {(int(w.line_id), int(w.word_id)): w for w in matches}
-        if len(unique) != 1:
-            continue
-        (line_id, word_id), word = next(iter(unique.items()))
+        if label == "GRAND_TOTAL":
+            word = _elect_grand_total_word(
+                receipt_words, list(unique.values())
+            )
+            if word is None:
+                continue
+            line_id, word_id = int(word.line_id), int(word.word_id)
+        else:
+            if len(unique) != 1:
+                continue
+            (line_id, word_id), word = next(iter(unique.items()))
         out.append(
             DerivedLabel(
                 line_id=line_id,
@@ -345,6 +471,303 @@ def _summary_labels(
     return out
 
 
+def _norm_token(text: str) -> str:
+    """Lowercase alphanumeric form of a word ("Henderson," -> henderson)."""
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def _tokens(text: str) -> list[str]:
+    """Normalized tokens of a phrase, dropping punctuation-only words."""
+    return [t for t in (_norm_token(part) for part in text.split()) if t]
+
+
+@dataclass(frozen=True)
+class _PlaceAddress:
+    """The verified address, split into the parts that anchor a match."""
+
+    tokens: frozenset[str]
+    street_number: Optional[str]
+    street_names: frozenset[str]
+    city: frozenset[str]
+    state: frozenset[str]
+    postal: frozenset[str]
+
+
+def _parse_place_address(place: Optional[dict]) -> Optional[_PlaceAddress]:
+    """Split the ReceiptPlace ``formatted_address`` into match anchors."""
+    address = (place or {}).get("formatted_address") or ""
+    parts = [p.strip() for p in str(address).split(",") if p.strip()]
+    if len(parts) < 2:
+        return None
+    if _norm_token(parts[-1]) in _COUNTRY_TOKENS:
+        parts = parts[:-1]
+    if len(parts) < 2:
+        return None
+
+    street = _tokens(parts[0])
+    number = street[0] if street and street[0].isdigit() else None
+    postal, state = set(), set()
+    for token in _tokens(parts[-1]):
+        if re.fullmatch(r"\d{5}(?:\d{4})?", token):
+            postal.add(token)
+        elif len(token) == 2 and token.isalpha():
+            state.add(token)
+    city = (
+        {t for t in _tokens(parts[-2]) if t.isalpha() and len(t) >= 3}
+        if len(parts) >= 3
+        else set()
+    )
+    return _PlaceAddress(
+        tokens=frozenset(t for part in parts for t in _tokens(part)),
+        street_number=number,
+        # One- and two-letter street tokens ("N", "St") are too common to
+        # anchor on; the distinctive part of a street name is the rest.
+        street_names=frozenset(
+            t for t in street if t.isalpha() and len(t) >= 3
+        ),
+        city=frozenset(city),
+        state=frozenset(state),
+        postal=frozenset(postal),
+    )
+
+
+def _is_address_line(tokens: Sequence[str], addr: _PlaceAddress) -> bool:
+    """Whether a line's tokens anchor onto the verified place address.
+
+    Three anchors, each distinctive enough to stand alone: the street
+    number printed with a street-name word, the postal code, or the city
+    printed with the state. Position on the receipt is deliberately not
+    consulted -- the header is not always the geometric top line, and the
+    place row is the authority either way.
+    """
+    seen = set(tokens)
+    street_hit = (
+        addr.street_number is not None
+        and addr.street_number in seen
+        and bool(seen & addr.street_names)
+    )
+    postal_hit = bool(seen & addr.postal)
+    city_hit = bool(seen & addr.city) and (
+        bool(seen & addr.state) or postal_hit
+    )
+    return street_hit or postal_hit or city_hit
+
+
+def _address_labels(
+    lines: dict[int, list[Any]], place: Optional[dict]
+) -> list[DerivedLabel]:
+    """ADDRESS_LINE proposals for lines that match the ReceiptPlace row.
+
+    The whole matched line is labelled, not just the words that echo the
+    place record: "2716 North Green Valley Par way" is one address line
+    even though Places spells it "2716 N Green Valley Pkwy" and OCR broke
+    "Parkway" in half. To keep that from swallowing a neighbour, every
+    word on the line must be address-plausible -- an address token, a
+    word, or a short number. One phone number or price on the row and the
+    whole line is declined.
+    """
+    addr = _parse_place_address(place)
+    if addr is None:
+        return []
+
+    out: list[DerivedLabel] = []
+    for line_id in sorted(lines):
+        words = sorted(lines[line_id], key=lambda w: int(w.word_id))
+        tokens = [_norm_token(str(w.text)) for w in words]
+        present = [t for t in tokens if t]
+        if not present or not _is_address_line(present, addr):
+            continue
+        if not all(
+            token in addr.tokens
+            or token.isalpha()
+            or (token.isdigit() and len(token) <= 5)
+            for token in present
+        ):
+            continue
+        for word, token in zip(words, tokens):
+            if not token:
+                continue
+            out.append(
+                DerivedLabel(
+                    line_id=int(word.line_id),
+                    word_id=int(word.word_id),
+                    label="ADDRESS_LINE",
+                    reasoning=(
+                        "Line matches the receipt's verified place address "
+                        f"{(place or {}).get('formatted_address')!r}"
+                    ),
+                    text=str(word.text),
+                )
+            )
+    return out
+
+
+def _phone_spans(words: Sequence[Any]) -> list[list[Any]]:
+    """Maximal word spans on one line that read as a phone number."""
+    spans: list[tuple[int, int]] = []
+    for start in range(len(words)):
+        for end in range(min(start + _PHONE_MAX_SPAN, len(words)), start, -1):
+            text = " ".join(str(w.text) for w in words[start:end])
+            if _PHONE_RE.fullmatch(text.strip()):
+                spans.append((start, end))
+                break
+    maximal = [
+        (start, end)
+        for start, end in spans
+        if not any(
+            (s, e) != (start, end) and s <= start and end <= e
+            for s, e in spans
+        )
+    ]
+    return [list(words[start:end]) for start, end in maximal]
+
+
+def _phone_labels(
+    lines: dict[int, list[Any]], place: Optional[dict]
+) -> list[DerivedLabel]:
+    """PHONE_NUMBER proposals for the merchant's printed phone number.
+
+    Verified against the place row when it carries a phone, and otherwise
+    held to a strict printed format plus receipt-wide uniqueness.
+
+    OCR drops digits from phone numbers often enough that "702 433-67 3"
+    has to decline rather than be repaired: nine digits is not a phone
+    number, and a repaired guess would be indistinguishable in the corpus
+    from a real one.
+    """
+    verified = _digits(
+        (place or {}).get("phone_number") or (place or {}).get("phone_intl")
+    )
+    candidates: list[list[Any]] = []
+    for line_id in sorted(lines):
+        words = sorted(lines[line_id], key=lambda w: int(w.word_id))
+        candidates.extend(_phone_spans(words))
+
+    if verified and len(verified) >= 10:
+        spans = [
+            span
+            for span in candidates
+            if _digits(" ".join(str(w.text) for w in span))[-10:]
+            == verified[-10:]
+        ]
+        reason = (
+            "Printed phone number matches the receipt's verified place "
+            f"record ({(place or {}).get('phone_number')!r})"
+        )
+    else:
+        spans = [
+            span
+            for span in candidates
+            if _PHONE_PUNCT_RE.search(" ".join(str(w.text) for w in span))
+        ]
+        # Nothing external to check an unverified number against, so a
+        # receipt printing two different phone-shaped numbers is
+        # ambiguous and mints neither.
+        if len(spans) != 1:
+            return []
+        reason = "Printed in the format of a phone number"
+
+    out: list[DerivedLabel] = []
+    for span in spans:
+        for word in span:
+            out.append(
+                DerivedLabel(
+                    line_id=int(word.line_id),
+                    word_id=int(word.word_id),
+                    label="PHONE_NUMBER",
+                    reasoning=reason,
+                    text=str(word.text),
+                )
+            )
+    return out
+
+
+def _digits(value: Any) -> str:
+    """Every digit in a value, in order."""
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def _masked_last4(text: str) -> Optional[str]:
+    """Last four digits of a masked card number, or None.
+
+    The mask has to do the work: a word qualifies only when its digits
+    are exactly four and terminal, behind at least four mask glyphs.
+    "MID: *******04690" (five trailing digits) and a bare "1454" both
+    fail, which is what keeps a merchant id or an item count out.
+    """
+    match = re.fullmatch(r"([^0-9]*)(\d{4})", (text or "").strip())
+    if match is None:
+        return None
+    masks = sum(1 for ch in match.group(1) if ch in _PAN_MASK_CHARS)
+    return match.group(2) if masks >= 4 else None
+
+
+def _masked_pan_labels(
+    receipt_words: Sequence[Any], summary: Optional[dict]
+) -> list[DerivedLabel]:
+    """PAYMENT_METHOD for the masked PAN the summary settled against.
+
+    Deliberately not ``CARD_NUMBER``. That reads like the more precise
+    label and an LLM proposer reaches for it, but it is not in
+    ``CORE_LABELS``: ``label_normalization.NON_CORE_LABEL_ALIASES`` maps
+    CARD_NUMBER onto PAYMENT_METHOD, whose definition ("payment
+    instrument summary, e.g. VISA ••••1234") is exactly a masked PAN.
+    Minting the alias would put a label outside the canonical vocabulary
+    into the corpus that every consumer then has to normalize back.
+    """
+    last4 = str((summary or {}).get("card_last4") or "").strip()
+    if not re.fullmatch(r"\d{4}", last4):
+        return []
+    matches = [
+        word
+        for word in receipt_words
+        if _masked_last4(str(getattr(word, "text", ""))) == last4
+    ]
+    # A receipt printing the masked PAN twice cannot say which copy the
+    # summary read, so it mints neither.
+    if len(matches) != 1:
+        return []
+    word = matches[0]
+    return [
+        DerivedLabel(
+            line_id=int(word.line_id),
+            word_id=int(word.word_id),
+            label="PAYMENT_METHOD",
+            reasoning=(
+                "Masked card number ending "
+                f"{last4}, matching the receipt summary's settled card"
+            ),
+            text=str(word.text),
+        )
+    ]
+
+
+def _header_labels(
+    receipt_words: Sequence[Any],
+    summary: Optional[dict],
+    place: Optional[dict],
+) -> list[DerivedLabel]:
+    """ADDRESS_LINE / PHONE_NUMBER / PAYMENT_METHOD from stored records.
+
+    None of these come from the decode. Each is checked against a record
+    the receipt already carries -- the ReceiptPlace row for the address
+    and phone, the receipt summary's settled card for the masked PAN --
+    so the derivation stays a lookup rather than a judgement, and
+    declines when the record is missing or disagrees.
+    """
+    lines: dict[int, list[Any]] = {}
+    for word in receipt_words:
+        try:
+            lines.setdefault(int(word.line_id), []).append(word)
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return [
+        *_address_labels(lines, place),
+        *_phone_labels(lines, place),
+        *_masked_pan_labels(receipt_words, summary),
+    ]
+
+
 def derive_labels(
     receipt_words: Sequence[Any],
     items_line_ids: Iterable[int],
@@ -353,6 +776,7 @@ def derive_labels(
     require_proven: bool = False,
     printed_total: Optional[float] = None,
     bank_amount: Optional[float] = None,
+    place: Optional[dict] = None,
 ) -> DerivationResult:
     """Derive word labels from the reconciled line-item decode.
 
@@ -368,6 +792,9 @@ def derive_labels(
         printed_total: The printed grand total, for the PROVEN check.
             Defaults to the summary's grand total.
         bank_amount: The settled bank amount, for the PROVEN check.
+        place: The receipt's stored ``ReceiptPlace`` row, whose
+            ``formatted_address`` and ``phone_number`` verify the header
+            proposals. Without it no header label is derived.
 
     Returns:
         A :class:`DerivationResult`. ``labels`` is empty unless ``gate``
@@ -418,6 +845,7 @@ def derive_labels(
     for item in items:
         labels.extend(_item_labels(item, texts))
     labels.extend(_summary_labels(receipt_words, summary))
+    labels.extend(_header_labels(receipt_words, summary, place))
 
     # One word, one derived label. A word the decoder claims twice (a
     # price that is also a summary figure) is ambiguous, and ambiguity
