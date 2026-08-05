@@ -64,6 +64,18 @@ class ReceiptWordLabel:
             raise ValueError("label must be a string")
         if not self.label:
             raise ValueError("label cannot be empty")
+        # NOTE: the CORE_LABELS vocabulary is deliberately NOT enforced here.
+        # __post_init__ runs on every construction, including `from_item`,
+        # `ReceiptWordLabel(**asdict(existing))` and every read-modify-write
+        # of an already-stored row (resegmentation, dedup, label sync, the
+        # MCP `update_word_label` tool).  394 production rows carry labels
+        # outside CORE_LABELS, so a raise here would fire on reads and break
+        # the very tools needed to triage them.  The vocabulary is enforced
+        # on the one path that MINTS a new label sort key --
+        # `_ReceiptWordLabel._validate_receipt_word_labels_for_add`, reached
+        # only via `add_receipt_word_label(s)` (attribute_not_exists) -- and
+        # at the authoring boundary via
+        # `receipt_dynamo.constants.normalize_core_label`.
         self.label = (
             self.label.upper()
         )  # Store labels in uppercase for consistency

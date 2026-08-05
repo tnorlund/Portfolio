@@ -48,6 +48,17 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import ImageContent, TextContent, Tool
 
+# The canonical word-label vocabulary. Imported at module scope (not lazily
+# inside the impl) because `list_tools` has to publish it as the JSON-Schema
+# `enum` for create_word_label's `label` argument -- the label name becomes
+# part of the DynamoDB sort key, so a caller must be told the legal values
+# up front instead of minting a new pseudo-label-type.
+from receipt_dynamo.constants import (  # noqa: E402
+    CORE_LABEL_NAMES,
+    invalid_label_message,
+    normalize_label_alias,
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -941,7 +952,15 @@ image_id/receipt_id/line_id/word_id/label already exists.""",
                     },
                     "label": {
                         "type": "string",
-                        "description": "The label to assign (e.g., CASH_BACK, GRAND_TOTAL)",
+                        "enum": list(CORE_LABEL_NAMES),
+                        "description": (
+                            "The label to assign. Must be one of the "
+                            "canonical CORE_LABELS values listed in `enum` "
+                            "(e.g., CASH_BACK, GRAND_TOTAL). This string "
+                            "becomes part of the DynamoDB sort key, so free "
+                            "text is REFUSED -- never pass a sentence, an "
+                            "amount, or a correction note."
+                        ),
                     },
                     "reasoning": {
                         "type": "string",
@@ -3766,7 +3785,16 @@ async def create_word_label_impl(
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
     try:
-        normalized_label = label.upper()
+        # The label becomes part of the DynamoDB sort key, so every distinct
+        # string mints a pseudo-label-type. Refuse anything outside
+        # CORE_LABELS here, at the tool boundary, so the caller gets
+        # "label must be one of ..." instead of a stack trace from the
+        # add_receipt_word_label guard -- and so nothing is written at all.
+        # Known soft aliases (ADDRESS -> ADDRESS_LINE) are rewritten; nothing
+        # else is guessed at.
+        normalized_label = normalize_label_alias(label)
+        if normalized_label is None:
+            return {"error": invalid_label_message(label)}
         # Only the four workflow statuses are valid on create; a null/omitted
         # arg falls back to VALID. NONE is deliberately excluded so a stray
         # null can't silently persist a non-ground-truth row.
