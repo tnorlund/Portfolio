@@ -111,27 +111,62 @@ Flow:
    Preserved rows keep the worker's decode and gain the merchant and graded
    reconciliation only the cloud has.
 
-### Querying divergence
+   **Ties go to the recompute, deliberately.** Both sides are deterministic
+   ports of the same decoder, so equal status and equal `|delta|` is the
+   *normal* outcome and the cloud overwrites the worker on essentially every
+   receipt — the worker survives only as the inherited
+   `source_model_source == "swift-worker-v1"`. That is not an oversight; the
+   rationale (the on-device contract has no `raw_text`, a tie is not an
+   identical decode, and the decoder version does not move when decoder
+   behavior does) is in `line_item_processor`'s module docstring. #1368's
+   deliverable is the agreement signal below, not the row's stamp.
 
-Every receipt that arrives carrying worker rows emits exactly one log line
-from the line-item updater:
+### Querying divergence and coverage
+
+Every receipt reaching the comparison emits exactly one log line from the
+line-item updater — and every receipt that *skips* the comparison emits the
+other one, so silence never has to be interpreted:
 
 ```
 LINE_ITEM_DIVERGENCE {"image_id": ..., "receipt_id": ..., "divergent": 0|1,
   "decision": "keep-worker"|"keep-recompute", "guard_reason": ...,
   "worker_extractor_version": ..., "worker_count": ..., "cloud_count": ...,
   "worker_status": ..., "cloud_status": ..., "worker_delta": ...,
-  "cloud_delta": ..., "name_mismatches": ..., "price_mismatches": ...}
+  "cloud_delta": ..., "name_mismatches": ..., "price_mismatches": ...,
+  "worker_rows_missing_raw_text": ...}
+
+LINE_ITEM_NO_WORKER_ROWS {"image_id": ..., "receipt_id": ...,
+  "stored_count": ..., "cloud_count": ..., "cloud_status": ...,
+  "worker_sourced_section": 0|1}
 ```
 
-WARNING when the two decodes disagree, INFO when they agree — so the
-agreement *rate* is measurable, not just the failures:
+DIVERGENCE is WARNING when the two decodes disagree and INFO when they
+agree; NO_WORKER_ROWS is always INFO. Without the second marker a receipt
+whose worker rows an earlier recompute already replaced looks identical to
+one that agreed, and the corpus-wide agreement rate is uncomputable —
+which is the whole point of the checker.
 
 ```
-fields @timestamp, @message
-| filter @message like /LINE_ITEM_DIVERGENCE/
-| parse @message 'LINE_ITEM_DIVERGENCE *' as body
-| stats count() by divergent, decision
+fields @timestamp,
+    (@message like /LINE_ITEM_NO_WORKER_ROWS/) as never_compared,
+    (@message like /"divergent": 0/) as agreed,
+    (@message like /"divergent": 1/) as diverged
+| filter @message like /LINE_ITEM_DIVERGENCE|LINE_ITEM_NO_WORKER_ROWS/
+| stats sum(agreed) as agreed,
+        sum(diverged) as diverged,
+        sum(never_compared) as never_compared
+```
+
+`agreed / (agreed + diverged)` is the cross-language agreement rate;
+`(agreed + diverged) / total` is comparison coverage. `worker_sourced_section`
+splits the skips into *already overwritten by a previous recompute* (1) and
+*outside worker coverage* (0) — count them separately or the second bucket
+absorbs the first:
+
+```
+fields @timestamp, (@message like /"worker_sourced_section": 1/) as seen
+| filter @message like /LINE_ITEM_NO_WORKER_ROWS/
+| stats sum(seen) as already_overwritten, count() - sum(seen) as no_worker
 ```
 
 A rising `divergent` count with matching `worker_extractor_version` and

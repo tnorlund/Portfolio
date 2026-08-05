@@ -33,14 +33,104 @@ blindly overwriting:
   side). Preserved rows are re-stamped with the merchant/summary context the
   cloud has and the worker did not.
 
-Every receipt that arrives with worker rows emits one queryable log line
-prefixed ``LINE_ITEM_DIVERGENCE`` carrying a JSON body (counts, names,
-prices, both reconciliation statuses and deltas, and the decision), so
-divergence is a CloudWatch Insights filter, not an archaeology exercise::
+TIE HANDLING -- WHY THE CLOUD WINS
+----------------------------------
+A "tie" is equal reconciliation status AND equal |delta|. The guard
+resolves every one of them for the recompute (``shrinks`` is false when the
+deltas are equal, and a ``match`` baseline short-circuits before the
+comparison even runs). Because both implementations are deterministic ports
+of the same decoder, agreement -- and therefore a tie -- is the *normal*
+outcome, so this rule decides the steady state: the cloud's rows overwrite
+the worker's on essentially every receipt, and the worker survives only as
+the inherited ``source_model_source == "swift-worker-v1"``.
+
+That is deliberate, and it stays. Three findings, not one, drive it:
+
+1. **The worker's row payload is a strict SUBSET of the cloud's.** The
+   on-device JSON contract (``ReceiptLineItemPayload`` in
+   ``ReceiptStructurePipeline.swift``) has no ``raw_text`` field at all, so
+   every worker row lands with ``raw_text == ""``; ``collapsed_banding`` is
+   likewise cloud-only. Preferring the worker on ties would therefore *lose
+   the band text on every receipt it fired for* -- a corpus-wide data
+   regression in exchange for a provenance stamp. This is observable today:
+   dev ``2b630bec`` (IMG_3404) is the one live keep-worker receipt, and its
+   five preserved rows carry ``raw_text == ""`` while the byte-identical
+   prod copy carries ``"LEMON EACH $2.94"`` and friends. ``divergence
+   .worker_rows_missing_raw_text`` counts the cost so it stays auditable
+   instead of anecdotal.
+2. **A tie is not an identical decode.** ``(status, |delta|)`` is a
+   two-scalar projection: any regrouping that preserves the item sum --
+   merging or splitting bands, moving a name between adjacent rows -- ties
+   exactly while producing different rows. "Prefer the worker on ties"
+   would hand those cases to the worker on an arithmetic coincidence, not
+   on evidence that the worker was right.
+3. **Version-gated tie-breaking cannot detect the staleness it exists to
+   catch.** The obvious middle path -- prefer the worker only when its
+   decoder version is at or ahead of the cloud's -- assumes the version
+   moves when behavior does. It does not: #1369 shipped three real decoder
+   fixes (branded tender rows, the printed-total baseline, the OFF
+   substring bug) with ``line-items-blocks-v2`` unchanged on both sides. A
+   worker built before #1369 and a Lambda built after it are indis-
+   tinguishable by version string, which is exactly the skew the gate would
+   need to see. The gate becomes implementable the day
+   ``SWIFT_WORKER_DECODER_VERSION`` is bumped on every behavior change; it
+   is not implementable before then, and a gate that silently never fires
+   is worse than no gate.
+
+The asymmetry underneath all three: the Lambda redeploys with CI, while
+worker binaries need a manual ``scripts/update_ocr_workers.sh`` run after
+every ``receipt_ocr_swift`` merge. Preferring the freshest *deployable*
+decoder on a tie is the conservative default, and the strict-improvement
+escape hatch still lets a worker that is genuinely, arithmetically better
+win -- which is precisely what happened on dev IMG_3404 when dev's Lambda
+was running pre-#1369 code.
+
+None of this discards the on-device work: it is what makes the cloud a
+*checker*. The value #1368 delivers is the cross-implementation agreement
+signal below, not the ``extractor_version`` string on the row.
+
+MEASURING AGREEMENT FROM LOGS ALONE
+-----------------------------------
+Every receipt reaching the comparison emits exactly one queryable line:
+
+* ``LINE_ITEM_DIVERGENCE`` + JSON (counts, names, prices, both
+  reconciliation statuses and deltas, and the decision) when worker rows
+  were found and compared -- ``divergent`` is 0 or 1;
+* ``LINE_ITEM_NO_WORKER_ROWS`` + JSON when there were none to compare, so a
+  skip is a *countable* event rather than silence. Without it, a receipt
+  whose worker rows a previous recompute already replaced is indis-
+  tinguishable from one the worker never touched, and "no log line" reads
+  as consensus when it may mean no comparison happened at all.
+
+The skip record carries ``worker_sourced_section``: 1 means the ITEMS
+section was proposed by a worker, i.e. the worker *did* run on this receipt
+and its rows have since been overwritten -- a second recompute of an
+already-checked receipt, not a receipt outside worker coverage.
+
+Coverage and agreement rate, from these two markers alone::
+
+    fields @timestamp,
+        (@message like /LINE_ITEM_NO_WORKER_ROWS/) as never_compared,
+        (@message like /"divergent": 0/) as agreed,
+        (@message like /"divergent": 1/) as diverged
+    | filter @message like /LINE_ITEM_DIVERGENCE|LINE_ITEM_NO_WORKER_ROWS/
+    | stats sum(agreed) as agreed,
+            sum(diverged) as diverged,
+            sum(never_compared) as never_compared
+
+``agreed / (agreed + diverged)`` is the cross-language agreement rate;
+``(agreed + diverged) / total`` is comparison coverage. Split the skips
+into "already overwritten" vs "no worker ever ran"::
+
+    fields @timestamp, (@message like /"worker_sourced_section": 1/) as seen
+    | filter @message like /LINE_ITEM_NO_WORKER_ROWS/
+    | stats sum(seen) as already_overwritten, count() - sum(seen) as no_worker
+
+And the divergent receipts themselves, for triage::
 
     fields @timestamp, @message
     | filter @message like /LINE_ITEM_DIVERGENCE/
-    | filter divergent = 1
+    | filter @message like /"divergent": 1/
 """
 
 import json
@@ -64,6 +154,7 @@ from receipt_upload.line_items.geometry import (
 )
 from receipt_upload.line_items.provenance import (
     is_worker_extractor_version,
+    is_worker_model_source,
 )
 
 # isort: on
@@ -254,6 +345,7 @@ def update_receipt_line_items(
 
 
 DIVERGENCE_MARKER = "LINE_ITEM_DIVERGENCE"
+NO_WORKER_ROWS_MARKER = "LINE_ITEM_NO_WORKER_ROWS"
 
 
 def _delta(result: Any) -> float | None:
@@ -305,7 +397,13 @@ def _reconcile_with_worker_rows(
     conservative cases fall out for free -- a matching recompute is never
     displaced, and a no-baseline side is never ranked against a baselined
     one (which is exactly the common case, since the worker decodes before
-    any summary exists).
+    any summary exists). TIES GO TO THE RECOMPUTE, on purpose; see the
+    module docstring for why that is not a bug to be fixed.
+
+    The skip -- no worker rows to compare -- is LOGGED, not silent: see
+    ``NO_WORKER_ROWS_MARKER``. A silent skip makes an already-overwritten
+    receipt look exactly like an agreeing one in CloudWatch, which would
+    make the corpus-wide agreement rate uncomputable.
     """
     try:
         stored = dynamo_client.get_receipt_line_items_from_receipt(
@@ -319,6 +417,31 @@ def _reconcile_with_worker_rows(
         if is_worker_extractor_version(getattr(row, "extractor_version", None))
     ]
     if not worker_rows:
+        logger.info(
+            "%s %s",
+            NO_WORKER_ROWS_MARKER,
+            json.dumps(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "stored_count": len(stored),
+                    "cloud_count": len(entities),
+                    "cloud_status": recon.status,
+                    # 1 => a worker DID decode this receipt and its rows
+                    # have already been replaced by an earlier recompute;
+                    # 0 => the receipt is outside worker coverage.
+                    "worker_sourced_section": int(
+                        any(
+                            is_worker_model_source(
+                                getattr(row, "source_model_source", None)
+                            )
+                            for row in stored
+                        )
+                    ),
+                },
+                sort_keys=True,
+            ),
+        )
         return entities, items, recon, None
 
     worker_rows = sorted(worker_rows, key=lambda row: row.item_index)
@@ -355,6 +478,12 @@ def _reconcile_with_worker_rows(
         "cloud_status": recon.status,
         "worker_delta": after["delta"],
         "cloud_delta": before["delta"],
+        # The on-device contract has no raw_text field, so preserving the
+        # worker's rows always costs the band text. Counted, not assumed --
+        # this is the measured price of the tie rule (module docstring).
+        "worker_rows_missing_raw_text": sum(
+            1 for row in worker_rows if not (row.raw_text or "")
+        ),
         "name_mismatches": sum(
             1
             for cloud, worker in zip(cloud_names, worker_names)
