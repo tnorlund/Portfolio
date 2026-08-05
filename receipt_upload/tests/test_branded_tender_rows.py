@@ -49,6 +49,28 @@ REAL_PRODUCTS = [
 ]
 
 
+# Card-tail phrasings that are DELIBERATELY not in the vocabulary.
+#
+# The closed vocabulary is evidence-driven: every token in it was put
+# there by a string that actually reached an ITEMS zone. These did not.
+# A full scan of every ITEMS-section line in dev (656 receipts) and prod
+# (699 receipts) on 2026-08-04 found ZERO occurrences of "ENDING IN" or
+# any "<brand> ending in <digits>" form -- "AMEX ENDING IN 6081" exists
+# only in test_tender.py, as a vector for card-NETWORK classification,
+# which is a different function on a different code path. The nearest
+# real hits are three loyalty/credit rows that are not tender at all:
+# "ExtraCare Card #: ********2953" (x2) and "Applied to Account:".
+#
+# So these stay items rather than widening the vocabulary on speculation.
+# If one ever shows up in a live items zone, add "ending"/"in" to
+# PAYMENT_AFFIX_TOKENS and move the string into PROD_TENDER_PHANTOMS --
+# this test failing is the signal to re-measure, not to delete it.
+LATENT_NOT_IN_VOCABULARY = [
+    "AMEX ENDING IN 6081",
+    "ExtraCare Card #: ********2953",
+]
+
+
 def _bare(text: str) -> str:
     """Amount-stripped row text, exactly as both call sites build it."""
     return re.sub(r"\$?\d[\d.,]*", " ", text).strip()
@@ -61,6 +83,13 @@ def test_prod_tender_phantoms_are_settlement_rows(text: str) -> None:
 
 @pytest.mark.parametrize("text", REAL_PRODUCTS)
 def test_real_products_are_not_settlement_rows(text: str) -> None:
+    assert not is_settlement_row(_bare(text)), text
+
+
+@pytest.mark.parametrize("text", LATENT_NOT_IN_VOCABULARY)
+def test_card_tail_phrasings_absent_from_the_corpus_are_not_dropped(
+    text: str,
+) -> None:
     assert not is_settlement_row(_bare(text)), text
 
 
